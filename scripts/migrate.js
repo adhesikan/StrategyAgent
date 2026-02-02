@@ -766,6 +766,21 @@ async function migrate() {
     `);
     console.log(`Fixed ${fixExpired.rowCount} EXPIRED opportunities missing P&L`);
 
+    // Fix INVALIDATED outcomes that don't have P&L calculated (use min_price_after as the stop-out price)
+    const fixInvalidated = await client.query(`
+      UPDATE opportunities 
+      SET 
+        resolution_price = min_price_after,
+        pnl_percent = ((min_price_after - detected_price) / detected_price) * 100
+      WHERE resolution_outcome = 'INVALIDATED'
+        AND (pnl_percent IS NULL OR resolution_price IS NULL)
+        AND min_price_after IS NOT NULL
+        AND detected_price IS NOT NULL
+        AND detected_price > 0
+      RETURNING id, symbol;
+    `);
+    console.log(`Fixed ${fixInvalidated.rowCount} INVALIDATED opportunities missing P&L`);
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

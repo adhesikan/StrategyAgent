@@ -318,9 +318,9 @@ export function startScheduledScanService(): void {
   });
   
   console.log("[ScheduledScan] Scheduled scan service started with multiple scan times:");
-  console.log("  - 9:45 AM ET: VCP, VCP Multi-Day (swing strategies)");
-  console.log("  - 10:00 AM ET: ORB5, ORB15, Gap & Go (early momentum)");
-  console.log("  - 11:00 AM ET: VWAP Reclaim, High RVOL (mid-morning)");
+  console.log("  - 9:45 AM ET: Momentum Breakout, Power Breakout (swing strategies)");
+  console.log("  - 10:00 AM ET: Open Drive (5m/15m), Gap Force (early momentum)");
+  console.log("  - 11:00 AM ET: Institutional Reclaim, Volume Surge (mid-morning)");
 }
 
 export async function runManualScheduledScan(): Promise<{ success: boolean; message: string; ingestedCount?: number }> {

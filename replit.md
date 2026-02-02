@@ -192,16 +192,16 @@ The platform includes an automated multi-strategy scanning system that ensures a
 **Scheduled Scan Times** (all times Eastern):
 | Time | Strategies | Purpose |
 |------|-----------|---------|
-| 9:45 AM | VCP, VCP Multi-Day | Swing/position strategies at market open |
-| 10:00 AM | ORB5, ORB15, Gap & Go | Early morning momentum plays |
-| 11:00 AM | VWAP Reclaim, High RVOL | Mid-morning setups |
+| 9:45 AM | Momentum Breakout, Power Breakout | Swing/position strategies at market open |
+| 10:00 AM | Open Drive (5m/15m), Gap Force | Early morning momentum plays |
+| 11:00 AM | Institutional Reclaim, Volume Surge | Mid-morning setups |
 
 **Strategy Classification Logic**:
-- **VCP/VCP Multi-Day**: Volatility contraction pattern with breakout, ready, or forming stages
-- **ORB (5/15 min)**: Opening Range Breakout - strong moves from open with high volume
-- **Gap & Go**: Stocks gapping up >2% that continue higher with volume
-- **VWAP Reclaim**: Price near or above VWAP proxy with volume support
-- **High RVOL**: Stocks with >2x average volume indicating unusual activity
+- **Momentum Breakout / Power Breakout**: Volatility contraction pattern with breakout, ready, or forming stages
+- **Open Drive (5m/15m)**: Opening Range Breakout - strong moves from open with high volume
+- **Gap Force**: Stocks gapping up >2% that continue higher with volume
+- **Institutional Reclaim**: Price near or above VWAP proxy with volume support
+- **Volume Surge**: Stocks with >2x average volume indicating unusual activity
 
 **Scanning Coverage**:
 - Uses 100-symbol LARGE_CAP_UNIVERSE for consistent coverage

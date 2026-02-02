@@ -1,19 +1,7 @@
 import { storage, type OpportunityFilters, type OpportunitySummary } from "./storage";
 import type { ScanResult, Opportunity, InsertOpportunity, StrategyInfo } from "@shared/schema";
 import { StrategyType } from "@shared/schema";
-
-const STRATEGY_DISPLAY_NAMES: Record<string, string> = {
-  [StrategyType.VCP]: "Momentum Breakout",
-  [StrategyType.VCP_MULTIDAY]: "Power Breakout",
-  [StrategyType.CLASSIC_PULLBACK]: "Classic Pullback",
-  [StrategyType.VWAP_RECLAIM]: "VWAP Reclaim",
-  [StrategyType.ORB5]: "Open Drive 5m",
-  [StrategyType.ORB15]: "Open Drive 15m",
-  [StrategyType.HIGH_RVOL]: "High RVOL",
-  [StrategyType.GAP_AND_GO]: "Gap & Go",
-  [StrategyType.TREND_CONTINUATION]: "Trend Continuation",
-  [StrategyType.VOLATILITY_SQUEEZE]: "Volatility Squeeze",
-};
+import { getStrategyDisplayName } from "@shared/strategies";
 
 const EXPIRATION_DAYS: Record<string, number> = {
   "5m": 1,
@@ -31,7 +19,7 @@ function generateDedupeKey(userId: string, symbol: string, strategyId: string, t
 }
 
 function getStrategyName(strategyId: string): string {
-  return STRATEGY_DISPLAY_NAMES[strategyId] || strategyId;
+  return getStrategyDisplayName(strategyId);
 }
 
 export async function ingestOpportunitiesFromScan(

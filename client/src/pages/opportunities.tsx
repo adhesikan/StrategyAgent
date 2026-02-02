@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays, startOfDay } from "date-fns";
+import { getStrategyDisplayName } from "@shared/strategies";
 import {
   Card,
   CardContent,
@@ -169,13 +170,22 @@ function formatPercent(pct: number | null): string {
 }
 
 function formatStrategyName(name: string): string {
-  const nameMap: Record<string, string> = {
-    "VCP Pattern": "Momentum Breakout",
-    "VCP Multi-Day": "Power Breakout",
-    "5-Min Opening Range": "Open Drive 5m",
-    "15-Min Opening Range": "Open Drive 15m",
+  const legacyNameMap: Record<string, string> = {
+    "VCP Pattern": "VCP",
+    "VCP Multi-Day": "VCP_MULTIDAY",
+    "5-Min Opening Range": "ORB5",
+    "15-Min Opening Range": "ORB15",
+    "Open Drive 5m": "ORB5",
+    "Open Drive 15m": "ORB15",
+    "Gap & Go": "GAP_AND_GO",
+    "High RVOL": "HIGH_RVOL",
+    "VWAP Reclaim": "VWAP_RECLAIM",
+    "Classic Pullback": "CLASSIC_PULLBACK",
+    "Trend Continuation": "TREND_CONTINUATION",
+    "Volatility Squeeze": "VOLATILITY_SQUEEZE",
   };
-  return nameMap[name] || name;
+  const strategyId = legacyNameMap[name] || name;
+  return getStrategyDisplayName(strategyId);
 }
 
 type SortField = "detectedAt" | "symbol" | "strategyName" | "pnlPercent" | "daysToResolution";
@@ -344,9 +354,9 @@ export default function OpportunitiesPage() {
                     <div>
                       <h4 className="font-medium mb-1">Expiration by Strategy</h4>
                       <ul className="space-y-1 text-muted-foreground">
-                        <li><strong className="text-foreground">ORB5, ORB15, Gap & Go</strong> - 1 day (5m/15m timeframe)</li>
-                        <li><strong className="text-foreground">VWAP Reclaim, High RVOL</strong> - 3 days (1h timeframe)</li>
-                        <li><strong className="text-foreground">VCP, VCP Multi-Day</strong> - 10 days (daily timeframe)</li>
+                        <li><strong className="text-foreground">Open Drive (5m), Open Drive (15m), Gap Force</strong> - 1 day</li>
+                        <li><strong className="text-foreground">Institutional Reclaim, Volume Surge</strong> - 3 days</li>
+                        <li><strong className="text-foreground">Momentum Breakout, Power Breakout</strong> - 10 days</li>
                       </ul>
                     </div>
                     <div>

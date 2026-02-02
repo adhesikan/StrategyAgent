@@ -647,6 +647,29 @@ async function migrate() {
     `);
     console.log('Created/verified opportunities table with indexes');
 
+    // Add resolution_price and pnl_percent columns to opportunities table
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'opportunities' AND column_name = 'resolution_price'
+        ) THEN
+          ALTER TABLE opportunities ADD COLUMN resolution_price REAL;
+          RAISE NOTICE 'Added resolution_price column to opportunities';
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'opportunities' AND column_name = 'pnl_percent'
+        ) THEN
+          ALTER TABLE opportunities ADD COLUMN pnl_percent REAL;
+          RAISE NOTICE 'Added pnl_percent column to opportunities';
+        END IF;
+      END $$;
+    `);
+    console.log('Added/verified resolution_price and pnl_percent columns in opportunities');
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

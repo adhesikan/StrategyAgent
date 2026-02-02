@@ -678,6 +678,61 @@ async function migrate() {
     `);
     console.log('Added/verified resolution_price, pnl_percent, and last_price columns in opportunities');
 
+    // Fix incorrectly resolved INVALIDATED opportunities where the stock actually went up
+    // If maxPriceAfter > detectedPrice (stock rose above entry), re-evaluate the outcome
+    const fixResult = await client.query(`
+      WITH fixed_opportunities AS (
+        SELECT 
+          id,
+          detected_price,
+          resistance_price,
+          max_price_after,
+          min_price_after,
+          -- If max price exceeded resistance (with 0.3% buffer), it's BROKE_RESISTANCE
+          CASE 
+            WHEN resistance_price IS NOT NULL AND max_price_after >= resistance_price * 1.003 
+            THEN 'BROKE_RESISTANCE'
+            ELSE 'EXPIRED'
+          END as new_outcome,
+          -- Resolution price: use max for BROKE_RESISTANCE, use max for EXPIRED (best case)
+          CASE 
+            WHEN resistance_price IS NOT NULL AND max_price_after >= resistance_price * 1.003 
+            THEN max_price_after
+            ELSE COALESCE(max_price_after, min_price_after)
+          END as new_resolution_price,
+          -- Calculate P&L %
+          CASE 
+            WHEN detected_price IS NOT NULL AND detected_price > 0 THEN
+              CASE 
+                WHEN resistance_price IS NOT NULL AND max_price_after >= resistance_price * 1.003 
+                THEN ((max_price_after - detected_price) / detected_price) * 100
+                ELSE ((COALESCE(max_price_after, min_price_after) - detected_price) / detected_price) * 100
+              END
+            ELSE NULL
+          END as new_pnl_percent,
+          CASE 
+            WHEN resistance_price IS NOT NULL AND max_price_after >= resistance_price * 1.003 
+            THEN 'Price reached ' || max_price_after || ', exceeding resistance ' || resistance_price
+            ELSE 'Re-evaluated: Stock recovered above entry price'
+          END as new_reason
+        FROM opportunities 
+        WHERE resolution_outcome = 'INVALIDATED'
+          AND max_price_after IS NOT NULL
+          AND detected_price IS NOT NULL
+          AND max_price_after > detected_price  -- Stock went UP above entry
+      )
+      UPDATE opportunities o
+      SET 
+        resolution_outcome = f.new_outcome,
+        resolution_price = f.new_resolution_price,
+        pnl_percent = f.new_pnl_percent,
+        resolution_reason = f.new_reason
+      FROM fixed_opportunities f
+      WHERE o.id = f.id
+      RETURNING o.id, o.symbol;
+    `);
+    console.log(`Fixed ${fixResult.rowCount} incorrectly INVALIDATED opportunities where stock actually went up`);
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

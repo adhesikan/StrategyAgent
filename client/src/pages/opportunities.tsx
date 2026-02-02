@@ -309,6 +309,13 @@ export default function OpportunitiesPage() {
                 <div className="grid md:grid-cols-2 gap-4 text-sm">
                   <div className="space-y-3">
                     <div>
+                      <h4 className="font-medium mb-1">Status: Active vs Resolved</h4>
+                      <ul className="space-y-1 text-muted-foreground">
+                        <li><strong className="text-foreground">Active</strong> - Opportunity is still being tracked, waiting for an outcome</li>
+                        <li><strong className="text-foreground">Resolved</strong> - Opportunity has concluded with one of the outcomes below</li>
+                      </ul>
+                    </div>
+                    <div>
                       <h4 className="font-medium mb-1">Outcome Types</h4>
                       <ul className="space-y-1 text-muted-foreground">
                         <li className="flex items-start gap-2">
@@ -321,7 +328,7 @@ export default function OpportunitiesPage() {
                         </li>
                         <li className="flex items-start gap-2">
                           <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                          <span><strong className="text-foreground">Expired</strong> - Opportunity expired without triggering resistance or stop</span>
+                          <span><strong className="text-foreground">Expired</strong> - Time ran out without hitting resistance or stop (neutral)</span>
                         </li>
                       </ul>
                     </div>
@@ -335,6 +342,14 @@ export default function OpportunitiesPage() {
                   </div>
                   <div className="space-y-3">
                     <div>
+                      <h4 className="font-medium mb-1">Expiration by Timeframe</h4>
+                      <ul className="space-y-1 text-muted-foreground">
+                        <li><strong className="text-foreground">5m / 15m</strong> - Expires after 1 day</li>
+                        <li><strong className="text-foreground">1h</strong> - Expires after 3 days</li>
+                        <li><strong className="text-foreground">Daily</strong> - Expires after 10 days</li>
+                      </ul>
+                    </div>
+                    <div>
                       <h4 className="font-medium mb-1">Pattern Stages</h4>
                       <ul className="space-y-1 text-muted-foreground">
                         <li><strong className="text-foreground">Forming</strong> - Pattern is developing but not yet ready</li>
@@ -347,12 +362,6 @@ export default function OpportunitiesPage() {
                       <p className="text-muted-foreground">
                         Shows how long from detection until the opportunity resolved. 
                         "{'<'} 1" means it resolved the same day it was detected.
-                      </p>
-                    </div>
-                    <div>
-                      <h4 className="font-medium mb-1">Automatic Tracking</h4>
-                      <p className="text-muted-foreground">
-                        Opportunities are auto-captured from scheduled scans and tracked until resolved or expired (24h default).
                       </p>
                     </div>
                   </div>

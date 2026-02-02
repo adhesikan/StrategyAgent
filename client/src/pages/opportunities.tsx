@@ -342,11 +342,11 @@ export default function OpportunitiesPage() {
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <h4 className="font-medium mb-1">Expiration by Timeframe</h4>
+                      <h4 className="font-medium mb-1">Expiration by Strategy</h4>
                       <ul className="space-y-1 text-muted-foreground">
-                        <li><strong className="text-foreground">5m / 15m</strong> - Expires after 1 day</li>
-                        <li><strong className="text-foreground">1h</strong> - Expires after 3 days</li>
-                        <li><strong className="text-foreground">Daily</strong> - Expires after 10 days</li>
+                        <li><strong className="text-foreground">ORB5, ORB15, Gap & Go</strong> - 1 day (5m/15m timeframe)</li>
+                        <li><strong className="text-foreground">VWAP Reclaim, High RVOL</strong> - 3 days (1h timeframe)</li>
+                        <li><strong className="text-foreground">VCP, VCP Multi-Day</strong> - 10 days (daily timeframe)</li>
                       </ul>
                     </div>
                     <div>

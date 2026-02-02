@@ -183,27 +183,39 @@ The platform includes a compliance-safe news research feature for looking up rec
 **UI Location**: Learn > News & Research (`/learn/news`)
 
 ### Scheduled Scan Service
-The platform includes an automated daily scanning system that ensures all trading opportunities are tracked in the Outcome Report:
+The platform includes an automated multi-strategy scanning system that ensures all trading opportunities are tracked in the Outcome Report:
 
 **Configuration**:
-- **Schedule**: Runs at 9:45 AM ET on trading days (Monday-Friday)
 - **Holiday Awareness**: Skips major US market holidays (New Year's Day, MLK Day, Presidents Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas)
 - **Service File**: `server/scheduled-scan-service.ts`
 
+**Scheduled Scan Times** (all times Eastern):
+| Time | Strategies | Purpose |
+|------|-----------|---------|
+| 9:45 AM | VCP, VCP Multi-Day | Swing/position strategies at market open |
+| 10:00 AM | ORB5, ORB15, Gap & Go | Early morning momentum plays |
+| 11:00 AM | VWAP Reclaim, High RVOL | Mid-morning setups |
+
+**Strategy Classification Logic**:
+- **VCP/VCP Multi-Day**: Volatility contraction pattern with breakout, ready, or forming stages
+- **ORB (5/15 min)**: Opening Range Breakout - strong moves from open with high volume
+- **Gap & Go**: Stocks gapping up >2% that continue higher with volume
+- **VWAP Reclaim**: Price near or above VWAP proxy with volume support
+- **High RVOL**: Stocks with >2x average volume indicating unusual activity
+
 **Scanning Coverage**:
-- Scans VCP-based strategies: VCP (Momentum Breakout), VCP Multi-Day (Power Breakout)
-- Other strategies (ORB, VWAP, Gap&Go, etc.) require different classification logic and are scanned via the manual Scanner page
 - Uses 100-symbol LARGE_CAP_UNIVERSE for consistent coverage
 - Requires an active brokerage connection for market data
+- Manual trigger runs all strategies at once
 
 **Behavior**:
 1. Checks if current day is a trading day (not weekend, not holiday)
-2. Scans each strategy sequentially to avoid rate limiting
+2. Scans each strategy group at its scheduled time
 3. Auto-ingests opportunities into the Outcome Report for tracking
 4. Logs all activity for monitoring
 
 **Admin API**:
-- `POST /api/scheduled-scan/run` - Manually trigger the scheduled scan (admin only)
+- `POST /api/scheduled-scan/run` - Manually trigger all strategy scans (admin only)
 
 ### Extended Hours Price Tracking
 The platform supports extended hours price tracking for the Opportunity Outcome Report:

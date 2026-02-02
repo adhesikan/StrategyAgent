@@ -1,7 +1,8 @@
 import cron from "node-cron";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { ingestOpportunitiesFromScan } from "./opportunity-service";
-import { fetchQuotesFromBroker, fetchHistoryFromBroker } from "./broker-service";
+import { fetchQuotesFromBroker } from "./broker-service";
 import { classifyVCPStage } from "./alert-engine";
 import { StrategyType } from "@shared/schema";
 import type { ScanResult } from "@shared/schema";
@@ -26,12 +27,127 @@ const US_MARKET_HOLIDAYS_2025_2026 = [
   "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
 ];
 
-// Only scan strategies that the classifyVCPStage function can actually detect
-// VCP-based strategies share similar classification logic
-const VCP_BASED_STRATEGIES = [
-  StrategyType.VCP,
-  StrategyType.VCP_MULTIDAY,
-];
+// Strategy groups for different scan times
+const STRATEGY_GROUPS = {
+  // 9:45 AM - VCP patterns (swing/position strategies)
+  VCP_STRATEGIES: [StrategyType.VCP, StrategyType.VCP_MULTIDAY],
+  // 10:00 AM - Early morning momentum plays
+  EARLY_MOMENTUM_STRATEGIES: [StrategyType.ORB5, StrategyType.ORB15, StrategyType.GAP_AND_GO],
+  // 11:00 AM - Mid-morning setups
+  MID_MORNING_STRATEGIES: [StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
+};
+
+interface StrategyClassification {
+  qualifies: boolean;
+  stage: "FORMING" | "READY" | "BREAKOUT";
+  volumeRatio: number;
+  resistance: number;
+  stopLoss: number;
+  score: number;
+}
+
+function classifyORB(quote: any): StrategyClassification {
+  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
+  const priceFromOpen = quote.open ? ((quote.last - quote.open) / quote.open) * 100 : 0;
+  
+  // ORB looks for strong moves from open with volume
+  // Breakout: >1.5% from open with high volume
+  // Ready: 0.5-1.5% from open with decent volume
+  const qualifies = Math.abs(priceFromOpen) > 0.5 && volumeRatio > 1.0;
+  
+  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
+  if (priceFromOpen > 1.5 && volumeRatio > 1.5) {
+    stage = "BREAKOUT";
+  } else if (priceFromOpen > 0.5 && volumeRatio > 1.2) {
+    stage = "READY";
+  }
+  
+  return {
+    qualifies,
+    stage,
+    volumeRatio,
+    resistance: quote.last * 1.015,
+    stopLoss: quote.open || quote.last * 0.985,
+    score: Math.min(100, 50 + Math.floor(volumeRatio * 15) + Math.floor(Math.abs(priceFromOpen) * 10)),
+  };
+}
+
+function classifyGapAndGo(quote: any): StrategyClassification {
+  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
+  // Gap is the difference between today's open and yesterday's close (approximated by prevClose if available)
+  const gapPercent = quote.prevClose ? ((quote.open - quote.prevClose) / quote.prevClose) * 100 : quote.changePercent;
+  const priceFromOpen = quote.open ? ((quote.last - quote.open) / quote.open) * 100 : 0;
+  
+  // Gap & Go: Strong gap up (>2%) that continues higher with volume
+  const qualifies = gapPercent > 2 && priceFromOpen >= 0 && volumeRatio > 1.2;
+  
+  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
+  if (gapPercent > 3 && priceFromOpen > 1 && volumeRatio > 2) {
+    stage = "BREAKOUT";
+  } else if (gapPercent > 2 && priceFromOpen >= 0 && volumeRatio > 1.5) {
+    stage = "READY";
+  }
+  
+  return {
+    qualifies,
+    stage,
+    volumeRatio,
+    resistance: quote.high || quote.last * 1.02,
+    stopLoss: quote.open || quote.last * 0.97,
+    score: Math.min(100, 50 + Math.floor(gapPercent * 8) + Math.floor(volumeRatio * 10)),
+  };
+}
+
+function classifyVWAP(quote: any): StrategyClassification {
+  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
+  // VWAP is approximated as midpoint between high and low weighted by volume patterns
+  // For simplicity, use the day's average price as VWAP proxy
+  const vwapProxy = (quote.high + quote.low + quote.last) / 3;
+  const priceFromVWAP = vwapProxy ? ((quote.last - vwapProxy) / vwapProxy) * 100 : 0;
+  
+  // VWAP bounce: Price near or just above VWAP with volume
+  const qualifies = Math.abs(priceFromVWAP) < 1 && volumeRatio > 0.8;
+  
+  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
+  if (priceFromVWAP > 0.3 && priceFromVWAP < 1 && volumeRatio > 1.3) {
+    stage = "BREAKOUT";
+  } else if (Math.abs(priceFromVWAP) < 0.5 && volumeRatio > 1.0) {
+    stage = "READY";
+  }
+  
+  return {
+    qualifies,
+    stage,
+    volumeRatio,
+    resistance: quote.high || quote.last * 1.015,
+    stopLoss: vwapProxy * 0.99,
+    score: Math.min(100, 60 + Math.floor(volumeRatio * 15)),
+  };
+}
+
+function classifyHighRvol(quote: any): StrategyClassification {
+  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
+  
+  // High RVOL: Stocks with significantly higher than average volume
+  // Indicates unusual activity and potential momentum
+  const qualifies = volumeRatio > 2.0 && quote.change > 0;
+  
+  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
+  if (volumeRatio > 3.0 && quote.changePercent > 2) {
+    stage = "BREAKOUT";
+  } else if (volumeRatio > 2.5 && quote.changePercent > 0.5) {
+    stage = "READY";
+  }
+  
+  return {
+    qualifies,
+    stage,
+    volumeRatio,
+    resistance: quote.high || quote.last * 1.02,
+    stopLoss: quote.last * 0.95,
+    score: Math.min(100, 40 + Math.floor(volumeRatio * 15) + Math.floor(quote.changePercent * 5)),
+  };
+}
 
 function isTradingDay(date: Date = new Date()): boolean {
   const dayOfWeek = date.getDay();
@@ -47,9 +163,41 @@ function quotesToScanResults(quotes: any[], strategy: string): ScanResult[] {
   const results: ScanResult[] = [];
   
   for (const quote of quotes) {
-    const classification = classifyVCPStage(quote);
+    let classification: StrategyClassification | null = null;
     
-    if (classification.stage === "FORMING" || classification.stage === "READY" || classification.stage === "BREAKOUT") {
+    // Use strategy-specific classification
+    switch (strategy) {
+      case StrategyType.VCP:
+      case StrategyType.VCP_MULTIDAY: {
+        const vcpResult = classifyVCPStage(quote);
+        if (vcpResult.stage === "FORMING" || vcpResult.stage === "READY" || vcpResult.stage === "BREAKOUT") {
+          classification = {
+            qualifies: true,
+            stage: vcpResult.stage,
+            volumeRatio: vcpResult.volumeRatio,
+            resistance: vcpResult.resistance,
+            stopLoss: vcpResult.stopLoss,
+            score: Math.min(100, 60 + Math.floor(vcpResult.volumeRatio * 10)),
+          };
+        }
+        break;
+      }
+      case StrategyType.ORB5:
+      case StrategyType.ORB15:
+        classification = classifyORB(quote);
+        break;
+      case StrategyType.GAP_AND_GO:
+        classification = classifyGapAndGo(quote);
+        break;
+      case StrategyType.VWAP_RECLAIM:
+        classification = classifyVWAP(quote);
+        break;
+      case StrategyType.HIGH_RVOL:
+        classification = classifyHighRvol(quote);
+        break;
+    }
+    
+    if (classification && classification.qualifies) {
       results.push({
         id: crypto.randomUUID(),
         ticker: quote.symbol,
@@ -61,9 +209,10 @@ function quotesToScanResults(quotes: any[], strategy: string): ScanResult[] {
         avgVolume: quote.avgVolume || 0,
         rvol: classification.volumeRatio,
         stage: classification.stage,
-        patternScore: Math.min(100, 60 + Math.floor(classification.volumeRatio * 10)),
+        patternScore: classification.score,
         resistance: classification.resistance,
         stopLoss: classification.stopLoss,
+        strategy: strategy,
         createdAt: new Date(),
         scanRunId: null,
         atr: null,
@@ -76,26 +225,28 @@ function quotesToScanResults(quotes: any[], strategy: string): ScanResult[] {
   return results;
 }
 
-async function runScheduledScan(): Promise<void> {
+async function runScheduledScan(strategies: string[], scanName: string): Promise<number> {
   const now = new Date();
-  console.log(`[ScheduledScan] Running scheduled scan at ${now.toISOString()}`);
+  console.log(`[ScheduledScan] Running ${scanName} scan at ${now.toISOString()}`);
   
   if (!isTradingDay(now)) {
     console.log("[ScheduledScan] Not a trading day, skipping scan");
-    return;
+    return 0;
   }
+  
+  let totalIngested = 0;
   
   try {
     const connection = await storage.getAnyActiveBrokerConnection();
     if (!connection) {
       console.log("[ScheduledScan] No active broker connection available, skipping scheduled scan");
-      return;
+      return 0;
     }
     
     const connectionWithToken = await storage.getBrokerConnectionWithToken(connection.userId);
     if (!connectionWithToken || !connectionWithToken.accessToken) {
       console.log("[ScheduledScan] Could not retrieve broker access token, skipping scan");
-      return;
+      return 0;
     }
     
     console.log(`[ScheduledScan] Using broker connection: ${connection.provider} (user: ${connection.userId})`);
@@ -116,11 +267,7 @@ async function runScheduledScan(): Promise<void> {
     
     console.log(`[ScheduledScan] Fetched ${allQuotes.length} quotes from ${DEFAULT_SCAN_UNIVERSE.length} symbols`);
     
-    let totalIngested = 0;
-    
-    // Only run VCP-based strategies since classifyVCPStage is designed for VCP pattern detection
-    // Other strategies (ORB, VWAP, Gap&Go, etc.) require different classification logic
-    for (const strategy of VCP_BASED_STRATEGIES) {
+    for (const strategy of strategies) {
       const results = quotesToScanResults(allQuotes, strategy);
       
       if (results.length > 0) {
@@ -132,30 +279,65 @@ async function runScheduledScan(): Promise<void> {
         } catch (error: any) {
           console.error(`[ScheduledScan] Failed to ingest for strategy ${strategy}:`, error.message);
         }
+      } else {
+        console.log(`[ScheduledScan] Strategy ${strategy}: 0 qualifying opportunities`);
       }
     }
     
-    console.log(`[ScheduledScan] Completed: ingested ${totalIngested} total opportunities across all strategies and users`);
+    console.log(`[ScheduledScan] ${scanName} completed: ingested ${totalIngested} opportunities`);
   } catch (error: any) {
-    console.error("[ScheduledScan] Error running scheduled scan:", error.message);
+    console.error(`[ScheduledScan] Error running ${scanName}:`, error.message);
   }
+  
+  return totalIngested;
 }
 
 export function startScheduledScanService(): void {
+  // 9:45 AM ET - VCP strategies (swing/position plays)
   cron.schedule("45 9 * * 1-5", async () => {
-    console.log("[ScheduledScan] 9:45 AM ET cron triggered");
-    await runScheduledScan();
+    console.log("[ScheduledScan] 9:45 AM ET - VCP strategies scan triggered");
+    await runScheduledScan(STRATEGY_GROUPS.VCP_STRATEGIES, "VCP Strategies (9:45 AM)");
   }, {
     timezone: "America/New_York"
   });
   
-  console.log("[ScheduledScan] Scheduled scan service started - runs at 9:45 AM ET on trading days (Mon-Fri)");
+  // 10:00 AM ET - Early momentum strategies (ORB, Gap & Go)
+  cron.schedule("0 10 * * 1-5", async () => {
+    console.log("[ScheduledScan] 10:00 AM ET - Early momentum strategies scan triggered");
+    await runScheduledScan(STRATEGY_GROUPS.EARLY_MOMENTUM_STRATEGIES, "Early Momentum (10:00 AM)");
+  }, {
+    timezone: "America/New_York"
+  });
+  
+  // 11:00 AM ET - Mid-morning strategies (VWAP, Red to Green)
+  cron.schedule("0 11 * * 1-5", async () => {
+    console.log("[ScheduledScan] 11:00 AM ET - Mid-morning strategies scan triggered");
+    await runScheduledScan(STRATEGY_GROUPS.MID_MORNING_STRATEGIES, "Mid-Morning (11:00 AM)");
+  }, {
+    timezone: "America/New_York"
+  });
+  
+  console.log("[ScheduledScan] Scheduled scan service started with multiple scan times:");
+  console.log("  - 9:45 AM ET: VCP, VCP Multi-Day (swing strategies)");
+  console.log("  - 10:00 AM ET: ORB5, ORB15, Gap & Go (early momentum)");
+  console.log("  - 11:00 AM ET: VWAP Reclaim, High RVOL (mid-morning)");
 }
 
 export async function runManualScheduledScan(): Promise<{ success: boolean; message: string; ingestedCount?: number }> {
   try {
-    await runScheduledScan();
-    return { success: true, message: "Scheduled scan completed successfully" };
+    // Run all strategy groups when manually triggered
+    const allStrategies = [
+      ...STRATEGY_GROUPS.VCP_STRATEGIES,
+      ...STRATEGY_GROUPS.EARLY_MOMENTUM_STRATEGIES,
+      ...STRATEGY_GROUPS.MID_MORNING_STRATEGIES,
+    ];
+    
+    const totalIngested = await runScheduledScan(allStrategies, "Manual Full Scan");
+    return { 
+      success: true, 
+      message: `Scheduled scan completed successfully. Ingested ${totalIngested} opportunities across all strategies.`,
+      ingestedCount: totalIngested 
+    };
   } catch (error: any) {
     return { success: false, message: error.message };
   }

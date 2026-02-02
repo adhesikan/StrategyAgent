@@ -174,16 +174,35 @@ export async function resolveOpportunities(): Promise<number> {
         const resolvedAt = now;
         const activeDurationMinutes = Math.floor((resolvedAt.getTime() - new Date(opp.detectedAt).getTime()) / 60000);
         
+        // Determine resolution price based on outcome
+        let resolutionPrice: number | null = null;
+        if (resolutionOutcome === "BROKE_RESISTANCE" && opp.maxPriceAfter) {
+          resolutionPrice = opp.maxPriceAfter;
+        } else if (resolutionOutcome === "INVALIDATED" && opp.minPriceAfter) {
+          resolutionPrice = opp.minPriceAfter;
+        } else if (resolutionOutcome === "EXPIRED") {
+          // For expired, use the last known price (prefer max if available, else min)
+          resolutionPrice = opp.maxPriceAfter ?? opp.minPriceAfter ?? null;
+        }
+        
+        // Calculate P&L percentage
+        let pnlPercent: number | null = null;
+        if (resolutionPrice && opp.detectedPrice) {
+          pnlPercent = ((resolutionPrice - opp.detectedPrice) / opp.detectedPrice) * 100;
+        }
+        
         await storage.updateOpportunity(opp.id, {
           status: "RESOLVED",
           resolvedAt,
           resolutionOutcome,
           resolutionReason,
+          resolutionPrice,
+          pnlPercent,
           activeDurationMinutes,
         });
         
         resolved++;
-        console.log(`[Opportunities] Resolved: ${opp.symbol} -> ${resolutionOutcome}`);
+        console.log(`[Opportunities] Resolved: ${opp.symbol} -> ${resolutionOutcome} (P&L: ${pnlPercent?.toFixed(2) ?? 'N/A'}%)`);
       }
     }
   } catch (error: any) {

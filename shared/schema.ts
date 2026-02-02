@@ -143,6 +143,8 @@ export const opportunities = pgTable("opportunities", {
   resolvedAt: timestamp("resolved_at"),
   resolutionOutcome: text("resolution_outcome"),
   resolutionReason: text("resolution_reason"),
+  resolutionPrice: real("resolution_price"),
+  pnlPercent: real("pnl_percent"),
   maxPriceAfter: real("max_price_after"),
   minPriceAfter: real("min_price_after"),
   maxFavorableMovePercent: real("max_favorable_move_percent"),

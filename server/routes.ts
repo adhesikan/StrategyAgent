@@ -924,7 +924,20 @@ export async function registerRoutes(
         sortOrder: (sortOrder === "asc" || sortOrder === "desc" ? sortOrder : undefined) as "asc" | "desc" | undefined,
       };
       const opportunities = await getOpportunities(userId, filters);
-      res.json(opportunities);
+      
+      // Calculate daysToResolution for each opportunity
+      const opportunitiesWithDays = opportunities.map(opp => {
+        let daysToResolution: number | null = null;
+        if (opp.resolvedAt && opp.detectedAt) {
+          const detectedDate = new Date(opp.detectedAt);
+          const resolvedDate = new Date(opp.resolvedAt);
+          const diffMs = resolvedDate.getTime() - detectedDate.getTime();
+          daysToResolution = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        }
+        return { ...opp, daysToResolution };
+      });
+      
+      res.json(opportunitiesWithDays);
     } catch (error: any) {
       console.error("Error getting opportunities:", error);
       res.status(500).json({ error: "Failed to get opportunities" });
@@ -982,7 +995,17 @@ export async function registerRoutes(
       if (opportunity.userId !== req.session.userId) {
         return res.status(403).json({ error: "Access denied" });
       }
-      res.json(opportunity);
+      
+      // Calculate daysToResolution
+      let daysToResolution: number | null = null;
+      if (opportunity.resolvedAt && opportunity.detectedAt) {
+        const detectedDate = new Date(opportunity.detectedAt);
+        const resolvedDate = new Date(opportunity.resolvedAt);
+        const diffMs = resolvedDate.getTime() - detectedDate.getTime();
+        daysToResolution = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      }
+      
+      res.json({ ...opportunity, daysToResolution });
     } catch (error: any) {
       console.error("Error getting opportunity:", error);
       res.status(500).json({ error: "Failed to get opportunity" });

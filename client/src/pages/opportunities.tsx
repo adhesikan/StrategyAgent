@@ -356,7 +356,7 @@ export default function OpportunitiesPage() {
                       <ul className="space-y-1 text-muted-foreground">
                         <li><strong className="text-foreground">Open Drive (5m), Open Drive (15m), Gap Force</strong> - 1 day</li>
                         <li><strong className="text-foreground">Institutional Reclaim, Volume Surge</strong> - 3 days</li>
-                        <li><strong className="text-foreground">Momentum Breakout, Power Breakout</strong> - 10 days</li>
+                        <li><strong className="text-foreground">Momentum Breakout, Power Breakout, Precision Pullback, Trend Pilot, Pressure Break</strong> - 10 days</li>
                       </ul>
                     </div>
                     <div>

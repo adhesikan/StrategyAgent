@@ -50,7 +50,14 @@ import {
   ArrowUp,
   ArrowDown,
   Search,
+  Info,
+  ChevronDown,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Link } from "wouter";
 
 interface Opportunity {
@@ -284,6 +291,77 @@ export default function OpportunitiesPage() {
       </div>
 
       <div className="p-4 space-y-4">
+        <Collapsible>
+          <Card>
+            <CollapsibleTrigger className="w-full" data-testid="button-toggle-info">
+              <CardHeader className="pb-3 cursor-pointer hover-elevate">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    How Trade Outcomes Work
+                  </span>
+                  <ChevronDown className="h-4 w-4 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0 pb-4">
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="font-medium mb-1">Outcome Types</h4>
+                      <ul className="space-y-1 text-muted-foreground">
+                        <li className="flex items-start gap-2">
+                          <TrendingUp className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                          <span><strong className="text-foreground">Broke Resistance</strong> - Price broke above the resistance level (winning trade)</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <TrendingDown className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                          <span><strong className="text-foreground">Invalidated</strong> - Price hit the stop level and stayed below entry (losing trade)</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <span><strong className="text-foreground">Expired</strong> - Opportunity expired without triggering resistance or stop</span>
+                        </li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-1">P&L Calculation</h4>
+                      <p className="text-muted-foreground">
+                        P&L shows the percentage gain/loss from entry price. For winning trades, it uses the max price reached. 
+                        For losing trades, it uses the min price or stop level.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="font-medium mb-1">Pattern Stages</h4>
+                      <ul className="space-y-1 text-muted-foreground">
+                        <li><strong className="text-foreground">Forming</strong> - Pattern is developing but not yet ready</li>
+                        <li><strong className="text-foreground">Ready</strong> - Pattern complete, waiting for breakout trigger</li>
+                        <li><strong className="text-foreground">Breakout</strong> - Price has broken out of the pattern</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-1">Days to Resolution</h4>
+                      <p className="text-muted-foreground">
+                        Shows how long from detection until the opportunity resolved. 
+                        "{'<'} 1" means it resolved the same day it was detected.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-1">Automatic Tracking</h4>
+                      <p className="text-muted-foreground">
+                        Opportunities are auto-captured from scheduled scans and tracked until resolved or expired (24h default).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">

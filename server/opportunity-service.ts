@@ -114,6 +114,7 @@ async function updatePricesFromScanResults(userId: string, scanResults: ScanResu
     
     const updates: Partial<Opportunity> = {
       barsTracked: (opp.barsTracked || 0) + 1,
+      lastPrice: currentPrice, // Always update lastPrice to latest
     };
     
     if (!opp.maxPriceAfter || currentPrice > opp.maxPriceAfter) {
@@ -150,24 +151,47 @@ export async function resolveOpportunities(): Promise<number> {
       let resolutionOutcome: string | null = null;
       let resolutionReason: string | null = null;
       
-      if (opp.resistancePrice && opp.maxPriceAfter) {
-        const breakoutThreshold = opp.resistancePrice * (1 + BREAKOUT_BUFFER);
-        if (opp.maxPriceAfter >= breakoutThreshold) {
-          resolutionOutcome = "BROKE_RESISTANCE";
-          resolutionReason = `Price reached ${opp.maxPriceAfter.toFixed(2)}, exceeding resistance ${opp.resistancePrice.toFixed(2)}`;
-        }
-      }
+      // Check for breakout - if stock broke resistance, it's a winner
+      const breakoutThreshold = opp.resistancePrice ? opp.resistancePrice * (1 + BREAKOUT_BUFFER) : null;
+      const didBreakResistance = breakoutThreshold && opp.maxPriceAfter && opp.maxPriceAfter >= breakoutThreshold;
       
-      if (!resolutionOutcome && opp.stopReferencePrice && opp.minPriceAfter) {
-        if (opp.minPriceAfter <= opp.stopReferencePrice) {
-          resolutionOutcome = "INVALIDATED";
-          resolutionReason = `Price dropped to ${opp.minPriceAfter.toFixed(2)}, below stop reference ${opp.stopReferencePrice.toFixed(2)}`;
-        }
-      }
+      // Check for stop hit
+      const didHitStop = opp.stopReferencePrice && opp.minPriceAfter && opp.minPriceAfter <= opp.stopReferencePrice;
       
+      // Use lastPrice for current state (if available), otherwise fall back to max price
+      const currentPrice = opp.lastPrice ?? opp.maxPriceAfter;
+      
+      // Check if current price is above entry (trade is currently profitable or recovered)
+      const isCurrentlyAboveEntry = currentPrice && opp.detectedPrice && currentPrice >= opp.detectedPrice;
+      
+      // PRIORITY 1: BROKE_RESISTANCE wins - stock broke above resistance
+      if (didBreakResistance) {
+        resolutionOutcome = "BROKE_RESISTANCE";
+        resolutionReason = `Price reached ${opp.maxPriceAfter!.toFixed(2)}, exceeding resistance ${opp.resistancePrice!.toFixed(2)}`;
+      } 
+      // PRIORITY 2: INVALIDATED - stop was hit AND current price is still below entry
+      // This ensures we don't mark recovered trades as losses
+      else if (didHitStop && !isCurrentlyAboveEntry) {
+        resolutionOutcome = "INVALIDATED";
+        resolutionReason = `Price dropped to ${opp.minPriceAfter!.toFixed(2)}, below stop reference ${opp.stopReferencePrice!.toFixed(2)}`;
+      }
+      // If stop was hit but price recovered above entry, defer to expiration
+      
+      // PRIORITY 3: Expiration - determine final outcome based on current/last price
       if (!resolutionOutcome && isExpired) {
-        resolutionOutcome = "EXPIRED";
-        resolutionReason = `Opportunity expired after ${expirationDays} trading days without resolution`;
+        if (didHitStop && !isCurrentlyAboveEntry) {
+          // Stop hit and currently below entry - true loss
+          resolutionOutcome = "INVALIDATED";
+          resolutionReason = `Price dropped to ${opp.minPriceAfter!.toFixed(2)}, below stop reference ${opp.stopReferencePrice!.toFixed(2)}`;
+        } else {
+          // Either didn't hit stop, or hit stop but recovered above entry
+          resolutionOutcome = "EXPIRED";
+          if (didHitStop && isCurrentlyAboveEntry) {
+            resolutionReason = `Opportunity expired. Hit stop briefly but recovered above entry.`;
+          } else {
+            resolutionReason = `Opportunity expired after ${expirationDays} trading days without resolution`;
+          }
+        }
       }
       
       if (resolutionOutcome) {
@@ -181,8 +205,8 @@ export async function resolveOpportunities(): Promise<number> {
         } else if (resolutionOutcome === "INVALIDATED" && opp.minPriceAfter) {
           resolutionPrice = opp.minPriceAfter;
         } else if (resolutionOutcome === "EXPIRED") {
-          // For expired, use the last known price (prefer max if available, else min)
-          resolutionPrice = opp.maxPriceAfter ?? opp.minPriceAfter ?? null;
+          // For expired, use lastPrice if available (most accurate), then maxPriceAfter, then minPriceAfter
+          resolutionPrice = opp.lastPrice ?? opp.maxPriceAfter ?? opp.minPriceAfter ?? null;
         }
         
         // Calculate P&L percentage
@@ -225,6 +249,7 @@ export async function updateOpportunityPrices(
     for (const opp of symbolOpportunities) {
       const updates: Partial<Opportunity> = {
         barsTracked: (opp.barsTracked || 0) + 1,
+        lastPrice: currentPrice, // Always update lastPrice to latest
       };
       
       const effectiveHigh = highPrice ?? currentPrice;

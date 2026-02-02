@@ -147,6 +147,7 @@ export const opportunities = pgTable("opportunities", {
   pnlPercent: real("pnl_percent"),
   maxPriceAfter: real("max_price_after"),
   minPriceAfter: real("min_price_after"),
+  lastPrice: real("last_price"),
   maxFavorableMovePercent: real("max_favorable_move_percent"),
   maxAdverseMovePercent: real("max_adverse_move_percent"),
   barsTracked: integer("bars_tracked").notNull().default(0),

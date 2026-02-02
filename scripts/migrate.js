@@ -666,9 +666,17 @@ async function migrate() {
           ALTER TABLE opportunities ADD COLUMN pnl_percent REAL;
           RAISE NOTICE 'Added pnl_percent column to opportunities';
         END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'opportunities' AND column_name = 'last_price'
+        ) THEN
+          ALTER TABLE opportunities ADD COLUMN last_price REAL;
+          RAISE NOTICE 'Added last_price column to opportunities';
+        END IF;
       END $$;
     `);
-    console.log('Added/verified resolution_price and pnl_percent columns in opportunities');
+    console.log('Added/verified resolution_price, pnl_percent, and last_price columns in opportunities');
 
     console.log('Migrations complete!');
     client.release();

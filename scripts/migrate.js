@@ -733,6 +733,39 @@ async function migrate() {
     `);
     console.log(`Fixed ${fixResult.rowCount} incorrectly INVALIDATED opportunities where stock actually went up`);
 
+    // Fix BROKE_RESISTANCE outcomes that don't have P&L calculated
+    const fixBrokeResistance = await client.query(`
+      UPDATE opportunities 
+      SET 
+        resolution_price = max_price_after,
+        pnl_percent = ((max_price_after - detected_price) / detected_price) * 100
+      WHERE resolution_outcome = 'BROKE_RESISTANCE'
+        AND (pnl_percent IS NULL OR resolution_price IS NULL)
+        AND max_price_after IS NOT NULL
+        AND detected_price IS NOT NULL
+        AND detected_price > 0
+      RETURNING id, symbol;
+    `);
+    console.log(`Fixed ${fixBrokeResistance.rowCount} BROKE_RESISTANCE opportunities missing P&L`);
+
+    // Fix EXPIRED outcomes that don't have P&L calculated  
+    const fixExpired = await client.query(`
+      UPDATE opportunities 
+      SET 
+        resolution_price = COALESCE(last_price, max_price_after, min_price_after),
+        pnl_percent = CASE 
+          WHEN COALESCE(last_price, max_price_after, min_price_after) IS NOT NULL 
+          THEN ((COALESCE(last_price, max_price_after, min_price_after) - detected_price) / detected_price) * 100
+          ELSE NULL
+        END
+      WHERE resolution_outcome = 'EXPIRED'
+        AND (pnl_percent IS NULL OR resolution_price IS NULL)
+        AND detected_price IS NOT NULL
+        AND detected_price > 0
+      RETURNING id, symbol;
+    `);
+    console.log(`Fixed ${fixExpired.rowCount} EXPIRED opportunities missing P&L`);
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

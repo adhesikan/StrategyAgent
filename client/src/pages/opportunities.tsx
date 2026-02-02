@@ -583,7 +583,9 @@ export default function OpportunitiesPage() {
                           {formatPercent(opp.pnlPercent)}
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
-                          {opp.daysToResolution ?? "-"}
+                          {opp.daysToResolution === null ? "-" : 
+                           opp.daysToResolution === 0 ? "< 1" : 
+                           opp.daysToResolution}
                         </TableCell>
                       </TableRow>
                     ))
@@ -693,7 +695,11 @@ export default function OpportunitiesPage() {
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Days to Resolution</Label>
-                          <p className="text-sm font-medium">{selectedOpportunity.daysToResolution ?? "-"}</p>
+                          <p className="text-sm font-medium">
+                            {selectedOpportunity.daysToResolution === null ? "-" : 
+                             selectedOpportunity.daysToResolution === 0 ? "< 1" : 
+                             selectedOpportunity.daysToResolution}
+                          </p>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4 mt-3">

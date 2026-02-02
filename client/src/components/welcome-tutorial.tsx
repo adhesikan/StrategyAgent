@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import type { UserSettings } from "@shared/schema";
 
 interface WelcomeStep {
@@ -57,9 +58,11 @@ interface WelcomeTutorialProps {
 export function WelcomeTutorial({ onClose, forceShow }: WelcomeTutorialProps) {
   const [step, setStep] = useState(0);
   const [showWelcome, setShowWelcome] = useState(false);
+  const { user } = useAuth();
 
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["/api/user/settings"],
+    enabled: !!user,
   });
 
   const updateSettingsMutation = useMutation({

@@ -1489,7 +1489,7 @@ export async function registerRoutes(
       // Redirect user to Tradier authorization page
       const authUrl = new URL("https://api.tradier.com/v1/oauth/authorize");
       authUrl.searchParams.set("client_id", TRADIER_CLIENT_ID!);
-      authUrl.searchParams.set("scope", "read,write");
+      authUrl.searchParams.set("scope", "read,write,market");
       authUrl.searchParams.set("state", state);
       authUrl.searchParams.set("redirect_uri", callbackUrl);
 

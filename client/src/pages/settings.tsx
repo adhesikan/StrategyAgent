@@ -253,6 +253,10 @@ export default function Settings() {
     queryKey: ["/api/snaptrade/status"],
   });
 
+  const { data: tradierOAuthStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ["/api/tradier/oauth/status"],
+  });
+
   const { data: snaptradeConnections = [], refetch: refetchSnaptradeConnections } = useQuery<SnaptradeConnection[]>({
     queryKey: ["/api/snaptrade/connections"],
     enabled: !!snaptradeStatus?.configured,
@@ -341,6 +345,66 @@ export default function Settings() {
       });
     },
   });
+
+  // Tradier OAuth mutation
+  const tradierOAuthMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/tradier/oauth");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to initiate Tradier OAuth");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.authUrl) {
+        // Redirect to Tradier authorization page
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Connection Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle Tradier OAuth callback query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tradierSuccess = params.get("tradier_success");
+    const tradierError = params.get("tradier_error");
+    
+    if (tradierSuccess === "true") {
+      toast({
+        title: "Tradier Connected",
+        description: "Your Tradier account has been connected successfully.",
+      });
+      // Clean up URL
+      window.history.replaceState({}, "", "/settings");
+      // Refresh broker status
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+    } else if (tradierError) {
+      const errorMessages: Record<string, string> = {
+        missing_code: "Authorization code not received from Tradier",
+        missing_state: "Security token not received from Tradier",
+        state_mismatch: "Security token mismatch - please try again",
+        session_expired: "Your session expired - please log in and try again",
+        token_exchange_failed: "Failed to exchange authorization code",
+        no_access_token: "No access token received from Tradier",
+        unknown: "An unexpected error occurred",
+      };
+      toast({
+        title: "Tradier Connection Failed",
+        description: errorMessages[tradierError] || tradierError,
+        variant: "destructive",
+      });
+      // Clean up URL
+      window.history.replaceState({}, "", "/settings");
+    }
+  }, [toast, queryClient]);
 
   const handleProviderClick = (providerId: string) => {
     setSelectedProvider(providerId);
@@ -715,6 +779,35 @@ export default function Settings() {
                             className="mt-2"
                             data-testid="input-secret-key"
                           />
+                        </div>
+                      )}
+                      {/* Tradier OAuth option */}
+                      {selectedProvider === "tradier" && tradierOAuthStatus?.configured && (
+                        <div className="space-y-3">
+                          <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                              <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                              <span className="bg-background px-2 text-muted-foreground">Or</span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="w-full gap-2"
+                            onClick={() => {
+                              setConnectDialogOpen(false);
+                              tradierOAuthMutation.mutate();
+                            }}
+                            disabled={tradierOAuthMutation.isPending}
+                            data-testid="button-tradier-oauth"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            {tradierOAuthMutation.isPending ? "Connecting..." : "Connect with Tradier Account"}
+                          </Button>
+                          <p className="text-xs text-muted-foreground text-center">
+                            Securely authorize VCP Trader to access your Tradier account
+                          </p>
                         </div>
                       )}
                       <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-md space-y-2">

@@ -5,6 +5,8 @@ import connectPg from "connect-pg-simple";
 declare module "express-session" {
   interface SessionData {
     userId?: string;
+    tradierOAuthState?: string;
+    tradierOAuthUserId?: string;
   }
 }
 

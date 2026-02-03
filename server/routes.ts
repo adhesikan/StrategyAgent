@@ -1421,6 +1421,162 @@ export async function registerRoutes(
     }
   });
 
+  // Tradier OAuth routes
+  const TRADIER_CLIENT_ID = process.env.TRADIER_CLIENT_ID;
+  const TRADIER_CLIENT_SECRET = process.env.TRADIER_CLIENT_SECRET;
+  
+  function isTradierOAuthConfigured(): boolean {
+    return !!(TRADIER_CLIENT_ID && TRADIER_CLIENT_SECRET);
+  }
+  
+  function getTradierCallbackUrl(): string {
+    // Build callback URL dynamically based on environment
+    // Uses /tradier-callback to match the registered OAuth callback URL
+    let baseUrl: string;
+    if (process.env.APP_URL) {
+      baseUrl = process.env.APP_URL;
+    } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    } else if (process.env.REPLIT_DEPLOYMENT_URL) {
+      baseUrl = `https://${process.env.REPLIT_DEPLOYMENT_URL}`;
+    } else if (process.env.REPLIT_DEV_DOMAIN) {
+      baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    } else {
+      baseUrl = "http://localhost:5000";
+    }
+    return `${baseUrl}/tradier-callback`;
+  }
+
+  app.get("/api/tradier/oauth/status", (req, res) => {
+    res.json({ configured: isTradierOAuthConfigured() });
+  });
+
+  // Initiate Tradier OAuth flow
+  app.get("/api/tradier/oauth", isAuthenticated, async (req, res) => {
+    try {
+      if (!isTradierOAuthConfigured()) {
+        return res.status(503).json({ error: "Tradier OAuth is not configured" });
+      }
+
+      const userId = req.session.userId!;
+      // Generate a random state to prevent CSRF attacks
+      const state = crypto.randomBytes(16).toString("hex");
+      
+      // Store state in session for verification on callback
+      req.session.tradierOAuthState = state;
+      req.session.tradierOAuthUserId = userId;
+      
+      // Save session before redirecting to ensure state is persisted
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // Build callback URL dynamically
+      const callbackUrl = getTradierCallbackUrl();
+      console.log(`[Tradier OAuth] Using callback URL: ${callbackUrl}`);
+
+      // Redirect user to Tradier authorization page
+      const authUrl = new URL("https://api.tradier.com/v1/oauth/authorize");
+      authUrl.searchParams.set("client_id", TRADIER_CLIENT_ID!);
+      authUrl.searchParams.set("scope", "read,write");
+      authUrl.searchParams.set("state", state);
+      authUrl.searchParams.set("redirect_uri", callbackUrl);
+
+      res.json({ authUrl: authUrl.toString() });
+    } catch (error: any) {
+      console.error("Tradier OAuth initiation error:", error);
+      res.status(500).json({ error: error.message || "Failed to initiate Tradier OAuth" });
+    }
+  });
+
+  // Shared Tradier OAuth callback handler
+  async function handleTradierOAuthCallback(req: any, res: any) {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code || typeof code !== "string") {
+        return res.redirect("/settings?tradier_error=missing_code");
+      }
+      
+      if (!state || typeof state !== "string") {
+        return res.redirect("/settings?tradier_error=missing_state");
+      }
+
+      // Verify state matches what we stored in session
+      if (state !== req.session.tradierOAuthState) {
+        console.error("Tradier OAuth state mismatch");
+        return res.redirect("/settings?tradier_error=state_mismatch");
+      }
+
+      const userId = req.session.tradierOAuthUserId;
+      if (!userId) {
+        console.error("No user ID found in session for Tradier OAuth callback");
+        return res.redirect("/settings?tradier_error=session_expired");
+      }
+
+      // Clear OAuth state from session
+      delete req.session.tradierOAuthState;
+      delete req.session.tradierOAuthUserId;
+
+      // Exchange authorization code for access token
+      const basicAuth = Buffer.from(`${TRADIER_CLIENT_ID}:${TRADIER_CLIENT_SECRET}`).toString("base64");
+      
+      const tokenResponse = await fetch("https://api.tradier.com/v1/oauth/accesstoken", {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${basicAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: code,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("Tradier token exchange failed:", errorText);
+        return res.redirect("/settings?tradier_error=token_exchange_failed");
+      }
+
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.access_token;
+      
+      if (!accessToken) {
+        console.error("No access token in Tradier response:", tokenData);
+        return res.redirect("/settings?tradier_error=no_access_token");
+      }
+
+      // Store the connection with encrypted access token
+      await storage.setBrokerConnectionWithTokens(
+        userId,
+        "tradier",
+        accessToken,
+        tokenData.refresh_token || undefined
+      );
+
+      // Mark connection as active
+      await storage.updateBrokerConnectionStatus(userId, true);
+
+      console.log(`[Tradier OAuth] User ${userId} successfully connected to Tradier`);
+      
+      // Redirect to settings page with success message
+      res.redirect("/settings?tradier_success=true");
+    } catch (error: any) {
+      console.error("Tradier OAuth callback error:", error);
+      res.redirect("/settings?tradier_error=unknown");
+    }
+  }
+
+  // Tradier OAuth callback routes - both point to the same handler
+  // /tradier-callback matches the registered callback URL with Tradier
+  app.get("/tradier-callback", handleTradierOAuthCallback);
+  app.get("/api/tradier/callback", handleTradierOAuthCallback);
+
   // SnapTrade OAuth brokerage connection routes
   app.get("/api/snaptrade/status", (req, res) => {
     const { isSnaptradeConfigured } = require("./snaptrade");

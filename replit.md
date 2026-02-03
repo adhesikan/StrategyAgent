@@ -122,6 +122,31 @@ The app connects to multiple brokerage providers for market data:
 
 **Security**: Broker credentials are encrypted with `BROKER_TOKEN_KEY` environment variable before storage. Never stored in plaintext.
 
+### Tradier OAuth Integration
+- **Purpose**: OAuth-based connection to Tradier for market data access
+- **Required Environment Variables**:
+  - `TRADIER_CLIENT_ID` - Tradier OAuth application client ID
+  - `TRADIER_CLIENT_SECRET` - Tradier OAuth application client secret
+
+**Tradier OAuth Flow**:
+1. User clicks "Connect with Tradier Account" button in Settings > Data Providers > Tradier
+2. App redirects user to Tradier authorization page with CSRF state parameter
+3. User authorizes the app on Tradier
+4. Tradier redirects to `/tradier-callback` with authorization code
+5. Backend exchanges code for access token using Basic auth
+6. Access token is encrypted and stored in `broker_connections` table
+7. User is redirected to Settings with success message
+
+**Tradier API Endpoints**:
+- `GET /api/tradier/oauth/status` - Check if Tradier OAuth is configured
+- `GET /api/tradier/oauth` - Initiate OAuth flow (requires authentication)
+- `GET /tradier-callback` - Handle OAuth callback from Tradier
+
+**Security**:
+- CSRF protection via random state parameter stored in session
+- Access tokens encrypted at rest using AES-256-GCM
+- Client credentials never exposed to frontend
+
 ### SnapTrade Integration (Direct Brokerage Trading)
 - **Purpose**: OAuth-based brokerage connections for direct order execution via InstaTrade
 - **SDK**: `snaptrade-typescript-sdk` for API communication

@@ -1323,12 +1323,15 @@ export async function registerRoutes(
       let testResult: { success: boolean; message: string; data?: any };
 
       if (connection.provider === "tradier") {
+        console.log(`[Tradier Test] Testing connection with token length: ${connection.accessToken?.length || 0}`);
         const response = await fetch("https://api.tradier.com/v1/markets/quotes?symbols=AAPL", {
           headers: {
             "Authorization": `Bearer ${connection.accessToken}`,
             "Accept": "application/json",
           },
         });
+        
+        console.log(`[Tradier Test] Response status: ${response.status}`);
         
         if (response.ok) {
           const data = await response.json();
@@ -1344,10 +1347,15 @@ export async function registerRoutes(
             } : null,
           };
         } else {
-          const errorData = await response.json().catch(() => ({}));
+          const errorText = await response.text();
+          console.log(`[Tradier Test] Error response: ${errorText}`);
+          let errorData: any = {};
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {}
           testResult = {
             success: false,
-            message: errorData.fault?.faultstring || `API error: ${response.status}`,
+            message: errorData.fault?.faultstring || `API error: ${response.status} - ${errorText.substring(0, 200)}`,
           };
         }
       } else if (connection.provider === "alpaca") {

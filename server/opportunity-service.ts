@@ -14,8 +14,9 @@ const EXPIRATION_DAYS: Record<string, number> = {
 const BREAKOUT_BUFFER = 0.001;
 
 function generateDedupeKey(userId: string, symbol: string, strategyId: string, timeframe: string, detectedAt: Date): string {
-  const hourBucket = Math.floor(detectedAt.getTime() / (1000 * 60 * 60));
-  return `${userId}:${symbol}:${strategyId}:${timeframe}:${hourBucket}`;
+  // Use daily bucket to prevent same symbol+strategy from being captured multiple times per day
+  const dayBucket = Math.floor(detectedAt.getTime() / (1000 * 60 * 60 * 24));
+  return `${userId}:${symbol}:${strategyId}:${timeframe}:${dayBucket}`;
 }
 
 function getStrategyName(strategyId: string): string {

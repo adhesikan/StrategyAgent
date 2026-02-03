@@ -543,42 +543,9 @@ export default function Settings() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base font-medium">Market Data Source</CardTitle>
-                <CardDescription>
-                  Choose your preferred source for live market data
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div 
-                    className={`flex items-center justify-between p-4 rounded-md border ${brokerStatus?.isConnected ? "border-primary bg-primary/5" : ""}`}
-                    data-testid="data-source-brokerage"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${brokerStatus?.isConnected ? "bg-status-online" : "bg-muted"}`} />
-                      <div>
-                        <p className="font-medium">Brokerage Data</p>
-                        <p className="text-sm text-muted-foreground">
-                          {brokerStatus?.isConnected 
-                            ? `Connected to ${brokerProviders.find(b => b.id === brokerStatus.provider)?.name || brokerStatus.provider}`
-                            : "Connect a broker below to enable live data"
-                          }
-                        </p>
-                      </div>
-                    </div>
-                    {brokerStatus?.isConnected && (
-                      <span className="text-xs text-primary font-medium">Active</span>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
                 <CardTitle className="text-base font-medium">Brokerage Connection</CardTitle>
                 <CardDescription>
-                  Optional: Connect a brokerage for alternative data source
+                  Connect your brokerage account for live market data
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -625,7 +592,7 @@ export default function Settings() {
               <CardHeader>
                 <CardTitle className="text-base font-medium">Data Providers</CardTitle>
                 <CardDescription>
-                  Connect to a brokerage for alternative market data
+                  Select a brokerage to connect for live market data
                 </CardDescription>
               </CardHeader>
               <CardContent>

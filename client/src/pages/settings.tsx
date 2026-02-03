@@ -592,6 +592,21 @@ export default function Settings() {
                               </Badge>
                             )}
                           </div>
+                          {broker.id === "tradier" && !isConnected && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mt-2 h-auto p-0 text-xs gap-1 text-primary hover:text-primary/80 hover:bg-transparent"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open("https://join.tradier.com/partner?platform=261", "_blank");
+                              }}
+                              data-testid="button-tradier-signup"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Open new Tradier account
+                            </Button>
+                          )}
                         </CardContent>
                       </Card>
                     );

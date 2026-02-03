@@ -14,8 +14,6 @@ interface DataSourceStatus {
   activeSource: string;
   activeProvider: string | null;
   isLive: boolean;
-  preferredDataSource: string;
-  twelveDataConfigured: boolean;
   hasBrokerConnection: boolean;
   brokerProvider: string | null;
 }
@@ -44,7 +42,6 @@ const providerNames: Record<string, string> = {
   polygon: "Polygon.io",
   schwab: "Charles Schwab",
   ibkr: "Interactive Brokers",
-  twelvedata: "Twelve Data",
 };
 
 export function BrokerStatusProvider({ children }: { children: ReactNode }) {
@@ -69,8 +66,8 @@ export function BrokerStatusProvider({ children }: { children: ReactNode }) {
     provider: dataSourceStatus.activeProvider || undefined,
   } : null;
   
-  // Has data source if either broker is connected OR Twelve Data is configured
-  const hasDataSource = isConnected || dataSourceStatus?.twelveDataConfigured || false;
+  // Has data source if broker is connected
+  const hasDataSource = isConnected || false;
 
   return (
     <BrokerStatusContext.Provider value={{ status: status ?? null, isConnected, isLoading, providerName, dataStatus, dataSourceStatus: dataSourceStatus ?? null, hasDataSource }}>

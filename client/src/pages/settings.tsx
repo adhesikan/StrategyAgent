@@ -52,7 +52,7 @@ interface UserSettingsResponse {
   hasSeenScannerTutorial: boolean;
   hasSeenVcpTutorial: boolean;
   hasSeenAlertsTutorial: boolean;
-  preferredDataSource: "twelvedata" | "brokerage";
+  preferredDataSource: "brokerage";
 }
 
 const brokerProviders = [
@@ -134,7 +134,7 @@ export default function Settings() {
     hasSeenScannerTutorial: false,
     hasSeenVcpTutorial: false,
     hasSeenAlertsTutorial: false,
-    preferredDataSource: "twelvedata",
+    preferredDataSource: "brokerage",
   });
   const [originalSettings, setOriginalSettings] = useState<UserSettingsResponse | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -197,29 +197,6 @@ export default function Settings() {
     },
   });
   
-  const testTwelveDataMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/twelvedata/test", {});
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Test connection failed");
-      }
-      return response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Connection Successful",
-        description: `Twelve Data API is working. SPY: $${data.testQuote?.price?.toFixed(2)}`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Connection Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
   
   const handleSaveSettings = () => {
     saveSettingsMutation.mutate(localSettings);
@@ -574,64 +551,22 @@ export default function Settings() {
               <CardContent>
                 <div className="space-y-4">
                   <div 
-                    className={`flex items-center justify-between p-4 rounded-md border cursor-pointer hover-elevate ${localSettings.preferredDataSource !== "brokerage" ? "border-primary bg-primary/5" : ""}`}
-                    onClick={() => {
-                      const newSettings = { ...localSettings, preferredDataSource: "twelvedata" as const };
-                      setLocalSettings(newSettings);
-                      saveSettingsMutation.mutate(newSettings);
-                    }}
-                    data-testid="data-source-twelvedata"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${localSettings.preferredDataSource !== "brokerage" ? "bg-status-online" : "bg-muted"}`} />
-                      <div>
-                        <p className="font-medium">Twelve Data (Default)</p>
-                        <p className="text-sm text-muted-foreground">
-                          Free live market data for scanning and charts
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {localSettings.preferredDataSource !== "brokerage" && (
-                        <span className="text-xs text-primary font-medium">Active</span>
-                      )}
-                      <Button
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          testTwelveDataMutation.mutate();
-                        }}
-                        disabled={testTwelveDataMutation.isPending}
-                        data-testid="button-test-twelvedata"
-                      >
-                        {testTwelveDataMutation.isPending ? "Testing..." : "Test"}
-                      </Button>
-                    </div>
-                  </div>
-                  <div 
-                    className={`flex items-center justify-between p-4 rounded-md border cursor-pointer hover-elevate ${localSettings.preferredDataSource === "brokerage" ? "border-primary bg-primary/5" : ""} ${!brokerStatus?.isConnected ? "opacity-50" : ""}`}
-                    onClick={() => {
-                      if (brokerStatus?.isConnected) {
-                        const newSettings = { ...localSettings, preferredDataSource: "brokerage" as const };
-                        setLocalSettings(newSettings);
-                        saveSettingsMutation.mutate(newSettings);
-                      }
-                    }}
+                    className={`flex items-center justify-between p-4 rounded-md border ${brokerStatus?.isConnected ? "border-primary bg-primary/5" : ""}`}
                     data-testid="data-source-brokerage"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${localSettings.preferredDataSource === "brokerage" && brokerStatus?.isConnected ? "bg-status-online" : "bg-muted"}`} />
+                      <div className={`h-3 w-3 rounded-full ${brokerStatus?.isConnected ? "bg-status-online" : "bg-muted"}`} />
                       <div>
                         <p className="font-medium">Brokerage Data</p>
                         <p className="text-sm text-muted-foreground">
                           {brokerStatus?.isConnected 
-                            ? `Use data from ${brokerProviders.find(b => b.id === brokerStatus.provider)?.name || brokerStatus.provider}`
-                            : "Connect a broker below to enable this option"
+                            ? `Connected to ${brokerProviders.find(b => b.id === brokerStatus.provider)?.name || brokerStatus.provider}`
+                            : "Connect a broker below to enable live data"
                           }
                         </p>
                       </div>
                     </div>
-                    {localSettings.preferredDataSource === "brokerage" && brokerStatus?.isConnected && (
+                    {brokerStatus?.isConnected && (
                       <span className="text-xs text-primary font-medium">Active</span>
                     )}
                   </div>

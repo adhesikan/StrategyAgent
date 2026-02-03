@@ -27,7 +27,6 @@ import {
   LARGE_CAP_UNIVERSE
 } from "./broker-service";
 import { isPromoActive, PROMO_CONFIG, PROMO_CODE } from "@shared/promo";
-import { fetchTwelveDataQuotes, fetchTwelveDataHistory, isTwelveDataConfigured, runTwelveDataMultidayScan } from "./twelvedata-service";
 import { 
   ingestOpportunitiesFromScan, 
   resolveOpportunities, 
@@ -209,23 +208,8 @@ export async function registerRoutes(
         return res.json(allResults);
       }
       
-      // Fallback to Twelve Data
-      if (isTwelveDataConfigured()) {
-        const quotes = await fetchTwelveDataQuotes(symbols);
-        const allResults: any[] = [];
-        
-        // For Twelve Data, we can only do intraday analysis without history
-        // Return basic scan results for now
-        for (const quote of quotes) {
-          const intradayResults = quotesToScanResults([quote]);
-          allResults.push(...intradayResults);
-        }
-        
-        return res.json(allResults);
-      }
-      
       return res.status(400).json({ 
-        error: "No data source available. Please connect a brokerage or configure Twelve Data API." 
+        error: "No data source available. Please connect a brokerage." 
       });
     } catch (error: any) {
       console.error("Multi-strategy scan error:", error);
@@ -252,26 +236,6 @@ export async function registerRoutes(
         
         const regime = classifyMarketRegime(spyCandles);
         return res.json(regime);
-      }
-      
-      // Fallback to Twelve Data
-      if (isTwelveDataConfigured()) {
-        try {
-          const spyHistory = await fetchTwelveDataHistory("SPY", "1day", 90);
-          const spyCandles: CandleData[] = spyHistory.map(c => ({
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-            volume: c.volume,
-            time: c.date, // Use date string directly
-          }));
-          
-          const regime = classifyMarketRegime(spyCandles);
-          return res.json(regime);
-        } catch (twelveDataError: any) {
-          console.error("Twelve Data market regime failed:", twelveDataError.message);
-        }
       }
       
       // Return neutral regime if no data source available
@@ -368,24 +332,8 @@ export async function registerRoutes(
         return res.json({ results: ranked, marketRegime });
       }
       
-      // Fallback to Twelve Data with basic scan
-      if (isTwelveDataConfigured()) {
-        const quotes = await fetchTwelveDataQuotes(symbols);
-        const intradayResults = quotesToScanResults(quotes);
-        
-        // Filter results
-        const filteredResults = intradayResults.filter(r => {
-          if (minPrice && r.price < minPrice) return false;
-          if (maxPrice && r.price > maxPrice) return false;
-          if (minVolume && (r.volume ?? 0) < minVolume) return false;
-          return true;
-        });
-        
-        return res.json({ results: filteredResults, marketRegime: null });
-      }
-      
       return res.status(400).json({ 
-        error: "No data source available. Please connect a brokerage or configure Twelve Data API." 
+        error: "No data source available. Please connect a brokerage." 
       });
     } catch (error: any) {
       console.error("Confluence scan error:", error);
@@ -433,34 +381,12 @@ export async function registerRoutes(
             }
             return res.json(allResults);
           } catch (brokerError: any) {
-            console.error("Broker fetch failed, falling back to Twelve Data:", brokerError.message);
+            console.error("Broker fetch failed:", brokerError.message);
           }
         }
       }
       
-      // Use Twelve Data as default market data source
-      if (isTwelveDataConfigured()) {
-        try {
-          const quotes = await fetchTwelveDataQuotes(DEFAULT_SCAN_SYMBOLS);
-          const intradayResults = quotesToScanResults(quotes);
-          
-          // Run multiday scan in background (rate-limited, takes ~40 seconds)
-          runTwelveDataMultidayScan(quotes).then(multidayResults => {
-            console.log(`[TwelveData] Background multiday scan complete: ${multidayResults.length} results`);
-          }).catch(err => {
-            console.error("[TwelveData] Background multiday scan failed:", err.message);
-          });
-          
-          if (includeMeta) {
-            return res.json({ data: intradayResults, isLive: true, provider: "twelvedata" });
-          }
-          return res.json(intradayResults);
-        } catch (twelveDataError: any) {
-          console.error("Twelve Data fetch failed:", twelveDataError.message);
-        }
-      }
-      
-      // Fallback to stored results (mock data)
+      // Fallback to stored results
       const storedResults = await storage.getScanResults();
       if (includeMeta) {
         return res.json({ data: storedResults, isLive: false });
@@ -499,76 +425,10 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       const connection = await storage.getBrokerConnectionWithToken(userId);
       
-      // Get user's preferred data source
-      const userSettings = await storage.getUserSettings(userId);
-      const preferredDataSource = userSettings?.preferredDataSource || "brokerage";
-      
-      // If no broker connection, try Twelve Data
+      // Require broker connection
       if (!connection || !connection.accessToken) {
-        if (isTwelveDataConfigured()) {
-          // Use Twelve Data for scanning
-          const requestedSymbols = req.body.symbols || DEFAULT_SCAN_SYMBOLS;
-          const strategy = req.body.strategy || StrategyType.VCP;
-          const { minPrice, maxPrice, minVolume, minRvol } = req.body.filters || {};
-          const startTime = Date.now();
-          
-          try {
-            const quotes = await fetchTwelveDataQuotes(requestedSymbols);
-            
-            // Apply filters
-            const filteredQuotes = quotes.filter(quote => {
-              if (minPrice && quote.last < minPrice) return false;
-              if (maxPrice && quote.last > maxPrice) return false;
-              if (minVolume && quote.volume < minVolume) return false;
-              if (minRvol && quote.avgVolume) {
-                const rvol = quote.volume / quote.avgVolume;
-                if (rvol < minRvol) return false;
-              }
-              return true;
-            });
-            
-            // Return intraday results immediately (fast)
-            const intradayResults = quotesToScanResults(filteredQuotes, strategy);
-            
-            const scanTime = Date.now() - startTime;
-            
-            // Store results in storage
-            await storage.clearScanResults();
-            for (const result of intradayResults) {
-              await storage.createScanResult(result);
-            }
-            
-            // Run multiday scan in background (slow due to rate limits)
-            // Results will be added to storage as they complete
-            runTwelveDataMultidayScan(filteredQuotes).then(async (multidayResults) => {
-              for (const result of multidayResults) {
-                await storage.createScanResult(result);
-              }
-              console.log(`[TwelveData] Background multiday scan complete: ${multidayResults.length} results`);
-            }).catch(err => {
-              console.error("[TwelveData] Background multiday scan failed:", err.message);
-            });
-            
-            return res.json({
-              results: intradayResults,
-              metadata: {
-                isLive: true,
-                provider: "twelvedata",
-                symbolsRequested: requestedSymbols.length,
-                symbolsReturned: quotes.length,
-                scanTimeMs: scanTime,
-                timestamp: new Date().toISOString(),
-                note: "Multiday patterns loading in background..."
-              }
-            });
-          } catch (twelveDataError: any) {
-            console.error("Twelve Data scan failed:", twelveDataError.message);
-            return res.status(500).json({ error: "Failed to fetch data from Twelve Data" });
-          }
-        }
-        
         return res.status(400).json({ 
-          error: "No data source available. Please connect a brokerage or configure Twelve Data API." 
+          error: "No data source available. Please connect a brokerage." 
         });
       }
 
@@ -1130,43 +990,6 @@ export async function registerRoutes(
     }
   });
 
-  // Test Twelve Data API connection (authenticated to prevent abuse)
-  app.post("/api/twelvedata/test", isAuthenticated, async (req, res) => {
-    try {
-      if (!isTwelveDataConfigured()) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Twelve Data API key is not configured" 
-        });
-      }
-      
-      // Test with a simple quote request for SPY
-      const quotes = await fetchTwelveDataQuotes(["SPY"]);
-      
-      if (quotes.length > 0 && quotes[0].last > 0) {
-        res.json({ 
-          success: true, 
-          message: "Twelve Data API connection successful",
-          testQuote: {
-            symbol: quotes[0].symbol,
-            price: quotes[0].last,
-          }
-        });
-      } else {
-        res.status(500).json({ 
-          success: false, 
-          error: "Failed to retrieve quote data from Twelve Data API" 
-        });
-      }
-    } catch (error) {
-      console.error("[TwelveData] Test connection error:", error);
-      res.status(500).json({ 
-        success: false, 
-        error: error instanceof Error ? error.message : "Connection test failed" 
-      });
-    }
-  });
-
   app.get("/api/data-source/status", async (req, res) => {
     try {
       const userId = req.session?.userId;
@@ -1189,26 +1012,19 @@ export async function registerRoutes(
         }
       }
       
-      const twelveDataConfigured = isTwelveDataConfigured();
-      
       // Determine active data source
       let activeSource = "mock";
       let activeProvider = null;
       
-      if (preferredDataSource === "brokerage" && hasBrokerConnection) {
+      if (hasBrokerConnection) {
         activeSource = "brokerage";
         activeProvider = brokerProvider;
-      } else if (twelveDataConfigured) {
-        activeSource = "twelvedata";
-        activeProvider = "Twelve Data";
       }
       
       res.json({
         activeSource,
         activeProvider,
         isLive: activeSource !== "mock",
-        preferredDataSource,
-        twelveDataConfigured,
         hasBrokerConnection,
         brokerProvider,
       });
@@ -2772,7 +2588,7 @@ export async function registerRoutes(
           hasSeenScannerTutorial: false,
           hasSeenVcpTutorial: false,
           hasSeenAlertsTutorial: false,
-          preferredDataSource: "twelvedata",
+          preferredDataSource: "brokerage",
         });
       }
       
@@ -2787,7 +2603,7 @@ export async function registerRoutes(
         hasSeenScannerTutorial: settings.hasSeenScannerTutorial === "true",
         hasSeenVcpTutorial: settings.hasSeenVcpTutorial === "true",
         hasSeenAlertsTutorial: settings.hasSeenAlertsTutorial === "true",
-        preferredDataSource: settings.preferredDataSource || "twelvedata",
+        preferredDataSource: settings.preferredDataSource || "brokerage",
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -2817,7 +2633,7 @@ export async function registerRoutes(
         hasSeenScannerTutorial: settings.hasSeenScannerTutorial === "true",
         hasSeenVcpTutorial: settings.hasSeenVcpTutorial === "true",
         hasSeenAlertsTutorial: settings.hasSeenAlertsTutorial === "true",
-        preferredDataSource: settings.preferredDataSource || "twelvedata",
+        preferredDataSource: settings.preferredDataSource || "brokerage",
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

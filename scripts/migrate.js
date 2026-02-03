@@ -227,7 +227,7 @@ async function migrate() {
           SELECT 1 FROM information_schema.columns 
           WHERE table_name = 'user_settings' AND column_name = 'preferred_data_source'
         ) THEN
-          ALTER TABLE user_settings ADD COLUMN preferred_data_source VARCHAR NOT NULL DEFAULT 'twelvedata';
+          ALTER TABLE user_settings ADD COLUMN preferred_data_source VARCHAR NOT NULL DEFAULT 'brokerage';
           RAISE NOTICE 'Added preferred_data_source column';
         END IF;
       END $$;

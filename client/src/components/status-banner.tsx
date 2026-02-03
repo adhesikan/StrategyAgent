@@ -10,8 +10,7 @@ export function StatusBanner() {
 
   if (dataStatus?.isLive) {
     const providerName = dataSourceStatus?.activeProvider || 
-      (dataSourceStatus?.activeSource === "twelvedata" ? "Twelve Data" : 
-       dataSourceStatus?.activeSource === "brokerage" ? dataSourceStatus?.brokerProvider || "Brokerage" : 
+      (dataSourceStatus?.activeSource === "brokerage" ? dataSourceStatus?.brokerProvider || "Brokerage" : 
        "Live Data");
     
     return (

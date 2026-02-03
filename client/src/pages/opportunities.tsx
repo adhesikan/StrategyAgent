@@ -37,6 +37,11 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Download,
   TrendingUp,
   TrendingDown,
@@ -593,40 +598,120 @@ export default function OpportunitiesPage() {
                       onClick={() => handleSort("symbol")}
                       data-testid="sort-symbol"
                     >
-                      <span className="flex items-center">Symbol {getSortIcon("symbol")}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center">Symbol {getSortIcon("symbol")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Stock ticker symbol</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableHead>
                     <TableHead 
                       className="cursor-pointer hover:bg-muted/50" 
                       onClick={() => handleSort("strategyName")}
                       data-testid="sort-strategy"
                     >
-                      <span className="flex items-center">Strategy {getSortIcon("strategyName")}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center">Strategy {getSortIcon("strategyName")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Trading strategy that detected this opportunity</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableHead>
-                    <TableHead>Stage</TableHead>
+                    <TableHead>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>Stage</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Pattern stage: Forming, Ready, or Breakout</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
                     <TableHead 
                       className="cursor-pointer hover:bg-muted/50" 
                       onClick={() => handleSort("detectedAt")}
                       data-testid="sort-detected"
                     >
-                      <span className="flex items-center">Detected {getSortIcon("detectedAt")}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center">Detected {getSortIcon("detectedAt")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Date and time when the opportunity was first detected</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableHead>
-                    <TableHead className="text-right">Resistance</TableHead>
-                    <TableHead className="text-right">Stop</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead>Outcome</TableHead>
+                    <TableHead className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>Resistance</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Price level where breakout is confirmed</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>Stop</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Stop loss reference price for risk management</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>Price</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Current or last traded price of the stock</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>Outcome</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Current status: Active, Broke Resistance, Invalidated, or Expired</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
                     <TableHead 
                       className="text-right cursor-pointer hover:bg-muted/50" 
                       onClick={() => handleSort("pnlPercent")}
                       data-testid="sort-pnl"
                     >
-                      <span className="flex items-center justify-end">P&L % {getSortIcon("pnlPercent")}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-end">P&L % {getSortIcon("pnlPercent")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Profit/Loss percentage from detection price to resolution</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableHead>
                     <TableHead 
                       className="text-right cursor-pointer hover:bg-muted/50" 
                       onClick={() => handleSort("daysToResolution")}
                       data-testid="sort-days"
                     >
-                      <span className="flex items-center justify-end">Days {getSortIcon("daysToResolution")}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-end">Days {getSortIcon("daysToResolution")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Number of trading days from detection to resolution</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableHead>
                   </TableRow>
                 </TableHeader>

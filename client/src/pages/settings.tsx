@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +63,7 @@ const brokerProviders = [
     tokenUrl: "https://web.tradier.com/user/api",
     tokenInstructions: "Log in to Tradier, go to Settings > API Access, and copy your Access Token.",
     requiresSecretKey: false,
+    supportsOAuth: true,
   },
   { 
     id: "alpaca", 
@@ -71,6 +72,7 @@ const brokerProviders = [
     tokenUrl: "https://app.alpaca.markets/paper/dashboard/overview",
     tokenInstructions: "Log in to Alpaca, go to your dashboard, click on API Keys, and copy both your API Key ID and Secret Key.",
     requiresSecretKey: true,
+    supportsOAuth: false,
   },
   { 
     id: "tastytrade", 
@@ -79,38 +81,7 @@ const brokerProviders = [
     tokenUrl: "https://developer.tastytrade.com/",
     tokenInstructions: "Log in to TastyTrade Developer Portal, create an application, and copy your API credentials. Use your session token as the Access Token.",
     requiresSecretKey: true,
-  },
-  { 
-    id: "tradestation", 
-    name: "TradeStation", 
-    description: "Advanced trading platform with API access",
-    tokenUrl: "https://developer.tradestation.com/",
-    tokenInstructions: "Log in to TradeStation Developer Portal, register your application, and copy your API Key and Secret.",
-    requiresSecretKey: true,
-  },
-  { 
-    id: "ibkr", 
-    name: "Interactive Brokers", 
-    description: "Professional trading platform (limited support)",
-    tokenUrl: "https://www.interactivebrokers.com/en/trading/ib-api.php",
-    tokenInstructions: "IBKR requires Client Portal API setup. Consider using Tradier, Alpaca, or Polygon instead.",
-    requiresSecretKey: false,
-  },
-  { 
-    id: "schwab", 
-    name: "Charles Schwab", 
-    description: "Full-service brokerage",
-    tokenUrl: "https://developer.schwab.com/",
-    tokenInstructions: "Log in to Schwab Developer Portal, create an app, and copy your Access Token.",
-    requiresSecretKey: false,
-  },
-  { 
-    id: "polygon", 
-    name: "Polygon.io", 
-    description: "Market data only",
-    tokenUrl: "https://polygon.io/dashboard/keys",
-    tokenInstructions: "Log in to Polygon.io, go to Dashboard > API Keys, and copy your API Key.",
-    requiresSecretKey: false,
+    supportsOAuth: false,
   },
 ];
 
@@ -121,6 +92,7 @@ export default function Settings() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState("");
   const [secretKey, setSecretKey] = useState("");
+  const [showTokenFallback, setShowTokenFallback] = useState(false);
   const { tooltipsEnabled, setTooltipsEnabled } = useTooltipVisibility();
   
   const [localSettings, setLocalSettings] = useState<UserSettingsResponse>({
@@ -626,67 +598,48 @@ export default function Settings() {
                   })}
                 </div>
 
-                <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
+                <Dialog open={connectDialogOpen} onOpenChange={(open) => {
+                  setConnectDialogOpen(open);
+                  if (!open) {
+                    setShowTokenFallback(false);
+                    setAccessToken("");
+                    setSecretKey("");
+                  }
+                }}>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>
                         Connect to {brokerProviders.find(b => b.id === selectedProvider)?.name}
                       </DialogTitle>
                       <DialogDescription>
-                        Enter your API access token to connect your brokerage account.
+                        {brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth && tradierOAuthStatus?.configured
+                          ? "Sign in securely with your brokerage account"
+                          : "Enter your API credentials to connect"
+                        }
                       </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-4">
-                      {selectedProvider && (
-                        <div className="bg-muted p-3 rounded-md space-y-2">
-                          <p className="text-sm font-medium">How to get your access token:</p>
-                          <p className="text-sm text-muted-foreground">
-                            {brokerProviders.find(b => b.id === selectedProvider)?.tokenInstructions}
-                          </p>
+                      {/* OAuth option - shown first for providers that support it */}
+                      {brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth && tradierOAuthStatus?.configured && !showTokenFallback && (
+                        <div className="space-y-4">
                           <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => window.open(brokerProviders.find(b => b.id === selectedProvider)?.tokenUrl, '_blank')}
-                            data-testid="button-open-broker-portal"
+                            className="w-full gap-2"
+                            size="lg"
+                            onClick={() => {
+                              setConnectDialogOpen(false);
+                              tradierOAuthMutation.mutate();
+                            }}
+                            disabled={tradierOAuthMutation.isPending}
+                            data-testid="button-oauth-connect"
                           >
                             <ExternalLink className="h-4 w-4" />
-                            Open {brokerProviders.find(b => b.id === selectedProvider)?.name} API Settings
+                            {tradierOAuthMutation.isPending ? "Connecting..." : `Sign in with ${brokerProviders.find(b => b.id === selectedProvider)?.name}`}
                           </Button>
-                        </div>
-                      )}
-                      <div>
-                        <Label htmlFor="accessToken">
-                          {brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey ? "API Key ID" : "Access Token"}
-                        </Label>
-                        <Input
-                          id="accessToken"
-                          type="password"
-                          placeholder={brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey ? "Paste your API Key ID here" : "Paste your API access token here"}
-                          value={accessToken}
-                          onChange={(e) => setAccessToken(e.target.value)}
-                          className="mt-2"
-                          data-testid="input-access-token"
-                        />
-                      </div>
-                      {brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey && (
-                        <div>
-                          <Label htmlFor="secretKey">Secret Key</Label>
-                          <Input
-                            id="secretKey"
-                            type="password"
-                            placeholder="Paste your Secret Key here"
-                            value={secretKey}
-                            onChange={(e) => setSecretKey(e.target.value)}
-                            className="mt-2"
-                            data-testid="input-secret-key"
-                          />
-                        </div>
-                      )}
-                      {/* Tradier OAuth option */}
-                      {selectedProvider === "tradier" && tradierOAuthStatus?.configured && (
-                        <div className="space-y-3">
-                          <div className="relative">
+                          <p className="text-xs text-muted-foreground text-center">
+                            Securely authorize VCP Trader to access market data from your account
+                          </p>
+                          
+                          <div className="relative py-2">
                             <div className="absolute inset-0 flex items-center">
                               <span className="w-full border-t" />
                             </div>
@@ -694,31 +647,90 @@ export default function Settings() {
                               <span className="bg-background px-2 text-muted-foreground">Or</span>
                             </div>
                           </div>
+                          
                           <Button
                             variant="outline"
-                            className="w-full gap-2"
-                            onClick={() => {
-                              setConnectDialogOpen(false);
-                              tradierOAuthMutation.mutate();
-                            }}
-                            disabled={tradierOAuthMutation.isPending}
-                            data-testid="button-tradier-oauth"
+                            className="w-full"
+                            onClick={() => setShowTokenFallback(true)}
+                            data-testid="button-show-token-fallback"
                           >
-                            <ExternalLink className="h-4 w-4" />
-                            {tradierOAuthMutation.isPending ? "Connecting..." : "Connect with Tradier Account"}
+                            Connect with API Token instead
                           </Button>
-                          <p className="text-xs text-muted-foreground text-center">
-                            Securely authorize VCP Trader to access your Tradier account
-                          </p>
                         </div>
                       )}
+                      
+                      {/* Token-based connection - shown for providers without OAuth or as fallback */}
+                      {(!brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth || !tradierOAuthStatus?.configured || showTokenFallback) && (
+                        <>
+                          {showTokenFallback && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1 -mt-2 mb-2"
+                              onClick={() => setShowTokenFallback(false)}
+                              data-testid="button-back-to-oauth"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                              Back to sign in
+                            </Button>
+                          )}
+                          
+                          {selectedProvider && (
+                            <div className="bg-muted p-3 rounded-md space-y-2">
+                              <p className="text-sm font-medium">How to get your access token:</p>
+                              <p className="text-sm text-muted-foreground">
+                                {brokerProviders.find(b => b.id === selectedProvider)?.tokenInstructions}
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => window.open(brokerProviders.find(b => b.id === selectedProvider)?.tokenUrl, '_blank')}
+                                data-testid="button-open-broker-portal"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Open {brokerProviders.find(b => b.id === selectedProvider)?.name} API Settings
+                              </Button>
+                            </div>
+                          )}
+                          <div>
+                            <Label htmlFor="accessToken">
+                              {brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey ? "API Key ID" : "Access Token"}
+                            </Label>
+                            <Input
+                              id="accessToken"
+                              type="password"
+                              placeholder={brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey ? "Paste your API Key ID here" : "Paste your API access token here"}
+                              value={accessToken}
+                              onChange={(e) => setAccessToken(e.target.value)}
+                              className="mt-2"
+                              data-testid="input-access-token"
+                            />
+                          </div>
+                          {brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey && (
+                            <div>
+                              <Label htmlFor="secretKey">Secret Key</Label>
+                              <Input
+                                id="secretKey"
+                                type="password"
+                                placeholder="Paste your Secret Key here"
+                                value={secretKey}
+                                onChange={(e) => setSecretKey(e.target.value)}
+                                className="mt-2"
+                                data-testid="input-secret-key"
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
                       <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-md space-y-2">
                         <div className="flex items-center gap-2">
                           <Shield className="h-4 w-4 text-blue-500" />
                           <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Security Notice</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          VCP Trader only uses your API token to fetch market data (quotes and charts). 
+                          VCP Trader only uses your connection to fetch market data (quotes and charts). 
                           We never access your account balance, positions, or execute any trades. 
                           Your credentials are encrypted at rest and never shared with third parties.
                         </p>
@@ -732,118 +744,21 @@ export default function Settings() {
                       >
                         Cancel
                       </Button>
-                      <Button
-                        onClick={handleConnect}
-                        disabled={!accessToken.trim() || (brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey && !secretKey.trim()) || connectBrokerMutation.isPending}
-                        data-testid="button-confirm-connect"
-                      >
-                        {connectBrokerMutation.isPending ? "Connecting..." : "Connect"}
-                      </Button>
+                      {(!brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth || !tradierOAuthStatus?.configured || showTokenFallback) && (
+                        <Button
+                          onClick={handleConnect}
+                          disabled={!accessToken.trim() || (brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey && !secretKey.trim()) || connectBrokerMutation.isPending}
+                          data-testid="button-confirm-connect"
+                        >
+                          {connectBrokerMutation.isPending ? "Connecting..." : "Connect"}
+                        </Button>
+                      )}
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
               </CardContent>
             </Card>
 
-            {snaptradeStatus?.configured && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <CardTitle className="text-base font-medium">Brokerage Trading Accounts</CardTitle>
-                      <CardDescription>
-                        Connect your brokerage via OAuth for direct trading with InstaTrade
-                      </CardDescription>
-                    </div>
-                    <Button
-                      onClick={() => connectSnaptradesMutation.mutate(undefined)}
-                      disabled={connectSnaptradesMutation.isPending}
-                      className="gap-2"
-                      data-testid="button-connect-snaptrade"
-                    >
-                      {connectSnaptradesMutation.isPending ? (
-                        <>
-                          <Zap className="h-4 w-4 animate-pulse" />
-                          Connecting...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-4 w-4" />
-                          Connect Brokerage
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {snaptradeConnections.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Zap className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p className="font-medium">No trading accounts connected</p>
-                      <p className="text-sm mt-1">Connect your brokerage to enable direct trading via InstaTrade</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {snaptradeConnections.map((connection) => (
-                        <div
-                          key={connection.id}
-                          className="flex items-center justify-between p-3 rounded-md border"
-                          data-testid={`snaptrade-connection-${connection.id}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`h-3 w-3 rounded-full ${connection.isActive ? "bg-status-online" : "bg-status-offline"}`} />
-                            <div>
-                              <p className="font-medium">{connection.brokerName}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {connection.accountName || connection.accountNumber || "Trading Account"}
-                                {connection.accountType && ` (${connection.accountType})`}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {connection.isTradingEnabled && (
-                              <Badge variant="default" className="text-xs gap-1">
-                                <Zap className="h-3 w-3" />
-                                Trading
-                              </Badge>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeletingConnectionId(connection.id)}
-                              data-testid={`button-disconnect-${connection.id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <AlertDialog open={!!deletingConnectionId} onOpenChange={(open) => !open && setDeletingConnectionId(null)}>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Disconnect Brokerage?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will remove the connection to your brokerage account. You can reconnect at any time.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel data-testid="button-cancel-disconnect">Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => deletingConnectionId && deleteSnaptradeConnectionMutation.mutate(deletingConnectionId)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          data-testid="button-confirm-disconnect"
-                        >
-                          {deleteSnaptradeConnectionMutation.isPending ? "Disconnecting..." : "Disconnect"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </CardContent>
-              </Card>
-            )}
           </div>
         </TabsContent>
 

@@ -1401,6 +1401,153 @@ export async function registerRoutes(
   app.get("/tradier-callback", handleTradierOAuthCallback);
   app.get("/api/tradier/callback", handleTradierOAuthCallback);
 
+  // TradeStation OAuth routes
+  const TRADESTATION_CLIENT_ID = process.env.TRADESTATION_CLIENT_ID;
+  const TRADESTATION_CLIENT_SECRET = process.env.TRADESTATION_CLIENT_SECRET;
+  
+  function isTradeStationOAuthConfigured(): boolean {
+    return !!(TRADESTATION_CLIENT_ID && TRADESTATION_CLIENT_SECRET);
+  }
+  
+  function getTradeStationCallbackUrl(): string {
+    let baseUrl: string;
+    if (process.env.APP_URL) {
+      baseUrl = process.env.APP_URL;
+    } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    } else if (process.env.REPLIT_DEPLOYMENT_URL) {
+      baseUrl = `https://${process.env.REPLIT_DEPLOYMENT_URL}`;
+    } else if (process.env.REPLIT_DEV_DOMAIN) {
+      baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    } else {
+      baseUrl = "http://localhost:5000";
+    }
+    return `${baseUrl}/tradestation-callback`;
+  }
+
+  app.get("/api/tradestation/oauth/status", (req, res) => {
+    res.json({ configured: isTradeStationOAuthConfigured() });
+  });
+
+  // Initiate TradeStation OAuth flow
+  app.get("/api/tradestation/oauth", isAuthenticated, async (req, res) => {
+    try {
+      if (!isTradeStationOAuthConfigured()) {
+        return res.status(503).json({ error: "TradeStation OAuth is not configured" });
+      }
+
+      const userId = req.session.userId!;
+      const state = crypto.randomBytes(16).toString("hex");
+      
+      req.session.tradestationOAuthState = state;
+      req.session.tradestationOAuthUserId = userId;
+      
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      const callbackUrl = getTradeStationCallbackUrl();
+      console.log(`[TradeStation OAuth] Using callback URL: ${callbackUrl}`);
+
+      // TradeStation uses signin.tradestation.com for OAuth
+      const authUrl = new URL("https://signin.tradestation.com/authorize");
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("client_id", TRADESTATION_CLIENT_ID!);
+      authUrl.searchParams.set("redirect_uri", callbackUrl);
+      authUrl.searchParams.set("scope", "openid profile MarketData ReadAccount offline_access");
+      authUrl.searchParams.set("state", state);
+
+      res.json({ authUrl: authUrl.toString() });
+    } catch (error: any) {
+      console.error("TradeStation OAuth initiation error:", error);
+      res.status(500).json({ error: error.message || "Failed to initiate TradeStation OAuth" });
+    }
+  });
+
+  // TradeStation OAuth callback handler
+  async function handleTradeStationOAuthCallback(req: any, res: any) {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code || typeof code !== "string") {
+        return res.redirect("/settings?tradestation_error=missing_code");
+      }
+      
+      if (!state || typeof state !== "string") {
+        return res.redirect("/settings?tradestation_error=missing_state");
+      }
+
+      if (state !== req.session.tradestationOAuthState) {
+        console.error("TradeStation OAuth state mismatch");
+        return res.redirect("/settings?tradestation_error=state_mismatch");
+      }
+
+      const userId = req.session.tradestationOAuthUserId;
+      if (!userId) {
+        console.error("No user ID found in session for TradeStation OAuth callback");
+        return res.redirect("/settings?tradestation_error=session_expired");
+      }
+
+      delete req.session.tradestationOAuthState;
+      delete req.session.tradestationOAuthUserId;
+
+      // Exchange authorization code for access token
+      const callbackUrl = getTradeStationCallbackUrl();
+      
+      const tokenResponse = await fetch("https://signin.tradestation.com/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: TRADESTATION_CLIENT_ID!,
+          client_secret: TRADESTATION_CLIENT_SECRET!,
+          code: code,
+          redirect_uri: callbackUrl,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("TradeStation token exchange failed:", errorText);
+        return res.redirect("/settings?tradestation_error=token_exchange_failed");
+      }
+
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.access_token;
+      
+      if (!accessToken) {
+        console.error("No access token in TradeStation response:", tokenData);
+        return res.redirect("/settings?tradestation_error=no_access_token");
+      }
+
+      // Store the connection with encrypted access token
+      await storage.setBrokerConnectionWithTokens(
+        userId,
+        "tradestation",
+        accessToken,
+        tokenData.refresh_token || undefined
+      );
+
+      await storage.updateBrokerConnectionStatus(userId, true);
+
+      console.log(`[TradeStation OAuth] User ${userId} successfully connected to TradeStation`);
+      
+      res.redirect("/settings?tradestation_success=true");
+    } catch (error: any) {
+      console.error("TradeStation OAuth callback error:", error);
+      res.redirect("/settings?tradestation_error=unknown");
+    }
+  }
+
+  // TradeStation OAuth callback routes
+  app.get("/tradestation-callback", handleTradeStationOAuthCallback);
+  app.get("/api/tradestation/callback", handleTradeStationOAuthCallback);
+
   // SnapTrade OAuth brokerage connection routes
   app.get("/api/snaptrade/status", (req, res) => {
     const { isSnaptradeConfigured } = require("./snaptrade");

@@ -64,6 +64,16 @@ const brokerProviders = [
     tokenInstructions: "Log in to Tradier, go to Settings > API Access, and copy your Access Token.",
     requiresSecretKey: false,
     supportsOAuth: true,
+    signupUrl: "https://join.tradier.com/partner?platform=261",
+  },
+  { 
+    id: "tradestation", 
+    name: "TradeStation", 
+    description: "Professional trading platform",
+    tokenUrl: "https://api.tradestation.com/docs/",
+    tokenInstructions: "Log in to TradeStation, go to API settings, and copy your Access Token.",
+    requiresSecretKey: false,
+    supportsOAuth: true,
   },
   { 
     id: "alpaca", 
@@ -206,6 +216,17 @@ export default function Settings() {
     queryKey: ["/api/tradier/oauth/status"],
   });
 
+  const { data: tradestationOAuthStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ["/api/tradestation/oauth/status"],
+  });
+
+  // Helper to check if OAuth is available for a provider
+  const isOAuthAvailable = (providerId: string): boolean => {
+    if (providerId === "tradier") return !!tradierOAuthStatus?.configured;
+    if (providerId === "tradestation") return !!tradestationOAuthStatus?.configured;
+    return false;
+  };
+
   const { data: snaptradeConnections = [], refetch: refetchSnaptradeConnections } = useQuery<SnaptradeConnection[]>({
     queryKey: ["/api/snaptrade/connections"],
     enabled: !!snaptradeStatus?.configured,
@@ -307,7 +328,6 @@ export default function Settings() {
     },
     onSuccess: (data) => {
       if (data.authUrl) {
-        // Redirect to Tradier authorization page
         window.location.href = data.authUrl;
       }
     },
@@ -320,37 +340,85 @@ export default function Settings() {
     },
   });
 
-  // Handle Tradier OAuth callback query params
+  const tradestationOAuthMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/tradestation/oauth");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to initiate TradeStation OAuth");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Connection Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Helper to initiate OAuth for a provider
+  const initiateOAuth = (providerId: string) => {
+    if (providerId === "tradier") {
+      tradierOAuthMutation.mutate();
+    } else if (providerId === "tradestation") {
+      tradestationOAuthMutation.mutate();
+    }
+  };
+
+  const isOAuthPending = tradierOAuthMutation.isPending || tradestationOAuthMutation.isPending;
+
+  // Handle OAuth callback query params (Tradier and TradeStation)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tradierSuccess = params.get("tradier_success");
     const tradierError = params.get("tradier_error");
+    const tradestationSuccess = params.get("tradestation_success");
+    const tradestationError = params.get("tradestation_error");
     
+    const errorMessages: Record<string, string> = {
+      missing_code: "Authorization code not received",
+      missing_state: "Security token not received",
+      state_mismatch: "Security token mismatch - please try again",
+      session_expired: "Your session expired - please log in and try again",
+      token_exchange_failed: "Failed to exchange authorization code",
+      no_access_token: "No access token received",
+      unknown: "An unexpected error occurred",
+    };
+
     if (tradierSuccess === "true") {
       toast({
         title: "Tradier Connected",
         description: "Your Tradier account has been connected successfully.",
       });
-      // Clean up URL
       window.history.replaceState({}, "", "/settings");
-      // Refresh broker status
       queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
     } else if (tradierError) {
-      const errorMessages: Record<string, string> = {
-        missing_code: "Authorization code not received from Tradier",
-        missing_state: "Security token not received from Tradier",
-        state_mismatch: "Security token mismatch - please try again",
-        session_expired: "Your session expired - please log in and try again",
-        token_exchange_failed: "Failed to exchange authorization code",
-        no_access_token: "No access token received from Tradier",
-        unknown: "An unexpected error occurred",
-      };
       toast({
         title: "Tradier Connection Failed",
         description: errorMessages[tradierError] || tradierError,
         variant: "destructive",
       });
-      // Clean up URL
+      window.history.replaceState({}, "", "/settings");
+    } else if (tradestationSuccess === "true") {
+      toast({
+        title: "TradeStation Connected",
+        description: "Your TradeStation account has been connected successfully.",
+      });
+      window.history.replaceState({}, "", "/settings");
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+    } else if (tradestationError) {
+      toast({
+        title: "TradeStation Connection Failed",
+        description: errorMessages[tradestationError] || tradestationError,
+        variant: "destructive",
+      });
       window.history.replaceState({}, "", "/settings");
     }
   }, [toast, queryClient]);
@@ -627,7 +695,7 @@ export default function Settings() {
                         Connect to {brokerProviders.find(b => b.id === selectedProvider)?.name}
                       </DialogTitle>
                       <DialogDescription>
-                        {brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth && tradierOAuthStatus?.configured
+                        {selectedProvider && brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth && isOAuthAvailable(selectedProvider)
                           ? "Sign in securely with your brokerage account"
                           : "Enter your API credentials to connect"
                         }
@@ -635,20 +703,20 @@ export default function Settings() {
                     </DialogHeader>
                     <div className="py-4 space-y-4">
                       {/* OAuth option - shown first for providers that support it */}
-                      {brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth && tradierOAuthStatus?.configured && !showTokenFallback && (
+                      {selectedProvider && brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth && isOAuthAvailable(selectedProvider) && !showTokenFallback && (
                         <div className="space-y-4">
                           <Button
                             className="w-full gap-2"
                             size="lg"
                             onClick={() => {
                               setConnectDialogOpen(false);
-                              tradierOAuthMutation.mutate();
+                              initiateOAuth(selectedProvider);
                             }}
-                            disabled={tradierOAuthMutation.isPending}
+                            disabled={isOAuthPending}
                             data-testid="button-oauth-connect"
                           >
                             <ExternalLink className="h-4 w-4" />
-                            {tradierOAuthMutation.isPending ? "Connecting..." : `Sign in with ${brokerProviders.find(b => b.id === selectedProvider)?.name}`}
+                            {isOAuthPending ? "Connecting..." : `Sign in with ${brokerProviders.find(b => b.id === selectedProvider)?.name}`}
                           </Button>
                           <p className="text-xs text-muted-foreground text-center">
                             Securely authorize VCP Trader to access market data from your account
@@ -675,7 +743,7 @@ export default function Settings() {
                       )}
                       
                       {/* Token-based connection - shown for providers without OAuth or as fallback */}
-                      {(!brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth || !tradierOAuthStatus?.configured || showTokenFallback) && (
+                      {(!selectedProvider || !brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth || !isOAuthAvailable(selectedProvider) || showTokenFallback) && (
                         <>
                           {showTokenFallback && (
                             <Button
@@ -759,7 +827,7 @@ export default function Settings() {
                       >
                         Cancel
                       </Button>
-                      {(!brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth || !tradierOAuthStatus?.configured || showTokenFallback) && (
+                      {(!selectedProvider || !brokerProviders.find(b => b.id === selectedProvider)?.supportsOAuth || !isOAuthAvailable(selectedProvider) || showTokenFallback) && (
                         <Button
                           onClick={handleConnect}
                           disabled={!accessToken.trim() || (brokerProviders.find(b => b.id === selectedProvider)?.requiresSecretKey && !secretKey.trim()) || connectBrokerMutation.isPending}

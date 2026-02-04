@@ -7,6 +7,8 @@ declare module "express-session" {
     userId?: string;
     tradierOAuthState?: string;
     tradierOAuthUserId?: string;
+    tradestationOAuthState?: string;
+    tradestationOAuthUserId?: string;
   }
 }
 

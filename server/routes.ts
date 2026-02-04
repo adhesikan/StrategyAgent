@@ -1452,12 +1452,13 @@ export async function registerRoutes(
       const callbackUrl = getTradeStationCallbackUrl();
       console.log(`[TradeStation OAuth] Using callback URL: ${callbackUrl}`);
 
-      // TradeStation uses signin.tradestation.com for OAuth
+      // TradeStation v3 OAuth - requires audience parameter per API docs
       const authUrl = new URL("https://signin.tradestation.com/authorize");
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("client_id", TRADESTATION_CLIENT_ID!);
+      authUrl.searchParams.set("audience", "https://api.tradestation.com");
       authUrl.searchParams.set("redirect_uri", callbackUrl);
-      authUrl.searchParams.set("scope", "openid profile MarketData ReadAccount offline_access");
+      authUrl.searchParams.set("scope", "openid MarketData profile ReadAccount Trade Matrix OptionSpreads offline_access");
       authUrl.searchParams.set("state", state);
 
       res.json({ authUrl: authUrl.toString() });

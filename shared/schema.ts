@@ -632,6 +632,15 @@ export const insertOpportunityDefaultsSchema = createInsertSchema(opportunityDef
 export type InsertOpportunityDefaults = z.infer<typeof insertOpportunityDefaultsSchema>;
 export type OpportunityDefaults = typeof opportunityDefaults.$inferSelect;
 
+// Action Mode - User's preferred trading mode
+export const ActionMode = {
+  ALERTS_ONLY: "ALERTS_ONLY",
+  ASSISTED: "ASSISTED",
+  AUTO: "AUTO",
+} as const;
+
+export type ActionModeType = typeof ActionMode[keyof typeof ActionMode];
+
 export const userSettings = pgTable("user_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
@@ -646,6 +655,23 @@ export const userSettings = pgTable("user_settings", {
   hasSeenVcpTutorial: varchar("has_seen_vcp_tutorial").notNull().default("false"),
   hasSeenAlertsTutorial: varchar("has_seen_alerts_tutorial").notNull().default("false"),
   preferredDataSource: varchar("preferred_data_source").notNull().default("brokerage"),
+  preferredStrategies: jsonb("preferred_strategies").default([]),
+  scanUniverse: text("scan_universe").default("all"),
+  scanTimeframe: text("scan_timeframe").default("1d"),
+  scanConfidenceMin: integer("scan_confidence_min").default(75),
+  actionMode: text("action_mode").notNull().default("ALERTS_ONLY"),
+  brokerPreference: text("broker_preference"),
+  safetyLimits: jsonb("safety_limits").default({
+    maxTradesPerDay: 2,
+    maxPositions: 3,
+    riskPerTradeUsd: 500,
+    maxDailyLossUsd: 1000,
+  }),
+  setupCompleted: boolean("setup_completed").default(false),
+  setupCompletedAt: timestamp("setup_completed_at"),
+  autoAgentAcknowledged: boolean("auto_agent_acknowledged").default(false),
+  autoAgentAcknowledgedAt: timestamp("auto_agent_acknowledged_at"),
+  autoAgentAckVersion: text("auto_agent_ack_version"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -667,9 +693,34 @@ export const userSettingsUpdateSchema = z.object({
   hasSeenVcpTutorial: z.boolean().optional(),
   hasSeenAlertsTutorial: z.boolean().optional(),
   preferredDataSource: z.enum(["brokerage"]).optional(),
+  preferredStrategies: z.array(z.string()).optional(),
+  scanUniverse: z.string().optional(),
+  scanTimeframe: z.string().optional(),
+  scanConfidenceMin: z.number().min(50).max(100).optional(),
+  actionMode: z.enum(["ALERTS_ONLY", "ASSISTED", "AUTO"]).optional(),
+  brokerPreference: z.string().optional(),
+  safetyLimits: z.object({
+    maxTradesPerDay: z.number().min(1).max(20).default(2),
+    maxPositions: z.number().min(1).max(10).default(3),
+    riskPerTradeUsd: z.number().min(50).max(10000).default(500),
+    maxDailyLossUsd: z.number().min(100).max(50000).default(1000),
+  }).optional(),
+  setupCompleted: z.boolean().optional(),
+  setupCompletedAt: z.date().optional(),
+  autoAgentAcknowledged: z.boolean().optional(),
+  autoAgentAcknowledgedAt: z.date().optional(),
+  autoAgentAckVersion: z.string().optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;
+
+export const safetyLimitsSchema = z.object({
+  maxTradesPerDay: z.number().min(1).max(20).default(2),
+  maxPositions: z.number().min(1).max(10).default(3),
+  riskPerTradeUsd: z.number().min(50).max(10000).default(500),
+  maxDailyLossUsd: z.number().min(100).max(50000).default(1000),
+});
+export type SafetyLimits = z.infer<typeof safetyLimitsSchema>;
 
 export const AlgoPilotXConnectionType = {
   OAUTH: "OAUTH",
@@ -938,55 +989,6 @@ export const agentDecisionMetricsSchema = z.object({
   rewardRisk: z.number().optional(),
 });
 export type AgentDecisionMetrics = z.infer<typeof agentDecisionMetricsSchema>;
-
-// User Settings - Stores user preferences and setup completion status
-export const ActionMode = {
-  ALERTS_ONLY: "ALERTS_ONLY",
-  ASSISTED: "ASSISTED",
-  AUTO: "AUTO",
-} as const;
-
-export type ActionModeType = typeof ActionMode[keyof typeof ActionMode];
-
-export const userSettings = pgTable("user_settings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().unique(),
-  preferredStrategies: jsonb("preferred_strategies").default([]),
-  scanUniverse: text("scan_universe").default("all"),
-  scanTimeframe: text("scan_timeframe").default("1d"),
-  scanConfidenceMin: integer("scan_confidence_min").default(75),
-  actionMode: text("action_mode").notNull().default("ALERTS_ONLY"),
-  brokerPreference: text("broker_preference"),
-  safetyLimits: jsonb("safety_limits").default({
-    maxTradesPerDay: 2,
-    maxPositions: 3,
-    riskPerTradeUsd: 500,
-    maxDailyLossUsd: 1000,
-  }),
-  setupCompleted: boolean("setup_completed").default(false),
-  setupCompletedAt: timestamp("setup_completed_at"),
-  autoAgentAcknowledged: boolean("auto_agent_acknowledged").default(false),
-  autoAgentAcknowledgedAt: timestamp("auto_agent_acknowledged_at"),
-  autoAgentAckVersion: text("auto_agent_ack_version"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
-export type UserSettings = typeof userSettings.$inferSelect;
-
-export const safetyLimitsSchema = z.object({
-  maxTradesPerDay: z.number().min(1).max(20).default(2),
-  maxPositions: z.number().min(1).max(10).default(3),
-  riskPerTradeUsd: z.number().min(50).max(10000).default(500),
-  maxDailyLossUsd: z.number().min(100).max(50000).default(1000),
-});
-export type SafetyLimits = z.infer<typeof safetyLimitsSchema>;
 
 // Audit Events - Compliance logging for key user actions
 export const AuditEventType = {

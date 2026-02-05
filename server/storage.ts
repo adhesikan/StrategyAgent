@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -61,6 +61,8 @@ import type {
   InsertAgentDecision,
   AgentState,
   InsertAgentState,
+  AuditEvent,
+  InsertAuditEvent,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -229,6 +231,10 @@ export interface IStorage {
 
   getOpenTradesCount(userId: string): Promise<number>;
   hasOpenTradeForSymbol(userId: string, symbol: string): Promise<boolean>;
+
+  // Audit Events
+  createAuditEvent(event: InsertAuditEvent): Promise<AuditEvent>;
+  getAuditEvents(userId: string, limit?: number): Promise<AuditEvent[]>;
 }
 
 export interface OpportunityFilters {
@@ -2168,6 +2174,21 @@ export class MemStorage implements IStorage {
         )
       );
     return Number(result?.count ?? 0) > 0;
+  }
+
+  // Audit Events
+  async createAuditEvent(event: InsertAuditEvent): Promise<AuditEvent> {
+    const [result] = await db.insert(auditEventsTable).values(event).returning();
+    return result;
+  }
+
+  async getAuditEvents(userId: string, limit: number = 100): Promise<AuditEvent[]> {
+    return db
+      .select()
+      .from(auditEventsTable)
+      .where(eq(auditEventsTable.userId, userId))
+      .orderBy(desc(auditEventsTable.eventAt))
+      .limit(limit);
   }
 }
 

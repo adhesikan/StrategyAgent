@@ -1055,6 +1055,41 @@ export async function registerRoutes(
     }
   });
 
+  // Audit Events
+  app.post("/api/audit-events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { eventType, metadata } = req.body;
+      
+      if (!eventType) {
+        return res.status(400).json({ error: "Event type is required" });
+      }
+      
+      const event = await storage.createAuditEvent({
+        userId,
+        eventType,
+        metadata: metadata || {},
+      });
+      
+      res.json(event);
+    } catch (error: any) {
+      console.error("Error creating audit event:", error);
+      res.status(500).json({ error: "Failed to create audit event" });
+    }
+  });
+
+  app.get("/api/audit-events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const events = await storage.getAuditEvents(userId, limit);
+      res.json(events);
+    } catch (error: any) {
+      console.error("Error getting audit events:", error);
+      res.status(500).json({ error: "Failed to get audit events" });
+    }
+  });
+
   app.get("/api/watchlists", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;

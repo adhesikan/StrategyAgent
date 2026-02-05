@@ -1,0 +1,110 @@
+ 
+[Region: us-east4]
+==============
+Using Nixpacks
+==============
+
+context: p7p0-_yWM
+╔═════════════════════ Nixpacks v1.38.0 ═════════════════════╗
+║ setup      │ nodejs_18, npm-9_x, openssl                   ║
+║────────────────────────────────────────────────────────────║
+║ caddy      │ pkgs: caddy                                   ║
+║            │ cmds: caddy fmt --overwrite /assets/Caddyfile ║
+║────────────────────────────────────────────────────────────║
+║ install    │ npm ci                                        ║
+║────────────────────────────────────────────────────────────║
+║ build      │ npm ci && npm run build                       ║
+║────────────────────────────────────────────────────────────║
+║ start      │ npx drizzle-kit push && npm run start         ║
+╚════════════════════════════════════════════════════════════╝
+
+internal
+load build definition from Dockerfile
+0ms
+
+internal
+load metadata for ghcr.io/railwayapp/nixpacks:ubuntu-1745885067
+95ms
+
+internal
+load .dockerignore
+0ms
+
+internal
+load build context
+0ms
+
+stage-0
+FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+16ms
+
+stage-0
+COPY .nixpacks/assets /assets/ cached
+0ms
+
+stage-0
+COPY .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix cached
+0ms
+
+stage-0
+RUN nix-env -if .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix && nix-collect-garbage -d cached
+0ms
+
+stage-0
+COPY .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix cached
+0ms
+
+stage-0
+WORKDIR /app/ cached
+0ms
+
+stage-0
+RUN nix-env -if .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix && nix-collect-garbage -d cached
+0ms
+
+stage-0
+COPY . /app/.
+8s
+
+stage-0
+RUN  caddy fmt --overwrite /assets/Caddyfile
+465ms
+
+stage-0
+COPY . /app/.
+233ms
+
+stage-0
+RUN npm ci
+12s
+Run `npm audit` for details.
+
+stage-0
+COPY . /app/.
+403ms
+
+stage-0
+RUN npm ci && npm run build
+2s
+npm warn config production Use `--omit=dev` instead.
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'vite@7.3.0',
+npm warn EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm error code EBUSY
+npm error syscall rmdir
+npm error path /app/node_modules/.cache
+npm error errno -16
+npm error EBUSY: resource busy or locked, rmdir '/app/node_modules/.cache'
+npm error A complete log of this run can be found in: /root/.npm/_logs/2026-02-05T18_36_18_154Z-debug-0.log
+Dockerfile:30
+-------------------
+28 |     # build phase
+29 |     COPY . /app/.
+30 | >>> RUN --mount=type=cache,id=s/4e7da56b-ca99-4705-8f50-ffeaebfd0f13-node_modules/cache,target=/app/node_modules/.cache npm ci && npm run build
+31 |
+32 |
+-------------------
+ERROR: failed to build: failed to solve: process "/bin/bash -ol pipefail -c npm ci && npm run build" did not complete successfully: exit code: 240
+Error: Docker build failed

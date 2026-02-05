@@ -10,7 +10,12 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 
 [nixpacks]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "npm-10_x"]
+aptPkgs = []
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
 
 [build.env]
 NPM_CONFIG_PRODUCTION = "false"
+NODE_ENV = "production"

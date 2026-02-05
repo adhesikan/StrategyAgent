@@ -2972,6 +2972,18 @@ export async function registerRoutes(
           hasSeenVcpTutorial: false,
           hasSeenAlertsTutorial: false,
           preferredDataSource: "brokerage",
+          preferredStrategies: [],
+          scanUniverse: "all",
+          scanTimeframe: "1d",
+          scanConfidenceMin: 75,
+          actionMode: "ALERTS_ONLY",
+          brokerPreference: null,
+          safetyLimits: { maxTradesPerDay: 2, maxPositions: 3, riskPerTradeUsd: 500, maxDailyLossUsd: 1000 },
+          setupCompleted: false,
+          setupCompletedAt: null,
+          autoAgentAcknowledged: false,
+          autoAgentAcknowledgedAt: null,
+          autoAgentAckVersion: null,
         });
       }
       
@@ -2987,6 +2999,18 @@ export async function registerRoutes(
         hasSeenVcpTutorial: settings.hasSeenVcpTutorial === "true",
         hasSeenAlertsTutorial: settings.hasSeenAlertsTutorial === "true",
         preferredDataSource: settings.preferredDataSource || "brokerage",
+        preferredStrategies: settings.preferredStrategies || [],
+        scanUniverse: settings.scanUniverse || "all",
+        scanTimeframe: settings.scanTimeframe || "1d",
+        scanConfidenceMin: settings.scanConfidenceMin ?? 75,
+        actionMode: settings.actionMode || "ALERTS_ONLY",
+        brokerPreference: settings.brokerPreference || null,
+        safetyLimits: settings.safetyLimits || { maxTradesPerDay: 2, maxPositions: 3, riskPerTradeUsd: 500, maxDailyLossUsd: 1000 },
+        setupCompleted: settings.setupCompleted ?? false,
+        setupCompletedAt: settings.setupCompletedAt || null,
+        autoAgentAcknowledged: settings.autoAgentAcknowledged ?? false,
+        autoAgentAcknowledgedAt: settings.autoAgentAcknowledgedAt || null,
+        autoAgentAckVersion: settings.autoAgentAckVersion || null,
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -3017,6 +3041,18 @@ export async function registerRoutes(
         hasSeenVcpTutorial: settings.hasSeenVcpTutorial === "true",
         hasSeenAlertsTutorial: settings.hasSeenAlertsTutorial === "true",
         preferredDataSource: settings.preferredDataSource || "brokerage",
+        preferredStrategies: settings.preferredStrategies || [],
+        scanUniverse: settings.scanUniverse || "all",
+        scanTimeframe: settings.scanTimeframe || "1d",
+        scanConfidenceMin: settings.scanConfidenceMin ?? 75,
+        actionMode: settings.actionMode || "ALERTS_ONLY",
+        brokerPreference: settings.brokerPreference || null,
+        safetyLimits: settings.safetyLimits || { maxTradesPerDay: 2, maxPositions: 3, riskPerTradeUsd: 500, maxDailyLossUsd: 1000 },
+        setupCompleted: settings.setupCompleted ?? false,
+        setupCompletedAt: settings.setupCompletedAt || null,
+        autoAgentAcknowledged: settings.autoAgentAcknowledged ?? false,
+        autoAgentAcknowledgedAt: settings.autoAgentAcknowledgedAt || null,
+        autoAgentAckVersion: settings.autoAgentAckVersion || null,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

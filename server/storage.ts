@@ -1446,7 +1446,7 @@ export class MemStorage implements IStorage {
   async setUserSettings(userId: string, settings: UserSettingsUpdate): Promise<UserSettings> {
     const existing = await this.getUserSettings(userId);
     
-    const dbSettings: Record<string, string | undefined> = {};
+    const dbSettings: Record<string, any> = {};
     if (settings.showTooltips !== undefined) dbSettings.showTooltips = String(settings.showTooltips);
     if (settings.pushNotificationsEnabled !== undefined) dbSettings.pushNotificationsEnabled = String(settings.pushNotificationsEnabled);
     if (settings.breakoutAlertsEnabled !== undefined) dbSettings.breakoutAlertsEnabled = String(settings.breakoutAlertsEnabled);
@@ -1454,6 +1454,22 @@ export class MemStorage implements IStorage {
     if (settings.emaAlertsEnabled !== undefined) dbSettings.emaAlertsEnabled = String(settings.emaAlertsEnabled);
     if (settings.approachingAlertsEnabled !== undefined) dbSettings.approachingAlertsEnabled = String(settings.approachingAlertsEnabled);
     if (settings.preferredDataSource !== undefined) dbSettings.preferredDataSource = settings.preferredDataSource;
+    if (settings.hasSeenWelcomeTutorial !== undefined) dbSettings.hasSeenWelcomeTutorial = String(settings.hasSeenWelcomeTutorial);
+    if (settings.hasSeenScannerTutorial !== undefined) dbSettings.hasSeenScannerTutorial = String(settings.hasSeenScannerTutorial);
+    if (settings.hasSeenVcpTutorial !== undefined) dbSettings.hasSeenVcpTutorial = String(settings.hasSeenVcpTutorial);
+    if (settings.hasSeenAlertsTutorial !== undefined) dbSettings.hasSeenAlertsTutorial = String(settings.hasSeenAlertsTutorial);
+    if (settings.preferredStrategies !== undefined) dbSettings.preferredStrategies = settings.preferredStrategies;
+    if (settings.scanUniverse !== undefined) dbSettings.scanUniverse = settings.scanUniverse;
+    if (settings.scanTimeframe !== undefined) dbSettings.scanTimeframe = settings.scanTimeframe;
+    if (settings.scanConfidenceMin !== undefined) dbSettings.scanConfidenceMin = settings.scanConfidenceMin;
+    if (settings.actionMode !== undefined) dbSettings.actionMode = settings.actionMode;
+    if (settings.brokerPreference !== undefined) dbSettings.brokerPreference = settings.brokerPreference;
+    if (settings.safetyLimits !== undefined) dbSettings.safetyLimits = settings.safetyLimits;
+    if (settings.setupCompleted !== undefined) dbSettings.setupCompleted = settings.setupCompleted;
+    if (settings.setupCompletedAt !== undefined) dbSettings.setupCompletedAt = settings.setupCompletedAt;
+    if (settings.autoAgentAcknowledged !== undefined) dbSettings.autoAgentAcknowledged = settings.autoAgentAcknowledged;
+    if (settings.autoAgentAcknowledgedAt !== undefined) dbSettings.autoAgentAcknowledgedAt = settings.autoAgentAcknowledgedAt;
+    if (settings.autoAgentAckVersion !== undefined) dbSettings.autoAgentAckVersion = settings.autoAgentAckVersion;
     
     if (existing) {
       const [updated] = await db

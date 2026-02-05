@@ -938,3 +938,84 @@ export const agentDecisionMetricsSchema = z.object({
   rewardRisk: z.number().optional(),
 });
 export type AgentDecisionMetrics = z.infer<typeof agentDecisionMetricsSchema>;
+
+// User Settings - Stores user preferences and setup completion status
+export const ActionMode = {
+  ALERTS_ONLY: "ALERTS_ONLY",
+  ASSISTED: "ASSISTED",
+  AUTO: "AUTO",
+} as const;
+
+export type ActionModeType = typeof ActionMode[keyof typeof ActionMode];
+
+export const userSettings = pgTable("user_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  preferredStrategies: jsonb("preferred_strategies").default([]),
+  scanUniverse: text("scan_universe").default("all"),
+  scanTimeframe: text("scan_timeframe").default("1d"),
+  scanConfidenceMin: integer("scan_confidence_min").default(75),
+  actionMode: text("action_mode").notNull().default("ALERTS_ONLY"),
+  brokerPreference: text("broker_preference"),
+  safetyLimits: jsonb("safety_limits").default({
+    maxTradesPerDay: 2,
+    maxPositions: 3,
+    riskPerTradeUsd: 500,
+    maxDailyLossUsd: 1000,
+  }),
+  setupCompleted: boolean("setup_completed").default(false),
+  setupCompletedAt: timestamp("setup_completed_at"),
+  autoAgentAcknowledged: boolean("auto_agent_acknowledged").default(false),
+  autoAgentAcknowledgedAt: timestamp("auto_agent_acknowledged_at"),
+  autoAgentAckVersion: text("auto_agent_ack_version"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
+export type UserSettings = typeof userSettings.$inferSelect;
+
+export const safetyLimitsSchema = z.object({
+  maxTradesPerDay: z.number().min(1).max(20).default(2),
+  maxPositions: z.number().min(1).max(10).default(3),
+  riskPerTradeUsd: z.number().min(50).max(10000).default(500),
+  maxDailyLossUsd: z.number().min(100).max(50000).default(1000),
+});
+export type SafetyLimits = z.infer<typeof safetyLimitsSchema>;
+
+// Audit Events - Compliance logging for key user actions
+export const AuditEventType = {
+  WIZARD_COMPLETED: "WIZARD_COMPLETED",
+  AUTO_AGENT_ARMED: "AUTO_AGENT_ARMED",
+  AUTO_AGENT_PAUSED: "AUTO_AGENT_PAUSED",
+  AUTO_AGENT_DISABLED: "AUTO_AGENT_DISABLED",
+  EMERGENCY_STOP_TRIGGERED: "EMERGENCY_STOP_TRIGGERED",
+  EXECUTION_COCKPIT_OPENED: "EXECUTION_COCKPIT_OPENED",
+  INSTATRADE_INITIATED: "INSTATRADE_INITIATED",
+  BROKER_CONNECTED: "BROKER_CONNECTED",
+  BROKER_DISCONNECTED: "BROKER_DISCONNECTED",
+  MODE_CHANGED: "MODE_CHANGED",
+  SETTINGS_UPDATED: "SETTINGS_UPDATED",
+} as const;
+
+export type AuditEventTypeValue = typeof AuditEventType[keyof typeof AuditEventType];
+
+export const auditEvents = pgTable("audit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  eventType: text("event_type").notNull(),
+  eventAt: timestamp("event_at").defaultNow().notNull(),
+  metadata: jsonb("metadata").default({}),
+});
+
+export const insertAuditEventSchema = createInsertSchema(auditEvents).omit({
+  id: true,
+  eventAt: true,
+});
+export type InsertAuditEvent = z.infer<typeof insertAuditEventSchema>;
+export type AuditEvent = typeof auditEvents.$inferSelect;

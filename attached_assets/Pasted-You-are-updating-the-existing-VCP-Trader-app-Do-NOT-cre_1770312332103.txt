@@ -1,0 +1,260 @@
+You are updating the existing “VCP Trader” app. Do NOT create a new repo. Preserve all current functionality.
+
+GOAL
+Implement a highly user-friendly, compliance-forward UX that unifies:
+- Opportunities (scan results)
+- Auto Agent (user-controlled automation)
+- Brokerage OAuth connection
+- Execution Cockpit / AlgoPilotX handoff
+
+Deliver:
+1) A new “Trading Command Center” dashboard (single hub)
+2) A “Trading Readiness Wizard” (guided onboarding + can be rerun)
+3) Compliance improvements: neutral language, automation acknowledgements, persistent disclosures, audit logs
+4) Navigation refinements to reduce cognitive load (without removing existing pages)
+
+NON-NEGOTIABLE COMPLIANCE REQUIREMENTS (US-focused)
+- Do NOT present as investment advice, discretionary management, or “we trade for you.”
+- No P&L / performance promises / win rate / expected returns anywhere in these new UIs.
+- Add explicit user acknowledgement before enabling/arming Auto Agent.
+- Ensure clear separation: VCP Trader = intelligence/tools; AlgoPilotX = execution.
+- Keep a persistent global disclaimer; add wizard completion disclosure; add Auto Agent arming disclosures.
+- Add audit logging for key events (arm/disarm/pause/emergency stop/execution actions).
+
+ASSUMED STACK
+- React frontend (Tailwind/shadcn if used)
+- Node/Express backend
+- Postgres (Prisma or raw SQL—match current codebase)
+- Existing auth provides user_id and tenant_id
+
+========================================================
+A) INFORMATION ARCHITECTURE / NAV UPDATES (LIGHT TOUCH)
+========================================================
+Keep existing routes, but add:
+- New top-level page: “Command Center” (or “Trading Command Center”)
+- New route: /command-center (default landing page for new users)
+- Add a new Settings entry: “Trading Setup” (opens Wizard)
+Optional renames (UI labels only; do not rename internal routes):
+- Opportunities => “Opportunity Radar” (label)
+- Trade Execution => “Execution Cockpit” (label)
+- Auto Agent => “Auto Agent” remains (optionally “AutoPilot” as label only)
+Add tooltips explaining each section:
+- Radar = discover
+- Cockpit = execute/monitor
+- Auto Agent = user-configured automation
+
+========================================================
+B) NEW PAGE: TRADING COMMAND CENTER (HUB DASHBOARD)
+========================================================
+Create /command-center that consolidates key actions/status into one view.
+
+1) Global System Status Bar (top of page)
+Show badges/icons with clear states:
+- Market: Open/Closed
+- Scan: Live / Manual / Off
+- Broker: Connected/Not Connected + provider
+- Mode: Alerts Only / Assisted / Auto
+- Auto Agent: Disarmed/Armed/Paused
+Include always-visible safety controls:
+- “Emergency Stop” button (prominent, red)
+- “Pause Auto Agent” when armed
+- “Go to Execution Cockpit” link
+This bar must be concise and always visible near the top.
+
+2) “Today’s Opportunities” panel (center)
+Reuse existing opportunities cards, but adjust CTAs based on user “Mode”:
+- Mode=ALERTS_ONLY: primary CTA = “Set Alert”
+- Mode=ASSISTED: primary CTA = “Review in Cockpit”
+- Mode=AUTO: primary CTA disabled with label “Managed by Auto Agent”
+Add microcopy: “Click any card to preview reference levels. Not investment advice.”
+
+3) “Execution Summary” side panel (right)
+Show:
+- Open positions (count) (if you have this)
+- Trades today (count) from your existing trade history records
+- Last execution event timestamp
+- Selected AlgoPilotX automation endpoint (if relevant)
+CTA buttons:
+- “Open Execution Cockpit”
+- “View Trades History”
+
+4) “Auto Agent Summary” panel (inline)
+Show:
+- Status (Armed/Paused/Disarmed)
+- Mode (Suggest/Auto)
+- Limits (max trades/day, max positions, max daily loss)
+- Quick actions: Modify Rules / Pause / Disable / Emergency Stop
+Click “Modify Rules” opens the existing Auto Agent page.
+
+5) “Setup Checklist” (for incomplete setup)
+If user hasn’t completed setup, show a checklist at top:
+- Choose strategy & scan settings
+- Select action mode
+- Connect broker (optional if alerts-only)
+- Set safety limits
+Button: “Finish Setup” → opens Wizard
+
+========================================================
+C) NEW: TRADING READINESS WIZARD (ONBOARDING + RERUN)
+========================================================
+Add a wizard component accessible from:
+- First-time user flow (auto-open)
+- Settings → “Trading Setup”
+- Command Center checklist button “Finish Setup”
+Wizard is 4 steps with progress indicator, can skip broker if Alerts Only.
+
+Wizard Step 1: “Choose what to scan”
+- Select strategies (checkboxes)
+- Universe (watchlist / all)
+- Timeframe
+- Confidence threshold preset (Conservative/Balanced/Aggressive)
+Compliance copy:
+  “These settings configure how the platform surfaces opportunities. They are not investment recommendations.”
+
+Wizard Step 2: “How should the system act?”
+Three cards:
+1) Alerts Only (default)
+2) Assisted Trading (recommended): “Review in Execution Cockpit, optional 1-click send to AlgoPilotX”
+3) Auto Agent: “User-configured automation. You control limits and can pause anytime.”
+Require explicit selection; store to user_settings.mode:
+- ALERTS_ONLY | ASSISTED | AUTO
+
+Wizard Step 3: “Connect brokerage (optional)”
+- Show provider cards (Tradier/TradeStation/Alpaca/etc.)
+- If mode == ALERTS_ONLY allow “Skip for now”
+- If mode != ALERTS_ONLY strongly recommend connect, but still allow skip with warning:
+  “Execution features require a broker connection in AlgoPilotX and/or market data provider connection here.”
+If already connected, show green “Connected” and allow “Continue.”
+
+Wizard Step 4: “Set global safety limits (Trade Traffic Control)”
+Fields:
+- Max trades/day
+- Max positions
+- Risk per trade ($)
+- Max daily loss ($)
+Provide presets:
+- Conservative / Balanced / Aggressive
+Show “Emergency Stop” explanation.
+
+Wizard Completion Screen:
+- Show summary of selections
+- Prominent disclaimer:
+  “VCP Trader provides educational and informational market scanning tools. Not investment advice. No guarantees.
+   Users control all trading decisions and automation. Execution occurs in AlgoPilotX when enabled.”
+CTA:
+- “Go to Command Center”
+- “View Opportunities”
+
+Persist wizard completion:
+- user_settings.setup_completed=true
+- user_settings.setup_completed_at
+
+========================================================
+D) COMPLIANCE COPY & LANGUAGE (APP-WIDE UPDATES)
+========================================================
+1) Persistent global disclaimer (footer is fine, but ensure it’s present on new pages)
+Text (use this exactly or very close):
+“VCP Trader and AlgoPilotX are software tools for self-directed traders. Educational and informational use only. Not investment advice. No guarantees. Users control all trading decisions and automation.”
+
+2) Add contextual disclaimers:
+- Opportunities list header: “Reference levels are informational only.”
+- Auto Agent page: “Automation follows your rules. You are responsible for configuration and monitoring.”
+- Execution Cockpit: “Execution decisions, sizing, and risk limits are configured and approved by you in AlgoPilotX.”
+
+3) Remove/avoid problematic phrasing anywhere in new UI:
+- Avoid: “best strategy,” “profits,” “guaranteed,” “we trade for you,” “winning trades,” “returns”
+- Prefer: “observed,” “pattern strength,” “reference levels,” “user-configured,” “self-directed”
+
+========================================================
+E) AUTO AGENT: ADD EXPLICIT ACKNOWLEDGEMENT GATE
+========================================================
+Before the Auto Agent can be ARMED (and/or before switching Mode to AUTO):
+Show a modal requiring user to check:
+[ ] “I understand automated actions follow rules I configured and approved.”
+[ ] “I understand I can pause or disable automation at any time, and I am responsible for monitoring.”
+Button: “Arm Auto Agent”
+If not checked, block arming.
+Store acceptance:
+- user_settings.auto_agent_acknowledged=true
+- user_settings.auto_agent_acknowledged_at
+Optionally version it:
+- user_settings.auto_agent_ack_version = 'v1'
+
+Also add “Emergency Stop” as a persistent visible control within Auto Agent panel and Command Center.
+
+========================================================
+F) AUDIT LOGGING (BACKEND + DB)
+========================================================
+Create table: audit_events
+- id uuid pk default gen_random_uuid()
+- tenant_id uuid not null
+- user_id uuid not null
+- event_type text not null
+- event_at timestamptz not null default now()
+- metadata jsonb not null default '{}'
+
+Log these events (minimum):
+- WIZARD_COMPLETED (include selected mode, broker choice, safety limits)
+- AUTO_AGENT_ARMED
+- AUTO_AGENT_PAUSED
+- AUTO_AGENT_DISABLED
+- EMERGENCY_STOP_TRIGGERED
+- EXECUTION_COCKPIT_OPENED (optional)
+- INSTATRADE_INITIATED (optional) (no P&L, only action metadata)
+- BROKER_CONNECTED / BROKER_DISCONNECTED (provider)
+
+Ensure:
+- All events scoped by tenant_id
+- Never store secrets/tokens in audit metadata
+
+Add minimal backend helper:
+logAuditEvent({tenantId, userId, type, metadata})
+
+========================================================
+G) USER SETTINGS STORAGE
+========================================================
+Create/extend user_settings table:
+- tenant_id, user_id (unique)
+- preferred_strategies jsonb
+- scan_universe text
+- scan_timeframe text
+- scan_confidence_min int
+- action_mode text (ALERTS_ONLY/ASSISTED/AUTO)
+- broker_preference text (TRADIER/TRADESTATION/etc.)
+- safety_limits jsonb {maxTradesPerDay,maxPositions,riskPerTrade,maxDailyLoss}
+- setup_completed boolean
+- setup_completed_at timestamptz
+- auto_agent_acknowledged boolean
+- auto_agent_acknowledged_at timestamptz
+- auto_agent_ack_version text
+
+All reads/writes must use tenant_id from session/JWT.
+
+========================================================
+H) UX POLISH / QUALITY OF LIFE
+========================================================
+1) Reduce navigation jumping:
+- From Opportunities card click → opens preview drawer with “Next action” button depending on mode.
+- Add “Continue Setup” banner if setup incomplete.
+
+2) Empty states:
+- If no opportunities: show helpful steps (change strategy, broaden universe, check market open).
+- If broker not connected: show connect CTA.
+- If Auto Agent not configured: show “Configure rules” CTA.
+
+3) Tutorials entry:
+- Add “Quick Tour” button on Command Center that starts a short guided walkthrough (optional; implement only if easy).
+
+========================================================
+I) TESTING / QA CHECKLIST
+========================================================
+- New users land on Wizard then Command Center
+- Existing users can ignore wizard and still use old pages
+- Mode selection changes CTAs in Command Center and Opportunities preview
+- Auto Agent cannot be armed without acknowledgement
+- Emergency Stop works and logs an audit event
+- Audit events are created with correct tenant_id and user_id
+- No new UI includes P&L, returns, win rate, or “guaranteed profit” language
+
+DELIVERABLE
+Implement the Trading Command Center + Trading Readiness Wizard + compliance copy + Auto Agent acknowledgement gate + audit logging, integrated into the existing VCP Trader app, preserving existing functionality and routes.

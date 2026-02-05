@@ -1,9 +1,10 @@
 import { formatDistanceToNow } from "date-fns";
-import { TrendingUp, TrendingDown, AlertTriangle, Target, X, ExternalLink } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertTriangle, Target, X, ExternalLink, Bot } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Alert, AlertTypeValue } from "@shared/schema";
 
 interface AlertCardProps {
@@ -81,14 +82,14 @@ export function AlertCard({ alert, onDismiss }: AlertCardProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 -mr-1 -mt-1"
+              className="-mr-1 -mt-1"
               onClick={(e) => {
                 e.stopPropagation();
                 onDismiss(alert.id);
               }}
               data-testid={`button-dismiss-${alert.id}`}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </Button>
           )}
         </div>
@@ -114,12 +115,32 @@ export function AlertCard({ alert, onDismiss }: AlertCardProps) {
           <span className="text-xs text-muted-foreground">
             {timeAgo}
           </span>
-          <Link href={`/charts/${alert.ticker}`}>
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
-              <ExternalLink className="h-3 w-3" />
-              View Chart
-            </Button>
-          </Link>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link href="/execute?tab=agent">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="gap-1 text-xs"
+                    data-testid={`button-auto-agent-${alert.id}`}
+                  >
+                    <Bot className="h-3 w-3" />
+                    Auto Agent
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>
+                Configure Auto Trading Agent
+              </TooltipContent>
+            </Tooltip>
+            <Link href={`/charts/${alert.ticker}`}>
+              <Button variant="ghost" size="sm" className="gap-1 text-xs" data-testid={`button-view-chart-${alert.id}`}>
+                <ExternalLink className="h-3 w-3" />
+                View Chart
+              </Button>
+            </Link>
+          </div>
         </div>
       </CardContent>
     </Card>

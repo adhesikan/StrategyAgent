@@ -893,6 +893,7 @@ export async function registerRoutes(
     name: z.string().min(1).max(100).optional(),
     enabled: z.boolean().optional(),
     mode: z.enum(["SUGGEST", "AUTO"]).optional(),
+    allowedStages: z.array(z.enum(["FORMING", "READY", "BREAKOUT"])).min(1).optional(),
     minConfidencePct: z.number().int().min(0).max(100).optional(),
     minUpsidePct: z.number().min(0).max(100).optional(),
     minRvol: z.number().min(0).max(100).optional(),

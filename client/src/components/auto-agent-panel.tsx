@@ -10,13 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Power, Pause, Play, AlertTriangle, Shield, Settings2, Activity, Info } from "lucide-react";
+import { Bot, Power, Pause, Play, AlertTriangle, Shield, Settings2, Activity, Info, Check } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface AgentPolicy {
   id: string;
   userId: string;
   mode: string;
   enabled: boolean;
+  allowedStages: string[] | null;
   minConfidencePct: number | null;
   minUpsidePct: number | null;
   minRvol: number | null;
@@ -30,6 +32,12 @@ interface AgentPolicy {
   avoidFirstMinutes: number | null;
   cooldownMinutes: number | null;
 }
+
+const STAGE_OPTIONS = [
+  { value: "FORMING", label: "Forming", description: "Pattern is developing" },
+  { value: "READY", label: "Ready", description: "Near breakout level" },
+  { value: "BREAKOUT", label: "Breakout", description: "Breaking resistance" },
+];
 
 interface AgentState {
   userId: string;
@@ -267,6 +275,44 @@ export function AutoAgentPanel() {
                 <SelectItem value="AUTO">Auto</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Trade Only These Stages</Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Agent will only act on opportunities in selected stages
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {STAGE_OPTIONS.map((stage) => {
+                const currentStages = policy?.allowedStages || ["BREAKOUT"];
+                const isChecked = currentStages.includes(stage.value);
+                
+                return (
+                  <label
+                    key={stage.value}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        let newStages: string[];
+                        if (checked) {
+                          newStages = [...currentStages, stage.value];
+                        } else {
+                          newStages = currentStages.filter(s => s !== stage.value);
+                          if (newStages.length === 0) {
+                            newStages = ["BREAKOUT"];
+                          }
+                        }
+                        updatePolicy.mutate({ allowedStages: newStages });
+                      }}
+                      data-testid={`checkbox-stage-${stage.value.toLowerCase()}`}
+                    />
+                    <span className="text-sm">{stage.label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

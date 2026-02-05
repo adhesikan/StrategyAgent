@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Activity, Bot, Check, X, AlertTriangle, Play, Info } from "lucide-react";
+import { Activity, Bot, Check, X, AlertTriangle, Play, Info, Settings } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { Link } from "wouter";
 
 interface AgentDecision {
   id: string;
@@ -177,44 +178,76 @@ export function AgentEligibilityBadge({
 
   if (evaluation.eligible && evaluation.authorized) {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge 
-            variant="outline" 
-            className="text-xs border-green-500 text-green-500"
-            data-testid={`badge-agent-eligible-${symbol}`}
-          >
-            <Bot className="h-3 w-3 mr-1" />
-            Eligible
-          </Badge>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p className="text-xs">This opportunity passes all agent criteria</p>
-        </TooltipContent>
-      </Tooltip>
+      <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge 
+              variant="outline" 
+              className="text-xs border-green-500 text-green-500"
+              data-testid={`badge-agent-eligible-${symbol}`}
+            >
+              <Bot className="h-3 w-3 mr-1" />
+              Eligible
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">This opportunity passes all agent criteria</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/execute?tab=agent">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                data-testid={`button-agent-settings-${symbol}`}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>Auto Agent Settings</TooltipContent>
+        </Tooltip>
+      </div>
     );
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge 
-          variant="outline" 
-          className="text-xs"
-          data-testid={`badge-agent-skipped-${symbol}`}
-        >
-          <X className="h-3 w-3 mr-1" />
-          Skipped
-        </Badge>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">
-        <p className="text-xs font-medium mb-1">Skip Reasons:</p>
-        <ul className="text-xs space-y-1">
-          {allReasons.map((reason, i) => (
-            <li key={i}>{reason}</li>
-          ))}
-        </ul>
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge 
+            variant="outline" 
+            className="text-xs"
+            data-testid={`badge-agent-skipped-${symbol}`}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Skipped
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="text-xs font-medium mb-1">Skip Reasons:</p>
+          <ul className="text-xs space-y-1">
+            {allReasons.map((reason, i) => (
+              <li key={i}>{reason}</li>
+            ))}
+          </ul>
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link href="/execute?tab=agent">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              data-testid={`button-agent-settings-${symbol}`}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent>Auto Agent Settings</TooltipContent>
+      </Tooltip>
+    </div>
   );
 }

@@ -706,9 +706,9 @@ export const userSettingsUpdateSchema = z.object({
     maxDailyLossUsd: z.number().min(100).max(50000).default(1000),
   }).optional(),
   setupCompleted: z.boolean().optional(),
-  setupCompletedAt: z.date().optional(),
+  setupCompletedAt: z.coerce.date().optional(),
   autoAgentAcknowledged: z.boolean().optional(),
-  autoAgentAcknowledgedAt: z.date().optional(),
+  autoAgentAcknowledgedAt: z.coerce.date().optional(),
   autoAgentAckVersion: z.string().optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;

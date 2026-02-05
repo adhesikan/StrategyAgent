@@ -118,7 +118,7 @@ export function AlertCard({ alert, onDismiss }: AlertCardProps) {
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Link href="/execute?tab=agent">
+                <Link href="/execution?tab=agent">
                   <Button 
                     variant="ghost" 
                     size="sm" 

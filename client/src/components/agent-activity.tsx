@@ -196,7 +196,7 @@ export function AgentEligibilityBadge({
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Link href="/execute?tab=agent">
+            <Link href="/execution?tab=agent">
               <Button 
                 variant="ghost" 
                 size="icon"
@@ -236,7 +236,7 @@ export function AgentEligibilityBadge({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Link href="/execute?tab=agent">
+          <Link href="/execution?tab=agent">
             <Button 
               variant="ghost" 
               size="icon"

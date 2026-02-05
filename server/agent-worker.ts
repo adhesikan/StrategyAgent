@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 
 let agentWorkerInterval: NodeJS.Timeout | null = null;
-const WORKER_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+const WORKER_INTERVAL_MS = 60 * 1000; // Check every 1 minute for users whose scan interval has elapsed
 
 function isMarketHours(): boolean {
   const now = new Date();
@@ -196,20 +196,24 @@ function buildOrderPayload(opportunity: Opportunity, policy: any): object {
 
 async function runAgentWorker(): Promise<void> {
   if (!isMarketHours()) {
-    console.log("[AgentWorker] Outside market hours, skipping");
-    return;
+    return; // Silent skip outside market hours
   }
   
-  console.log("[AgentWorker] Running agent worker cycle");
-  
   try {
-    const enabledStates = await getEnabledAgentUsers();
+    const enabledUsers = await getEnabledAgentUsers();
+    const usersToProcess = enabledUsers.filter(shouldRunForUser);
     
-    for (const state of enabledStates) {
+    if (usersToProcess.length === 0) {
+      return; // No users ready for scan
+    }
+    
+    console.log(`[AgentWorker] Processing ${usersToProcess.length} users`);
+    
+    for (const user of usersToProcess) {
       try {
-        await processUserOpportunities(state.userId);
+        await processUserOpportunities(user.userId);
       } catch (error: any) {
-        console.error(`[AgentWorker] Error processing user ${state.userId}:`, error.message);
+        console.error(`[AgentWorker] Error processing user ${user.userId}:`, error.message);
       }
     }
   } catch (error: any) {
@@ -217,13 +221,22 @@ async function runAgentWorker(): Promise<void> {
   }
 }
 
-async function getEnabledAgentUsers(): Promise<{ userId: string }[]> {
+interface EnabledAgentUser {
+  userId: string;
+  scanIntervalMinutes: number;
+  lastRunAt: Date | null;
+}
+
+async function getEnabledAgentUsers(): Promise<EnabledAgentUser[]> {
   const { db } = await import("./db");
-  const { agentState } = await import("@shared/schema");
+  const { agentState, agentPolicies } = await import("@shared/schema");
   const { eq, and } = await import("drizzle-orm");
   
-  const results = await db
-    .select({ userId: agentState.userId })
+  const states = await db
+    .select({
+      userId: agentState.userId,
+      lastRunAt: agentState.lastRunAt,
+    })
     .from(agentState)
     .where(
       and(
@@ -233,7 +246,39 @@ async function getEnabledAgentUsers(): Promise<{ userId: string }[]> {
       )
     );
   
+  const results: EnabledAgentUser[] = [];
+  
+  for (const state of states) {
+    const policy = await db
+      .select({ scanIntervalMinutes: agentPolicies.scanIntervalMinutes })
+      .from(agentPolicies)
+      .where(eq(agentPolicies.userId, state.userId))
+      .limit(1);
+    
+    const scanInterval = policy.length > 0 && policy[0].scanIntervalMinutes
+      ? policy[0].scanIntervalMinutes
+      : 5; // default 5 minutes
+    
+    results.push({
+      userId: state.userId,
+      scanIntervalMinutes: scanInterval,
+      lastRunAt: state.lastRunAt,
+    });
+  }
+  
   return results;
+}
+
+function shouldRunForUser(user: EnabledAgentUser): boolean {
+  if (!user.lastRunAt) {
+    return true; // Never run before
+  }
+  
+  const now = new Date();
+  const lastRun = new Date(user.lastRunAt);
+  const elapsedMinutes = (now.getTime() - lastRun.getTime()) / (60 * 1000);
+  
+  return elapsedMinutes >= user.scanIntervalMinutes;
 }
 
 export function startAgentWorker(): void {

@@ -876,6 +876,7 @@ export const agentPolicies = pgTable("agent_policies", {
   maxDailyLossUsd: real("max_daily_loss_usd").default(1000),
   avoidFirstMinutes: integer("avoid_first_minutes").default(15),
   cooldownMinutes: integer("cooldown_minutes").default(60),
+  scanIntervalMinutes: integer("scan_interval_minutes").default(5),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

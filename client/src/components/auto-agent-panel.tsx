@@ -31,6 +31,7 @@ interface AgentPolicy {
   maxDailyLossUsd: number | null;
   avoidFirstMinutes: number | null;
   cooldownMinutes: number | null;
+  scanIntervalMinutes: number | null;
 }
 
 const STAGE_OPTIONS = [
@@ -284,6 +285,44 @@ export function AutoAgentPanel() {
               <SelectContent>
                 <SelectItem value="SUGGEST">Suggest</SelectItem>
                 <SelectItem value="AUTO">Auto</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1">
+                <Label>Scan Frequency</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>How often the agent scans for new opportunities during market hours.</p>
+                    <p className="mt-1">Shorter intervals catch opportunities faster but use more resources.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                How often to check for new opportunities
+              </p>
+            </div>
+            <Select
+              value={String(policy?.scanIntervalMinutes ?? 5)}
+              onValueChange={(value) => updatePolicy.mutate({ scanIntervalMinutes: parseInt(value) })}
+              data-testid="select-scan-interval"
+            >
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Every 1 min</SelectItem>
+                <SelectItem value="2">Every 2 mins</SelectItem>
+                <SelectItem value="5">Every 5 mins</SelectItem>
+                <SelectItem value="10">Every 10 mins</SelectItem>
+                <SelectItem value="15">Every 15 mins</SelectItem>
+                <SelectItem value="30">Every 30 mins</SelectItem>
+                <SelectItem value="60">Every hour</SelectItem>
               </SelectContent>
             </Select>
           </div>

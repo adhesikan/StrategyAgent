@@ -908,6 +908,7 @@ export async function registerRoutes(
     maxDailyLossUsd: z.number().min(0).max(1000000).optional(),
     avoidFirstMinutes: z.number().int().min(0).max(240).optional(),
     cooldownMinutes: z.number().int().min(0).max(1440).optional(),
+    scanIntervalMinutes: z.number().int().min(1).max(60).optional(),
   }).strict();
 
   app.put("/api/agent/policy", isAuthenticated, async (req, res) => {

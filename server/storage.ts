@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -55,6 +55,12 @@ import type {
   InsertSnaptradeConnection,
   Opportunity,
   InsertOpportunity,
+  AgentPolicy,
+  InsertAgentPolicy,
+  AgentDecision,
+  InsertAgentDecision,
+  AgentState,
+  InsertAgentState,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -204,6 +210,25 @@ export interface IStorage {
   updateOpportunity(id: string, data: Partial<Opportunity>): Promise<Opportunity | null>;
   findOpportunityByDedupeKey(dedupeKey: string): Promise<Opportunity | null>;
   getOpportunitySummary(userId: string, filters?: OpportunityFilters): Promise<OpportunitySummary>;
+
+  // Auto Agent
+  getAgentPolicy(userId: string, strategyId?: string | null): Promise<AgentPolicy | null>;
+  getAgentPolicies(userId: string): Promise<AgentPolicy[]>;
+  createAgentPolicy(policy: InsertAgentPolicy): Promise<AgentPolicy>;
+  updateAgentPolicy(id: string, data: Partial<AgentPolicy>): Promise<AgentPolicy | null>;
+  deleteAgentPolicy(id: string): Promise<void>;
+
+  getAgentState(userId: string): Promise<AgentState | null>;
+  createAgentState(userId: string): Promise<AgentState>;
+  updateAgentState(userId: string, data: Partial<AgentState>): Promise<AgentState | null>;
+  incrementAgentTradesToday(userId: string, date: string): Promise<void>;
+
+  getAgentDecisions(userId: string, limit?: number): Promise<AgentDecision[]>;
+  createAgentDecision(decision: InsertAgentDecision): Promise<AgentDecision>;
+  getRecentDecisionForSymbol(userId: string, symbol: string, withinMinutes: number): Promise<AgentDecision | null>;
+
+  getOpenTradesCount(userId: string): Promise<number>;
+  hasOpenTradeForSymbol(userId: string, symbol: string): Promise<boolean>;
 }
 
 export interface OpportunityFilters {
@@ -2016,6 +2041,133 @@ export class MemStorage implements IStorage {
       avgMaxFavorableMovePercent: summary?.avgMaxFavorableMovePercent ? Number(summary.avgMaxFavorableMovePercent) : null,
       avgMaxAdverseMovePercent: summary?.avgMaxAdverseMovePercent ? Number(summary.avgMaxAdverseMovePercent) : null,
     };
+  }
+
+  async getAgentPolicy(userId: string, strategyId?: string | null): Promise<AgentPolicy | null> {
+    const conditions = [eq(agentPoliciesTable.userId, userId)];
+    if (strategyId) {
+      conditions.push(eq(agentPoliciesTable.strategyId, strategyId));
+    } else {
+      conditions.push(sql`${agentPoliciesTable.strategyId} IS NULL`);
+    }
+    const [policy] = await db.select().from(agentPoliciesTable).where(and(...conditions)).limit(1);
+    return policy || null;
+  }
+
+  async getAgentPolicies(userId: string): Promise<AgentPolicy[]> {
+    return db.select().from(agentPoliciesTable).where(eq(agentPoliciesTable.userId, userId));
+  }
+
+  async createAgentPolicy(policy: InsertAgentPolicy): Promise<AgentPolicy> {
+    const [created] = await db.insert(agentPoliciesTable).values(policy).returning();
+    return created;
+  }
+
+  async updateAgentPolicy(id: string, data: Partial<AgentPolicy>): Promise<AgentPolicy | null> {
+    const [updated] = await db
+      .update(agentPoliciesTable)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(agentPoliciesTable.id, id))
+      .returning();
+    return updated || null;
+  }
+
+  async deleteAgentPolicy(id: string): Promise<void> {
+    await db.delete(agentPoliciesTable).where(eq(agentPoliciesTable.id, id));
+  }
+
+  async getAgentState(userId: string): Promise<AgentState | null> {
+    const [state] = await db.select().from(agentStateTable).where(eq(agentStateTable.userId, userId)).limit(1);
+    return state || null;
+  }
+
+  async createAgentState(userId: string): Promise<AgentState> {
+    const [created] = await db
+      .insert(agentStateTable)
+      .values({ userId, enabled: false, paused: false, emergencyStop: false })
+      .returning();
+    return created;
+  }
+
+  async updateAgentState(userId: string, data: Partial<AgentState>): Promise<AgentState | null> {
+    const [updated] = await db
+      .update(agentStateTable)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(agentStateTable.userId, userId))
+      .returning();
+    return updated || null;
+  }
+
+  async incrementAgentTradesToday(userId: string, date: string): Promise<void> {
+    const state = await this.getAgentState(userId);
+    if (!state) return;
+    
+    let newCount = 1;
+    if (state.lastTradeDate === date) {
+      newCount = (state.tradesTodayCount || 0) + 1;
+    }
+    
+    await db
+      .update(agentStateTable)
+      .set({ 
+        tradesTodayCount: newCount, 
+        lastTradeDate: date,
+        updatedAt: new Date() 
+      })
+      .where(eq(agentStateTable.userId, userId));
+  }
+
+  async getAgentDecisions(userId: string, limit: number = 100): Promise<AgentDecision[]> {
+    return db
+      .select()
+      .from(agentDecisionsTable)
+      .where(eq(agentDecisionsTable.userId, userId))
+      .orderBy(desc(agentDecisionsTable.createdAt))
+      .limit(limit);
+  }
+
+  async createAgentDecision(decision: InsertAgentDecision): Promise<AgentDecision> {
+    const [created] = await db.insert(agentDecisionsTable).values(decision).returning();
+    return created;
+  }
+
+  async getRecentDecisionForSymbol(userId: string, symbol: string, withinMinutes: number): Promise<AgentDecision | null> {
+    const cutoff = new Date(Date.now() - withinMinutes * 60 * 1000);
+    const [decision] = await db
+      .select()
+      .from(agentDecisionsTable)
+      .where(
+        and(
+          eq(agentDecisionsTable.userId, userId),
+          eq(agentDecisionsTable.symbol, symbol),
+          gte(agentDecisionsTable.createdAt, cutoff)
+        )
+      )
+      .orderBy(desc(agentDecisionsTable.createdAt))
+      .limit(1);
+    return decision || null;
+  }
+
+  async getOpenTradesCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: count() })
+      .from(tradesTable)
+      .where(and(eq(tradesTable.userId, userId), eq(tradesTable.status, "OPEN")));
+    return Number(result?.count ?? 0);
+  }
+
+  async hasOpenTradeForSymbol(userId: string, symbol: string): Promise<boolean> {
+    const [result] = await db
+      .select({ count: count() })
+      .from(tradesTable)
+      .where(
+        and(
+          eq(tradesTable.userId, userId),
+          eq(tradesTable.symbol, symbol),
+          eq(tradesTable.status, "OPEN")
+        )
+      );
+    return Number(result?.count ?? 0) > 0;
   }
 }
 

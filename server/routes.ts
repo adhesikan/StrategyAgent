@@ -872,6 +872,187 @@ export async function registerRoutes(
     }
   });
 
+  // Auto Agent API Routes
+  const { isEligible, getOrCreateAgentState, getOrCreatePolicy, recordDecision, authorizeOrder } = await import("./agent-service");
+  const { AgentAction, AgentMode } = await import("@shared/schema");
+
+  app.get("/api/agent/policy", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const policy = await getOrCreatePolicy(userId);
+      res.json(policy);
+    } catch (error: any) {
+      console.error("Error getting agent policy:", error);
+      res.status(500).json({ error: "Failed to get agent policy" });
+    }
+  });
+
+  const updateAgentPolicySchema = z.object({
+    brokerAccountId: z.string().nullable().optional(),
+    strategyId: z.string().nullable().optional(),
+    name: z.string().min(1).max(100).optional(),
+    enabled: z.boolean().optional(),
+    mode: z.enum(["SUGGEST", "AUTO"]).optional(),
+    minConfidencePct: z.number().int().min(0).max(100).optional(),
+    minUpsidePct: z.number().min(0).max(100).optional(),
+    minRvol: z.number().min(0).max(100).optional(),
+    minRewardRisk: z.number().min(0).max(50).optional(),
+    allowedMomentum: z.array(z.string()).optional(),
+    priceMin: z.number().min(0).nullable().optional(),
+    priceMax: z.number().min(0).nullable().optional(),
+    minAvgDollarVolume: z.number().min(0).nullable().optional(),
+    maxTradesPerDay: z.number().int().min(0).max(100).optional(),
+    maxConcurrentPositions: z.number().int().min(0).max(100).optional(),
+    riskPerTradeUsd: z.number().min(0).max(100000).optional(),
+    maxDailyLossUsd: z.number().min(0).max(1000000).optional(),
+    avoidFirstMinutes: z.number().int().min(0).max(240).optional(),
+    cooldownMinutes: z.number().int().min(0).max(1440).optional(),
+  }).strict();
+
+  app.put("/api/agent/policy", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const parseResult = updateAgentPolicySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid policy data", 
+          details: parseResult.error.flatten() 
+        });
+      }
+      const policy = await getOrCreatePolicy(userId);
+      const updated = await storage.updateAgentPolicy(policy.id, parseResult.data);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating agent policy:", error);
+      res.status(500).json({ error: "Failed to update agent policy" });
+    }
+  });
+
+  app.get("/api/agent/state", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const state = await getOrCreateAgentState(userId);
+      res.json(state);
+    } catch (error: any) {
+      console.error("Error getting agent state:", error);
+      res.status(500).json({ error: "Failed to get agent state" });
+    }
+  });
+
+  app.post("/api/agent/state/enable", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await getOrCreateAgentState(userId);
+      const updated = await storage.updateAgentState(userId, { enabled: true, paused: false });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error enabling agent:", error);
+      res.status(500).json({ error: "Failed to enable agent" });
+    }
+  });
+
+  app.post("/api/agent/state/disable", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await getOrCreateAgentState(userId);
+      const updated = await storage.updateAgentState(userId, { enabled: false });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error disabling agent:", error);
+      res.status(500).json({ error: "Failed to disable agent" });
+    }
+  });
+
+  app.post("/api/agent/state/pause", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await getOrCreateAgentState(userId);
+      const updated = await storage.updateAgentState(userId, { paused: true });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error pausing agent:", error);
+      res.status(500).json({ error: "Failed to pause agent" });
+    }
+  });
+
+  app.post("/api/agent/state/resume", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await getOrCreateAgentState(userId);
+      const updated = await storage.updateAgentState(userId, { paused: false });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error resuming agent:", error);
+      res.status(500).json({ error: "Failed to resume agent" });
+    }
+  });
+
+  app.post("/api/agent/state/emergency-stop", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await getOrCreateAgentState(userId);
+      const updated = await storage.updateAgentState(userId, { emergencyStop: true, enabled: false });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error setting emergency stop:", error);
+      res.status(500).json({ error: "Failed to set emergency stop" });
+    }
+  });
+
+  app.post("/api/agent/state/clear-emergency-stop", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await getOrCreateAgentState(userId);
+      const updated = await storage.updateAgentState(userId, { emergencyStop: false });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error clearing emergency stop:", error);
+      res.status(500).json({ error: "Failed to clear emergency stop" });
+    }
+  });
+
+  app.get("/api/agent/decisions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const decisions = await storage.getAgentDecisions(userId, limit);
+      res.json(decisions);
+    } catch (error: any) {
+      console.error("Error getting agent decisions:", error);
+      res.status(500).json({ error: "Failed to get agent decisions" });
+    }
+  });
+
+  app.get("/api/agent/evaluate/:opportunityId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const opportunity = await storage.getOpportunity(req.params.opportunityId);
+      
+      if (!opportunity) {
+        return res.status(404).json({ error: "Opportunity not found" });
+      }
+      
+      if (opportunity.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const policy = await getOrCreatePolicy(userId);
+      const eligibility = isEligible(opportunity, policy);
+      const authorization = await authorizeOrder(userId, policy, opportunity.symbol);
+      
+      res.json({
+        eligible: eligibility.pass,
+        reasons: eligibility.reasons,
+        metrics: eligibility.metrics,
+        authorized: authorization.allowed,
+        authorizationReasons: authorization.reasons,
+      });
+    } catch (error: any) {
+      console.error("Error evaluating opportunity:", error);
+      res.status(500).json({ error: "Failed to evaluate opportunity" });
+    }
+  });
+
   app.get("/api/watchlists", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;

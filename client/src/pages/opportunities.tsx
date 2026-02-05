@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays, startOfDay } from "date-fns";
 import { getStrategyDisplayName } from "@shared/strategies";
+import { AgentActivity, AgentEligibilityBadge } from "@/components/agent-activity";
 import {
   Card,
   CardContent,
@@ -685,6 +686,16 @@ export default function OpportunitiesPage() {
                         </TooltipContent>
                       </Tooltip>
                     </TableHead>
+                    <TableHead>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>Agent</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Auto Agent eligibility status</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
                     <TableHead 
                       className="text-right cursor-pointer hover:bg-muted/50" 
                       onClick={() => handleSort("pnlPercent")}
@@ -758,6 +769,9 @@ export default function OpportunitiesPage() {
                             {formatOutcome(opp.resolutionOutcome, opp.status)}
                           </Badge>
                         </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <AgentEligibilityBadge opportunityId={opp.id} symbol={opp.symbol} />
+                        </TableCell>
                         <TableCell className={`text-right font-mono text-sm ${
                           opp.pnlPercent && opp.pnlPercent > 0 ? "text-green-600 dark:text-green-400" : 
                           opp.pnlPercent && opp.pnlPercent < 0 ? "text-red-600 dark:text-red-400" : ""
@@ -773,7 +787,7 @@ export default function OpportunitiesPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                         No opportunities found for the selected filters
                       </TableCell>
                     </TableRow>

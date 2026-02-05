@@ -835,3 +835,104 @@ export const insertTradeSchema = createInsertSchema(trades).omit({
 });
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 export type Trade = typeof trades.$inferSelect;
+
+// Auto Agent - Policy-based automated trading
+export const AgentMode = {
+  SUGGEST: "SUGGEST",
+  AUTO: "AUTO",
+} as const;
+
+export type AgentModeType = typeof AgentMode[keyof typeof AgentMode];
+
+export const AgentAction = {
+  SKIP: "SKIP",
+  SUGGEST: "SUGGEST",
+  EXECUTE: "EXECUTE",
+  ERROR: "ERROR",
+} as const;
+
+export type AgentActionType = typeof AgentAction[keyof typeof AgentAction];
+
+export const agentPolicies = pgTable("agent_policies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  brokerAccountId: text("broker_account_id"),
+  strategyId: text("strategy_id"),
+  name: text("name").default("Default Policy"),
+  enabled: boolean("enabled").default(true),
+  mode: text("mode").notNull().default("SUGGEST"),
+  minConfidencePct: integer("min_confidence_pct").default(85),
+  minUpsidePct: real("min_upside_pct").default(5.0),
+  minRvol: real("min_rvol").default(1.5),
+  minRewardRisk: real("min_reward_risk").default(1.0),
+  allowedMomentum: jsonb("allowed_momentum").default(["strong", "volume expanding"]),
+  priceMin: real("price_min"),
+  priceMax: real("price_max"),
+  minAvgDollarVolume: real("min_avg_dollar_volume"),
+  maxTradesPerDay: integer("max_trades_per_day").default(2),
+  maxConcurrentPositions: integer("max_concurrent_positions").default(3),
+  riskPerTradeUsd: real("risk_per_trade_usd").default(500),
+  maxDailyLossUsd: real("max_daily_loss_usd").default(1000),
+  avoidFirstMinutes: integer("avoid_first_minutes").default(15),
+  cooldownMinutes: integer("cooldown_minutes").default(60),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAgentPolicySchema = createInsertSchema(agentPolicies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAgentPolicy = z.infer<typeof insertAgentPolicySchema>;
+export type AgentPolicy = typeof agentPolicies.$inferSelect;
+
+export const agentDecisions = pgTable("agent_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  policyId: varchar("policy_id").notNull(),
+  opportunityId: varchar("opportunity_id"),
+  symbol: text("symbol").notNull(),
+  action: text("action").notNull(),
+  reasons: jsonb("reasons"),
+  metricsSnapshot: jsonb("metrics_snapshot"),
+  orderPayload: jsonb("order_payload"),
+  brokerOrderId: text("broker_order_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentDecisionSchema = createInsertSchema(agentDecisions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAgentDecision = z.infer<typeof insertAgentDecisionSchema>;
+export type AgentDecision = typeof agentDecisions.$inferSelect;
+
+export const agentState = pgTable("agent_state", {
+  userId: varchar("user_id").primaryKey(),
+  enabled: boolean("enabled").default(false),
+  paused: boolean("paused").default(false),
+  emergencyStop: boolean("emergency_stop").default(false),
+  lastRunAt: timestamp("last_run_at"),
+  tradesTodayCount: integer("trades_today_count").default(0),
+  dailyPnlEstimate: real("daily_pnl_estimate").default(0),
+  lastTradeDate: text("last_trade_date"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAgentStateSchema = createInsertSchema(agentState);
+export type InsertAgentState = z.infer<typeof insertAgentStateSchema>;
+export type AgentState = typeof agentState.$inferSelect;
+
+export const agentDecisionMetricsSchema = z.object({
+  confidence: z.number().optional(),
+  price: z.number(),
+  resistance: z.number().optional(),
+  stop: z.number().optional(),
+  rvol: z.number().optional(),
+  volume: z.number().optional(),
+  upsidePct: z.number().optional(),
+  riskPct: z.number().optional(),
+  rewardRisk: z.number().optional(),
+});
+export type AgentDecisionMetrics = z.infer<typeof agentDecisionMetricsSchema>;

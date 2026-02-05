@@ -37,6 +37,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { InteractiveTutorial } from "@/components/interactive-tutorial";
+import { AutoAgentPanel } from "@/components/auto-agent-panel";
 import type { BrokerConnection, BrokerProviderType, OpportunityDefaults, SnaptradeConnection } from "@shared/schema";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { useTooltipVisibility } from "@/hooks/use-tooltips";
@@ -573,6 +574,10 @@ export default function Settings() {
             <Database className="h-4 w-4" />
             Scanner
           </TabsTrigger>
+          <TabsTrigger value="agent" className="gap-2" data-testid="tab-agent">
+            <Bot className="h-4 w-4" />
+            Auto Agent
+          </TabsTrigger>
           <TabsTrigger value="legal" className="gap-2" data-testid="tab-legal">
             <FileText className="h-4 w-4" />
             Legal
@@ -940,6 +945,10 @@ export default function Settings() {
 
         <TabsContent value="scanner">
           <OpportunityDefaultsSettings />
+        </TabsContent>
+
+        <TabsContent value="agent">
+          <AutoAgentPanel />
         </TabsContent>
 
         <TabsContent value="legal">

@@ -861,6 +861,7 @@ export const agentPolicies = pgTable("agent_policies", {
   name: text("name").default("Default Policy"),
   enabled: boolean("enabled").default(true),
   mode: text("mode").notNull().default("SUGGEST"),
+  allowedStages: jsonb("allowed_stages").default(["BREAKOUT"]),
   minConfidencePct: integer("min_confidence_pct").default(85),
   minUpsidePct: real("min_upside_pct").default(5.0),
   minRvol: real("min_rvol").default(1.5),

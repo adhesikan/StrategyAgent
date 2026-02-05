@@ -1218,15 +1218,23 @@ export async function registerRoutes(
       let brokerProvider: string | null = null;
       
       if (userId) {
-        const userSettings = await storage.getUserSettings(userId);
-        if (userSettings?.preferredDataSource) {
-          preferredDataSource = userSettings.preferredDataSource;
+        try {
+          const userSettings = await storage.getUserSettings(userId);
+          if (userSettings?.preferredDataSource) {
+            preferredDataSource = userSettings.preferredDataSource;
+          }
+        } catch (settingsErr) {
+          console.error("Error fetching user settings for data source:", settingsErr);
         }
         
-        const connection = await storage.getBrokerConnection(userId);
-        if (connection?.isConnected) {
-          hasBrokerConnection = true;
-          brokerProvider = connection.provider;
+        try {
+          const connection = await storage.getBrokerConnection(userId);
+          if (connection?.isConnected) {
+            hasBrokerConnection = true;
+            brokerProvider = connection.provider;
+          }
+        } catch (brokerErr) {
+          console.error("Error fetching broker connection for data source:", brokerErr);
         }
       }
       
@@ -1247,7 +1255,16 @@ export async function registerRoutes(
         brokerProvider,
       });
     } catch (error) {
-      res.status(500).json({ error: "Failed to get data source status" });
+      console.error("Error in data-source/status:", error);
+      // Return a safe default instead of 500 error
+      res.json({
+        activeSource: "mock",
+        activeProvider: null,
+        isLive: false,
+        hasBrokerConnection: false,
+        brokerProvider: null,
+        error: "Failed to get data source status",
+      });
     }
   });
 

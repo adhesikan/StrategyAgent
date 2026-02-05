@@ -60,25 +60,39 @@ function isMarketOpen(): boolean {
   return timeInMinutes >= 570 && timeInMinutes <= 960;
 }
 
-function StatusBadge({ status, label }: { status: "online" | "offline" | "warning"; label: string }) {
+function StatusCard({ 
+  status, 
+  label, 
+  icon: Icon 
+}: { 
+  status: "online" | "offline" | "warning"; 
+  label: string;
+  icon: typeof Wifi;
+}) {
   return (
-    <Badge
-      variant="outline"
+    <div
       className={cn(
-        "gap-1.5",
-        status === "online" && "border-green-500/50 text-green-600 dark:text-green-400",
-        status === "offline" && "border-muted-foreground/50 text-muted-foreground",
-        status === "warning" && "border-yellow-500/50 text-yellow-600 dark:text-yellow-400"
+        "flex items-center gap-2 px-3 py-2 rounded-lg border",
+        status === "online" && "border-green-500/30 bg-green-500/10",
+        status === "offline" && "border-muted-foreground/30 bg-muted/50",
+        status === "warning" && "border-yellow-500/30 bg-yellow-500/10"
       )}
     >
-      <span className={cn(
-        "h-1.5 w-1.5 rounded-full",
-        status === "online" && "bg-green-500",
-        status === "offline" && "bg-muted-foreground",
-        status === "warning" && "bg-yellow-500"
+      <Icon className={cn(
+        "h-4 w-4",
+        status === "online" && "text-green-500",
+        status === "offline" && "text-muted-foreground",
+        status === "warning" && "text-yellow-500"
       )} />
-      {label}
-    </Badge>
+      <span className={cn(
+        "text-sm font-medium",
+        status === "online" && "text-green-600 dark:text-green-400",
+        status === "offline" && "text-muted-foreground",
+        status === "warning" && "text-yellow-600 dark:text-yellow-400"
+      )}>
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -189,25 +203,28 @@ export default function CommandCenter() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge 
+          <StatusCard 
             status={marketOpen ? "online" : "offline"} 
             label={marketOpen ? "Market Open" : "Market Closed"} 
+            icon={Activity}
           />
-          <StatusBadge 
+          <StatusCard 
             status={brokerConnected ? "online" : "offline"} 
             label={brokerConnected ? `${brokerStatus?.provider}` : "No Broker"} 
+            icon={Wifi}
           />
-          <StatusBadge 
+          <StatusCard 
             status={agentStatus.status} 
             label={`Agent: ${agentStatus.label}`} 
+            icon={Bot}
           />
         </div>
       </div>
 
-      {!setupComplete && (
+      {!setupComplete ? (
         <Card className="border-primary/50 bg-primary/5">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
                   <Settings className="h-5 w-5 text-primary" />
@@ -223,6 +240,57 @@ export default function CommandCenter() {
               </Button>
             </div>
           </CardHeader>
+        </Card>
+      ) : (
+        <Card className="border-muted">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-500/10">
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Trading Configuration</CardTitle>
+                  <CardDescription>Your current trading preferences and mode</CardDescription>
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => setShowWizard(true)} data-testid="button-edit-setup">
+                <Settings className="h-4 w-4 mr-1" />
+                Edit Configuration
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border">
+                <span className="text-xs text-muted-foreground">Mode:</span>
+                <span className="text-sm font-medium">
+                  {actionMode === "ALERTS_ONLY" ? "Alerts Only" : 
+                   actionMode === "ASSISTED" ? "Assisted Trading" : "Auto Trading"}
+                </span>
+              </div>
+              {brokerConnected && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20">
+                  <Wifi className="h-3.5 w-3.5 text-green-500" />
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                    {brokerStatus?.provider}
+                  </span>
+                </div>
+              )}
+              {agentEnabled && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20">
+                  <Bot className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-sm font-medium">Auto Agent {agentPaused ? "Paused" : "Active"}</span>
+                </div>
+              )}
+              {userSettings?.pushNotificationsEnabled === "true" && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border">
+                  <Bell className="h-3.5 w-3.5" />
+                  <span className="text-sm font-medium">Push Alerts</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
         </Card>
       )}
 

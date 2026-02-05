@@ -17,6 +17,7 @@ import {
   Star,
   Radio,
   Newspaper,
+  Target,
 } from "lucide-react";
 import {
   Sidebar,
@@ -54,11 +55,19 @@ interface NavSection {
 
 const navSections: NavSection[] = [
   {
+    id: "hub",
+    label: "Hub",
+    defaultExpanded: true,
+    items: [
+      { title: "Command Center", url: "/command-center", icon: Target },
+    ],
+  },
+  {
     id: "discover",
     label: "Discover",
     defaultExpanded: true,
     items: [
-      { title: "Opportunities", url: "/", icon: Search, showStartHere: true },
+      { title: "Opportunity Radar", url: "/", icon: Search, showStartHere: true },
       { title: "Breakout Alerts", url: "/signals", icon: Zap },
       { title: "Watchlists", url: "/watchlists", icon: List },
     ],
@@ -78,7 +87,7 @@ const navSections: NavSection[] = [
     label: "Execute",
     defaultExpanded: false,
     items: [
-      { title: "Trade Execution", url: "/execution", icon: Rocket },
+      { title: "Execution Cockpit", url: "/execution", icon: Rocket },
       { title: "Alerts", url: "/alerts", icon: Bell },
     ],
   },

@@ -52,6 +52,7 @@ import ExecutionCockpit from "@/pages/execution";
 import SnaptradeCallback from "@/pages/snaptrade-callback";
 import OpportunitiesPage from "@/pages/opportunities";
 import NewsPage from "@/pages/news";
+import CommandCenter from "@/pages/command-center";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -59,6 +60,7 @@ function AppRouter() {
     <Switch>
       <Route path="/" component={Scanner} />
       <Route path="/scanner" component={Scanner} />
+      <Route path="/command-center" component={CommandCenter} />
       <Route path="/signals" component={Signals} />
       <Route path="/charts" component={Charts} />
       <Route path="/charts/:ticker" component={Charts} />

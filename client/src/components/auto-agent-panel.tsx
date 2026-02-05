@@ -12,6 +12,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/hooks/use-toast";
 import { Bot, Power, Pause, Play, AlertTriangle, Shield, Settings2, Activity, Info, Check } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AutoAgentAcknowledgementModal } from "./auto-agent-acknowledgement-modal";
+import type { UserSettings } from "@shared/schema";
 
 interface AgentPolicy {
   id: string;
@@ -53,6 +55,7 @@ interface AgentState {
 export function AutoAgentPanel() {
   const { toast } = useToast();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAckModal, setShowAckModal] = useState(false);
 
   const { data: policy, isLoading: policyLoading } = useQuery<AgentPolicy>({
     queryKey: ["/api/agent/policy"],
@@ -60,6 +63,10 @@ export function AutoAgentPanel() {
 
   const { data: state, isLoading: stateLoading } = useQuery<AgentState>({
     queryKey: ["/api/agent/state"],
+  });
+
+  const { data: userSettings } = useQuery<UserSettings>({
+    queryKey: ["/api/user-settings"],
   });
 
   const updatePolicy = useMutation({
@@ -196,7 +203,13 @@ export function AutoAgentPanel() {
                   <Button
                     variant="default"
                     size="sm"
-                    onClick={() => enableAgent.mutate()}
+                    onClick={() => {
+                      if (!userSettings?.autoAgentAcknowledged) {
+                        setShowAckModal(true);
+                      } else {
+                        enableAgent.mutate();
+                      }
+                    }}
                     disabled={enableAgent.isPending}
                     data-testid="button-enable-agent"
                   >
@@ -647,6 +660,15 @@ export function AutoAgentPanel() {
           )}
         </div>
       </CardContent>
+
+      <AutoAgentAcknowledgementModal
+        open={showAckModal}
+        onClose={() => setShowAckModal(false)}
+        onConfirm={() => {
+          setShowAckModal(false);
+          enableAgent.mutate();
+        }}
+      />
     </Card>
   );
 }

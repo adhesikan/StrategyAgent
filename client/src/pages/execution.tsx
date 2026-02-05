@@ -4,8 +4,9 @@ import { Link } from "wouter";
 import { 
   Zap, ExternalLink, CheckCircle2, Circle, ArrowRight, Plus,
   Settings, Activity, Link2, Shield, Copy, RefreshCw, XCircle,
-  Wallet, BarChart3, Clock, AlertTriangle, TrendingUp, TrendingDown, History, Bell
+  Wallet, BarChart3, Clock, AlertTriangle, TrendingUp, TrendingDown, History, Bell, Bot
 } from "lucide-react";
+import { AutoAgentPanel } from "@/components/auto-agent-panel";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -202,6 +203,10 @@ export default function ExecutionCockpit() {
             <TabsTrigger value="setup" data-testid="tab-setup">
               <Zap className="h-4 w-4 mr-2" />
               Setup
+            </TabsTrigger>
+            <TabsTrigger value="agent" data-testid="tab-agent">
+              <Bot className="h-4 w-4 mr-2" />
+              Auto Agent
             </TabsTrigger>
             <TabsTrigger value="trades" data-testid="tab-trades">
               <History className="h-4 w-4 mr-2" />
@@ -489,6 +494,10 @@ export default function ExecutionCockpit() {
             )}
             </div>
           </div>
+          </TabsContent>
+
+          <TabsContent value="agent" className="mt-6">
+            <AutoAgentPanel />
           </TabsContent>
 
           <TabsContent value="trades" className="mt-6">

@@ -1,0 +1,108 @@
+You are an expert full-stack engineer working inside an existing codebase called “VCP Trader” (React + Node/Express + Postgres). The app already has:
+- Brokerage connection (Tradier “Live”)
+- Opportunity Engine that produces opportunity cards with fields like: symbol, strategyType, confidencePct, lastPrice, resistance, stop, volume, rvol, momentumLabel, timestamp
+- An “InstaTrade™” button that places a bracket/OCO style order using the opportunity’s resistance/stop/target
+
+GOAL
+Add a new feature: “Auto Agent” that users can enable/disable and configure with minimal predefined conditions (no custom scripting). The agent should automatically (or in suggest mode) trade only opportunities that pass the user’s policy (e.g., min upside %, min RVOL, min confidence, high volume, max trades/day, max concurrent positions, risk per trade, max daily loss). All decisions must be logged and explainable (“why traded/why skipped”). Must include an emergency stop.
+
+REQUIREMENTS (MVP)
+1) DATA MODEL (Postgres)
+Create tables and migrations:
+A) agent_policies
+- id (uuid), user_id (uuid), broker_account_id (text), strategy_id (nullable), enabled (bool)
+- mode enum: 'SUGGEST' | 'AUTO'
+- min_confidence_pct (int default 85)
+- min_upside_pct (numeric default 5.0)
+- min_rvol (numeric default 1.5)
+- min_reward_risk (numeric default 1.0)
+- allowed_momentum (text[] default ['strong','volume expanding'])
+- price_min (numeric nullable), price_max (numeric nullable)
+- min_avg_dollar_volume (numeric nullable)
+- max_trades_per_day (int default 2)
+- max_concurrent_positions (int default 3)
+- risk_per_trade_usd (numeric default 500)
+- max_daily_loss_usd (numeric default 1000)
+- no_trade_start_minute / no_trade_end_minute (nullable) OR a simple “avoid first X minutes” integer
+- created_at, updated_at
+
+B) agent_decisions
+- id (uuid), user_id, policy_id, opportunity_id (or symbol+timestamp), symbol, action enum: 'SKIP'|'SUGGEST'|'EXECUTE'|'ERROR'
+- reasons jsonb (array of strings + key metrics snapshot)
+- metrics_snapshot jsonb (confidence, price, resistance, stop, rvol, volume, upside_pct, risk_pct, rr)
+- order_payload jsonb nullable, broker_order_id nullable
+- created_at
+
+C) agent_state
+- user_id (pk), enabled (bool), paused (bool), emergency_stop (bool), last_run_at, trades_today_count, daily_pnl_estimate (optional), updated_at
+
+2) SERVER: POLICY EVALUATION + EXECUTION
+Implement deterministic functions (NO LLM):
+- computeUpsidePct(price, resistanceOrTarget)
+- computeRiskPct(price, stop)
+- computeRewardRisk(upsidePct, riskPct)
+- isEligible(opportunity, policy) -> {pass:boolean, reasons:string[]}
+Reasons must be explicit (e.g., “Upside 2.7% < min 5%”)
+
+Implement a worker/cron:
+- Runs every 1–5 minutes during market hours
+- For each user with agent_state.enabled = true AND not paused AND not emergency_stop:
+  a) Load policy (strategy-specific override if exists, else global)
+  b) Fetch latest opportunities (same source as UI cards)
+  c) For each opportunity: compute metrics, apply policy, log SKIP/SUGGEST/EXECUTE decision
+  d) Rank eligible opportunities by a simple score (confidence, rr, rvol, upside_pct)
+  e) Enforce caps: max_trades_per_day, max_concurrent_positions, exposure checks
+  f) In SUGGEST mode: create decision with action='SUGGEST' (no order)
+  g) In AUTO mode: call existing InstaTrade/bracket order code to place order; store broker_order_id + payload; action='EXECUTE'
+
+Add a central guardrail:
+- authorizeOrder(user, policy, proposedOrder) -> allow/deny + reasons
+Checks: emergency_stop, max_daily_loss, max trades/day, max positions, symbol already held, etc.
+
+Add endpoints:
+- GET /api/agent/policy (current user)
+- PUT /api/agent/policy (update)
+- POST /api/agent/state/enable
+- POST /api/agent/state/pause
+- POST /api/agent/state/emergency-stop (and clear)
+- GET /api/agent/decisions?limit=100
+
+3) CLIENT (React UI)
+Add a minimal “Auto Agent” panel in the Opportunities page (and/or Settings):
+- Toggle: Enable Auto Agent
+- Mode: Suggest / Auto
+- Inputs: min upside %, min RVOL, min confidence %, max trades/day, max positions, risk/trade $, max daily loss $
+- Buttons: Preview (show eligible opportunities now), Pause, Emergency Stop
+- Show status: OFF / ARMED / PAUSED / EMERGENCY STOP / ERROR
+
+On each Opportunity card:
+- Show “Agent Eligible” badge if it passes policy, else “Agent Skipped”
+- Tooltip or expandable text listing skip reason(s)
+
+Add “Agent Activity” view:
+- List last 50 decisions with action + symbol + reasons + timestamp
+- If SUGGEST, show a “One-click InstaTrade™” button to execute that suggestion using existing flow.
+
+4) SAFETY + QUALITY
+- All agent actions must be idempotent: do not place duplicate orders for same symbol within a cooldown window (e.g., 30–60 minutes) unless user explicitly allows.
+- Add an emergency stop that immediately prevents any further order placement.
+- Add server-side validation and sane defaults.
+- Add basic tests for isEligible() and ranking.
+
+IMPLEMENTATION NOTES
+- Use the existing opportunity object and existing InstaTrade order placement function—do not rewrite broker integration.
+- Store computed metrics in decisions for explainability.
+- Keep UI minimal, consistent with current dark theme.
+
+DELIVERABLES
+- DB migrations + updated Prisma/ORM schema (or SQL migrations if not using Prisma)
+- Server worker/cron + routes
+- React UI components + card badges
+- A short README section: “Auto Agent” usage + safety notes
+
+Start by scanning the repo to locate:
+- Opportunity generation code
+- InstaTrade order placement code
+- User auth/session
+- DB/ORM setup
+Then implement MVP end-to-end.

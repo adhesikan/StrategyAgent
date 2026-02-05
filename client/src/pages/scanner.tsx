@@ -980,8 +980,8 @@ export default function Scanner() {
                     >
                       <CardContent className="p-3 space-y-2">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-semibold text-base truncate">{result.ticker}</span>
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                            <span className="font-semibold text-base shrink-0">{result.ticker}</span>
                             <Badge 
                               variant="outline" 
                               className={cn(

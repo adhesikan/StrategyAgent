@@ -109,7 +109,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
 
   const saveMutation = useMutation({
     mutationFn: async (wizardData: WizardData) => {
-      await apiRequest("PUT", "/api/user-settings", {
+      await apiRequest("PUT", "/api/user/settings", {
         ...wizardData,
         setupCompleted: true,
         setupCompletedAt: new Date().toISOString(),
@@ -125,7 +125,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
       toast({ title: "Setup Complete", description: "Your trading preferences have been saved." });
       onComplete();
     },

@@ -66,7 +66,7 @@ export function AutoAgentPanel() {
   });
 
   const { data: userSettings } = useQuery<UserSettings>({
-    queryKey: ["/api/user-settings"],
+    queryKey: ["/api/user/settings"],
   });
 
   const updatePolicy = useMutation({

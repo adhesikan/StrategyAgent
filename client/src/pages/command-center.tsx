@@ -102,7 +102,7 @@ export default function CommandCenter() {
   const queryClient = useQueryClient();
 
   const { data: userSettings } = useQuery<UserSettings>({
-    queryKey: ["/api/user-settings"],
+    queryKey: ["/api/user/settings"],
   });
 
   const { data: brokerStatus } = useQuery<BrokerConnection | null>({
@@ -622,7 +622,7 @@ export default function CommandCenter() {
         open={showWizard}
         onComplete={() => {
           setShowWizard(false);
-          queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
         }}
         onClose={() => setShowWizard(false)}
       />

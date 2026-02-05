@@ -27,7 +27,7 @@ export function AutoAgentAcknowledgementModal({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("PUT", "/api/user-settings", {
+      await apiRequest("PUT", "/api/user/settings", {
         autoAgentAcknowledged: true,
         autoAgentAcknowledgedAt: new Date().toISOString(),
         autoAgentAckVersion: "v1",
@@ -39,7 +39,7 @@ export function AutoAgentAcknowledgementModal({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
       toast({ title: "Auto Agent Armed", description: "You can now enable automated trading." });
       onConfirm();
     },

@@ -1,0 +1,100 @@
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+Error evaluating opportunity: error: relation "agent_policies" does not exist
+  line: '1449',
+    at /app/dist/index.cjs:64:13326
+  routine: 'parserOpenTable'
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+}
+    at async /app/dist/index.cjs:70:37939
+1:16:17 PM [express] GET /api/agent/evaluate/b9c6651c-8477-4337-a0c0-dfe3f21d4f9d 500 in 11ms :: {"error":"Failed to evaluate opportunity"}
+    at async Py.getAgentPolicy (/app/dist/index.cjs:70:161459)
+    at async Pz (/app/dist/index.cjs:76:14722)
+    at async /app/dist/index.cjs:77:42170 {
+  length: 114,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '399',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+1:16:17 PM [express] GET /api/agent/evaluate/8fedbb7e-8e04-44c0-924b-09af45e81d8f 500 in 14ms :: {"error":"Failed to evaluate opportunity"}
+Error evaluating opportunity: error: relation "agent_policies" does not exist
+  hint: undefined,
+    at /app/dist/index.cjs:64:13326
+  position: '399',
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  internalPosition: undefined,
+    at async /app/dist/index.cjs:70:37939
+  internalQuery: undefined,
+  where: undefined,
+    at async Py.getAgentPolicy (/app/dist/index.cjs:70:161459)
+  schema: undefined,
+    at async Pz (/app/dist/index.cjs:76:14722)
+  table: undefined,
+    at async /app/dist/index.cjs:77:42170 {
+  column: undefined,
+  length: 114,
+  dataType: undefined,
+  severity: 'ERROR',
+  constraint: undefined,
+  code: '42P01',
+  detail: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+}
+  dataType: undefined,
+  severity: 'ERROR',
+Error evaluating opportunity: error: relation "agent_policies" does not exist
+  constraint: undefined,
+    at /app/dist/index.cjs:64:13326
+  code: '42P01',
+  file: 'parse_relation.c',
+  detail: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  line: '1449',
+  hint: undefined,
+  routine: 'parserOpenTable'
+    at async /app/dist/index.cjs:70:37939
+  position: '399',
+  internalPosition: undefined,
+    at async Py.getAgentPolicy (/app/dist/index.cjs:70:161459)
+  internalQuery: undefined,
+    at async Pz (/app/dist/index.cjs:76:14722)
+  where: undefined,
+    at async /app/dist/index.cjs:77:42170 {
+  schema: undefined,
+}
+Error evaluating opportunity: error: relation "agent_policies" does not exist
+  table: undefined,
+  length: 114,
+    at /app/dist/index.cjs:64:13326
+  column: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:37939
+    at async Py.getAgentPolicy (/app/dist/index.cjs:70:161459)
+    at async Pz (/app/dist/index.cjs:76:14722)
+    at async /app/dist/index.cjs:77:42170 {
+  line: '1449',
+  length: 114,
+  severity: 'ERROR',
+  routine: 'parserOpenTable'
+  code: '42P01',
+}
+Error evaluating opportunity: error: relation "agent_policies" does not exist
+    at /app/dist/index.cjs:64:13326
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:37939
+  detail: undefined,
+  hint: undefined,
+  position: '399',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,

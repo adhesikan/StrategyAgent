@@ -47,37 +47,33 @@ function isMarketHours(): boolean {
 }
 
 async function processUserOpportunities(userId: string): Promise<void> {
-  console.log(`[AgentWorker] Processing opportunities for user ${userId}`);
+  // Always update lastRunAt at start to respect scan interval, even on early returns
+  await storage.updateAgentState(userId, { lastRunAt: new Date() });
   
   const agentState = await getOrCreateAgentState(userId);
   
   if (!agentState.enabled) {
-    console.log(`[AgentWorker] Agent disabled for user ${userId}`);
-    return;
+    return; // Agent disabled - already updated lastRunAt
   }
   
   if (agentState.paused) {
-    console.log(`[AgentWorker] Agent paused for user ${userId}`);
-    return;
+    return; // Agent paused - already updated lastRunAt
   }
   
   if (agentState.emergencyStop) {
-    console.log(`[AgentWorker] Emergency stop active for user ${userId}`);
-    return;
+    return; // Emergency stop - already updated lastRunAt
   }
   
   const policy = await getOrCreatePolicy(userId);
   
   if (!policy.enabled) {
-    console.log(`[AgentWorker] Policy disabled for user ${userId}`);
-    return;
+    return; // Policy disabled - already updated lastRunAt
   }
   
   const opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
   
   if (opportunities.length === 0) {
-    console.log(`[AgentWorker] No active opportunities for user ${userId}`);
-    return;
+    return; // No opportunities - already updated lastRunAt
   }
   
   const evaluated = opportunities.map(opportunity => ({
@@ -165,8 +161,6 @@ async function processUserOpportunities(userId: string): Promise<void> {
       }
     }
   }
-  
-  await storage.updateAgentState(userId, { lastRunAt: new Date() });
 }
 
 function buildOrderPayload(opportunity: Opportunity, policy: any): object {

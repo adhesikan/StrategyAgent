@@ -7,6 +7,7 @@ import {
   Wallet, BarChart3, Clock, AlertTriangle, TrendingUp, TrendingDown, History, Bell, Bot
 } from "lucide-react";
 import { AutoAgentPanel } from "@/components/auto-agent-panel";
+import { AgentActivity } from "@/components/agent-activity";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -497,7 +498,10 @@ export default function ExecutionCockpit() {
           </TabsContent>
 
           <TabsContent value="agent" className="mt-6">
-            <AutoAgentPanel />
+            <div className="space-y-6">
+              <AutoAgentPanel />
+              <AgentActivity />
+            </div>
           </TabsContent>
 
           <TabsContent value="trades" className="mt-6">

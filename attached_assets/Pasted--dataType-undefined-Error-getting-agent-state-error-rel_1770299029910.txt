@@ -1,0 +1,77 @@
+  dataType: undefined,
+Error getting agent state: error: relation "agent_state" does not exist
+  constraint: undefined,
+    at /app/dist/index.cjs:64:13326
+  file: 'parse_relation.c',
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  line: '1449',
+    at async /app/dist/index.cjs:70:37939
+  routine: 'parserOpenTable'
+    at async Py.getAgentState (/app/dist/index.cjs:70:161909)
+}
+    at async Tz (/app/dist/index.cjs:76:14626)
+1:43:19 PM [express] GET /api/agent/state 500 in 12ms :: {"error":"Failed to get agent state"}
+    at async /app/dist/index.cjs:77:39918 {
+1:43:19 PM [express] GET /api/agent/policy 500 in 11ms :: {"error":"Failed to get agent policy"}
+  length: 111,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '154',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+}
+Error getting agent policy: error: relation "agent_policies" does not exist
+    at /app/dist/index.cjs:64:13326
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:37939
+    at async Py.getAgentPolicy (/app/dist/index.cjs:70:161459)
+    at async Pz (/app/dist/index.cjs:76:14722)
+    at async /app/dist/index.cjs:77:38329 {
+  length: 114,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '399',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+Error updating agent policy: error: relation "agent_policies" does not exist
+    at /app/dist/index.cjs:64:13326
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:37939
+    at async Py.getAgentPolicy (/app/dist/index.cjs:70:161459)
+    at async Pz (/app/dist/index.cjs:76:14722)
+    at async /app/dist/index.cjs:77:39667 {
+  length: 114,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '399',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+}

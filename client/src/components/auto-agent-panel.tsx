@@ -257,7 +257,18 @@ export function AutoAgentPanel() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Mode</Label>
+              <div className="flex items-center gap-1">
+                <Label>Mode</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p><strong>Suggest:</strong> Agent evaluates opportunities and shows recommendations without taking action.</p>
+                    <p className="mt-1"><strong>Auto:</strong> Agent automatically executes trades when criteria are met.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Suggest shows recommendations, Auto executes trades
               </p>
@@ -278,7 +289,19 @@ export function AutoAgentPanel() {
           </div>
 
           <div className="space-y-2">
-            <Label>Trade Only These Stages</Label>
+            <div className="flex items-center gap-1">
+              <Label>Trade Only These Stages</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p><strong>Forming:</strong> Pattern is still developing, higher risk.</p>
+                  <p className="mt-1"><strong>Ready:</strong> Near breakout level, watching for confirmation.</p>
+                  <p className="mt-1"><strong>Breakout:</strong> Actively breaking resistance, most common for entries.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <p className="text-xs text-muted-foreground mb-2">
               Agent will only act on opportunities in selected stages
             </p>
@@ -317,7 +340,17 @@ export function AutoAgentPanel() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="minConfidence">Min Confidence %</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minConfidence">Min Confidence %</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Minimum pattern quality score required. Higher values filter for stronger setups but may reduce opportunities.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="minConfidence"
                 type="number"
@@ -327,7 +360,17 @@ export function AutoAgentPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="minUpside">Min Upside %</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minUpside">Min Upside %</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Minimum expected profit percentage from entry to target. Filters out setups with limited profit potential.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="minUpside"
                 type="number"
@@ -338,7 +381,17 @@ export function AutoAgentPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="minRvol">Min RVOL</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minRvol">Min RVOL</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Relative Volume - compares current volume to average. 1.5 means 50% more volume than usual. Higher values indicate stronger institutional interest.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="minRvol"
                 type="number"
@@ -349,7 +402,17 @@ export function AutoAgentPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="minRR">Min Reward:Risk</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minRR">Min Reward:Risk</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Minimum reward-to-risk ratio. 2:1 means potential profit is twice the potential loss. Higher ratios mean better risk-adjusted opportunities.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="minRR"
                 type="number"
@@ -363,7 +426,17 @@ export function AutoAgentPanel() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="maxTrades">Max Trades/Day</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxTrades">Max Trades/Day</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum number of trades the agent can execute in a single day. Helps control overtrading and risk exposure.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxTrades"
                 type="number"
@@ -373,7 +446,17 @@ export function AutoAgentPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="maxPositions">Max Positions</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxPositions">Max Positions</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum number of open positions allowed at the same time. Prevents over-concentration and manages portfolio risk.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxPositions"
                 type="number"
@@ -383,7 +466,17 @@ export function AutoAgentPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="riskPerTrade">Risk/Trade ($)</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="riskPerTrade">Risk/Trade ($)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum dollar amount you're willing to lose on a single trade. Used to calculate position size based on stop loss distance.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="riskPerTrade"
                 type="number"
@@ -393,7 +486,17 @@ export function AutoAgentPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="maxDailyLoss">Max Daily Loss ($)</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxDailyLoss">Max Daily Loss ($)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Daily loss limit that triggers an automatic pause. Protects your account from excessive losses during volatile markets.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxDailyLoss"
                 type="number"
@@ -418,7 +521,17 @@ export function AutoAgentPanel() {
           {showAdvanced && (
             <div className="grid grid-cols-2 gap-4 pt-2 border-t">
               <div className="space-y-2">
-                <Label htmlFor="priceMin">Min Price ($)</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="priceMin">Min Price ($)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Only consider stocks priced above this amount. Filters out low-priced stocks that may have higher volatility or liquidity issues.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="priceMin"
                   type="number"
@@ -430,7 +543,17 @@ export function AutoAgentPanel() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="priceMax">Max Price ($)</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="priceMax">Max Price ($)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Only consider stocks priced below this amount. Helps limit position sizes and focus on stocks within your trading range.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="priceMax"
                   type="number"
@@ -442,7 +565,17 @@ export function AutoAgentPanel() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="avoidFirst">Avoid First Minutes</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="avoidFirst">Avoid First Minutes</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Minutes after market open to skip trading. The first 15-30 minutes often have erratic price action and wider spreads.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="avoidFirst"
                   type="number"
@@ -452,7 +585,17 @@ export function AutoAgentPanel() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cooldown">Cooldown Minutes</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="cooldown">Cooldown Minutes</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Minimum time to wait between trades on the same symbol. Prevents over-trading a single stock and allows time for price action to develop.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="cooldown"
                   type="number"

@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm run build && npx drizzle-kit push --force"
+buildCommand = "npm run build"
 
 [deploy]
-startCommand = "npm run start"
+startCommand = "npx tsx script/migrate.ts && npm run start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 healthcheckPath = "/health"

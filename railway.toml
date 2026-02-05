@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "npm run db:push --force && node scripts/migrate.js && npm run start"
+startCommand = "npx drizzle-kit push && npm run start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 healthcheckPath = "/health"

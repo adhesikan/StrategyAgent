@@ -1,0 +1,64 @@
+[PushService] No push subscriptions found for user e4f4da88-5589-4478-86cf-ed369d87fb9e
+[AlertEngine] Push sent for global alert: ALGN BREAKOUT
+[AlertEngine] Global alert triggered: ALGN entered BREAKOUT
+[PushService] No push subscriptions found for user e4f4da88-5589-4478-86cf-ed369d87fb9e
+[AlertEngine] Push sent for global alert: EFX BREAKOUT
+[AlertEngine] Global alert triggered: EFX entered BREAKOUT
+[AlertEngine] Processing 1 watchlist rule(s) against 99 scan results
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Looking for stage=BREAKOUT in watchlist MyTechWatch (1 symbols)
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Found 0 matching results
+[AlertEngine] Created 4 alert event(s)
+    at /app/dist/index.cjs:64:13326
+5:52:58 PM [express] GET /api/user-settings 304 in 8ms
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  schema: undefined,
+    at async /app/dist/index.cjs:70:37939
+}
+  table: undefined,
+    at async _y.getAgentPolicy (/app/dist/index.cjs:70:164139)
+5:52:58 PM [express] GET /api/agent/policy 500 in 10ms :: {"error":"Failed to get agent policy"}
+  file: 'parse_relation.c',
+  column: undefined,
+    at async Rz (/app/dist/index.cjs:76:14722)
+    at async /app/dist/index.cjs:77:38329 {
+  line: '3716',
+  severity: 'ERROR',
+  routine: 'errorMissingColumn'
+  length: 122,
+  dataType: undefined,
+  code: '42703',
+  constraint: undefined,
+  detail: undefined,
+Error getting agent policy: error: column "scan_interval_minutes" does not exist
+  hint: undefined,
+5:52:58 PM [express] GET /api/agent/decisions/50 200 in 7ms
+  position: '385',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+5:53:04 PM [express] GET /api/user-settings 304 in 6ms
+Error getting agent policy: error: column "scan_interval_minutes" does not exist
+    at /app/dist/index.cjs:64:13326
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:37939
+    at async _y.getAgentPolicy (/app/dist/index.cjs:70:164139)
+    at async Rz (/app/dist/index.cjs:76:14722)
+    at async /app/dist/index.cjs:77:38329 {
+  length: 122,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '385',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3716',
+  routine: 'errorMissingColumn'
+}

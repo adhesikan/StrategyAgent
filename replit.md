@@ -15,7 +15,7 @@ The frontend is a React 18 application with TypeScript, built using Vite. It use
 The backend is built with Node.js and Express.js, written in TypeScript. It features RESTful API endpoints and uses Drizzle ORM with PostgreSQL for data persistence. Zod is employed for schema validation. The build system uses custom esbuild scripts for the server and Vite for the client.
 
 ### Data Storage
-PostgreSQL serves as the primary database, managed by Drizzle ORM. The schema (`shared/schema.ts`) includes tables for users, symbols, candles, scan results, alerts, watchlists, broker connections, and push subscriptions. Database migrations are handled via Drizzle Kit.
+PostgreSQL serves as the primary database, managed by Drizzle ORM. The schema (`shared/schema.ts`) includes tables for users, symbols, candles, scan results, alerts, watchlists, broker connections, push subscriptions, and Auto Agent tables (agent_policies, agent_decisions, agent_state). Database migrations are automatically applied during the build process via Drizzle Kit (`script/build.ts` runs `drizzle-kit push` before building).
 
 ### Project Structure
 The project is organized into `client/` for the React frontend, `server/` for the Express backend, and `shared/` for code shared between both, including database schemas.

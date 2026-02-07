@@ -229,8 +229,8 @@ function AppLayout() {
                 }}
               >
                 <AppRouter />
+                <Footer />
               </PullToRefresh>
-              <Footer />
             </SidebarInset>
           </div>
         </SidebarProvider>

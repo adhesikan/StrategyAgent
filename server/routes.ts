@@ -9,7 +9,7 @@ import { classifyMarketRegime, getRegimeAdjustment } from "./engine/regime";
 import { aggregateConfluence, rankByConfluence, filterByMinMatches, ConfluenceResult } from "./engine/confluence";
 import { CandleData } from "./engine/indicators";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage, verifyJwt } from "./replit_integrations/auth";
 import { 
   fetchQuotesFromBroker, 
   quotesToScanResults, 
@@ -131,6 +131,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   });
 
   await setupAuth(app);
+  app.use(verifyJwt);
   registerAuthRoutes(app);
 
   app.get("/api/promo/status", (req, res) => {

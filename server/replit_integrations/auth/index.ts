@@ -1,3 +1,3 @@
 export { setupAuth, isAuthenticated, getSession } from "./sessionAuth";
 export { authStorage, type IAuthStorage } from "./storage";
-export { registerAuthRoutes } from "./routes";
+export { registerAuthRoutes, verifyJwt, getUserEntitlements } from "./routes";

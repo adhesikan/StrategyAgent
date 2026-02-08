@@ -1,8 +1,42 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
+import jwt from "jsonwebtoken";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./sessionAuth";
 import { loginSchema, registerSchema } from "@shared/models/auth";
 import { z } from "zod";
+import { storage } from "../../storage";
+
+const JWT_EXPIRATION = "12h";
+
+function getJwtSecret(): string {
+  const secret = process.env.AUTH_JWT_SECRET;
+  if (!secret) throw new Error("AUTH_JWT_SECRET environment variable is required");
+  return secret;
+}
+
+export function getUserEntitlements(_userId: string) {
+  return {
+    stockScanner: true,
+    optionsScanner: false,
+    automation: false,
+    plan: "core" as const,
+  };
+}
+
+export const verifyJwt: RequestHandler = (req, _res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return next();
+
+  try {
+    const token = authHeader.slice(7);
+    const decoded = jwt.verify(token, getJwtSecret()) as jwt.JwtPayload;
+    if (decoded.sub) {
+      req.session.userId = decoded.sub as string;
+    }
+  } catch {
+  }
+  next();
+};
 
 const LEGAL_VERSION = process.env.LEGAL_VERSION || "2026-01-01";
 
@@ -151,6 +185,58 @@ export function registerAuthRoutes(app: Express): void {
     } catch (error) {
       console.error("Legal status error:", error);
       res.status(500).json({ message: "Failed to get legal status" });
+    }
+  });
+
+  app.post("/api/auth/token", isAuthenticated, async (req, res) => {
+    try {
+      const user = await authStorage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const payload = {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      };
+
+      const token = jwt.sign(payload, getJwtSecret(), { expiresIn: JWT_EXPIRATION });
+
+      console.log(`[Auth] JWT issued for user ${user.id}`);
+
+      res.json({
+        token,
+        expiresIn: JWT_EXPIRATION,
+        user: { id: user.id, email: user.email, role: user.role },
+      });
+    } catch (error) {
+      console.error("[Auth] Token generation failed:", (error as Error).message);
+      res.status(500).json({ message: "Failed to generate token" });
+    }
+  });
+
+  app.get("/api/auth/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = await authStorage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const brokerConnection = await storage.getBrokerConnection(user.id);
+      const entitlements = getUserEntitlements(user.id);
+
+      res.json({
+        user: { id: user.id, email: user.email, role: user.role },
+        entitlements,
+        broker: {
+          connected: brokerConnection?.isConnected ?? false,
+          provider: brokerConnection?.provider ?? null,
+        },
+      });
+    } catch (error) {
+      console.error("[Auth] /me lookup failed:", (error as Error).message);
+      res.status(500).json({ message: "Failed to fetch user info" });
     }
   });
 }

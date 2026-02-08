@@ -38,6 +38,7 @@ import {
 } from "./opportunity-service";
 import { runManualScheduledScan } from "./scheduled-scan-service";
 import { fetchNews, checkRateLimit, isNewsConfigured } from "./news-service";
+import { registerPlatformRoutes } from "./routes/platform";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
   if (!req.session.userId) {
@@ -133,6 +134,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   await setupAuth(app);
   app.use(verifyJwt);
   registerAuthRoutes(app);
+  registerPlatformRoutes(app);
 
   app.get("/api/promo/status", (req, res) => {
     const active = isPromoActive();

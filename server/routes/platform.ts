@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getDefaultRiskProfile } from "../models/risk-profiles";
-import { listUniverses, createUniverse, updateUniverse, deleteUniverse } from "../models/ticker-universes";
+import { listUniverses, getUniverse, createUniverse, updateUniverse, deleteUniverse } from "../models/ticker-universes";
 import { storage } from "../storage";
 import { toRiskProfileResponse, toUniverseResponse, type PlatformContext } from "@shared/platform-types";
 
@@ -112,6 +112,23 @@ export function registerPlatformRoutes(app: Express): void {
     } catch (error) {
       console.error("Error listing universes:", error);
       res.status(500).json({ message: "Failed to list universes" });
+    }
+  });
+
+  app.get("/api/platform/universes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const universe = await getUniverse(req.params.id, userId);
+      if (!universe) {
+        return res.status(404).json({ message: "Universe not found" });
+      }
+      res.json({
+        ...toUniverseResponse(universe, universe.members.length),
+        symbols: universe.members.map(m => m.symbol),
+      });
+    } catch (error) {
+      console.error("Error fetching universe:", error);
+      res.status(500).json({ message: "Failed to fetch universe" });
     }
   });
 

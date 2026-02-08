@@ -108,6 +108,7 @@ const navSections: NavSection[] = [
     items: [
       { title: "Settings", url: "/settings", icon: Settings },
       { title: "Risk Profile", url: "/settings/risk-profile", icon: Radio },
+      { title: "Universes", url: "/settings/universes", icon: List },
     ],
   },
 ];

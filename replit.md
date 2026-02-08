@@ -23,6 +23,13 @@ The project is organized into `client/` for the React frontend, `server/` for th
 ### Key Design Patterns
 A Storage Interface Pattern abstracts data access. Path aliases (`@/`, `@shared/`) streamline imports. Type sharing between frontend and backend is achieved via `@shared/schema`. Client-server communication is handled through a `fetch` wrapper with React Query.
 
+### Centralized Broker Service API
+A provider adapter pattern (`server/broker/`) normalizes brokerage data across providers. Each provider (e.g., `server/broker/providers/tradier.ts`) implements a `BrokerProvider` interface with `getStatus`, `getAccounts`, `getPositions`, and `getOrders` methods. The central service (`server/broker/index.ts`) adds an in-memory cache with 5-15s TTLs to avoid rate limits. Endpoints:
+- `GET /api/broker/accounts` — normalized accounts `[{id, name, type, buyingPower, equity, currency}]`
+- `GET /api/broker/positions` — normalized positions `[{symbol, qty, avgPrice, marketPrice, unrealizedPnl}]`
+- `GET /api/broker/orders` — recent orders `[{id, symbol, side, qty, status, createdAt}]`
+- Legacy `GET /api/broker/status` unchanged for backward compatibility.
+
 ### Authentication & Authorization
 The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions. It supports `user` and `admin` roles, enforcing role-based access control for different API routes.
 

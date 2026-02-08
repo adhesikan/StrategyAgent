@@ -1543,6 +1543,39 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ─── Centralized Broker Service API ───────────────────────────────────
+  const brokerService = await import("./broker/index");
+
+  app.get("/api/broker/accounts", isAuthenticated, async (req, res) => {
+    try {
+      const accounts = await brokerService.getBrokerAccounts(req.session.userId!);
+      res.json(accounts);
+    } catch (error: any) {
+      console.error("[BrokerService] accounts error:", error.message);
+      res.status(500).json({ error: "Failed to fetch accounts" });
+    }
+  });
+
+  app.get("/api/broker/positions", isAuthenticated, async (req, res) => {
+    try {
+      const positions = await brokerService.getBrokerPositions(req.session.userId!);
+      res.json(positions);
+    } catch (error: any) {
+      console.error("[BrokerService] positions error:", error.message);
+      res.status(500).json({ error: "Failed to fetch positions" });
+    }
+  });
+
+  app.get("/api/broker/orders", isAuthenticated, async (req, res) => {
+    try {
+      const orders = await brokerService.getBrokerOrders(req.session.userId!);
+      res.json(orders);
+    } catch (error: any) {
+      console.error("[BrokerService] orders error:", error.message);
+      res.status(500).json({ error: "Failed to fetch orders" });
+    }
+  });
+
   // Tradier OAuth routes
   const TRADIER_CLIENT_ID = process.env.TRADIER_CLIENT_ID;
   const TRADIER_CLIENT_SECRET = process.env.TRADIER_CLIENT_SECRET;

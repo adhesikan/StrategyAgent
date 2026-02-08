@@ -196,6 +196,12 @@ async function runStartupMigrations() {
     await db.execute(sql`
       ALTER TABLE alert_rules ALTER COLUMN symbol DROP NOT NULL;
     `);
+
+    // Ensure composite unique on ticker_universe_members
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS ticker_universe_members_universe_symbol_idx
+      ON ticker_universe_members (universe_id, symbol);
+    `);
     
     log("Startup migrations completed successfully", "migrations");
   } catch (error) {

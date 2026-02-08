@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -65,6 +65,12 @@ import type {
   InsertAuditEvent,
   OptionsScan,
   InsertOptionsScan,
+  RiskProfile,
+  InsertRiskProfile,
+  TickerUniverse,
+  InsertTickerUniverse,
+  TickerUniverseMember,
+  InsertTickerUniverseMember,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -241,6 +247,22 @@ export interface IStorage {
   // Options Scans
   createOptionsScan(scan: InsertOptionsScan): Promise<OptionsScan>;
   getOptionsScans(userId: string, limit?: number): Promise<OptionsScan[]>;
+
+  // Risk Profiles
+  getRiskProfile(userId: string): Promise<RiskProfile | null>;
+  createRiskProfile(profile: InsertRiskProfile): Promise<RiskProfile>;
+  updateRiskProfile(id: string, data: Partial<InsertRiskProfile>): Promise<RiskProfile | null>;
+
+  // Ticker Universes
+  getTickerUniverses(userId: string): Promise<TickerUniverse[]>;
+  getTickerUniverse(id: string, userId: string): Promise<TickerUniverse | null>;
+  createTickerUniverse(universe: InsertTickerUniverse): Promise<TickerUniverse>;
+  updateTickerUniverse(id: string, data: Partial<InsertTickerUniverse>): Promise<TickerUniverse | null>;
+  deleteTickerUniverse(id: string): Promise<void>;
+
+  // Ticker Universe Members
+  getTickerUniverseMembers(universeId: string): Promise<TickerUniverseMember[]>;
+  setTickerUniverseMembers(universeId: string, symbols: string[]): Promise<TickerUniverseMember[]>;
 }
 
 export interface OpportunityFilters {
@@ -2226,6 +2248,83 @@ export class MemStorage implements IStorage {
       .where(eq(optionsScansTable.userId, userId))
       .orderBy(desc(optionsScansTable.createdAt))
       .limit(limit);
+  }
+
+  // Risk Profiles
+  async getRiskProfile(userId: string): Promise<RiskProfile | null> {
+    const [profile] = await db
+      .select()
+      .from(riskProfilesTable)
+      .where(eq(riskProfilesTable.userId, userId))
+      .limit(1);
+    return profile ?? null;
+  }
+
+  async createRiskProfile(profile: InsertRiskProfile): Promise<RiskProfile> {
+    const [result] = await db.insert(riskProfilesTable).values(profile).returning();
+    return result;
+  }
+
+  async updateRiskProfile(id: string, data: Partial<InsertRiskProfile>): Promise<RiskProfile | null> {
+    const [result] = await db
+      .update(riskProfilesTable)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(riskProfilesTable.id, id))
+      .returning();
+    return result ?? null;
+  }
+
+  // Ticker Universes
+  async getTickerUniverses(userId: string): Promise<TickerUniverse[]> {
+    return db
+      .select()
+      .from(tickerUniversesTable)
+      .where(eq(tickerUniversesTable.userId, userId))
+      .orderBy(asc(tickerUniversesTable.name));
+  }
+
+  async getTickerUniverse(id: string, userId: string): Promise<TickerUniverse | null> {
+    const [universe] = await db
+      .select()
+      .from(tickerUniversesTable)
+      .where(and(eq(tickerUniversesTable.id, id), eq(tickerUniversesTable.userId, userId)))
+      .limit(1);
+    return universe ?? null;
+  }
+
+  async createTickerUniverse(universe: InsertTickerUniverse): Promise<TickerUniverse> {
+    const [result] = await db.insert(tickerUniversesTable).values(universe).returning();
+    return result;
+  }
+
+  async updateTickerUniverse(id: string, data: Partial<InsertTickerUniverse>): Promise<TickerUniverse | null> {
+    const [result] = await db
+      .update(tickerUniversesTable)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tickerUniversesTable.id, id))
+      .returning();
+    return result ?? null;
+  }
+
+  async deleteTickerUniverse(id: string): Promise<void> {
+    await db.delete(tickerUniverseMembersTable).where(eq(tickerUniverseMembersTable.universeId, id));
+    await db.delete(tickerUniversesTable).where(eq(tickerUniversesTable.id, id));
+  }
+
+  // Ticker Universe Members
+  async getTickerUniverseMembers(universeId: string): Promise<TickerUniverseMember[]> {
+    return db
+      .select()
+      .from(tickerUniverseMembersTable)
+      .where(eq(tickerUniverseMembersTable.universeId, universeId))
+      .orderBy(asc(tickerUniverseMembersTable.symbol));
+  }
+
+  async setTickerUniverseMembers(universeId: string, symbols: string[]): Promise<TickerUniverseMember[]> {
+    await db.delete(tickerUniverseMembersTable).where(eq(tickerUniverseMembersTable.universeId, universeId));
+    if (symbols.length === 0) return [];
+    const rows = symbols.map((symbol) => ({ universeId, symbol: symbol.toUpperCase() }));
+    return db.insert(tickerUniverseMembersTable).values(rows).returning();
   }
 }
 

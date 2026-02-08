@@ -5,8 +5,18 @@ import { isAuthenticated } from "./sessionAuth";
 import { loginSchema, registerSchema } from "@shared/models/auth";
 import { z } from "zod";
 import { storage } from "../../storage";
+import { seedDefaultUniverse } from "../../models/ticker-universes";
+import { getDefaultRiskProfile } from "../../models/risk-profiles";
 
 const JWT_EXPIRATION = "12h";
+
+function seedNewUser(userId: string) {
+  if (process.env.NODE_ENV !== "development") return;
+  Promise.all([
+    seedDefaultUniverse(userId),
+    getDefaultRiskProfile(userId),
+  ]).catch((err) => console.error("[Seed] Error seeding new user:", err));
+}
 
 function getJwtSecret(): string {
   const secret = process.env.AUTH_JWT_SECRET;
@@ -77,6 +87,8 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       req.session.userId = user.id;
+
+      seedNewUser(user.id);
       
       const updatedUser = await authStorage.getUser(user.id);
       const { password: _, ...safeUser } = updatedUser!;

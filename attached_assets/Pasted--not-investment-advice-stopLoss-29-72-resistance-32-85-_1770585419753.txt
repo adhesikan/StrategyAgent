@@ -1,0 +1,105 @@
+ not investment advice.","stopLoss":29.72,"resistance":32.85,"volumeRatio":71.98,"patternScore":90,"changePercent":8.63},"deliveryStatus":{"push":false,"webhook":false},"isRead":false}]
+  constraint: undefined,
+  severity: 'ERROR',
+  code: '42P01',
+9:16:20 PM [express] GET /api/options/strategies 304 in 109ms :: [{"key":"long-options","label":"Long Options","description":"Buy calls when you think a stock will go up, or puts when you think it will go down. Simple and straightforward."},{"key":"wheel","label":"Wheel Strategy","description":"Get paid to wait for stocks you want to buy at a lower price. If assigned, sell calls to earn more income."},{"key":"credit-spreads","label":"Credit Spreads","description":"Collect premium by selling spreads. You profit when the stock stays in your expected range."}]
+  detail: undefined,
+  hint: undefined,
+  position: '80',
+  internalPosition: undefined,
+Error listing universes: error: relation "ticker_universes" does not exist
+  internalQuery: undefined,
+  where: undefined,
+    at /app/dist/index.cjs:64:13330
+  schema: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  table: undefined,
+    at async /app/dist/index.cjs:70:38016
+  column: undefined,
+    at async ld (/app/dist/index.cjs:78:50716)
+  dataType: undefined,
+    at async /app/dist/index.cjs:79:26201 {
+  length: 115,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+}
+Error fetching risk profile: error: relation "risk_profiles" does not exist
+    at /app/dist/index.cjs:64:13330
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:38016
+    at async ub.getRiskProfile (/app/dist/index.cjs:70:169371)
+    at async Ra (/app/dist/index.cjs:78:51686)
+    at async /app/dist/index.cjs:79:24521 {
+  length: 113,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '242',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+}
+9:16:20 PM [express] GET /api/platform/universes 500 in 120ms :: {"message":"Failed to list universes"}
+9:16:20 PM [express] GET /api/platform/risk-profile 500 in 120ms :: {"message":"Failed to fetch risk profile"}
+Error fetching risk profile: error: relation "risk_profiles" does not exist
+    at /app/dist/index.cjs:64:13330
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:38016
+    at async ub.getRiskProfile (/app/dist/index.cjs:70:169371)
+    at async Ra (/app/dist/index.cjs:78:51686)
+    at async /app/dist/index.cjs:79:24521 {
+  length: 113,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '242',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+  routine: 'parserOpenTable'
+}
+9:16:23 PM [express] GET /api/platform/risk-profile 500 in 76ms :: {"message":"Failed to fetch risk profile"}
+Error updating risk profile: error: relation "risk_profiles" does not exist
+    at /app/dist/index.cjs:64:13330
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:38016
+    at async ub.getRiskProfile (/app/dist/index.cjs:70:169371)
+    at async Ra (/app/dist/index.cjs:78:51686)
+    at async /app/dist/index.cjs:79:25082 {
+  length: 113,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '242',
+  internalPosition: undefined,
+  internalQuery: undefined,
+}
+9:16:25 PM [express] PUT /api/platform/risk-profile 500 in 15ms :: {"message":"Failed to update risk profile"}

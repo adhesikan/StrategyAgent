@@ -44,12 +44,9 @@ export interface OptionsScanResult {
 }
 
 export const STRATEGY_DEFINITIONS = [
-  { key: "wheel", label: "Wheel Strategy (CSP + CC)", description: "Sell cash-secured puts, then covered calls on assignment" },
-  { key: "credit-spreads", label: "Credit Spreads (MWFS)", description: "Mon-Wed-Fri short-dated credit spread strategy for consistent premium" },
-  { key: "swing-pullbacks", label: "Swing Trade Pullbacks", description: "Options on pullback entries in trending stocks for swing trades" },
-  { key: "vwap-reclaim", label: "Day Trade VWAP Reclaim", description: "Intraday options on VWAP reclaim setups with tight risk" },
-  { key: "volume-breakouts", label: "Relative Volume Breakouts", description: "Options on stocks breaking out with unusual relative volume" },
-  { key: "long-options", label: "Long Options (Calls/Puts)", description: "Directional long calls or puts on high-conviction setups" },
+  { key: "long-options", label: "Long Options", description: "Buy calls when you think a stock will go up, or puts when you think it will go down. Simple and straightforward." },
+  { key: "wheel", label: "Wheel Strategy", description: "Get paid to wait for stocks you want to buy at a lower price. If assigned, sell calls to earn more income." },
+  { key: "credit-spreads", label: "Credit Spreads", description: "Collect premium by selling spreads. You profit when the stock stays in your expected range." },
 ] as const;
 
 export async function runOptionsScan(
@@ -119,18 +116,12 @@ function generateRationale(strategy: string, symbol: string, iv: number, risk?: 
   const ivPct = Math.round(iv * 100);
   const riskNote = risk?.protectionsEnabled ? " Protections active." : "";
   switch (strategy) {
-    case "wheel":
-      return `${symbol} at ${ivPct}% IV — elevated premium for CSP entry. Delta range ${risk?.deltaMin ?? 0.10}–${risk?.deltaMax ?? 0.30}.${riskNote}`;
-    case "credit-spreads":
-      return `${symbol} range-bound with ${ivPct}% IV — favorable MWF credit spread conditions with rapid theta decay.${riskNote}`;
-    case "swing-pullbacks":
-      return `${symbol} pulling back to support at ${ivPct}% IV — swing entry with defined risk on options.${riskNote}`;
-    case "vwap-reclaim":
-      return `${symbol} reclaiming VWAP at ${ivPct}% IV — intraday momentum setup with tight stop.${riskNote}`;
-    case "volume-breakouts":
-      return `${symbol} breaking out on relative volume surge at ${ivPct}% IV — momentum continuation play.${riskNote}`;
     case "long-options":
-      return `${symbol} directional setup at ${ivPct}% IV — high-conviction long option with defined risk.${riskNote}`;
+      return `${symbol} has ${ivPct}% implied volatility — good setup for a directional trade with defined risk.${riskNote}`;
+    case "wheel":
+      return `${symbol} at ${ivPct}% IV — strong premium for selling puts. Target delta ${risk?.deltaMin ?? 0.10}–${risk?.deltaMax ?? 0.30}.${riskNote}`;
+    case "credit-spreads":
+      return `${symbol} trading in a range with ${ivPct}% IV — good conditions for collecting spread premium.${riskNote}`;
     default:
       return `${symbol} scan result at ${ivPct}% IV.${riskNote}`;
   }

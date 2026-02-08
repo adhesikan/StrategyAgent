@@ -1614,11 +1614,22 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const { getUniverse } = await import("./models/ticker-universes");
       const { getDefaultRiskProfile } = await import("./models/risk-profiles");
 
-      const universe = await getUniverse(universeId, userId);
-      if (!universe || universe.members.length < 1) {
-        return res.status(400).json({ error: "Universe empty" });
+      const BUILTIN_IDS = ["dow30", "nasdaq100", "sp500", "all"];
+      let symbols: string[];
+
+      if (BUILTIN_IDS.includes(universeId)) {
+        symbols = getUniverseSymbols(universeId as any);
+      } else {
+        const universe = await getUniverse(universeId, userId);
+        if (!universe || universe.members.length < 1) {
+          return res.status(400).json({ error: "Universe empty" });
+        }
+        symbols = universe.members.map(m => m.symbol);
       }
-      const symbols = universe.members.map(m => m.symbol);
+
+      if (!symbols || symbols.length < 1) {
+        return res.status(400).json({ error: "No stocks found in selected group" });
+      }
 
       let brokerToken: string | undefined;
       try {

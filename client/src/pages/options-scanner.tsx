@@ -29,11 +29,7 @@ import {
   Unplug,
   Pencil,
   Globe,
-  Search,
-  BarChart3,
-  Filter,
-  LineChart,
-  Zap,
+  Plus,
 } from "lucide-react";
 
 interface MeResponse {
@@ -95,12 +91,33 @@ const MODE_LABELS: Record<string, string> = {
   aggressive: "Aggressive",
 };
 
+const BUILTIN_UNIVERSES = [
+  { id: "sp500", name: "S&P 500", description: "500 largest US companies", count: 503 },
+  { id: "nasdaq100", name: "Nasdaq 100", description: "100 largest tech & growth stocks", count: 101 },
+  { id: "dow30", name: "Dow Jones 30", description: "30 blue-chip stocks", count: 30 },
+];
+
+const STRATEGY_TIPS: Record<string, { difficulty: string; tip: string }> = {
+  "long-options": {
+    difficulty: "Beginner Friendly",
+    tip: "Great starting point. You buy an option and your maximum loss is what you paid for it.",
+  },
+  "wheel": {
+    difficulty: "Intermediate",
+    tip: "Best for stocks you'd want to own anyway. You earn income while waiting.",
+  },
+  "credit-spreads": {
+    difficulty: "Intermediate",
+    tip: "Lower risk than selling naked options. Your max loss and max gain are both defined upfront.",
+  },
+};
+
 export default function OptionsScanner() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
-  const [universeId, setUniverseId] = useState("");
-  const [activeStrategy, setActiveStrategy] = useState("wheel");
+  const [universeId, setUniverseId] = useState("sp500");
+  const [activeStrategy, setActiveStrategy] = useState("long-options");
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -108,7 +125,7 @@ export default function OptionsScanner() {
     queryKey: ["/api/auth/me"],
   });
 
-  const { data: universes, isLoading: universesLoading } = useQuery<PlatformUniverse[]>({
+  const { data: userUniverses, isLoading: universesLoading } = useQuery<PlatformUniverse[]>({
     queryKey: ["/api/platform/universes"],
     enabled: !!me?.entitlements?.optionsScanner,
   });
@@ -118,19 +135,26 @@ export default function OptionsScanner() {
     enabled: !!me?.entitlements?.optionsScanner,
   });
 
-  const { isConnected: brokerConnected, providerName: brokerProviderName } = useBrokerStatus();
+  const { isConnected: brokerConnected } = useBrokerStatus();
 
-  const { data: strategies } = useQuery<StrategyDef[]>({
+  const { data: rawStrategies } = useQuery<StrategyDef[]>({
     queryKey: ["/api/options/strategies"],
     enabled: !!me?.entitlements?.optionsScanner,
   });
+
+  const STRATEGY_ORDER = ["long-options", "wheel", "credit-spreads"];
+  const strategies = rawStrategies
+    ? STRATEGY_ORDER
+        .map((key) => rawStrategies.find((s) => s.key === key))
+        .filter((s): s is StrategyDef => !!s)
+    : [];
 
   const { data: scanHistory } = useQuery<ScanHistoryItem[]>({
     queryKey: ["/api/options/scans"],
     enabled: !!me?.entitlements?.optionsScanner && showHistory,
   });
 
-  const selectedUniverseId = universeId || (universes && universes.length > 0 ? universes[0].id : "");
+  const selectedUniverseId = universeId;
 
   const scanMutation = useMutation({
     mutationFn: async () => {
@@ -146,13 +170,13 @@ export default function OptionsScanner() {
       queryClient.invalidateQueries({ queryKey: ["/api/options/scans"] });
       toast({
         title: "Scan complete",
-        description: `Found ${data.candidateCount} candidates for ${data.strategyKey}`,
+        description: `Found ${data.candidateCount} trade ideas`,
       });
     },
     onError: () => {
       toast({
         title: "Scan failed",
-        description: "Could not complete the options scan. Please try again.",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
     },
@@ -190,19 +214,9 @@ export default function OptionsScanner() {
   }
 
   const isDataLoading = universesLoading || riskLoading;
-  const hasUniverses = universes && universes.length > 0;
   const canScan = brokerConnected && !!selectedUniverseId && !scanMutation.isPending;
-
   const activeStrategyDef = strategies?.find((s) => s.key === activeStrategy);
-
-  const CAPABILITIES = [
-    { icon: Search, title: "Multi-Universe Scanning", description: "Scan Dow 30, Nasdaq 100, S&P 500, NYSE Composite, or your custom watchlists. Process hundreds of tickers in seconds." },
-    { icon: BarChart3, title: "Priority Score Ranking", description: "Every candidate is ranked by an objective Priority Score combining annualized yield, probability of profit, and liquidity metrics." },
-    { icon: Filter, title: "Advanced Filtering", description: "Filter by price, volume, IV Rank, delta range, DTE, and minimum premium. Find exactly what matches your criteria." },
-    { icon: Shield, title: "Built-in Risk Controls", description: "Rally warnings, drawdown kill switches, and capital allocation limits are applied automatically before any recommendation." },
-    { icon: LineChart, title: "IV Rank Calculation", description: "Historical IV Rank with proxy fallback ensures accurate volatility assessment even for tickers with limited history." },
-    { icon: History, title: "Scan History & Analytics", description: "Every scan is logged with full metadata. Track your scanning patterns, review past results, and measure performance." },
-  ];
+  const activeTip = STRATEGY_TIPS[activeStrategy];
 
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6 space-y-5" data-testid="options-scanner-container">
@@ -213,7 +227,7 @@ export default function OptionsScanner() {
             Options Scanner
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Find high-probability options trades across strategies
+            Find options trade ideas across hundreds of stocks in seconds
           </p>
         </div>
 
@@ -225,33 +239,61 @@ export default function OptionsScanner() {
             data-testid="button-toggle-history"
           >
             <History className="h-4 w-4 mr-1" />
-            {showHistory ? "Hide History" : "Scan History"}
+            {showHistory ? "Hide History" : "Past Scans"}
           </Button>
         </div>
       </div>
 
-      <div className="space-y-2" data-testid="section-scanning-modes">
+      <div className="space-y-3" data-testid="section-scanning-modes">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-          6 Scanning Modes
+          Choose a Strategy
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {(strategies || []).map((s) => (
-            <div
-              key={s.key}
-              className={cn(
-                "flex items-center gap-2 px-3 py-2.5 rounded-md border cursor-pointer transition-colors",
-                activeStrategy === s.key
-                  ? "border-primary bg-primary/5"
-                  : "hover-elevate"
-              )}
-              onClick={() => setActiveStrategy(s.key)}
-              data-testid={`mode-card-${s.key}`}
-            >
-              <Zap className={cn("h-4 w-4 shrink-0", activeStrategy === s.key ? "text-primary" : "text-muted-foreground")} />
-              <span className={cn("text-sm font-medium truncate", activeStrategy === s.key ? "text-foreground" : "text-muted-foreground")}>{s.label}</span>
-            </div>
-          ))}
+        <p className="text-xs text-muted-foreground">
+          Pick how you want to trade. Each strategy has a different approach and risk level.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {strategies.map((s) => {
+            const tip = STRATEGY_TIPS[s.key];
+            const isActive = activeStrategy === s.key;
+            return (
+              <Card
+                key={s.key}
+                className={cn(
+                  "cursor-pointer transition-colors",
+                  isActive
+                    ? "border-primary bg-primary/5"
+                    : "hover-elevate"
+                )}
+                onClick={() => setActiveStrategy(s.key)}
+                data-testid={`mode-card-${s.key}`}
+              >
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start justify-between gap-2 flex-wrap mb-2">
+                    <h3 className={cn("text-sm font-semibold", isActive ? "text-foreground" : "text-muted-foreground")}>
+                      {s.label}
+                    </h3>
+                    {tip && (
+                      <Badge variant={isActive ? "default" : "secondary"} className="text-xs" data-testid={`badge-difficulty-${s.key}`}>
+                        {tip.difficulty}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {s.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
+        {activeTip && (
+          <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50" data-testid="strategy-tip">
+            <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <span className="font-medium text-foreground">Tip:</span> {activeTip.tip}
+            </p>
+          </div>
+        )}
       </div>
 
       {isDataLoading ? (
@@ -266,7 +308,7 @@ export default function OptionsScanner() {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <Globe className="h-4 w-4 text-muted-foreground" />
-                    Ticker Universe
+                    Stocks to Scan
                   </CardTitle>
                   <Button
                     variant="ghost"
@@ -275,43 +317,45 @@ export default function OptionsScanner() {
                     className="text-xs"
                     data-testid="link-manage-universes"
                   >
-                    Manage
-                    <ExternalLink className="h-3 w-3 ml-1" />
+                    <Plus className="h-3 w-3 mr-1" />
+                    Custom List
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                {!hasUniverses ? (
-                  <div className="text-center py-4 space-y-3">
-                    <p className="text-sm text-muted-foreground" data-testid="text-no-universes">
-                      No ticker universes configured yet.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate("/settings/universes")}
-                      data-testid="button-create-first-universe"
-                    >
-                      Create Universe
-                    </Button>
-                  </div>
-                ) : (
-                  <Select
-                    value={selectedUniverseId}
-                    onValueChange={setUniverseId}
-                  >
-                    <SelectTrigger data-testid="select-universe">
-                      <SelectValue placeholder="Select universe" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {universes.map((u) => (
-                        <SelectItem key={u.id} value={u.id} data-testid={`option-universe-${u.id}`}>
-                          {u.name} ({u.count})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select
+                  value={selectedUniverseId}
+                  onValueChange={setUniverseId}
+                >
+                  <SelectTrigger data-testid="select-universe">
+                    <SelectValue placeholder="Choose which stocks to scan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                      Major Indices
+                    </div>
+                    {BUILTIN_UNIVERSES.map((u) => (
+                      <SelectItem key={u.id} value={u.id} data-testid={`option-universe-${u.id}`}>
+                        {u.name} ({u.count} stocks)
+                      </SelectItem>
+                    ))}
+                    {userUniverses && userUniverses.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-1">
+                          Your Custom Lists
+                        </div>
+                        {userUniverses.map((u) => (
+                          <SelectItem key={u.id} value={u.id} data-testid={`option-universe-${u.id}`}>
+                            {u.name} ({u.count} stocks)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Choose a group of stocks to search through for trade ideas
+                </p>
               </CardContent>
             </Card>
 
@@ -320,7 +364,7 @@ export default function OptionsScanner() {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <Shield className="h-4 w-4 text-muted-foreground" />
-                    Risk Profile
+                    Risk Settings
                   </CardTitle>
                   <Button
                     variant="ghost"
@@ -336,26 +380,36 @@ export default function OptionsScanner() {
               </CardHeader>
               <CardContent>
                 {riskProfile ? (
-                  <div className="flex flex-wrap items-center gap-2" data-testid="risk-profile-summary">
-                    <Badge variant="secondary" data-testid="text-risk-mode">
-                      {MODE_LABELS[riskProfile.risk_mode] ?? riskProfile.risk_mode}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground" data-testid="text-risk-deploy">
-                      Deploy {riskProfile.max_deploy}%
-                    </span>
-                    <span className="text-sm text-muted-foreground" data-testid="text-risk-per-trade">
-                      Risk {riskProfile.risk_per_trade}%/trade
-                    </span>
-                    <Badge
-                      variant={riskProfile.protections_enabled ? "default" : "outline"}
-                      className="text-xs"
-                      data-testid="text-protections-status"
-                    >
-                      {riskProfile.protections_enabled ? "Protections ON" : "Protections OFF"}
-                    </Badge>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2" data-testid="risk-profile-summary">
+                      <Badge variant="secondary" data-testid="text-risk-mode">
+                        {MODE_LABELS[riskProfile.risk_mode] ?? riskProfile.risk_mode}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground" data-testid="text-risk-deploy">
+                        Deploy {riskProfile.max_deploy}%
+                      </span>
+                      <span className="text-sm text-muted-foreground" data-testid="text-risk-per-trade">
+                        Risk {riskProfile.risk_per_trade}%/trade
+                      </span>
+                      <Badge
+                        variant={riskProfile.protections_enabled ? "default" : "outline"}
+                        className="text-xs"
+                        data-testid="text-protections-status"
+                      >
+                        {riskProfile.protections_enabled ? "Safety ON" : "Safety OFF"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Controls how much of your account to use and how much risk per trade
+                    </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No risk profile found.</p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">Using default risk settings</p>
+                    <p className="text-xs text-muted-foreground">
+                      Set up a risk profile to customize how much you want to risk per trade
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -369,10 +423,10 @@ export default function OptionsScanner() {
                     <Unplug className="h-5 w-5 text-yellow-500" />
                     <div>
                       <p className="text-sm font-medium" data-testid="text-broker-warning">
-                        Broker not connected
+                        Connect your broker to scan
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Connect a brokerage to run live options scans
+                        Link your brokerage account to start finding trade ideas
                       </p>
                     </div>
                   </div>
@@ -381,7 +435,7 @@ export default function OptionsScanner() {
                     onClick={() => navigate("/settings")}
                     data-testid="button-connect-broker"
                   >
-                    Connect Tradier
+                    Connect Broker
                   </Button>
                 </div>
               </CardContent>
@@ -405,16 +459,16 @@ export default function OptionsScanner() {
                           ) : (
                             <Play className="h-4 w-4 mr-1" />
                           )}
-                          Run Scan
+                          {scanMutation.isPending ? "Scanning..." : "Find Trades"}
                         </Button>
                       </span>
                     </TooltipTrigger>
                     {!canScan && !scanMutation.isPending && (
                       <TooltipContent data-testid="tooltip-scan-disabled">
                         {!brokerConnected
-                          ? "Connect a broker first"
+                          ? "Connect your broker first"
                           : !selectedUniverseId
-                          ? "Select a ticker universe"
+                          ? "Pick which stocks to scan"
                           : ""}
                       </TooltipContent>
                     )}
@@ -429,7 +483,7 @@ export default function OptionsScanner() {
                   {brokerConnected && !selectedUniverseId && (
                     <span className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400" data-testid="text-scan-validation">
                       <AlertTriangle className="h-3 w-3" />
-                      Select a universe
+                      Pick stocks to scan
                     </span>
                   )}
                 </div>
@@ -441,7 +495,7 @@ export default function OptionsScanner() {
                       {new Date(scanResult.scannedAt).toLocaleTimeString()}
                     </span>
                     <Badge variant="secondary" data-testid="text-candidate-count">
-                      {scanResult.candidateCount} candidates
+                      {scanResult.candidateCount} ideas found
                     </Badge>
                   </div>
                 )}
@@ -461,9 +515,9 @@ export default function OptionsScanner() {
               {scanResult && scanResult.strategyKey === activeStrategy ? (
                 <CandidatesTable candidates={scanResult.candidates} />
               ) : scanResult && scanResult.strategyKey !== activeStrategy ? (
-                <EmptyState message={`Run a scan with "${activeStrategyDef?.label ?? activeStrategy}" selected to see results`} />
+                <EmptyState message={`Click "Find Trades" with "${activeStrategyDef?.label ?? activeStrategy}" selected to see results`} />
               ) : (
-                <EmptyState message="Select a universe and click Run Scan to find candidates" />
+                <EmptyState message="Pick your strategy and stocks above, then click Find Trades" />
               )}
             </CardContent>
           </Card>
@@ -473,12 +527,12 @@ export default function OptionsScanner() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <History className="h-5 w-5 text-primary" />
-                  <CardTitle>Recent Scans</CardTitle>
+                  <CardTitle>Past Scans</CardTitle>
                 </div>
               </CardHeader>
               <CardContent>
                 {!scanHistory || scanHistory.length === 0 ? (
-                  <EmptyState message="No scan history yet. Run your first scan above." />
+                  <EmptyState message="No past scans yet. Run your first scan above." />
                 ) : (
                   <ScrollArea className="max-h-[300px]">
                     <div className="space-y-2">
@@ -513,29 +567,6 @@ export default function OptionsScanner() {
               </CardContent>
             </Card>
           )}
-
-          <div className="space-y-3" data-testid="section-capabilities">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Key Capabilities
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {CAPABILITIES.map((cap) => (
-                <Card key={cap.title} data-testid={`capability-card-${cap.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                        <cap.icon className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-semibold">{cap.title}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{cap.description}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
         </>
       )}
     </div>
@@ -555,7 +586,7 @@ function EmptyState({ message }: { message: string }) {
 
 function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
   if (candidates.length === 0) {
-    return <EmptyState message="No candidates found for this scan" />;
+    return <EmptyState message="No trade ideas found for this scan" />;
   }
 
   return (
@@ -564,68 +595,55 @@ function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
         <TableHeader>
           <TableRow>
             <TableHead className="w-12">#</TableHead>
-            <TableHead>Symbol</TableHead>
-            <TableHead>Underlying</TableHead>
-            <TableHead className="text-right">Strike</TableHead>
-            <TableHead>Exp</TableHead>
+            <TableHead>Stock</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead className="text-right">Bid</TableHead>
-            <TableHead className="text-right">Ask</TableHead>
-            <TableHead className="text-right">Mid</TableHead>
-            <TableHead className="text-right">IV</TableHead>
-            <TableHead className="text-right">Delta</TableHead>
-            <TableHead className="text-right">Theta</TableHead>
-            <TableHead className="text-right">OI</TableHead>
-            <TableHead className="text-right">Vol</TableHead>
+            <TableHead className="text-right">Strike</TableHead>
+            <TableHead>Expires</TableHead>
+            <TableHead className="text-right">Price</TableHead>
             <TableHead className="text-right">Score</TableHead>
-            <TableHead className="w-12"></TableHead>
+            <TableHead className="hidden lg:table-cell">Why</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {candidates.map((c) => (
-            <TableRow key={c.symbol} data-testid={`candidate-row-${c.rank}`}>
-              <TableCell className="font-mono text-muted-foreground">{c.rank}</TableCell>
-              <TableCell className="font-medium">{c.symbol}</TableCell>
-              <TableCell>{c.underlying}</TableCell>
-              <TableCell className="text-right font-mono">${c.strike}</TableCell>
-              <TableCell className="text-sm">{c.expiration}</TableCell>
+            <TableRow key={`${c.symbol}-${c.strike}-${c.expiration}`} data-testid={`candidate-row-${c.rank}`}>
+              <TableCell className="font-medium text-muted-foreground">{c.rank}</TableCell>
+              <TableCell>
+                <div>
+                  <span className="font-medium" data-testid={`text-underlying-${c.rank}`}>{c.underlying}</span>
+                  <span className="text-xs text-muted-foreground ml-1">${c.strike}</span>
+                </div>
+              </TableCell>
               <TableCell>
                 <Badge
-                  variant="outline"
-                  className={cn(
-                    c.optionType === "put"
-                      ? "text-red-600 dark:text-red-400 border-red-500/30"
-                      : "text-green-600 dark:text-green-400 border-green-500/30"
-                  )}
+                  variant={c.optionType === "call" ? "default" : "secondary"}
+                  className="text-xs"
+                  data-testid={`badge-type-${c.rank}`}
                 >
-                  {c.optionType === "put" ? (
-                    <TrendingDown className="h-3 w-3 mr-1" />
-                  ) : (
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                  )}
-                  {c.optionType.toUpperCase()}
+                  {c.optionType === "call" ? "Call" : "Put"}
                 </Badge>
               </TableCell>
-              <TableCell className="text-right font-mono">${c.bid.toFixed(2)}</TableCell>
-              <TableCell className="text-right font-mono">${c.ask.toFixed(2)}</TableCell>
-              <TableCell className="text-right font-mono font-medium">${c.mid.toFixed(2)}</TableCell>
-              <TableCell className="text-right font-mono">{c.impliedVol}%</TableCell>
-              <TableCell className="text-right font-mono">{c.delta}</TableCell>
-              <TableCell className="text-right font-mono">{c.theta}</TableCell>
-              <TableCell className="text-right font-mono">{c.openInterest.toLocaleString()}</TableCell>
-              <TableCell className="text-right font-mono">{c.volume.toLocaleString()}</TableCell>
+              <TableCell className="text-right font-mono text-sm" data-testid={`text-strike-${c.rank}`}>
+                ${c.strike}
+              </TableCell>
+              <TableCell className="text-sm" data-testid={`text-exp-${c.rank}`}>
+                {c.expiration}
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm" data-testid={`text-mid-${c.rank}`}>
+                ${c.mid.toFixed(2)}
+              </TableCell>
               <TableCell className="text-right">
                 <ScoreBadge score={c.score} />
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden lg:table-cell max-w-[200px]">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button size="icon" variant="ghost" data-testid={`button-info-${c.rank}`}>
-                      <Info className="h-4 w-4" />
-                    </Button>
+                    <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-${c.rank}`}>
+                      {c.rationale}
+                    </p>
                   </TooltipTrigger>
-                  <TooltipContent side="left" className="max-w-[300px]">
-                    <p className="text-sm">{c.rationale}</p>
+                  <TooltipContent className="max-w-sm">
+                    <p className="text-xs">{c.rationale}</p>
                   </TooltipContent>
                 </Tooltip>
               </TableCell>
@@ -640,15 +658,8 @@ function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
 function ScoreBadge({ score }: { score: number }) {
   return (
     <Badge
-      variant="secondary"
-      className={cn(
-        "font-mono",
-        score >= 90
-          ? "text-green-600 dark:text-green-400"
-          : score >= 80
-          ? "text-blue-600 dark:text-blue-400"
-          : "text-muted-foreground"
-      )}
+      variant={score >= 90 ? "default" : score >= 75 ? "secondary" : "outline"}
+      className="text-xs font-mono"
       data-testid="badge-score"
     >
       {score}

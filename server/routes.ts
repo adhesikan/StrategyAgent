@@ -1584,7 +1584,6 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   const optionsScanRequestSchema = z.object({
     universeId: z.string().min(1),
-    mode: z.string().optional(),
     riskProfileId: z.string().optional(),
     strategyKey: z.string().min(1),
   });
@@ -1610,18 +1609,43 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.errors[0].message });
       }
-      const { universeId, mode, riskProfileId, strategyKey } = parsed.data;
+      const { universeId, riskProfileId, strategyKey } = parsed.data;
+
+      const { getUniverse } = await import("./models/ticker-universes");
+      const { getDefaultRiskProfile } = await import("./models/risk-profiles");
+
+      const universe = await getUniverse(universeId, userId);
+      if (!universe || universe.members.length < 1) {
+        return res.status(400).json({ error: "Universe empty" });
+      }
+      const symbols = universe.members.map(m => m.symbol);
 
       let brokerToken: string | undefined;
       try {
         const connection = await storage.getBrokerConnectionWithToken(userId);
         if (connection?.accessToken) {
           brokerToken = connection.accessToken;
+        } else {
+          return res.status(409).json({ error: "Broker not connected" });
         }
-      } catch {}
+      } catch {
+        return res.status(409).json({ error: "Broker not connected" });
+      }
+
+      const riskProfile = await getDefaultRiskProfile(userId);
+
+      const riskSettings = {
+        deltaMin: riskProfile.deltaMin ?? 0.10,
+        deltaMax: riskProfile.deltaMax ?? 0.30,
+        minPremiumPct: riskProfile.minPremiumPct ?? 0.5,
+        vixPause: riskProfile.vixPause ?? 35,
+        lossCutoffMult: riskProfile.lossCutoffMult ?? 2.0,
+        protectionsEnabled: riskProfile.protectionsEnabled,
+        guardrails: (riskProfile.guardrailsJson as Record<string, unknown>) ?? {},
+      };
 
       const result = await runOptionsScan(
-        { universeId, mode, riskProfileId, strategyKey },
+        { universeId, strategyKey, symbols, riskSettings },
         brokerToken,
       );
 
@@ -1629,7 +1653,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         userId,
         universeId,
         strategyKey,
-        requestJson: { universeId, mode, riskProfileId, strategyKey },
+        requestJson: { universeId, riskProfileId, strategyKey },
         resultJson: result,
       });
 

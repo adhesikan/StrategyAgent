@@ -1,0 +1,102 @@
+We have a serious UX problem in the Stock Scanner results.
+
+The system is labeling trades as "Top Picks" and showing InstaTrade buttons even when the entry price is significantly ABOVE the current market price. This is confusing and potentially misleading for users.
+
+Example:
+Current Price: $99
+Entry: $107
+
+This is NOT an active trade — it is a breakout setup that has NOT triggered yet.
+
+Right now the UI makes it look like:
+"Top Pick → InstaTrade now"
+
+That is incorrect behavior.
+
+We need to fix this immediately.
+
+GOAL:
+Clearly distinguish between:
+- Setup forming
+- Triggered
+- Actionable
+
+CHANGES REQUIRED:
+
+1) Add Trade Status Logic (MANDATORY)
+
+If current_price < entry_price:
+    status = "Awaiting Breakout"
+
+If current_price >= entry_price AND <= target:
+    status = "In Entry Zone"
+
+If current_price > target:
+    status = "Extended"
+
+This status must be computed in the backend and returned with the scan results.
+
+2) Display Status Badge Prominently
+
+Each card must clearly show:
+🟡 Awaiting Breakout
+🟢 In Entry Zone
+⚠ Extended
+
+This badge should be more visually important than the confidence percentage.
+
+3) Add “Distance to Entry” Metric
+
+If current_price < entry:
+Calculate:
+
+distance_pct = ((entry - current_price) / current_price) * 100
+
+Display clearly:
+
+"Entry activates +X% above current price"
+
+This removes ambiguity.
+
+4) Disable InstaTrade for Non-Triggered Setups
+
+If status == "Awaiting Breakout":
+- DO NOT allow InstaTrade
+- Replace button with:
+  "Set Breakout Alert"
+
+If status == "In Entry Zone":
+- Allow InstaTrade
+
+We cannot allow execution on trades that have not triggered.
+
+5) Fix Top Picks Ranking Logic
+
+Currently Top Picks are being selected purely by confidence and volume.
+
+This is flawed.
+
+Modify ranking logic:
+
+Penalize if:
+- Risk/Reward < 1
+- Distance to entry > 5%
+
+Boost if:
+- Risk/Reward >= 2
+- Entry within 2% of current price
+- Strong volume expansion
+
+We must prevent far-away breakout setups from appearing as immediate "Top Picks".
+
+6) Do NOT change the core strategy calculations.
+Only improve clarity, ranking, and execution gating.
+
+DELIVERABLES:
+- Updated backend status logic
+- Updated ranking adjustments
+- Updated card UI with status badge and distance-to-entry
+- InstaTrade gating logic implemented
+
+This is a critical usability and trust issue.
+Users must clearly understand when a trade is actually actionable.

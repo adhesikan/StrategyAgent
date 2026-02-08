@@ -1,0 +1,13 @@
+9:39:52 PM [express] GET /api/options/strategies 304 in 6ms :: [{"key":"long-options","label":"Long Options","description":"Buy calls when you think a stock will go up, or puts when you think it will go down. Simple and straightforward."},{"key":"wheel","label":"Wheel Strategy","description":"Get paid to wait for stocks you want to buy at a lower price. If assigned, sell calls to earn more income."},{"key":"credit-spreads","label":"Credit Spreads","description":"Collect premium by selling spreads. You profit when the stock stays in your expected range."}]
+[OptionsScanner] scan error: column "request_json" of relation "options_scans" does not exist
+9:39:55 PM [express] POST /api/options/scan 500 in 22ms :: {"error":"Scan failed"}
+9:40:00 PM [opportunities] [Opportunities] Running resolver job...
+[Opportunities] Processing 1373 active opportunities
+9:40:00 PM [opportunities] [Opportunities] Price fetch error for batch: Tradier API error: 401
+9:40:00 PM [opportunities] [Opportunities] Price fetch error for batch: Tradier API error: 401
+[AlertEngine] Processing 2 global rule(s) against 279 scan results
+[AlertEngine] Rule 57eebe16-fca2-4de9-8c45-1841c8f261de: Looking for stage=BREAKOUT, previouslyTriggered=SMCI,CSGP,LRCX,MU,HON,IBM,AMAT,AVGO,GILD,MDB,MRNA,INTC,GFS,KDP,GOOGL,NVDA,TTD,ARM,CPRT,CSX,DDOG,FAST,ILMN,MCHP,ODFL,PYPL,TEAM,TSLA,SBUX,CHTR,CMCSA,ADI,AMGN,BKR,CTSH,GEHC,MAR,MRVL,ON,PCAR,TXN,VRTX,ORLY,PG,FTNT,KHC,MSFT,NFLX,PANW,AAPL,ANET,APH,GLW,SYY,UPS,GM,PFE,AKAM,ARE,KMX,RTX,STX,UNH,ELV,FFIV,WDC,T,PPG,TT,DOW,HBAN,NOW,ORCL,VTRS,EL,LUV,LYB,MTCH,TER,TSCO,WMT,APTV,CL,DOV,AME,CE,EMN,FITB,LULU,WST,CCL,CSCO,DAL,DVA,ETN,FDX,FSLR,GL,HAS,HPE,IR,JBHT,KEY,LVS,MRK,PLTR,RF,TFC,TGT,UAL,USB,VRSN,WAT,ZBRA,AES,HPQ,BLDR,CAG,CTRA,D,IP,ITW,PEP,VZ,BALL,HWM,WTW,OKE,SWK,WY,BG,FCX,ENPH,FTV,TECH,SW,ADBE,AMT,AVY,BAX,CLX,COO,CZR,DVN,EMR,FIS,IEX,INTU,J,JCI,JKHY,KMB,LW,MGM,NKE,PAYC,PNR,RMD,ROP,STZ,SWKS,TYL,UDR,VICI,OTIS,HSY,COR,BSX,CMS,PTC,CPAY,ALGN,EFX,ALL,UBER,BMY,CAH,CI,ICE,TPR,TXT,UHS,VTR,CME,GEN,ACN,AMCR,AVB,BIIB,BX,BXP,CCI,CDNS,CEG,CMG,CRL,CRWD,DECK,DLR,EPAM,EQR,ESS,EXPE,FMC,HII,HSIC,INCY,IQV,ISRG,IT,IVZ,JPM,MAS,MMM,NEM,POOL,PRU,RJF,ROK,SLB,SNPS,STE,TEL,TFX,TRMB,TROW,VMC,VST,WELL,XYL,AXON,RVTY,WBD
+[AlertEngine] Rule 19e903c9-1a7e-4fb3-92fa-ad64d28d52db: Found 0 matching results
+[AlertEngine] Processing 1 watchlist rule(s) against 279 scan results
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Looking for stage=BREAKOUT in watchlist MyTechWatch (1 symbols)
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Found 0 matching results

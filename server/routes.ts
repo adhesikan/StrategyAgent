@@ -1578,6 +1578,51 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ─── Platform Risk Profile API ────────────────────────────────────────
+  const { toRiskProfileResponse } = await import("@shared/platform-types");
+  const { getDefaultRiskProfile: getOrCreateRiskProfile } = await import("./models/risk-profiles");
+
+  app.get("/api/platform/risk-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await getOrCreateRiskProfile(userId);
+      res.json(toRiskProfileResponse(profile));
+    } catch (error: any) {
+      console.error("[Platform] risk-profile GET error:", error.message);
+      res.status(500).json({ message: "Failed to load risk profile" });
+    }
+  });
+
+  app.put("/api/platform/risk-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await getOrCreateRiskProfile(userId);
+      const body = req.body;
+
+      const updateData: Record<string, unknown> = {};
+      if (body.risk_mode !== undefined) updateData.riskMode = body.risk_mode;
+      if (body.risk_per_trade !== undefined) updateData.riskPerTrade = Number(body.risk_per_trade);
+      if (body.max_deploy !== undefined) updateData.maxDeploy = Number(body.max_deploy);
+      if (body.protections_enabled !== undefined) updateData.protectionsEnabled = Boolean(body.protections_enabled);
+      if (body.guardrails_json !== undefined) updateData.guardrailsJson = body.guardrails_json;
+      if (body.protections_json !== undefined) updateData.protectionsJson = body.protections_json;
+      if (body.delta_min !== undefined) updateData.deltaMin = Number(body.delta_min);
+      if (body.delta_max !== undefined) updateData.deltaMax = Number(body.delta_max);
+      if (body.loss_cutoff_mult !== undefined) updateData.lossCutoffMult = Number(body.loss_cutoff_mult);
+      if (body.min_premium_pct !== undefined) updateData.minPremiumPct = Number(body.min_premium_pct);
+      if (body.vix_pause !== undefined) updateData.vixPause = Number(body.vix_pause);
+
+      const updated = await storage.updateRiskProfile(profile.id, updateData);
+      if (!updated) {
+        return res.status(500).json({ message: "Failed to update risk profile" });
+      }
+      res.json(toRiskProfileResponse(updated));
+    } catch (error: any) {
+      console.error("[Platform] risk-profile PUT error:", error.message);
+      res.status(500).json({ message: "Failed to update risk profile" });
+    }
+  });
+
   // ─── Options Scanner API ──────────────────────────────────────────────
   const { runOptionsScan, STRATEGY_DEFINITIONS } = await import("./engines/options-scanner/index");
   const { getUserEntitlements } = await import("./replit_integrations/auth/routes");

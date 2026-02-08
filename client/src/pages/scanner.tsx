@@ -230,6 +230,58 @@ export default function Scanner() {
   const [filterMinVolume, setFilterMinVolume] = useState<number | null>(null);
   const [filterMinRvol, setFilterMinRvol] = useState<number | null>(null);
   const [filterMinUpside, setFilterMinUpside] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"simple" | "advanced">(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('vcp_view_mode') as "simple" | "advanced") || "simple";
+    }
+    return "simple";
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleViewMode = (mode: "simple" | "advanced") => {
+    setViewMode(mode);
+    localStorage.setItem('vcp_view_mode', mode);
+  };
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
+
+  const getRiskReward = (result: ScanResult): number | null => {
+    if (!result.resistance || !result.stopLoss || !result.price) return null;
+    const reward = result.resistance - result.price;
+    const risk = result.price - result.stopLoss;
+    if (risk <= 0) return null;
+    return reward / risk;
+  };
+
+  const getStrategyGroup = (result: ScanResult): string => {
+    if (result.rvol && result.rvol >= 2.5) return "Volume Expansion";
+    if (result.changePercent && result.changePercent >= 3) return "Momentum Breakouts";
+    if ((result as any).strategy === "GAP_FORCE" || (result as any).strategy === "gap_force") return "Gap Continuations";
+    return "Tight Setups";
+  };
+
+  const getTopPicks = (results: ScanResult[]): ScanResult[] => {
+    if (!results || results.length === 0) return [];
+    const scored = results
+      .filter(r => r.stage === "BREAKOUT")
+      .map(r => {
+        const confidence = (r.patternScore || 0) / 100;
+        const rr = getRiskReward(r);
+        const rrScore = rr ? Math.min(rr / 3, 1) : 0;
+        const volScore = Math.min((r.rvol || 0) / 3, 1);
+        const composite = confidence * 0.5 + rrScore * 0.3 + volScore * 0.2;
+        return { result: r, composite };
+      })
+      .sort((a, b) => b.composite - a.composite);
+    return scored.slice(0, 3).map(s => s.result);
+  };
   const [filters, setFilters] = useState<ScannerFilters>({
     minPrice: 5,
     maxPrice: 500,
@@ -821,6 +873,10 @@ export default function Scanner() {
         aVal = a.changePercent ?? null;
         bVal = b.changePercent ?? null;
         break;
+      case "riskReward":
+        aVal = getRiskReward(a);
+        bVal = getRiskReward(b);
+        break;
     }
     // Push nulls to the bottom regardless of sort order
     if (aVal === null && bVal === null) return 0;
@@ -848,7 +904,7 @@ export default function Scanner() {
   const currentStrategyConfig = STRATEGY_CONFIGS.find(s => s.id === selectedStrategy);
 
   return (
-    <div className="p-6 space-y-6" data-testid="scanner-page">
+    <div className="p-6 md:p-8 space-y-8" data-testid="scanner-page">
       <WelcomeTutorial />
       
       <div className="flex flex-col gap-2">
@@ -1122,282 +1178,319 @@ export default function Scanner() {
         );
       })()}
 
-      {/* Featured Opportunities - Breakout & Triggered Symbols */}
+      {/* View Mode Toggle & Sorting */}
       {filteredResults && filteredResults.filter(r => r.stage === "BREAKOUT").length > 0 && (() => {
-        const topSetupId = getTopSetup(filteredResults || []);
         const breakoutResults = filteredResults.filter(r => r.stage === "BREAKOUT");
         const totalBreakouts = liveResults?.filter(r => r.stage === "BREAKOUT").length || 0;
-        return (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Flame className="h-5 w-5 text-orange-500" />
-                <CardTitle className="text-lg">Active Opportunities</CardTitle>
-                <Badge variant="secondary" className="text-xs">
-                  {breakoutResults.length}{breakoutResults.length !== totalBreakouts ? ` of ${totalBreakouts}` : ""} signals
-                </Badge>
-              </div>
-              <div className="flex items-center gap-1">
+        const topPicks = getTopPicks(breakoutResults);
+        const topPickIds = new Set(topPicks.map(p => p.id));
+        const remainingResults = breakoutResults.filter(r => !topPickIds.has(r.id));
+        const groupedResults: Record<string, ScanResult[]> = {};
+        remainingResults.forEach(r => {
+          const group = getStrategyGroup(r);
+          if (!groupedResults[group]) groupedResults[group] = [];
+          groupedResults[group].push(r);
+        });
+        const groupOrder = ["Momentum Breakouts", "Volume Expansion", "Tight Setups", "Gap Continuations"];
+
+        const renderSimpleCard = (result: ScanResult, isTopPick = false) => {
+          const isExpanded = expandedCards.has(result.id);
+          const rr = getRiskReward(result);
+          const microBadge = getMicroBadge(result);
+          return (
+            <Card
+              key={result.id}
+              className={cn(
+                "hover-elevate cursor-pointer transition-all",
+                isTopPick && "ring-2 ring-primary/40 shadow-sm"
+              )}
+              onClick={() => navigate(`/charts/${result.ticker}`)}
+              data-testid={`card-opportunity-${result.ticker}`}
+            >
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span className="font-semibold text-lg shrink-0">{result.ticker}</span>
+                    {result.patternScore && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="secondary" className="shrink-0 text-xs font-semibold cursor-help">
+                            {result.patternScore}%
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Setup confidence based on historical pattern quality.
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="shrink-0 text-xs">
+                    {getStrategyGroup(result)}
+                  </Badge>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-lg font-medium">${result.price?.toFixed(2)}</span>
+                  <span className={cn(
+                    "text-sm font-medium",
+                    (result.changePercent || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                  )}>
+                    {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(2)}%
+                  </span>
+                </div>
+
+                {microBadge && (
+                  <p className={cn("text-xs", microBadge.color)}>{microBadge.text}</p>
+                )}
+
                 <Button
-                  variant={featuredViewMode === "cards" ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => setFeaturedViewMode("cards")}
-                  data-testid="button-view-cards"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); toggleCardExpand(result.id); }}
+                  className="w-full gap-1.5 text-xs"
+                  data-testid={`button-viewplan-${result.ticker}`}
                 >
-                  <LayoutGrid className="h-4 w-4" />
+                  <BookOpen className="h-3.5 w-3.5" />
+                  {isExpanded ? "Hide Plan" : "View Plan"}
+                  <ChevronDown className={cn("h-3 w-3 transition-transform ml-auto", isExpanded && "rotate-180")} />
                 </Button>
+
+                {isExpanded && (
+                  <div className="space-y-3 pt-3 border-t border-border/50 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-xs text-muted-foreground/70 flex items-center gap-1">
+                          <Target className="h-3 w-3 text-chart-2" /> Entry (Resistance)
+                        </span>
+                        <span className="font-medium text-chart-2">${result.resistance?.toFixed(2) || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground/70 flex items-center gap-1">
+                          <TrendingDown className="h-3 w-3 text-destructive" /> Stop Loss
+                        </span>
+                        <span className="font-medium text-destructive">${result.stopLoss?.toFixed(2) || "N/A"}</span>
+                      </div>
+                      {result.resistance && result.stopLoss && (
+                        <div>
+                          <span className="text-xs text-muted-foreground/70">Target (1R)</span>
+                          <span className="font-medium text-chart-2">
+                            ${(result.resistance + (result.resistance - result.stopLoss)).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {rr !== null && (
+                        <div>
+                          <span className="text-xs text-muted-foreground/70">Risk/Reward</span>
+                          <span className={cn("font-medium", rr >= 2 ? "text-chart-2" : "text-foreground")}>
+                            1:{rr.toFixed(1)}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-xs text-muted-foreground/70">Volume</span>
+                        <span className="font-medium">{result.volume ? (result.volume / 1000000).toFixed(1) + "M" : "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground/70">RVOL</span>
+                        <span className={cn("font-medium", (result.rvol || 0) >= 1.5 ? "text-chart-2" : "text-foreground")}>
+                          {result.rvol?.toFixed(1) || "N/A"}x
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground/80 leading-relaxed">
+                      {getStrategyGroup(result) === "Volume Expansion" && "High volume surge detected, confirming institutional interest. Watch for sustained breakout above resistance."}
+                      {getStrategyGroup(result) === "Momentum Breakouts" && "Strong price momentum with follow-through. Best entries are on pullbacks to the breakout level."}
+                      {getStrategyGroup(result) === "Gap Continuations" && "Gap up with continuation potential. Monitor for gap fill as possible entry or risk point."}
+                      {getStrategyGroup(result) === "Tight Setups" && "Tight price consolidation near resistance. Lower volatility often precedes sharp directional moves."}
+                    </p>
+                    <Button
+                      size="sm"
+                      className="w-full gap-1"
+                      onClick={(e) => handleInstaTrade(result, e)}
+                      disabled={instatradeMutation.isPending}
+                      data-testid={`button-instatrade-card-${result.ticker}`}
+                    >
+                      <Zap className="h-3 w-3" />
+                      InstaTrade™
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        };
+
+        const renderAdvancedRow = (result: ScanResult) => {
+          const rr = getRiskReward(result);
+          return (
+            <div
+              key={result.id}
+              className="flex items-center justify-between gap-4 p-2.5 rounded-md hover-elevate cursor-pointer"
+              onClick={() => navigate(`/charts/${result.ticker}`)}
+              data-testid={`row-opportunity-${result.ticker}`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="font-semibold w-16">{result.ticker}</span>
+                <span className="text-muted-foreground text-sm hidden sm:inline truncate max-w-[120px]">{result.name}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm shrink-0 flex-wrap">
+                <span className="font-medium w-16 text-right">${result.price?.toFixed(2)}</span>
+                <span className={cn(
+                  "w-14 text-right",
+                  (result.changePercent || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                )}>
+                  {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(1)}%
+                </span>
+                <span className="hidden md:block w-14 text-right text-chart-2">
+                  ${result.resistance?.toFixed(0) || "N/A"}
+                </span>
+                <span className="hidden md:block w-14 text-right text-destructive">
+                  ${result.stopLoss?.toFixed(0) || "N/A"}
+                </span>
+                {rr !== null && (
+                  <span className={cn("hidden lg:block w-10 text-right text-xs", rr >= 2 ? "text-chart-2" : "text-muted-foreground")}>
+                    1:{rr.toFixed(1)}
+                  </span>
+                )}
+                <span className={cn(
+                  "hidden lg:block w-10 text-right text-xs",
+                  (result.rvol || 0) >= 1.5 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+                )}>
+                  {result.rvol?.toFixed(1)}x
+                </span>
+                {result.patternScore && (
+                  <Badge variant="secondary" className="w-12 justify-center text-xs">{result.patternScore}%</Badge>
+                )}
                 <Button
-                  variant={featuredViewMode === "list" ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => setFeaturedViewMode("list")}
-                  data-testid="button-view-list"
+                  size="sm"
+                  className="gap-1"
+                  onClick={(e) => handleInstaTrade(result, e)}
+                  disabled={instatradeMutation.isPending}
+                  data-testid={`button-instatrade-list-${result.ticker}`}
                 >
-                  <LayoutList className="h-4 w-4" />
+                  <Zap className="h-3 w-3" />
+                  <span className="hidden sm:inline">InstaTrade™</span>
                 </Button>
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="pt-2">
-            {featuredViewMode === "cards" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {breakoutResults
-                  .map((result) => {
-                    const isTopSetup = result.id === topSetupId;
-                    const isExpanded = expandedCards.has(result.id);
-                    const microBadge = getMicroBadge(result);
-                    
-                    return (
-                    <Card 
-                      key={result.id} 
-                      className={cn(
-                        "hover-elevate cursor-pointer transition-all",
-                        isTopSetup && "ring-2 ring-primary/50 shadow-md shadow-primary/10"
-                      )}
-                      onClick={() => navigate(`/charts/${result.ticker}`)}
-                      data-testid={`card-opportunity-${result.ticker}`}
-                    >
-                      <CardContent className="p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                            <span className="font-semibold text-base shrink-0">{result.ticker}</span>
-                            <Badge 
-                              variant="outline" 
-                              className={cn(
-                                "shrink-0 text-xs",
-                                result.stage === "BREAKOUT" && "bg-green-500/10 text-green-600 dark:text-green-400",
-                              )}
-                            >
-                              {result.stage}
-                            </Badge>
-                            {isTopSetup && (
-                              <Badge variant="secondary" className="shrink-0 text-xs bg-primary/10 text-primary">
-                                <Sparkles className="h-3 w-3 mr-1" />
-                                Top Setup
-                              </Badge>
-                            )}
-                          </div>
-                          {result.patternScore && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="shrink-0 text-xs font-semibold cursor-help">
-                                  {result.patternScore}%
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs text-xs">
-                                <span className="font-medium">Setup Strength:</span> A score based on historical quality of similar setups. Not investment advice.
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium">${result.price?.toFixed(2)}</span>
-                          <span className={cn(
-                            "text-xs",
-                            (result.changePercent || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
-                            {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(2)}%
-                          </span>
-                        </div>
-                        
-                        {/* Contextual micro-badge */}
-                        {microBadge && (
-                          <p className={cn("text-xs", microBadge.color)}>{microBadge.text}</p>
-                        )}
-                        
-                        {/* Details toggle */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); toggleCardExpand(result.id); }}
-                          className="w-full gap-1 h-7 text-xs"
-                          data-testid={`button-details-${result.ticker}`}
-                        >
-                          <ChevronDown className={cn("h-3 w-3 transition-transform", isExpanded && "rotate-180")} />
-                          {isExpanded ? "Hide Details" : "Show Details"}
-                        </Button>
-                        
-                        {/* Expandable details panel */}
-                        {isExpanded && (
-                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-1 border-t border-border/50">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  <span className="block text-muted-foreground/70 flex items-center gap-1">
-                                    <Target className="h-3 w-3 text-chart-2" />
-                                    Resistance
-                                  </span>
-                                  <span className="font-medium text-chart-2">${result.resistance?.toFixed(2) || "N/A"}</span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs text-xs">
-                                Price level where the stock has struggled to break above. A breakout happens when price pushes through this ceiling.
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  <span className="block text-muted-foreground/70 flex items-center gap-1">
-                                    <TrendingDown className="h-3 w-3 text-destructive" />
-                                    Stop
-                                  </span>
-                                  <span className="font-medium text-destructive">${result.stopLoss?.toFixed(2) || "N/A"}</span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs text-xs">
-                                Safety price level to exit a trade and limit losses. Placed below recent support to protect your capital.
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  <span className="block text-muted-foreground/70">Vol</span>
-                                  <span className="font-medium text-foreground">{result.volume ? (result.volume / 1000000).toFixed(1) + "M" : "N/A"}</span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs text-xs">
-                                Number of shares traded. Higher volume confirms price moves and indicates stronger conviction.
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  <span className="block text-muted-foreground/70">RVOL</span>
-                                  <span className={cn(
-                                    "font-medium",
-                                    (result.rvol || 0) >= 1.5 ? "text-chart-2" : "text-foreground"
-                                  )}>
-                                    {result.rvol?.toFixed(1) || "N/A"}x
-                                  </span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs text-xs">
-                                Relative Volume compares current volume to the 20-day average. Above 1.5x often signals strong interest.
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        )}
-                        
-                        <Button
-                          size="sm"
-                          className="w-full gap-1 mt-2"
-                          onClick={(e) => handleInstaTrade(result, e)}
-                          disabled={instatradeMutation.isPending}
-                          data-testid={`button-instatrade-card-${result.ticker}`}
-                        >
-                          <Zap className="h-3 w-3" />
-                          InstaTrade™
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                  })}
+          );
+        };
+
+        return (
+        <div className="space-y-6" data-testid="opportunities-section">
+          {/* Header row with signal count and view toggle */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Flame className="h-5 w-5 text-orange-500" />
+              <h2 className="text-lg font-semibold">Active Opportunities</h2>
+              <span className="text-xs text-muted-foreground">
+                {breakoutResults.length}{breakoutResults.length !== totalBreakouts ? ` of ${totalBreakouts}` : ""} signals
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center border rounded-md overflow-visible">
+                <Button
+                  variant={viewMode === "simple" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => toggleViewMode("simple")}
+                  className="rounded-r-none gap-1.5 text-xs"
+                  data-testid="button-view-simple"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Simple
+                </Button>
+                <Button
+                  variant={viewMode === "advanced" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => toggleViewMode("advanced")}
+                  className="rounded-l-none gap-1.5 text-xs"
+                  data-testid="button-view-advanced"
+                >
+                  <LayoutList className="h-3.5 w-3.5" />
+                  Advanced
+                </Button>
               </div>
-            ) : (
-              <div className="space-y-1">
-                {breakoutResults
-                  .map((result) => {
-                    const isTopSetup = result.id === topSetupId;
-                    
-                    return (
-                    <div
-                      key={result.id}
-                      className={cn(
-                        "flex items-center justify-between gap-4 p-2 rounded-md hover-elevate cursor-pointer",
-                        isTopSetup && "ring-1 ring-primary/30 bg-primary/5"
-                      )}
-                      onClick={() => navigate(`/charts/${result.ticker}`)}
-                      data-testid={`row-opportunity-${result.ticker}`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            "shrink-0 text-xs w-20 justify-center",
-                            result.stage === "BREAKOUT" && "bg-green-500/10 text-green-600 dark:text-green-400",
-                          )}
-                        >
-                          {result.stage}
-                        </Badge>
-                        <div className="min-w-0">
-                          <span className="font-semibold">{result.ticker}</span>
-                          <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">{result.name}</span>
-                        </div>
-                        {isTopSetup && (
-                          <Badge variant="secondary" className="shrink-0 text-xs bg-primary/10 text-primary hidden sm:flex">
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            Top
-                          </Badge>
-                        )}
-                        {(result as any).firstSeenAt && (
-                          <span className="hidden lg:flex items-center gap-1 text-xs text-muted-foreground/70">
-                            <Clock className="h-3 w-3" />
-                            {format(new Date((result as any).firstSeenAt), "h:mm a")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-4 text-sm shrink-0">
-                        <span className="font-medium w-16 text-right">${result.price?.toFixed(2)}</span>
-                        <span className={cn(
-                          "w-16 text-right",
-                          (result.changePercent || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                        )}>
-                          {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(2)}%
-                        </span>
-                        <span className="hidden md:block w-16 text-right text-chart-2">
-                          R: ${result.resistance?.toFixed(0) || "N/A"}
-                        </span>
-                        <span className="hidden md:block w-16 text-right text-destructive">
-                          S: ${result.stopLoss?.toFixed(0) || "N/A"}
-                        </span>
-                        <span className={cn(
-                          "hidden lg:block w-12 text-right",
-                          (result.rvol || 0) >= 1.5 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
-                        )}>
-                          {result.rvol?.toFixed(1)}x
-                        </span>
-                        {result.patternScore && (
-                          <Badge variant="secondary" className="w-12 justify-center">{result.patternScore}%</Badge>
-                        )}
-                        <Button
-                          size="sm"
-                          className="gap-1"
-                          onClick={(e) => handleInstaTrade(result, e)}
-                          disabled={instatradeMutation.isPending}
-                          data-testid={`button-instatrade-list-${result.ticker}`}
-                        >
-                          <Zap className="h-3 w-3" />
-                          <span className="hidden sm:inline">InstaTrade™</span>
-                        </Button>
-                      </div>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-sort-opportunities">
+                  <ArrowUpDown className="h-3 w-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="patternScore">Confidence</SelectItem>
+                  <SelectItem value="changePercent">% Change</SelectItem>
+                  <SelectItem value="riskReward">Risk/Reward</SelectItem>
+                  <SelectItem value="rvol">Volume Expansion</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
+                data-testid="button-toggle-sort-order-opp"
+              >
+                <ArrowUpDown className={cn("h-4 w-4", sortOrder === "asc" && "rotate-180")} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Top Picks */}
+          {topPicks.length > 0 && (
+            <div className="space-y-3" data-testid="top-picks-section">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">Top Picks</h3>
+                <span className="text-xs text-muted-foreground">Best setups by confidence, risk/reward & volume</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {topPicks.map(result => renderSimpleCard(result, true))}
+              </div>
+            </div>
+          )}
+
+          {/* Strategy-grouped remaining results */}
+          {viewMode === "simple" ? (
+            <div className="space-y-5">
+              {groupOrder.filter(g => groupedResults[g]?.length > 0).map(groupName => (
+                <div key={groupName} className="space-y-3" data-testid={`group-${groupName.toLowerCase().replace(/\s+/g, '-')}`}>
+                  <button
+                    className="flex items-center gap-2 w-full text-left"
+                    onClick={() => toggleGroup(groupName)}
+                    data-testid={`button-toggle-group-${groupName.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", collapsedGroups.has(groupName) && "-rotate-90")} />
+                    <h3 className="text-sm font-semibold">{groupName}</h3>
+                    <span className="text-xs text-muted-foreground">{groupedResults[groupName].length}</span>
+                  </button>
+                  {!collapsedGroups.has(groupName) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {groupedResults[groupName].map(result => renderSimpleCard(result))}
                     </div>
-                  );
-                  })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="p-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-3 px-2.5 py-1.5 text-xs text-muted-foreground border-b mb-1">
+                    <span className="w-16">Ticker</span>
+                    <span className="hidden sm:block flex-1">Name</span>
+                    <span className="w-16 text-right">Price</span>
+                    <span className="w-14 text-right">Change</span>
+                    <span className="hidden md:block w-14 text-right">Resist.</span>
+                    <span className="hidden md:block w-14 text-right">Stop</span>
+                    <span className="hidden lg:block w-10 text-right">R:R</span>
+                    <span className="hidden lg:block w-10 text-right">RVOL</span>
+                    <span className="w-12 text-center">Score</span>
+                    <span className="w-24"></span>
+                  </div>
+                  {breakoutResults.map(result => renderAdvancedRow(result))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
         );
       })()}
 
@@ -1864,79 +1957,52 @@ export default function Scanner() {
       </Card>
 
       {filteredResults && filteredResults.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-2 text-sm flex-wrap">
-              <span className="text-muted-foreground">{filteredResults.length} results</span>
+              <span className="text-xs text-muted-foreground">{filteredResults.length} total results</span>
               {scanMetadata && (
-                <span className="text-xs text-muted-foreground">
-                  ({scanMetadata.symbolsReturned}/{scanMetadata.symbolsRequested} symbols
-                  {scanMetadata.batchCount && scanMetadata.batchCount > 1 && `, ${scanMetadata.batchCount} batches`}
-                  {" "}in {(scanMetadata.scanTimeMs / 1000).toFixed(1)}s)
+                <span className="text-xs text-muted-foreground/70">
+                  ({scanMetadata.symbolsReturned}/{scanMetadata.symbolsRequested} symbols in {(scanMetadata.scanTimeMs / 1000).toFixed(1)}s)
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Filter results..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-8 h-9"
-                  data-testid="input-search"
-                />
-                {searchQuery && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                    onClick={() => setSearchQuery("")}
-                    data-testid="button-clear-search"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
+            <div className="relative max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search ticker..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-8 h-9"
+                data-testid="input-search"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                  onClick={() => setSearchQuery("")}
+                  data-testid="button-clear-search"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
             </div>
           </div>
-          
-          <div className="flex items-center gap-3 flex-wrap p-3 rounded-md bg-muted/30 border">
-            <div className="flex items-center gap-2">
-              <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Sort:</span>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-40 h-8" data-testid="select-sort-by">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="patternScore">Pattern Score</SelectItem>
-                  <SelectItem value="resistancePercent">% to Resistance</SelectItem>
-                  <SelectItem value="price">Price</SelectItem>
-                  <SelectItem value="volume">Volume</SelectItem>
-                  <SelectItem value="rvol">RVOL</SelectItem>
-                  <SelectItem value="changePercent">% Change</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
-                data-testid="button-toggle-sort-order"
-              >
-                <ArrowUpDown className={cn("h-4 w-4", sortOrder === "asc" && "rotate-180")} />
-              </Button>
-              <span className="text-xs text-muted-foreground">{sortOrder === "desc" ? "High to Low" : "Low to High"}</span>
-            </div>
-            
-            <div className="h-6 w-px bg-border" />
-            
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Filter:</span>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <Badge variant="default" className="gap-1 text-xs">
+              Breakout <span className="font-mono">{triggeredCount}</span>
+            </Badge>
+            <Badge variant="secondary" className="gap-1 text-xs">
+              Ready <span className="font-mono">{readyCount}</span>
+            </Badge>
+            <Badge variant="outline" className="gap-1 text-xs">
+              Forming <span className="font-mono">{formingCount}</span>
+            </Badge>
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
               <Select value={stageFilter} onValueChange={setStageFilter}>
-                <SelectTrigger className="w-28 h-8" data-testid="select-stage-filter">
+                <SelectTrigger className="w-28 h-8 text-xs" data-testid="select-stage-filter">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1947,75 +2013,18 @@ export default function Scanner() {
                 </SelectContent>
               </Select>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Min Score:</span>
-              <Input
-                type="number"
-                placeholder="0"
-                value={minPatternScore ?? ""}
-                onChange={(e) => setMinPatternScore(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-16 h-8 text-sm"
-                min={0}
-                max={100}
-                data-testid="input-min-score"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Max % to Resist:</span>
-              <Input
-                type="number"
-                placeholder="Any"
-                value={maxResistancePercent ?? ""}
-                onChange={(e) => setMaxResistancePercent(e.target.value ? parseFloat(e.target.value) : null)}
-                className="w-16 h-8 text-sm"
-                min={0}
-                step={0.5}
-                data-testid="input-max-resistance"
-              />
-            </div>
-            
-            {(stageFilter !== "all" || minPatternScore !== null || maxResistancePercent !== null) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setStageFilter("all");
-                  setMinPatternScore(null);
-                  setMaxResistancePercent(null);
-                }}
-                className="h-8 text-xs"
-                data-testid="button-clear-filters"
-              >
-                Clear Filters
-              </Button>
-            )}
           </div>
         </div>
       )}
 
       {engineMode === "single" && filteredResults && filteredResults.length > 0 && (
-        <>
-          <div className="flex items-center gap-3 flex-wrap">
-            <Badge variant="default" className="gap-1">
-              Breakout <span className="font-mono">{triggeredCount}</span>
-            </Badge>
-            <Badge variant="secondary" className="gap-1">
-              Ready <span className="font-mono">{readyCount}</span>
-            </Badge>
-            <Badge variant="outline" className="gap-1">
-              Forming <span className="font-mono">{formingCount}</span>
-            </Badge>
-          </div>
-          <ScannerTable
-            results={filteredResults}
-            onRowClick={handleRowClick}
-            onInstaTrade={handleInstaTrade}
-            isInstaTrading={instatradeMutation.isPending}
-            isLoading={isLoading}
-          />
-        </>
+        <ScannerTable
+          results={filteredResults}
+          onRowClick={handleRowClick}
+          onInstaTrade={handleInstaTrade}
+          isInstaTrading={instatradeMutation.isPending}
+          isLoading={isLoading}
+        />
       )}
 
       {engineMode === "fusion" && confluenceResults && confluenceResults.length > 0 && (

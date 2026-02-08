@@ -1,0 +1,104 @@
+[AlertEngine] Rule 19e903c9-1a7e-4fb3-92fa-ad64d28d52db: Found 0 matching results
+[AlertEngine] Processing 1 watchlist rule(s) against 279 scan results
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Looking for stage=BREAKOUT in watchlist MyTechWatch (1 symbols)
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Found 0 matching results
+  where: undefined,
+  schema: undefined,
+Error fetching risk profile: error: relation "risk_profiles" does not exist
+  table: undefined,
+    at /app/dist/index.cjs:64:13330
+  column: undefined,
+  dataType: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  constraint: undefined,
+    at async /app/dist/index.cjs:70:38016
+  file: 'parse_relation.c',
+    at async ub.getRiskProfile (/app/dist/index.cjs:70:169371)
+  line: '1449',
+    at async Ra (/app/dist/index.cjs:78:51686)
+  routine: 'parserOpenTable'
+}
+    at async /app/dist/index.cjs:79:24521 {
+  length: 113,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '242',
+  internalPosition: undefined,
+  internalQuery: undefined,
+8:09:21 PM [express] GET /api/options/strategies 304 in 8ms :: [{"key":"long-options","label":"Long Options","description":"Buy calls when you think a stock will go up, or puts when you think it will go down. Simple and straightforward."},{"key":"wheel","label":"Wheel Strategy","description":"Get paid to wait for stocks you want to buy at a lower price. If assigned, sell calls to earn more income."},{"key":"credit-spreads","label":"Credit Spreads","description":"Collect premium by selling spreads. You profit when the stock stays in your expected range."}]
+8:09:21 PM [express] GET /api/platform/risk-profile 500 in 11ms :: {"message":"Failed to fetch risk profile"}
+  line: '1449',
+Error listing universes: error: relation "ticker_universes" does not exist
+  routine: 'parserOpenTable'
+}
+    at /app/dist/index.cjs:64:13330
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:38016
+    at async ld (/app/dist/index.cjs:78:50716)
+    at async /app/dist/index.cjs:79:26201 {
+  length: 115,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '80',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+8:09:21 PM [express] GET /api/platform/universes 500 in 30ms :: {"message":"Failed to list universes"}
+[OptionsScanner] scan error: relation "risk_profiles" does not exist
+8:09:24 PM [express] POST /api/options/scan 500 in 10ms :: {"error":"Scan failed"}
+Error fetching risk profile: error: relation "risk_profiles" does not exist
+  schema: undefined,
+    at /app/dist/index.cjs:64:13330
+  table: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  column: undefined,
+    at async /app/dist/index.cjs:70:38016
+  dataType: undefined,
+    at async ub.getRiskProfile (/app/dist/index.cjs:70:169371)
+  constraint: undefined,
+    at async Ra (/app/dist/index.cjs:78:51686)
+    at async /app/dist/index.cjs:79:24521 {
+  file: 'parse_relation.c',
+  length: 113,
+  line: '1449',
+  severity: 'ERROR',
+  routine: 'parserOpenTable'
+  code: '42P01',
+}
+  detail: undefined,
+8:09:30 PM [express] GET /api/platform/risk-profile 500 in 8ms :: {"message":"Failed to fetch risk profile"}
+  hint: undefined,
+  position: '242',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  column: undefined,
+Error updating risk profile: error: relation "risk_profiles" does not exist
+    at /app/dist/index.cjs:64:13330
+  dataType: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  constraint: undefined,
+    at async /app/dist/index.cjs:70:38016
+  file: 'parse_relation.c',
+    at async ub.getRiskProfile (/app/dist/index.cjs:70:169371)
+  line: '1449',
+    at async Ra (/app/dist/index.cjs:78:51686)
+    at async /app/dist/index.cjs:79:25082 {
+  routine: 'parserOpenTable'
+  length: 113,
+}
+  severity: 'ERROR',
+8:09:32 PM [express] PUT /api/platform/risk-profile 500 in 78ms :: {"message":"Failed to update risk profile"}
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,

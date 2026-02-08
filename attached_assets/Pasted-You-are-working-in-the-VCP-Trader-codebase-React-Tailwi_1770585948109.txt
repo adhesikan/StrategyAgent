@@ -1,0 +1,95 @@
+You are working in the VCP Trader codebase (React + Tailwind UI). Implement a clean 3-column layout that uses the empty space next to the left sidebar by introducing a collapsible “Smart Panel” (Context Panel). This panel should show Top Pick + Broker + Risk + Quick Actions and guide users with next steps. Keep the UI simple and non-intimidating.
+
+GOALS (PERSONAL RECOMMENDATION)
+- Convert the app layout to: [Sidebar] [Smart Panel] [Main Content]
+- Smart Panel is collapsible and auto-collapses on smaller screens
+- Smart Panel shows ONLY high-value “at-a-glance” items:
+  1) Next Best Action (dynamic guidance)
+  2) Top Pick (single best trade idea)
+  3) Broker status (connected/disconnected)
+  4) Risk profile summary
+  5) One or two quick actions (contextual)
+- Do NOT clutter the sidebar with more items and do NOT create another mini-dashboard.
+- Do NOT change backend business logic. Only add UI composition + minimal API calls to existing endpoints.
+- Keep existing routes intact.
+
+LAYOUT IMPLEMENTATION
+1) Create a reusable layout wrapper component (e.g., AppShell / DashboardLayout) that all authenticated pages use.
+2) The wrapper should render:
+   - Left: existing Sidebar (unchanged width)
+   - Middle: SmartPanel (fixed width 280px; collapsible to 0 or icon-only)
+   - Right: Main content (existing page content)
+3) Add a collapse toggle (chevron) at the top of SmartPanel.
+4) SmartPanel behavior:
+   - Default expanded on desktop (>= 1280px)
+   - Auto-collapsed on smaller screens (< 1280px)
+   - Remember user preference in localStorage (e.g., smartPanelCollapsed=true/false)
+5) Styling:
+   - Use subtle borders/dividers, ample padding, and avoid heavy outlines
+   - Keep card count low (max 4 small cards stacked)
+   - Use consistent typography with the existing dark theme
+
+SMART PANEL CONTENT (DASHBOARD /command-center)
+Implement SmartPanel sections in this order:
+
+A) Next Best Action (dynamic)
+- If broker NOT connected -> show primary CTA: “Connect Broker”
+  - button goes to existing broker connection page/flow
+- Else if risk profile missing/incomplete -> CTA: “Set Risk Profile”
+  - button goes to /settings/risk-profile (or your existing route)
+- Else if no universe exists -> CTA: “Create Universe”
+  - button goes to /settings/universes
+- Else -> show “You’re set” with a secondary CTA: “Run Scan” (go to /discover)
+
+B) Top Pick (single card)
+- Show 1 best opportunity for today (fallback if none):
+  - If you have opportunities available from existing endpoint/state, pick the highest confidence score.
+  - If no opportunities, show placeholder: “No Top Pick yet — run a scan when market opens.”
+- Card fields (simple view):
+  - Symbol, strategy tag, confidence %, price, % move
+  - Button: “View Plan” -> routes to the opportunity details screen/modal if it exists, otherwise routes to /discover pre-filtered for that ticker.
+- Do NOT show advanced metrics by default (RVOL etc.). Keep it simple.
+
+C) Broker Status (small card)
+- Read from existing broker status endpoint (e.g., GET /api/broker/status)
+- Show: Connected/Disconnected + provider (Tradier)
+- If disconnected, show CTA: “Connect”
+
+D) Risk Profile Summary (small card)
+- Read from existing platform risk profile endpoint (GET /api/platform/risk-profile) if you have it, otherwise use current config source
+- Show: Mode (Conservative/Balanced/Aggressive), Risk/Trade, Max Deploy, Protections On/Off
+- CTA: “Edit” -> /settings/risk-profile
+
+E) Quick Actions (only 1–2)
+- If agent armed -> show “Pause Agent”
+- If agent paused -> show “Resume Agent”
+- If market closed -> show “Schedule Scan” (optional; can be disabled if not implemented)
+- Avoid showing Emergency Stop here (keep it inside Automation page)
+
+PAGE-SPECIFIC SMART PANEL (OPTIONAL BUT PREFERRED)
+- On /discover:
+  - Replace “Top Pick” with “Filters Summary” + “Top Pick”
+  - Show selected tab (Stocks/Options), selected strategy, selected universe
+  - Provide one CTA: “Run Scan”
+- On /automation:
+  - Show agent status summary + one quick action (Pause/Resume)
+
+REDUCE REDUNDANCY
+- If SmartPanel shows Broker Status and Agent Status clearly, remove redundant pills from the header where it makes sense (keep market status).
+- Keep header clean: Market status + minimal icons.
+
+DATA & API
+- Use existing endpoints wherever possible:
+  - /api/broker/status
+  - existing opportunities endpoint (whatever currently powers “Today’s Opportunities”)
+  - /api/platform/risk-profile (if present)
+- Add minimal client-side caching (e.g., 30–60 seconds) to avoid spam calls.
+
+DELIVERABLES
+- Create/modify files to implement:
+  - AppShell / Layout wrapper
+  - SmartPanel component (collapsible + responsive)
+  - Page integration for /command-center (Dashboard)
+  - Optional integration for /discover and /automation
+- Provide a list of files changed and the final routes impacted.
+- Confirm no backend business logic was modified and all routes still work.

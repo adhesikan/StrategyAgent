@@ -2,8 +2,6 @@ import { Link, useLocation } from "wouter";
 import {
   Search,
   Settings,
-  Wifi,
-  WifiOff,
   Newspaper,
   Target,
   Bot,
@@ -21,9 +19,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import type { BrokerConnection } from "@shared/schema";
 
 interface NavItem {
   title: string;
@@ -42,12 +38,6 @@ const navItems: NavItem[] = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { setOpenMobile, isMobile } = useSidebar();
-
-  const { data: brokerStatus } = useQuery<BrokerConnection | null>({
-    queryKey: ["/api/broker/status"],
-  });
-
-  const isConnected = brokerStatus?.isConnected ?? false;
 
   const handleNavClick = () => {
     if (isMobile) {
@@ -123,30 +113,13 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 space-y-2">
+      <SidebarFooter className="p-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Radio className={cn(
             "h-3 w-3",
             isMarketHours() ? "text-green-500" : "text-muted-foreground"
           )} />
           <span>{isMarketHours() ? "Live Scan Active" : "Market Closed"}</span>
-        </div>
-        <div className="flex items-center gap-2 rounded-md bg-sidebar-accent/50 p-2">
-          {isConnected ? (
-            <Wifi className="h-4 w-4 text-status-online" />
-          ) : (
-            <WifiOff className="h-4 w-4 text-muted-foreground" />
-          )}
-          <div className="flex flex-col">
-            <span className="text-xs font-medium">
-              {isConnected ? "Broker Connected" : "No Broker"}
-            </span>
-            {isConnected && brokerStatus?.provider && (
-              <span className="text-[10px] text-muted-foreground">
-                {brokerStatus.provider}
-              </span>
-            )}
-          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

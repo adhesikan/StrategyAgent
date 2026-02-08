@@ -47,6 +47,15 @@ All options endpoints require authentication and `optionsScanner` entitlement. T
 ### Automated Scanning and Price Tracking
 The platform includes an automated multi-strategy scanning system (`server/scheduled-scan-service.ts`) that runs at scheduled times, incorporating holiday awareness. It detects various VCP-related strategies (e.g., Momentum Breakout, Open Drive, Gap Force) and ingests opportunities into an Outcome Report. Extended hours price tracking (4:00 AM - 8:00 PM ET) updates max/min prices for active opportunities every 5 minutes to determine outcomes.
 
+### Smart Panel (Context Panel)
+The app uses a 3-column layout: [Sidebar] [Smart Panel] [Main Content]. The Smart Panel (`client/src/components/smart-panel.tsx`) is a 280px collapsible side panel between the navigation sidebar and main content area. It provides at-a-glance context:
+1. **Next Best Action** — dynamic guidance (Connect Broker → Set Risk Profile → Create Universe → Run Scan)
+2. **Top Pick** — single highest-score active opportunity
+3. **Broker Status** — connected/disconnected with provider name
+4. **Risk Profile Summary** — mode, risk/trade %, max deploy %, protections status
+5. **Quick Actions** — contextual agent pause/resume, scanner shortcut
+Collapse state is persisted to localStorage (`vcp_smart_panel_collapsed`). Auto-collapses on screens < 1280px. Hidden on mobile (< 768px).
+
 ### UI/UX
 The UI utilizes Radix UI primitives for accessibility and a custom Tailwind CSS design system tailored for trading aesthetics. Lucide React provides icons.
 

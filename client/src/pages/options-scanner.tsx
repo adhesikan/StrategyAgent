@@ -5,12 +5,12 @@ import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { cn } from "@/lib/utils";
 import type { PlatformUniverse, PlatformRiskProfile } from "@shared/platform-types";
 import {
@@ -29,6 +29,11 @@ import {
   Unplug,
   Pencil,
   Globe,
+  Search,
+  BarChart3,
+  Filter,
+  LineChart,
+  Zap,
 } from "lucide-react";
 
 interface MeResponse {
@@ -40,13 +45,6 @@ interface MeResponse {
     plan: string;
   };
   broker: { connected: boolean; provider: string | null };
-}
-
-interface BrokerStatus {
-  connected: boolean;
-  provider?: string;
-  status?: string;
-  lastChecked?: string;
 }
 
 interface OptionCandidate {
@@ -120,10 +118,7 @@ export default function OptionsScanner() {
     enabled: !!me?.entitlements?.optionsScanner,
   });
 
-  const { data: brokerStatus } = useQuery<BrokerStatus>({
-    queryKey: ["/api/broker/status"],
-    enabled: !!me?.entitlements?.optionsScanner,
-  });
+  const { isConnected: brokerConnected, providerName: brokerProviderName } = useBrokerStatus();
 
   const { data: strategies } = useQuery<StrategyDef[]>({
     queryKey: ["/api/options/strategies"],
@@ -195,11 +190,19 @@ export default function OptionsScanner() {
   }
 
   const isDataLoading = universesLoading || riskLoading;
-  const brokerConnected = brokerStatus?.connected === true;
   const hasUniverses = universes && universes.length > 0;
   const canScan = brokerConnected && !!selectedUniverseId && !scanMutation.isPending;
 
   const activeStrategyDef = strategies?.find((s) => s.key === activeStrategy);
+
+  const CAPABILITIES = [
+    { icon: Search, title: "Multi-Universe Scanning", description: "Scan Dow 30, Nasdaq 100, S&P 500, NYSE Composite, or your custom watchlists. Process hundreds of tickers in seconds." },
+    { icon: BarChart3, title: "Priority Score Ranking", description: "Every candidate is ranked by an objective Priority Score combining annualized yield, probability of profit, and liquidity metrics." },
+    { icon: Filter, title: "Advanced Filtering", description: "Filter by price, volume, IV Rank, delta range, DTE, and minimum premium. Find exactly what matches your criteria." },
+    { icon: Shield, title: "Built-in Risk Controls", description: "Rally warnings, drawdown kill switches, and capital allocation limits are applied automatically before any recommendation." },
+    { icon: LineChart, title: "IV Rank Calculation", description: "Historical IV Rank with proxy fallback ensures accurate volatility assessment even for tickers with limited history." },
+    { icon: History, title: "Scan History & Analytics", description: "Every scan is logged with full metadata. Track your scanning patterns, review past results, and measure performance." },
+  ];
 
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6 space-y-5" data-testid="options-scanner-container">
@@ -224,6 +227,30 @@ export default function OptionsScanner() {
             <History className="h-4 w-4 mr-1" />
             {showHistory ? "Hide History" : "Scan History"}
           </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2" data-testid="section-scanning-modes">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          6 Scanning Modes
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {(strategies || []).map((s) => (
+            <div
+              key={s.key}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2.5 rounded-md border cursor-pointer transition-colors",
+                activeStrategy === s.key
+                  ? "border-primary bg-primary/5"
+                  : "hover-elevate"
+              )}
+              onClick={() => setActiveStrategy(s.key)}
+              data-testid={`mode-card-${s.key}`}
+            >
+              <Zap className={cn("h-4 w-4 shrink-0", activeStrategy === s.key ? "text-primary" : "text-muted-foreground")} />
+              <span className={cn("text-sm font-medium truncate", activeStrategy === s.key ? "text-foreground" : "text-muted-foreground")}>{s.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -422,33 +449,22 @@ export default function OptionsScanner() {
             </CardHeader>
 
             <CardContent>
-              <Tabs value={activeStrategy} onValueChange={setActiveStrategy}>
-                <TabsList className="flex flex-wrap h-auto gap-1" data-testid="tabs-strategy">
-                  {(strategies || []).map((s) => (
-                    <TabsTrigger key={s.key} value={s.key} data-testid={`tab-strategy-${s.key}`}>
-                      {s.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-
-                {activeStrategyDef && (
-                  <p className="text-sm text-muted-foreground mt-3 mb-4" data-testid="text-strategy-description">
+              {activeStrategyDef && (
+                <div className="flex items-center gap-2 mb-4">
+                  <Badge variant="secondary" data-testid="badge-active-strategy">{activeStrategyDef.label}</Badge>
+                  <p className="text-sm text-muted-foreground" data-testid="text-strategy-description">
                     {activeStrategyDef.description}
                   </p>
-                )}
+                </div>
+              )}
 
-                {(strategies || []).map((s) => (
-                  <TabsContent key={s.key} value={s.key}>
-                    {scanResult && scanResult.strategyKey === s.key ? (
-                      <CandidatesTable candidates={scanResult.candidates} />
-                    ) : scanResult && scanResult.strategyKey !== s.key ? (
-                      <EmptyState message={`Run a scan with "${s.label}" selected to see results`} />
-                    ) : (
-                      <EmptyState message="Select a universe and click Run Scan to find candidates" />
-                    )}
-                  </TabsContent>
-                ))}
-              </Tabs>
+              {scanResult && scanResult.strategyKey === activeStrategy ? (
+                <CandidatesTable candidates={scanResult.candidates} />
+              ) : scanResult && scanResult.strategyKey !== activeStrategy ? (
+                <EmptyState message={`Run a scan with "${activeStrategyDef?.label ?? activeStrategy}" selected to see results`} />
+              ) : (
+                <EmptyState message="Select a universe and click Run Scan to find candidates" />
+              )}
             </CardContent>
           </Card>
 
@@ -497,6 +513,29 @@ export default function OptionsScanner() {
               </CardContent>
             </Card>
           )}
+
+          <div className="space-y-3" data-testid="section-capabilities">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Key Capabilities
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {CAPABILITIES.map((cap) => (
+                <Card key={cap.title} data-testid={`capability-card-${cap.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                        <cap.icon className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold">{cap.title}</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{cap.description}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
         </>
       )}
     </div>

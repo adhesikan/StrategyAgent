@@ -44,11 +44,12 @@ export interface OptionsScanResult {
 }
 
 export const STRATEGY_DEFINITIONS = [
-  { key: "wheel", label: "The Wheel", description: "Sell cash-secured puts, then covered calls on assignment" },
-  { key: "credit-spreads", label: "Credit Spreads", description: "Sell vertical spreads for net credit" },
-  { key: "mwfs", label: "MWFS", description: "Mon-Wed-Fri short-dated options strategy" },
-  { key: "iron-condor", label: "Iron Condor", description: "Non-directional range-bound strategy" },
-  { key: "covered-calls", label: "Covered Calls", description: "Generate income on existing equity positions" },
+  { key: "wheel", label: "Wheel Strategy (CSP + CC)", description: "Sell cash-secured puts, then covered calls on assignment" },
+  { key: "credit-spreads", label: "Credit Spreads (MWFS)", description: "Mon-Wed-Fri short-dated credit spread strategy for consistent premium" },
+  { key: "swing-pullbacks", label: "Swing Trade Pullbacks", description: "Options on pullback entries in trending stocks for swing trades" },
+  { key: "vwap-reclaim", label: "Day Trade VWAP Reclaim", description: "Intraday options on VWAP reclaim setups with tight risk" },
+  { key: "volume-breakouts", label: "Relative Volume Breakouts", description: "Options on stocks breaking out with unusual relative volume" },
+  { key: "long-options", label: "Long Options (Calls/Puts)", description: "Directional long calls or puts on high-conviction setups" },
 ] as const;
 
 export async function runOptionsScan(
@@ -121,13 +122,15 @@ function generateRationale(strategy: string, symbol: string, iv: number, risk?: 
     case "wheel":
       return `${symbol} at ${ivPct}% IV — elevated premium for CSP entry. Delta range ${risk?.deltaMin ?? 0.10}–${risk?.deltaMax ?? 0.30}.${riskNote}`;
     case "credit-spreads":
-      return `${symbol} range-bound with ${ivPct}% IV — favorable credit spread conditions.${riskNote}`;
-    case "mwfs":
-      return `${symbol} short-dated opportunity at ${ivPct}% IV — rapid theta decay.${riskNote}`;
-    case "iron-condor":
-      return `${symbol} low directional bias, ${ivPct}% IV — balanced condor structure.${riskNote}`;
-    case "covered-calls":
-      return `${symbol} at ${ivPct}% IV — premium income on existing position.${riskNote}`;
+      return `${symbol} range-bound with ${ivPct}% IV — favorable MWF credit spread conditions with rapid theta decay.${riskNote}`;
+    case "swing-pullbacks":
+      return `${symbol} pulling back to support at ${ivPct}% IV — swing entry with defined risk on options.${riskNote}`;
+    case "vwap-reclaim":
+      return `${symbol} reclaiming VWAP at ${ivPct}% IV — intraday momentum setup with tight stop.${riskNote}`;
+    case "volume-breakouts":
+      return `${symbol} breaking out on relative volume surge at ${ivPct}% IV — momentum continuation play.${riskNote}`;
+    case "long-options":
+      return `${symbol} directional setup at ${ivPct}% IV — high-conviction long option with defined risk.${riskNote}`;
     default:
       return `${symbol} scan result at ${ivPct}% IV.${riskNote}`;
   }

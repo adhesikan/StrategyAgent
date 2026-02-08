@@ -68,6 +68,68 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/health", (_req, res) => {
+    res.json({ ok: true, app: "vcptrader" });
+  });
+
+  const MAINTENANCE_ALLOWED_PATHS = [
+    "/health",
+    "/login",
+    "/register",
+    "/status",
+    "/pricing",
+    "/terms",
+    "/legal",
+    "/api/auth",
+    "/api/promo",
+    "/assets",
+    "/@vite",
+    "/@fs",
+    "/src",
+    "/node_modules",
+  ];
+
+  app.use((req, res, next) => {
+    if (process.env.MAINTENANCE_MODE !== "true") return next();
+
+    const path = req.path.toLowerCase();
+    if (
+      path === "/" ||
+      path === "/favicon.ico" ||
+      MAINTENANCE_ALLOWED_PATHS.some((p) => path.startsWith(p))
+    ) {
+      return next();
+    }
+
+    const accept = req.headers.accept || "";
+    if (accept.includes("application/json")) {
+      return res.status(503).json({
+        error: "Service temporarily unavailable",
+        message: "VCP Trader is undergoing scheduled maintenance. Please check back shortly.",
+        maintenance: true,
+      });
+    }
+
+    return res.status(503).send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VCP Trader - Maintenance</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.wrap{text-align:center;padding:2rem;max-width:480px}
+h1{font-size:1.5rem;margin-bottom:.75rem;color:#fff}
+p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
+.badge{display:inline-block;padding:.25rem .75rem;border-radius:9999px;font-size:.75rem;font-weight:600;background:#1e3a5f;color:#60a5fa;margin-bottom:1.5rem}
+</style></head>
+<body><div class="wrap">
+<div class="badge">Scheduled Maintenance</div>
+<h1>VCP Trader is temporarily offline</h1>
+<p>We're performing upgrades to improve your trading experience. This usually takes just a few minutes.</p>
+<p style="font-size:.875rem">If you need immediate help, contact <a href="mailto:support@sunfishtech.com" style="color:#60a5fa">support@sunfishtech.com</a></p>
+</div></body></html>`);
+  });
+
   await setupAuth(app);
   registerAuthRoutes(app);
 

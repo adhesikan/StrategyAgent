@@ -49,5 +49,11 @@ The application connects to multiple brokerage providers for market data and dir
 ### News & Research
 - **Stock News API**: Provides compliance-safe news headlines by ticker symbol, with in-memory caching and rate limiting.
 
+### Maintenance Mode
+Set `MAINTENANCE_MODE=true` to put the app into maintenance mode. This blocks all routes except `/`, `/health`, `/login`, `/register`, `/status`, `/pricing`, `/terms`, `/legal`, and static assets. API requests receive a 503 JSON response; browser requests see a styled maintenance page. Set `MAINTENANCE_MODE=false` (or remove) to resume normal operation. In Railway: Settings > Variables > add `MAINTENANCE_MODE` with value `true` or `false`, then redeploy.
+
+### Health Check
+`GET /health` always returns `{"ok":true,"app":"vcptrader"}` (200), even during maintenance mode. Use this for uptime monitoring and Railway health checks.
+
 ### Environment Variables
-Key environment variables required for deployment include `DATABASE_URL`, `SESSION_SECRET`, `LEGAL_VERSION`, `SUPPORT_EMAIL`, `APP_URL`, `BROKER_TOKEN_KEY`, `TRADIER_CLIENT_ID`, `TRADIER_CLIENT_SECRET`, `TRADESTATION_CLIENT_ID`, `TRADESTATION_CLIENT_SECRET`, `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY`, and `STOCKNEWSAPI_TOKEN`.
+Key environment variables required for deployment include `DATABASE_URL`, `SESSION_SECRET`, `LEGAL_VERSION`, `SUPPORT_EMAIL`, `APP_URL`, `BROKER_TOKEN_KEY`, `TRADIER_CLIENT_ID`, `TRADIER_CLIENT_SECRET`, `TRADESTATION_CLIENT_ID`, `TRADESTATION_CLIENT_SECRET`, `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY`, `STOCKNEWSAPI_TOKEN`, and `MAINTENANCE_MODE`.

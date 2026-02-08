@@ -1022,6 +1022,66 @@ export const insertAuditEventSchema = createInsertSchema(auditEvents).omit({
 export type InsertAuditEvent = z.infer<typeof insertAuditEventSchema>;
 export type AuditEvent = typeof auditEvents.$inferSelect;
 
+// ─── Risk Profiles ─────────────────────────────────────────────────
+export const riskProfiles = pgTable("risk_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  riskMode: text("risk_mode").notNull(),
+  riskPerTrade: real("risk_per_trade").notNull(),
+  maxDeploy: real("max_deploy").notNull(),
+  deltaMin: real("delta_min"),
+  deltaMax: real("delta_max"),
+  lossCutoffMult: real("loss_cutoff_mult"),
+  minPremiumPct: real("min_premium_pct"),
+  vixPause: real("vix_pause"),
+  protectionsEnabled: boolean("protections_enabled").notNull().default(true),
+  guardrailsJson: jsonb("guardrails_json").notNull().default({}),
+  protectionsJson: jsonb("protections_json").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertRiskProfileSchema = createInsertSchema(riskProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertRiskProfile = z.infer<typeof insertRiskProfileSchema>;
+export type RiskProfile = typeof riskProfiles.$inferSelect;
+
+// ─── Ticker Universes ──────────────────────────────────────────────
+export const tickerUniverses = pgTable("ticker_universes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTickerUniverseSchema = createInsertSchema(tickerUniverses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTickerUniverse = z.infer<typeof insertTickerUniverseSchema>;
+export type TickerUniverse = typeof tickerUniverses.$inferSelect;
+
+// ─── Ticker Universe Members ───────────────────────────────────────
+export const tickerUniverseMembers = pgTable("ticker_universe_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  universeId: varchar("universe_id").notNull(),
+  symbol: text("symbol").notNull(),
+  addedAt: timestamp("added_at").defaultNow(),
+});
+
+export const insertTickerUniverseMemberSchema = createInsertSchema(tickerUniverseMembers).omit({
+  id: true,
+  addedAt: true,
+});
+export type InsertTickerUniverseMember = z.infer<typeof insertTickerUniverseMemberSchema>;
+export type TickerUniverseMember = typeof tickerUniverseMembers.$inferSelect;
+
 export const optionsScans = pgTable("options_scans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

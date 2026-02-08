@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, Zap, Bell, Star } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, Zap, Bell, Star, Info } from "lucide-react";
 import { Link } from "wouter";
 import {
   Table,
@@ -407,6 +407,14 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
           <Badge variant="secondary" className="text-xs" data-testid="badge-stock-top-picks-count">
             {sortedTopPicks.length}
           </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-stock-top-picks-info" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">
+              Ranked by a composite score: pattern confidence (40%), breakout stage (BREAKOUT &gt; READY &gt; FORMING), actionability (price near entry zone), and relative volume (RVOL &gt; 1.5x). Top 3-15 setups are highlighted.
+            </TooltipContent>
+          </Tooltip>
           <span className="text-xs text-muted-foreground">Best setups by stage, score, and actionability</span>
         </div>
         <div className="rounded-md border">

@@ -237,7 +237,7 @@ export default function Scanner() {
     }
     return "simple";
   });
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["Momentum Breakouts", "Volume Expansion", "Tight Setups", "Gap Continuations"]));
 
   const toggleViewMode = (mode: "simple" | "advanced") => {
     setViewMode(mode);
@@ -1279,6 +1279,33 @@ export default function Scanner() {
                   <p className={cn("text-xs", microBadge.color)}>{microBadge.text}</p>
                 )}
 
+                {actionable ? (
+                  <Button
+                    size="sm"
+                    className="w-full gap-1"
+                    onClick={(e) => handleInstaTrade(result, e)}
+                    disabled={instatradeMutation.isPending || brokerOrderMutation.isPending}
+                    data-testid={`button-instatrade-card-${result.ticker}`}
+                  >
+                    <Zap className="h-3 w-3" />
+                    InstaTrade™
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/alerts`);
+                    }}
+                    data-testid={`button-set-alert-card-${result.ticker}`}
+                  >
+                    <Bell className="h-3 w-3" />
+                    Set Breakout Alert
+                  </Button>
+                )}
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1287,7 +1314,7 @@ export default function Scanner() {
                   data-testid={`button-viewplan-${result.ticker}`}
                 >
                   <BookOpen className="h-3.5 w-3.5" />
-                  {isExpanded ? "Hide Plan" : "View Plan"}
+                  {isExpanded ? "Hide Details" : "Show Details"}
                   <ChevronDown className={cn("h-3 w-3 transition-transform ml-auto", isExpanded && "rotate-180")} />
                 </Button>
 
@@ -1339,32 +1366,6 @@ export default function Scanner() {
                       {getStrategyGroup(result) === "Gap Continuations" && "Gap up with continuation potential. Monitor for gap fill as possible entry or risk point."}
                       {getStrategyGroup(result) === "Tight Setups" && "Tight price consolidation near resistance. Lower volatility often precedes sharp directional moves."}
                     </p>
-                    {actionable ? (
-                      <Button
-                        size="sm"
-                        className="w-full gap-1"
-                        onClick={(e) => handleInstaTrade(result, e)}
-                        disabled={instatradeMutation.isPending}
-                        data-testid={`button-instatrade-card-${result.ticker}`}
-                      >
-                        <Zap className="h-3 w-3" />
-                        InstaTrade™
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full gap-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/alerts`);
-                        }}
-                        data-testid={`button-set-alert-card-${result.ticker}`}
-                      >
-                        <Bell className="h-3 w-3" />
-                        Set Breakout Alert
-                      </Button>
-                    )}
                   </div>
                 )}
               </CardContent>
@@ -1522,6 +1523,14 @@ export default function Scanner() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold">Top Picks</h3>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-top-picks-info" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-xs">
+                    Ranked by a composite score: pattern confidence (40%), breakout stage (BREAKOUT &gt; READY &gt; FORMING), actionability (price near entry zone), and relative volume (RVOL &gt; 1.5x). Top 3-15 setups are highlighted.
+                  </TooltipContent>
+                </Tooltip>
                 <span className="text-xs text-muted-foreground">Best setups by confidence, risk/reward & volume</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

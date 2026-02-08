@@ -1030,6 +1030,14 @@ function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
           <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count">
             {topPicks.length}
           </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-options-top-picks-info-card" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">
+              Top Picks are selected using a composite score: overall score (&ge;95) combined with probability of profit (&ge;60%), or the top 5% of all results. Higher premium and better risk/reward boost rankings.
+            </TooltipContent>
+          </Tooltip>
           <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -1258,6 +1266,14 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
           <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count-list">
             {sortedTopPicks.length}
           </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-options-top-picks-info-list" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">
+              Top Picks are selected using a composite score: overall score (&ge;95) combined with probability of profit (&ge;60%), or the top 5% of all results. Higher premium and better risk/reward boost rankings.
+            </TooltipContent>
+          </Tooltip>
           <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>
         </div>
         <Table>

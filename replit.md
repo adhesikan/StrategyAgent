@@ -41,15 +41,22 @@ A provider adapter pattern (`server/broker/`) normalizes brokerage data across p
 The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions. It supports `user` and `admin` roles, enforcing role-based access control for different API routes.
 
 ### Options Scanner
-The Options Scanner (`server/engines/options-scanner/`) provides a modular options scanning engine with strategy-based candidate discovery. The engine stub supports multiple strategies (Wheel, Credit Spreads, MWFS, Iron Condor, Covered Calls). Scan results are persisted in the `options_scans` table for history. API endpoints:
+The Options Scanner (`server/engines/options-scanner/`) provides a modular options scanning engine with strategy-based candidate discovery. Three core strategies generate proper multi-leg structures:
+- **Long Options**: Generates Long Call or Long Put single-leg candidates
+- **Wheel Strategy**: Generates either Covered Call or Cash-Secured Put recommendations
+- **Credit Spreads**: Generates either Bull Put Spread or Bear Call Spread two-leg structures
+Each `OptionCandidate` includes: legs[] (with side/strike/expiration per leg), strategyVariant, dte, premiumPct, maxProfit, maxLoss, breakeven, pop (probability of profit), stockPrice. Scan results are persisted in the `options_scans` table for history. API endpoints:
 - `GET /api/options/strategies` — list of available strategy definitions
-- `POST /api/options/scan` — run a scan `{universeId, strategyKey, riskProfileId}`, returns ranked candidates
+- `POST /api/options/scan` — run a scan `{universeId, strategyKey, riskProfileId, scanPreferences?}`, returns ranked candidates. `scanPreferences` accepts `{dteMin, dteMax, deltaMin, deltaMax, minPremiumPct}` for user-configurable scan parameters.
 - `GET /api/options/scans?limit=20` — recent scan history
-All options endpoints require authentication and `optionsScanner` entitlement. The UI page at `/app/options` integrates shared platform modules:
-- Fetches user's platform universes (from `/api/platform/universes`) for the universe dropdown with ticker counts and a "Manage" link to `/settings/universes`
-- Fetches risk profile (from `/api/platform/risk-profile`) and displays a summary card (mode, deploy, risk/trade, protections) with "Edit" link to `/settings/risk-profile`
-- Checks broker status (from `/api/broker/status`); disables "Run Scan" if broker not connected (shows CTA) or no universe selected (shows inline validation)
-- Sends `riskProfileId` along with `universeId` and `strategyKey` in the scan request
+All options endpoints require authentication and `optionsScanner` entitlement. The UI page at `/app/options` features:
+- Card view and List view toggle with key metrics (Premium, IV, Delta, Theta, PoP, Premium %)
+- Collapsible Scan Preferences panel with sliders for DTE range, Delta range, Min Premium %
+- Multi-leg display showing individual legs for spread strategies
+- Strategy variant badges (Covered Call, Cash-Secured Put, Bull Put Spread, Bear Call Spread)
+- Fetches user's platform universes for the universe dropdown with ticker counts
+- Fetches risk profile and displays a summary card with "Edit" link
+- Checks broker status; disables "Run Scan" if broker not connected
 
 ### Automated Scanning and Price Tracking
 The platform includes an automated multi-strategy scanning system (`server/scheduled-scan-service.ts`) that runs at scheduled times, incorporating holiday awareness. It detects various VCP-related strategies (e.g., Momentum Breakout, Open Drive, Gap Force) and ingests opportunities into an Outcome Report. Extended hours price tracking (4:00 AM - 8:00 PM ET) updates max/min prices for active opportunities every 5 minutes to determine outcomes.

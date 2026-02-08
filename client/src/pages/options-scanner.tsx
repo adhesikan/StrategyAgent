@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { cn } from "@/lib/utils";
@@ -24,12 +27,21 @@ import {
   Info,
   Clock,
   Shield,
-  ExternalLink,
   AlertTriangle,
   Unplug,
   Pencil,
   Globe,
   Plus,
+  LayoutGrid,
+  List,
+  ChevronDown,
+  Settings2,
+  Target,
+  DollarSign,
+  Percent,
+  ArrowUpDown,
+  Calendar,
+  Activity,
 } from "lucide-react";
 
 interface MeResponse {
@@ -43,6 +55,21 @@ interface MeResponse {
   broker: { connected: boolean; provider: string | null };
 }
 
+interface OptionLeg {
+  side: "buy" | "sell";
+  optionType: "call" | "put";
+  strike: number;
+  expiration: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  delta: number;
+  theta: number;
+  impliedVol: number;
+  openInterest: number;
+  volume: number;
+}
+
 interface OptionCandidate {
   rank: number;
   symbol: string;
@@ -50,6 +77,7 @@ interface OptionCandidate {
   expiration: string;
   strike: number;
   optionType: "call" | "put";
+  strategyVariant: string;
   strategy: string;
   bid: number;
   ask: number;
@@ -61,6 +89,14 @@ interface OptionCandidate {
   volume: number;
   score: number;
   rationale: string;
+  dte: number;
+  premiumPct: number;
+  maxProfit: number;
+  maxLoss: number;
+  breakeven: number;
+  legs: OptionLeg[];
+  pop: number;
+  stockPrice: number;
 }
 
 interface ScanResult {
@@ -83,6 +119,14 @@ interface ScanHistoryItem {
   universeId: string;
   strategyKey: string;
   resultJson: ScanResult;
+}
+
+interface ScanPreferences {
+  dteMin: number;
+  dteMax: number;
+  deltaMin: number;
+  deltaMax: number;
+  minPremiumPct: number;
 }
 
 const MODE_LABELS: Record<string, string> = {
@@ -112,6 +156,14 @@ const STRATEGY_TIPS: Record<string, { difficulty: string; tip: string }> = {
   },
 };
 
+const DEFAULT_PREFS: ScanPreferences = {
+  dteMin: 14,
+  dteMax: 45,
+  deltaMin: 0.15,
+  deltaMax: 0.35,
+  minPremiumPct: 0.5,
+};
+
 export default function OptionsScanner() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -120,6 +172,9 @@ export default function OptionsScanner() {
   const [activeStrategy, setActiveStrategy] = useState("long-options");
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [prefs, setPrefs] = useState<ScanPreferences>({ ...DEFAULT_PREFS });
 
   const { data: me, isLoading: meLoading } = useQuery<MeResponse>({
     queryKey: ["/api/auth/me"],
@@ -162,6 +217,7 @@ export default function OptionsScanner() {
         universeId: selectedUniverseId,
         strategyKey: activeStrategy,
         riskProfileId: riskProfile?.id,
+        scanPreferences: prefs,
       });
       return res.json();
     },
@@ -415,6 +471,115 @@ export default function OptionsScanner() {
             </Card>
           </div>
 
+          <Collapsible open={prefsOpen} onOpenChange={setPrefsOpen}>
+            <Card data-testid="card-scan-preferences">
+              <CollapsibleTrigger asChild>
+                <CardHeader className="pb-3 cursor-pointer hover-elevate rounded-md">
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Settings2 className="h-4 w-4 text-muted-foreground" />
+                      Scan Preferences
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {prefs.dteMin}-{prefs.dteMax} DTE, {(prefs.deltaMin * 100).toFixed(0)}-{(prefs.deltaMax * 100).toFixed(0)} Delta
+                      </span>
+                      <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", prefsOpen && "rotate-180")} />
+                    </div>
+                  </div>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div className="space-y-3" data-testid="pref-dte">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs font-medium flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                          Days to Expiration (DTE)
+                        </Label>
+                        <span className="text-xs font-mono text-muted-foreground" data-testid="text-dte-value">
+                          {prefs.dteMin} - {prefs.dteMax}
+                        </span>
+                      </div>
+                      <Slider
+                        value={[prefs.dteMin, prefs.dteMax]}
+                        min={1}
+                        max={120}
+                        step={1}
+                        onValueChange={([min, max]) => setPrefs(p => ({ ...p, dteMin: min, dteMax: max }))}
+                        data-testid="slider-dte"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>1 day</span>
+                        <span>120 days</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3" data-testid="pref-delta">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs font-medium flex items-center gap-1.5">
+                          <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+                          Delta Range
+                        </Label>
+                        <span className="text-xs font-mono text-muted-foreground" data-testid="text-delta-value">
+                          {(prefs.deltaMin * 100).toFixed(0)} - {(prefs.deltaMax * 100).toFixed(0)}
+                        </span>
+                      </div>
+                      <Slider
+                        value={[prefs.deltaMin * 100, prefs.deltaMax * 100]}
+                        min={5}
+                        max={50}
+                        step={1}
+                        onValueChange={([min, max]) => setPrefs(p => ({ ...p, deltaMin: min / 100, deltaMax: max / 100 }))}
+                        data-testid="slider-delta"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>5 (far OTM)</span>
+                        <span>50 (near ATM)</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3" data-testid="pref-premium">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs font-medium flex items-center gap-1.5">
+                          <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                          Min Premium %
+                        </Label>
+                        <span className="text-xs font-mono text-muted-foreground" data-testid="text-premium-value">
+                          {prefs.minPremiumPct.toFixed(1)}%
+                        </span>
+                      </div>
+                      <Slider
+                        value={[prefs.minPremiumPct * 10]}
+                        min={1}
+                        max={50}
+                        step={1}
+                        onValueChange={([val]) => setPrefs(p => ({ ...p, minPremiumPct: val / 10 }))}
+                        data-testid="slider-premium"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>0.1%</span>
+                        <span>5.0%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPrefs({ ...DEFAULT_PREFS })}
+                      className="text-xs"
+                      data-testid="button-reset-prefs"
+                    >
+                      Reset to defaults
+                    </Button>
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
           {!brokerConnected && (
             <Card className="border-yellow-500/30" data-testid="card-broker-warning">
               <CardContent className="py-4">
@@ -488,17 +653,41 @@ export default function OptionsScanner() {
                   )}
                 </div>
 
-                {scanResult && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span data-testid="text-scan-time">
-                      {new Date(scanResult.scannedAt).toLocaleTimeString()}
-                    </span>
-                    <Badge variant="secondary" data-testid="text-candidate-count">
-                      {scanResult.candidateCount} ideas found
-                    </Badge>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  {scanResult && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span data-testid="text-scan-time">
+                        {new Date(scanResult.scannedAt).toLocaleTimeString()}
+                      </span>
+                      <Badge variant="secondary" data-testid="text-candidate-count">
+                        {scanResult.candidateCount} ideas found
+                      </Badge>
+                    </div>
+                  )}
+                  {scanResult && scanResult.candidates.length > 0 && (
+                    <div className="flex items-center border rounded-md" data-testid="view-toggle">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("rounded-r-none", viewMode === "card" && "bg-muted")}
+                        onClick={() => setViewMode("card")}
+                        data-testid="button-view-card"
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("rounded-l-none", viewMode === "list" && "bg-muted")}
+                        onClick={() => setViewMode("list")}
+                        data-testid="button-view-list"
+                      >
+                        <List className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardHeader>
 
@@ -513,7 +702,11 @@ export default function OptionsScanner() {
               )}
 
               {scanResult && scanResult.strategyKey === activeStrategy ? (
-                <CandidatesTable candidates={scanResult.candidates} />
+                viewMode === "card" ? (
+                  <CandidatesCardView candidates={scanResult.candidates} />
+                ) : (
+                  <CandidatesListView candidates={scanResult.candidates} />
+                )
               ) : scanResult && scanResult.strategyKey !== activeStrategy ? (
                 <EmptyState message={`Click "Find Trades" with "${activeStrategyDef?.label ?? activeStrategy}" selected to see results`} />
               ) : (
@@ -584,24 +777,178 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
+function VariantBadge({ variant, optionType }: { variant: string; optionType: "call" | "put" }) {
+  const isCallish = optionType === "call" || variant.toLowerCase().includes("call") || variant.toLowerCase().includes("bull");
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        "text-xs",
+        isCallish
+          ? "bg-chart-2/15 text-chart-2 border-chart-2/30"
+          : "bg-destructive/15 text-destructive border-destructive/30"
+      )}
+      data-testid="badge-variant"
+    >
+      {variant}
+    </Badge>
+  );
+}
+
+function MetricPill({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof Target }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs" data-testid={`metric-${label.toLowerCase().replace(/\s/g, "-")}`}>
+      {Icon && <Icon className="h-3 w-3 text-muted-foreground shrink-0" />}
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-medium font-mono">{value}</span>
+    </div>
+  );
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  return (
+    <Badge
+      variant={score >= 90 ? "default" : score >= 75 ? "secondary" : "outline"}
+      className="text-xs font-mono"
+      data-testid="badge-score"
+    >
+      {score}
+    </Badge>
+  );
+}
+
+function LegDisplay({ legs }: { legs: OptionLeg[] }) {
+  if (legs.length === 0) return null;
+  return (
+    <div className="space-y-1" data-testid="legs-display">
+      {legs.map((leg, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant="outline" className="text-xs capitalize">
+            {leg.side}
+          </Badge>
+          <span className="font-mono">${leg.strike}</span>
+          <Badge
+            variant="secondary"
+            className={cn(
+              "text-xs",
+              leg.optionType === "call"
+                ? "bg-chart-2/15 text-chart-2"
+                : "bg-destructive/15 text-destructive"
+            )}
+          >
+            {leg.optionType === "call" ? "Call" : "Put"}
+          </Badge>
+          <span className="text-muted-foreground">{leg.expiration}</span>
+          <span className="text-muted-foreground font-mono">${leg.mid.toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
   if (candidates.length === 0) {
     return <EmptyState message="No trade ideas found for this scan" />;
   }
 
   return (
-    <ScrollArea className="max-h-[500px]" data-testid="candidates-table-container">
+    <ScrollArea className="max-h-[600px]" data-testid="candidates-card-container">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {candidates.map((c) => (
+          <Card key={`${c.symbol}-${c.strike}-${c.expiration}`} className="overflow-visible" data-testid={`candidate-card-${c.rank}`}>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold" data-testid={`text-underlying-card-${c.rank}`}>{c.underlying}</span>
+                  <span className="text-xs text-muted-foreground font-mono">${c.stockPrice.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <ScoreBadge score={c.score} />
+                  <VariantBadge variant={c.strategyVariant} optionType={c.optionType} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                <span className="font-mono" data-testid={`text-strike-card-${c.rank}`}>${c.strike}</span>
+                <span>{c.expiration}</span>
+                <Badge variant="outline" className="text-xs">{c.dte}d</Badge>
+              </div>
+
+              {c.legs.length > 1 && <LegDisplay legs={c.legs} />}
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                <MetricPill label="Premium" value={`$${c.mid.toFixed(2)}`} icon={DollarSign} />
+                <MetricPill label="IV" value={`${c.impliedVol}%`} icon={Activity} />
+                <MetricPill label="Delta" value={`${c.delta}`} icon={ArrowUpDown} />
+                <MetricPill label="Theta" value={`${c.theta}`} icon={Clock} />
+                <MetricPill label="PoP" value={`${c.pop}%`} icon={Target} />
+                <MetricPill label="Prem %" value={`${c.premiumPct}%`} icon={Percent} />
+              </div>
+
+              <div className="flex items-center gap-3 text-xs border-t pt-2 flex-wrap">
+                <div className="flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 text-chart-2" />
+                  <span className="text-muted-foreground">Max Profit:</span>
+                  <span className="font-medium font-mono text-chart-2" data-testid={`text-maxprofit-${c.rank}`}>
+                    {c.maxProfit === -1 ? "Unlimited" : `$${c.maxProfit.toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <TrendingDown className="h-3 w-3 text-destructive" />
+                  <span className="text-muted-foreground">Max Loss:</span>
+                  <span className="font-medium font-mono text-destructive" data-testid={`text-maxloss-${c.rank}`}>
+                    ${c.maxLoss.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 text-xs">
+                <span className="text-muted-foreground">B/E:</span>
+                <span className="font-mono font-medium" data-testid={`text-breakeven-${c.rank}`}>${c.breakeven.toFixed(2)}</span>
+              </div>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-card-${c.rank}`}>
+                    {c.rationale}
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm">
+                  <p className="text-xs">{c.rationale}</p>
+                </TooltipContent>
+              </Tooltip>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
+  if (candidates.length === 0) {
+    return <EmptyState message="No trade ideas found for this scan" />;
+  }
+
+  return (
+    <ScrollArea className="max-h-[600px]" data-testid="candidates-list-container">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-12">#</TableHead>
             <TableHead>Stock</TableHead>
-            <TableHead>Type</TableHead>
+            <TableHead>Strategy</TableHead>
             <TableHead className="text-right">Strike</TableHead>
             <TableHead>Expires</TableHead>
-            <TableHead className="text-right">Price</TableHead>
+            <TableHead className="text-right">DTE</TableHead>
+            <TableHead className="text-right">Premium</TableHead>
+            <TableHead className="text-right">IV</TableHead>
+            <TableHead className="text-right">Delta</TableHead>
+            <TableHead className="text-right">PoP</TableHead>
+            <TableHead className="text-right">Max Profit</TableHead>
+            <TableHead className="text-right">Max Loss</TableHead>
             <TableHead className="text-right">Score</TableHead>
-            <TableHead className="hidden lg:table-cell">Why</TableHead>
+            <TableHead className="hidden xl:table-cell">Why</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -610,35 +957,50 @@ function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
               <TableCell className="font-medium text-muted-foreground">{c.rank}</TableCell>
               <TableCell>
                 <div>
-                  <span className="font-medium" data-testid={`text-underlying-${c.rank}`}>{c.underlying}</span>
-                  <span className="text-xs text-muted-foreground ml-1">${c.strike}</span>
+                  <span className="font-medium" data-testid={`text-underlying-list-${c.rank}`}>{c.underlying}</span>
+                  <span className="text-xs text-muted-foreground ml-1">${c.stockPrice.toFixed(0)}</span>
                 </div>
               </TableCell>
               <TableCell>
-                <Badge
-                  variant={c.optionType === "call" ? "default" : "secondary"}
-                  className="text-xs"
-                  data-testid={`badge-type-${c.rank}`}
-                >
-                  {c.optionType === "call" ? "Call" : "Put"}
-                </Badge>
+                <VariantBadge variant={c.strategyVariant} optionType={c.optionType} />
               </TableCell>
-              <TableCell className="text-right font-mono text-sm" data-testid={`text-strike-${c.rank}`}>
-                ${c.strike}
+              <TableCell className="text-right font-mono text-sm" data-testid={`text-strike-list-${c.rank}`}>
+                {c.legs.length > 1
+                  ? `${c.legs.map(l => `$${l.strike}`).join("/")}`
+                  : `$${c.strike}`
+                }
               </TableCell>
-              <TableCell className="text-sm" data-testid={`text-exp-${c.rank}`}>
+              <TableCell className="text-sm" data-testid={`text-exp-list-${c.rank}`}>
                 {c.expiration}
               </TableCell>
-              <TableCell className="text-right font-mono text-sm" data-testid={`text-mid-${c.rank}`}>
+              <TableCell className="text-right text-sm font-mono">
+                {c.dte}d
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm" data-testid={`text-premium-list-${c.rank}`}>
                 ${c.mid.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm">
+                {c.impliedVol}%
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm">
+                {c.delta}
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm">
+                {c.pop}%
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm text-chart-2">
+                {c.maxProfit === -1 ? "Unlim." : `$${c.maxProfit.toLocaleString()}`}
+              </TableCell>
+              <TableCell className="text-right font-mono text-sm text-destructive">
+                ${c.maxLoss.toLocaleString()}
               </TableCell>
               <TableCell className="text-right">
                 <ScoreBadge score={c.score} />
               </TableCell>
-              <TableCell className="hidden lg:table-cell max-w-[200px]">
+              <TableCell className="hidden xl:table-cell max-w-[200px]">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-${c.rank}`}>
+                    <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-list-${c.rank}`}>
                       {c.rationale}
                     </p>
                   </TooltipTrigger>
@@ -652,17 +1014,5 @@ function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
         </TableBody>
       </Table>
     </ScrollArea>
-  );
-}
-
-function ScoreBadge({ score }: { score: number }) {
-  return (
-    <Badge
-      variant={score >= 90 ? "default" : score >= 75 ? "secondary" : "outline"}
-      className="text-xs font-mono"
-      data-testid="badge-score"
-    >
-      {score}
-    </Badge>
   );
 }

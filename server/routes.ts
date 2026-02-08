@@ -1627,10 +1627,19 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   const { runOptionsScan, STRATEGY_DEFINITIONS } = await import("./engines/options-scanner/index");
   const { getUserEntitlements } = await import("./replit_integrations/auth/routes");
 
+  const scanPreferencesSchema = z.object({
+    dteMin: z.number().min(1).max(365).optional(),
+    dteMax: z.number().min(1).max(365).optional(),
+    deltaMin: z.number().min(0).max(1).optional(),
+    deltaMax: z.number().min(0).max(1).optional(),
+    minPremiumPct: z.number().min(0).max(100).optional(),
+  });
+
   const optionsScanRequestSchema = z.object({
     universeId: z.string().min(1),
     riskProfileId: z.string().optional(),
     strategyKey: z.string().min(1),
+    scanPreferences: scanPreferencesSchema.optional(),
   });
 
   app.get("/api/options/strategies", isAuthenticated, (req, res) => {
@@ -1654,7 +1663,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.errors[0].message });
       }
-      const { universeId, riskProfileId, strategyKey } = parsed.data;
+      const { universeId, riskProfileId, strategyKey, scanPreferences } = parsed.data;
 
       const { getUniverse } = await import("./models/ticker-universes");
       const { getDefaultRiskProfile } = await import("./models/risk-profiles");
@@ -1701,7 +1710,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       };
 
       const result = await runOptionsScan(
-        { universeId, strategyKey, symbols, riskSettings },
+        { universeId, strategyKey, symbols, riskSettings, scanPreferences: scanPreferences as any },
         brokerToken,
       );
 

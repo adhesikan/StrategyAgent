@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -63,6 +63,8 @@ import type {
   InsertAgentState,
   AuditEvent,
   InsertAuditEvent,
+  OptionsScan,
+  InsertOptionsScan,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -235,6 +237,10 @@ export interface IStorage {
   // Audit Events
   createAuditEvent(event: InsertAuditEvent): Promise<AuditEvent>;
   getAuditEvents(userId: string, limit?: number): Promise<AuditEvent[]>;
+
+  // Options Scans
+  createOptionsScan(scan: InsertOptionsScan): Promise<OptionsScan>;
+  getOptionsScans(userId: string, limit?: number): Promise<OptionsScan[]>;
 }
 
 export interface OpportunityFilters {
@@ -2204,6 +2210,21 @@ export class MemStorage implements IStorage {
       .from(auditEventsTable)
       .where(eq(auditEventsTable.userId, userId))
       .orderBy(desc(auditEventsTable.eventAt))
+      .limit(limit);
+  }
+
+  // Options Scans
+  async createOptionsScan(scan: InsertOptionsScan): Promise<OptionsScan> {
+    const [result] = await db.insert(optionsScansTable).values(scan).returning();
+    return result;
+  }
+
+  async getOptionsScans(userId: string, limit: number = 20): Promise<OptionsScan[]> {
+    return db
+      .select()
+      .from(optionsScansTable)
+      .where(eq(optionsScansTable.userId, userId))
+      .orderBy(desc(optionsScansTable.createdAt))
       .limit(limit);
   }
 }

@@ -1021,3 +1021,20 @@ export const insertAuditEventSchema = createInsertSchema(auditEvents).omit({
 });
 export type InsertAuditEvent = z.infer<typeof insertAuditEventSchema>;
 export type AuditEvent = typeof auditEvents.$inferSelect;
+
+export const optionsScans = pgTable("options_scans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  universeId: text("universe_id").notNull(),
+  strategyKey: text("strategy_key").notNull(),
+  requestJson: jsonb("request_json").notNull(),
+  resultJson: jsonb("result_json").notNull(),
+});
+
+export const insertOptionsScanSchema = createInsertSchema(optionsScans).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertOptionsScan = z.infer<typeof insertOptionsScanSchema>;
+export type OptionsScan = typeof optionsScans.$inferSelect;

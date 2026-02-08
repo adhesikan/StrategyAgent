@@ -1,10 +1,28 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Lock, ScanLine } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import {
+  Loader2,
+  Lock,
+  ScanLine,
+  Play,
+  History,
+  TrendingUp,
+  TrendingDown,
+  Info,
+  Clock,
+} from "lucide-react";
 
 interface MeResponse {
   user: { id: string; email: string; role: string };
@@ -17,47 +35,101 @@ interface MeResponse {
   broker: { connected: boolean; provider: string | null };
 }
 
-interface TokenResponse {
-  token: string;
-  expiresIn: string;
-  user: { id: string; email: string; role: string };
+interface OptionCandidate {
+  rank: number;
+  symbol: string;
+  underlying: string;
+  expiration: string;
+  strike: number;
+  optionType: "call" | "put";
+  strategy: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  impliedVol: number;
+  delta: number;
+  theta: number;
+  openInterest: number;
+  volume: number;
+  score: number;
+  rationale: string;
 }
 
+interface ScanResult {
+  strategyKey: string;
+  universeId: string;
+  scannedAt: string;
+  candidateCount: number;
+  candidates: OptionCandidate[];
+}
+
+interface StrategyDef {
+  key: string;
+  label: string;
+  description: string;
+}
+
+interface ScanHistoryItem {
+  id: string;
+  createdAt: string;
+  universeId: string;
+  strategyKey: string;
+  resultJson: ScanResult;
+}
+
+const UNIVERSES = [
+  { id: "sp500", label: "S&P 500 (Top 10)" },
+  { id: "nasdaq100", label: "Nasdaq 100 (Top 10)" },
+  { id: "high-iv", label: "High IV Names" },
+  { id: "watchlist", label: "My Watchlist" },
+];
+
 export default function OptionsScanner() {
-  const tokenRef = useRef<string | null>(null);
-  const [tokenReady, setTokenReady] = useState(false);
-  const [tokenError, setTokenError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [universeId, setUniverseId] = useState("sp500");
+  const [activeStrategy, setActiveStrategy] = useState("wheel");
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const { data: me, isLoading: meLoading } = useQuery<MeResponse>({
     queryKey: ["/api/auth/me"],
   });
 
-  useEffect(() => {
-    if (!me?.entitlements?.optionsScanner) return;
+  const { data: strategies } = useQuery<StrategyDef[]>({
+    queryKey: ["/api/options/strategies"],
+    enabled: !!me?.entitlements?.optionsScanner,
+  });
 
-    let cancelled = false;
+  const { data: scanHistory } = useQuery<ScanHistoryItem[]>({
+    queryKey: ["/api/options/scans"],
+    enabled: !!me?.entitlements?.optionsScanner && showHistory,
+  });
 
-    async function fetchToken() {
-      try {
-        const res = await apiRequest("POST", "/api/auth/token");
-        const data: TokenResponse = await res.json();
-        if (!cancelled) {
-          tokenRef.current = data.token;
-          setTokenReady(true);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setTokenError("Failed to initialize session. Please refresh.");
-        }
-      }
-    }
-
-    fetchToken();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [me?.entitlements?.optionsScanner]);
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/options/scan", {
+        universeId,
+        strategyKey: activeStrategy,
+      });
+      return res.json();
+    },
+    onSuccess: (data: ScanResult) => {
+      setScanResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/options/scans"] });
+      toast({
+        title: "Scan complete",
+        description: `Found ${data.candidateCount} candidates for ${data.strategyKey}`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Scan failed",
+        description: "Could not complete the options scan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   if (meLoading) {
     return (
@@ -90,45 +162,270 @@ export default function OptionsScanner() {
     );
   }
 
-  if (tokenError) {
-    return (
-      <div className="flex items-center justify-center h-full p-6">
-        <Card className="max-w-md w-full">
-          <CardContent className="text-center py-8 space-y-3">
-            <p className="text-destructive" data-testid="text-token-error">{tokenError}</p>
-            <Button onClick={() => window.location.reload()} data-testid="button-retry">
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const activeStrategyDef = strategies?.find((s) => s.key === activeStrategy);
 
-  if (!tokenReady) {
-    return (
-      <div className="flex items-center justify-center h-full" data-testid="loading-options-token">
-        <div className="text-center space-y-3">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
-          <p className="text-sm text-muted-foreground">Options Scanner loading...</p>
+  return (
+    <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6" data-testid="options-scanner-container">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ScanLine className="h-6 w-6 text-primary" />
+            Options Scanner
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Find high-probability options trades across strategies
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowHistory(!showHistory)}
+            data-testid="button-toggle-history"
+          >
+            <History className="h-4 w-4 mr-1" />
+            {showHistory ? "Hide History" : "Scan History"}
+          </Button>
         </div>
       </div>
-    );
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select value={universeId} onValueChange={setUniverseId}>
+                <SelectTrigger className="w-[200px]" data-testid="select-universe">
+                  <SelectValue placeholder="Select universe" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIVERSES.map((u) => (
+                    <SelectItem key={u.id} value={u.id} data-testid={`option-universe-${u.id}`}>
+                      {u.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                onClick={() => scanMutation.mutate()}
+                disabled={scanMutation.isPending}
+                data-testid="button-run-scan"
+              >
+                {scanMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-1" />
+                )}
+                Run Scan
+              </Button>
+            </div>
+
+            {scanResult && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                <span data-testid="text-scan-time">
+                  {new Date(scanResult.scannedAt).toLocaleTimeString()}
+                </span>
+                <Badge variant="secondary" data-testid="text-candidate-count">
+                  {scanResult.candidateCount} candidates
+                </Badge>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          <Tabs value={activeStrategy} onValueChange={setActiveStrategy}>
+            <TabsList className="flex flex-wrap h-auto gap-1" data-testid="tabs-strategy">
+              {(strategies || []).map((s) => (
+                <TabsTrigger key={s.key} value={s.key} data-testid={`tab-strategy-${s.key}`}>
+                  {s.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {activeStrategyDef && (
+              <p className="text-sm text-muted-foreground mt-3 mb-4" data-testid="text-strategy-description">
+                {activeStrategyDef.description}
+              </p>
+            )}
+
+            {(strategies || []).map((s) => (
+              <TabsContent key={s.key} value={s.key}>
+                {scanResult && scanResult.strategyKey === s.key ? (
+                  <CandidatesTable candidates={scanResult.candidates} />
+                ) : scanResult && scanResult.strategyKey !== s.key ? (
+                  <EmptyState message={`Run a scan with "${s.label}" selected to see results`} />
+                ) : (
+                  <EmptyState message="Select a universe and click Run Scan to find candidates" />
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {showHistory && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              <CardTitle>Recent Scans</CardTitle>
+            </div>
+            <CardDescription>Your last 20 options scans</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!scanHistory || scanHistory.length === 0 ? (
+              <EmptyState message="No scan history yet. Run your first scan above." />
+            ) : (
+              <ScrollArea className="max-h-[300px]">
+                <div className="space-y-2">
+                  {scanHistory.map((scan) => (
+                    <div
+                      key={scan.id}
+                      className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg border hover-elevate cursor-pointer"
+                      onClick={() => {
+                        setScanResult(scan.resultJson);
+                        setActiveStrategy(scan.strategyKey);
+                        setShowHistory(false);
+                      }}
+                      data-testid={`history-item-${scan.id}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{scan.strategyKey}</Badge>
+                        <span className="text-sm text-muted-foreground">{scan.universeId}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">
+                          {scan.resultJson?.candidateCount ?? 0} results
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(scan.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center py-12" data-testid="empty-state">
+      <div className="text-center space-y-2">
+        <ScanLine className="h-10 w-10 mx-auto text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function CandidatesTable({ candidates }: { candidates: OptionCandidate[] }) {
+  if (candidates.length === 0) {
+    return <EmptyState message="No candidates found for this scan" />;
   }
 
   return (
-    <div className="p-6 space-y-4" data-testid="options-scanner-container">
-      <div className="flex items-center gap-3">
-        <ScanLine className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold" data-testid="text-options-title">Options Scanner</h1>
-      </div>
-      <Card>
-        <CardContent className="py-8 text-center">
-          <p className="text-muted-foreground" data-testid="text-options-ready">
-            Options Scanner ready. Module will load here.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+    <ScrollArea className="max-h-[500px]" data-testid="candidates-table-container">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-12">#</TableHead>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Underlying</TableHead>
+            <TableHead className="text-right">Strike</TableHead>
+            <TableHead>Exp</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead className="text-right">Bid</TableHead>
+            <TableHead className="text-right">Ask</TableHead>
+            <TableHead className="text-right">Mid</TableHead>
+            <TableHead className="text-right">IV</TableHead>
+            <TableHead className="text-right">Delta</TableHead>
+            <TableHead className="text-right">Theta</TableHead>
+            <TableHead className="text-right">OI</TableHead>
+            <TableHead className="text-right">Vol</TableHead>
+            <TableHead className="text-right">Score</TableHead>
+            <TableHead className="w-12"></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {candidates.map((c) => (
+            <TableRow key={c.symbol} data-testid={`candidate-row-${c.rank}`}>
+              <TableCell className="font-mono text-muted-foreground">{c.rank}</TableCell>
+              <TableCell className="font-medium">{c.symbol}</TableCell>
+              <TableCell>{c.underlying}</TableCell>
+              <TableCell className="text-right font-mono">${c.strike}</TableCell>
+              <TableCell className="text-sm">{c.expiration}</TableCell>
+              <TableCell>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    c.optionType === "put"
+                      ? "text-red-600 dark:text-red-400 border-red-500/30"
+                      : "text-green-600 dark:text-green-400 border-green-500/30"
+                  )}
+                >
+                  {c.optionType === "put" ? (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  )}
+                  {c.optionType.toUpperCase()}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right font-mono">${c.bid.toFixed(2)}</TableCell>
+              <TableCell className="text-right font-mono">${c.ask.toFixed(2)}</TableCell>
+              <TableCell className="text-right font-mono font-medium">${c.mid.toFixed(2)}</TableCell>
+              <TableCell className="text-right font-mono">{c.impliedVol}%</TableCell>
+              <TableCell className="text-right font-mono">{c.delta}</TableCell>
+              <TableCell className="text-right font-mono">{c.theta}</TableCell>
+              <TableCell className="text-right font-mono">{c.openInterest.toLocaleString()}</TableCell>
+              <TableCell className="text-right font-mono">{c.volume.toLocaleString()}</TableCell>
+              <TableCell className="text-right">
+                <ScoreBadge score={c.score} />
+              </TableCell>
+              <TableCell>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="icon" variant="ghost" data-testid={`button-info-${c.rank}`}>
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-[300px]">
+                    <p className="text-sm">{c.rationale}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ScrollArea>
+  );
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        "font-mono",
+        score >= 90
+          ? "text-green-600 dark:text-green-400"
+          : score >= 80
+          ? "text-blue-600 dark:text-blue-400"
+          : "text-muted-foreground"
+      )}
+      data-testid="badge-score"
+    >
+      {score}
+    </Badge>
   );
 }

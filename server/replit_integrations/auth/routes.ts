@@ -17,7 +17,7 @@ function getJwtSecret(): string {
 export function getUserEntitlements(_userId: string) {
   return {
     stockScanner: true,
-    optionsScanner: false,
+    optionsScanner: true,
     automation: false,
     plan: "core" as const,
   };

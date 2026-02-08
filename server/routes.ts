@@ -1576,6 +1576,90 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ─── Options Scanner API ──────────────────────────────────────────────
+  const { runOptionsScan, STRATEGY_DEFINITIONS } = await import("./engines/options-scanner/index");
+  const { getUserEntitlements } = await import("./replit_integrations/auth/routes");
+
+  const optionsScanRequestSchema = z.object({
+    universeId: z.string().min(1),
+    mode: z.string().optional(),
+    riskProfileId: z.string().optional(),
+    strategyKey: z.string().min(1),
+  });
+
+  app.get("/api/options/strategies", isAuthenticated, (req, res) => {
+    const userId = req.session.userId!;
+    const entitlements = getUserEntitlements(userId);
+    if (!entitlements.optionsScanner) {
+      return res.status(403).json({ error: "Options Scanner is not available on your plan" });
+    }
+    res.json(STRATEGY_DEFINITIONS);
+  });
+
+  app.post("/api/options/scan", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const entitlements = getUserEntitlements(userId);
+      if (!entitlements.optionsScanner) {
+        return res.status(403).json({ error: "Options Scanner is not available on your plan" });
+      }
+
+      const parsed = optionsScanRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0].message });
+      }
+      const { universeId, mode, riskProfileId, strategyKey } = parsed.data;
+
+      let brokerToken: string | undefined;
+      try {
+        const connection = await storage.getBrokerConnectionWithToken(userId);
+        if (connection?.accessToken) {
+          brokerToken = connection.accessToken;
+        }
+      } catch {}
+
+      const result = await runOptionsScan(
+        { universeId, mode, riskProfileId, strategyKey },
+        brokerToken,
+      );
+
+      await storage.createOptionsScan({
+        userId,
+        universeId,
+        strategyKey,
+        requestJson: { universeId, mode, riskProfileId, strategyKey },
+        resultJson: result,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("[OptionsScanner] scan error:", error.message);
+      res.status(500).json({ error: "Scan failed" });
+    }
+  });
+
+  const optionsScansQuerySchema = z.object({
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  });
+
+  app.get("/api/options/scans", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const entitlements = getUserEntitlements(userId);
+      if (!entitlements.optionsScanner) {
+        return res.status(403).json({ error: "Options Scanner is not available on your plan" });
+      }
+
+      const parsed = optionsScansQuerySchema.safeParse(req.query);
+      const limit = parsed.success ? parsed.data.limit : 20;
+      const scans = await storage.getOptionsScans(userId, limit);
+      res.json(scans);
+    } catch (error: any) {
+      console.error("[OptionsScanner] list error:", error.message);
+      res.status(500).json({ error: "Failed to fetch scan history" });
+    }
+  });
+
   // Tradier OAuth routes
   const TRADIER_CLIENT_ID = process.env.TRADIER_CLIENT_ID;
   const TRADIER_CLIENT_SECRET = process.env.TRADIER_CLIENT_SECRET;

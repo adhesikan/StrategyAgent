@@ -33,6 +33,13 @@ A provider adapter pattern (`server/broker/`) normalizes brokerage data across p
 ### Authentication & Authorization
 The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions. It supports `user` and `admin` roles, enforcing role-based access control for different API routes.
 
+### Options Scanner
+The Options Scanner (`server/engines/options-scanner/`) provides a modular options scanning engine with strategy-based candidate discovery. The engine stub supports multiple strategies (Wheel, Credit Spreads, MWFS, Iron Condor, Covered Calls) and universe selections (S&P 500, Nasdaq 100, High IV, Watchlist). Scan results are persisted in the `options_scans` table for history. API endpoints:
+- `GET /api/options/strategies` — list of available strategy definitions
+- `POST /api/options/scan` — run a scan `{universeId, strategyKey}`, returns ranked candidates
+- `GET /api/options/scans?limit=20` — recent scan history
+All options endpoints require authentication and `optionsScanner` entitlement. The UI page at `/app/options` provides universe dropdown, strategy tabs, run scan button, and results table.
+
 ### Automated Scanning and Price Tracking
 The platform includes an automated multi-strategy scanning system (`server/scheduled-scan-service.ts`) that runs at scheduled times, incorporating holiday awareness. It detects various VCP-related strategies (e.g., Momentum Breakout, Open Drive, Gap Force) and ingests opportunities into an Outcome Report. Extended hours price tracking (4:00 AM - 8:00 PM ET) updates max/min prices for active opportunities every 5 minutes to determine outcomes.
 

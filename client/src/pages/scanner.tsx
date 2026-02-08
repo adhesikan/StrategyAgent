@@ -224,6 +224,12 @@ export default function Scanner() {
   const [maxResistancePercent, setMaxResistancePercent] = useState<number | null>(null);
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [featuredViewMode, setFeaturedViewMode] = useState<"cards" | "list">("cards");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterMinPrice, setFilterMinPrice] = useState<number | null>(null);
+  const [filterMaxPrice, setFilterMaxPrice] = useState<number | null>(null);
+  const [filterMinVolume, setFilterMinVolume] = useState<number | null>(null);
+  const [filterMinRvol, setFilterMinRvol] = useState<number | null>(null);
+  const [filterMinUpside, setFilterMinUpside] = useState<number | null>(null);
   const [filters, setFilters] = useState<ScannerFilters>({
     minPrice: 5,
     maxPrice: 500,
@@ -774,6 +780,18 @@ export default function Scanner() {
         return false;
       }
     }
+    // Price range filter
+    if (filterMinPrice !== null && (r.price ?? 0) < filterMinPrice) return false;
+    if (filterMaxPrice !== null && (r.price ?? 0) > filterMaxPrice) return false;
+    // Volume filter
+    if (filterMinVolume !== null && (r.volume ?? 0) < filterMinVolume) return false;
+    // RVOL filter
+    if (filterMinRvol !== null && (r.rvol ?? 0) < filterMinRvol) return false;
+    // Upside % filter
+    if (filterMinUpside !== null) {
+      const upside = getResistancePercent(r);
+      if (upside === null || upside < filterMinUpside) return false;
+    }
     return true;
   })?.sort((a, b) => {
     let aVal: number | null = 0;
@@ -923,9 +941,192 @@ export default function Scanner() {
         </div>
       )}
 
+      {/* Quick Filters Bar */}
+      {liveResults && liveResults.length > 0 && (() => {
+        const activeFilterCount = [
+          minPatternScore !== null,
+          filterMinPrice !== null,
+          filterMaxPrice !== null,
+          filterMinVolume !== null,
+          filterMinRvol !== null,
+          filterMinUpside !== null,
+        ].filter(Boolean).length;
+        
+        const clearAllFilters = () => {
+          setMinPatternScore(null);
+          setFilterMinPrice(null);
+          setFilterMaxPrice(null);
+          setFilterMinVolume(null);
+          setFilterMinRvol(null);
+          setFilterMinUpside(null);
+        };
+
+        return (
+          <div className="space-y-2" data-testid="filter-bar">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant={showFilters ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="gap-1.5"
+                data-testid="button-toggle-filters"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <Badge variant="default" className="text-[10px] px-1.5 py-0 min-w-0">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
+              {activeFilterCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="gap-1 text-xs text-muted-foreground"
+                  data-testid="button-clear-filters"
+                >
+                  <X className="h-3 w-3" />
+                  Clear all
+                </Button>
+              )}
+              {activeFilterCount > 0 && (
+                <span className="text-xs text-muted-foreground" data-testid="text-filter-count">
+                  Showing {filteredResults?.filter(r => r.stage === "BREAKOUT").length || 0} of {liveResults.filter(r => r.stage === "BREAKOUT").length} breakouts
+                </span>
+              )}
+            </div>
+            {showFilters && (
+              <Card data-testid="filter-panel">
+                <CardContent className="p-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min Score</Label>
+                      <Select
+                        value={minPatternScore !== null ? String(minPatternScore) : "any"}
+                        onValueChange={(v) => setMinPatternScore(v === "any" ? null : Number(v))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-filter-score">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="70">70%+</SelectItem>
+                          <SelectItem value="80">80%+</SelectItem>
+                          <SelectItem value="85">85%+</SelectItem>
+                          <SelectItem value="90">90%+</SelectItem>
+                          <SelectItem value="95">95%+</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min Price</Label>
+                      <Select
+                        value={filterMinPrice !== null ? String(filterMinPrice) : "any"}
+                        onValueChange={(v) => setFilterMinPrice(v === "any" ? null : Number(v))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-filter-min-price">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="5">$5+</SelectItem>
+                          <SelectItem value="10">$10+</SelectItem>
+                          <SelectItem value="20">$20+</SelectItem>
+                          <SelectItem value="50">$50+</SelectItem>
+                          <SelectItem value="100">$100+</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Max Price</Label>
+                      <Select
+                        value={filterMaxPrice !== null ? String(filterMaxPrice) : "any"}
+                        onValueChange={(v) => setFilterMaxPrice(v === "any" ? null : Number(v))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-filter-max-price">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="25">Under $25</SelectItem>
+                          <SelectItem value="50">Under $50</SelectItem>
+                          <SelectItem value="100">Under $100</SelectItem>
+                          <SelectItem value="200">Under $200</SelectItem>
+                          <SelectItem value="500">Under $500</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min Volume</Label>
+                      <Select
+                        value={filterMinVolume !== null ? String(filterMinVolume) : "any"}
+                        onValueChange={(v) => setFilterMinVolume(v === "any" ? null : Number(v))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-filter-volume">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="500000">500K+</SelectItem>
+                          <SelectItem value="1000000">1M+</SelectItem>
+                          <SelectItem value="5000000">5M+</SelectItem>
+                          <SelectItem value="10000000">10M+</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min RVOL</Label>
+                      <Select
+                        value={filterMinRvol !== null ? String(filterMinRvol) : "any"}
+                        onValueChange={(v) => setFilterMinRvol(v === "any" ? null : Number(v))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-filter-rvol">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="1">1x+</SelectItem>
+                          <SelectItem value="1.5">1.5x+</SelectItem>
+                          <SelectItem value="2">2x+</SelectItem>
+                          <SelectItem value="3">3x+</SelectItem>
+                          <SelectItem value="5">5x+</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min Upside %</Label>
+                      <Select
+                        value={filterMinUpside !== null ? String(filterMinUpside) : "any"}
+                        onValueChange={(v) => setFilterMinUpside(v === "any" ? null : Number(v))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-filter-upside">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          <SelectItem value="2">2%+</SelectItem>
+                          <SelectItem value="3">3%+</SelectItem>
+                          <SelectItem value="5">5%+</SelectItem>
+                          <SelectItem value="8">8%+</SelectItem>
+                          <SelectItem value="10">10%+</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Featured Opportunities - Breakout & Triggered Symbols */}
-      {liveResults && liveResults.filter(r => r.stage === "BREAKOUT").length > 0 && (() => {
-        const topSetupId = getTopSetup(liveResults);
+      {filteredResults && filteredResults.filter(r => r.stage === "BREAKOUT").length > 0 && (() => {
+        const topSetupId = getTopSetup(filteredResults || []);
+        const breakoutResults = filteredResults.filter(r => r.stage === "BREAKOUT");
+        const totalBreakouts = liveResults?.filter(r => r.stage === "BREAKOUT").length || 0;
         return (
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="pb-2">
@@ -934,7 +1135,7 @@ export default function Scanner() {
                 <Flame className="h-5 w-5 text-orange-500" />
                 <CardTitle className="text-lg">Active Opportunities</CardTitle>
                 <Badge variant="secondary" className="text-xs">
-                  {liveResults.filter(r => r.stage === "BREAKOUT").length} signals
+                  {breakoutResults.length}{breakoutResults.length !== totalBreakouts ? ` of ${totalBreakouts}` : ""} signals
                 </Badge>
               </div>
               <div className="flex items-center gap-1">
@@ -960,9 +1161,7 @@ export default function Scanner() {
           <CardContent className="pt-2">
             {featuredViewMode === "cards" ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {liveResults
-                  .filter(r => r.stage === "BREAKOUT")
-                  .sort((a, b) => (b.patternScore || 0) - (a.patternScore || 0))
+                {breakoutResults
                   .map((result) => {
                     const isTopSetup = result.id === topSetupId;
                     const isExpanded = expandedCards.has(result.id);
@@ -1117,9 +1316,7 @@ export default function Scanner() {
               </div>
             ) : (
               <div className="space-y-1">
-                {liveResults
-                  .filter(r => r.stage === "BREAKOUT")
-                  .sort((a, b) => (b.patternScore || 0) - (a.patternScore || 0))
+                {breakoutResults
                   .map((result) => {
                     const isTopSetup = result.id === topSetupId;
                     

@@ -5,7 +5,7 @@ import {
   Search, Loader2, RefreshCw, List, Info, ChevronDown, ChevronRight, 
   TrendingUp, Layers, Activity, Zap, Target, X, LayoutGrid, LayoutList,
   AlertTriangle, Clock, CheckCircle2, Flame, TrendingDown, BookOpen, ExternalLink,
-  ArrowUpDown, Filter, SlidersHorizontal, Sparkles, Circle
+  ArrowUpDown, Filter, SlidersHorizontal, Sparkles, Circle, Bell
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import type { ScanResult, ScannerFilters, Watchlist, StrategyInfo, OpportunityDefaults, UserSettings, AutomationEndpoint, SnaptradeConnection } from "@shared/schema";
+import { getTradeStatus, getDistanceToEntry, getDistanceAboveEntry, getTradeStatusDisplay, isActionable as isTradeActionable } from "@/lib/trade-status";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -276,7 +277,20 @@ export default function Scanner() {
         const rr = getRiskReward(r);
         const rrScore = rr ? Math.min(rr / 3, 1) : 0;
         const volScore = Math.min((r.rvol || 0) / 3, 1);
-        const composite = confidence * 0.5 + rrScore * 0.3 + volScore * 0.2;
+        let composite = confidence * 0.4 + rrScore * 0.3 + volScore * 0.2;
+
+        const distance = getDistanceToEntry(r);
+        const status = getTradeStatus(r);
+
+        if (status === "IN_ENTRY_ZONE") composite += 0.15;
+        if (distance !== null && distance > 0 && distance <= 2) composite += 0.1;
+        if (rr !== null && rr >= 2) composite += 0.05;
+
+        if (rr !== null && rr < 1) composite *= 0.5;
+        if (distance !== null && distance > 5) composite *= 0.4;
+        if (status === "EXTENDED") composite *= 0.3;
+        if (status === "AWAITING_BREAKOUT" && distance !== null && distance > 3) composite *= 0.6;
+
         return { result: r, composite };
       })
       .sort((a, b) => b.composite - a.composite);
@@ -1197,12 +1211,18 @@ export default function Scanner() {
           const isExpanded = expandedCards.has(result.id);
           const rr = getRiskReward(result);
           const microBadge = getMicroBadge(result);
+          const tradeStatus = getTradeStatus(result);
+          const statusDisplay = getTradeStatusDisplay(tradeStatus);
+          const distance = getDistanceToEntry(result);
+          const aboveEntry = getDistanceAboveEntry(result);
+          const actionable = isTradeActionable(result);
           return (
             <Card
               key={result.id}
               className={cn(
-                "hover-elevate cursor-pointer transition-all",
-                isTopPick && "ring-2 ring-primary/40 shadow-sm"
+                "hover-elevate cursor-pointer",
+                isTopPick && actionable && "ring-2 ring-primary/40 shadow-sm",
+                isTopPick && !actionable && "ring-1 ring-muted-foreground/20"
               )}
               onClick={() => navigate(`/charts/${result.ticker}`)}
               data-testid={`card-opportunity-${result.ticker}`}
@@ -1211,22 +1231,26 @@ export default function Scanner() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <span className="font-semibold text-lg shrink-0">{result.ticker}</span>
-                    {result.patternScore && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge variant="secondary" className="shrink-0 text-xs font-semibold cursor-help">
-                            {result.patternScore}%
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Setup confidence based on historical pattern quality.
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                    <Badge 
+                      variant={statusDisplay.variant}
+                      className={cn("shrink-0 text-xs font-semibold", statusDisplay.className)}
+                      data-testid={`badge-status-${result.ticker}`}
+                    >
+                      {statusDisplay.label}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="shrink-0 text-xs">
-                    {getStrategyGroup(result)}
-                  </Badge>
+                  {result.patternScore && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="secondary" className="shrink-0 text-xs cursor-help">
+                          {result.patternScore}%
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs">
+                        Setup confidence based on historical pattern quality.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
                 
                 <div className="flex items-center justify-between">
@@ -1238,6 +1262,18 @@ export default function Scanner() {
                     {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(2)}%
                   </span>
                 </div>
+
+                {distance !== null && distance > 0 && (
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium" data-testid={`text-distance-${result.ticker}`}>
+                    Entry activates +{distance.toFixed(1)}% above current price
+                  </p>
+                )}
+
+                {aboveEntry !== null && tradeStatus === "EXTENDED" && (
+                  <p className="text-xs text-destructive font-medium">
+                    +{aboveEntry.toFixed(1)}% above entry — past initial target zone
+                  </p>
+                )}
 
                 {microBadge && (
                   <p className={cn("text-xs", microBadge.color)}>{microBadge.text}</p>
@@ -1303,16 +1339,32 @@ export default function Scanner() {
                       {getStrategyGroup(result) === "Gap Continuations" && "Gap up with continuation potential. Monitor for gap fill as possible entry or risk point."}
                       {getStrategyGroup(result) === "Tight Setups" && "Tight price consolidation near resistance. Lower volatility often precedes sharp directional moves."}
                     </p>
-                    <Button
-                      size="sm"
-                      className="w-full gap-1"
-                      onClick={(e) => handleInstaTrade(result, e)}
-                      disabled={instatradeMutation.isPending}
-                      data-testid={`button-instatrade-card-${result.ticker}`}
-                    >
-                      <Zap className="h-3 w-3" />
-                      InstaTrade™
-                    </Button>
+                    {actionable ? (
+                      <Button
+                        size="sm"
+                        className="w-full gap-1"
+                        onClick={(e) => handleInstaTrade(result, e)}
+                        disabled={instatradeMutation.isPending}
+                        data-testid={`button-instatrade-card-${result.ticker}`}
+                      >
+                        <Zap className="h-3 w-3" />
+                        InstaTrade™
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/alerts`);
+                        }}
+                        data-testid={`button-set-alert-card-${result.ticker}`}
+                      >
+                        <Bell className="h-3 w-3" />
+                        Set Breakout Alert
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -1322,6 +1374,10 @@ export default function Scanner() {
 
         const renderAdvancedRow = (result: ScanResult) => {
           const rr = getRiskReward(result);
+          const tradeStatus = getTradeStatus(result);
+          const statusDisplay = getTradeStatusDisplay(tradeStatus);
+          const distance = getDistanceToEntry(result);
+          const actionable = isTradeActionable(result);
           return (
             <div
               key={result.id}
@@ -1331,7 +1387,18 @@ export default function Scanner() {
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span className="font-semibold w-16">{result.ticker}</span>
-                <span className="text-muted-foreground text-sm hidden sm:inline truncate max-w-[120px]">{result.name}</span>
+                <Badge 
+                  variant={statusDisplay.variant}
+                  className={cn("shrink-0 text-xs", statusDisplay.className)}
+                  data-testid={`badge-status-row-${result.ticker}`}
+                >
+                  {statusDisplay.label}
+                </Badge>
+                {distance !== null && distance > 0 && (
+                  <span className="text-xs text-yellow-600 dark:text-yellow-400 hidden lg:inline">
+                    +{distance.toFixed(1)}% to entry
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3 text-sm shrink-0 flex-wrap">
                 <span className="font-medium w-16 text-right">${result.price?.toFixed(2)}</span>
@@ -1361,16 +1428,32 @@ export default function Scanner() {
                 {result.patternScore && (
                   <Badge variant="secondary" className="w-12 justify-center text-xs">{result.patternScore}%</Badge>
                 )}
-                <Button
-                  size="sm"
-                  className="gap-1"
-                  onClick={(e) => handleInstaTrade(result, e)}
-                  disabled={instatradeMutation.isPending}
-                  data-testid={`button-instatrade-list-${result.ticker}`}
-                >
-                  <Zap className="h-3 w-3" />
-                  <span className="hidden sm:inline">InstaTrade™</span>
-                </Button>
+                {actionable ? (
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={(e) => handleInstaTrade(result, e)}
+                    disabled={instatradeMutation.isPending}
+                    data-testid={`button-instatrade-list-${result.ticker}`}
+                  >
+                    <Zap className="h-3 w-3" />
+                    <span className="hidden sm:inline">InstaTrade™</span>
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/alerts`);
+                    }}
+                    data-testid={`button-set-alert-list-${result.ticker}`}
+                  >
+                    <Bell className="h-3 w-3" />
+                    <span className="hidden sm:inline">Set Alert</span>
+                  </Button>
+                )}
               </div>
             </div>
           );

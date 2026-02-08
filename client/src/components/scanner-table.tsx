@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, Zap } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, Zap, Bell } from "lucide-react";
 import { Link } from "wouter";
 import {
   Table,
@@ -12,6 +12,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { getTradeStatus, getDistanceToEntry, getTradeStatusDisplay, isActionable } from "@/lib/trade-status";
 import type { ScanResult, PatternStageType } from "@shared/schema";
 
 type SortField = "ticker" | "price" | "changePercent" | "volume" | "rvol" | "patternScore" | "stage";
@@ -137,6 +140,7 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
               <TableHead className="text-right">Volume</TableHead>
               <TableHead className="text-right">RVOL</TableHead>
               <TableHead>Stage</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Resistance</TableHead>
               <TableHead className="text-right">Stop</TableHead>
               <TableHead className="text-right">Score</TableHead>
@@ -145,7 +149,7 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
           <TableBody>
             {Array.from({ length: 8 }).map((_, i) => (
               <TableRow key={i}>
-                {Array.from({ length: 9 }).map((_, j) => (
+                {Array.from({ length: 10 }).map((_, j) => (
                   <TableCell key={j}>
                     <Skeleton className="h-4 w-full" />
                   </TableCell>
@@ -194,7 +198,8 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
             <TableHead>
               <SortHeader field="stage">Stage</SortHeader>
             </TableHead>
-            <TableHead className="text-right">Resistance</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Entry</TableHead>
             <TableHead className="text-right">Stop</TableHead>
             <TableHead className="text-right">
               <SortHeader field="patternScore">Score</SortHeader>
@@ -208,6 +213,11 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
             const changeColor = (result.changePercent ?? 0) >= 0 
               ? "text-chart-2" 
               : "text-destructive";
+            const tradeStatus = getTradeStatus(result);
+            const statusBadge = getTradeStatusDisplay(tradeStatus);
+            const actionable = isActionable(result);
+            const distPct = getDistanceToEntry(result);
+            const distanceToEntry = distPct !== null && distPct > 0 ? distPct : null;
 
             return (
               <TableRow
@@ -244,8 +254,34 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
                     {result.stage}
                   </Badge>
                 </TableCell>
+                <TableCell>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge 
+                        variant={statusBadge.variant} 
+                        className={cn("text-xs cursor-help", statusBadge.className)}
+                        data-testid={`badge-table-status-${result.ticker}`}
+                      >
+                        {statusBadge.shortLabel}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs">
+                      {tradeStatus === "AWAITING_BREAKOUT" && distanceToEntry !== null 
+                        ? `Entry activates +${distanceToEntry.toFixed(1)}% above current price`
+                        : tradeStatus === "IN_ENTRY_ZONE" 
+                        ? "Price is within 3% of entry — trade is actionable"
+                        : "Price has moved more than 3% past entry — extended"
+                      }
+                    </TooltipContent>
+                  </Tooltip>
+                </TableCell>
                 <TableCell className="text-right font-mono text-muted-foreground">
                   {formatPrice(result.resistance)}
+                  {distanceToEntry !== null && (
+                    <span className="block text-[10px] text-yellow-600 dark:text-yellow-400">
+                      +{distanceToEntry.toFixed(1)}%
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right font-mono text-destructive">
                   {formatPrice(result.stopLoss)}
@@ -265,11 +301,10 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    {onInstaTrade && (
+                    {onInstaTrade && actionable ? (
                       <Button 
                         variant="default" 
                         size="icon"
-                        className="h-7 w-7"
                         onClick={(e) => {
                           e.stopPropagation();
                           onInstaTrade(result, e);
@@ -279,12 +314,26 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
                       >
                         <Zap className="h-3.5 w-3.5" />
                       </Button>
-                    )}
+                    ) : onInstaTrade ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link href="/alerts">
+                            <Button 
+                              variant="outline" 
+                              size="icon"
+                              data-testid={`button-alert-${result.ticker}`}
+                            >
+                              <Bell className="h-3.5 w-3.5" />
+                            </Button>
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent className="text-xs">Set breakout alert</TooltipContent>
+                      </Tooltip>
+                    ) : null}
                     <Link href={`/charts/${result.ticker}`}>
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        className="h-7 w-7"
                         data-testid={`button-chart-${result.ticker}`}
                       >
                         <ExternalLink className="h-3.5 w-3.5" />

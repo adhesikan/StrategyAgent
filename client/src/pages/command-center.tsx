@@ -24,6 +24,7 @@ import {
   Clock,
   ExternalLink,
   History,
+  Newspaper,
   Pause,
   Play,
   Radio,
@@ -46,6 +47,22 @@ import type {
   Trade,
   ScanResult 
 } from "@shared/schema";
+
+interface NewsArticle {
+  title: string;
+  source: string;
+  date: string;
+  url: string;
+  imageUrl?: string;
+}
+
+interface NewsResponse {
+  ok: boolean;
+  ticker?: string;
+  items?: number;
+  articles?: NewsArticle[];
+  error?: string;
+}
 
 function isMarketOpen(): boolean {
   const now = new Date();
@@ -127,6 +144,14 @@ export default function CommandCenter() {
 
   const { data: trades } = useQuery<Trade[]>({
     queryKey: ["/api/trades"],
+  });
+
+  const { data: newsData } = useQuery<NewsResponse>({
+    queryKey: ["/api/news", { ticker: "SPY", items: "5" }],
+    queryFn: async () => {
+      const response = await fetch(`/api/news?ticker=SPY&items=5`);
+      return response.json();
+    },
   });
 
   const pauseAgentMutation = useMutation({
@@ -562,6 +587,46 @@ export default function CommandCenter() {
                 </Link>
               </Button>
             </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Newspaper className="h-5 w-5 text-primary" />
+                  <CardTitle>Top Headlines</CardTitle>
+                </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/news" data-testid="link-view-all-news">
+                    View all
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {newsData?.ok && newsData.articles && newsData.articles.length > 0 ? (
+                <div className="space-y-2">
+                  {newsData.articles.slice(0, 3).map((article, idx) => (
+                    <a
+                      key={idx}
+                      href={article.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="block group"
+                      data-testid={`link-headline-${idx}`}
+                    >
+                      <div className="p-2 rounded-md hover-elevate">
+                        <p className="text-sm font-medium line-clamp-2 group-hover:underline">{article.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{article.source}</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No headlines available</p>
+              )}
+            </CardContent>
           </Card>
 
           <Card>

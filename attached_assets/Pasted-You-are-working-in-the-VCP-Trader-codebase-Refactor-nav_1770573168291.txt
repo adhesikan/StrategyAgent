@@ -1,0 +1,95 @@
+You are working in the VCP Trader codebase. Refactor navigation to make the UI feel simple (not intimidating) while KEEPING the News page and repositioning the User Guide (“How This Works”) as contextual help.
+
+GOALS
+- Reduce sidebar to only 5 primary items (max).
+- Keep News as a primary nav item.
+- Remove “How This Works” from main nav; move it under Settings as “Help & Guide” and also expose it via a small “?” icon in the top header.
+- Do NOT delete content or break existing routes; keep backward compatibility via redirects.
+
+NEW SIDEBAR (ONLY THESE 5 ITEMS)
+1) Dashboard  -> /command-center
+2) Discover   -> /discover
+3) Automation -> /automation
+4) News       -> /news
+5) Settings   -> /settings
+
+MIGRATIONS / INFORMATION ARCHITECTURE
+A) Discover page
+- Implement /discover page with tab switcher: [Stocks] [Options]
+- Stocks tab renders existing “Opportunity Radar” functionality (reuse existing component/page).
+- Options tab renders existing “Options Scanner” functionality (reuse existing component/page).
+- Remove Opportunity Radar / Breakout Alerts / Watchlists / Options Scanner from sidebar.
+  - Keep their routes working, but redirect them to /discover with appropriate tab selected:
+    - /opportunity-radar -> /discover?tab=stocks
+    - /options-scanner   -> /discover?tab=options
+    - /breakout-alerts   -> /discover?tab=stocks&view=breakouts (or similar)
+    - /watchlists        -> /discover?tab=stocks&view=watchlists (or move watchlists UI into Discover as a sub-tab/section)
+
+B) Automation page
+- Implement /automation as the single home for:
+  - Auto Agent controls
+  - Execution Cockpit link/embedded view
+  - Trade Outcomes
+  - Alerts related to automation/execution
+- Remove Execution Cockpit / Trade Outcomes / Alerts from sidebar.
+  - Keep old routes working and redirect:
+    - /execution-cockpit -> /automation?view=cockpit
+    - /trade-outcomes    -> /automation?view=outcomes
+    - /alerts            -> /automation?view=alerts
+
+C) News page
+- Ensure /news exists and is linked as a primary sidebar item named “News”.
+- Keep StockNews API integration as-is, but make UX lighter:
+  1) Default view should NOT require typing a ticker (auto-load “Market” headlines: SPY, QQQ, IWM).
+  2) Add quick chips above the search input:
+     - My Universe (top 5 symbols from user default universe if available)
+     - My Positions (symbols from broker positions if connected)
+     - Market (SPY, QQQ, IWM)
+     - Recently searched (localStorage)
+  3) Add timeframe dropdown: 24h / 7d / 30d.
+  4) Add server-side cache (60–180 seconds) per ticker+timeframe to avoid rate limits.
+- Add a compact “Top Headlines” widget on Dashboard (/command-center):
+  - Show 3 headlines max, chosen from positions (if connected) else from opportunities else Market.
+  - Link “View all news” -> /news
+
+D) Settings page
+- Implement /settings as a hub page (or keep existing) with cards/links for:
+  - Broker
+  - Risk Profile
+  - Universes
+  - Subscription/Billing (if present)
+  - Help & Guide
+- Move “Risk Profile” and “Universes” out of sidebar into Settings (but keep their routes working).
+  - Optionally keep direct links inside Settings page only.
+
+E) Help & Guide (“How This Works”)
+- Remove “How This Works” from sidebar and from the “Learn” section entirely.
+- Add under Settings as “Help & Guide” linking to:
+  - /help (new canonical route) which renders the existing “How This Works” page content.
+- Backward compatibility:
+  - Keep /how-this-works (or whatever existing route) working but redirect to /help.
+
+Help icon in header
+- Add a small “?” icon/button in the top header (right side near user avatar).
+- Clicking opens /help in a new page OR a modal (page is fine for now).
+
+IMPROVE THE HELP PAGE UX (KEEP CONTENT)
+- Keep the same content and structure (Strategies / Pattern Stages / How to Use), but reduce visual density:
+  1) Add a filter bar at top: Momentum | Trend | Income | All (default All).
+  2) Collapse expandable sections by default (Pattern Characteristics / Entry Signals / Risk Management).
+  3) Add a primary CTA button on each strategy card: “Run Scanner”
+     - Clicking routes to /discover with the appropriate tab and strategy pre-selected
+       Example: /discover?tab=stocks&strategy=volume-surge
+  4) Increase spacing/whitespace so it feels lighter.
+
+NON-FUNCTIONAL REQUIREMENTS
+- Do not break authentication, broker connection, scanning, automation, or existing database behavior.
+- Keep existing routes functional via redirects (do not remove).
+- Keep styling consistent with current dark theme.
+- Ensure active sidebar item highlights properly.
+- Make minimal code changes: reuse existing components where possible.
+
+DELIVERABLES
+- List all files changed/created.
+- List all route redirects added.
+- Confirm old URLs still work and show the new pages correctly.

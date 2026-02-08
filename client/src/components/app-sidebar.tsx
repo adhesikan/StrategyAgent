@@ -1,31 +1,19 @@
-import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Search,
-  BarChart3,
-  Bell,
-  List,
-  FlaskConical,
   Settings,
   Wifi,
   WifiOff,
-  Zap,
-  BookOpen,
-  Rocket,
-  FileBarChart2,
-  ChevronDown,
-  Star,
-  Radio,
   Newspaper,
   Target,
-  ScanLine,
+  Bot,
+  Radio,
 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -33,187 +21,53 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import type { BrokerConnection, Alert } from "@shared/schema";
+import type { BrokerConnection } from "@shared/schema";
 
 interface NavItem {
   title: string;
   url: string;
   icon: React.ComponentType<{ className?: string }>;
-  showStartHere?: boolean;
 }
 
-interface NavSection {
-  id: string;
-  label: string;
-  items: NavItem[];
-  defaultExpanded?: boolean;
-}
-
-const navSections: NavSection[] = [
-  {
-    id: "hub",
-    label: "Hub",
-    defaultExpanded: true,
-    items: [
-      { title: "Command Center", url: "/command-center", icon: Target },
-    ],
-  },
-  {
-    id: "discover",
-    label: "Discover",
-    defaultExpanded: true,
-    items: [
-      { title: "Opportunity Radar", url: "/", icon: Search, showStartHere: true },
-      { title: "Breakout Alerts", url: "/signals", icon: Zap },
-      { title: "Watchlists", url: "/watchlists", icon: List },
-    ],
-  },
-  {
-    id: "analyze",
-    label: "Analyze",
-    defaultExpanded: false,
-    items: [
-      { title: "Charts", url: "/charts", icon: BarChart3 },
-      { title: "Backtest", url: "/backtest", icon: FlaskConical },
-      { title: "Trade Outcomes", url: "/opportunities", icon: FileBarChart2 },
-    ],
-  },
-  {
-    id: "execute",
-    label: "Execute",
-    defaultExpanded: false,
-    items: [
-      { title: "Execution Cockpit", url: "/execution", icon: Rocket },
-      { title: "Alerts", url: "/alerts", icon: Bell },
-    ],
-  },
-  {
-    id: "learn",
-    label: "Learn",
-    defaultExpanded: false,
-    items: [
-      { title: "How This Works", url: "/strategy-guide", icon: BookOpen },
-      { title: "News & Research", url: "/learn/news", icon: Newspaper },
-    ],
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    defaultExpanded: false,
-    items: [
-      { title: "Settings", url: "/settings", icon: Settings },
-      { title: "Risk Profile", url: "/settings/risk-profile", icon: Radio },
-      { title: "Universes", url: "/settings/universes", icon: List },
-    ],
-  },
+const navItems: NavItem[] = [
+  { title: "Dashboard", url: "/command-center", icon: Target },
+  { title: "Discover", url: "/discover", icon: Search },
+  { title: "Automation", url: "/automation", icon: Bot },
+  { title: "News", url: "/news", icon: Newspaper },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
-
-function getStorageKey(sectionId: string): string {
-  return `vcp_nav_section_${sectionId}`;
-}
-
-function getInitialExpandState(): Record<string, boolean> {
-  if (typeof window === "undefined") {
-    return {};
-  }
-
-  const state: Record<string, boolean> = {};
-  let hasStoredPreferences = false;
-
-  navSections.forEach((section) => {
-    const stored = localStorage.getItem(getStorageKey(section.id));
-    if (stored !== null) {
-      hasStoredPreferences = true;
-      state[section.id] = stored === "true";
-    }
-  });
-
-  if (!hasStoredPreferences) {
-    navSections.forEach((section) => {
-      state[section.id] = section.defaultExpanded ?? false;
-    });
-  } else {
-    navSections.forEach((section) => {
-      if (state[section.id] === undefined) {
-        state[section.id] = section.defaultExpanded ?? false;
-      }
-    });
-  }
-
-  return state;
-}
-
-function getInitialStartHereSeen(): boolean {
-  if (typeof window === "undefined") return true;
-  return localStorage.getItem("vcp_start_here_seen") === "true";
-}
-
-interface MeResponse {
-  user: { id: string; email: string; role: string };
-  entitlements: {
-    stockScanner: boolean;
-    optionsScanner: boolean;
-    automation: boolean;
-    plan: string;
-  };
-  broker: { connected: boolean; provider: string | null };
-}
 
 export function AppSidebar() {
   const [location] = useLocation();
   const { setOpenMobile, isMobile } = useSidebar();
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(getInitialExpandState);
-  const [startHereSeen, setStartHereSeen] = useState<boolean>(getInitialStartHereSeen);
 
   const { data: brokerStatus } = useQuery<BrokerConnection | null>({
     queryKey: ["/api/broker/status"],
   });
 
-  const { data: alerts } = useQuery<Alert[]>({
-    queryKey: ["/api/alerts"],
-  });
-
-  const { data: me } = useQuery<MeResponse>({
-    queryKey: ["/api/auth/me"],
-  });
-
-  const dynamicSections = navSections.map((section): NavSection => {
-    if (section.id === "discover" && me?.entitlements?.optionsScanner) {
-      return {
-        ...section,
-        items: [
-          ...section.items,
-          { title: "Options Scanner", url: "/app/options", icon: ScanLine },
-        ],
-      };
-    }
-    return section;
-  });
-
-  const unreadAlerts = alerts?.filter(a => !a.isRead).length || 0;
   const isConnected = brokerStatus?.isConnected ?? false;
 
-  const handleNavClick = (item: NavItem) => {
+  const handleNavClick = () => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    if (item.showStartHere && !startHereSeen) {
-      setStartHereSeen(true);
-      localStorage.setItem("vcp_start_here_seen", "true");
-    }
   };
 
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections((prev) => {
-      const newState = { ...prev, [sectionId]: !prev[sectionId] };
-      localStorage.setItem(getStorageKey(sectionId), String(newState[sectionId]));
-      return newState;
-    });
+  const isActive = (url: string) => {
+    if (url === "/command-center") return location === "/command-center";
+    if (url === "/discover") {
+      return location === "/discover" || location === "/" || location === "/scanner" || location === "/signals" || location === "/watchlists" || location === "/app/stocks" || location === "/app/options" || location === "/charts" || location.startsWith("/charts/");
+    }
+    if (url === "/automation") {
+      return location === "/automation" || location === "/app/automation" || location === "/execution" || location === "/opportunities" || location === "/alerts";
+    }
+    if (url === "/news") return location === "/news" || location === "/learn/news";
+    if (url === "/settings") {
+      return location === "/settings" || location.startsWith("/settings/") || location === "/help";
+    }
+    return location === url;
   };
 
   const isMarketHours = () => {
@@ -232,7 +86,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="p-3">
-        <Link href="/" onClick={() => handleNavClick({ title: "", url: "/", icon: Search })} data-testid="link-home">
+        <Link href="/command-center" onClick={handleNavClick} data-testid="link-home">
           <div className="flex items-center gap-2">
             <img src="/logo.png" alt="VCP Trader" className="h-7 w-auto" />
             <div className="flex flex-col">
@@ -244,83 +98,29 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
-        {dynamicSections.map((section) => {
-          const isExpanded = expandedSections[section.id] ?? section.defaultExpanded ?? false;
-          const hasActiveItem = section.items.some(
-            (item) => location === item.url || (item.url === "/" && location === "/scanner")
-          );
-
-          return (
-            <SidebarGroup key={section.id} className="py-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSection(section.id)}
-                className={cn(
-                  "w-full justify-between gap-2 text-xs font-medium uppercase tracking-wide",
-                  hasActiveItem && !isExpanded && "bg-accent/50"
-                )}
-                data-testid={`button-nav-section-${section.id}`}
-              >
-                <span>{section.label}</span>
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform duration-200",
-                    isExpanded && "rotate-180"
-                  )}
-                />
-              </Button>
-              {isExpanded && (
-                <SidebarGroupContent className="mt-1">
-                  <SidebarMenu>
-                    {section.items.map((item) => {
-                      const isActive = location === item.url || (item.url === "/" && location === "/scanner");
-                      const showStartHereIndicator = item.showStartHere && !startHereSeen;
-
-                      return (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton
-                            asChild
-                            isActive={isActive}
-                          >
-                            <Link
-                              href={item.url}
-                              onClick={() => handleNavClick(item)}
-                              data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
-                            >
-                              <item.icon className="h-4 w-4" />
-                              <span className="flex-1">{item.title}</span>
-                              {item.title === "Alerts" && unreadAlerts > 0 && (
-                                <Badge variant="destructive" className="ml-auto text-xs h-5 min-w-5 px-1.5">
-                                  {unreadAlerts}
-                                </Badge>
-                              )}
-                              {showStartHereIndicator && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="ml-auto flex items-center gap-1">
-                                      <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                                      <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-medium">
-                                        Start here
-                                      </span>
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="right" className="text-xs">
-                                    Start here to find live setups
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              )}
-            </SidebarGroup>
-          );
-        })}
+        <SidebarGroup className="py-1">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                  >
+                    <Link
+                      href={item.url}
+                      onClick={handleNavClick}
+                      data-testid={`link-nav-${item.title.toLowerCase()}`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="p-3 space-y-2">

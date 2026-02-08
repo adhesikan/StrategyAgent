@@ -1,11 +1,14 @@
+import { useState } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { 
   TrendingUp, Target, Activity, Zap, Clock, BarChart3, 
   Layers, ArrowUpRight, ArrowDownRight, AlertTriangle,
-  CheckCircle2, Info, BookOpen
+  CheckCircle2, Info, BookOpen, HelpCircle, Search
 } from "lucide-react";
 import { STRATEGY_CONFIGS } from "@shared/strategies";
 
@@ -373,21 +376,34 @@ function StrategyCard({ strategyId }: { strategyId: string }) {
             <p className="font-medium">{details.timeframe}</p>
           </div>
         </div>
+
+        <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+          <Link href={`/discover?tab=stocks`} data-testid={`button-run-scanner-${strategyId.toLowerCase()}`}>
+            <Search className="h-4 w-4 mr-1" />
+            Run Scanner
+          </Link>
+        </Button>
       </CardContent>
     </Card>
   );
 }
 
 export default function StrategyGuide() {
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  const filteredCategories = categoryFilter === "all"
+    ? Object.entries(STRATEGY_CATEGORIES)
+    : Object.entries(STRATEGY_CATEGORIES).filter(([key]) => key === categoryFilter);
+
   return (
     <div className="p-4 lg:p-6 space-y-6" data-testid="strategy-guide-page">
       <div>
         <h1 className="text-xl lg:text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <BookOpen className="h-6 w-6" />
-          How This Works
+          <HelpCircle className="h-6 w-6" />
+          Help & Guide
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Learn the workflow and how to use the scanner
+          Learn about strategies, pattern stages, and how to use the scanner
         </p>
       </div>
 
@@ -399,7 +415,30 @@ export default function StrategyGuide() {
         </TabsList>
 
         <TabsContent value="strategies" className="space-y-6">
-          {Object.entries(STRATEGY_CATEGORIES).map(([categoryKey, category]) => (
+          <div className="flex flex-wrap gap-2" data-testid="filter-categories">
+            <Badge
+              variant={categoryFilter === "all" ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() => setCategoryFilter("all")}
+              data-testid="filter-all"
+            >
+              All
+            </Badge>
+            {Object.entries(STRATEGY_CATEGORIES).map(([key, cat]) => (
+              <Badge
+                key={key}
+                variant={categoryFilter === key ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() => setCategoryFilter(key)}
+                data-testid={`filter-${key}`}
+              >
+                <cat.icon className={`h-3 w-3 mr-1 ${cat.color}`} />
+                {cat.name.replace(" Engines", "")}
+              </Badge>
+            ))}
+          </div>
+
+          {filteredCategories.map(([categoryKey, category]) => (
             <div key={categoryKey} className="space-y-4">
               <div className="flex items-center gap-2">
                 <category.icon className={`h-5 w-5 ${category.color}`} />

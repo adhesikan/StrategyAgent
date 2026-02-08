@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -553,6 +553,45 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-1">
           Configure your trading preferences and connections
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Link href="/settings/risk-profile">
+          <Card className="hover-elevate cursor-pointer">
+            <CardContent className="p-4 flex items-center gap-3">
+              <Radio className="h-5 w-5 text-primary" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Risk Profile</p>
+                <p className="text-xs text-muted-foreground">Manage risk settings</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/settings/universes">
+          <Card className="hover-elevate cursor-pointer">
+            <CardContent className="p-4 flex items-center gap-3">
+              <List className="h-5 w-5 text-primary" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Universes</p>
+                <p className="text-xs text-muted-foreground">Manage ticker lists</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/help">
+          <Card className="hover-elevate cursor-pointer">
+            <CardContent className="p-4 flex items-center gap-3">
+              <HelpCircle className="h-5 w-5 text-primary" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Help & Guide</p>
+                <p className="text-xs text-muted-foreground">Strategies & how-to</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <Tabs defaultValue="broker" className="space-y-6">

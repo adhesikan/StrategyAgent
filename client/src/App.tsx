@@ -24,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Loader2, Bell } from "lucide-react";
+import { LogOut, User, Loader2, Bell, HelpCircle } from "lucide-react";
 import { BrokerStatusProvider } from "@/hooks/use-broker-status";
 import { TooltipVisibilityProvider } from "@/hooks/use-tooltips";
 import { StatusBanner } from "@/components/status-banner";
@@ -33,13 +33,9 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import type { AlertEvent } from "@shared/schema";
 
-import Scanner from "@/pages/scanner";
 import Charts from "@/pages/charts";
-import Alerts from "@/pages/alerts";
-import Watchlists from "@/pages/watchlists";
 import Backtest from "@/pages/backtest";
-import Settings from "@/pages/settings";
-import Signals from "@/pages/signals";
+import SettingsPage from "@/pages/settings";
 import AuthPage from "@/pages/auth";
 import HomePage from "@/pages/home";
 import TermsPage from "@/pages/terms";
@@ -48,44 +44,51 @@ import PrivacyPage from "@/pages/privacy";
 import OpenSourcePage from "@/pages/open-source";
 import StrategyGuide from "@/pages/strategy-guide";
 import AutomationPage from "@/pages/automation";
-import ExecutionCockpit from "@/pages/execution";
 import SnaptradeCallback from "@/pages/snaptrade-callback";
-import OpportunitiesPage from "@/pages/opportunities";
 import NewsPage from "@/pages/news";
 import CommandCenter from "@/pages/command-center";
-import OptionsScanner from "@/pages/options-scanner";
+import DiscoverPage from "@/pages/discover";
 import RiskProfilePage from "@/pages/risk-profile";
 import UniversesPage from "@/pages/universes";
 import NotFound from "@/pages/not-found";
+import { Redirect } from "wouter";
 
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/" component={Scanner} />
-      <Route path="/scanner" component={Scanner} />
       <Route path="/command-center" component={CommandCenter} />
-      <Route path="/signals" component={Signals} />
-      <Route path="/charts" component={Charts} />
-      <Route path="/charts/:ticker" component={Charts} />
-      <Route path="/alerts" component={Alerts} />
-      <Route path="/watchlists" component={Watchlists} />
-      <Route path="/backtest" component={Backtest} />
-      <Route path="/strategy-guide" component={StrategyGuide} />
-      <Route path="/learn/news" component={NewsPage} />
+      <Route path="/discover" component={DiscoverPage} />
       <Route path="/automation" component={AutomationPage} />
-      <Route path="/execution" component={ExecutionCockpit} />
-      <Route path="/opportunities" component={OpportunitiesPage} />
-      <Route path="/app/stocks" component={Scanner} />
-      <Route path="/app/options" component={OptionsScanner} />
-      <Route path="/app/automation" component={AutomationPage} />
+      <Route path="/news" component={NewsPage} />
+      <Route path="/help" component={StrategyGuide} />
+
       <Route path="/settings/risk-profile" component={RiskProfilePage} />
       <Route path="/settings/universes" component={UniversesPage} />
-      <Route path="/settings" component={Settings} />
+      <Route path="/settings" component={SettingsPage} />
+
+      <Route path="/charts" component={Charts} />
+      <Route path="/charts/:ticker" component={Charts} />
+      <Route path="/backtest" component={Backtest} />
+
       <Route path="/terms" component={TermsPage} />
       <Route path="/disclaimer" component={DisclaimerPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/open-source" component={OpenSourcePage} />
       <Route path="/snaptrade/callback" component={SnaptradeCallback} />
+
+      <Route path="/">{() => <Redirect to="/discover" />}</Route>
+      <Route path="/scanner">{() => <Redirect to="/discover?tab=stocks" />}</Route>
+      <Route path="/signals">{() => <Redirect to="/discover?tab=stocks" />}</Route>
+      <Route path="/watchlists">{() => <Redirect to="/discover?tab=stocks" />}</Route>
+      <Route path="/app/stocks">{() => <Redirect to="/discover?tab=stocks" />}</Route>
+      <Route path="/app/options">{() => <Redirect to="/discover?tab=options" />}</Route>
+      <Route path="/execution">{() => <Redirect to="/automation?view=cockpit" />}</Route>
+      <Route path="/opportunities">{() => <Redirect to="/automation?view=outcomes" />}</Route>
+      <Route path="/alerts">{() => <Redirect to="/automation?view=alerts" />}</Route>
+      <Route path="/app/automation">{() => <Redirect to="/automation" />}</Route>
+      <Route path="/learn/news">{() => <Redirect to="/news" />}</Route>
+      <Route path="/strategy-guide">{() => <Redirect to="/help" />}</Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -180,6 +183,11 @@ function AppHeader() {
       </div>
       <div className="flex items-center gap-2">
         <AlertBell />
+        <Link href="/help" data-testid="link-help">
+          <Button variant="ghost" size="icon" data-testid="button-help">
+            <HelpCircle className="h-5 w-5" />
+          </Button>
+        </Link>
         <ThemeToggle />
         <UserMenu />
       </div>

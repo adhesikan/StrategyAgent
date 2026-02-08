@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import type { ScanResult, ScannerFilters, Watchlist, StrategyInfo, OpportunityDefaults, UserSettings, AutomationEndpoint, SnaptradeConnection } from "@shared/schema";
+import type { ScanResult, ScannerFilters, Watchlist, StrategyInfo, OpportunityDefaults, UserSettings, AutomationEndpoint } from "@shared/schema";
 import { getTradeStatus, getDistanceToEntry, getDistanceAboveEntry, getTradeStatusDisplay, isActionable as isTradeActionable } from "@/lib/trade-status";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -348,24 +348,33 @@ export default function Scanner() {
     queryKey: ["/api/automation-endpoints"],
   });
 
-  const { data: snaptradeStatus } = useQuery<{ configured: boolean }>({
-    queryKey: ["/api/snaptrade/status"],
+  interface BrokerAccount {
+    id: string;
+    name: string;
+    type: string;
+    buyingPower: number;
+    equity: number;
+    currency: string;
+  }
+
+  const { data: brokerStatus } = useQuery<{ id: string; provider: string; isConnected: boolean } | null>({
+    queryKey: ["/api/broker/status"],
   });
 
-  const { data: snaptradeConnections = [] } = useQuery<SnaptradeConnection[]>({
-    queryKey: ["/api/snaptrade/connections"],
-    enabled: !!snaptradeStatus?.configured,
+  const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: !!brokerStatus?.isConnected,
   });
 
   const [instaTradeResult, setInstaTradeResult] = useState<ScanResult | null>(null);
   const [showEndpointDialog, setShowEndpointDialog] = useState(false);
   const [selectedEndpoint, setSelectedEndpoint] = useState<AutomationEndpoint | null>(null);
-  const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "snaptrade">("algopilotx");
-  const [selectedSnaptradeAccount, setSelectedSnaptradeAccount] = useState<SnaptradeConnection | null>(null);
+  const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "broker">("algopilotx");
+  const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
 
   const hasEndpoints = automationEndpoints && automationEndpoints.length > 0;
-  const hasSnaptradeAccounts = snaptradeConnections.length > 0 && snaptradeConnections.some(c => c.isTradingEnabled);
+  const hasBrokerAccounts = brokerStatus?.isConnected && brokerAccounts.length > 0;
 
   const instatradeMutation = useMutation({
     mutationFn: async ({ endpointId, result }: { endpointId: string; result: ScanResult }) => {
@@ -402,34 +411,27 @@ export default function Scanner() {
     },
   });
 
-  const snaptradeTradeMutation = useMutation({
+  const brokerOrderMutation = useMutation({
     mutationFn: async ({ accountId, result, quantity }: { accountId: string; result: ScanResult; quantity: number }) => {
-      const response = await fetch("/api/snaptrade/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          symbol: result.ticker,
-          action: "BUY",
-          orderType: "Limit",
-          quantity,
-          price: result.resistance || result.price,
-          timeInForce: "Day",
-        }),
+      const response = await apiRequest("POST", "/api/broker/orders", {
+        accountId,
+        symbol: result.ticker,
+        side: "buy",
+        quantity,
+        orderType: "limit",
+        price: result.resistance || result.price,
+        duration: "day",
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Order failed");
-      }
       return response.json();
     },
     onSuccess: (data) => {
       toast({
         title: "Order Placed",
-        description: `${data.action} order for ${data.quantity} shares of ${data.symbol} submitted`,
+        description: `Buy order for ${data.quantity} shares of ${data.symbol} submitted`,
       });
       setShowEndpointDialog(false);
       setInstaTradeResult(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
     },
     onError: (error: any) => {
@@ -447,13 +449,11 @@ export default function Scanner() {
     if (hasEndpoints) {
       setSelectedEndpoint(automationEndpoints![0]);
     }
-    if (hasSnaptradeAccounts && !hasEndpoints) {
-      setExecutionMethod("snaptrade");
-      const tradingAccount = snaptradeConnections.find(c => c.isTradingEnabled);
-      if (tradingAccount) setSelectedSnaptradeAccount(tradingAccount);
-    } else if (hasSnaptradeAccounts) {
-      const tradingAccount = snaptradeConnections.find(c => c.isTradingEnabled);
-      if (tradingAccount) setSelectedSnaptradeAccount(tradingAccount);
+    if (hasBrokerAccounts && !hasEndpoints) {
+      setExecutionMethod("broker");
+      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+    } else if (hasBrokerAccounts) {
+      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
     }
     setShowEndpointDialog(true);
   };
@@ -461,9 +461,9 @@ export default function Scanner() {
   const handleConfirmInstaTrade = () => {
     if (executionMethod === "algopilotx" && selectedEndpoint && instaTradeResult) {
       instatradeMutation.mutate({ endpointId: selectedEndpoint.id, result: instaTradeResult });
-    } else if (executionMethod === "snaptrade" && selectedSnaptradeAccount && instaTradeResult) {
-      snaptradeTradeMutation.mutate({ 
-        accountId: selectedSnaptradeAccount.accountId!, 
+    } else if (executionMethod === "broker" && selectedBrokerAccount && instaTradeResult) {
+      brokerOrderMutation.mutate({ 
+        accountId: selectedBrokerAccount.id, 
         result: instaTradeResult, 
         quantity: orderQuantity 
       });
@@ -2236,16 +2236,16 @@ export default function Scanner() {
               </div>
             )}
 
-            {(hasEndpoints || hasSnaptradeAccounts) ? (
-              <Tabs value={executionMethod} onValueChange={(v) => setExecutionMethod(v as "algopilotx" | "snaptrade")}>
+            {(hasEndpoints || hasBrokerAccounts) ? (
+              <Tabs value={executionMethod} onValueChange={(v) => setExecutionMethod(v as "algopilotx" | "broker")}>
                 <TabsList className="w-full">
                   <TabsTrigger value="algopilotx" className="flex-1 gap-1" disabled={!hasEndpoints} data-testid="tab-algopilotx">
                     <Zap className="h-3 w-3" />
                     AlgoPilotX
                   </TabsTrigger>
-                  <TabsTrigger value="snaptrade" className="flex-1 gap-1" disabled={!hasSnaptradeAccounts} data-testid="tab-snaptrade">
+                  <TabsTrigger value="broker" className="flex-1 gap-1" disabled={!hasBrokerAccounts} data-testid="tab-broker">
                     <ExternalLink className="h-3 w-3" />
-                    SnapTrade
+                    Direct Broker
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="algopilotx" className="mt-3 space-y-3">
@@ -2273,23 +2273,23 @@ export default function Scanner() {
                     Sends trade setup to AlgoPilotX for automated execution.
                   </p>
                 </TabsContent>
-                <TabsContent value="snaptrade" className="mt-3 space-y-3">
+                <TabsContent value="broker" className="mt-3 space-y-3">
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Select Account</Label>
                     <Select
-                      value={selectedSnaptradeAccount?.id || ""}
+                      value={selectedBrokerAccount?.id || ""}
                       onValueChange={(value) => {
-                        const account = snaptradeConnections.find(c => c.id === value);
-                        if (account) setSelectedSnaptradeAccount(account);
+                        const account = brokerAccounts.find(a => a.id === value);
+                        if (account) setSelectedBrokerAccount(account);
                       }}
                     >
-                      <SelectTrigger data-testid="select-snaptrade-account">
+                      <SelectTrigger data-testid="select-broker-account">
                         <SelectValue placeholder="Choose a brokerage account" />
                       </SelectTrigger>
                       <SelectContent>
-                        {snaptradeConnections.filter(c => c.isTradingEnabled).map((account) => (
+                        {brokerAccounts.map((account) => (
                           <SelectItem key={account.id} value={account.id}>
-                            {account.brokerName} - {account.accountName || account.accountNumber}
+                            {account.name} ({account.type})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -2305,6 +2305,11 @@ export default function Scanner() {
                       data-testid="input-order-quantity"
                     />
                   </div>
+                  {selectedBrokerAccount && (
+                    <p className="text-xs text-muted-foreground">
+                      Buying Power: ${selectedBrokerAccount.buyingPower.toLocaleString()}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Places a limit order directly with your broker at the breakout price.
                   </p>
@@ -2318,7 +2323,7 @@ export default function Scanner() {
                     <div>
                       <p className="font-medium">No Execution Methods Connected</p>
                       <p className="text-sm text-muted-foreground">
-                        Connect AlgoPilotX endpoints or a brokerage account via SnapTrade in Settings to execute trades.
+                        Connect AlgoPilotX endpoints or a brokerage account in Settings to execute trades.
                       </p>
                     </div>
                   </div>
@@ -2330,16 +2335,16 @@ export default function Scanner() {
             <Button variant="outline" onClick={() => setShowEndpointDialog(false)}>
               Close
             </Button>
-            {(hasEndpoints || hasSnaptradeAccounts) ? (
+            {(hasEndpoints || hasBrokerAccounts) ? (
               <Button
                 onClick={handleConfirmInstaTrade}
                 disabled={
                   (executionMethod === "algopilotx" && (!selectedEndpoint || instatradeMutation.isPending)) ||
-                  (executionMethod === "snaptrade" && (!selectedSnaptradeAccount || !orderQuantity || snaptradeTradeMutation.isPending))
+                  (executionMethod === "broker" && (!selectedBrokerAccount || !orderQuantity || brokerOrderMutation.isPending))
                 }
                 data-testid="button-confirm-instatrade"
               >
-                {(instatradeMutation.isPending || snaptradeTradeMutation.isPending) 
+                {(instatradeMutation.isPending || brokerOrderMutation.isPending) 
                   ? "Sending..." 
                   : executionMethod === "algopilotx" 
                     ? "Send to AlgoPilotX" 

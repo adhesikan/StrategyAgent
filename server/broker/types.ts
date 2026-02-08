@@ -30,9 +30,29 @@ export interface BrokerStatus {
   accountId?: string;
 }
 
+export interface OrderRequest {
+  accountId: string;
+  symbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  orderType: "market" | "limit" | "stop" | "stop_limit";
+  price?: number;
+  stopPrice?: number;
+  duration: "day" | "gtc" | "pre" | "post";
+}
+
+export interface OrderResponse {
+  orderId: string;
+  symbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  status: string;
+}
+
 export interface BrokerProvider {
   getStatus(accessToken: string): Promise<BrokerStatus>;
   getAccounts(accessToken: string): Promise<NormalizedAccount[]>;
   getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]>;
   getOrders(accessToken: string, accountId?: string): Promise<NormalizedOrder[]>;
+  placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse>;
 }

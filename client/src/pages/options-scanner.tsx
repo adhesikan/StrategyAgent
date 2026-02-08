@@ -43,6 +43,8 @@ import {
   Calendar,
   Activity,
   HelpCircle,
+  Star,
+  ChevronRight,
 } from "lucide-react";
 
 interface MeResponse {
@@ -900,173 +902,323 @@ function LegDisplay({ legs }: { legs: OptionLeg[] }) {
   );
 }
 
+function splitTopPicks(candidates: OptionCandidate[]): { topPicks: OptionCandidate[]; others: OptionCandidate[] } {
+  if (candidates.length <= 6) {
+    return { topPicks: candidates, others: [] };
+  }
+  const TOP_SCORE_THRESHOLD = 95;
+  const MIN_POP_THRESHOLD = 60;
+  const MIN_TOP_PICKS = 3;
+  const MAX_TOP_PICKS = 12;
+
+  const topPicks = candidates.filter(
+    (c) => c.score >= TOP_SCORE_THRESHOLD && c.pop >= MIN_POP_THRESHOLD
+  );
+
+  if (topPicks.length >= MIN_TOP_PICKS && topPicks.length <= MAX_TOP_PICKS) {
+    const topSet = new Set(topPicks.map(c => `${c.symbol}-${c.strike}-${c.expiration}`));
+    return {
+      topPicks,
+      others: candidates.filter(c => !topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
+    };
+  }
+
+  const sorted = [...candidates].sort((a, b) => {
+    const scoreA = a.score * 0.4 + a.pop * 0.3 + a.premiumPct * 20 * 0.3;
+    const scoreB = b.score * 0.4 + b.pop * 0.3 + b.premiumPct * 20 * 0.3;
+    return scoreB - scoreA;
+  });
+
+  const count = Math.min(MAX_TOP_PICKS, Math.max(MIN_TOP_PICKS, Math.ceil(candidates.length * 0.05)));
+  const topSet = new Set(sorted.slice(0, count).map(c => `${c.symbol}-${c.strike}-${c.expiration}`));
+
+  return {
+    topPicks: candidates.filter(c => topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
+    others: candidates.filter(c => !topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
+  };
+}
+
+function CandidateCard({ c, isTopPick }: { c: OptionCandidate; isTopPick?: boolean }) {
+  return (
+    <Card
+      className={cn("overflow-visible", isTopPick && "border-primary/30 bg-primary/[0.02]")}
+      data-testid={`candidate-card-${c.rank}`}
+    >
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            {isTopPick && <Star className="h-3.5 w-3.5 text-primary fill-primary shrink-0" />}
+            <span className="text-sm font-bold" data-testid={`text-underlying-card-${c.rank}`}>{c.underlying}</span>
+            <span className="text-xs text-muted-foreground font-mono">${c.stockPrice.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <ScoreBadge score={c.score} />
+            <VariantBadge variant={c.strategyVariant} optionType={c.optionType} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+          <span className="font-mono" data-testid={`text-strike-card-${c.rank}`}>${c.strike}</span>
+          <span>{c.expiration}</span>
+          <Badge variant="outline" className="text-xs">{c.dte}d</Badge>
+        </div>
+
+        {c.legs.length > 1 && <LegDisplay legs={c.legs} />}
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <MetricPill label="Premium" value={`$${c.mid.toFixed(2)}`} icon={DollarSign} />
+          <MetricPill label="IV" value={`${c.impliedVol}%`} icon={Activity} />
+          <MetricPill label="Delta" value={`${c.delta}`} icon={ArrowUpDown} />
+          <MetricPill label="Theta" value={`${c.theta}`} icon={Clock} />
+          <MetricPill label="PoP" value={`${c.pop}%`} icon={Target} />
+          <MetricPill label="Prem %" value={`${c.premiumPct}%`} icon={Percent} />
+        </div>
+
+        <div className="flex items-center gap-3 text-xs border-t pt-2 flex-wrap">
+          <div className="flex items-center gap-1">
+            <TrendingUp className="h-3 w-3 text-chart-2" />
+            <span className="text-muted-foreground">Max Profit:</span>
+            <span className="font-medium font-mono text-chart-2" data-testid={`text-maxprofit-${c.rank}`}>
+              {c.maxProfit === -1 ? "Unlimited" : `$${c.maxProfit.toLocaleString()}`}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <TrendingDown className="h-3 w-3 text-destructive" />
+            <span className="text-muted-foreground">Max Loss:</span>
+            <span className="font-medium font-mono text-destructive" data-testid={`text-maxloss-${c.rank}`}>
+              ${c.maxLoss.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-muted-foreground">B/E:</span>
+          <span className="font-mono font-medium" data-testid={`text-breakeven-${c.rank}`}>${c.breakeven.toFixed(2)}</span>
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-card-${c.rank}`}>
+              {c.rationale}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-sm">
+            <p className="text-xs">{c.rationale}</p>
+          </TooltipContent>
+        </Tooltip>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
+  const [showOthers, setShowOthers] = useState(false);
+
   if (candidates.length === 0) {
     return <EmptyState message="No trade ideas found for this scan" />;
   }
 
+  const { topPicks, others } = splitTopPicks(candidates);
+
   return (
-    <ScrollArea className="max-h-[600px]" data-testid="candidates-card-container">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {candidates.map((c) => (
-          <Card key={`${c.symbol}-${c.strike}-${c.expiration}`} className="overflow-visible" data-testid={`candidate-card-${c.rank}`}>
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold" data-testid={`text-underlying-card-${c.rank}`}>{c.underlying}</span>
-                  <span className="text-xs text-muted-foreground font-mono">${c.stockPrice.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <ScoreBadge score={c.score} />
-                  <VariantBadge variant={c.strategyVariant} optionType={c.optionType} />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                <span className="font-mono" data-testid={`text-strike-card-${c.rank}`}>${c.strike}</span>
-                <span>{c.expiration}</span>
-                <Badge variant="outline" className="text-xs">{c.dte}d</Badge>
-              </div>
-
-              {c.legs.length > 1 && <LegDisplay legs={c.legs} />}
-
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                <MetricPill label="Premium" value={`$${c.mid.toFixed(2)}`} icon={DollarSign} />
-                <MetricPill label="IV" value={`${c.impliedVol}%`} icon={Activity} />
-                <MetricPill label="Delta" value={`${c.delta}`} icon={ArrowUpDown} />
-                <MetricPill label="Theta" value={`${c.theta}`} icon={Clock} />
-                <MetricPill label="PoP" value={`${c.pop}%`} icon={Target} />
-                <MetricPill label="Prem %" value={`${c.premiumPct}%`} icon={Percent} />
-              </div>
-
-              <div className="flex items-center gap-3 text-xs border-t pt-2 flex-wrap">
-                <div className="flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3 text-chart-2" />
-                  <span className="text-muted-foreground">Max Profit:</span>
-                  <span className="font-medium font-mono text-chart-2" data-testid={`text-maxprofit-${c.rank}`}>
-                    {c.maxProfit === -1 ? "Unlimited" : `$${c.maxProfit.toLocaleString()}`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3 text-destructive" />
-                  <span className="text-muted-foreground">Max Loss:</span>
-                  <span className="font-medium font-mono text-destructive" data-testid={`text-maxloss-${c.rank}`}>
-                    ${c.maxLoss.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 text-xs">
-                <span className="text-muted-foreground">B/E:</span>
-                <span className="font-mono font-medium" data-testid={`text-breakeven-${c.rank}`}>${c.breakeven.toFixed(2)}</span>
-              </div>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-card-${c.rank}`}>
-                    {c.rationale}
-                  </p>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-sm">
-                  <p className="text-xs">{c.rationale}</p>
-                </TooltipContent>
-              </Tooltip>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="space-y-4" data-testid="candidates-card-container">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Star className="h-4 w-4 text-primary fill-primary" />
+          <h3 className="text-sm font-semibold">Top Picks</h3>
+          <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count">
+            {topPicks.length}
+          </Badge>
+          <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {topPicks.map((c) => (
+            <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} isTopPick />
+          ))}
+        </div>
       </div>
-    </ScrollArea>
+
+      {others.length > 0 && (
+        <Collapsible open={showOthers} onOpenChange={setShowOthers}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-between gap-2"
+              data-testid="button-toggle-others"
+            >
+              <span className="flex items-center gap-2 text-sm">
+                More Results
+                <Badge variant="outline" className="text-xs">{others.length}</Badge>
+              </span>
+              <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showOthers && "rotate-180")} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ScrollArea className="max-h-[500px] mt-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {others.map((c) => (
+                  <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} />
+                ))}
+              </div>
+            </ScrollArea>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </div>
+  );
+}
+
+function CandidateTableRows({ candidates, isTopPick }: { candidates: OptionCandidate[]; isTopPick?: boolean }) {
+  return (
+    <>
+      {candidates.map((c) => (
+        <TableRow
+          key={`${c.symbol}-${c.strike}-${c.expiration}`}
+          className={cn(isTopPick && "bg-primary/[0.02]")}
+          data-testid={`candidate-row-${c.rank}`}
+        >
+          <TableCell className="font-medium text-muted-foreground">
+            <div className="flex items-center gap-1">
+              {isTopPick && <Star className="h-3 w-3 text-primary fill-primary shrink-0" />}
+              {c.rank}
+            </div>
+          </TableCell>
+          <TableCell>
+            <div>
+              <span className="font-medium" data-testid={`text-underlying-list-${c.rank}`}>{c.underlying}</span>
+              <span className="text-xs text-muted-foreground ml-1">${c.stockPrice.toFixed(0)}</span>
+            </div>
+          </TableCell>
+          <TableCell>
+            <VariantBadge variant={c.strategyVariant} optionType={c.optionType} />
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm" data-testid={`text-strike-list-${c.rank}`}>
+            {c.legs.length > 1
+              ? `${c.legs.map(l => `$${l.strike}`).join("/")}`
+              : `$${c.strike}`
+            }
+          </TableCell>
+          <TableCell className="text-sm" data-testid={`text-exp-list-${c.rank}`}>
+            {c.expiration}
+          </TableCell>
+          <TableCell className="text-right text-sm font-mono">
+            {c.dte}d
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm" data-testid={`text-premium-list-${c.rank}`}>
+            ${c.mid.toFixed(2)}
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm">
+            {c.impliedVol}%
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm">
+            {c.delta}
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm">
+            {c.pop}%
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm text-chart-2">
+            {c.maxProfit === -1 ? "Unlim." : `$${c.maxProfit.toLocaleString()}`}
+          </TableCell>
+          <TableCell className="text-right font-mono text-sm text-destructive">
+            ${c.maxLoss.toLocaleString()}
+          </TableCell>
+          <TableCell className="text-right">
+            <ScoreBadge score={c.score} />
+          </TableCell>
+          <TableCell className="hidden xl:table-cell max-w-[200px]">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-list-${c.rank}`}>
+                  {c.rationale}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm">
+                <p className="text-xs">{c.rationale}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 }
 
 function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
+  const [showOthers, setShowOthers] = useState(false);
+
   if (candidates.length === 0) {
     return <EmptyState message="No trade ideas found for this scan" />;
   }
 
+  const { topPicks, others } = splitTopPicks(candidates);
+
+  const listHeader = (
+    <TableHeader>
+      <TableRow>
+        <TableHead className="w-12">#</TableHead>
+        <TableHead>Stock</TableHead>
+        <TableHead>Strategy</TableHead>
+        <TableHead className="text-right">Strike</TableHead>
+        <TableHead>Expires</TableHead>
+        <TableHead className="text-right">DTE</TableHead>
+        <TableHead className="text-right">Premium</TableHead>
+        <TableHead className="text-right">IV</TableHead>
+        <TableHead className="text-right">Delta</TableHead>
+        <TableHead className="text-right">PoP</TableHead>
+        <TableHead className="text-right">Max Profit</TableHead>
+        <TableHead className="text-right">Max Loss</TableHead>
+        <TableHead className="text-right">Score</TableHead>
+        <TableHead className="hidden xl:table-cell">Why</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+
   return (
-    <ScrollArea className="max-h-[600px]" data-testid="candidates-list-container">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-12">#</TableHead>
-            <TableHead>Stock</TableHead>
-            <TableHead>Strategy</TableHead>
-            <TableHead className="text-right">Strike</TableHead>
-            <TableHead>Expires</TableHead>
-            <TableHead className="text-right">DTE</TableHead>
-            <TableHead className="text-right">Premium</TableHead>
-            <TableHead className="text-right">IV</TableHead>
-            <TableHead className="text-right">Delta</TableHead>
-            <TableHead className="text-right">PoP</TableHead>
-            <TableHead className="text-right">Max Profit</TableHead>
-            <TableHead className="text-right">Max Loss</TableHead>
-            <TableHead className="text-right">Score</TableHead>
-            <TableHead className="hidden xl:table-cell">Why</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {candidates.map((c) => (
-            <TableRow key={`${c.symbol}-${c.strike}-${c.expiration}`} data-testid={`candidate-row-${c.rank}`}>
-              <TableCell className="font-medium text-muted-foreground">{c.rank}</TableCell>
-              <TableCell>
-                <div>
-                  <span className="font-medium" data-testid={`text-underlying-list-${c.rank}`}>{c.underlying}</span>
-                  <span className="text-xs text-muted-foreground ml-1">${c.stockPrice.toFixed(0)}</span>
-                </div>
-              </TableCell>
-              <TableCell>
-                <VariantBadge variant={c.strategyVariant} optionType={c.optionType} />
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm" data-testid={`text-strike-list-${c.rank}`}>
-                {c.legs.length > 1
-                  ? `${c.legs.map(l => `$${l.strike}`).join("/")}`
-                  : `$${c.strike}`
-                }
-              </TableCell>
-              <TableCell className="text-sm" data-testid={`text-exp-list-${c.rank}`}>
-                {c.expiration}
-              </TableCell>
-              <TableCell className="text-right text-sm font-mono">
-                {c.dte}d
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm" data-testid={`text-premium-list-${c.rank}`}>
-                ${c.mid.toFixed(2)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {c.impliedVol}%
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {c.delta}
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {c.pop}%
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm text-chart-2">
-                {c.maxProfit === -1 ? "Unlim." : `$${c.maxProfit.toLocaleString()}`}
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm text-destructive">
-                ${c.maxLoss.toLocaleString()}
-              </TableCell>
-              <TableCell className="text-right">
-                <ScoreBadge score={c.score} />
-              </TableCell>
-              <TableCell className="hidden xl:table-cell max-w-[200px]">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p className="text-xs text-muted-foreground truncate cursor-help" data-testid={`text-rationale-list-${c.rank}`}>
-                      {c.rationale}
-                    </p>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-sm">
-                    <p className="text-xs">{c.rationale}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </ScrollArea>
+    <div className="space-y-4" data-testid="candidates-list-container">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Star className="h-4 w-4 text-primary fill-primary" />
+          <h3 className="text-sm font-semibold">Top Picks</h3>
+          <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count-list">
+            {topPicks.length}
+          </Badge>
+          <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>
+        </div>
+        <Table>
+          {listHeader}
+          <TableBody>
+            <CandidateTableRows candidates={topPicks} isTopPick />
+          </TableBody>
+        </Table>
+      </div>
+
+      {others.length > 0 && (
+        <Collapsible open={showOthers} onOpenChange={setShowOthers}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-between gap-2"
+              data-testid="button-toggle-others-list"
+            >
+              <span className="flex items-center gap-2 text-sm">
+                More Results
+                <Badge variant="outline" className="text-xs">{others.length}</Badge>
+              </span>
+              <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showOthers && "rotate-180")} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ScrollArea className="max-h-[500px] mt-3">
+              <Table>
+                {listHeader}
+                <TableBody>
+                  <CandidateTableRows candidates={others} />
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </div>
   );
 }

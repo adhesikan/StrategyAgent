@@ -1578,6 +1578,40 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.post("/api/broker/orders", isAuthenticated, async (req, res) => {
+    try {
+      const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration } = req.body;
+
+      if (!accountId || !symbol || !side || !quantity) {
+        return res.status(400).json({ error: "Missing required fields: accountId, symbol, side, quantity" });
+      }
+
+      if (!["buy", "sell"].includes(side)) {
+        return res.status(400).json({ error: "side must be 'buy' or 'sell'" });
+      }
+
+      if (typeof quantity !== "number" || quantity < 1) {
+        return res.status(400).json({ error: "quantity must be a positive number" });
+      }
+
+      const result = await brokerService.placeBrokerOrder(req.session.userId!, {
+        accountId,
+        symbol: symbol.toUpperCase(),
+        side,
+        quantity: Math.floor(quantity),
+        orderType: orderType || "limit",
+        price: price ?? undefined,
+        stopPrice: stopPrice ?? undefined,
+        duration: duration || "day",
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("[BrokerService] place order error:", error.message);
+      res.status(500).json({ error: error.message || "Failed to place order" });
+    }
+  });
+
   // ─── Platform Risk Profile API ────────────────────────────────────────
   const { toRiskProfileResponse } = await import("@shared/platform-types");
   const { getDefaultRiskProfile: getOrCreateRiskProfile } = await import("./models/risk-profiles");

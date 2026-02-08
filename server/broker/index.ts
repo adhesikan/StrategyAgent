@@ -1,4 +1,4 @@
-import type { BrokerProvider, BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder } from "./types";
+import type { BrokerProvider, BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse } from "./types";
 import { tradierProvider } from "./providers/tradier";
 import { tradestationProvider } from "./providers/tradestation";
 import { storage } from "../storage";
@@ -119,10 +119,23 @@ export async function getBrokerOrders(userId: string): Promise<NormalizedOrder[]
   return orders;
 }
 
+export async function placeBrokerOrder(userId: string, order: OrderRequest): Promise<OrderResponse> {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) {
+    throw new Error("No connected broker found or broker not supported for trading");
+  }
+
+  const provider = getProvider(connection.provider);
+  console.log(`[BrokerService] Placing ${order.side} order for ${order.quantity} ${order.symbol} via ${connection.provider}`);
+  const result = await provider.placeOrder(connection.accessToken!, order);
+  cache.delete(`orders:${userId}`);
+  return result;
+}
+
 export function invalidateBrokerCache(userId: string): void {
   for (const prefix of ["status", "accounts", "positions", "orders"]) {
     cache.delete(`${prefix}:${userId}`);
   }
 }
 
-export type { BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder } from "./types";
+export type { BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse } from "./types";

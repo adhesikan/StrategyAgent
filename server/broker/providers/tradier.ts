@@ -1,4 +1,4 @@
-import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus } from "../types";
+import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse } from "../types";
 
 const BASE_URL = "https://api.tradier.com/v1";
 
@@ -17,6 +17,20 @@ async function tradierFetch(url: string, accessToken: string): Promise<any> {
   }
   return response.json();
 }
+
+const TRADIER_ORDER_TYPE_MAP: Record<string, string> = {
+  market: "market",
+  limit: "limit",
+  stop: "stop",
+  stop_limit: "stop_limit",
+};
+
+const TRADIER_DURATION_MAP: Record<string, string> = {
+  day: "day",
+  gtc: "gtc",
+  pre: "pre",
+  post: "post",
+};
 
 export const tradierProvider: BrokerProvider = {
   async getStatus(accessToken: string): Promise<BrokerStatus> {
@@ -113,5 +127,51 @@ export const tradierProvider: BrokerProvider = {
       status: o.status ?? "unknown",
       createdAt: o.create_date ?? o.transaction_date ?? "",
     }));
+  },
+
+  async placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse> {
+    const params = new URLSearchParams();
+    params.set("class", "equity");
+    params.set("symbol", order.symbol);
+    params.set("side", order.side === "buy" ? "buy" : "sell");
+    params.set("quantity", String(order.quantity));
+    params.set("type", TRADIER_ORDER_TYPE_MAP[order.orderType] || "limit");
+    params.set("duration", TRADIER_DURATION_MAP[order.duration] || "day");
+
+    if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) {
+      params.set("price", String(order.price));
+    }
+    if (order.stopPrice !== undefined && (order.orderType === "stop" || order.orderType === "stop_limit")) {
+      params.set("stop", String(order.stopPrice));
+    }
+
+    const response = await fetch(
+      `${BASE_URL}/accounts/${order.accountId}/orders`,
+      {
+        method: "POST",
+        headers: {
+          ...tradierHeaders(accessToken),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Tradier order error ${response.status}: ${text.substring(0, 300)}`);
+    }
+
+    const data = await response.json();
+    const orderId = data?.order?.id ? String(data.order.id) : "pending";
+    const orderStatus = data?.order?.status || "pending";
+
+    return {
+      orderId,
+      symbol: order.symbol,
+      side: order.side,
+      quantity: order.quantity,
+      status: orderStatus,
+    };
   },
 };

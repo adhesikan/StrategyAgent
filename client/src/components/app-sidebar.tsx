@@ -107,6 +107,7 @@ const navSections: NavSection[] = [
     defaultExpanded: false,
     items: [
       { title: "Settings", url: "/settings", icon: Settings },
+      { title: "Risk Profile", url: "/settings/risk-profile", icon: Radio },
     ],
   },
 ];

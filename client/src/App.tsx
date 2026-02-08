@@ -54,6 +54,7 @@ import OpportunitiesPage from "@/pages/opportunities";
 import NewsPage from "@/pages/news";
 import CommandCenter from "@/pages/command-center";
 import OptionsScanner from "@/pages/options-scanner";
+import RiskProfilePage from "@/pages/risk-profile";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -76,6 +77,7 @@ function AppRouter() {
       <Route path="/app/stocks" component={Scanner} />
       <Route path="/app/options" component={OptionsScanner} />
       <Route path="/app/automation" component={AutomationPage} />
+      <Route path="/settings/risk-profile" component={RiskProfilePage} />
       <Route path="/settings" component={Settings} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/disclaimer" component={DisclaimerPage} />

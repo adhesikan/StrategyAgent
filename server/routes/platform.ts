@@ -12,6 +12,11 @@ const updateRiskProfileSchema = z.object({
   risk_mode: z.enum(VALID_RISK_MODES).optional(),
   risk_per_trade: z.number().min(0.1).max(10).optional(),
   max_deploy: z.number().min(5).max(100).optional(),
+  delta_min: z.number().min(0).max(1).optional(),
+  delta_max: z.number().min(0).max(1).optional(),
+  loss_cutoff_mult: z.number().min(0.1).max(10).optional(),
+  min_premium_pct: z.number().min(0).max(100).optional(),
+  vix_pause: z.number().min(0).max(100).optional(),
   protections_enabled: z.boolean().optional(),
   guardrails_json: z.record(z.unknown()).optional(),
   protections_json: z.record(z.unknown()).optional(),
@@ -71,6 +76,11 @@ export function registerPlatformRoutes(app: Express): void {
       if (data.risk_mode !== undefined) updates.riskMode = data.risk_mode;
       if (data.risk_per_trade !== undefined) updates.riskPerTrade = data.risk_per_trade;
       if (data.max_deploy !== undefined) updates.maxDeploy = data.max_deploy;
+      if (data.delta_min !== undefined) updates.deltaMin = data.delta_min;
+      if (data.delta_max !== undefined) updates.deltaMax = data.delta_max;
+      if (data.loss_cutoff_mult !== undefined) updates.lossCutoffMult = data.loss_cutoff_mult;
+      if (data.min_premium_pct !== undefined) updates.minPremiumPct = data.min_premium_pct;
+      if (data.vix_pause !== undefined) updates.vixPause = data.vix_pause;
       if (data.protections_enabled !== undefined) updates.protectionsEnabled = data.protections_enabled;
       if (data.guardrails_json !== undefined) updates.guardrailsJson = data.guardrails_json;
       if (data.protections_json !== undefined) updates.protectionsJson = data.protections_json;

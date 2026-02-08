@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   X, ChevronRight, ChevronLeft, Play, BookOpen, 
   TrendingUp, Search, Bell, Zap, Target, BarChart3,
-  CheckCircle2, ArrowRight
+  CheckCircle2, ArrowRight, ScanLine, DollarSign, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -204,7 +204,76 @@ const ALERTS_TUTORIAL: Tutorial = {
   ]
 };
 
-export const TUTORIALS = [VCP_TUTORIAL, SCANNER_TUTORIAL, ALERTS_TUTORIAL];
+const OPTIONS_TUTORIAL: Tutorial = {
+  id: "options",
+  title: "Options Scanner Strategies",
+  description: "Learn how the Options Scanner identifies and ranks trade ideas across multiple strategies",
+  icon: ScanLine,
+  settingsKey: "hasSeenOptionsTutorial",
+  steps: [
+    {
+      id: "options-overview",
+      title: "What the Options Scanner Does",
+      content: "The Options Scanner searches hundreds of stocks at once to find the best options trade ideas for your chosen strategy. It filters by your preferences (expiration, delta, premium) and ranks results by a composite score so the top picks appear first.",
+      icon: ScanLine,
+      tips: [
+        "Choose a strategy, pick your stock universe, then hit Find Trades",
+        "Results are ranked so the best ideas are at the top",
+        "Switch between Card view for details or List view for quick scanning"
+      ]
+    },
+    {
+      id: "options-long",
+      title: "Long Options (Calls & Puts)",
+      content: "The simplest strategy: buy a call if you think a stock will go up, or a put if you think it will go down. Your maximum loss is limited to what you paid for the option (the premium). The scanner finds options with good implied volatility, adequate liquidity, and strikes slightly out-of-the-money for the best risk/reward.",
+      icon: TrendingUp,
+      tips: [
+        "Long Call = bullish bet, Long Put = bearish bet",
+        "Max loss is the premium you pay, max gain can be much larger",
+        "Scanner favors options with high open interest for easy entry and exit",
+        "Higher delta = more expensive but higher chance of profit"
+      ]
+    },
+    {
+      id: "options-wheel",
+      title: "Wheel Strategy (Income)",
+      content: "An income-generating strategy with two variants. Cash-Secured Put: you sell puts on stocks you want to own, collecting premium while you wait. If assigned, you buy the stock at a discount. Covered Call: you sell calls on stock you already hold, earning income while you wait. The scanner finds the best premium opportunities across your chosen stocks.",
+      icon: DollarSign,
+      tips: [
+        "Cash-Secured Put: get paid to wait for stocks at a lower price",
+        "Covered Call: earn income on stocks you already own",
+        "Best for high-quality stocks you would hold long-term",
+        "Scanner ranks by annualized premium return vs. capital required"
+      ]
+    },
+    {
+      id: "options-spreads",
+      title: "Credit Spreads (Defined Risk)",
+      content: "Credit spreads let you collect premium with a defined maximum loss. Bull Put Spread: sell a put and buy a lower put (bullish). Bear Call Spread: sell a call and buy a higher call (bearish). Both strategies profit when the stock stays in your expected range. The scanner finds spreads with the best probability of profit relative to the premium collected.",
+      icon: Shield,
+      tips: [
+        "Bull Put Spread = bullish, Bear Call Spread = bearish",
+        "Both max profit and max loss are known before you enter",
+        "Wider spread = more premium but more risk",
+        "Scanner ranks by probability of profit (PoP) and risk/reward ratio"
+      ]
+    },
+    {
+      id: "options-preferences",
+      title: "Scan Preferences & Metrics",
+      content: "Customize your scans with three key filters: Days to Expiration (DTE) controls how far out the options expire, Delta Range controls how far in/out-of-the-money the strikes are, and Min Premium % sets the minimum income threshold. Key metrics on each result: IV (implied volatility), PoP (probability of profit), Max Profit/Loss, and Breakeven price.",
+      icon: Target,
+      tips: [
+        "DTE 14-45 days is the sweet spot for most strategies",
+        "Lower delta = cheaper options but lower win rate",
+        "Higher min premium = fewer results but better income potential",
+        "Score combines multiple factors to rank the best opportunities"
+      ]
+    }
+  ]
+};
+
+export const TUTORIALS = [VCP_TUTORIAL, SCANNER_TUTORIAL, ALERTS_TUTORIAL, OPTIONS_TUTORIAL];
 
 interface InteractiveTutorialProps {
   tutorialId?: string;

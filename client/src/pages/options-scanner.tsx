@@ -42,6 +42,7 @@ import {
   ArrowUpDown,
   Calendar,
   Activity,
+  HelpCircle,
 } from "lucide-react";
 
 interface MeResponse {
@@ -141,18 +142,42 @@ const BUILTIN_UNIVERSES = [
   { id: "dow30", name: "Dow Jones 30", description: "30 blue-chip stocks", count: 30 },
 ];
 
-const STRATEGY_TIPS: Record<string, { difficulty: string; tip: string }> = {
+const STRATEGY_TIPS: Record<string, { difficulty: string; tip: string; howItWorks: string; pickCriteria: string[] }> = {
   "long-options": {
     difficulty: "Beginner Friendly",
     tip: "Great starting point. You buy an option and your maximum loss is what you paid for it.",
+    howItWorks: "Buys a call (bullish) or put (bearish) option on a stock. You profit when the stock moves in your predicted direction beyond the breakeven price before expiration.",
+    pickCriteria: [
+      "Ranks by implied volatility vs. historical range to find undervalued options",
+      "Filters for your preferred delta range to balance cost vs. probability",
+      "Requires minimum premium % relative to stock price for adequate reward",
+      "Selects strikes slightly out-of-the-money for optimal risk/reward",
+      "Prioritizes contracts with strong open interest and volume for liquidity",
+    ],
   },
   "wheel": {
     difficulty: "Intermediate",
     tip: "Best for stocks you'd want to own anyway. You earn income while waiting.",
+    howItWorks: "Generates either a Cash-Secured Put (sell puts to get paid while waiting to buy) or a Covered Call (sell calls on stock you own to earn income). Both strategies collect premium as income.",
+    pickCriteria: [
+      "Selects high-quality stocks suitable for long-term ownership",
+      "Cash-Secured Put: finds puts with premium income above your minimum threshold",
+      "Covered Call: finds calls above the stock price to earn income while holding",
+      "Targets delta range that balances premium income with assignment probability",
+      "Scores higher when annualized return from premium is attractive vs. capital required",
+    ],
   },
   "credit-spreads": {
     difficulty: "Intermediate",
     tip: "Lower risk than selling naked options. Your max loss and max gain are both defined upfront.",
+    howItWorks: "Sells a Bull Put Spread (bullish: sell higher put, buy lower put) or Bear Call Spread (bearish: sell lower call, buy higher call). You keep the credit if the stock stays in your range.",
+    pickCriteria: [
+      "Finds spread widths that offer favorable risk/reward ratios",
+      "Bull Put Spread: places short strike below current price in a support zone",
+      "Bear Call Spread: places short strike above current price near resistance",
+      "Ranks by probability of profit (PoP) combined with premium collected",
+      "Requires both legs to have adequate liquidity for clean fills",
+    ],
   },
 };
 
@@ -325,9 +350,38 @@ export default function OptionsScanner() {
               >
                 <CardContent className="pt-4 pb-4">
                   <div className="flex items-start justify-between gap-2 flex-wrap mb-2">
-                    <h3 className={cn("text-sm font-semibold", isActive ? "text-foreground" : "text-muted-foreground")}>
-                      {s.label}
-                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className={cn("text-sm font-semibold", isActive ? "text-foreground" : "text-muted-foreground")}>
+                        {s.label}
+                      </h3>
+                      {tip && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className="cursor-help"
+                              onClick={(e) => e.stopPropagation()}
+                              data-testid={`tooltip-trigger-${s.key}`}
+                            >
+                              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" align="start" className="max-w-xs p-3 space-y-2" data-testid={`tooltip-content-${s.key}`}>
+                            <p className="text-xs font-medium">{tip.howItWorks}</p>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-muted-foreground">How picks are identified:</p>
+                              <ul className="space-y-0.5">
+                                {tip.pickCriteria.map((criterion, i) => (
+                                  <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                                    <span className="text-primary mt-0.5 shrink-0">-</span>
+                                    {criterion}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                     {tip && (
                       <Badge variant={isActive ? "default" : "secondary"} className="text-xs" data-testid={`badge-difficulty-${s.key}`}>
                         {tip.difficulty}

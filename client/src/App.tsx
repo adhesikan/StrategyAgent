@@ -53,6 +53,7 @@ import SnaptradeCallback from "@/pages/snaptrade-callback";
 import OpportunitiesPage from "@/pages/opportunities";
 import NewsPage from "@/pages/news";
 import CommandCenter from "@/pages/command-center";
+import OptionsScanner from "@/pages/options-scanner";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -72,6 +73,9 @@ function AppRouter() {
       <Route path="/automation" component={AutomationPage} />
       <Route path="/execution" component={ExecutionCockpit} />
       <Route path="/opportunities" component={OpportunitiesPage} />
+      <Route path="/app/stocks" component={Scanner} />
+      <Route path="/app/options" component={OptionsScanner} />
+      <Route path="/app/automation" component={AutomationPage} />
       <Route path="/settings" component={Settings} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/disclaimer" component={DisclaimerPage} />

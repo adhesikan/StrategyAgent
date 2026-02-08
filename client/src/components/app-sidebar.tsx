@@ -18,6 +18,7 @@ import {
   Radio,
   Newspaper,
   Target,
+  ScanLine,
 } from "lucide-react";
 import {
   Sidebar,
@@ -150,6 +151,17 @@ function getInitialStartHereSeen(): boolean {
   return localStorage.getItem("vcp_start_here_seen") === "true";
 }
 
+interface MeResponse {
+  user: { id: string; email: string; role: string };
+  entitlements: {
+    stockScanner: boolean;
+    optionsScanner: boolean;
+    automation: boolean;
+    plan: string;
+  };
+  broker: { connected: boolean; provider: string | null };
+}
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { setOpenMobile, isMobile } = useSidebar();
@@ -162,6 +174,23 @@ export function AppSidebar() {
 
   const { data: alerts } = useQuery<Alert[]>({
     queryKey: ["/api/alerts"],
+  });
+
+  const { data: me } = useQuery<MeResponse>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const dynamicSections = navSections.map((section): NavSection => {
+    if (section.id === "discover" && me?.entitlements?.optionsScanner) {
+      return {
+        ...section,
+        items: [
+          ...section.items,
+          { title: "Options Scanner", url: "/app/options", icon: ScanLine },
+        ],
+      };
+    }
+    return section;
   });
 
   const unreadAlerts = alerts?.filter(a => !a.isRead).length || 0;
@@ -213,7 +242,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
-        {navSections.map((section) => {
+        {dynamicSections.map((section) => {
           const isExpanded = expandedSections[section.id] ?? section.defaultExpanded ?? false;
           const hasActiveItem = section.items.some(
             (item) => location === item.url || (item.url === "/" && location === "/scanner")

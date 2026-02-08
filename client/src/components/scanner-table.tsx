@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { getTradeStatus, getDistanceToEntry, getTradeStatusDisplay, isActionable } from "@/lib/trade-status";
 import type { ScanResult, PatternStageType } from "@shared/schema";
 
-type SortField = "ticker" | "price" | "changePercent" | "volume" | "rvol" | "patternScore" | "stage";
+type SortField = "ticker" | "price" | "changePercent" | "volume" | "rvol" | "patternScore" | "stage" | "status" | "resistance" | "stopLoss";
 type SortDirection = "asc" | "desc";
 
 const STAGE_ORDER: Record<string, number> = {
@@ -120,6 +120,12 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
     );
   });
 
+  const STATUS_ORDER: Record<string, number> = {
+    "IN_ENTRY_ZONE": 3,
+    "AWAITING_BREAKOUT": 2,
+    "EXTENDED": 1,
+  };
+
   const sortResults = (items: ScanResult[]) => {
     return [...items].sort((a, b) => {
       const modifier = sortDirection === "asc" ? 1 : -1;
@@ -127,6 +133,11 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
         const aOrder = STAGE_ORDER[a.stage] ?? 0;
         const bOrder = STAGE_ORDER[b.stage] ?? 0;
         return (aOrder - bOrder) * modifier;
+      }
+      if (sortField === "status") {
+        const aStatus = getTradeStatus(a);
+        const bStatus = getTradeStatus(b);
+        return ((STATUS_ORDER[aStatus] ?? 0) - (STATUS_ORDER[bStatus] ?? 0)) * modifier;
       }
       const aVal = a[sortField] ?? 0;
       const bVal = b[sortField] ?? 0;
@@ -141,7 +152,7 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
     <Button
       variant="ghost"
       size="sm"
-      className="-ml-3 h-8 gap-1 font-medium"
+      className="-ml-3 gap-1 font-medium"
       onClick={() => handleSort(field)}
       data-testid={`sort-${field}`}
     >
@@ -370,9 +381,15 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
         <TableHead>
           <SortHeader field="stage">Stage</SortHeader>
         </TableHead>
-        <TableHead>Status</TableHead>
-        <TableHead className="text-right">Entry</TableHead>
-        <TableHead className="text-right">Stop</TableHead>
+        <TableHead>
+          <SortHeader field="status">Status</SortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <SortHeader field="resistance">Entry</SortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <SortHeader field="stopLoss">Stop</SortHeader>
+        </TableHead>
         <TableHead className="text-right">
           <SortHeader field="patternScore">Score</SortHeader>
         </TableHead>

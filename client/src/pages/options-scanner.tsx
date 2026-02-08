@@ -45,6 +45,7 @@ import {
   HelpCircle,
   Star,
   ChevronRight,
+  ChevronUp,
 } from "lucide-react";
 
 interface MeResponse {
@@ -1143,31 +1144,106 @@ function CandidateTableRows({ candidates, isTopPick }: { candidates: OptionCandi
   );
 }
 
+type OptionSortField = "rank" | "underlying" | "strategyVariant" | "strike" | "expiration" | "dte" | "mid" | "impliedVol" | "delta" | "pop" | "maxProfit" | "maxLoss" | "score";
+type OptionSortDirection = "asc" | "desc";
+
 function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
   const [showOthers, setShowOthers] = useState(false);
+  const [sortField, setSortField] = useState<OptionSortField>("score");
+  const [sortDirection, setSortDirection] = useState<OptionSortDirection>("desc");
+
+  const handleSort = (field: OptionSortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const sortCandidates = (items: OptionCandidate[]) => {
+    return [...items].sort((a, b) => {
+      const modifier = sortDirection === "asc" ? 1 : -1;
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return aVal.localeCompare(bVal) * modifier;
+      }
+      return ((aVal as number) - (bVal as number)) * modifier;
+    });
+  };
+
+  const OptionSortHeader = ({ field, children, className }: { field: OptionSortField; children: React.ReactNode; className?: string }) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn("-ml-3 gap-1 font-medium", className)}
+      onClick={() => handleSort(field)}
+      data-testid={`sort-option-${field}`}
+    >
+      {children}
+      {sortField === field ? (
+        sortDirection === "asc" ? (
+          <ChevronUp className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5" />
+        )
+      ) : (
+        <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />
+      )}
+    </Button>
+  );
 
   if (candidates.length === 0) {
     return <EmptyState message="No trade ideas found for this scan" />;
   }
 
   const { topPicks, others } = splitTopPicks(candidates);
+  const sortedTopPicks = sortCandidates(topPicks);
+  const sortedOthers = sortCandidates(others);
 
   const listHeader = (
-    <TableHeader>
+    <TableHeader className="sticky top-0 z-10 bg-card">
       <TableRow>
-        <TableHead className="w-12">#</TableHead>
-        <TableHead>Stock</TableHead>
-        <TableHead>Strategy</TableHead>
-        <TableHead className="text-right">Strike</TableHead>
-        <TableHead>Expires</TableHead>
-        <TableHead className="text-right">DTE</TableHead>
-        <TableHead className="text-right">Premium</TableHead>
-        <TableHead className="text-right">IV</TableHead>
-        <TableHead className="text-right">Delta</TableHead>
-        <TableHead className="text-right">PoP</TableHead>
-        <TableHead className="text-right">Max Profit</TableHead>
-        <TableHead className="text-right">Max Loss</TableHead>
-        <TableHead className="text-right">Score</TableHead>
+        <TableHead className="w-12">
+          <OptionSortHeader field="rank">#</OptionSortHeader>
+        </TableHead>
+        <TableHead>
+          <OptionSortHeader field="underlying">Stock</OptionSortHeader>
+        </TableHead>
+        <TableHead>
+          <OptionSortHeader field="strategyVariant">Strategy</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="strike">Strike</OptionSortHeader>
+        </TableHead>
+        <TableHead>
+          <OptionSortHeader field="expiration">Expires</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="dte">DTE</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="mid">Premium</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="impliedVol">IV</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="delta">Delta</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="pop">PoP</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="maxProfit">Max Profit</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="maxLoss">Max Loss</OptionSortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <OptionSortHeader field="score">Score</OptionSortHeader>
+        </TableHead>
         <TableHead className="hidden xl:table-cell">Why</TableHead>
       </TableRow>
     </TableHeader>
@@ -1180,19 +1256,19 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
           <Star className="h-4 w-4 text-primary fill-primary" />
           <h3 className="text-sm font-semibold">Top Picks</h3>
           <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count-list">
-            {topPicks.length}
+            {sortedTopPicks.length}
           </Badge>
           <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>
         </div>
         <Table>
           {listHeader}
           <TableBody>
-            <CandidateTableRows candidates={topPicks} isTopPick />
+            <CandidateTableRows candidates={sortedTopPicks} isTopPick />
           </TableBody>
         </Table>
       </div>
 
-      {others.length > 0 && (
+      {sortedOthers.length > 0 && (
         <Collapsible open={showOthers} onOpenChange={setShowOthers}>
           <CollapsibleTrigger asChild>
             <Button
@@ -1202,7 +1278,7 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
             >
               <span className="flex items-center gap-2 text-sm">
                 More Results
-                <Badge variant="outline" className="text-xs">{others.length}</Badge>
+                <Badge variant="outline" className="text-xs">{sortedOthers.length}</Badge>
               </span>
               <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showOthers && "rotate-180")} />
             </Button>
@@ -1212,7 +1288,7 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
               <Table>
                 {listHeader}
                 <TableBody>
-                  <CandidateTableRows candidates={others} />
+                  <CandidateTableRows candidates={sortedOthers} />
                 </TableBody>
               </Table>
             </ScrollArea>

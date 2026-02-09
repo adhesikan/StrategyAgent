@@ -156,25 +156,52 @@ export const tradierProvider: BrokerProvider = {
 
   async placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse> {
     const isOption = order.orderClass === "option" && order.optionSymbol;
+    const isBracket = order.orderClass === "otoco" && order.bracketTarget && order.bracketStop;
     const params = new URLSearchParams();
-    params.set("class", isOption ? "option" : "equity");
-    params.set("symbol", order.symbol);
-    params.set("quantity", String(order.quantity));
-    params.set("type", TRADIER_ORDER_TYPE_MAP[order.orderType] || "limit");
-    params.set("duration", TRADIER_DURATION_MAP[order.duration] || "day");
 
-    if (isOption) {
-      params.set("option_symbol", order.optionSymbol!);
-      params.set("side", order.optionSide || "buy_to_open");
+    if (isBracket) {
+      params.set("class", "otoco");
+      params.set("duration", TRADIER_DURATION_MAP[order.duration] || "day");
+      params.set("type[0]", TRADIER_ORDER_TYPE_MAP[order.orderType] || "market");
+      params.set("symbol[0]", order.symbol);
+      params.set("quantity[0]", String(order.quantity));
+      params.set("side[0]", order.side === "buy" ? "buy" : "sell");
+      if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) {
+        params.set("price[0]", String(order.price));
+      }
+
+      const exitSide = order.side === "buy" ? "sell" : "buy";
+      params.set("type[1]", "limit");
+      params.set("symbol[1]", order.symbol);
+      params.set("quantity[1]", String(order.quantity));
+      params.set("side[1]", exitSide);
+      params.set("price[1]", String(order.bracketTarget));
+
+      params.set("type[2]", "stop");
+      params.set("symbol[2]", order.symbol);
+      params.set("quantity[2]", String(order.quantity));
+      params.set("side[2]", exitSide);
+      params.set("stop[2]", String(order.bracketStop));
     } else {
-      params.set("side", order.side === "buy" ? "buy" : "sell");
-    }
+      params.set("class", isOption ? "option" : "equity");
+      params.set("symbol", order.symbol);
+      params.set("quantity", String(order.quantity));
+      params.set("type", TRADIER_ORDER_TYPE_MAP[order.orderType] || "limit");
+      params.set("duration", TRADIER_DURATION_MAP[order.duration] || "day");
 
-    if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) {
-      params.set("price", String(order.price));
-    }
-    if (order.stopPrice !== undefined && (order.orderType === "stop" || order.orderType === "stop_limit")) {
-      params.set("stop", String(order.stopPrice));
+      if (isOption) {
+        params.set("option_symbol", order.optionSymbol!);
+        params.set("side", order.optionSide || "buy_to_open");
+      } else {
+        params.set("side", order.side === "buy" ? "buy" : "sell");
+      }
+
+      if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) {
+        params.set("price", String(order.price));
+      }
+      if (order.stopPrice !== undefined && (order.orderType === "stop" || order.orderType === "stop_limit")) {
+        params.set("stop", String(order.stopPrice));
+      }
     }
 
     console.log(`[Tradier] Order params: ${params.toString()}`);

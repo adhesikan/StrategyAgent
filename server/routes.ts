@@ -1661,6 +1661,80 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ─── Stock Trade Ticket (Place Equity with optional OTOCO bracket) ──
+  app.post("/api/trade/place-equity", isAuthenticated, async (req, res) => {
+    try {
+      const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop } = req.body;
+
+      if (!accountId || !symbol || !quantity) {
+        return res.status(400).json({ error: "Missing required fields: accountId, symbol, quantity" });
+      }
+
+      if (typeof quantity !== "number" || quantity < 1 || quantity > 10000) {
+        return res.status(400).json({ error: "quantity must be between 1 and 10,000" });
+      }
+
+      const accounts = await brokerService.getBrokerAccounts(req.session.userId!);
+      if (!accounts.find((a: any) => a.id === accountId)) {
+        return res.status(403).json({ error: "Invalid or unauthorized broker account" });
+      }
+
+      const hasBracket = bracketTarget && bracketStop;
+      const finalOrderType = orderType || "market";
+      const finalDuration = duration || "day";
+      const finalSide = side || "buy";
+
+      const orderRequest: any = {
+        accountId,
+        symbol: symbol.toUpperCase(),
+        side: finalSide,
+        quantity: Math.floor(quantity),
+        orderType: finalOrderType,
+        duration: finalDuration,
+        orderClass: hasBracket ? "otoco" : "equity",
+      };
+
+      if (price !== undefined && (finalOrderType === "limit" || finalOrderType === "stop_limit")) {
+        orderRequest.price = price;
+      }
+
+      if (hasBracket) {
+        orderRequest.bracketTarget = bracketTarget;
+        orderRequest.bracketStop = bracketStop;
+      }
+
+      const result = await brokerService.placeBrokerOrder(req.session.userId!, orderRequest);
+
+      if (result.orderId === "pending") {
+        return res.status(502).json({
+          error: "Order was sent to broker but no order ID was returned. Please check your brokerage portal.",
+          result,
+        });
+      }
+
+      res.json({
+        orderId: result.orderId,
+        symbol: result.symbol,
+        side: result.side,
+        quantity: result.quantity,
+        status: result.status,
+        hasBracket,
+      });
+    } catch (error: any) {
+      console.error("[Trade] place equity error:", error.message);
+      if (error.message?.includes("InsufficientScope") || error.message?.includes("scope-trade")) {
+        return res.status(403).json({
+          error: "Your broker connection doesn't have trading permissions. Please disconnect and reconnect your broker in Settings to grant trading access.",
+          code: "INSUFFICIENT_SCOPE",
+        });
+      }
+      if (error.message?.includes("Tradier order rejected")) {
+        return res.status(422).json({ error: error.message });
+      }
+      res.status(500).json({ error: error.message || "Failed to place order" });
+    }
+  });
+
   // ─── Trade Ticket API (Preview & Place) ──────────────────────────────
   const { tradeOrders, managedExits } = await import("@shared/schema");
 

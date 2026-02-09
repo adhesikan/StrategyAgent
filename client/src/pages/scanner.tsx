@@ -1299,10 +1299,20 @@ export default function Scanner() {
                   </span>
                 </div>
 
-                {distance !== null && distance > 0 && (
-                  <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium" data-testid={`text-distance-${result.ticker}`}>
-                    Entry activates +{distance.toFixed(1)}% above current price
-                  </p>
+                {result.resistance && (
+                  <div className="flex items-center gap-1" data-testid={`text-entry-${result.ticker}`}>
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                      Best entry at ${result.resistance.toFixed(2)}
+                    </p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help shrink-0" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[220px] text-xs">
+                        This is the resistance breakout level. You can enter below this price if you prefer — manage your risk accordingly.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 )}
 
                 {aboveEntry !== null && tradeStatus === "EXTENDED" && (
@@ -1319,7 +1329,6 @@ export default function Scanner() {
                   <Button
                     size="sm"
                     className="w-full gap-1"
-                    variant={actionable ? "default" : "secondary"}
                     onClick={(e) => handleInstaTrade(result, e)}
                     disabled={instatradeMutation.isPending || brokerOrderMutation.isPending}
                     data-testid={`button-instatrade-card-${result.ticker}`}
@@ -1328,7 +1337,7 @@ export default function Scanner() {
                     InstaTrade™
                   </Button>
                 )}
-                {!actionable && (
+                {(
                   <Button
                     size="sm"
                     variant="outline"
@@ -1415,8 +1424,6 @@ export default function Scanner() {
           const rr = getRiskReward(result);
           const tradeStatus = getTradeStatus(result);
           const statusDisplay = getTradeStatusDisplay(tradeStatus);
-          const distance = getDistanceToEntry(result);
-          const actionable = isTradeActionable(result);
           return (
             <div
               key={result.id}
@@ -1433,10 +1440,17 @@ export default function Scanner() {
                 >
                   {statusDisplay.label}
                 </Badge>
-                {distance !== null && distance > 0 && (
-                  <span className="text-xs text-yellow-600 dark:text-yellow-400 hidden lg:inline">
-                    +{distance.toFixed(1)}% to entry
-                  </span>
+                {result.resistance && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-xs text-yellow-600 dark:text-yellow-400 hidden lg:inline cursor-help">
+                        Entry ${result.resistance.toFixed(2)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[220px] text-xs">
+                      This is the resistance breakout level. You can enter below this price if you prefer — manage your risk accordingly.
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
               <div className="flex items-center gap-3 text-sm shrink-0 flex-wrap">
@@ -1471,7 +1485,6 @@ export default function Scanner() {
                   <Button
                     size="sm"
                     className="gap-1"
-                    variant={actionable ? "default" : "secondary"}
                     onClick={(e) => handleInstaTrade(result, e)}
                     disabled={instatradeMutation.isPending}
                     data-testid={`button-instatrade-list-${result.ticker}`}
@@ -1480,21 +1493,19 @@ export default function Scanner() {
                     <span className="hidden sm:inline">InstaTrade™</span>
                   </Button>
                 )}
-                {!actionable && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/alerts`);
-                    }}
-                    data-testid={`button-set-alert-list-${result.ticker}`}
-                  >
-                    <Bell className="h-3 w-3" />
-                    <span className="hidden sm:inline">Set Alert</span>
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/alerts`);
+                  }}
+                  data-testid={`button-set-alert-list-${result.ticker}`}
+                >
+                  <Bell className="h-3 w-3" />
+                  <span className="hidden sm:inline">Set Alert</span>
+                </Button>
               </div>
             </div>
           );

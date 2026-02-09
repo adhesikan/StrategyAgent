@@ -28,7 +28,7 @@ export function getDistanceAboveEntry(result: ScanResult): number | null {
 export function getTradeStatusDisplay(status: TradeStatus) {
   switch (status) {
     case "AWAITING_BREAKOUT":
-      return { label: "Awaiting Breakout", shortLabel: "Awaiting", variant: "outline" as const, className: "border-yellow-500/50 text-yellow-600 dark:text-yellow-400" };
+      return { label: "Breakout Setup", shortLabel: "Setup", variant: "outline" as const, className: "border-yellow-500/50 text-yellow-600 dark:text-yellow-400" };
     case "IN_ENTRY_ZONE":
       return { label: "In Entry Zone", shortLabel: "Actionable", variant: "default" as const, className: "bg-green-600 dark:bg-green-700 text-white" };
     case "EXTENDED":

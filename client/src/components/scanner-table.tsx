@@ -231,7 +231,6 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
       : "text-destructive";
     const tradeStatus = getTradeStatus(result);
     const statusBadge = getTradeStatusDisplay(tradeStatus);
-    const actionable = isActionable(result);
     const distPct = getDistanceToEntry(result);
     const distanceToEntry = distPct !== null && distPct > 0 ? distPct : null;
 
@@ -263,18 +262,18 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
                   {statusBadge.shortLabel}
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent className="max-w-xs text-xs">
-                {tradeStatus === "AWAITING_BREAKOUT" && distanceToEntry !== null 
-                  ? `Entry activates +${distanceToEntry.toFixed(1)}% above current price`
+              <TooltipContent className="max-w-[220px] text-xs">
+                {tradeStatus === "AWAITING_BREAKOUT"
+                  ? "Breakout pattern detected. This is the resistance breakout level — you can enter below this price if you prefer."
                   : tradeStatus === "IN_ENTRY_ZONE" 
                   ? "Price is within 3% of entry — trade is actionable"
                   : "Price has moved more than 3% past entry — extended"
                 }
               </TooltipContent>
             </Tooltip>
-            {distanceToEntry !== null && (
+            {result.resistance && (
               <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                +{distanceToEntry.toFixed(1)}% to entry
+                Entry ${result.resistance.toFixed(2)}
               </span>
             )}
           </div>
@@ -313,7 +312,6 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
           <div className="flex items-center gap-1">
             {onInstaTrade ? (
               <Button 
-                variant={actionable ? "default" : "secondary"}
                 size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -325,7 +323,7 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
                 <Zap className="h-3.5 w-3.5" />
               </Button>
             ) : null}
-            {onInstaTrade && !actionable ? (
+            {onInstaTrade ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/alerts">

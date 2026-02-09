@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { STRATEGY_CONFIGS, getStrategyDisplayName, FUSION_ENGINE_CONFIG } from "@shared/strategies";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import { cn } from "@/lib/utils";
 import { Save } from "lucide-react";
 
@@ -373,6 +374,7 @@ export default function Scanner() {
   const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "broker">("algopilotx");
   const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
+  const [showStockTradeTicket, setShowStockTradeTicket] = useState(false);
 
   const hasEndpoints = automationEndpoints && automationEndpoints.length > 0;
   const hasBrokerAccounts = brokerStatus?.isConnected && brokerAccounts.length > 0;
@@ -474,12 +476,9 @@ export default function Scanner() {
   const handleConfirmInstaTrade = () => {
     if (executionMethod === "algopilotx" && selectedEndpoint && instaTradeResult) {
       instatradeMutation.mutate({ endpointId: selectedEndpoint.id, result: instaTradeResult });
-    } else if (executionMethod === "broker" && selectedBrokerAccount && instaTradeResult) {
-      brokerOrderMutation.mutate({ 
-        accountId: selectedBrokerAccount.id, 
-        result: instaTradeResult, 
-        quantity: orderQuantity 
-      });
+    } else if (executionMethod === "broker" && instaTradeResult) {
+      setShowEndpointDialog(false);
+      setShowStockTradeTicket(true);
     }
   };
 
@@ -2315,45 +2314,27 @@ export default function Scanner() {
                   </p>
                 </TabsContent>
                 <TabsContent value="broker" className="mt-3 space-y-3">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Select Account</Label>
-                    <Select
-                      value={selectedBrokerAccount?.id || ""}
-                      onValueChange={(value) => {
-                        const account = brokerAccounts.find(a => a.id === value);
-                        if (account) setSelectedBrokerAccount(account);
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-broker-account">
-                        <SelectValue placeholder="Choose a brokerage account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brokerAccounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {account.name} ({account.type})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Quantity (Shares)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={orderQuantity}
-                      onChange={(e) => setOrderQuantity(parseInt(e.target.value) || 1)}
-                      data-testid="input-order-quantity"
-                    />
-                  </div>
-                  {selectedBrokerAccount && (
-                    <p className="text-xs text-muted-foreground">
-                      Buying Power: ${selectedBrokerAccount.buyingPower.toLocaleString()}
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Places a limit order directly with your broker at the breakout price.
+                  <p className="text-sm text-muted-foreground">
+                    Opens the Trade Ticket where you can set your entry price, quantity, and optionally add a bracket exit (target + stop loss) as an OCO order.
                   </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs p-2 rounded-md bg-muted/30">
+                    <div>
+                      <span className="text-muted-foreground">Entry Price:</span>{" "}
+                      <span className="font-medium">You choose</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Order Types:</span>{" "}
+                      <span className="font-medium">Market / Limit</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Bracket:</span>{" "}
+                      <span className="font-medium">Target + Stop (OCO)</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Provider:</span>{" "}
+                      <Badge variant="outline" className="text-xs">{brokerStatus?.provider || "Broker"}</Badge>
+                    </div>
+                  </div>
                 </TabsContent>
               </Tabs>
             ) : (
@@ -2380,16 +2361,15 @@ export default function Scanner() {
               <Button
                 onClick={handleConfirmInstaTrade}
                 disabled={
-                  (executionMethod === "algopilotx" && (!selectedEndpoint || instatradeMutation.isPending)) ||
-                  (executionMethod === "broker" && (!selectedBrokerAccount || !orderQuantity || brokerOrderMutation.isPending))
+                  (executionMethod === "algopilotx" && (!selectedEndpoint || instatradeMutation.isPending))
                 }
                 data-testid="button-confirm-instatrade"
               >
-                {(instatradeMutation.isPending || brokerOrderMutation.isPending) 
+                {instatradeMutation.isPending
                   ? "Sending..." 
                   : executionMethod === "algopilotx" 
                     ? "Send to AlgoPilotX" 
-                    : "Place Order"}
+                    : "Open Trade Ticket"}
               </Button>
             ) : (
               <Button
@@ -2403,6 +2383,23 @@ export default function Scanner() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <StockTradeTicket
+        open={showStockTradeTicket}
+        onOpenChange={setShowStockTradeTicket}
+        scanResult={instaTradeResult ? {
+          ticker: instaTradeResult.ticker,
+          price: instaTradeResult.price,
+          resistance: instaTradeResult.resistance,
+          stopLoss: instaTradeResult.stopLoss,
+          stage: instaTradeResult.stage,
+          patternScore: instaTradeResult.patternScore,
+          rvol: instaTradeResult.rvol ?? undefined,
+        } : null}
+        brokerAccounts={brokerAccounts}
+        selectedAccount={selectedBrokerAccount}
+        onAccountChange={setSelectedBrokerAccount}
+      />
     </div>
   );
 }

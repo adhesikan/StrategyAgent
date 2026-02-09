@@ -32,6 +32,114 @@ const TRADIER_DURATION_MAP: Record<string, string> = {
   post: "post",
 };
 
+export interface StockQuote {
+  symbol: string;
+  last: number;
+  bid: number;
+  ask: number;
+  change: number;
+  volume: number;
+}
+
+export interface OptionChainContract {
+  symbol: string;
+  strike: number;
+  optionType: "call" | "put";
+  expiration: string;
+  bid: number;
+  ask: number;
+  last: number;
+  volume: number;
+  openInterest: number;
+  greeks?: {
+    delta: number;
+    gamma: number;
+    theta: number;
+    vega: number;
+    mid_iv: number;
+  };
+}
+
+export async function tradierGetBatchQuotes(accessToken: string, symbols: string[]): Promise<Map<string, StockQuote>> {
+  const results = new Map<string, StockQuote>();
+  const batchSize = 100;
+  for (let i = 0; i < symbols.length; i += batchSize) {
+    const batch = symbols.slice(i, i + batchSize);
+    try {
+      const data = await tradierFetch(
+        `${BASE_URL}/markets/quotes?symbols=${batch.join(",")}&greeks=false`,
+        accessToken,
+      );
+      const quotes = data?.quotes?.quote;
+      if (!quotes) continue;
+      const arr = Array.isArray(quotes) ? quotes : [quotes];
+      for (const q of arr) {
+        if (q.symbol && typeof q.last === "number") {
+          results.set(q.symbol, {
+            symbol: q.symbol,
+            last: q.last,
+            bid: q.bid ?? q.last,
+            ask: q.ask ?? q.last,
+            change: q.change ?? 0,
+            volume: q.volume ?? 0,
+          });
+        }
+      }
+    } catch (e) {
+      console.error(`[Tradier] Batch quote error for ${batch.length} symbols:`, (e as Error).message);
+    }
+  }
+  return results;
+}
+
+export async function tradierGetOptionExpirations(accessToken: string, symbol: string): Promise<string[]> {
+  try {
+    const data = await tradierFetch(
+      `${BASE_URL}/markets/options/expirations?symbol=${encodeURIComponent(symbol)}&includeAllRoots=false&strikes=false`,
+      accessToken,
+    );
+    const exps = data?.expirations?.date;
+    if (!exps) return [];
+    return Array.isArray(exps) ? exps : [exps];
+  } catch (e) {
+    console.error(`[Tradier] Expirations error for ${symbol}:`, (e as Error).message);
+    return [];
+  }
+}
+
+export async function tradierGetOptionChain(accessToken: string, symbol: string, expiration: string): Promise<OptionChainContract[]> {
+  try {
+    const data = await tradierFetch(
+      `${BASE_URL}/markets/options/chains?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&greeks=true`,
+      accessToken,
+    );
+    const options = data?.options?.option;
+    if (!options) return [];
+    const arr = Array.isArray(options) ? options : [options];
+    return arr.map((o: any) => ({
+      symbol: o.symbol,
+      strike: o.strike,
+      optionType: o.option_type === "call" ? "call" as const : "put" as const,
+      expiration: o.expiration_date,
+      bid: o.bid ?? 0,
+      ask: o.ask ?? 0,
+      last: o.last ?? 0,
+      volume: o.volume ?? 0,
+      openInterest: o.open_interest ?? 0,
+      greeks: o.greeks ? {
+        delta: o.greeks.delta ?? 0,
+        gamma: o.greeks.gamma ?? 0,
+        theta: o.greeks.theta ?? 0,
+        vega: o.greeks.vega ?? 0,
+        mid_iv: o.greeks.mid_iv ?? 0,
+      } : undefined,
+    }));
+  } catch (e) {
+    console.error(`[Tradier] Option chain error for ${symbol} ${expiration}:`, (e as Error).message);
+    return [];
+  }
+}
+
 export const tradierProvider: BrokerProvider = {
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const data = await tradierFetch(`${BASE_URL}/user/profile`, accessToken);

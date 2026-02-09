@@ -1,3 +1,11 @@
+import {
+  tradierGetBatchQuotes,
+  tradierGetOptionExpirations,
+  tradierGetOptionChain,
+  type StockQuote,
+  type OptionChainContract,
+} from "../../broker/providers/tradier";
+
 export interface ScanPreferences {
   dteMin: number;
   dteMax: number;
@@ -92,23 +100,91 @@ const DEFAULT_SCAN_PREFS: ScanPreferences = {
 
 export async function runOptionsScan(
   request: OptionsScanRequest,
-  _brokerAccessToken?: string,
+  brokerAccessToken?: string,
 ): Promise<OptionsScanResult> {
   const { symbols, strategyKey } = request;
   const prefs = { ...DEFAULT_SCAN_PREFS, ...request.scanPreferences };
+
+  const emptyResult: OptionsScanResult = {
+    strategyKey: request.strategyKey,
+    universeId: request.universeId,
+    scannedAt: new Date().toISOString(),
+    candidateCount: 0,
+    candidates: [],
+  };
+
+  if (!brokerAccessToken) {
+    console.warn("[OptionsScanner] No broker token provided, returning empty results");
+    return emptyResult;
+  }
+
+  console.log(`[OptionsScanner] Fetching quotes for ${symbols.length} symbols...`);
+  const quotes = await tradierGetBatchQuotes(brokerAccessToken, symbols);
+  console.log(`[OptionsScanner] Got ${quotes.size} quotes`);
+
+  const validSymbols = symbols.filter(s => {
+    const q = quotes.get(s);
+    return q && q.last > 0;
+  });
+
+  if (validSymbols.length === 0) {
+    console.warn("[OptionsScanner] No valid stock quotes returned from broker");
+    return emptyResult;
+  }
+
+  const maxSymbols = Math.min(validSymbols.length, 30);
+  const selectedSymbols = validSymbols.slice(0, maxSymbols);
+
+  console.log(`[OptionsScanner] Fetching option chains for ${selectedSymbols.length} symbols...`);
+  const chainData = new Map<string, { expirations: string[]; chains: Map<string, OptionChainContract[]> }>();
+
+  const chainPromises = selectedSymbols.map(async (symbol) => {
+    try {
+      const allExps = await tradierGetOptionExpirations(brokerAccessToken, symbol);
+      if (allExps.length === 0) return;
+
+      const now = Date.now();
+      const minDate = new Date(now + prefs.dteMin * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const maxDate = new Date(now + prefs.dteMax * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const filteredExps = allExps.filter(e => e >= minDate && e <= maxDate);
+
+      if (filteredExps.length === 0) return;
+
+      const chains = new Map<string, OptionChainContract[]>();
+      const expsToFetch = filteredExps.length <= 3
+        ? filteredExps
+        : [filteredExps[0], filteredExps[Math.floor(filteredExps.length / 2)], filteredExps[filteredExps.length - 1]];
+
+      for (const exp of expsToFetch) {
+        const chain = await tradierGetOptionChain(brokerAccessToken, symbol, exp);
+        if (chain.length > 0) {
+          chains.set(exp, chain);
+        }
+      }
+
+      if (chains.size > 0) {
+        chainData.set(symbol, { expirations: filteredExps, chains });
+      }
+    } catch (e) {
+      console.warn(`[OptionsScanner] Skipping ${symbol}: ${(e as Error).message}`);
+    }
+  });
+
+  await Promise.all(chainPromises);
+  console.log(`[OptionsScanner] Got chain data for ${chainData.size} symbols`);
 
   let candidates: OptionCandidate[];
 
   switch (strategyKey) {
     case "wheel":
-      candidates = generateWheelCandidates(symbols, prefs);
+      candidates = buildWheelCandidates(quotes, chainData, prefs);
       break;
     case "credit-spreads":
-      candidates = generateCreditSpreadCandidates(symbols, prefs);
+      candidates = buildCreditSpreadCandidates(quotes, chainData, prefs);
       break;
     case "long-options":
     default:
-      candidates = generateLongOptionCandidates(symbols, prefs);
+      candidates = buildLongOptionCandidates(quotes, chainData, prefs);
       break;
   }
 
@@ -124,291 +200,403 @@ export async function runOptionsScan(
   };
 }
 
-function getExpirationInDTE(dteMin: number, dteMax: number): { expiration: string; dte: number } {
-  const dte = dteMin + Math.floor(Math.random() * (dteMax - dteMin + 1));
-  const exp = new Date();
-  exp.setDate(exp.getDate() + dte);
-  const dayOfWeek = exp.getDay();
-  if (dayOfWeek === 0) exp.setDate(exp.getDate() + 5);
-  else if (dayOfWeek === 6) exp.setDate(exp.getDate() + 6);
-  else {
-    const daysToFriday = (5 - dayOfWeek + 7) % 7;
-    exp.setDate(exp.getDate() + daysToFriday);
+function calcDte(expiration: string): number {
+  return Math.round((new Date(expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
+function r2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function estimatePop(delta: number, strategyType: "long" | "credit"): number {
+  const absDelta = Math.abs(delta);
+  if (strategyType === "credit") {
+    return Math.round((1 - absDelta) * 100);
   }
-  const actualDte = Math.round((exp.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  return { expiration: exp.toISOString().split("T")[0], dte: actualDte };
+  return Math.round(absDelta * 100);
 }
 
-function roundStrike(raw: number): number {
-  if (raw < 3) return Math.round(raw * 2) / 2;
-  return Math.round(raw);
+function scoreCandidate(opts: {
+  premiumPct: number;
+  pop: number;
+  volume: number;
+  openInterest: number;
+  iv: number;
+  absDelta: number;
+  deltaMin: number;
+  deltaMax: number;
+}): number {
+  let score = 50;
+  score += Math.min(opts.premiumPct * 5, 20);
+  score += (opts.pop / 100) * 15;
+  if (opts.volume > 100) score += 5;
+  if (opts.openInterest > 500) score += 5;
+  if (opts.iv > 0.3 && opts.iv < 0.8) score += 5;
+  if (opts.absDelta >= opts.deltaMin && opts.absDelta <= opts.deltaMax) score += 5;
+  return r2(Math.min(score, 100));
 }
 
-function generateLongOptionCandidates(symbols: string[], prefs: ScanPreferences): OptionCandidate[] {
-  return symbols.map((symbol) => {
-    const stockPrice = 50 + Math.random() * 450;
-    const isCall = Math.random() > 0.4;
-    const otmFactor = isCall ? 1 + Math.random() * 0.05 : 1 - Math.random() * 0.05;
-    const strike = roundStrike(stockPrice * otmFactor);
-    const { expiration, dte } = getExpirationInDTE(prefs.dteMin, prefs.dteMax);
-    const iv = 0.2 + Math.random() * 0.6;
-    const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
-    const delta = isCall ? rawDelta : -rawDelta;
-    const theta = -(0.02 + Math.random() * 0.08);
-    const premiumPct = prefs.minPremiumPct + Math.random() * 4;
-    const mid = Math.max(0.10, (premiumPct / 100) * stockPrice);
-    const bid = Math.round((mid * 0.95) * 100) / 100;
-    const ask = Math.round((mid * 1.05) * 100) / 100;
-    const maxLoss = mid * 100;
-    const maxProfit = isCall ? Infinity : (strike - mid) * 100;
-    const breakeven = isCall ? strike + mid : strike - mid;
-    const pop = Math.round(30 + Math.random() * 40);
+function buildLongOptionCandidates(
+  quotes: Map<string, StockQuote>,
+  chainData: Map<string, { expirations: string[]; chains: Map<string, OptionChainContract[]> }>,
+  prefs: ScanPreferences,
+): OptionCandidate[] {
+  const candidates: OptionCandidate[] = [];
 
-    const leg: OptionLeg = {
-      side: "buy", optionType: isCall ? "call" : "put", strike, expiration,
-      bid, ask, mid: Math.round(mid * 100) / 100, delta: Math.round(delta * 100) / 100,
-      theta: Math.round(theta * 100) / 100, impliedVol: Math.round(iv * 1000) / 10,
-      openInterest: Math.floor(500 + Math.random() * 10000),
-      volume: Math.floor(50 + Math.random() * 5000),
-    };
+  for (const entry of Array.from(chainData.entries())) {
+    const symbol = entry[0];
+    const data = entry[1];
+    const quote = quotes.get(symbol);
+    if (!quote) continue;
+    const stockPrice = quote.last;
 
-    const ivPct = Math.round(iv * 100);
-    const rationale = `${symbol} at $${stockPrice.toFixed(0)} — ${ivPct}% IV. ${isCall ? "Bullish" : "Bearish"} setup with ${dte}-day expiry. Defined risk at $${mid.toFixed(2)} per contract.`;
+    for (const chainEntry of Array.from(data.chains.entries())) {
+      const expiration = chainEntry[0];
+      const chain = chainEntry[1];
+      const dte = calcDte(expiration);
 
-    return {
-      rank: 0, symbol: `${symbol}${strike}${isCall ? "C" : "P"}`, underlying: symbol,
-      expiration, strike, optionType: isCall ? "call" as const : "put" as const,
-      strategyVariant: isCall ? "Long Call" : "Long Put",
-      strategy: "long-options",
-      bid, ask, mid: Math.round(mid * 100) / 100,
-      impliedVol: Math.round(iv * 1000) / 10,
-      delta: Math.round(delta * 100) / 100,
-      theta: Math.round(theta * 100) / 100,
-      openInterest: leg.openInterest, volume: leg.volume,
-      score: Math.round((60 + Math.random() * 40) * 10) / 10,
-      rationale, dte, premiumPct: Math.round(premiumPct * 100) / 100,
-      maxProfit: maxProfit === Infinity ? -1 : Math.round(maxProfit), maxLoss: Math.round(maxLoss),
-      breakeven: Math.round(breakeven * 100) / 100,
-      legs: [leg], pop, stockPrice: Math.round(stockPrice * 100) / 100,
-    };
-  });
-}
+      const otmCalls = chain.filter((c: OptionChainContract) =>
+        c.optionType === "call" &&
+        c.strike > stockPrice &&
+        c.bid > 0 &&
+        c.greeks &&
+        Math.abs(c.greeks.delta) >= prefs.deltaMin &&
+        Math.abs(c.greeks.delta) <= prefs.deltaMax
+      );
 
-function generateWheelCandidates(symbols: string[], prefs: ScanPreferences): OptionCandidate[] {
-  return symbols.map((symbol) => {
-    const stockPrice = 50 + Math.random() * 450;
-    const isCoveredCall = Math.random() > 0.5;
-    const { expiration, dte } = getExpirationInDTE(prefs.dteMin, prefs.dteMax);
-    const iv = 0.2 + Math.random() * 0.5;
+      const otmPuts = chain.filter((c: OptionChainContract) =>
+        c.optionType === "put" &&
+        c.strike < stockPrice &&
+        c.bid > 0 &&
+        c.greeks &&
+        Math.abs(c.greeks.delta) >= prefs.deltaMin &&
+        Math.abs(c.greeks.delta) <= prefs.deltaMax
+      );
 
-    if (isCoveredCall) {
-      const otmFactor = 1 + 0.02 + Math.random() * 0.08;
-      const strike = roundStrike(stockPrice * otmFactor);
-      const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
-      const delta = -rawDelta;
-      const theta = 0.02 + Math.random() * 0.06;
-      const premiumPct = prefs.minPremiumPct + Math.random() * 3;
-      const mid = Math.max(0.10, (premiumPct / 100) * stockPrice);
-      const bid = Math.round((mid * 0.95) * 100) / 100;
-      const ask = Math.round((mid * 1.05) * 100) / 100;
-      const maxProfit = (strike - stockPrice + mid) * 100;
-      const maxLoss = (stockPrice - mid) * 100;
-      const breakeven = stockPrice - mid;
-      const pop = Math.round(55 + Math.random() * 30);
+      const bestCall = otmCalls.sort((a: OptionChainContract, b: OptionChainContract) => Math.abs(Math.abs(a.greeks!.delta) - 0.3) - Math.abs(Math.abs(b.greeks!.delta) - 0.3))[0];
+      const bestPut = otmPuts.sort((a: OptionChainContract, b: OptionChainContract) => Math.abs(Math.abs(a.greeks!.delta) - 0.3) - Math.abs(Math.abs(b.greeks!.delta) - 0.3))[0];
 
-      const leg: OptionLeg = {
-        side: "sell", optionType: "call", strike, expiration,
-        bid, ask, mid: Math.round(mid * 100) / 100, delta: Math.round(delta * 100) / 100,
-        theta: Math.round(theta * 100) / 100, impliedVol: Math.round(iv * 1000) / 10,
-        openInterest: Math.floor(500 + Math.random() * 10000),
-        volume: Math.floor(50 + Math.random() * 5000),
-      };
+      for (const contract of [bestCall, bestPut].filter(Boolean) as OptionChainContract[]) {
+        const isCall = contract.optionType === "call";
+        const mid = r2((contract.bid + contract.ask) / 2);
+        if (mid <= 0) continue;
+        const premiumPct = r2((mid / stockPrice) * 100);
+        if (premiumPct < prefs.minPremiumPct) continue;
 
-      const ivPct = Math.round(iv * 100);
-      return {
-        rank: 0, symbol: `${symbol}${strike}C`, underlying: symbol,
-        expiration, strike, optionType: "call" as const,
-        strategyVariant: "Covered Call",
-        strategy: "wheel",
-        bid, ask, mid: Math.round(mid * 100) / 100,
-        impliedVol: Math.round(iv * 1000) / 10,
-        delta: Math.round(delta * 100) / 100,
-        theta: Math.round(theta * 100) / 100,
-        openInterest: leg.openInterest, volume: leg.volume,
-        score: Math.round((60 + Math.random() * 40) * 10) / 10,
-        rationale: `${symbol} at $${stockPrice.toFixed(0)} — sell ${strike}C covered call for $${mid.toFixed(2)} credit. ${ivPct}% IV, ${dte} DTE. Earn income while holding shares.`,
-        dte, premiumPct: Math.round(premiumPct * 100) / 100,
-        maxProfit: Math.round(maxProfit), maxLoss: Math.round(maxLoss),
-        breakeven: Math.round(breakeven * 100) / 100,
-        legs: [leg], pop, stockPrice: Math.round(stockPrice * 100) / 100,
-      };
-    } else {
-      const otmFactor = 1 - 0.02 - Math.random() * 0.08;
-      const strike = roundStrike(stockPrice * otmFactor);
-      const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
-      const delta = -rawDelta;
-      const theta = 0.02 + Math.random() * 0.06;
-      const premiumPct = prefs.minPremiumPct + Math.random() * 3;
-      const mid = Math.max(0.10, (premiumPct / 100) * stockPrice);
-      const bid = Math.round((mid * 0.95) * 100) / 100;
-      const ask = Math.round((mid * 1.05) * 100) / 100;
-      const maxProfit = mid * 100;
-      const maxLoss = (strike - mid) * 100;
-      const breakeven = strike - mid;
-      const pop = Math.round(55 + Math.random() * 30);
+        const delta = contract.greeks?.delta ?? 0;
+        const theta = contract.greeks?.theta ?? 0;
+        const iv = contract.greeks?.mid_iv ?? 0;
 
-      const leg: OptionLeg = {
-        side: "sell", optionType: "put", strike, expiration,
-        bid, ask, mid: Math.round(mid * 100) / 100, delta: Math.round(delta * 100) / 100,
-        theta: Math.round(theta * 100) / 100, impliedVol: Math.round(iv * 1000) / 10,
-        openInterest: Math.floor(500 + Math.random() * 10000),
-        volume: Math.floor(50 + Math.random() * 5000),
-      };
+        const maxLoss = Math.round(mid * 100);
+        const maxProfit = isCall ? -1 : Math.round((contract.strike - mid) * 100);
+        const breakeven = isCall ? r2(contract.strike + mid) : r2(contract.strike - mid);
+        const pop = estimatePop(delta, "long");
 
-      const ivPct = Math.round(iv * 100);
-      return {
-        rank: 0, symbol: `${symbol}${strike}P`, underlying: symbol,
-        expiration, strike, optionType: "put" as const,
-        strategyVariant: "Cash-Secured Put",
-        strategy: "wheel",
-        bid, ask, mid: Math.round(mid * 100) / 100,
-        impliedVol: Math.round(iv * 1000) / 10,
-        delta: Math.round(delta * 100) / 100,
-        theta: Math.round(theta * 100) / 100,
-        openInterest: leg.openInterest, volume: leg.volume,
-        score: Math.round((60 + Math.random() * 40) * 10) / 10,
-        rationale: `${symbol} at $${stockPrice.toFixed(0)} — sell ${strike}P cash-secured put for $${mid.toFixed(2)} credit. ${ivPct}% IV, ${dte} DTE. Get paid to wait for a lower entry.`,
-        dte, premiumPct: Math.round(premiumPct * 100) / 100,
-        maxProfit: Math.round(maxProfit), maxLoss: Math.round(maxLoss),
-        breakeven: Math.round(breakeven * 100) / 100,
-        legs: [leg], pop, stockPrice: Math.round(stockPrice * 100) / 100,
-      };
+        const leg: OptionLeg = {
+          side: "buy",
+          optionType: contract.optionType,
+          strike: contract.strike,
+          expiration,
+          bid: contract.bid,
+          ask: contract.ask,
+          mid,
+          delta: r2(delta),
+          theta: r2(theta),
+          impliedVol: r2(iv * 100),
+          openInterest: contract.openInterest,
+          volume: contract.volume,
+        };
+
+        const ivPct = Math.round(iv * 100);
+        const rationale = `${symbol} at $${stockPrice.toFixed(2)} — ${ivPct}% IV. ${isCall ? "Bullish" : "Bearish"} setup with ${dte}-day expiry. Defined risk at $${mid.toFixed(2)} per contract.`;
+
+        candidates.push({
+          rank: 0,
+          symbol: contract.symbol,
+          underlying: symbol,
+          expiration,
+          strike: contract.strike,
+          optionType: contract.optionType,
+          strategyVariant: isCall ? "Long Call" : "Long Put",
+          strategy: "long-options",
+          bid: contract.bid,
+          ask: contract.ask,
+          mid,
+          impliedVol: r2(iv * 100),
+          delta: r2(delta),
+          theta: r2(theta),
+          openInterest: contract.openInterest,
+          volume: contract.volume,
+          score: scoreCandidate({
+            premiumPct,
+            pop,
+            volume: contract.volume,
+            openInterest: contract.openInterest,
+            iv,
+            absDelta: Math.abs(delta),
+            deltaMin: prefs.deltaMin,
+            deltaMax: prefs.deltaMax,
+          }),
+          rationale,
+          dte,
+          premiumPct,
+          maxProfit,
+          maxLoss,
+          breakeven,
+          legs: [leg],
+          pop,
+          stockPrice: r2(stockPrice),
+        });
+      }
     }
-  });
+  }
+
+  return candidates;
 }
 
-function generateCreditSpreadCandidates(symbols: string[], prefs: ScanPreferences): OptionCandidate[] {
-  return symbols.map((symbol) => {
-    const stockPrice = 50 + Math.random() * 450;
-    const isBullPut = Math.random() > 0.5;
-    const { expiration, dte } = getExpirationInDTE(prefs.dteMin, prefs.dteMax);
-    const iv = 0.2 + Math.random() * 0.5;
-    const spreadWidth = Math.max(1, Math.round(stockPrice * 0.02 + Math.random() * stockPrice * 0.03));
+function buildWheelCandidates(
+  quotes: Map<string, StockQuote>,
+  chainData: Map<string, { expirations: string[]; chains: Map<string, OptionChainContract[]> }>,
+  prefs: ScanPreferences,
+): OptionCandidate[] {
+  const candidates: OptionCandidate[] = [];
 
-    if (isBullPut) {
-      const shortStrike = roundStrike(stockPrice * (1 - 0.03 - Math.random() * 0.07));
-      const longStrike = roundStrike(shortStrike - spreadWidth);
-      const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
-      const theta = 0.01 + Math.random() * 0.04;
-      const credit = Math.max(0.10, spreadWidth * (0.25 + Math.random() * 0.25));
-      const maxProfit = credit * 100;
-      const maxLoss = (spreadWidth - credit) * 100;
-      const breakeven = shortStrike - credit;
-      const pop = Math.round(55 + Math.random() * 30);
-      const premiumPct = (credit / stockPrice) * 100;
+  for (const entry of Array.from(chainData.entries())) {
+    const symbol = entry[0];
+    const data = entry[1];
+    const quote = quotes.get(symbol);
+    if (!quote) continue;
+    const stockPrice = quote.last;
 
-      const shortLeg: OptionLeg = {
-        side: "sell", optionType: "put", strike: shortStrike, expiration,
-        bid: Math.round((credit * 1.02) * 100) / 100, ask: Math.round((credit * 1.08) * 100) / 100,
-        mid: Math.round(credit * 100) / 100,
-        delta: Math.round(-rawDelta * 100) / 100,
-        theta: Math.round(theta * 100) / 100,
-        impliedVol: Math.round(iv * 1000) / 10,
-        openInterest: Math.floor(500 + Math.random() * 10000),
-        volume: Math.floor(50 + Math.random() * 5000),
-      };
-      const longLeg: OptionLeg = {
-        side: "buy", optionType: "put", strike: longStrike, expiration,
-        bid: Math.round((credit * 0.3) * 100) / 100, ask: Math.round((credit * 0.5) * 100) / 100,
-        mid: Math.round((credit * 0.4) * 100) / 100,
-        delta: Math.round((-rawDelta * 0.5) * 100) / 100,
-        theta: Math.round((-theta * 0.4) * 100) / 100,
-        impliedVol: Math.round((iv * 0.95) * 1000) / 10,
-        openInterest: Math.floor(200 + Math.random() * 5000),
-        volume: Math.floor(20 + Math.random() * 2000),
-      };
+    for (const chainEntry of Array.from(data.chains.entries())) {
+      const expiration = chainEntry[0];
+      const chain = chainEntry[1];
+      const dte = calcDte(expiration);
 
-      const ivPct = Math.round(iv * 100);
-      return {
-        rank: 0,
-        symbol: `${symbol}${shortStrike}/${longStrike}P`,
-        underlying: symbol,
-        expiration, strike: shortStrike,
-        optionType: "put" as const,
-        strategyVariant: "Bull Put Spread",
-        strategy: "credit-spreads",
-        bid: shortLeg.bid, ask: shortLeg.ask,
-        mid: Math.round(credit * 100) / 100,
-        impliedVol: Math.round(iv * 1000) / 10,
-        delta: Math.round(-rawDelta * 100) / 100,
-        theta: Math.round(theta * 100) / 100,
-        openInterest: shortLeg.openInterest + longLeg.openInterest,
-        volume: shortLeg.volume + longLeg.volume,
-        score: Math.round((60 + Math.random() * 40) * 10) / 10,
-        rationale: `${symbol} at $${stockPrice.toFixed(0)} — sell ${shortStrike}/${longStrike} bull put spread for $${credit.toFixed(2)} credit. ${ivPct}% IV, ${dte} DTE. Max profit $${maxProfit.toFixed(0)}, max loss $${maxLoss.toFixed(0)}.`,
-        dte, premiumPct: Math.round(premiumPct * 100) / 100,
-        maxProfit: Math.round(maxProfit), maxLoss: Math.round(maxLoss),
-        breakeven: Math.round(breakeven * 100) / 100,
-        legs: [shortLeg, longLeg],
-        pop, stockPrice: Math.round(stockPrice * 100) / 100,
-      };
-    } else {
-      const shortStrike = roundStrike(stockPrice * (1 + 0.03 + Math.random() * 0.07));
-      const longStrike = roundStrike(shortStrike + spreadWidth);
-      const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
-      const theta = 0.01 + Math.random() * 0.04;
-      const credit = Math.max(0.10, spreadWidth * (0.25 + Math.random() * 0.25));
-      const maxProfit = credit * 100;
-      const maxLoss = (spreadWidth - credit) * 100;
-      const breakeven = shortStrike + credit;
-      const pop = Math.round(55 + Math.random() * 30);
-      const premiumPct = (credit / stockPrice) * 100;
+      const otmPuts = chain.filter((c: OptionChainContract) =>
+        c.optionType === "put" &&
+        c.strike < stockPrice &&
+        c.bid > 0.05 &&
+        c.greeks &&
+        Math.abs(c.greeks.delta) >= prefs.deltaMin &&
+        Math.abs(c.greeks.delta) <= prefs.deltaMax
+      );
 
-      const shortLeg: OptionLeg = {
-        side: "sell", optionType: "call", strike: shortStrike, expiration,
-        bid: Math.round((credit * 1.02) * 100) / 100, ask: Math.round((credit * 1.08) * 100) / 100,
-        mid: Math.round(credit * 100) / 100,
-        delta: Math.round(-rawDelta * 100) / 100,
-        theta: Math.round(theta * 100) / 100,
-        impliedVol: Math.round(iv * 1000) / 10,
-        openInterest: Math.floor(500 + Math.random() * 10000),
-        volume: Math.floor(50 + Math.random() * 5000),
-      };
-      const longLeg: OptionLeg = {
-        side: "buy", optionType: "call", strike: longStrike, expiration,
-        bid: Math.round((credit * 0.3) * 100) / 100, ask: Math.round((credit * 0.5) * 100) / 100,
-        mid: Math.round((credit * 0.4) * 100) / 100,
-        delta: Math.round((rawDelta * 0.3) * 100) / 100,
-        theta: Math.round((-theta * 0.4) * 100) / 100,
-        impliedVol: Math.round((iv * 1.05) * 1000) / 10,
-        openInterest: Math.floor(200 + Math.random() * 5000),
-        volume: Math.floor(20 + Math.random() * 2000),
-      };
+      const otmCalls = chain.filter((c: OptionChainContract) =>
+        c.optionType === "call" &&
+        c.strike > stockPrice &&
+        c.bid > 0.05 &&
+        c.greeks &&
+        Math.abs(c.greeks.delta) >= prefs.deltaMin &&
+        Math.abs(c.greeks.delta) <= prefs.deltaMax
+      );
 
-      const ivPct = Math.round(iv * 100);
-      return {
-        rank: 0,
-        symbol: `${symbol}${shortStrike}/${longStrike}C`,
-        underlying: symbol,
-        expiration, strike: shortStrike,
-        optionType: "call" as const,
-        strategyVariant: "Bear Call Spread",
-        strategy: "credit-spreads",
-        bid: shortLeg.bid, ask: shortLeg.ask,
-        mid: Math.round(credit * 100) / 100,
-        impliedVol: Math.round(iv * 1000) / 10,
-        delta: Math.round(-rawDelta * 100) / 100,
-        theta: Math.round(theta * 100) / 100,
-        openInterest: shortLeg.openInterest + longLeg.openInterest,
-        volume: shortLeg.volume + longLeg.volume,
-        score: Math.round((60 + Math.random() * 40) * 10) / 10,
-        rationale: `${symbol} at $${stockPrice.toFixed(0)} — sell ${shortStrike}/${longStrike} bear call spread for $${credit.toFixed(2)} credit. ${ivPct}% IV, ${dte} DTE. Max profit $${maxProfit.toFixed(0)}, max loss $${maxLoss.toFixed(0)}.`,
-        dte, premiumPct: Math.round(premiumPct * 100) / 100,
-        maxProfit: Math.round(maxProfit), maxLoss: Math.round(maxLoss),
-        breakeven: Math.round(breakeven * 100) / 100,
-        legs: [shortLeg, longLeg],
-        pop, stockPrice: Math.round(stockPrice * 100) / 100,
-      };
+      const bestPut = otmPuts.sort((a: OptionChainContract, b: OptionChainContract) => b.bid - a.bid)[0];
+      const bestCall = otmCalls.sort((a: OptionChainContract, b: OptionChainContract) => b.bid - a.bid)[0];
+
+      if (bestPut) {
+        const mid = r2((bestPut.bid + bestPut.ask) / 2);
+        const premiumPct = r2((mid / stockPrice) * 100);
+        if (premiumPct >= prefs.minPremiumPct) {
+          const delta = bestPut.greeks?.delta ?? 0;
+          const theta = bestPut.greeks?.theta ?? 0;
+          const iv = bestPut.greeks?.mid_iv ?? 0;
+          const maxProfit = Math.round(mid * 100);
+          const maxLoss = Math.round((bestPut.strike - mid) * 100);
+          const breakeven = r2(bestPut.strike - mid);
+          const pop = estimatePop(delta, "credit");
+
+          const leg: OptionLeg = {
+            side: "sell", optionType: "put", strike: bestPut.strike, expiration,
+            bid: bestPut.bid, ask: bestPut.ask, mid,
+            delta: r2(delta), theta: r2(theta), impliedVol: r2(iv * 100),
+            openInterest: bestPut.openInterest, volume: bestPut.volume,
+          };
+
+          candidates.push({
+            rank: 0,
+            symbol: bestPut.symbol,
+            underlying: symbol, expiration, strike: bestPut.strike,
+            optionType: "put", strategyVariant: "Cash-Secured Put", strategy: "wheel",
+            bid: bestPut.bid, ask: bestPut.ask, mid,
+            impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
+            openInterest: bestPut.openInterest, volume: bestPut.volume,
+            score: scoreCandidate({ premiumPct, pop, volume: bestPut.volume, openInterest: bestPut.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+            rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${bestPut.strike}P cash-secured put for $${mid.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE.`,
+            dte, premiumPct, maxProfit, maxLoss, breakeven, legs: [leg], pop, stockPrice: r2(stockPrice),
+          });
+        }
+      }
+
+      if (bestCall) {
+        const mid = r2((bestCall.bid + bestCall.ask) / 2);
+        const premiumPct = r2((mid / stockPrice) * 100);
+        if (premiumPct >= prefs.minPremiumPct) {
+          const delta = bestCall.greeks?.delta ?? 0;
+          const theta = bestCall.greeks?.theta ?? 0;
+          const iv = bestCall.greeks?.mid_iv ?? 0;
+          const maxProfit = Math.round((bestCall.strike - stockPrice + mid) * 100);
+          const maxLoss = Math.round((stockPrice - mid) * 100);
+          const breakeven = r2(stockPrice - mid);
+          const pop = estimatePop(delta, "credit");
+
+          const leg: OptionLeg = {
+            side: "sell", optionType: "call", strike: bestCall.strike, expiration,
+            bid: bestCall.bid, ask: bestCall.ask, mid,
+            delta: r2(delta), theta: r2(theta), impliedVol: r2(iv * 100),
+            openInterest: bestCall.openInterest, volume: bestCall.volume,
+          };
+
+          candidates.push({
+            rank: 0,
+            symbol: bestCall.symbol,
+            underlying: symbol, expiration, strike: bestCall.strike,
+            optionType: "call", strategyVariant: "Covered Call", strategy: "wheel",
+            bid: bestCall.bid, ask: bestCall.ask, mid,
+            impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
+            openInterest: bestCall.openInterest, volume: bestCall.volume,
+            score: scoreCandidate({ premiumPct, pop, volume: bestCall.volume, openInterest: bestCall.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+            rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${bestCall.strike}C covered call for $${mid.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE.`,
+            dte, premiumPct, maxProfit, maxLoss, breakeven, legs: [leg], pop, stockPrice: r2(stockPrice),
+          });
+        }
+      }
     }
-  });
+  }
+
+  return candidates;
+}
+
+function buildCreditSpreadCandidates(
+  quotes: Map<string, StockQuote>,
+  chainData: Map<string, { expirations: string[]; chains: Map<string, OptionChainContract[]> }>,
+  prefs: ScanPreferences,
+): OptionCandidate[] {
+  const candidates: OptionCandidate[] = [];
+
+  for (const entry of Array.from(chainData.entries())) {
+    const symbol = entry[0];
+    const data = entry[1];
+    const quote = quotes.get(symbol);
+    if (!quote) continue;
+    const stockPrice = quote.last;
+
+    for (const chainEntry of Array.from(data.chains.entries())) {
+      const expiration = chainEntry[0];
+      const chain = chainEntry[1];
+      const dte = calcDte(expiration);
+
+      const otmPuts = chain
+        .filter((c: OptionChainContract) => c.optionType === "put" && c.strike < stockPrice && c.bid > 0 && c.greeks)
+        .sort((a: OptionChainContract, b: OptionChainContract) => b.strike - a.strike);
+
+      const otmCalls = chain
+        .filter((c: OptionChainContract) => c.optionType === "call" && c.strike > stockPrice && c.bid > 0 && c.greeks)
+        .sort((a: OptionChainContract, b: OptionChainContract) => a.strike - b.strike);
+
+      const shortPut = otmPuts.find((c: OptionChainContract) => Math.abs(c.greeks!.delta) >= prefs.deltaMin && Math.abs(c.greeks!.delta) <= prefs.deltaMax);
+      if (shortPut) {
+        const longPut = otmPuts.find((c: OptionChainContract) => c.strike < shortPut.strike && c.strike >= shortPut.strike - stockPrice * 0.05);
+        if (longPut) {
+          const credit = r2(shortPut.bid - longPut.ask);
+          if (credit > 0) {
+            const spreadWidth = shortPut.strike - longPut.strike;
+            const premiumPct = r2((credit / stockPrice) * 100);
+            if (premiumPct >= prefs.minPremiumPct) {
+              const delta = shortPut.greeks?.delta ?? 0;
+              const theta = (shortPut.greeks?.theta ?? 0) - (longPut.greeks?.theta ?? 0);
+              const iv = shortPut.greeks?.mid_iv ?? 0;
+              const maxProfit = Math.round(credit * 100);
+              const maxLoss = Math.round((spreadWidth - credit) * 100);
+              const breakeven = r2(shortPut.strike - credit);
+              const pop = estimatePop(delta, "credit");
+
+              const shortLeg: OptionLeg = {
+                side: "sell", optionType: "put", strike: shortPut.strike, expiration,
+                bid: shortPut.bid, ask: shortPut.ask, mid: r2((shortPut.bid + shortPut.ask) / 2),
+                delta: r2(shortPut.greeks?.delta ?? 0), theta: r2(shortPut.greeks?.theta ?? 0),
+                impliedVol: r2((shortPut.greeks?.mid_iv ?? 0) * 100),
+                openInterest: shortPut.openInterest, volume: shortPut.volume,
+              };
+              const longLegEntry: OptionLeg = {
+                side: "buy", optionType: "put", strike: longPut.strike, expiration,
+                bid: longPut.bid, ask: longPut.ask, mid: r2((longPut.bid + longPut.ask) / 2),
+                delta: r2(longPut.greeks?.delta ?? 0), theta: r2(longPut.greeks?.theta ?? 0),
+                impliedVol: r2((longPut.greeks?.mid_iv ?? 0) * 100),
+                openInterest: longPut.openInterest, volume: longPut.volume,
+              };
+
+              candidates.push({
+                rank: 0,
+                symbol: `${shortPut.symbol}/${longPut.symbol}`,
+                underlying: symbol, expiration, strike: shortPut.strike,
+                optionType: "put", strategyVariant: "Bull Put Spread", strategy: "credit-spreads",
+                bid: shortPut.bid, ask: shortPut.ask, mid: credit,
+                impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
+                openInterest: shortPut.openInterest + longPut.openInterest,
+                volume: shortPut.volume + longPut.volume,
+                score: scoreCandidate({ premiumPct, pop, volume: shortPut.volume + longPut.volume, openInterest: shortPut.openInterest + longPut.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+                rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${shortPut.strike}/${longPut.strike} bull put spread for $${credit.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE. Max profit $${maxProfit}, max loss $${maxLoss}.`,
+                dte, premiumPct, maxProfit, maxLoss, breakeven,
+                legs: [shortLeg, longLegEntry], pop, stockPrice: r2(stockPrice),
+              });
+            }
+          }
+        }
+      }
+
+      const shortCall = otmCalls.find((c: OptionChainContract) => Math.abs(c.greeks!.delta) >= prefs.deltaMin && Math.abs(c.greeks!.delta) <= prefs.deltaMax);
+      if (shortCall) {
+        const longCall = otmCalls.find((c: OptionChainContract) => c.strike > shortCall.strike && c.strike <= shortCall.strike + stockPrice * 0.05);
+        if (longCall) {
+          const credit = r2(shortCall.bid - longCall.ask);
+          if (credit > 0) {
+            const spreadWidth = longCall.strike - shortCall.strike;
+            const premiumPct = r2((credit / stockPrice) * 100);
+            if (premiumPct >= prefs.minPremiumPct) {
+              const delta = shortCall.greeks?.delta ?? 0;
+              const theta = (shortCall.greeks?.theta ?? 0) - (longCall.greeks?.theta ?? 0);
+              const iv = shortCall.greeks?.mid_iv ?? 0;
+              const maxProfit = Math.round(credit * 100);
+              const maxLoss = Math.round((spreadWidth - credit) * 100);
+              const breakeven = r2(shortCall.strike + credit);
+              const pop = estimatePop(delta, "credit");
+
+              const shortLeg: OptionLeg = {
+                side: "sell", optionType: "call", strike: shortCall.strike, expiration,
+                bid: shortCall.bid, ask: shortCall.ask, mid: r2((shortCall.bid + shortCall.ask) / 2),
+                delta: r2(shortCall.greeks?.delta ?? 0), theta: r2(shortCall.greeks?.theta ?? 0),
+                impliedVol: r2((shortCall.greeks?.mid_iv ?? 0) * 100),
+                openInterest: shortCall.openInterest, volume: shortCall.volume,
+              };
+              const longLegEntry: OptionLeg = {
+                side: "buy", optionType: "call", strike: longCall.strike, expiration,
+                bid: longCall.bid, ask: longCall.ask, mid: r2((longCall.bid + longCall.ask) / 2),
+                delta: r2(longCall.greeks?.delta ?? 0), theta: r2(longCall.greeks?.theta ?? 0),
+                impliedVol: r2((longCall.greeks?.mid_iv ?? 0) * 100),
+                openInterest: longCall.openInterest, volume: longCall.volume,
+              };
+
+              candidates.push({
+                rank: 0,
+                symbol: `${shortCall.symbol}/${longCall.symbol}`,
+                underlying: symbol, expiration, strike: shortCall.strike,
+                optionType: "call", strategyVariant: "Bear Call Spread", strategy: "credit-spreads",
+                bid: shortCall.bid, ask: shortCall.ask, mid: credit,
+                impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
+                openInterest: shortCall.openInterest + longCall.openInterest,
+                volume: shortCall.volume + longCall.volume,
+                score: scoreCandidate({ premiumPct, pop, volume: shortCall.volume + longCall.volume, openInterest: shortCall.openInterest + longCall.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+                rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${shortCall.strike}/${longCall.strike} bear call spread for $${credit.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE. Max profit $${maxProfit}, max loss $${maxLoss}.`,
+                dte, premiumPct, maxProfit, maxLoss, breakeven,
+                legs: [shortLeg, longLegEntry], pop, stockPrice: r2(stockPrice),
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return candidates;
 }

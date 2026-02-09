@@ -98,8 +98,8 @@ The UI utilizes Radix UI primitives for accessibility and a custom Tailwind CSS 
 
 ### Brokerage Integrations
 The application connects to multiple brokerage providers for market data and direct trading. Broker connections are stored encrypted in PostgreSQL. The `broker_connections` table includes a `preferred_account_id` column so users with multiple brokerage accounts can select which account to use for trading. This preference is surfaced via `GET /api/broker/status` (includes `preferredAccountId`) and updated via `PATCH /api/broker/preferred-account`. The Settings > Broker tab shows an account picker when multiple accounts exist, and a dialog prompts account selection after a new broker connection is established. Scanner pages auto-select the preferred account for trade tickets.
-- **Tradier**: OAuth-based integration for market data access.
-- **TradeStation**: OAuth-based integration for market data access.
+- **Tradier**: OAuth-based integration for market data and trading. Provider implementation in `server/broker/providers/tradier.ts`.
+- **TradeStation**: OAuth-based integration (Authorization Code flow) for market data and trading via TradeStation v3 API. Provider implementation in `server/broker/providers/tradestation.ts`. Supports automatic token refresh via refresh_token grant. OAuth scopes include `openid offline_access profile MarketData ReadAccount Trade Matrix OptionSpreads`. Affiliate signup link: `https://getstarted2.tradestation.com/intro?offer=ALGOAGRB` (shown only when disconnected).
 - **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages. Utilizes `snaptrade-typescript-sdk`. Supports dual execution methods (AlgoPilotX Webhook or SnapTrade Direct).
 
 ### Push Notifications

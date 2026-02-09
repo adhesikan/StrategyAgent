@@ -74,6 +74,7 @@ const brokerProviders = [
     tokenInstructions: "Log in to TradeStation, go to API settings, and copy your Access Token.",
     requiresSecretKey: false,
     supportsOAuth: true,
+    signupUrl: "https://getstarted2.tradestation.com/intro?offer=ALGOAGRB",
   },
   { 
     id: "alpaca", 
@@ -813,19 +814,19 @@ export default function Settings() {
                               </Badge>
                             )}
                           </div>
-                          {broker.id === "tradier" && !isConnected && (
+                          {broker.signupUrl && !isConnected && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="mt-2 h-auto p-0 text-xs gap-1 text-primary hover:text-primary/80 hover:bg-transparent"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.open("https://join.tradier.com/partner?platform=261", "_blank");
+                                window.open(broker.signupUrl, "_blank", "noopener,noreferrer");
                               }}
-                              data-testid="button-tradier-signup"
+                              data-testid={`button-${broker.id}-signup`}
                             >
                               <ExternalLink className="h-3 w-3" />
-                              Open new Tradier account
+                              Open a {broker.name} Account
                             </Button>
                           )}
                         </CardContent>
@@ -1000,8 +1001,7 @@ export default function Settings() {
                           <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Security Notice</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          VCP Trader only uses your connection to fetch market data (quotes and charts). 
-                          We never access your account balance, positions, or execute any trades. 
+                          By connecting, you authorize VCP Trader to access account data and (if enabled) place trades on your behalf.
                           Your credentials are encrypted at rest and never shared with third parties.
                         </p>
                       </div>

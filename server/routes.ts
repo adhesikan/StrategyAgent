@@ -2408,12 +2408,16 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.redirect("/settings?tradestation_error=no_access_token");
       }
 
-      // Store the connection with encrypted access token
+      const expiresAt = tokenData.expires_in
+        ? new Date(Date.now() + tokenData.expires_in * 1000)
+        : undefined;
+
       await storage.setBrokerConnectionWithTokens(
         userId,
         "tradestation",
         accessToken,
-        tokenData.refresh_token || undefined
+        tokenData.refresh_token || undefined,
+        expiresAt,
       );
 
       await storage.updateBrokerConnectionStatus(userId, true);

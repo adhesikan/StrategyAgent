@@ -1,23 +1,227 @@
-import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse } from "../types";
+import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse, OptionQuote } from "../types";
+
+const BASE_URL = "https://api.tradestation.com/v3";
+
+function tsHeaders(accessToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+  };
+}
+
+async function tsFetch(url: string, accessToken: string): Promise<any> {
+  const response = await fetch(url, { headers: tsHeaders(accessToken) });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`TradeStation API error ${response.status}: ${text.substring(0, 200)}`);
+  }
+  return response.json();
+}
+
+const TS_ORDER_TYPE_MAP: Record<string, string> = {
+  market: "Market",
+  limit: "Limit",
+  stop: "StopMarket",
+  stop_limit: "StopLimit",
+};
+
+const TS_DURATION_MAP: Record<string, string> = {
+  day: "DAY",
+  gtc: "GTC",
+  pre: "DAY",
+  post: "DAY",
+};
+
+function mapTradeAction(side: "buy" | "sell", optionSide?: string): string {
+  if (optionSide) {
+    switch (optionSide) {
+      case "buy_to_open": return "BuyToOpen";
+      case "buy_to_close": return "BuyToClose";
+      case "sell_to_open": return "SellToOpen";
+      case "sell_to_close": return "SellToClose";
+      default: return side === "buy" ? "BuyToOpen" : "SellToClose";
+    }
+  }
+  return side === "buy" ? "Buy" : "Sell";
+}
 
 export const tradestationProvider: BrokerProvider = {
-  async getStatus(_accessToken: string): Promise<BrokerStatus> {
-    throw new Error("TradeStation provider not yet implemented");
+  async getStatus(accessToken: string): Promise<BrokerStatus> {
+    const accounts = await tsFetch(`${BASE_URL}/brokerage/accounts`, accessToken);
+    const accountList = accounts?.Accounts || accounts || [];
+    const first = Array.isArray(accountList) ? accountList[0] : null;
+    return {
+      connected: true,
+      provider: "tradestation",
+      accountId: first?.AccountID ?? undefined,
+    };
   },
 
-  async getAccounts(_accessToken: string): Promise<NormalizedAccount[]> {
-    throw new Error("TradeStation provider not yet implemented");
+  async getAccounts(accessToken: string): Promise<NormalizedAccount[]> {
+    const data = await tsFetch(`${BASE_URL}/brokerage/accounts`, accessToken);
+    const accountList = data?.Accounts || data || [];
+    if (!Array.isArray(accountList)) return [];
+
+    const results: NormalizedAccount[] = [];
+    for (const acct of accountList) {
+      let balances: any = null;
+      try {
+        const balData = await tsFetch(
+          `${BASE_URL}/brokerage/accounts/${acct.AccountID}/balances`,
+          accessToken,
+        );
+        balances = balData?.Balances?.[0] || balData;
+      } catch {
+      }
+
+      results.push({
+        id: acct.AccountID ?? "",
+        name: acct.DisplayName || acct.Alias || acct.AccountID || "TradeStation Account",
+        type: acct.AccountType || "unknown",
+        buyingPower: parseFloat(balances?.BuyingPower ?? balances?.OptionBuyingPower ?? "0") || 0,
+        equity: parseFloat(balances?.Equity ?? balances?.AccountBalance ?? "0") || 0,
+        currency: balances?.Currency || "USD",
+      });
+    }
+
+    return results;
   },
 
-  async getPositions(_accessToken: string, _accountId?: string): Promise<NormalizedPosition[]> {
-    throw new Error("TradeStation provider not yet implemented");
+  async getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]> {
+    if (!accountId) {
+      const status = await this.getStatus(accessToken);
+      accountId = status.accountId;
+    }
+    if (!accountId) return [];
+
+    const data = await tsFetch(
+      `${BASE_URL}/brokerage/accounts/${accountId}/positions`,
+      accessToken,
+    );
+
+    const positions = data?.Positions || data || [];
+    if (!Array.isArray(positions)) return [];
+
+    return positions.map((p: any) => ({
+      symbol: p.Symbol || "",
+      qty: parseFloat(p.Quantity ?? "0"),
+      avgPrice: parseFloat(p.AveragePrice ?? "0"),
+      marketPrice: parseFloat(p.Last ?? p.MarketValue ?? "0"),
+      unrealizedPnl: parseFloat(p.UnrealizedProfitLoss ?? "0"),
+    }));
   },
 
-  async getOrders(_accessToken: string, _accountId?: string): Promise<NormalizedOrder[]> {
-    throw new Error("TradeStation provider not yet implemented");
+  async getOrders(accessToken: string, accountId?: string): Promise<NormalizedOrder[]> {
+    if (!accountId) {
+      const status = await this.getStatus(accessToken);
+      accountId = status.accountId;
+    }
+    if (!accountId) return [];
+
+    const data = await tsFetch(
+      `${BASE_URL}/brokerage/accounts/${accountId}/orders`,
+      accessToken,
+    );
+
+    const orders = data?.Orders || data || [];
+    if (!Array.isArray(orders)) return [];
+
+    return orders.slice(0, 50).map((o: any) => {
+      const action = (o.TradeAction || "").toLowerCase();
+      const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
+      return {
+        id: String(o.OrderID || ""),
+        symbol: o.Legs?.[0]?.Symbol || o.Symbol || "UNKNOWN",
+        side: isSell ? "sell" as const : "buy" as const,
+        qty: parseInt(o.Legs?.[0]?.QuantityOrdered || o.Quantity || "0", 10),
+        status: o.Status || o.StatusDescription || "unknown",
+        createdAt: o.OpenedDateTime || o.ClosedDateTime || "",
+      };
+    });
   },
 
-  async placeOrder(_accessToken: string, _order: OrderRequest): Promise<OrderResponse> {
-    throw new Error("TradeStation provider not yet implemented");
+  async getOptionQuote(accessToken: string, optionSymbol: string): Promise<OptionQuote | null> {
+    try {
+      const data = await tsFetch(
+        `${BASE_URL}/marketdata/quotes/${encodeURIComponent(optionSymbol)}`,
+        accessToken,
+      );
+      const quotes = data?.Quotes || data || [];
+      const quote = Array.isArray(quotes) ? quotes[0] : quotes;
+      if (!quote) return null;
+      const bid = parseFloat(quote.Bid ?? "0");
+      const ask = parseFloat(quote.Ask ?? "0");
+      return {
+        symbol: optionSymbol,
+        bid,
+        ask,
+        mid: parseFloat(((bid + ask) / 2).toFixed(2)),
+        last: parseFloat(quote.Last ?? "0"),
+        volume: parseInt(quote.Volume ?? "0", 10),
+        openInterest: parseInt(quote.OpenInterest ?? "0", 10),
+      };
+    } catch (e) {
+      console.error("[TradeStation] getOptionQuote error:", (e as Error).message);
+      return null;
+    }
+  },
+
+  async placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse> {
+    const isOption = order.orderClass === "option" && order.optionSymbol;
+
+    const body: any = {
+      AccountID: order.accountId,
+      Symbol: isOption ? order.optionSymbol : order.symbol,
+      Quantity: String(order.quantity),
+      OrderType: TS_ORDER_TYPE_MAP[order.orderType] || "Limit",
+      TradeAction: isOption
+        ? mapTradeAction(order.side, order.optionSide)
+        : mapTradeAction(order.side),
+      TimeInForce: {
+        Duration: TS_DURATION_MAP[order.duration] || "DAY",
+      },
+    };
+
+    if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) {
+      body.LimitPrice = String(order.price);
+    }
+    if ((order.stopPrice !== undefined) && (order.orderType === "stop" || order.orderType === "stop_limit")) {
+      body.StopPrice = String(order.stopPrice);
+    }
+
+    console.log(`[TradeStation] Placing order:`, JSON.stringify(body).substring(0, 500));
+
+    const response = await fetch(`${BASE_URL}/orderexecution/orders`, {
+      method: "POST",
+      headers: {
+        ...tsHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`TradeStation order error ${response.status}: ${text.substring(0, 300)}`);
+    }
+
+    const data = await response.json();
+    console.log(`[TradeStation] Order response:`, JSON.stringify(data).substring(0, 500));
+
+    if (data?.Errors && data.Errors.length > 0) {
+      throw new Error(`TradeStation order rejected: ${data.Errors.map((e: any) => e.Message || e).join("; ")}`);
+    }
+
+    const orders = data?.Orders || [];
+    const firstOrder = orders[0] || {};
+    const orderId = String(firstOrder.OrderID || data?.OrderID || "pending");
+
+    return {
+      orderId,
+      symbol: isOption ? (order.optionSymbol || order.symbol) : order.symbol,
+      side: order.side,
+      quantity: order.quantity,
+      status: firstOrder.Status || "pending",
+    };
   },
 };

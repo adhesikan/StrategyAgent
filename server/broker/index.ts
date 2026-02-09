@@ -44,11 +44,68 @@ const CACHE_TTL = {
   ORDERS: 10_000,
 };
 
+async function refreshTradeStationToken(userId: string, refreshToken: string): Promise<string | null> {
+  const clientId = process.env.TRADESTATION_CLIENT_ID;
+  const clientSecret = process.env.TRADESTATION_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  try {
+    const response = await fetch("https://signin.tradestation.com/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[BrokerService] TradeStation token refresh failed: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!data.access_token) return null;
+
+    const expiresAt = data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000)
+      : undefined;
+
+    await storage.setBrokerConnectionWithTokens(
+      userId,
+      "tradestation",
+      data.access_token,
+      data.refresh_token || refreshToken,
+      expiresAt,
+    );
+
+    console.log(`[BrokerService] TradeStation token refreshed for user ${userId}`);
+    return data.access_token;
+  } catch (error) {
+    console.error("[BrokerService] TradeStation token refresh error:", (error as Error).message);
+    return null;
+  }
+}
+
 async function getConnectionForUser(userId: string) {
   const connection = await storage.getBrokerConnectionWithToken(userId);
   if (!connection || !connection.accessToken || !connection.isConnected) {
     return null;
   }
+
+  if (connection.provider === "tradestation" && connection.accessTokenExpiresAt) {
+    const expiresAt = new Date(connection.accessTokenExpiresAt).getTime();
+    const fiveMinutesFromNow = Date.now() + 5 * 60 * 1000;
+    if (expiresAt < fiveMinutesFromNow && connection.refreshToken) {
+      const newToken = await refreshTradeStationToken(userId, connection.refreshToken);
+      if (newToken) {
+        return { ...connection, accessToken: newToken };
+      }
+    }
+  }
+
   return connection;
 }
 
@@ -74,7 +131,7 @@ export async function getBrokerStatus(userId: string): Promise<BrokerStatus> {
 }
 
 function isSupportedProvider(providerName: string): boolean {
-  return providerName in providers && providerName !== "tradestation";
+  return providerName in providers;
 }
 
 export async function getBrokerAccounts(userId: string): Promise<NormalizedAccount[]> {

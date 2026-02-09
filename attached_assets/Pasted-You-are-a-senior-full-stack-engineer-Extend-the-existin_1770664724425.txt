@@ -1,0 +1,206 @@
+You are a senior full-stack engineer. Extend the existing brokerage OAuth infrastructure in my VCP Trader application to support TradeStation.
+
+IMPORTANT CONTEXT
+- Tradier OAuth is already fully implemented and working.
+- Broker connection DB tables already exist.
+- We already store tokens, refresh tokens, status, and broker metadata.
+- There is an existing brokerage abstraction layer and UI card system.
+- DO NOT create new redundant tables if a broker_connections table already exists.
+- Follow the existing architecture pattern used for Tradier.
+
+====================================================
+OBJECTIVE
+====================================================
+
+Add TradeStation as a second OAuth-based brokerage using the SAME architecture pattern as Tradier.
+
+The goal:
+- Reuse existing broker connection schema
+- Reuse existing encryption/token logic
+- Reuse existing refresh handling
+- Plug TradeStation into the broker abstraction cleanly
+- Add UI card with conditional “Open Account” affiliate link
+
+====================================================
+PART 1 — BACKEND ARCHITECTURE (FOLLOW TRADIER PATTERN)
+====================================================
+
+1) Add TradeStation to broker enum/type definition:
+   broker = 'tradier' | 'tradestation'
+
+2) Create:
+   /server/services/brokers/tradestation.ts
+
+This should mirror the tradier service file structure:
+   - generateAuthUrl()
+   - exchangeCodeForToken()
+   - refreshToken()
+   - getAccounts()
+   - placeOrder()
+
+3) OAuth Flow (Authorization Code + PKCE)
+
+Route:
+GET /api/brokers/tradestation/connect
+- Require authenticated session
+- Generate state (store in session)
+- Generate PKCE code_verifier + code_challenge
+- Redirect to:
+
+https://signin.tradestation.com/authorize?
+response_type=code
+client_id=TS_CLIENT_ID
+redirect_uri=TS_REDIRECT_URI
+audience=https://api.tradestation.com
+scope=openid offline_access profile MarketData ReadAccount Trade Matrix OptionSpreads
+state=STATE
+code_challenge=CHALLENGE
+code_challenge_method=S256
+
+Callback:
+GET /api/brokers/tradestation/callback
+- Validate state
+- Exchange code for tokens
+- Store tokens using existing broker_connections schema
+- status = connected
+- broker = 'tradestation'
+- Redirect to settings page with success indicator
+
+====================================================
+PART 2 — TOKEN MANAGEMENT
+====================================================
+
+IMPORTANT:
+Use the SAME encryption + refresh pattern already used for Tradier.
+
+- Reuse existing encryption helpers
+- Reuse token expiry logic
+- Reuse existing getValidAccessToken() pattern
+- Store:
+   access_token
+   refresh_token
+   expires_at
+   scopes
+
+Add refresh logic for:
+grant_type=refresh_token
+
+====================================================
+PART 3 — API PROXY ENDPOINTS
+====================================================
+
+Add TradeStation handlers to existing broker controller logic:
+
+GET /api/brokers/tradestation/status
+GET /api/brokers/tradestation/accounts
+POST /api/brokers/tradestation/orders
+POST /api/brokers/tradestation/disconnect
+
+Accounts endpoint:
+GET https://api.tradestation.com/v3/brokerage/accounts
+Header:
+Authorization: Bearer <token>
+
+Orders endpoint:
+Forward payload to TradeStation trade endpoint.
+
+Disconnect:
+Reuse existing broker disconnect logic (clear tokens, status=disconnected).
+
+====================================================
+PART 4 — FRONTEND UI (Broker Card Update)
+====================================================
+
+Modify existing BrokerCard component.
+
+TradeStation card behavior:
+
+IF connection.status === "disconnected":
+
+Show:
+Title: TradeStation
+Subtitle: Professional trading platform
+
+Button 1 (Affiliate CTA):
+“Open a TradeStation Account”
+URL:
+https://getstarted2.tradestation.com/intro?offer=ALGOAGRB
+- Open in new tab
+- target="_blank"
+- rel="noopener noreferrer"
+
+Button 2 (Primary CTA):
+“Connect TradeStation”
+
+Small text below:
+“By connecting, you authorize VCP Trader to access account data and (if enabled) place trades on your behalf.”
+
+IF connection.status === "connected":
+
+- Show green connected badge
+- Show “Connected”
+- Show:
+   - Test Connection
+   - Disconnect
+   - Account list
+- HIDE affiliate Open Account link completely
+
+IMPORTANT:
+The affiliate link must NOT appear once connected.
+
+====================================================
+PART 5 — ENVIRONMENT VARIABLES
+====================================================
+
+Add support for:
+
+TS_CLIENT_ID
+TS_CLIENT_SECRET (if required)
+TS_REDIRECT_URI
+TS_AUDIENCE=https://api.tradestation.com
+TS_SCOPES="openid offline_access profile MarketData ReadAccount Trade Matrix OptionSpreads"
+
+Callbacks to whitelist:
+
+https://www.vcptrader.com/api/brokers/tradestation/callback
+https://app.algopilotx.com/api/brokers/tradestation/callback
+http://localhost:3000/api/brokers/tradestation/callback
+
+====================================================
+PART 6 — DO NOT BREAK
+====================================================
+
+- Tradier integration
+- Existing broker abstraction
+- InstaTrade
+- Auto Agent
+- Scanner
+- Session auth
+
+TradeStation should plug into existing multi-broker system cleanly.
+
+====================================================
+PART 7 — CLEAN ARCHITECTURE
+====================================================
+
+Follow existing Tradier implementation patterns exactly:
+- Folder structure
+- Error handling
+- Logging style
+- Token refresh cadence
+- Middleware usage
+
+Do NOT duplicate logic that already exists.
+
+====================================================
+DELIVERABLES
+====================================================
+
+- TradeStation service implementation
+- Updated broker controller
+- Updated BrokerCard UI
+- Affiliate link conditional rendering
+- Clean commit messages
+- README update:
+   “Adding TradeStation Brokerage”
+

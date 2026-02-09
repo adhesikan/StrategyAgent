@@ -177,6 +177,8 @@ export const tradierProvider: BrokerProvider = {
       params.set("stop", String(order.stopPrice));
     }
 
+    console.log(`[Tradier] Order params: ${params.toString()}`);
+
     const response = await fetch(
       `${BASE_URL}/accounts/${order.accountId}/orders`,
       {
@@ -195,8 +197,21 @@ export const tradierProvider: BrokerProvider = {
     }
 
     const data = await response.json();
+    console.log(`[Tradier] Order response:`, JSON.stringify(data).substring(0, 500));
+
+    if (data?.errors) {
+      const errMsg = typeof data.errors === "string" ? data.errors
+        : data.errors?.error ? (Array.isArray(data.errors.error) ? data.errors.error.join("; ") : data.errors.error)
+        : JSON.stringify(data.errors);
+      throw new Error(`Tradier order rejected: ${errMsg}`);
+    }
+
     const orderId = data?.order?.id ? String(data.order.id) : "pending";
     const orderStatus = data?.order?.status || "pending";
+
+    if (orderId === "pending") {
+      console.warn(`[Tradier] Order placed but no order ID returned. Full response:`, JSON.stringify(data));
+    }
 
     return {
       orderId,

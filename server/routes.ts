@@ -1616,6 +1616,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.status(400).json({ error: "optionSymbol is required for option orders" });
       }
 
+      const accounts = await brokerService.getBrokerAccounts(req.session.userId!);
+      if (!accounts.find((a: any) => a.id === accountId)) {
+        return res.status(403).json({ error: "Invalid or unauthorized broker account" });
+      }
+
       const orderRequest: any = {
         accountId,
         symbol: symbol.toUpperCase(),
@@ -1634,6 +1639,13 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const result = await brokerService.placeBrokerOrder(req.session.userId!, orderRequest);
+
+      if (result.orderId === "pending") {
+        return res.status(502).json({ 
+          error: "Order was sent to broker but no order ID was returned. The order may not have been placed. Please check your brokerage portal.",
+          result,
+        });
+      }
 
       res.json(result);
     } catch (error: any) {

@@ -140,8 +140,7 @@ function getExpirationInDTE(dteMin: number, dteMax: number): { expiration: strin
 }
 
 function roundStrike(raw: number): number {
-  if (raw < 5) return Math.round(raw * 2) / 2;
-  if (raw < 25) return Math.round(raw * 2) / 2;
+  if (raw < 3) return Math.round(raw * 2) / 2;
   return Math.round(raw);
 }
 

@@ -139,12 +139,18 @@ function getExpirationInDTE(dteMin: number, dteMax: number): { expiration: strin
   return { expiration: exp.toISOString().split("T")[0], dte: actualDte };
 }
 
+function roundStrike(raw: number): number {
+  if (raw < 5) return Math.round(raw * 2) / 2;
+  if (raw < 25) return Math.round(raw * 2) / 2;
+  return Math.round(raw);
+}
+
 function generateLongOptionCandidates(symbols: string[], prefs: ScanPreferences): OptionCandidate[] {
   return symbols.map((symbol) => {
     const stockPrice = 50 + Math.random() * 450;
     const isCall = Math.random() > 0.4;
     const otmFactor = isCall ? 1 + Math.random() * 0.05 : 1 - Math.random() * 0.05;
-    const strike = Math.round(stockPrice * otmFactor);
+    const strike = roundStrike(stockPrice * otmFactor);
     const { expiration, dte } = getExpirationInDTE(prefs.dteMin, prefs.dteMax);
     const iv = 0.2 + Math.random() * 0.6;
     const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
@@ -198,7 +204,7 @@ function generateWheelCandidates(symbols: string[], prefs: ScanPreferences): Opt
 
     if (isCoveredCall) {
       const otmFactor = 1 + 0.02 + Math.random() * 0.08;
-      const strike = Math.round(stockPrice * otmFactor);
+      const strike = roundStrike(stockPrice * otmFactor);
       const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
       const delta = -rawDelta;
       const theta = 0.02 + Math.random() * 0.06;
@@ -239,7 +245,7 @@ function generateWheelCandidates(symbols: string[], prefs: ScanPreferences): Opt
       };
     } else {
       const otmFactor = 1 - 0.02 - Math.random() * 0.08;
-      const strike = Math.round(stockPrice * otmFactor);
+      const strike = roundStrike(stockPrice * otmFactor);
       const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
       const delta = -rawDelta;
       const theta = 0.02 + Math.random() * 0.06;
@@ -291,8 +297,8 @@ function generateCreditSpreadCandidates(symbols: string[], prefs: ScanPreference
     const spreadWidth = Math.max(1, Math.round(stockPrice * 0.02 + Math.random() * stockPrice * 0.03));
 
     if (isBullPut) {
-      const shortStrike = Math.round(stockPrice * (1 - 0.03 - Math.random() * 0.07));
-      const longStrike = shortStrike - spreadWidth;
+      const shortStrike = roundStrike(stockPrice * (1 - 0.03 - Math.random() * 0.07));
+      const longStrike = roundStrike(shortStrike - spreadWidth);
       const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
       const theta = 0.01 + Math.random() * 0.04;
       const credit = Math.max(0.10, spreadWidth * (0.25 + Math.random() * 0.25));
@@ -348,8 +354,8 @@ function generateCreditSpreadCandidates(symbols: string[], prefs: ScanPreference
         pop, stockPrice: Math.round(stockPrice * 100) / 100,
       };
     } else {
-      const shortStrike = Math.round(stockPrice * (1 + 0.03 + Math.random() * 0.07));
-      const longStrike = shortStrike + spreadWidth;
+      const shortStrike = roundStrike(stockPrice * (1 + 0.03 + Math.random() * 0.07));
+      const longStrike = roundStrike(shortStrike + spreadWidth);
       const rawDelta = prefs.deltaMin + Math.random() * (prefs.deltaMax - prefs.deltaMin);
       const theta = 0.01 + Math.random() * 0.04;
       const credit = Math.max(0.10, spreadWidth * (0.25 + Math.random() * 0.25));

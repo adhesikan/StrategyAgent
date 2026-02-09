@@ -309,7 +309,7 @@ export default function OptionsScanner() {
       const isSell = primaryLeg?.side === "sell";
       const optionSide = isSell ? "sell_to_open" : "buy_to_open";
 
-      const underlying = candidate.underlying.toUpperCase().padEnd(6, " ");
+      const underlying = candidate.underlying.toUpperCase();
       const [expY, expM, expD] = candidate.expiration.split("-");
       const yy = expY.slice(-2);
       const mm = expM.padStart(2, "0");

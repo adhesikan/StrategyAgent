@@ -326,9 +326,21 @@ export default function OptionsScanner() {
       globalQueryClient.invalidateQueries({ queryKey: ["/api/broker/orders"] });
     },
     onError: (error: any) => {
+      let description = "Could not place order";
+      try {
+        const jsonMatch = error.message?.match(/\{.*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          description = parsed.error || description;
+        } else {
+          description = error.message || description;
+        }
+      } catch {
+        description = error.message || description;
+      }
       toast({
         title: "Order Failed",
-        description: error.message || "Could not place order",
+        description,
         variant: "destructive",
       });
     },

@@ -316,6 +316,7 @@ export default function Scanner() {
     symbolsReturned: number;
     scanTimeMs: number;
     batchCount?: number;
+    marketSession?: string;
   } | null>(null);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
   const [autoRunOnLoad, setAutoRunOnLoad] = useState(false);
@@ -978,10 +979,25 @@ export default function Scanner() {
                   {runScanMutation.isPending ? "Scanning..." : "Scan Now"}
                 </Button>
                 {scanMetadata && (
-                  <Badge variant="outline" className="gap-1 text-xs">
-                    <Activity className="h-3 w-3" />
-                    {scanMetadata.provider.toUpperCase()}
-                  </Badge>
+                  <>
+                    <Badge variant="outline" className="gap-1 text-xs">
+                      <Activity className="h-3 w-3" />
+                      {scanMetadata.provider.toUpperCase()}
+                    </Badge>
+                    {scanMetadata.marketSession === "extended" && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="secondary" className="gap-1 text-xs text-blue-500" data-testid="badge-extended-hours">
+                            <Clock className="h-3 w-3" />
+                            Extended Hours
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Volume and RVOL filters are relaxed outside regular trading hours (9:30 AM - 4:00 PM ET) since volume is naturally low during pre-market and after-hours sessions.
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </>
                 )}
               </div>
             )}

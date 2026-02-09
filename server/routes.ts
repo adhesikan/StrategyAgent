@@ -502,6 +502,19 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const { minPrice, maxPrice, minVolume, minRvol, excludeEtfs, excludeOtc } = req.body.filters || {};
       const startTime = Date.now();
       const BATCH_SIZE = 200;
+
+      const etNow = new Date();
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false,
+        weekday: 'short',
+      }).formatToParts(etNow);
+      const etHour = parseInt(etParts.find(p => p.type === 'hour')?.value || '0');
+      const etMinute = parseInt(etParts.find(p => p.type === 'minute')?.value || '0');
+      const etTimeMin = etHour * 60 + etMinute;
+      const isRegularHours = etTimeMin >= 570 && etTimeMin < 960; // 9:30 AM - 4:00 PM ET
       
       let allQuotes: any[] = [];
       const totalSymbols = requestedSymbols.length;
@@ -524,16 +537,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         allQuotes = await fetchQuotesFromBroker(connection, requestedSymbols);
       }
       
-      // Apply filters to quotes before processing
-      console.log(`[Scan] Received ${allQuotes.length} quotes from broker, applying filters: minPrice=${minPrice}, maxPrice=${maxPrice}, minVolume=${minVolume}, minRvol=${minRvol}`);
+      const effectiveMinVolume = isRegularHours ? minVolume : undefined;
+      const effectiveMinRvol = isRegularHours ? minRvol : undefined;
+      
+      console.log(`[Scan] Received ${allQuotes.length} quotes from broker, session=${isRegularHours ? "regular" : "extended"}, applying filters: minPrice=${minPrice}, maxPrice=${maxPrice}, minVolume=${effectiveMinVolume ?? "skipped"}, minRvol=${effectiveMinRvol ?? "skipped"}`);
       
       const filteredQuotes = allQuotes.filter(quote => {
         if (minPrice && quote.last < minPrice) return false;
         if (maxPrice && quote.last > maxPrice) return false;
-        if (minVolume && quote.volume < minVolume) return false;
-        if (minRvol && quote.avgVolume) {
+        if (effectiveMinVolume && quote.volume < effectiveMinVolume) return false;
+        if (effectiveMinRvol && quote.avgVolume) {
           const rvol = quote.volume / quote.avgVolume;
-          if (rvol < minRvol) return false;
+          if (rvol < effectiveMinRvol) return false;
         }
         return true;
       });
@@ -590,6 +605,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           batchCount: Math.ceil(totalSymbols / BATCH_SIZE),
           scanTimeMs: scanTime,
           timestamp: new Date().toISOString(),
+          marketSession: isRegularHours ? "regular" : "extended",
         }
       });
     } catch (error: any) {

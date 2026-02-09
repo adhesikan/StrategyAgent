@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient as globalQueryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,22 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { cn } from "@/lib/utils";
 import type { PlatformUniverse, PlatformRiskProfile } from "@shared/platform-types";
+import type { AutomationEndpoint } from "@shared/schema";
 import {
   Loader2,
   Lock,
@@ -46,6 +57,7 @@ import {
   Star,
   ChevronRight,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 
 interface MeResponse {
@@ -219,6 +231,135 @@ export default function OptionsScanner() {
   });
 
   const { isConnected: brokerConnected } = useBrokerStatus();
+
+  interface BrokerAccount {
+    id: string;
+    name: string;
+    type: string;
+    buyingPower: number;
+    equity: number;
+    currency: string;
+  }
+
+  const { data: brokerStatus } = useQuery<{ id: string; provider: string; isConnected: boolean } | null>({
+    queryKey: ["/api/broker/status"],
+  });
+
+  const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: !!brokerStatus?.isConnected,
+  });
+
+  const { data: automationEndpoints } = useQuery<AutomationEndpoint[]>({
+    queryKey: ["/api/automation-endpoints"],
+  });
+
+  const [instaTradeCandidate, setInstaTradeCandidate] = useState<OptionCandidate | null>(null);
+  const [showInstaTradeDialog, setShowInstaTradeDialog] = useState(false);
+  const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "broker">("algopilotx");
+  const [selectedEndpoint, setSelectedEndpoint] = useState<AutomationEndpoint | null>(null);
+  const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
+  const [orderQuantity, setOrderQuantity] = useState<number>(1);
+
+  const hasEndpoints = automationEndpoints && automationEndpoints.length > 0;
+  const hasBrokerAccounts = brokerStatus?.isConnected && brokerAccounts.length > 0;
+
+  const optionsInstatradeMutation = useMutation({
+    mutationFn: async ({ endpointId, candidate }: { endpointId: string; candidate: OptionCandidate }) => {
+      const response = await apiRequest("POST", "/api/instatrade/entry", {
+        endpointId,
+        symbol: candidate.underlying,
+        strategyId: `options-${candidate.strategy}`,
+        setupPayload: {
+          price: candidate.stockPrice,
+          optionSymbol: candidate.symbol,
+          strike: candidate.strike,
+          expiration: candidate.expiration,
+          optionType: candidate.optionType,
+          strategyVariant: candidate.strategyVariant,
+          premium: candidate.mid,
+          legs: candidate.legs,
+          maxProfit: candidate.maxProfit,
+          maxLoss: candidate.maxLoss,
+          breakeven: candidate.breakeven,
+        },
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "InstaTrade Sent",
+        description: `Options entry signal sent for ${instaTradeCandidate?.underlying}`,
+      });
+      setShowInstaTradeDialog(false);
+      setInstaTradeCandidate(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "InstaTrade Failed",
+        description: error.message || "Could not send entry signal",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const optionsBrokerOrderMutation = useMutation({
+    mutationFn: async ({ accountId, candidate, quantity }: { accountId: string; candidate: OptionCandidate; quantity: number }) => {
+      const response = await apiRequest("POST", "/api/broker/orders", {
+        accountId,
+        symbol: candidate.symbol,
+        side: candidate.legs.length > 0 && candidate.legs[0].side === "sell" ? "sell" : "buy",
+        quantity,
+        orderType: "limit",
+        price: candidate.mid,
+        duration: "day",
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Order Placed",
+        description: `Options order for ${instaTradeCandidate?.underlying} submitted`,
+      });
+      setShowInstaTradeDialog(false);
+      setInstaTradeCandidate(null);
+      globalQueryClient.invalidateQueries({ queryKey: ["/api/broker/orders"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Order Failed",
+        description: error.message || "Could not place order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleOptionInstaTrade = (candidate: OptionCandidate) => {
+    setInstaTradeCandidate(candidate);
+    if (hasEndpoints) {
+      setSelectedEndpoint(automationEndpoints![0]);
+      setExecutionMethod("algopilotx");
+    }
+    if (hasBrokerAccounts && !hasEndpoints) {
+      setExecutionMethod("broker");
+      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+    } else if (hasBrokerAccounts) {
+      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+    }
+    setShowInstaTradeDialog(true);
+  };
+
+  const handleConfirmOptionInstaTrade = () => {
+    if (executionMethod === "algopilotx" && selectedEndpoint && instaTradeCandidate) {
+      optionsInstatradeMutation.mutate({ endpointId: selectedEndpoint.id, candidate: instaTradeCandidate });
+    } else if (executionMethod === "broker" && selectedBrokerAccount && instaTradeCandidate) {
+      optionsBrokerOrderMutation.mutate({
+        accountId: selectedBrokerAccount.id,
+        candidate: instaTradeCandidate,
+        quantity: orderQuantity,
+      });
+    }
+  };
 
   const { data: rawStrategies } = useQuery<StrategyDef[]>({
     queryKey: ["/api/options/strategies"],
@@ -760,9 +901,9 @@ export default function OptionsScanner() {
 
               {scanResult && scanResult.strategyKey === activeStrategy ? (
                 viewMode === "card" ? (
-                  <CandidatesCardView candidates={scanResult.candidates} />
+                  <CandidatesCardView candidates={scanResult.candidates} onInstaTrade={handleOptionInstaTrade} canInstaTrade={!!(hasEndpoints || hasBrokerAccounts)} />
                 ) : (
-                  <CandidatesListView candidates={scanResult.candidates} />
+                  <CandidatesListView candidates={scanResult.candidates} onInstaTrade={handleOptionInstaTrade} canInstaTrade={!!(hasEndpoints || hasBrokerAccounts)} />
                 )
               ) : scanResult && scanResult.strategyKey !== activeStrategy ? (
                 <EmptyState message={`Click "Find Trades" with "${activeStrategyDef?.label ?? activeStrategy}" selected to see results`} />
@@ -819,6 +960,163 @@ export default function OptionsScanner() {
           )}
         </>
       )}
+
+      <Dialog open={showInstaTradeDialog} onOpenChange={setShowInstaTradeDialog}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-options-instatrade">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-primary" />
+              InstaTrade - Options
+            </DialogTitle>
+            <DialogDescription>
+              {instaTradeCandidate && (
+                <span>
+                  {instaTradeCandidate.strategyVariant} on {instaTradeCandidate.underlying} — ${instaTradeCandidate.strike} {instaTradeCandidate.optionType} exp {instaTradeCandidate.expiration}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {instaTradeCandidate && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Premium:</span>
+                  <span className="ml-1 font-mono font-medium">${instaTradeCandidate.mid.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Max Loss:</span>
+                  <span className="ml-1 font-mono font-medium text-destructive">${instaTradeCandidate.maxLoss.toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Max Profit:</span>
+                  <span className="ml-1 font-mono font-medium text-chart-2">
+                    {instaTradeCandidate.maxProfit === -1 ? "Unlimited" : `$${instaTradeCandidate.maxProfit.toLocaleString()}`}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">PoP:</span>
+                  <span className="ml-1 font-mono font-medium">{instaTradeCandidate.pop}%</span>
+                </div>
+              </div>
+
+              {instaTradeCandidate.legs.length > 1 && (
+                <div className="space-y-1 p-2 rounded-md bg-muted/50">
+                  <p className="text-xs font-medium text-muted-foreground">Legs:</p>
+                  {instaTradeCandidate.legs.map((leg, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Badge variant="outline" className="text-xs capitalize">{leg.side}</Badge>
+                      <span className="font-mono">${leg.strike} {leg.optionType}</span>
+                      <span className="text-muted-foreground">{leg.expiration}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <RadioGroup
+                value={executionMethod}
+                onValueChange={(v) => setExecutionMethod(v as "algopilotx" | "broker")}
+                className="space-y-2"
+                data-testid="radio-execution-method"
+              >
+                {hasEndpoints && (
+                  <div className="flex items-center space-x-2 rounded-md border p-3">
+                    <RadioGroupItem value="algopilotx" id="opt-algopilotx" />
+                    <Label htmlFor="opt-algopilotx" className="flex-1 cursor-pointer">
+                      <div className="font-medium text-sm">AlgoPilotX (Automation)</div>
+                      <div className="text-xs text-muted-foreground">Send signal to your automation endpoint</div>
+                    </Label>
+                  </div>
+                )}
+                {hasBrokerAccounts && (
+                  <div className="flex items-center space-x-2 rounded-md border p-3">
+                    <RadioGroupItem value="broker" id="opt-broker" />
+                    <Label htmlFor="opt-broker" className="flex-1 cursor-pointer">
+                      <div className="font-medium text-sm">Direct Broker Order</div>
+                      <div className="text-xs text-muted-foreground">Place limit order via {brokerStatus?.provider}</div>
+                    </Label>
+                  </div>
+                )}
+              </RadioGroup>
+
+              {executionMethod === "algopilotx" && hasEndpoints && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Automation Endpoint</Label>
+                  <Select
+                    value={selectedEndpoint?.id || ""}
+                    onValueChange={(v) => setSelectedEndpoint(automationEndpoints!.find(e => e.id === v) || null)}
+                  >
+                    <SelectTrigger data-testid="select-endpoint">
+                      <SelectValue placeholder="Select endpoint" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {automationEndpoints!.map((ep) => (
+                        <SelectItem key={ep.id} value={ep.id}>{ep.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {executionMethod === "broker" && hasBrokerAccounts && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Account</Label>
+                    <Select
+                      value={selectedBrokerAccount?.id || ""}
+                      onValueChange={(v) => setSelectedBrokerAccount(brokerAccounts.find(a => a.id === v) || null)}
+                    >
+                      <SelectTrigger data-testid="select-broker-account">
+                        <SelectValue placeholder="Select account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {brokerAccounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name} (${acc.buyingPower.toLocaleString()} BP)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Contracts</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={orderQuantity}
+                      onChange={(e) => setOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      data-testid="input-quantity"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInstaTradeDialog(false)} data-testid="button-cancel-instatrade">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmOptionInstaTrade}
+              disabled={
+                optionsInstatradeMutation.isPending ||
+                optionsBrokerOrderMutation.isPending ||
+                (executionMethod === "algopilotx" && !selectedEndpoint) ||
+                (executionMethod === "broker" && !selectedBrokerAccount)
+              }
+              data-testid="button-confirm-instatrade"
+            >
+              {(optionsInstatradeMutation.isPending || optionsBrokerOrderMutation.isPending) ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Zap className="h-4 w-4 mr-1" />
+              )}
+              {executionMethod === "broker" ? "Place Order" : "Send Signal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -939,7 +1237,7 @@ function splitTopPicks(candidates: OptionCandidate[]): { topPicks: OptionCandida
   };
 }
 
-function CandidateCard({ c, isTopPick }: { c: OptionCandidate; isTopPick?: boolean }) {
+function CandidateCard({ c, isTopPick, onInstaTrade, canInstaTrade }: { c: OptionCandidate; isTopPick?: boolean; onInstaTrade?: (c: OptionCandidate) => void; canInstaTrade?: boolean }) {
   return (
     <Card
       className={cn("overflow-visible", isTopPick && "border-primary/30 bg-primary/[0.02]")}
@@ -992,9 +1290,21 @@ function CandidateCard({ c, isTopPick }: { c: OptionCandidate; isTopPick?: boole
           </div>
         </div>
 
-        <div className="flex items-center gap-1 text-xs">
-          <span className="text-muted-foreground">B/E:</span>
-          <span className="font-mono font-medium" data-testid={`text-breakeven-${c.rank}`}>${c.breakeven.toFixed(2)}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-muted-foreground">B/E:</span>
+            <span className="font-mono font-medium" data-testid={`text-breakeven-${c.rank}`}>${c.breakeven.toFixed(2)}</span>
+          </div>
+          {onInstaTrade && canInstaTrade && (
+            <Button
+              size="sm"
+              onClick={() => onInstaTrade(c)}
+              data-testid={`button-instatrade-option-${c.rank}`}
+            >
+              <Zap className="h-3.5 w-3.5 mr-1" />
+              InstaTrade
+            </Button>
+          )}
         </div>
 
         <Tooltip>
@@ -1012,7 +1322,7 @@ function CandidateCard({ c, isTopPick }: { c: OptionCandidate; isTopPick?: boole
   );
 }
 
-function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
+function CandidatesCardView({ candidates, onInstaTrade, canInstaTrade }: { candidates: OptionCandidate[]; onInstaTrade?: (c: OptionCandidate) => void; canInstaTrade?: boolean }) {
   const [showOthers, setShowOthers] = useState(false);
 
   if (candidates.length === 0) {
@@ -1042,7 +1352,7 @@ function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {topPicks.map((c) => (
-            <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} isTopPick />
+            <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} isTopPick onInstaTrade={onInstaTrade} canInstaTrade={canInstaTrade} />
           ))}
         </div>
       </div>
@@ -1065,7 +1375,7 @@ function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
           <CollapsibleContent>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">
               {others.map((c) => (
-                <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} />
+                <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} onInstaTrade={onInstaTrade} canInstaTrade={canInstaTrade} />
               ))}
             </div>
           </CollapsibleContent>
@@ -1075,7 +1385,7 @@ function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
   );
 }
 
-function CandidateTableRows({ candidates, isTopPick }: { candidates: OptionCandidate[]; isTopPick?: boolean }) {
+function CandidateTableRows({ candidates, isTopPick, onInstaTrade, canInstaTrade }: { candidates: OptionCandidate[]; isTopPick?: boolean; onInstaTrade?: (c: OptionCandidate) => void; canInstaTrade?: boolean }) {
   return (
     <>
       {candidates.map((c) => (
@@ -1132,6 +1442,17 @@ function CandidateTableRows({ candidates, isTopPick }: { candidates: OptionCandi
           <TableCell className="text-right">
             <ScoreBadge score={c.score} />
           </TableCell>
+          <TableCell>
+            {onInstaTrade && canInstaTrade && (
+              <Button
+                size="icon"
+                onClick={() => onInstaTrade(c)}
+                data-testid={`button-instatrade-option-row-${c.rank}`}
+              >
+                <Zap className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </TableCell>
           <TableCell className="hidden xl:table-cell max-w-[200px]">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1153,7 +1474,7 @@ function CandidateTableRows({ candidates, isTopPick }: { candidates: OptionCandi
 type OptionSortField = "rank" | "underlying" | "strategyVariant" | "strike" | "expiration" | "dte" | "mid" | "impliedVol" | "delta" | "pop" | "maxProfit" | "maxLoss" | "score";
 type OptionSortDirection = "asc" | "desc";
 
-function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
+function CandidatesListView({ candidates, onInstaTrade, canInstaTrade }: { candidates: OptionCandidate[]; onInstaTrade?: (c: OptionCandidate) => void; canInstaTrade?: boolean }) {
   const [showOthers, setShowOthers] = useState(false);
   const [sortField, setSortField] = useState<OptionSortField>("score");
   const [sortDirection, setSortDirection] = useState<OptionSortDirection>("desc");
@@ -1250,6 +1571,7 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
         <TableHead className="text-right">
           <OptionSortHeader field="score">Score</OptionSortHeader>
         </TableHead>
+        {canInstaTrade && <TableHead className="w-[50px]"></TableHead>}
         <TableHead className="hidden xl:table-cell">Why</TableHead>
       </TableRow>
     </TableHeader>
@@ -1277,7 +1599,7 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
         <Table>
           {listHeader}
           <TableBody>
-            <CandidateTableRows candidates={sortedTopPicks} isTopPick />
+            <CandidateTableRows candidates={sortedTopPicks} isTopPick onInstaTrade={onInstaTrade} canInstaTrade={canInstaTrade} />
           </TableBody>
         </Table>
       </div>
@@ -1302,7 +1624,7 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
               <Table>
                 {listHeader}
                 <TableBody>
-                  <CandidateTableRows candidates={sortedOthers} />
+                  <CandidateTableRows candidates={sortedOthers} onInstaTrade={onInstaTrade} canInstaTrade={canInstaTrade} />
                 </TableBody>
               </Table>
             </div>

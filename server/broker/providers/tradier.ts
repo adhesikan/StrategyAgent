@@ -130,13 +130,20 @@ export const tradierProvider: BrokerProvider = {
   },
 
   async placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse> {
+    const isOption = order.orderClass === "option" && order.optionSymbol;
     const params = new URLSearchParams();
-    params.set("class", "equity");
+    params.set("class", isOption ? "option" : "equity");
     params.set("symbol", order.symbol);
-    params.set("side", order.side === "buy" ? "buy" : "sell");
     params.set("quantity", String(order.quantity));
     params.set("type", TRADIER_ORDER_TYPE_MAP[order.orderType] || "limit");
     params.set("duration", TRADIER_DURATION_MAP[order.duration] || "day");
+
+    if (isOption) {
+      params.set("option_symbol", order.optionSymbol!);
+      params.set("side", order.optionSide || "buy_to_open");
+    } else {
+      params.set("side", order.side === "buy" ? "buy" : "sell");
+    }
 
     if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) {
       params.set("price", String(order.price));
@@ -168,7 +175,7 @@ export const tradierProvider: BrokerProvider = {
 
     return {
       orderId,
-      symbol: order.symbol,
+      symbol: isOption ? (order.optionSymbol || order.symbol) : order.symbol,
       side: order.side,
       quantity: order.quantity,
       status: orderStatus,

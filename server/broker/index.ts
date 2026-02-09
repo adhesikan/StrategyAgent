@@ -126,7 +126,10 @@ export async function placeBrokerOrder(userId: string, order: OrderRequest): Pro
   }
 
   const provider = getProvider(connection.provider);
-  console.log(`[BrokerService] Placing ${order.side} order for ${order.quantity} ${order.symbol} via ${connection.provider}`);
+  const orderDesc = order.orderClass === "option"
+    ? `${order.optionSide || "buy_to_open"} ${order.quantity} ${order.optionSymbol} (${order.symbol}) @ ${order.price ?? "market"}`
+    : `${order.side} ${order.quantity} ${order.symbol} @ ${order.price ?? "market"}`;
+  console.log(`[BrokerService] Placing order via ${connection.provider}: ${orderDesc}`);
   const result = await provider.placeOrder(connection.accessToken!, order);
   cache.delete(`orders:${userId}`);
   return result;

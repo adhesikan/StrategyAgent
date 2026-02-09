@@ -39,6 +39,9 @@ export interface OrderRequest {
   price?: number;
   stopPrice?: number;
   duration: "day" | "gtc" | "pre" | "post";
+  orderClass?: "equity" | "option";
+  optionSymbol?: string;
+  optionSide?: "buy_to_open" | "buy_to_close" | "sell_to_open" | "sell_to_close";
 }
 
 export interface OrderResponse {

@@ -305,14 +305,21 @@ export default function OptionsScanner() {
 
   const optionsBrokerOrderMutation = useMutation({
     mutationFn: async ({ accountId, candidate, quantity }: { accountId: string; candidate: OptionCandidate; quantity: number }) => {
+      const primaryLeg = candidate.legs[0];
+      const isSell = primaryLeg?.side === "sell";
+      const optionSide = isSell ? "sell_to_open" : "buy_to_open";
+
       const response = await apiRequest("POST", "/api/broker/orders", {
         accountId,
-        symbol: candidate.symbol,
-        side: candidate.legs.length > 0 && candidate.legs[0].side === "sell" ? "sell" : "buy",
+        symbol: candidate.underlying,
+        side: isSell ? "sell" : "buy",
         quantity,
         orderType: "limit",
         price: candidate.mid,
         duration: "day",
+        orderClass: "option",
+        optionSymbol: candidate.symbol,
+        optionSide,
       });
       return response.json();
     },

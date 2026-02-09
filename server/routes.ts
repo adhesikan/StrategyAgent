@@ -1598,7 +1598,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.post("/api/broker/orders", isAuthenticated, async (req, res) => {
     try {
-      const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration } = req.body;
+      const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration, orderClass, optionSymbol, optionSide } = req.body;
 
       if (!accountId || !symbol || !side || !quantity) {
         return res.status(400).json({ error: "Missing required fields: accountId, symbol, side, quantity" });
@@ -1612,7 +1612,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.status(400).json({ error: "quantity must be a positive number" });
       }
 
-      const result = await brokerService.placeBrokerOrder(req.session.userId!, {
+      if (orderClass === "option" && !optionSymbol) {
+        return res.status(400).json({ error: "optionSymbol is required for option orders" });
+      }
+
+      const orderRequest: any = {
         accountId,
         symbol: symbol.toUpperCase(),
         side,
@@ -1621,7 +1625,15 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         price: price ?? undefined,
         stopPrice: stopPrice ?? undefined,
         duration: duration || "day",
-      });
+      };
+
+      if (orderClass === "option") {
+        orderRequest.orderClass = "option";
+        orderRequest.optionSymbol = optionSymbol;
+        orderRequest.optionSide = optionSide || "buy_to_open";
+      }
+
+      const result = await brokerService.placeBrokerOrder(req.session.userId!, orderRequest);
 
       res.json(result);
     } catch (error: any) {

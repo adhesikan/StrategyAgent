@@ -1307,10 +1307,11 @@ export default function Scanner() {
                   <p className={cn("text-xs", microBadge.color)}>{microBadge.text}</p>
                 )}
 
-                {actionable ? (
+                {(hasBrokerAccounts || hasEndpoints) && (
                   <Button
                     size="sm"
                     className="w-full gap-1"
+                    variant={actionable ? "default" : "secondary"}
                     onClick={(e) => handleInstaTrade(result, e)}
                     disabled={instatradeMutation.isPending || brokerOrderMutation.isPending}
                     data-testid={`button-instatrade-card-${result.ticker}`}
@@ -1318,7 +1319,8 @@ export default function Scanner() {
                     <Zap className="h-3 w-3" />
                     InstaTrade™
                   </Button>
-                ) : (
+                )}
+                {!actionable && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -1457,10 +1459,11 @@ export default function Scanner() {
                 {result.patternScore && (
                   <Badge variant="secondary" className="w-12 justify-center text-xs">{result.patternScore}%</Badge>
                 )}
-                {actionable ? (
+                {(hasBrokerAccounts || hasEndpoints) && (
                   <Button
                     size="sm"
                     className="gap-1"
+                    variant={actionable ? "default" : "secondary"}
                     onClick={(e) => handleInstaTrade(result, e)}
                     disabled={instatradeMutation.isPending}
                     data-testid={`button-instatrade-list-${result.ticker}`}
@@ -1468,7 +1471,8 @@ export default function Scanner() {
                     <Zap className="h-3 w-3" />
                     <span className="hidden sm:inline">InstaTrade™</span>
                   </Button>
-                ) : (
+                )}
+                {!actionable && (
                   <Button
                     size="sm"
                     variant="outline"

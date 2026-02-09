@@ -311,9 +311,9 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-1">
-            {onInstaTrade && actionable ? (
+            {onInstaTrade ? (
               <Button 
-                variant="default" 
+                variant={actionable ? "default" : "secondary"}
                 size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -324,7 +324,8 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
               >
                 <Zap className="h-3.5 w-3.5" />
               </Button>
-            ) : onInstaTrade ? (
+            ) : null}
+            {onInstaTrade && !actionable ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/alerts">

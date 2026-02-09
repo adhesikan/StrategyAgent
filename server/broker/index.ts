@@ -1,5 +1,5 @@
 import type { BrokerProvider, BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse } from "./types";
-import { tradierProvider } from "./providers/tradier";
+import { tradierProvider, registerSandboxToken } from "./providers/tradier";
 import { tradestationProvider } from "./providers/tradestation";
 import { storage } from "../storage";
 
@@ -144,8 +144,34 @@ export async function getBrokerAccounts(userId: string): Promise<NormalizedAccou
 
   const provider = getProvider(connection.provider);
   const accounts = await provider.getAccounts(connection.accessToken!);
+
+  if (connection.provider === "tradier" && connection.sandboxAccessToken) {
+    registerSandboxToken(connection.sandboxAccessToken);
+    try {
+      const tp = provider as any;
+      if (tp.getSandboxAccounts) {
+        const sandboxAccounts = await tp.getSandboxAccounts(connection.sandboxAccessToken);
+        for (const sa of sandboxAccounts) {
+          sa.id = `sandbox:${sa.id}`;
+          sa.name = sa.name ? `${sa.name} (Paper)` : `Paper ${sa.id.replace('sandbox:', '')}`;
+        }
+        accounts.push(...sandboxAccounts);
+      }
+    } catch (error) {
+      console.error("[BrokerService] Failed to fetch sandbox accounts:", (error as Error).message);
+    }
+  }
+
   setCache(cacheKey, accounts, CACHE_TTL.ACCOUNTS);
   return accounts;
+}
+
+function resolveAccountToken(connection: any, accountId?: string): { token: string; realAccountId?: string; isSandbox: boolean } {
+  if (accountId?.startsWith("sandbox:") && connection.sandboxAccessToken) {
+    registerSandboxToken(connection.sandboxAccessToken);
+    return { token: connection.sandboxAccessToken, realAccountId: accountId.replace("sandbox:", ""), isSandbox: true };
+  }
+  return { token: connection.accessToken!, realAccountId: accountId, isSandbox: false };
 }
 
 export async function getBrokerPositions(userId: string): Promise<NormalizedPosition[]> {
@@ -157,7 +183,8 @@ export async function getBrokerPositions(userId: string): Promise<NormalizedPosi
   if (!connection || !isSupportedProvider(connection.provider)) return [];
 
   const provider = getProvider(connection.provider);
-  const positions = await provider.getPositions(connection.accessToken!);
+  const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  const positions = await provider.getPositions(token, realAccountId);
   setCache(cacheKey, positions, CACHE_TTL.POSITIONS);
   return positions;
 }
@@ -171,7 +198,8 @@ export async function getBrokerOrders(userId: string): Promise<NormalizedOrder[]
   if (!connection || !isSupportedProvider(connection.provider)) return [];
 
   const provider = getProvider(connection.provider);
-  const orders = await provider.getOrders(connection.accessToken!);
+  const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  const orders = await provider.getOrders(token, realAccountId);
   setCache(cacheKey, orders, CACHE_TTL.ORDERS);
   return orders;
 }
@@ -182,12 +210,17 @@ export async function placeBrokerOrder(userId: string, order: OrderRequest): Pro
     throw new Error("No connected broker found or broker not supported for trading");
   }
 
+  const { token, isSandbox } = resolveAccountToken(connection, order.accountId);
+  if (isSandbox) {
+    order = { ...order, accountId: order.accountId.replace("sandbox:", "") };
+  }
+
   const provider = getProvider(connection.provider);
   const orderDesc = order.orderClass === "option"
     ? `${order.optionSide || "buy_to_open"} ${order.quantity} ${order.optionSymbol} (${order.symbol}) @ ${order.price ?? "market"}`
     : `${order.side} ${order.quantity} ${order.symbol} @ ${order.price ?? "market"}`;
-  console.log(`[BrokerService] Placing order via ${connection.provider}: ${orderDesc}`);
-  const result = await provider.placeOrder(connection.accessToken!, order);
+  console.log(`[BrokerService] Placing ${isSandbox ? "PAPER " : ""}order via ${connection.provider}: ${orderDesc}`);
+  const result = await provider.placeOrder(token, order);
   cache.delete(`orders:${userId}`);
   return result;
 }
@@ -199,13 +232,15 @@ export async function getOptionQuote(userId: string, optionSymbol: string) {
   }
   const provider = getProvider(connection.provider);
   if (!provider.getOptionQuote) return null;
-  return provider.getOptionQuote(connection.accessToken!, optionSymbol);
+  const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  return provider.getOptionQuote(token, optionSymbol);
 }
 
 export async function getConnectionProviderForUser(userId: string) {
   const connection = await getConnectionForUser(userId);
   if (!connection || !isSupportedProvider(connection.provider)) return null;
-  return { provider: connection.provider, accessToken: connection.accessToken! };
+  const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  return { provider: connection.provider, accessToken: token };
 }
 
 export function invalidateBrokerCache(userId: string): void {

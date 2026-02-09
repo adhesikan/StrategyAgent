@@ -3,6 +3,16 @@ import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedO
 const BASE_URL = "https://api.tradier.com/v1";
 const SANDBOX_URL = "https://sandbox.tradier.com/v1";
 
+const sandboxTokens = new Set<string>();
+
+export function registerSandboxToken(token: string): void {
+  sandboxTokens.add(token);
+}
+
+function getBaseUrlForToken(token: string): string {
+  return sandboxTokens.has(token) ? SANDBOX_URL : BASE_URL;
+}
+
 function getAccountBaseUrl(account: any): string {
   const classification = (account.classification || account.type || "").toLowerCase();
   if (classification === "paper" || classification === "sandbox" || classification === "virtual") {
@@ -151,7 +161,7 @@ export async function tradierGetOptionChain(accessToken: string, symbol: string,
 
 export const tradierProvider: BrokerProvider = {
   async getStatus(accessToken: string): Promise<BrokerStatus> {
-    const data = await tradierFetch(`${BASE_URL}/user/profile`, accessToken);
+    const data = await tradierFetch(`${getBaseUrlForToken(accessToken)}/user/profile`, accessToken);
     const account = data?.profile?.account;
     const firstAccount = Array.isArray(account) ? account[0] : account;
     return {
@@ -162,7 +172,8 @@ export const tradierProvider: BrokerProvider = {
   },
 
   async getAccounts(accessToken: string): Promise<NormalizedAccount[]> {
-    const data = await tradierFetch(`${BASE_URL}/user/profile`, accessToken);
+    const baseUrl = getBaseUrlForToken(accessToken);
+    const data = await tradierFetch(`${baseUrl}/user/profile`, accessToken);
     const accounts = data?.profile?.account;
     if (!accounts) return [];
 
@@ -199,6 +210,38 @@ export const tradierProvider: BrokerProvider = {
     return results;
   },
 
+  async getSandboxAccounts(sandboxToken: string): Promise<NormalizedAccount[]> {
+    const data = await tradierFetch(`${SANDBOX_URL}/user/profile`, sandboxToken);
+    const accounts = data?.profile?.account;
+    if (!accounts) return [];
+
+    const accountArray = Array.isArray(accounts) ? accounts : [accounts];
+
+    const results: NormalizedAccount[] = [];
+    for (const acct of accountArray) {
+      let balances: any = null;
+      try {
+        const balData = await tradierFetch(
+          `${SANDBOX_URL}/accounts/${acct.account_number}/balances`,
+          sandboxToken,
+        );
+        balances = balData?.balances;
+      } catch {
+      }
+
+      results.push({
+        id: acct.account_number ?? acct.id ?? "",
+        name: acct.name || acct.account_number || "Paper Account",
+        type: "paper",
+        buyingPower: balances?.margin?.option_buying_power ?? balances?.cash?.cash_available ?? balances?.buying_power ?? 0,
+        equity: balances?.total_equity ?? balances?.equity ?? 0,
+        currency: "USD",
+      });
+    }
+
+    return results;
+  },
+
   async getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]> {
     if (!accountId) {
       const status = await this.getStatus(accessToken);
@@ -207,7 +250,7 @@ export const tradierProvider: BrokerProvider = {
     if (!accountId) return [];
 
     const data = await tradierFetch(
-      `${BASE_URL}/accounts/${accountId}/positions`,
+      `${getBaseUrlForToken(accessToken)}/accounts/${accountId}/positions`,
       accessToken,
     );
 
@@ -233,7 +276,7 @@ export const tradierProvider: BrokerProvider = {
     if (!accountId) return [];
 
     const data = await tradierFetch(
-      `${BASE_URL}/accounts/${accountId}/orders`,
+      `${getBaseUrlForToken(accessToken)}/accounts/${accountId}/orders`,
       accessToken,
     );
 
@@ -255,7 +298,7 @@ export const tradierProvider: BrokerProvider = {
   async getOptionQuote(accessToken: string, optionSymbol: string): Promise<OptionQuote | null> {
     try {
       const data = await tradierFetch(
-        `${BASE_URL}/markets/quotes?symbols=${encodeURIComponent(optionSymbol)}&greeks=false`,
+        `${getBaseUrlForToken(accessToken)}/markets/quotes?symbols=${encodeURIComponent(optionSymbol)}&greeks=false`,
         accessToken,
       );
       const quote = data?.quotes?.quote;
@@ -330,7 +373,7 @@ export const tradierProvider: BrokerProvider = {
     console.log(`[Tradier] Order params: ${params.toString()}`);
 
     const response = await fetch(
-      `${BASE_URL}/accounts/${order.accountId}/orders`,
+      `${getBaseUrlForToken(accessToken)}/accounts/${order.accountId}/orders`,
       {
         method: "POST",
         headers: {

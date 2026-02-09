@@ -35,7 +35,13 @@ A provider adapter pattern (`server/broker/`) normalizes brokerage data across p
 - `GET /api/broker/accounts` — normalized accounts `[{id, name, type, buyingPower, equity, currency}]`
 - `GET /api/broker/positions` — normalized positions `[{symbol, qty, avgPrice, marketPrice, unrealizedPnl}]`
 - `GET /api/broker/orders` — recent orders `[{id, symbol, side, qty, status, createdAt}]`
+- `POST /api/broker/sandbox-token` — save Tradier sandbox API token for paper trading
+- `DELETE /api/broker/sandbox-token` — remove sandbox token
+- `GET /api/broker/sandbox-status` — check if sandbox token is configured
 - Legacy `GET /api/broker/status` unchanged for backward compatibility.
+
+### Paper Trading (Tradier Sandbox)
+Tradier paper trading uses a separate sandbox API token stored alongside live OAuth credentials in the encrypted credentials blob. Sandbox accounts are fetched from `sandbox.tradier.com` via `getSandboxAccounts()` and prefixed with `sandbox:` in their IDs (e.g., `sandbox:VA12345`). The `resolveAccountToken()` helper in `server/broker/index.ts` detects the prefix, registers the token via `registerSandboxToken()`, and routes API calls to the sandbox URL. The Tradier provider uses `getBaseUrlForToken()` to dynamically select between `api.tradier.com` and `sandbox.tradier.com`. Settings page (Broker tab) shows a "Paper Trading" card for Tradier connections where users can add/remove their sandbox token.
 
 ### Authentication & Authorization
 The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions. It supports `user` and `admin` roles, enforcing role-based access control for different API routes.

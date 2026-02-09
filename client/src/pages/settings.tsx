@@ -262,6 +262,60 @@ export default function Settings() {
     },
   });
 
+  const [sandboxToken, setSandboxToken] = useState("");
+  const [showSandboxInput, setShowSandboxInput] = useState(false);
+
+  const { data: sandboxStatus } = useQuery<{ hasSandboxToken: boolean }>({
+    queryKey: ["/api/broker/sandbox-status"],
+    enabled: !!brokerStatus?.isConnected && brokerStatus?.provider === "tradier",
+  });
+
+  const saveSandboxTokenMutation = useMutation({
+    mutationFn: async (token: string) => {
+      const response = await apiRequest("POST", "/api/broker/sandbox-token", { token });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/sandbox-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/accounts"] });
+      setSandboxToken("");
+      setShowSandboxInput(false);
+      toast({
+        title: "Paper Trading Enabled",
+        description: "Sandbox token saved. Paper trading accounts are now available.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Save Token",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeSandboxTokenMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("DELETE", "/api/broker/sandbox-token");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/sandbox-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/accounts"] });
+      toast({
+        title: "Paper Trading Disabled",
+        description: "Sandbox token removed.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Remove Token",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const { data: snaptradeStatus } = useQuery<{ configured: boolean }>({
     queryKey: ["/api/snaptrade/status"],
   });
@@ -778,6 +832,93 @@ export default function Settings() {
                       );
                     })}
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {brokerStatus?.isConnected && brokerStatus?.provider === "tradier" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base font-medium">Paper Trading</CardTitle>
+                  <CardDescription>
+                    Practice trading with a Tradier sandbox account using simulated money
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {sandboxStatus?.hasSandboxToken ? (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span className="text-sm">Sandbox token configured</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeSandboxTokenMutation.mutate()}
+                        disabled={removeSandboxTokenMutation.isPending}
+                        data-testid="button-remove-sandbox"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  ) : showSandboxInput ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="sandbox-token">Sandbox API Token</Label>
+                        <Input
+                          id="sandbox-token"
+                          type="password"
+                          placeholder="Paste your Tradier sandbox API token"
+                          value={sandboxToken}
+                          onChange={(e) => setSandboxToken(e.target.value)}
+                          data-testid="input-sandbox-token"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Get your sandbox token from{" "}
+                          <a
+                            href="https://sandbox.tradier.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            sandbox.tradier.com
+                          </a>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => saveSandboxTokenMutation.mutate(sandboxToken)}
+                          disabled={!sandboxToken.trim() || saveSandboxTokenMutation.isPending}
+                          data-testid="button-save-sandbox"
+                        >
+                          {saveSandboxTokenMutation.isPending ? "Saving..." : "Save Token"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowSandboxInput(false);
+                            setSandboxToken("");
+                          }}
+                          data-testid="button-cancel-sandbox"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSandboxInput(true)}
+                      data-testid="button-add-sandbox"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      Add Sandbox Token
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )}

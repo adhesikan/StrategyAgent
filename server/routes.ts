@@ -1610,6 +1610,51 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.post("/api/broker/sandbox-token", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { token } = req.body;
+      if (!token || typeof token !== "string" || token.trim().length === 0) {
+        return res.status(400).json({ error: "Sandbox API token is required" });
+      }
+
+      const connection = await storage.getBrokerConnection(userId);
+      if (!connection || !connection.isConnected || connection.provider !== "tradier") {
+        return res.status(400).json({ error: "Active Tradier connection required" });
+      }
+
+      await storage.setSandboxToken(userId, token.trim());
+      brokerService.invalidateBrokerCache(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[BrokerService] sandbox token error:", error.message);
+      res.status(500).json({ error: "Failed to save sandbox token" });
+    }
+  });
+
+  app.delete("/api/broker/sandbox-token", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await storage.removeSandboxToken(userId);
+      brokerService.invalidateBrokerCache(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[BrokerService] remove sandbox token error:", error.message);
+      res.status(500).json({ error: "Failed to remove sandbox token" });
+    }
+  });
+
+  app.get("/api/broker/sandbox-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      const hasSandbox = !!(connection?.sandboxAccessToken);
+      res.json({ hasSandboxToken: hasSandbox });
+    } catch (error: any) {
+      res.json({ hasSandboxToken: false });
+    }
+  });
+
   app.get("/api/broker/positions", isAuthenticated, async (req, res) => {
     try {
       const positions = await brokerService.getBrokerPositions(req.session.userId!);

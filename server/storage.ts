@@ -106,10 +106,12 @@ export interface IStorage {
   removeSymbolFromWatchlist(watchlistId: string, userId: string, symbol: string): Promise<Watchlist | undefined>;
 
   getBrokerConnection(userId: string): Promise<BrokerConnection | null>;
-  getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string }) | null>;
+  getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string; sandboxAccessToken?: string }) | null>;
   getAnyActiveBrokerConnection(): Promise<BrokerConnection | null>;
   setBrokerConnection(userId: string, connection: Omit<InsertBrokerConnection, 'userId'>): Promise<BrokerConnection>;
   setBrokerConnectionWithTokens(userId: string, provider: string, accessToken: string, refreshToken?: string, expiresAt?: Date): Promise<BrokerConnection>;
+  setSandboxToken(userId: string, sandboxAccessToken: string): Promise<void>;
+  removeSandboxToken(userId: string): Promise<void>;
   updateBrokerConnectionStatus(userId: string, isConnected: boolean): Promise<void>;
   clearBrokerConnection(userId: string): Promise<void>;
 
@@ -778,7 +780,7 @@ export class MemStorage implements IStorage {
     return connection || null;
   }
 
-  async getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string }) | null> {
+  async getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string; sandboxAccessToken?: string }) | null> {
     const connection = await this.getBrokerConnection(userId);
     if (!connection) return null;
     
@@ -793,6 +795,7 @@ export class MemStorage implements IStorage {
           ...connection,
           accessToken: credentials.accessToken,
           refreshToken: credentials.refreshToken,
+          sandboxAccessToken: credentials.sandboxAccessToken,
         };
       } catch (error) {
         console.error("Failed to decrypt broker credentials:", error);
@@ -875,6 +878,53 @@ export class MemStorage implements IStorage {
       isConnected: true,
       lastSync: new Date(),
     });
+  }
+
+  async setSandboxToken(userId: string, sandboxAccessToken: string): Promise<void> {
+    const connection = await this.getBrokerConnectionWithToken(userId);
+    if (!connection || !connection.accessToken) {
+      throw new Error("No active broker connection found");
+    }
+    if (!hasEncryptionKey()) {
+      throw new Error("Encryption key not configured");
+    }
+
+    const encrypted = encryptCredentials({
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+      sandboxAccessToken,
+    });
+
+    await db
+      .update(brokerConnections)
+      .set({
+        encryptedCredentials: encrypted.ciphertext,
+        credentialsIv: encrypted.iv,
+        credentialsAuthTag: encrypted.authTag,
+        updatedAt: new Date(),
+      })
+      .where(eq(brokerConnections.userId, userId));
+  }
+
+  async removeSandboxToken(userId: string): Promise<void> {
+    const connection = await this.getBrokerConnectionWithToken(userId);
+    if (!connection || !connection.accessToken) return;
+    if (!hasEncryptionKey()) return;
+
+    const encrypted = encryptCredentials({
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+    });
+
+    await db
+      .update(brokerConnections)
+      .set({
+        encryptedCredentials: encrypted.ciphertext,
+        credentialsIv: encrypted.iv,
+        credentialsAuthTag: encrypted.authTag,
+        updatedAt: new Date(),
+      })
+      .where(eq(brokerConnections.userId, userId));
   }
 
   async updateBrokerConnectionStatus(userId: string, isConnected: boolean): Promise<void> {

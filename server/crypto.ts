@@ -60,6 +60,7 @@ export interface BrokerCredentials {
   refreshToken?: string;
   expiresAt?: string;
   scope?: string;
+  sandboxAccessToken?: string;
 }
 
 export function encryptCredentials(credentials: BrokerCredentials): EncryptedData {

@@ -309,6 +309,16 @@ export default function OptionsScanner() {
       const isSell = primaryLeg?.side === "sell";
       const optionSide = isSell ? "sell_to_open" : "buy_to_open";
 
+      const underlying = candidate.underlying.toUpperCase().padEnd(6, " ");
+      const [expY, expM, expD] = candidate.expiration.split("-");
+      const yy = expY.slice(-2);
+      const mm = expM.padStart(2, "0");
+      const dd = expD.padStart(2, "0");
+      const cp = candidate.optionType === "call" ? "C" : "P";
+      const strikeInt = Math.round(candidate.strike * 1000);
+      const strikePart = String(strikeInt).padStart(8, "0");
+      const occSymbol = `${underlying}${yy}${mm}${dd}${cp}${strikePart}`;
+
       const response = await apiRequest("POST", "/api/broker/orders", {
         accountId,
         symbol: candidate.underlying,
@@ -318,7 +328,7 @@ export default function OptionsScanner() {
         price: candidate.mid,
         duration: "day",
         orderClass: "option",
-        optionSymbol: candidate.symbol,
+        optionSymbol: occSymbol,
         optionSide,
       });
       return response.json();

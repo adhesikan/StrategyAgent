@@ -733,7 +733,7 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {brokerStatus?.isConnected && brokerAccounts.length > 1 && (
+            {brokerStatus?.isConnected && brokerAccounts.length >= 1 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base font-medium">Trading Account</CardTitle>

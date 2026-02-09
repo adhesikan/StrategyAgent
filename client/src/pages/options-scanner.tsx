@@ -1063,13 +1063,11 @@ function CandidatesCardView({ candidates }: { candidates: OptionCandidate[] }) {
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <ScrollArea className="max-h-[500px] mt-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {others.map((c) => (
-                  <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} />
-                ))}
-              </div>
-            </ScrollArea>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">
+              {others.map((c) => (
+                <CandidateCard key={`${c.symbol}-${c.strike}-${c.expiration}`} c={c} />
+              ))}
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}
@@ -1300,14 +1298,14 @@ function CandidatesListView({ candidates }: { candidates: OptionCandidate[] }) {
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <ScrollArea className="max-h-[500px] mt-3">
+            <div className="rounded-md border mt-3">
               <Table>
                 {listHeader}
                 <TableBody>
                   <CandidateTableRows candidates={sortedOthers} />
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}

@@ -16,10 +16,24 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { getTradeStatus, getDistanceToEntry, getTradeStatusDisplay, isActionable } from "@/lib/trade-status";
-import type { ScanResult, PatternStageType } from "@shared/schema";
+import type { ScanResult } from "@shared/schema";
 
-type SortField = "ticker" | "price" | "changePercent" | "volume" | "rvol" | "patternScore" | "stage" | "status" | "resistance" | "stopLoss";
+type SortField = "ticker" | "name" | "price" | "changePercent" | "rvol" | "patternScore" | "status" | "resistance" | "stopLoss" | "riskReward";
 type SortDirection = "asc" | "desc";
+
+function computeRiskReward(result: { price: number; resistance?: number | null; stopLoss?: number | null }): number {
+  if (!result.resistance || !result.stopLoss || result.stopLoss >= result.price) return 0;
+  const reward = result.resistance - result.price;
+  const risk = result.price - result.stopLoss;
+  if (risk <= 0) return 0;
+  return reward / risk;
+}
+
+function formatRiskReward(result: { price: number; resistance?: number | null; stopLoss?: number | null }): string {
+  const rr = computeRiskReward(result);
+  if (rr <= 0) return "-";
+  return `1:${rr.toFixed(1)}`;
+}
 
 const STAGE_ORDER: Record<string, number> = {
   "BREAKOUT": 4,
@@ -55,19 +69,6 @@ function formatPercent(pct: number | null | undefined): string {
   return `${sign}${pct.toFixed(2)}%`;
 }
 
-function getStageBadgeVariant(stage: PatternStageType): "default" | "secondary" | "destructive" | "outline" {
-  switch (stage) {
-    case "BREAKOUT":
-      return "default";
-    case "READY":
-      return "secondary";
-    case "FORMING":
-      return "outline";
-    default:
-      return "outline";
-  }
-}
-
 function splitStockTopPicks(results: ScanResult[]): { topPicks: ScanResult[]; others: ScanResult[] } {
   if (results.length <= 6) {
     return { topPicks: results, others: [] };
@@ -97,7 +98,7 @@ function splitStockTopPicks(results: ScanResult[]): { topPicks: ScanResult[]; ot
 }
 
 export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isInstaTrading, searchQuery = "" }: ScannerTableProps) {
-  const [sortField, setSortField] = useState<SortField>("stage");
+  const [sortField, setSortField] = useState<SortField>("patternScore");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
@@ -129,15 +130,18 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
   const sortResults = (items: ScanResult[]) => {
     return [...items].sort((a, b) => {
       const modifier = sortDirection === "asc" ? 1 : -1;
-      if (sortField === "stage") {
-        const aOrder = STAGE_ORDER[a.stage] ?? 0;
-        const bOrder = STAGE_ORDER[b.stage] ?? 0;
-        return (aOrder - bOrder) * modifier;
-      }
       if (sortField === "status") {
         const aStatus = getTradeStatus(a);
         const bStatus = getTradeStatus(b);
         return ((STATUS_ORDER[aStatus] ?? 0) - (STATUS_ORDER[bStatus] ?? 0)) * modifier;
+      }
+      if (sortField === "riskReward") {
+        return (computeRiskReward(a) - computeRiskReward(b)) * modifier;
+      }
+      if (sortField === "name") {
+        const aName = a.name ?? "";
+        const bName = b.name ?? "";
+        return aName.localeCompare(bName) * modifier;
       }
       const aVal = a[sortField] ?? 0;
       const bVal = b[sortField] ?? 0;
@@ -175,16 +179,16 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">Symbol</TableHead>
+              <TableHead className="w-[80px]">Ticker</TableHead>
+              <TableHead>Name</TableHead>
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Change</TableHead>
-              <TableHead className="text-right">Volume</TableHead>
-              <TableHead className="text-right">RVOL</TableHead>
-              <TableHead>Stage</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Resistance</TableHead>
+              <TableHead className="text-right">Resist.</TableHead>
               <TableHead className="text-right">Stop</TableHead>
+              <TableHead className="text-right">R:R</TableHead>
+              <TableHead className="text-right">RVOL</TableHead>
               <TableHead className="text-right">Score</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -246,9 +250,37 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
             {isTopPick && <Star className="h-3 w-3 text-primary fill-primary shrink-0" />}
             <span>{result.ticker}</span>
           </div>
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant={statusBadge.variant} 
+                  className={cn("text-xs cursor-help", statusBadge.className)}
+                  data-testid={`badge-table-status-${result.ticker}`}
+                >
+                  {statusBadge.shortLabel}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">
+                {tradeStatus === "AWAITING_BREAKOUT" && distanceToEntry !== null 
+                  ? `Entry activates +${distanceToEntry.toFixed(1)}% above current price`
+                  : tradeStatus === "IN_ENTRY_ZONE" 
+                  ? "Price is within 3% of entry — trade is actionable"
+                  : "Price has moved more than 3% past entry — extended"
+                }
+              </TooltipContent>
+            </Tooltip>
+            {distanceToEntry !== null && (
+              <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                +{distanceToEntry.toFixed(1)}% to entry
+              </span>
+            )}
+          </div>
           {result.name && (
-            <span className="ml-4 text-xs text-muted-foreground font-normal">
-              {result.name.length > 15 ? result.name.slice(0, 15) + "..." : result.name}
+            <span className="text-xs text-muted-foreground truncate block max-w-[200px]">
+              {result.name}
             </span>
           )}
         </TableCell>
@@ -259,59 +291,22 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
           {formatPercent(result.changePercent)}
         </TableCell>
         <TableCell className="text-right font-mono text-muted-foreground">
-          {formatVolume(result.volume)}
-        </TableCell>
-        <TableCell className="text-right font-mono">
-          {result.rvol ? `${result.rvol.toFixed(1)}x` : "-"}
-        </TableCell>
-        <TableCell>
-          <Badge variant={getStageBadgeVariant(result.stage as PatternStageType)}>
-            {result.stage}
-          </Badge>
-        </TableCell>
-        <TableCell>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge 
-                variant={statusBadge.variant} 
-                className={cn("text-xs cursor-help", statusBadge.className)}
-                data-testid={`badge-table-status-${result.ticker}`}
-              >
-                {statusBadge.shortLabel}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs text-xs">
-              {tradeStatus === "AWAITING_BREAKOUT" && distanceToEntry !== null 
-                ? `Entry activates +${distanceToEntry.toFixed(1)}% above current price`
-                : tradeStatus === "IN_ENTRY_ZONE" 
-                ? "Price is within 3% of entry — trade is actionable"
-                : "Price has moved more than 3% past entry — extended"
-              }
-            </TooltipContent>
-          </Tooltip>
-        </TableCell>
-        <TableCell className="text-right font-mono text-muted-foreground">
           {formatPrice(result.resistance)}
-          {distanceToEntry !== null && (
-            <span className="block text-[10px] text-yellow-600 dark:text-yellow-400">
-              +{distanceToEntry.toFixed(1)}%
-            </span>
-          )}
         </TableCell>
         <TableCell className="text-right font-mono text-destructive">
           {formatPrice(result.stopLoss)}
         </TableCell>
+        <TableCell className="text-right font-mono text-muted-foreground">
+          {formatRiskReward(result)}
+        </TableCell>
+        <TableCell className="text-right font-mono">
+          {result.rvol ? `${result.rvol.toFixed(1)}x` : "-"}
+        </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
-            <div className="h-1.5 w-12 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.min(100, result.patternScore ?? 0)}%` }}
-              />
-            </div>
-            <span className="font-mono text-xs w-6 text-right">
-              {result.patternScore ?? 0}
-            </span>
+            <Badge variant="secondary" className="text-xs font-mono">
+              {result.patternScore ?? 0}%
+            </Badge>
           </div>
         </TableCell>
         <TableCell>
@@ -363,8 +358,11 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
   const tableHeader = (
     <TableHeader className="sticky top-0 z-10 bg-card">
       <TableRow>
-        <TableHead className="w-[100px]">
-          <SortHeader field="ticker">Symbol</SortHeader>
+        <TableHead className="w-[80px]">
+          <SortHeader field="ticker">Ticker</SortHeader>
+        </TableHead>
+        <TableHead>
+          <SortHeader field="name">Name</SortHeader>
         </TableHead>
         <TableHead className="text-right">
           <SortHeader field="price">Price</SortHeader>
@@ -373,22 +371,16 @@ export function ScannerTable({ results, isLoading, onRowClick, onInstaTrade, isI
           <SortHeader field="changePercent">Change</SortHeader>
         </TableHead>
         <TableHead className="text-right">
-          <SortHeader field="volume">Volume</SortHeader>
-        </TableHead>
-        <TableHead className="text-right">
-          <SortHeader field="rvol">RVOL</SortHeader>
-        </TableHead>
-        <TableHead>
-          <SortHeader field="stage">Stage</SortHeader>
-        </TableHead>
-        <TableHead>
-          <SortHeader field="status">Status</SortHeader>
-        </TableHead>
-        <TableHead className="text-right">
-          <SortHeader field="resistance">Entry</SortHeader>
+          <SortHeader field="resistance">Resist.</SortHeader>
         </TableHead>
         <TableHead className="text-right">
           <SortHeader field="stopLoss">Stop</SortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <SortHeader field="riskReward">R:R</SortHeader>
+        </TableHead>
+        <TableHead className="text-right">
+          <SortHeader field="rvol">RVOL</SortHeader>
         </TableHead>
         <TableHead className="text-right">
           <SortHeader field="patternScore">Score</SortHeader>

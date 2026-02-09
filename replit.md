@@ -97,7 +97,7 @@ The UI utilizes Radix UI primitives for accessibility and a custom Tailwind CSS 
 - **PostgreSQL**: Primary database for all application data.
 
 ### Brokerage Integrations
-The application connects to multiple brokerage providers for market data and direct trading. Broker connections are stored encrypted in PostgreSQL.
+The application connects to multiple brokerage providers for market data and direct trading. Broker connections are stored encrypted in PostgreSQL. The `broker_connections` table includes a `preferred_account_id` column so users with multiple brokerage accounts can select which account to use for trading. This preference is surfaced via `GET /api/broker/status` (includes `preferredAccountId`) and updated via `PATCH /api/broker/preferred-account`. The Settings > Broker tab shows an account picker when multiple accounts exist, and a dialog prompts account selection after a new broker connection is established. Scanner pages auto-select the preferred account for trade tickets.
 - **Tradier**: OAuth-based integration for market data access.
 - **TradeStation**: OAuth-based integration for market data access.
 - **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages. Utilizes `snaptrade-typescript-sdk`. Supports dual execution methods (AlgoPilotX Webhook or SnapTrade Direct).

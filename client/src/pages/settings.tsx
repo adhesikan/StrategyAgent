@@ -105,6 +105,9 @@ export default function Settings() {
   const [showTokenFallback, setShowTokenFallback] = useState(false);
   const { tooltipsEnabled, setTooltipsEnabled } = useTooltipVisibility();
   
+  const [showAccountPickerDialog, setShowAccountPickerDialog] = useState(false);
+  const [hasCheckedAccountPicker, setHasCheckedAccountPicker] = useState(false);
+
   const [localSettings, setLocalSettings] = useState<UserSettingsResponse>({
     showTooltips: true,
     pushNotificationsEnabled: false,
@@ -208,6 +211,56 @@ export default function Settings() {
     queryKey: ["/api/broker/status"],
   });
 
+  interface SettingsBrokerAccount {
+    id: string;
+    name: string;
+    type: string;
+    buyingPower: number;
+    equity: number;
+    currency: string;
+  }
+
+  const { data: brokerAccounts = [] } = useQuery<SettingsBrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: !!brokerStatus?.isConnected,
+  });
+
+  useEffect(() => {
+    if (!brokerStatus?.isConnected) {
+      setHasCheckedAccountPicker(false);
+      return;
+    }
+    if (hasCheckedAccountPicker) return;
+    if (!brokerStatus?.preferredAccountId && brokerAccounts.length > 1) {
+      setHasCheckedAccountPicker(true);
+      setShowAccountPickerDialog(true);
+    } else if (!brokerStatus?.preferredAccountId && brokerAccounts.length === 1) {
+      setHasCheckedAccountPicker(true);
+      setPreferredAccountMutation.mutate(brokerAccounts[0].id);
+    }
+  }, [brokerStatus, brokerAccounts, hasCheckedAccountPicker]);
+
+  const setPreferredAccountMutation = useMutation({
+    mutationFn: async (accountId: string) => {
+      const response = await apiRequest("PATCH", "/api/broker/preferred-account", { accountId });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+      toast({
+        title: "Trading Account Updated",
+        description: "Your preferred trading account has been set.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Update Account",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const { data: snaptradeStatus } = useQuery<{ configured: boolean }>({
     queryKey: ["/api/snaptrade/status"],
   });
@@ -295,8 +348,9 @@ export default function Settings() {
       const response = await apiRequest("POST", "/api/broker/connect", { provider, accessToken, secretKey });
       return response.json();
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/broker/accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scan/results", "meta"] });
       setConnectDialogOpen(false);
       setAccessToken("");
@@ -306,6 +360,17 @@ export default function Settings() {
         title: "Broker Connected",
         description: `Successfully connected to ${brokerProviders.find(b => b.id === data.provider)?.name || data.provider}`,
       });
+      try {
+        const accountsRes = await fetch("/api/broker/accounts");
+        if (accountsRes.ok) {
+          const accounts = await accountsRes.json();
+          if (accounts.length > 1) {
+            setShowAccountPickerDialog(true);
+          } else if (accounts.length === 1) {
+            setPreferredAccountMutation.mutate(accounts[0].id);
+          }
+        }
+      } catch {}
     },
     onError: (error) => {
       toast({
@@ -667,6 +732,55 @@ export default function Settings() {
               </CardContent>
             </Card>
 
+            {brokerStatus?.isConnected && brokerAccounts.length > 1 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base font-medium">Trading Account</CardTitle>
+                  <CardDescription>
+                    Select which account to use for placing trades
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {brokerAccounts.map((acc) => {
+                      const isSelected = brokerStatus?.preferredAccountId === acc.id;
+                      return (
+                        <div
+                          key={acc.id}
+                          className={`flex items-center justify-between gap-4 p-3 rounded-md border ${isSelected ? "border-primary bg-primary/5" : ""}`}
+                          data-testid={`account-row-${acc.id}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-sm" data-testid={`account-name-${acc.id}`}>{acc.name}</p>
+                              <Badge variant="secondary" className="text-[10px]">{acc.type}</Badge>
+                              {isSelected && (
+                                <Badge variant="default" className="text-[10px]" data-testid="badge-active-account">Active</Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Buying Power: ${acc.buyingPower.toLocaleString()} · Equity: ${acc.equity.toLocaleString()}
+                            </p>
+                          </div>
+                          {!isSelected && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPreferredAccountMutation.mutate(acc.id)}
+                              disabled={setPreferredAccountMutation.isPending}
+                              data-testid={`button-select-account-${acc.id}`}
+                            >
+                              {setPreferredAccountMutation.isPending ? "Setting..." : "Use This Account"}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-base font-medium">Data Providers</CardTitle>
@@ -719,6 +833,40 @@ export default function Settings() {
                     );
                   })}
                 </div>
+
+                <Dialog open={showAccountPickerDialog} onOpenChange={setShowAccountPickerDialog}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Select Trading Account</DialogTitle>
+                      <DialogDescription>
+                        Your broker has multiple accounts. Choose which one to use for placing trades.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                      {brokerAccounts.map((acc) => (
+                        <div
+                          key={acc.id}
+                          className="flex items-center justify-between gap-4 p-3 rounded-md border hover-elevate cursor-pointer"
+                          onClick={() => {
+                            setPreferredAccountMutation.mutate(acc.id);
+                            setShowAccountPickerDialog(false);
+                          }}
+                          data-testid={`picker-account-${acc.id}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-sm">{acc.name}</p>
+                              <Badge variant="secondary" className="text-[10px]">{acc.type}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Buying Power: ${acc.buyingPower.toLocaleString()} · Equity: ${acc.equity.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 <Dialog open={connectDialogOpen} onOpenChange={(open) => {
                   setConnectDialogOpen(open);

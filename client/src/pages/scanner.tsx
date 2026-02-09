@@ -359,7 +359,7 @@ export default function Scanner() {
     currency: string;
   }
 
-  const { data: brokerStatus } = useQuery<{ id: string; provider: string; isConnected: boolean } | null>({
+  const { data: brokerStatus } = useQuery<{ id: string; provider: string; isConnected: boolean; preferredAccountId?: string | null } | null>({
     queryKey: ["/api/broker/status"],
   });
 
@@ -367,6 +367,15 @@ export default function Scanner() {
     queryKey: ["/api/broker/accounts"],
     enabled: !!brokerStatus?.isConnected,
   });
+
+  const getPreferredAccount = (): BrokerAccount | null => {
+    if (brokerAccounts.length === 0) return null;
+    if (brokerStatus?.preferredAccountId) {
+      const preferred = brokerAccounts.find(a => a.id === brokerStatus.preferredAccountId);
+      if (preferred) return preferred;
+    }
+    return brokerAccounts[0];
+  };
 
   const [instaTradeResult, setInstaTradeResult] = useState<ScanResult | null>(null);
   const [showEndpointDialog, setShowEndpointDialog] = useState(false);
@@ -466,9 +475,9 @@ export default function Scanner() {
     }
     if (hasBrokerAccounts && !hasEndpoints) {
       setExecutionMethod("broker");
-      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+      setSelectedBrokerAccount(getPreferredAccount());
     } else if (hasBrokerAccounts) {
-      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+      setSelectedBrokerAccount(getPreferredAccount());
     }
     setShowEndpointDialog(true);
   };

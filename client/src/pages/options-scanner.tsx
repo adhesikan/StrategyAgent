@@ -242,7 +242,7 @@ export default function OptionsScanner() {
     currency: string;
   }
 
-  const { data: brokerStatus } = useQuery<{ id: string; provider: string; isConnected: boolean } | null>({
+  const { data: brokerStatus } = useQuery<{ id: string; provider: string; isConnected: boolean; preferredAccountId?: string | null } | null>({
     queryKey: ["/api/broker/status"],
   });
 
@@ -250,6 +250,15 @@ export default function OptionsScanner() {
     queryKey: ["/api/broker/accounts"],
     enabled: !!brokerStatus?.isConnected,
   });
+
+  const getPreferredAccount = (): BrokerAccount | null => {
+    if (brokerAccounts.length === 0) return null;
+    if (brokerStatus?.preferredAccountId) {
+      const preferred = brokerAccounts.find(a => a.id === brokerStatus.preferredAccountId);
+      if (preferred) return preferred;
+    }
+    return brokerAccounts[0];
+  };
 
   const { data: automationEndpoints } = useQuery<AutomationEndpoint[]>({
     queryKey: ["/api/automation-endpoints"],
@@ -307,7 +316,7 @@ export default function OptionsScanner() {
 
   const handleOptionInstaTrade = (candidate: OptionCandidate) => {
     setInstaTradeCandidate(candidate);
-    if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+    setSelectedBrokerAccount(getPreferredAccount());
 
     if (hasBrokerAccounts && !hasEndpoints) {
       setExecutionMethod("broker");

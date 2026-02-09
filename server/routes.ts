@@ -1284,6 +1284,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         provider: connection.provider,
         isConnected: connection.isConnected,
         lastSync: connection.lastSync,
+        preferredAccountId: connection.preferredAccountId || null,
       };
       res.json(sanitizedConnection);
     } catch (error) {
@@ -1573,6 +1574,39 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     } catch (error: any) {
       console.error("[BrokerService] accounts error:", error.message);
       res.status(500).json({ error: "Failed to fetch accounts" });
+    }
+  });
+
+  app.patch("/api/broker/preferred-account", isAuthenticated, async (req, res) => {
+    try {
+      const { accountId } = req.body;
+      if (!accountId || typeof accountId !== "string") {
+        return res.status(400).json({ error: "accountId is required" });
+      }
+
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnection(userId);
+      if (!connection || !connection.isConnected) {
+        return res.status(400).json({ error: "No active broker connection" });
+      }
+
+      const accounts = await brokerService.getBrokerAccounts(userId);
+      const validAccount = accounts.find((a: any) => a.id === accountId);
+      if (!validAccount) {
+        return res.status(400).json({ error: "Invalid account ID" });
+      }
+
+      const { brokerConnections } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const { db } = await import("./db");
+      await db.update(brokerConnections)
+        .set({ preferredAccountId: accountId, updatedAt: new Date() })
+        .where(eq(brokerConnections.userId, userId));
+
+      res.json({ success: true, preferredAccountId: accountId });
+    } catch (error: any) {
+      console.error("[BrokerService] preferred account error:", error.message);
+      res.status(500).json({ error: "Failed to update preferred account" });
     }
   });
 

@@ -320,6 +320,7 @@ export const brokerConnections = pgTable("broker_connections", {
   isConnected: boolean("is_connected").default(false),
   lastSync: timestamp("last_sync"),
   permissions: jsonb("permissions"),
+  preferredAccountId: text("preferred_account_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

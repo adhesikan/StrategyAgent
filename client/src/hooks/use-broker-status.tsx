@@ -8,6 +8,7 @@ interface BrokerStatus {
   provider: string;
   isConnected: boolean;
   lastSync: string | null;
+  preferredAccountId: string | null;
 }
 
 interface DataSourceStatus {

@@ -189,19 +189,40 @@ export async function fetchTradierQuotes(
   
   console.log(`[Tradier] Time check: ${dayOfWeek} ${etHour}:${etMinute} ET, marketMinutes=${marketMinutes}, isExtendedHours=${isExtendedHours}`);
   
-  // If in extended hours, fetch prices for ALL symbols using cached, rate-limited batch fetcher
+  // If in extended hours, fetch prices using cached, rate-limited batch fetcher
+  // Wrapped in try/catch with timeout so the scan still works even if extended prices fail
   let extendedPrices: Map<string, { price: number; volume: number }> = new Map();
   
   if (isExtendedHours) {
     const allSymbols = quoteArray.map((q: any) => q.symbol);
-    console.log(`[Tradier] Fetching extended hours for ${allSymbols.length} symbols...`);
-    extendedPrices = await fetchExtendedPricesBatch(accessToken, allSymbols);
-    console.log(`[Tradier] Extended hours result: ${extendedPrices.size}/${allSymbols.length} symbols with prices`);
+    // Limit extended price fetches to avoid timeouts on large universes
+    const MAX_EXTENDED_SYMBOLS = 100;
+    const symbolsToFetch = allSymbols.length > MAX_EXTENDED_SYMBOLS 
+      ? allSymbols.slice(0, MAX_EXTENDED_SYMBOLS) 
+      : allSymbols;
+    console.log(`[Tradier] Fetching extended hours for ${symbolsToFetch.length}/${allSymbols.length} symbols...`);
+    
+    try {
+      // Race against a 15-second timeout so the scan always returns
+      const fetchPromise = fetchExtendedPricesBatch(accessToken, symbolsToFetch);
+      const timeoutPromise = new Promise<Map<string, { price: number; volume: number }>>((resolve) => {
+        setTimeout(() => {
+          console.log(`[Tradier] Extended hours fetch timed out after 15s, using regular quote data`);
+          resolve(new Map());
+        }, 15000);
+      });
+      extendedPrices = await Promise.race([fetchPromise, timeoutPromise]);
+      console.log(`[Tradier] Extended hours result: ${extendedPrices.size}/${symbolsToFetch.length} symbols with prices`);
+    } catch (extError: any) {
+      console.error(`[Tradier] Extended hours fetch failed, using regular quote data:`, extError.message);
+      // Continue with empty extended prices — regular quote data will be used
+    }
   }
   
   return quoteArray.map((q: any) => {
     const prevClose = q.prevclose || q.close || 0;
-    let lastPrice = q.last || q.close || 0;
+    // During premarket, q.last might be 0/null — fall back to close, then prevclose
+    let lastPrice = q.last || q.close || q.prevclose || 0;
     
     // Use extended hours price if available
     const extPrice = extendedPrices.get(q.symbol);
@@ -209,9 +230,19 @@ export async function fetchTradierQuotes(
       lastPrice = extPrice.price;
     }
     
+    // Final safety: if lastPrice is still 0, skip this quote
+    if (lastPrice <= 0) {
+      lastPrice = prevClose > 0 ? prevClose : 0;
+    }
+    
     // Calculate change from previous close
     const change = prevClose > 0 ? (lastPrice - prevClose) : (q.change || 0);
     const changePercent = prevClose > 0 ? ((lastPrice - prevClose) / prevClose) * 100 : (q.change_percentage || 0);
+    
+    // During premarket, high/low/open may be 0 — use lastPrice as fallback
+    const high = (q.high && q.high > 0) ? q.high : lastPrice;
+    const low = (q.low && q.low > 0) ? q.low : lastPrice;
+    const openPrice = (q.open && q.open > 0) ? q.open : lastPrice;
     
     return {
       symbol: q.symbol,
@@ -220,9 +251,9 @@ export async function fetchTradierQuotes(
       changePercent: changePercent,
       volume: q.volume || 0,
       avgVolume: q.average_volume || 0,
-      high: q.high || 0,
-      low: q.low || 0,
-      open: q.open || 0,
+      high: high,
+      low: low,
+      open: openPrice,
       prevClose: prevClose,
     };
   });

@@ -543,6 +543,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       console.log(`[Scan] Received ${allQuotes.length} quotes from broker, session=${isRegularHours ? "regular" : "extended"}, applying filters: minPrice=${minPrice}, maxPrice=${maxPrice}, minVolume=${effectiveMinVolume ?? "skipped"}, minRvol=${effectiveMinRvol ?? "skipped"}`);
       
       const filteredQuotes = allQuotes.filter(quote => {
+        // Skip quotes with no valid price (can happen during premarket)
+        if (!quote.last || quote.last <= 0) return false;
         if (minPrice && quote.last < minPrice) return false;
         if (maxPrice && quote.last > maxPrice) return false;
         if (effectiveMinVolume && quote.volume < effectiveMinVolume) return false;
@@ -1624,6 +1626,13 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       res.json(result);
     } catch (error: any) {
       console.error("[BrokerService] place order error:", error.message);
+      // Detect insufficient scope error from Tradier
+      if (error.message?.includes("InsufficientScope") || error.message?.includes("scope-trade")) {
+        return res.status(403).json({ 
+          error: "Your broker connection doesn't have trading permissions. Please disconnect and reconnect your broker in Settings to grant trading access.",
+          code: "INSUFFICIENT_SCOPE",
+        });
+      }
       res.status(500).json({ error: error.message || "Failed to place order" });
     }
   });
@@ -1861,7 +1870,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       // Redirect user to Tradier authorization page
       const authUrl = new URL("https://api.tradier.com/v1/oauth/authorize");
       authUrl.searchParams.set("client_id", TRADIER_CLIENT_ID!);
-      authUrl.searchParams.set("scope", "read,write,market");
+      authUrl.searchParams.set("scope", "read,write,market,trade");
       authUrl.searchParams.set("state", state);
       authUrl.searchParams.set("redirect_uri", callbackUrl);
 

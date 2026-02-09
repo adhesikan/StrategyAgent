@@ -1,6 +1,15 @@
 import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse, OptionQuote } from "../types";
 
 const BASE_URL = "https://api.tradier.com/v1";
+const SANDBOX_URL = "https://sandbox.tradier.com/v1";
+
+function getAccountBaseUrl(account: any): string {
+  const classification = (account.classification || account.type || "").toLowerCase();
+  if (classification === "paper" || classification === "sandbox" || classification === "virtual") {
+    return SANDBOX_URL;
+  }
+  return BASE_URL;
+}
 
 function tradierHeaders(accessToken: string): Record<string, string> {
   return {
@@ -158,23 +167,29 @@ export const tradierProvider: BrokerProvider = {
     if (!accounts) return [];
 
     const accountArray = Array.isArray(accounts) ? accounts : [accounts];
+    console.log(`[Tradier] Found ${accountArray.length} accounts:`, accountArray.map((a: any) => ({ id: a.account_number, type: a.type, classification: a.classification, status: a.status })));
 
     const results: NormalizedAccount[] = [];
     for (const acct of accountArray) {
       let balances: any = null;
+      const acctBaseUrl = getAccountBaseUrl(acct);
       try {
         const balData = await tradierFetch(
-          `${BASE_URL}/accounts/${acct.account_number}/balances`,
+          `${acctBaseUrl}/accounts/${acct.account_number}/balances`,
           accessToken,
         );
         balances = balData?.balances;
       } catch {
       }
 
+      const classification = (acct.classification || acct.type || "").toLowerCase();
+      const isPaper = classification === "paper" || classification === "sandbox" || classification === "virtual";
+      const displayType = isPaper ? "paper" : (acct.type || acct.classification || "unknown");
+
       results.push({
         id: acct.account_number ?? acct.id ?? "",
         name: acct.name || acct.account_number || "Tradier Account",
-        type: acct.type || acct.classification || "unknown",
+        type: displayType,
         buyingPower: balances?.margin?.option_buying_power ?? balances?.cash?.cash_available ?? balances?.buying_power ?? 0,
         equity: balances?.total_equity ?? balances?.equity ?? 0,
         currency: "USD",

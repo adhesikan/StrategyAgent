@@ -135,10 +135,26 @@ export async function placeBrokerOrder(userId: string, order: OrderRequest): Pro
   return result;
 }
 
+export async function getOptionQuote(userId: string, optionSymbol: string) {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) {
+    return null;
+  }
+  const provider = getProvider(connection.provider);
+  if (!provider.getOptionQuote) return null;
+  return provider.getOptionQuote(connection.accessToken!, optionSymbol);
+}
+
+export async function getConnectionProviderForUser(userId: string) {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) return null;
+  return { provider: connection.provider, accessToken: connection.accessToken! };
+}
+
 export function invalidateBrokerCache(userId: string): void {
   for (const prefix of ["status", "accounts", "positions", "orders"]) {
     cache.delete(`${prefix}:${userId}`);
   }
 }
 
-export type { BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse } from "./types";
+export type { BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse, OptionQuote } from "./types";

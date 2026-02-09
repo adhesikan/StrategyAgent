@@ -1,4 +1,4 @@
-import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse } from "../types";
+import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse, OptionQuote } from "../types";
 
 const BASE_URL = "https://api.tradier.com/v1";
 
@@ -127,6 +127,31 @@ export const tradierProvider: BrokerProvider = {
       status: o.status ?? "unknown",
       createdAt: o.create_date ?? o.transaction_date ?? "",
     }));
+  },
+
+  async getOptionQuote(accessToken: string, optionSymbol: string): Promise<OptionQuote | null> {
+    try {
+      const data = await tradierFetch(
+        `${BASE_URL}/markets/quotes?symbols=${encodeURIComponent(optionSymbol)}&greeks=false`,
+        accessToken,
+      );
+      const quote = data?.quotes?.quote;
+      if (!quote) return null;
+      const bid = quote.bid ?? 0;
+      const ask = quote.ask ?? 0;
+      return {
+        symbol: optionSymbol,
+        bid,
+        ask,
+        mid: parseFloat(((bid + ask) / 2).toFixed(2)),
+        last: quote.last ?? 0,
+        volume: quote.volume ?? 0,
+        openInterest: quote.open_interest ?? 0,
+      };
+    } catch (e) {
+      console.error("[Tradier] getOptionQuote error:", (e as Error).message);
+      return null;
+    }
   },
 
   async placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse> {

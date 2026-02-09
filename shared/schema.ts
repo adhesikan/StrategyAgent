@@ -1098,3 +1098,88 @@ export const insertOptionsScanSchema = createInsertSchema(optionsScans).omit({
 });
 export type InsertOptionsScan = z.infer<typeof insertOptionsScanSchema>;
 export type OptionsScan = typeof optionsScans.$inferSelect;
+
+// ─── Trade Orders ─────────────────────────────────────────────────
+export const TradeOrderStatus = {
+  PENDING: "pending",
+  FILLED: "filled",
+  PARTIALLY_FILLED: "partially_filled",
+  CANCELLED: "cancelled",
+  REJECTED: "rejected",
+  EXPIRED: "expired",
+} as const;
+export type TradeOrderStatusType = typeof TradeOrderStatus[keyof typeof TradeOrderStatus];
+
+export const tradeOrders = pgTable("trade_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  brokerProvider: text("broker_provider").notNull(),
+  brokerAccountId: text("broker_account_id").notNull(),
+  brokerOrderId: text("broker_order_id"),
+  symbol: text("symbol").notNull(),
+  optionSymbol: text("option_symbol"),
+  orderClass: text("order_class").notNull().default("option"),
+  side: text("side").notNull(),
+  optionSide: text("option_side"),
+  quantity: integer("quantity").notNull(),
+  orderType: text("order_type").notNull(),
+  limitPrice: real("limit_price"),
+  stopPrice: real("stop_price"),
+  duration: text("duration").notNull().default("day"),
+  status: text("status").notNull().default("pending"),
+  fillPrice: real("fill_price"),
+  filledAt: timestamp("filled_at"),
+  strategyKey: text("strategy_key"),
+  strategyVariant: text("strategy_variant"),
+  strike: real("strike"),
+  expiration: text("expiration"),
+  optionType: text("option_type"),
+  ticketJson: jsonb("ticket_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTradeOrderSchema = createInsertSchema(tradeOrders).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertTradeOrder = z.infer<typeof insertTradeOrderSchema>;
+export type TradeOrder = typeof tradeOrders.$inferSelect;
+
+// ─── Managed Exits (OCO fallback) ──────────────────────────────────
+export const ManagedExitStatus = {
+  ACTIVE: "active",
+  TARGET_HIT: "target_hit",
+  STOP_HIT: "stop_hit",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+  ERROR: "error",
+} as const;
+export type ManagedExitStatusType = typeof ManagedExitStatus[keyof typeof ManagedExitStatus];
+
+export const managedExits = pgTable("managed_exits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  tradeOrderId: varchar("trade_order_id").notNull(),
+  brokerProvider: text("broker_provider").notNull(),
+  brokerAccountId: text("broker_account_id").notNull(),
+  symbol: text("symbol").notNull(),
+  optionSymbol: text("option_symbol"),
+  optionSide: text("option_side"),
+  quantity: integer("quantity").notNull(),
+  targetPrice: real("target_price"),
+  stopPrice: real("stop_price"),
+  stopType: text("stop_type").notNull().default("stop"),
+  status: text("status").notNull().default("active"),
+  exitBrokerOrderId: text("exit_broker_order_id"),
+  exitPrice: real("exit_price"),
+  exitedAt: timestamp("exited_at"),
+  lastCheckedAt: timestamp("last_checked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertManagedExitSchema = createInsertSchema(managedExits).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertManagedExit = z.infer<typeof insertManagedExitSchema>;
+export type ManagedExit = typeof managedExits.$inferSelect;

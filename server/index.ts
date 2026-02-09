@@ -385,6 +385,11 @@ async function restoreBrokerConnections() {
   startScheduledScanService();
   log("Scheduled scan service started");
 
+  // Start exit manager for managed exits (TradeGuard)
+  const { startExitManager } = await import("./exit-manager");
+  startExitManager();
+  log("Exit manager started (TradeGuard)");
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

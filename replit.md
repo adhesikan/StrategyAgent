@@ -58,6 +58,24 @@ All options endpoints require authentication and `optionsScanner` entitlement. T
 - Fetches risk profile and displays a summary card with "Edit" link
 - Checks broker status; disables "Run Scan" if broker not connected
 
+### Trade Ticket v2 (InstaTrade)
+The Trade Ticket (`client/src/components/trade-ticket.tsx`) is a Sheet-based drawer that replaces the old InstaTrade dialog for direct broker orders. It provides:
+- **Simple Mode** (default): Market/Limit entry type with quick price buttons (MID, MID±0.02, NAT), contract quantity, account selection
+- **Advanced Mode** (toggle): TIF (DAY/GTC), stop type (stop vs stop-limit)
+- **Exit Plan (Bracket/TradeGuard)**: Optional target + stop loss. For credit strategies: target=50% profit, stop=2x credit. For debit: target=50% gain, stop=50% loss.
+- **Preview API**: `POST /api/trade/preview` fetches live bid/ask/mid/last from broker, computes suggested limit/target/stop
+- **Place API**: `POST /api/trade/place` places entry order via broker, persists to `trade_orders` table, optionally creates a `managed_exits` record for server-side exit monitoring
+- **AlgoPilotX path**: Unchanged — still uses the Dialog for automation endpoint signals
+DB tables: `trade_orders` (entry order details, status, fill info, strategy metadata), `managed_exits` (target/stop, status, exit order tracking)
+
+### Exit Manager (TradeGuard)
+The Exit Manager (`server/exit-manager.ts`) is a server-side cron worker that monitors managed exits during market hours (9:30 AM - 4:00 PM ET). Every 30 seconds, it:
+1. Fetches all active managed exits from the database
+2. Gets live option quotes via the broker service
+3. Checks if target or stop price conditions are met
+4. Places a market close order when triggered and updates the managed exit status
+Supports both buy-to-close (for debit strategies) and sell-to-close (for credit strategies) exit logic.
+
 ### Automated Scanning and Price Tracking
 The platform includes an automated multi-strategy scanning system (`server/scheduled-scan-service.ts`) that runs at scheduled times, incorporating holiday awareness. It detects various VCP-related strategies (e.g., Momentum Breakout, Open Drive, Gap Force) and ingests opportunities into an Outcome Report. Extended hours price tracking (4:00 AM - 8:00 PM ET) updates max/min prices for active opportunities every 5 minutes to determine outcomes.
 

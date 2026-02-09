@@ -1,0 +1,49 @@
+Implement InstaTrade Trade Ticket v2 for options with support for Entry Limit and Exit OCO (Target + Stop).
+
+CURRENT STATE:
+- InstaTrade button places a market order immediately via broker (Tradier).
+- We need to add:
+  (1) Entry order type: Market or Limit (user can input limit)
+  (2) Optional exit plan: OCO bracket with target + stop loss
+
+UX REQUIREMENTS:
+1) Clicking InstaTrade opens a side drawer "Trade Ticket" (not a new page).
+2) Ticket has two modes:
+   - Simple (default): Market/Limit + optional Bracket (Target/Stop)
+   - Advanced (toggle): adds TIF (DAY/GTC), stop type (stop vs stop-limit)
+3) Prefill:
+   - Default entry = Limit @ Mid (with quick buttons MID, MID±0.02, NAT)
+   - Default bracket (if enabled) based on risk profile:
+     - for credit: target = 50% profit (buyback at credit*0.5), stop = 2x credit
+     - for debit: target = 50% gain (sell at debit*1.5), stop = 50% loss (debit*0.5)
+4) Show clear labels in option-value terms (not underlying price):
+   - “Close when position value reaches $X”
+5) Disable OCO selection if not supported OR show “Managed Exit (TradeGuard)” note.
+
+BACKEND REQUIREMENTS:
+6) Create normalized TradeTicket payload and implement:
+   - POST /api/trade/preview: returns mid/nat/last, suggested limit, suggested target/stop
+   - POST /api/trade/place:
+       - places entry order (market or limit)
+       - if exit plan enabled:
+          - if broker supports native OCO for this order type -> place OCO
+          - else -> register a synthetic OCO exit plan in DB for server-side management
+
+7) Add DB tables:
+   - trade_orders (store entry order, status, fill info)
+   - managed_exits (ticket id, user id, broker, account, symbol/legs, target, stop, state, created_at)
+8) Add worker/cron "exit manager":
+   - checks managed_exits during market hours every 10–30 seconds
+   - when target/stop condition met, submits close order and marks exit plan complete
+   - includes guardrails: one-shot, cooldown, max slippage, emergency stop integration
+
+DO NOT:
+- Break existing InstaTrade market order flow (keep as default if user doesn’t change settings).
+- Change existing scan logic; only enhance execution UI and backend.
+
+DELIVER:
+- Updated InstaTrade UI with Simple/Advanced modes
+- New preview/place endpoints
+- Broker adapter support for limit orders
+- Managed exit infrastructure for OCO fallback
+- File list and instructions for env vars if needed

@@ -52,10 +52,21 @@ export interface OrderResponse {
   status: string;
 }
 
+export interface OptionQuote {
+  symbol: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  last: number;
+  volume: number;
+  openInterest: number;
+}
+
 export interface BrokerProvider {
   getStatus(accessToken: string): Promise<BrokerStatus>;
   getAccounts(accessToken: string): Promise<NormalizedAccount[]>;
   getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]>;
   getOrders(accessToken: string, accountId?: string): Promise<NormalizedOrder[]>;
   placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse>;
+  getOptionQuote?(accessToken: string, optionSymbol: string): Promise<OptionQuote | null>;
 }

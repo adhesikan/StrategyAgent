@@ -1649,6 +1649,191 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ─── Trade Ticket API (Preview & Place) ──────────────────────────────
+  const { tradeOrders, managedExits } = await import("@shared/schema");
+
+  app.post("/api/trade/preview", isAuthenticated, async (req, res) => {
+    try {
+      const { optionSymbol, underlying, strike, expiration, optionType, strategyVariant, mid: candidateMid } = req.body;
+      if (!optionSymbol || !underlying) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      let bid = 0, ask = 0, mid = candidateMid ?? 0, last = 0;
+      try {
+        const quote = await brokerService.getOptionQuote(req.session.userId!, optionSymbol);
+        if (quote) {
+          bid = quote.bid;
+          ask = quote.ask;
+          mid = quote.mid;
+          last = quote.last;
+        }
+      } catch (e) {
+        console.log("[TradePreview] Quote fetch failed, using candidate data");
+      }
+
+      const nat = bid > 0 ? bid : mid;
+      const suggestedLimit = mid;
+
+      const isCreditStrategy = (strategyVariant || "").toLowerCase().includes("put spread") ||
+        (strategyVariant || "").toLowerCase().includes("call spread") ||
+        (strategyVariant || "").toLowerCase().includes("covered") ||
+        (strategyVariant || "").toLowerCase().includes("cash-secured");
+
+      let suggestedTarget: number | null = null;
+      let suggestedStop: number | null = null;
+
+      if (isCreditStrategy) {
+        suggestedTarget = parseFloat((mid * 0.5).toFixed(2));
+        suggestedStop = parseFloat((mid * 2.0).toFixed(2));
+      } else {
+        suggestedTarget = parseFloat((mid * 1.5).toFixed(2));
+        suggestedStop = parseFloat((mid * 0.5).toFixed(2));
+      }
+
+      res.json({
+        bid,
+        ask,
+        mid,
+        last,
+        nat,
+        suggestedLimit,
+        suggestedTarget,
+        suggestedStop,
+        isCreditStrategy,
+      });
+    } catch (error: any) {
+      console.error("[TradePreview] error:", error.message);
+      res.status(500).json({ error: "Failed to generate preview" });
+    }
+  });
+
+  app.post("/api/trade/place", isAuthenticated, async (req, res) => {
+    try {
+      const {
+        accountId, symbol, optionSymbol, optionSide, quantity,
+        orderType, limitPrice, duration, strike, expiration, optionType,
+        strategyKey, strategyVariant,
+        exitPlan,
+      } = req.body;
+
+      if (!accountId || !symbol || !quantity) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      if (typeof quantity !== "number" || quantity < 1 || quantity > 100) {
+        return res.status(400).json({ error: "quantity must be between 1 and 100" });
+      }
+
+      const accounts = await brokerService.getBrokerAccounts(req.session.userId!);
+      if (!accounts.find((a: any) => a.id === accountId)) {
+        return res.status(403).json({ error: "Invalid or unauthorized broker account" });
+      }
+
+      let finalOptionSymbol = optionSymbol;
+      if (strike && expiration && optionType && symbol) {
+        const u = symbol.toUpperCase();
+        const [ey, em, ed] = expiration.split("-");
+        const yy = ey.slice(-2);
+        const mm = em.padStart(2, "0");
+        const dd = ed.padStart(2, "0");
+        const cp = optionType === "call" ? "C" : "P";
+        const si = Math.round(strike * 1000);
+        const sp = String(si).padStart(8, "0");
+        finalOptionSymbol = `${u}${yy}${mm}${dd}${cp}${sp}`;
+      }
+
+      if (!finalOptionSymbol) {
+        return res.status(400).json({ error: "optionSymbol is required or must be derivable from strike/expiration/optionType" });
+      }
+
+      const side = (optionSide === "sell_to_open" || optionSide === "sell_to_close") ? "sell" : "buy";
+      const finalOrderType = orderType || "limit";
+      const finalDuration = duration || "day";
+
+      const orderRequest: any = {
+        accountId,
+        symbol: symbol.toUpperCase(),
+        side,
+        quantity: Math.floor(quantity),
+        orderType: finalOrderType,
+        duration: finalDuration,
+        orderClass: "option",
+        optionSymbol: finalOptionSymbol,
+        optionSide: optionSide || "buy_to_open",
+      };
+
+      if (limitPrice !== undefined && (finalOrderType === "limit" || finalOrderType === "stop_limit")) {
+        orderRequest.price = limitPrice;
+      }
+
+      const brokerResult = await brokerService.placeBrokerOrder(req.session.userId!, orderRequest);
+
+      const connInfo = await brokerService.getConnectionProviderForUser(req.session.userId!);
+      const providerName = connInfo?.provider || "tradier";
+
+      const { db } = await import("./db");
+      const [tradeOrder] = await db.insert(tradeOrders).values({
+        userId: req.session.userId!,
+        brokerProvider: providerName,
+        brokerAccountId: accountId,
+        brokerOrderId: brokerResult.orderId,
+        symbol: symbol.toUpperCase(),
+        optionSymbol: finalOptionSymbol,
+        orderClass: "option",
+        side,
+        optionSide: optionSide || "buy_to_open",
+        quantity: Math.floor(quantity),
+        orderType: finalOrderType,
+        limitPrice: limitPrice ?? null,
+        duration: finalDuration,
+        status: brokerResult.status || "pending",
+        strategyKey: strategyKey || null,
+        strategyVariant: strategyVariant || null,
+        strike: strike ?? null,
+        expiration: expiration || null,
+        optionType: optionType || null,
+        ticketJson: req.body,
+      }).returning();
+
+      let managedExitId: string | null = null;
+
+      if (exitPlan && (exitPlan.targetPrice || exitPlan.stopPrice)) {
+        const closeSide = (optionSide === "buy_to_open") ? "sell_to_close" : "buy_to_close";
+        const [managedExit] = await db.insert(managedExits).values({
+          userId: req.session.userId!,
+          tradeOrderId: tradeOrder.id,
+          brokerProvider: providerName,
+          brokerAccountId: accountId,
+          symbol: symbol.toUpperCase(),
+          optionSymbol: finalOptionSymbol,
+          optionSide: closeSide,
+          quantity: Math.floor(quantity),
+          targetPrice: exitPlan.targetPrice ?? null,
+          stopPrice: exitPlan.stopPrice ?? null,
+          stopType: exitPlan.stopType || "stop",
+          status: "active",
+        }).returning();
+        managedExitId = managedExit.id;
+      }
+
+      res.json({
+        ...brokerResult,
+        tradeOrderId: tradeOrder.id,
+        managedExitId,
+      });
+    } catch (error: any) {
+      console.error("[TradePlacement] error:", error.message);
+      if (error.message?.includes("InsufficientScope") || error.message?.includes("scope-trade")) {
+        return res.status(403).json({
+          error: "Your broker connection doesn't have trading permissions. Please disconnect and reconnect your broker in Settings to grant trading access.",
+          code: "INSUFFICIENT_SCOPE",
+        });
+      }
+      res.status(500).json({ error: error.message || "Failed to place order" });
+    }
+  });
+
   // ─── Platform Risk Profile API ────────────────────────────────────────
   const { toRiskProfileResponse } = await import("@shared/platform-types");
   const { getDefaultRiskProfile: getOrCreateRiskProfile } = await import("./models/risk-profiles");

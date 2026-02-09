@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TradeTicket } from "@/components/trade-ticket";
 import { useToast } from "@/hooks/use-toast";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { cn } from "@/lib/utils";
@@ -256,6 +257,7 @@ export default function OptionsScanner() {
 
   const [instaTradeCandidate, setInstaTradeCandidate] = useState<OptionCandidate | null>(null);
   const [showInstaTradeDialog, setShowInstaTradeDialog] = useState(false);
+  const [showTradeTicket, setShowTradeTicket] = useState(false);
   const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "broker">("algopilotx");
   const [selectedEndpoint, setSelectedEndpoint] = useState<AutomationEndpoint | null>(null);
   const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
@@ -303,90 +305,28 @@ export default function OptionsScanner() {
     },
   });
 
-  const optionsBrokerOrderMutation = useMutation({
-    mutationFn: async ({ accountId, candidate, quantity }: { accountId: string; candidate: OptionCandidate; quantity: number }) => {
-      const primaryLeg = candidate.legs[0];
-      const isSell = primaryLeg?.side === "sell";
-      const optionSide = isSell ? "sell_to_open" : "buy_to_open";
-
-      const underlying = candidate.underlying.toUpperCase();
-      const [expY, expM, expD] = candidate.expiration.split("-");
-      const yy = expY.slice(-2);
-      const mm = expM.padStart(2, "0");
-      const dd = expD.padStart(2, "0");
-      const cp = candidate.optionType === "call" ? "C" : "P";
-      const strikeInt = Math.round(candidate.strike * 1000);
-      const strikePart = String(strikeInt).padStart(8, "0");
-      const occSymbol = `${underlying}${yy}${mm}${dd}${cp}${strikePart}`;
-
-      const response = await apiRequest("POST", "/api/broker/orders", {
-        accountId,
-        symbol: candidate.underlying,
-        side: isSell ? "sell" : "buy",
-        quantity,
-        orderType: "limit",
-        price: candidate.mid,
-        duration: "day",
-        orderClass: "option",
-        optionSymbol: occSymbol,
-        optionSide,
-      });
-      return response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Order Placed",
-        description: `Options order for ${instaTradeCandidate?.underlying} submitted`,
-      });
-      setShowInstaTradeDialog(false);
-      setInstaTradeCandidate(null);
-      globalQueryClient.invalidateQueries({ queryKey: ["/api/broker/orders"] });
-    },
-    onError: (error: any) => {
-      let description = "Could not place order";
-      try {
-        const jsonMatch = error.message?.match(/\{.*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          description = parsed.error || description;
-        } else {
-          description = error.message || description;
-        }
-      } catch {
-        description = error.message || description;
-      }
-      toast({
-        title: "Order Failed",
-        description,
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleOptionInstaTrade = (candidate: OptionCandidate) => {
     setInstaTradeCandidate(candidate);
-    if (hasEndpoints) {
-      setSelectedEndpoint(automationEndpoints![0]);
-      setExecutionMethod("algopilotx");
-    }
+    if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+
     if (hasBrokerAccounts && !hasEndpoints) {
       setExecutionMethod("broker");
-      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+      setShowTradeTicket(true);
+    } else if (hasEndpoints) {
+      setSelectedEndpoint(automationEndpoints![0]);
+      setExecutionMethod("algopilotx");
+      setShowInstaTradeDialog(true);
     } else if (hasBrokerAccounts) {
-      if (brokerAccounts.length > 0) setSelectedBrokerAccount(brokerAccounts[0]);
+      setExecutionMethod("broker");
+      setShowTradeTicket(true);
+    } else {
+      setShowInstaTradeDialog(true);
     }
-    setShowInstaTradeDialog(true);
   };
 
   const handleConfirmOptionInstaTrade = () => {
     if (executionMethod === "algopilotx" && selectedEndpoint && instaTradeCandidate) {
       optionsInstatradeMutation.mutate({ endpointId: selectedEndpoint.id, candidate: instaTradeCandidate });
-    } else if (executionMethod === "broker" && selectedBrokerAccount && instaTradeCandidate) {
-      optionsBrokerOrderMutation.mutate({
-        accountId: selectedBrokerAccount.id,
-        candidate: instaTradeCandidate,
-        quantity: orderQuantity,
-      });
     }
   };
 
@@ -1029,46 +969,7 @@ export default function OptionsScanner() {
                 </div>
               </div>
 
-              {instaTradeCandidate.legs.length > 1 && (
-                <div className="space-y-1 p-2 rounded-md bg-muted/50">
-                  <p className="text-xs font-medium text-muted-foreground">Legs:</p>
-                  {instaTradeCandidate.legs.map((leg, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
-                      <Badge variant="outline" className="text-xs capitalize">{leg.side}</Badge>
-                      <span className="font-mono">${leg.strike} {leg.optionType}</span>
-                      <span className="text-muted-foreground">{leg.expiration}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <RadioGroup
-                value={executionMethod}
-                onValueChange={(v) => setExecutionMethod(v as "algopilotx" | "broker")}
-                className="space-y-2"
-                data-testid="radio-execution-method"
-              >
-                {hasEndpoints && (
-                  <div className="flex items-center space-x-2 rounded-md border p-3">
-                    <RadioGroupItem value="algopilotx" id="opt-algopilotx" />
-                    <Label htmlFor="opt-algopilotx" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-sm">AlgoPilotX (Automation)</div>
-                      <div className="text-xs text-muted-foreground">Send signal to your automation endpoint</div>
-                    </Label>
-                  </div>
-                )}
-                {hasBrokerAccounts && (
-                  <div className="flex items-center space-x-2 rounded-md border p-3">
-                    <RadioGroupItem value="broker" id="opt-broker" />
-                    <Label htmlFor="opt-broker" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-sm">Direct Broker Order</div>
-                      <div className="text-xs text-muted-foreground">Place limit order via {brokerStatus?.provider}</div>
-                    </Label>
-                  </div>
-                )}
-              </RadioGroup>
-
-              {executionMethod === "algopilotx" && hasEndpoints && (
+              {hasEndpoints && (
                 <div className="space-y-2">
                   <Label className="text-xs">Automation Endpoint</Label>
                   <Select
@@ -1087,36 +988,20 @@ export default function OptionsScanner() {
                 </div>
               )}
 
-              {executionMethod === "broker" && hasBrokerAccounts && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Account</Label>
-                    <Select
-                      value={selectedBrokerAccount?.id || ""}
-                      onValueChange={(v) => setSelectedBrokerAccount(brokerAccounts.find(a => a.id === v) || null)}
-                    >
-                      <SelectTrigger data-testid="select-broker-account">
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brokerAccounts.map((acc) => (
-                          <SelectItem key={acc.id} value={acc.id}>
-                            {acc.name} (${acc.buyingPower.toLocaleString()} BP)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Contracts</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={orderQuantity}
-                      onChange={(e) => setOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                      data-testid="input-quantity"
-                    />
-                  </div>
+              {hasBrokerAccounts && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-md bg-muted/30">
+                  <span>For direct broker orders, use the Trade Ticket</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowInstaTradeDialog(false);
+                      setShowTradeTicket(true);
+                    }}
+                    data-testid="button-open-trade-ticket"
+                  >
+                    Open Trade Ticket
+                  </Button>
                 </div>
               )}
             </div>
@@ -1130,22 +1015,30 @@ export default function OptionsScanner() {
               onClick={handleConfirmOptionInstaTrade}
               disabled={
                 optionsInstatradeMutation.isPending ||
-                optionsBrokerOrderMutation.isPending ||
-                (executionMethod === "algopilotx" && !selectedEndpoint) ||
-                (executionMethod === "broker" && !selectedBrokerAccount)
+                !selectedEndpoint
               }
               data-testid="button-confirm-instatrade"
             >
-              {(optionsInstatradeMutation.isPending || optionsBrokerOrderMutation.isPending) ? (
+              {optionsInstatradeMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
                 <Zap className="h-4 w-4 mr-1" />
               )}
-              {executionMethod === "broker" ? "Place Order" : "Send Signal"}
+              Send Signal
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TradeTicket
+        open={showTradeTicket}
+        onOpenChange={setShowTradeTicket}
+        candidate={instaTradeCandidate}
+        brokerAccounts={brokerAccounts}
+        selectedAccount={selectedBrokerAccount}
+        onAccountChange={setSelectedBrokerAccount}
+        brokerProvider={brokerStatus?.provider}
+      />
     </div>
   );
 }

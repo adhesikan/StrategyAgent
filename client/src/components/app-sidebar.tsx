@@ -8,6 +8,7 @@ import {
   Radio,
   ChevronsLeft,
   ChevronsRight,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -19,10 +20,15 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 
 interface NavItem {
   title: string;
@@ -38,6 +44,88 @@ const navItems: NavItem[] = [
   { title: "News", description: "Market headlines", url: "/news", icon: Newspaper },
   { title: "Settings", description: "Account & config", url: "/settings", icon: Settings },
 ];
+
+function SidebarBrandHeader() {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+  const { isConnected, providerName, status } = useBrokerStatus();
+  const { user } = useAuth();
+
+  const { data: agentState } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/agent/state"],
+    enabled: !!user,
+  });
+
+  const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
+
+  let brokerLabel = "Not Connected";
+  let brokerVariant: "default" | "secondary" | "outline" = "outline";
+  if (isConnected && providerName) {
+    if (isPaper) {
+      brokerLabel = `Paper: ${providerName}`;
+      brokerVariant = "secondary";
+    } else {
+      brokerLabel = `Live: ${providerName}`;
+      brokerVariant = "default";
+    }
+  }
+
+  const automationActive = agentState?.enabled ?? false;
+
+  return (
+    <>
+      <Link href="/command-center" aria-label="Go to Dashboard" data-testid="link-home">
+        <div className="flex items-center flex-wrap gap-2.5">
+          <img
+            src="/logo.png"
+            alt="VCP Trader"
+            className="h-8 w-8 shrink-0 object-contain rounded-md"
+            data-testid="img-logo"
+          />
+          {!isCollapsed && (
+            <div className="flex flex-col overflow-hidden">
+              <span className="font-semibold text-sm leading-tight truncate" data-testid="text-brand-name">VCP Trader</span>
+              <span className="text-[10px] text-muted-foreground leading-tight truncate">by Sunfish Technologies</span>
+            </div>
+          )}
+        </div>
+      </Link>
+
+      {!isCollapsed && (
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5" data-testid="status-chips">
+          <Badge
+            variant={brokerVariant}
+            className="text-[10px] font-normal no-default-hover-elevate no-default-active-elevate"
+            data-testid="badge-broker-status"
+          >
+            <Radio className={cn(
+              "h-2.5 w-2.5 mr-1",
+              isConnected ? "text-current" : "text-muted-foreground"
+            )} />
+            {brokerLabel}
+          </Badge>
+          <Badge
+            variant="outline"
+            className="text-[10px] font-normal no-default-hover-elevate no-default-active-elevate"
+            data-testid="badge-plan"
+          >
+            Pro
+          </Badge>
+          {automationActive && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] font-normal no-default-hover-elevate no-default-active-elevate"
+              data-testid="badge-automation"
+            >
+              <Zap className="h-2.5 w-2.5 mr-0.5" />
+              Auto
+            </Badge>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -81,16 +169,10 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-3 group-data-[collapsible=icon]:p-2">
-        <Link href="/command-center" onClick={handleNavClick} data-testid="link-home">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="VCP Trader" className="h-7 w-7 shrink-0 object-contain" />
-            <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-              <span className="font-semibold text-sm leading-tight truncate">VCP Trader</span>
-              <span className="text-[10px] text-muted-foreground leading-tight truncate">by Sunfish Technologies</span>
-            </div>
-          </div>
-        </Link>
+        <SidebarBrandHeader />
       </SidebarHeader>
+
+      <SidebarSeparator />
 
       <SidebarContent className="px-2 group-data-[collapsible=icon]:px-1">
         <SidebarGroup className="py-1">

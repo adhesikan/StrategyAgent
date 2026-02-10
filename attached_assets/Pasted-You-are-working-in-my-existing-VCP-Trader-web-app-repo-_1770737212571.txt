@@ -1,0 +1,83 @@
+You are working in my existing VCP Trader web app repo (dark theme). I want to improve the LEFT SIDEBAR header area (top-left) where there is unused space above the nav items (Dashboard / Discover / Automation / News / Settings).
+
+GOAL
+Use that unused sidebar header space to:
+1) Display a small, clean VCP Trader logo + brand text (not oversized)
+2) Add functional status chips underneath:
+   - Broker status: "Live: Tradier" (or "Paper" / "Not Connected" based on existing app state if available)
+   - Plan status: "Pro" and optionally "Automation Active" when enabled
+3) Make the logo area clickable:
+   - Click logo => navigate to Dashboard (or Home route)
+4) Keep it subtle + premium (no distracting animations). Must remain responsive and not push the nav items too far down.
+
+CONSTRAINTS
+- Do NOT change existing routes, auth, or business logic.
+- Do NOT add heavy dependencies. Use existing component library/icons already in the project.
+- Preserve current sidebar layout and nav links.
+- If broker/plan state already exists in app state/store/API, reuse it. If not, implement safely with placeholders and TODOs without breaking build.
+- Must work on mobile and desktop.
+
+IMPLEMENTATION DETAILS
+A) Identify the sidebar component file(s)
+- Search for components like: Sidebar, LeftNav, AppShell, Layout, Navigation, or similar.
+- Locate where the sidebar header currently renders "VCP Trader by Sunfish Technologies" or any placeholder.
+
+B) Create a reusable component: SidebarBrandHeader
+- Location suggestion: /components/layout/SidebarBrandHeader.tsx (or consistent with repo structure)
+- Header layout:
+   - Row: [Logo mark] [VCP Trader text]
+   - Subtext: "by Sunfish Technologies" (smaller, muted)
+- Logo:
+   - Prefer using an existing SVG/PNG asset in /public or /assets
+   - If no asset exists, render a simple inline SVG placeholder (circle + upward arrow) and leave a TODO to swap.
+   - Logo size: 32–40px height max
+- Click behavior:
+   - Wrap in a button/link that navigates to Dashboard route.
+   - Use existing router utilities (Next.js Link, react-router, etc.) used in the project.
+
+C) Add Status Chips under the brand row
+- Chip styling:
+   - Small pill badges, subtle border, low-contrast background, consistent with dark theme.
+   - Example chips:
+     1) Broker: show "Live: Tradier" when connected and live
+        - If app has a broker connection state (e.g., brokerConnection.status, brokerageName, isPaper), map it:
+          - Connected + live => "Live: {brokerName}"
+          - Connected + paper => "Paper: {brokerName}"
+          - Not connected => "Not Connected"
+     2) Plan: show "Pro"
+        - If subscription/tier state exists, show actual tier label.
+     3) Automation: show "Automation Active" only if automation agent enabled; otherwise omit.
+- If these states are not easily available:
+   - Implement with safe placeholders:
+     - Broker chip defaults to "Not Connected"
+     - Plan chip defaults to "Pro"
+     - Automation chip hidden by default
+   - Add TODO comments indicating where to wire real state later.
+
+D) Sidebar spacing
+- Keep overall sidebar compact:
+   - Add a divider line under header (thin, subtle).
+   - Ensure nav items stay visible (do not consume too much vertical space).
+   - If sidebar collapsible exists, ensure header adapts:
+     - Collapsed sidebar shows only logo mark
+     - Expanded shows logo + text + chips
+   - If collapse state exists, hook into it; otherwise do a responsive CSS approach (hide subtext/chips when narrow).
+
+E) Accessibility
+- Logo link/button has aria-label "Go to Dashboard"
+- Chips are plain text (no buttons) unless they open a modal (do NOT add modal now).
+
+TESTING
+- Verify the sidebar renders with no errors.
+- Verify clicking logo routes to Dashboard.
+- Verify layout looks good in:
+  - Desktop
+  - Narrow widths / collapsed sidebar (if applicable)
+
+DELIVERABLES
+1) Updated sidebar component to include <SidebarBrandHeader />
+2) New SidebarBrandHeader component with logo + status chips
+3) Any added asset references kept local to repo (no external hotlinks)
+4) Short summary of which files changed and what you added
+
+Start by locating the sidebar component and implement the above with minimal disruption.

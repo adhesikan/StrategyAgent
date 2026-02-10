@@ -5,10 +5,10 @@ import {
   Newspaper,
   Target,
   Bot,
-  Radio,
   ChevronsLeft,
   ChevronsRight,
   Zap,
+  Radio,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -59,15 +58,8 @@ function SidebarBrandHeader() {
   const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
 
   let brokerLabel = "Not Connected";
-  let brokerVariant: "default" | "secondary" | "outline" = "outline";
   if (isConnected && providerName) {
-    if (isPaper) {
-      brokerLabel = `Paper: ${providerName}`;
-      brokerVariant = "secondary";
-    } else {
-      brokerLabel = `Live: ${providerName}`;
-      brokerVariant = "default";
-    }
+    brokerLabel = isPaper ? `Paper: ${providerName}` : `Live: ${providerName}`;
   }
 
   const automationActive = agentState?.enabled ?? false;
@@ -76,12 +68,14 @@ function SidebarBrandHeader() {
     <>
       <Link href="/command-center" aria-label="Go to Dashboard" data-testid="link-home">
         <div className="flex items-center flex-wrap gap-2.5">
-          <img
-            src="/logo.png"
-            alt="VCP Trader"
-            className="h-8 w-8 shrink-0 object-contain rounded-md"
-            data-testid="img-logo"
-          />
+          <div className="h-9 w-9 shrink-0 rounded-lg bg-white/10 p-0.5 border border-border/40">
+            <img
+              src="/logo.png"
+              alt="VCP Trader"
+              className="h-full w-full object-contain rounded-md"
+              data-testid="img-logo"
+            />
+          </div>
           {!isCollapsed && (
             <div className="flex flex-col overflow-hidden">
               <span className="font-semibold text-sm leading-tight truncate" data-testid="text-brand-name">VCP Trader</span>
@@ -92,34 +86,35 @@ function SidebarBrandHeader() {
       </Link>
 
       {!isCollapsed && (
-        <div className="flex flex-wrap items-center gap-1.5 mt-2.5" data-testid="status-chips">
-          <Badge
-            variant={brokerVariant}
-            className="text-[10px] font-normal no-default-hover-elevate no-default-active-elevate"
-            data-testid="badge-broker-status"
-          >
-            <Radio className={cn(
-              "h-2.5 w-2.5 mr-1",
-              isConnected ? "text-current" : "text-muted-foreground"
+        <div className="flex flex-wrap items-center gap-1 mt-2" data-testid="status-chips">
+          <span className={cn(
+            "inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border",
+            isConnected && !isPaper && "border-green-500/40 text-green-400",
+            isPaper && "border-amber-500/40 text-amber-400",
+            !isConnected && "border-border text-muted-foreground"
+          )} data-testid="badge-broker-status">
+            <span className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isConnected && !isPaper && "bg-green-400",
+              isPaper && "bg-amber-400",
+              !isConnected && "bg-muted-foreground"
             )} />
             {brokerLabel}
-          </Badge>
-          <Badge
-            variant="outline"
-            className="text-[10px] font-normal no-default-hover-elevate no-default-active-elevate"
+          </span>
+          <span
+            className="inline-flex items-center text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-border text-muted-foreground"
             data-testid="badge-plan"
           >
             Pro
-          </Badge>
+          </span>
           {automationActive && (
-            <Badge
-              variant="secondary"
-              className="text-[10px] font-normal no-default-hover-elevate no-default-active-elevate"
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-border text-muted-foreground"
               data-testid="badge-automation"
             >
-              <Zap className="h-2.5 w-2.5 mr-0.5" />
+              <Zap className="h-2.5 w-2.5" />
               Auto
-            </Badge>
+            </span>
           )}
         </div>
       )}

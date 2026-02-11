@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useTheme } from "@/lib/theme-provider";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createChart, CandlestickSeries, ColorType } from "lightweight-charts";
+import { createChart, CandlestickSeries, LineSeries, ColorType } from "lightweight-charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ import {
   Wifi,
   WifiOff,
   Radio,
+  Plus,
+  X,
 } from "lucide-react";
 
 interface FuturesSymbolInfo {
@@ -97,6 +99,32 @@ interface AgentAuditEntry {
   details: any;
 }
 
+const EMA_COLORS = [
+  "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6",
+  "#f97316", "#06b6d4", "#84cc16", "#e11d48", "#6366f1",
+];
+
+function computeEMA(closes: number[], period: number): number[] {
+  if (closes.length === 0) return [];
+  const k = 2 / (period + 1);
+  const result: number[] = [];
+  let sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period) {
+      sum += closes[i];
+      if (i === period - 1) {
+        result.push(sum / period);
+      } else {
+        result.push(NaN);
+      }
+    } else {
+      const ema = closes[i] * k + result[result.length - 1] * (1 - k);
+      result.push(ema);
+    }
+  }
+  return result;
+}
+
 export default function FuturesScanner() {
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -112,9 +140,14 @@ export default function FuturesScanner() {
   const [instaTradeOpp, setInstaTradeOpp] = useState<FuturesOpportunity | null>(null);
   const [instaTradeOpen, setInstaTradeOpen] = useState(false);
 
+  const [emaPeriods, setEmaPeriods] = useState<number[]>([9, 21]);
+  const [newEmaPeriod, setNewEmaPeriod] = useState("");
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<any>(null);
+  const emaSeriesRefs = useRef<Map<number, any>>(new Map());
+  const barsRef = useRef<FuturesBar[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const { data: status, isLoading: statusLoading } = useQuery<FuturesStatus>({
@@ -247,10 +280,13 @@ export default function FuturesScanner() {
 
     const isDark = theme === "dark";
 
+    barsRef.current = [];
+
     if (chartApiRef.current) {
       chartApiRef.current.remove();
       chartApiRef.current = null;
       seriesRef.current = null;
+      emaSeriesRefs.current.clear();
     }
 
     const chart = createChart(chartContainerRef.current, {
@@ -289,22 +325,6 @@ export default function FuturesScanner() {
 
     seriesRef.current = series;
 
-    if (barsData?.bars && barsData.bars.length > 0) {
-      const chartBars = barsData.bars.map((b) => ({
-        time: b.time as any,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-      }));
-      series.setData(chartBars);
-      chart.timeScale().scrollToRealTime();
-    }
-
-    if (barsData?.lastTick) {
-      setLastTick(barsData.lastTick);
-    }
-
     const handleResize = () => {
       if (chartContainerRef.current) {
         chart.applyOptions({
@@ -322,8 +342,66 @@ export default function FuturesScanner() {
       chart.remove();
       chartApiRef.current = null;
       seriesRef.current = null;
+      emaSeriesRefs.current.clear();
     };
-  }, [theme, barsData, selectedSymbol]);
+  }, [theme, selectedSymbol]);
+
+  const updateChartData = useCallback((bars: FuturesBar[]) => {
+    if (!seriesRef.current || !chartApiRef.current || bars.length === 0) return;
+
+    const chartBars = bars.map((b) => ({
+      time: b.time as any,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+    }));
+    seriesRef.current.setData(chartBars);
+
+    const closes = bars.map((b) => b.close);
+    const chart = chartApiRef.current;
+
+    emaSeriesRefs.current.forEach((s) => {
+      try { chart.removeSeries(s); } catch {}
+    });
+    emaSeriesRefs.current.clear();
+
+    emaPeriods.forEach((period, idx) => {
+      const emaValues = computeEMA(closes, period);
+      const emaData = emaValues
+        .map((v, i) => ({ time: bars[i]?.time as any, value: v }))
+        .filter((d) => d.time && !isNaN(d.value));
+      if (emaData.length > 0) {
+        const emaSeries = chart.addSeries(LineSeries, {
+          color: EMA_COLORS[idx % EMA_COLORS.length],
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          title: `EMA${period}`,
+        });
+        emaSeries.setData(emaData);
+        emaSeriesRefs.current.set(period, emaSeries);
+      }
+    });
+
+    chart.timeScale().scrollToRealTime();
+  }, [emaPeriods]);
+
+  useEffect(() => {
+    if (barsData?.bars && barsData.bars.length > 0) {
+      barsRef.current = barsData.bars;
+      updateChartData(barsData.bars);
+    }
+    if (barsData?.lastTick) {
+      setLastTick(barsData.lastTick);
+    }
+  }, [barsData, updateChartData]);
+
+  useEffect(() => {
+    if (barsRef.current.length > 0) {
+      updateChartData(barsRef.current);
+    }
+  }, [emaPeriods, updateChartData]);
 
   useEffect(() => {
     if (eventSourceRef.current) {
@@ -358,15 +436,31 @@ export default function FuturesScanner() {
             setLastTick(msg.data);
           } else if (msg.type === "bar") {
             setStreamStatus("streaming");
+            const bar = msg.data;
             if (seriesRef.current) {
               seriesRef.current.update({
-                time: msg.data.time as any,
-                open: msg.data.open,
-                high: msg.data.high,
-                low: msg.data.low,
-                close: msg.data.close,
+                time: bar.time as any,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
               });
             }
+            const bars = barsRef.current;
+            const lastIdx = bars.length - 1;
+            if (lastIdx >= 0 && bars[lastIdx].time === bar.time) {
+              bars[lastIdx] = bar;
+            } else {
+              bars.push(bar);
+            }
+            emaSeriesRefs.current.forEach((emaSeries, period) => {
+              const closes = bars.map((b) => b.close);
+              const emaValues = computeEMA(closes, period);
+              const lastEma = emaValues[emaValues.length - 1];
+              if (!isNaN(lastEma)) {
+                emaSeries.update({ time: bar.time as any, value: lastEma });
+              }
+            });
           }
         } catch {}
       };
@@ -406,6 +500,21 @@ export default function FuturesScanner() {
             high: latest.high,
             low: latest.low,
             close: latest.close,
+          });
+          const bars = barsRef.current;
+          const lastIdx = bars.length - 1;
+          if (lastIdx >= 0 && bars[lastIdx].time === latest.time) {
+            bars[lastIdx] = latest;
+          } else if (bars.length > 0) {
+            bars.push(latest);
+          }
+          emaSeriesRefs.current.forEach((emaSeries, period) => {
+            const closes = bars.map((b) => b.close);
+            const emaValues = computeEMA(closes, period);
+            const lastEma = emaValues[emaValues.length - 1];
+            if (!isNaN(lastEma)) {
+              emaSeries.update({ time: latest.time as any, value: lastEma });
+            }
           });
         }
       } catch {}
@@ -541,10 +650,58 @@ export default function FuturesScanner() {
 
       <Card data-testid="card-chart">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            {selectedSymbol} - 1s Chart
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              {selectedSymbol} - 1s Chart
+            </CardTitle>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {emaPeriods.map((period, idx) => (
+                <Badge
+                  key={period}
+                  variant="outline"
+                  className="text-xs font-mono gap-1"
+                  data-testid={`badge-ema-${period}`}
+                >
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: EMA_COLORS[idx % EMA_COLORS.length] }} />
+                  EMA {period}
+                  <button
+                    className="ml-0.5 opacity-60 hover:opacity-100"
+                    onClick={() => setEmaPeriods((prev) => prev.filter((p) => p !== period))}
+                    data-testid={`button-remove-ema-${period}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={2}
+                  max={500}
+                  placeholder="Period"
+                  value={newEmaPeriod}
+                  onChange={(e) => setNewEmaPeriod(e.target.value)}
+                  className="w-16 h-7 text-xs"
+                  data-testid="input-ema-period"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    const p = parseInt(newEmaPeriod);
+                    if (p >= 2 && p <= 500 && !emaPeriods.includes(p)) {
+                      setEmaPeriods((prev) => [...prev, p].sort((a, b) => a - b));
+                      setNewEmaPeriod("");
+                    }
+                  }}
+                  data-testid="button-add-ema"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {barsLoading ? (

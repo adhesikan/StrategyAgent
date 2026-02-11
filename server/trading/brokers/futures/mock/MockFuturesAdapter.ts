@@ -88,9 +88,57 @@ export class MockFuturesAdapter extends EventEmitter implements IFuturesBrokerAd
 
     this.symbols.set(symbol, state);
 
+    this.generateHistoricalBars(symbol, state, info.tickSize, 300);
+
     state.interval = setInterval(() => {
       this.generateTick(symbol, state, info.tickSize);
     }, this.tickIntervalMs);
+  }
+
+  private generateHistoricalBars(symbol: string, state: SymbolState, tickSize: number, count: number): void {
+    const now = Math.floor(Date.now() / 1000);
+    let price = state.price - (this.rng() - 0.5) * tickSize * count * 0.3;
+    price = Math.round(price * 100) / 100;
+
+    for (let i = count; i > 0; i--) {
+      const time = now - i;
+      const moves = 4;
+      let open = price;
+      let high = price;
+      let low = price;
+
+      for (let m = 0; m < moves; m++) {
+        const drift = (this.rng() - 0.498) * tickSize * 4;
+        price = Math.round((price + drift) * 100) / 100;
+        high = Math.max(high, price);
+        low = Math.min(low, price);
+      }
+
+      const bar: FuturesBar = {
+        symbol,
+        time,
+        open,
+        high,
+        low,
+        close: price,
+        volume: Math.floor(this.rng() * 200) + 10,
+      };
+      this.emit("bar", bar);
+    }
+
+    state.price = price;
+    state.bid = Math.round((price - tickSize) * 100) / 100;
+    state.ask = Math.round((price + tickSize) * 100) / 100;
+
+    const tick: FuturesTick = {
+      symbol,
+      price: state.price,
+      bid: state.bid,
+      ask: state.ask,
+      volume: Math.floor(this.rng() * 50) + 1,
+      timestamp: Date.now(),
+    };
+    this.emit("tick", tick);
   }
 
   async unsubscribeMarketData(symbol: string): Promise<void> {

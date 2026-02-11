@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FuturesTradeTicket } from "@/components/futures-trade-ticket";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -111,9 +111,6 @@ export default function FuturesScanner() {
 
   const [instaTradeOpp, setInstaTradeOpp] = useState<FuturesOpportunity | null>(null);
   const [instaTradeOpen, setInstaTradeOpen] = useState(false);
-  const [instaQty, setInstaQty] = useState(1);
-  const [instaOrderType, setInstaOrderType] = useState<"market" | "limit">("market");
-  const [instaLimitPrice, setInstaLimitPrice] = useState("");
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null);
@@ -177,33 +174,6 @@ export default function FuturesScanner() {
     },
   });
 
-  const placeOrderMutation = useMutation({
-    mutationFn: async () => {
-      if (!instaTradeOpp) throw new Error("No opportunity selected");
-      const payload: any = {
-        commandType: "placeOrder",
-        symbol: instaTradeOpp.symbol,
-        side: instaTradeOpp.side,
-        qty: instaQty,
-        orderType: instaOrderType,
-      };
-      if (instaOrderType === "limit") {
-        payload.limitPrice = parseFloat(instaLimitPrice) || instaTradeOpp.entry;
-      }
-      await apiRequest("POST", "/api/futures/command", payload);
-    },
-    onSuccess: () => {
-      toast({ title: "Order Placed", description: `${instaTradeOpp?.side.toUpperCase()} ${instaQty} ${instaTradeOpp?.symbol}` });
-      setInstaTradeOpen(false);
-      setInstaTradeOpp(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/futures/orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/futures/positions"] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Order Failed", description: err.message, variant: "destructive" });
-    },
-  });
-
   const agentMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", "/api/futures/command", {
@@ -232,6 +202,20 @@ export default function FuturesScanner() {
       setAgentMaxPosition(status.agent.maxPosition);
     }
   }, [status?.agent]);
+
+  const autoSubscribedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (
+      status?.enabled &&
+      status?.workerRunning &&
+      !status?.subscribedSymbols?.includes(selectedSymbol) &&
+      !subscribeMutation.isPending &&
+      !autoSubscribedRef.current.has(selectedSymbol)
+    ) {
+      autoSubscribedRef.current.add(selectedSymbol);
+      subscribeMutation.mutate("subscribe");
+    }
+  }, [status?.enabled, status?.workerRunning, status?.subscribedSymbols, selectedSymbol]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -435,9 +419,6 @@ export default function FuturesScanner() {
 
   const openInstaTrade = (opp: FuturesOpportunity) => {
     setInstaTradeOpp(opp);
-    setInstaQty(1);
-    setInstaOrderType("market");
-    setInstaLimitPrice(opp.entry.toFixed(2));
     setInstaTradeOpen(true);
   };
 
@@ -597,91 +578,12 @@ export default function FuturesScanner() {
         </CardContent>
       </Card>
 
-      <Dialog open={instaTradeOpen} onOpenChange={setInstaTradeOpen}>
-        <DialogContent data-testid="dialog-instatrade">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
-              InstaTrade
-            </DialogTitle>
-            <DialogDescription>
-              {instaTradeOpp && `${instaTradeOpp.side.toUpperCase()} ${instaTradeOpp.symbol} @ ${instaTradeOpp.entry.toFixed(2)}`}
-            </DialogDescription>
-          </DialogHeader>
-          {instaTradeOpp && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div>
-                  <Label className="text-muted-foreground text-xs">Symbol</Label>
-                  <p className="font-mono font-medium" data-testid="text-insta-symbol">{instaTradeOpp.symbol}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs">Side</Label>
-                  <p className={cn("font-medium", instaTradeOpp.side === "buy" ? "text-green-500" : "text-red-500")} data-testid="text-insta-side">
-                    {instaTradeOpp.side.toUpperCase()}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs">Entry</Label>
-                  <p className="font-mono" data-testid="text-insta-entry">{instaTradeOpp.entry.toFixed(2)}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="insta-qty">Quantity</Label>
-                <Input
-                  id="insta-qty"
-                  type="number"
-                  min={1}
-                  value={instaQty}
-                  onChange={(e) => setInstaQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  data-testid="input-insta-qty"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Order Type</Label>
-                <Select value={instaOrderType} onValueChange={(v) => setInstaOrderType(v as "market" | "limit")}>
-                  <SelectTrigger data-testid="select-order-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="market">Market</SelectItem>
-                    <SelectItem value="limit">Limit</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {instaOrderType === "limit" && (
-                <div className="space-y-2">
-                  <Label htmlFor="insta-limit-price">Limit Price</Label>
-                  <Input
-                    id="insta-limit-price"
-                    type="number"
-                    step="0.25"
-                    value={instaLimitPrice}
-                    onChange={(e) => setInstaLimitPrice(e.target.value)}
-                    data-testid="input-limit-price"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInstaTradeOpen(false)} data-testid="button-insta-cancel">
-              Cancel
-            </Button>
-            <Button
-              onClick={() => placeOrderMutation.mutate()}
-              disabled={placeOrderMutation.isPending}
-              data-testid="button-insta-confirm"
-            >
-              {placeOrderMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Confirm Order
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FuturesTradeTicket
+        open={instaTradeOpen}
+        onOpenChange={setInstaTradeOpen}
+        opportunity={instaTradeOpp}
+        lastPrice={lastTick?.price}
+      />
 
       <Card data-testid="card-agent">
         <CardHeader

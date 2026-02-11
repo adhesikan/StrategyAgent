@@ -39,10 +39,10 @@ export function normalizeBbo(data: Record<string, unknown>): Partial<FuturesTick
 
 export function normalizeTimeBar(data: Record<string, unknown>): FuturesBar | null {
   const symbol = data.symbol as string | undefined;
-  const open = data.openPrice as number | undefined;
-  const high = data.highPrice as number | undefined;
-  const low = data.lowPrice as number | undefined;
-  const close = data.closePrice as number | undefined;
+  const open = (data.openPrice as number | undefined) ?? (data.open_price as number | undefined);
+  const high = (data.highPrice as number | undefined) ?? (data.high_price as number | undefined);
+  const low = (data.lowPrice as number | undefined) ?? (data.low_price as number | undefined);
+  const close = (data.closePrice as number | undefined) ?? (data.close_price as number | undefined);
 
   if (!symbol || open === undefined || high === undefined || low === undefined || close === undefined) {
     return null;

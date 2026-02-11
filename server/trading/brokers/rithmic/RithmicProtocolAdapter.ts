@@ -54,6 +54,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   private tickCounter = 0;
   private barCounter = 0;
   private unhandledTemplateIds = new Set<number>();
+  private frontMonthCache = new Map<string, string>();
 
   constructor(config: RithmicConfig) {
     super();
@@ -233,14 +234,22 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       throw new Error("[Rithmic] Ticker plant not connected");
     }
 
-    const rithmicSymbol = this.toRithmicSymbol(symbol);
     const exchange = this.getExchange(symbol);
+
+    let rithmicSymbol: string;
+    const frontMonth = await this.resolveFrontMonth(symbol, exchange);
+    if (frontMonth) {
+      rithmicSymbol = frontMonth;
+    } else {
+      rithmicSymbol = this.toRithmicSymbol(symbol);
+      console.log(`[Rithmic] Using computed symbol: ${symbol} -> ${rithmicSymbol} (front month lookup unavailable)`);
+    }
 
     const mdBuf = packMessage("RequestMarketDataUpdate", {
       templateId: templateIds.RequestMarketDataUpdate,
       symbol: rithmicSymbol,
       exchange,
-      requestType: 1,
+      request: 1,
       updateBits: 1 | 2 | 4,
     });
     plant.ws.send(mdBuf);
@@ -249,14 +258,14 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       templateId: templateIds.RequestTimeBarUpdate,
       symbol: rithmicSymbol,
       exchange,
-      requestType: 1,
-      barType: 1,
-      barSubType: 1,
+      request: 1,
+      barType: 2,
+      barTypePeriod: 1,
     });
     plant.ws.send(barBuf);
 
     this.subscribedSymbols.add(symbol);
-    console.log(`[Rithmic] Subscribed to market data: ${symbol} -> ${rithmicSymbol} on ${exchange} (ticker plant ready: ${plant.ws.readyState === WebSocket.OPEN})`);
+    console.log(`[Rithmic] Subscribed to market data: ${symbol} -> ${rithmicSymbol} on ${exchange}`);
   }
 
   async unsubscribeMarketData(symbol: string): Promise<void> {
@@ -270,7 +279,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
         templateId: templateIds.RequestMarketDataUpdate,
         symbol: rithmicSymbol,
         exchange,
-        requestType: 2,
+        request: 2,
       });
       plant.ws.send(buf);
     }
@@ -461,6 +470,56 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     plant.ws.send(buf);
   }
 
+  async resolveFrontMonth(symbol: string, exchange: string): Promise<string | null> {
+    if (this.frontMonthCache.has(symbol)) return this.frontMonthCache.get(symbol)!;
+
+    const plant = this.plants.get("ticker");
+    if (!plant?.ws || plant.ws.readyState !== WebSocket.OPEN) return null;
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        plant.ws!.removeListener("message", handler);
+        console.warn(`[Rithmic] Front month lookup timeout for ${symbol}`);
+        resolve(null);
+      }, 8000);
+
+      const handler = (data: Buffer) => {
+        const msgBuf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        const tid = peekTemplateIdFast(msgBuf);
+        if (tid === templateIds.ResponseFrontMonthContract) {
+          const resp = decode("ResponseFrontMonthContract", msgBuf) as Record<string, unknown>;
+          const rpCode = Array.isArray(resp.rpCode) ? resp.rpCode[0] : resp.rpCode;
+          if (rpCode && rpCode !== "0") {
+            clearTimeout(timeout);
+            plant.ws!.removeListener("message", handler);
+            console.warn(`[Rithmic] Front month lookup failed for ${symbol}: code=${rpCode}`);
+            resolve(null);
+            return;
+          }
+          const tradingSymbol = resp.tradingSymbol as string | undefined;
+          const respSymbol = resp.symbol as string | undefined;
+          if (tradingSymbol && (respSymbol === symbol || resp.isFrontMonthSymbol)) {
+            clearTimeout(timeout);
+            plant.ws!.removeListener("message", handler);
+            this.frontMonthCache.set(symbol, tradingSymbol);
+            console.log(`[Rithmic] Front month resolved: ${symbol} -> ${tradingSymbol} on ${exchange}`);
+            resolve(tradingSymbol);
+          }
+        }
+      };
+
+      plant.ws!.on("message", handler);
+
+      const buf = packMessage("RequestFrontMonthContract", {
+        templateId: templateIds.RequestFrontMonthContract,
+        symbol,
+        exchange,
+        needUpdates: false,
+      });
+      plant.ws!.send(buf);
+    });
+  }
+
   private subscribeOrderUpdates() {
     const plant = this.plants.get("order");
     if (!plant?.ws) return;
@@ -531,13 +590,21 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
 
       case templateIds.ResponseTimeBarUpdate: {
         const data = decode("ResponseTimeBarUpdate", msgBuf) as Record<string, unknown>;
-        const bar = normalizeTimeBar(data);
-        if (bar) {
-          this.barCounter++;
-          if (this.barCounter <= 3) {
-            console.log(`[Rithmic] Bar #${this.barCounter}: ${bar.symbol} O=${bar.open} H=${bar.high} L=${bar.low} C=${bar.close} (raw: ${data.symbol})`);
+        const rpCode = Array.isArray(data.rpCode) ? data.rpCode[0] : data.rpCode;
+        const hasBarData = data.openPrice !== undefined || data.closePrice !== undefined;
+        if (hasBarData) {
+          const bar = normalizeTimeBar(data);
+          if (bar) {
+            this.barCounter++;
+            if (this.barCounter <= 5) {
+              console.log(`[Rithmic] Bar #${this.barCounter}: ${bar.symbol} O=${bar.open} H=${bar.high} L=${bar.low} C=${bar.close} V=${bar.volume} (raw: ${data.symbol})`);
+            }
+            this.emit("bar", bar);
           }
-          this.emit("bar", bar);
+        } else if (rpCode && rpCode !== "0") {
+          console.warn(`[Rithmic] Time bar subscription response: code=${rpCode}, symbol=${data.symbol}`);
+        } else {
+          console.log(`[Rithmic] Time bar subscription confirmed for ${data.symbol}`);
         }
         break;
       }
@@ -575,6 +642,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       case templateIds.ResponseNewOrder:
       case templateIds.ResponseCancelOrder:
       case templateIds.ResponseSubscribeForOrderUpdates:
+      case templateIds.ResponseFrontMonthContract:
         break;
 
       case templateIds.ResponseMarketDataUpdate: {

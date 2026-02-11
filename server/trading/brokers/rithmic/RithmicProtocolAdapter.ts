@@ -319,10 +319,13 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
             const resp = decode("ResponseLogin", msgBuf) as Record<string, unknown>;
             const rpCode = resp.rpCode as string[] | string | undefined;
             const codeStr = Array.isArray(rpCode) ? rpCode[0] : rpCode;
+            const userMsg = resp.userMsg as string[] | string | undefined;
+            const userMsgStr = Array.isArray(userMsg) ? userMsg.join("; ") : (userMsg ?? "");
             if (codeStr && codeStr !== "0") {
-              reject(new Error(`[Rithmic] Login failed for ${type}: ${codeStr}`));
+              console.error(`[Rithmic] Login rejected for ${type}: code=${codeStr}, msg="${userMsgStr}", fcmId=${resp.fcmId ?? "n/a"}, ibId=${resp.ibId ?? "n/a"}`);
+              reject(new Error(`[Rithmic] Login failed for ${type}: code ${codeStr} - ${userMsgStr || "permission error"}`));
             } else {
-              console.log(`[Rithmic] Logged into ${type} plant`);
+              console.log(`[Rithmic] Logged into ${type} plant (fcmId=${resp.fcmId ?? "n/a"}, ibId=${resp.ibId ?? "n/a"})`);
               resolve();
             }
           } catch (err) {

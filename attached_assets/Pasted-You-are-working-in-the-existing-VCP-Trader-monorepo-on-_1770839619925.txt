@@ -1,0 +1,50 @@
+You are working in the existing VCP Trader monorepo on Replit.
+
+Problem: Replit limits uploads to 20 files. The user will upload ONE zip file containing the full Rithmic R|Protocol API folder (e.g., RProtocolAPI.0.87.0 with subfolders proto/doc/etc).
+
+CRITICAL REQUIREMENT:
+- Do NOT remove or break the existing MockFuturesAdapter or mock data pipeline.
+- Mock must remain the default and automatic fallback if Rithmic integration fails for any reason.
+
+Goal:
+- Add an automated importer that can extract the uploaded zip, copy the needed files into the repo, and wire a RithmicProtocolAdapter as an optional feed (FUTURES_FEED=rithmic). If anything fails, automatically fall back to mock.
+
+Implement:
+
+A) Add a startup importer script:
+1) Create /scripts/import-rithmic-api.ts that:
+   - Searches project root for a *.zip file matching /rithmic|rprotocol|rithmic/i
+   - Extracts it into /external/rithmic_api_extracted (create folder if missing)
+     - Use Node APIs; if extraction library is needed, add dependency "adm-zip" and use it.
+   - Recursively find all *.proto files inside extracted folder and copy them to:
+     /trading/brokers/rithmic/proto/
+   - Copy docs (pdf/txt/md/doc/docx) to:
+     /trading/brokers/rithmic/docs/
+   - Idempotent: safe to run multiple times
+   - If /trading/brokers/rithmic/proto already has protos, do nothing.
+
+2) Ensure this importer runs automatically BEFORE worker initializes when FUTURES_FEED=rithmic (no manual commands by user).
+
+3) Add .gitignore entries to prevent committing:
+   - the uploaded zip
+   - /external/rithmic_api_extracted
+
+B) Add Rithmic adapter files (additive only):
+- /trading/brokers/rithmic/codec.ts (protobufjs runtime loading, no protoc)
+- /trading/brokers/rithmic/frame.ts (message packing/unpacking isolated)
+- /trading/brokers/rithmic/templateIds.json (placeholders)
+- /trading/brokers/rithmic/RithmicProtocolAdapter.ts (implements existing IFuturesBrokerAdapter)
+- /trading/brokers/rithmic/normalize.ts (central conversions)
+
+C) Worker selection with fallback:
+- Keep MockFuturesAdapter untouched and available.
+- If FUTURES_FEED != rithmic => use mock.
+- If FUTURES_FEED = rithmic:
+  - Try to init/import protos + validate templateIds.
+  - If any failure => log + switch to mock and continue.
+
+D) Ensure “no manual commands”:
+- Update package.json start scripts so Replit Run starts server + worker and triggers importer when needed.
+- Do not require the user to run unzip/commands manually.
+
+Proceed to implement now in this repo.

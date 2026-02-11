@@ -128,6 +128,11 @@ export default function FuturesScanner() {
       if (!res.ok) throw new Error("Failed to fetch bars");
       return res.json();
     },
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || !data.bars || data.bars.length === 0) return 2000;
+      return false;
+    },
   });
 
   const [opportunities, setOpportunities] = useState<FuturesOpportunity[]>([]);
@@ -158,16 +163,30 @@ export default function FuturesScanner() {
     enabled: agentOpen,
   });
 
+  const subscribeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const subscribeMutation = useMutation({
     mutationFn: async (action: "subscribe" | "unsubscribe") => {
       await apiRequest("POST", "/api/futures/command", {
         commandType: action,
         symbol: selectedSymbol,
       });
+      return { action, symbol: selectedSymbol };
     },
-    onSuccess: (_, action) => {
+    onSuccess: (result) => {
+      const { action, symbol } = result;
       queryClient.invalidateQueries({ queryKey: ["/api/futures/status"] });
-      toast({ title: action === "subscribe" ? "Subscribed" : "Unsubscribed", description: `${selectedSymbol} market data ${action === "subscribe" ? "started" : "stopped"}` });
+      subscribeTimersRef.current.forEach(clearTimeout);
+      subscribeTimersRef.current = [];
+      if (action === "subscribe") {
+        const t1 = setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/futures/bars", symbol] });
+        }, 1500);
+        const t2 = setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/futures/bars", symbol] });
+        }, 3000);
+        subscribeTimersRef.current.push(t1, t2);
+      }
+      toast({ title: action === "subscribe" ? "Subscribed" : "Unsubscribed", description: `${symbol} market data ${action === "subscribe" ? "started" : "stopped"}` });
     },
     onError: (err: any) => {
       toast({ title: "Command Failed", description: err.message, variant: "destructive" });
@@ -202,6 +221,12 @@ export default function FuturesScanner() {
       setAgentMaxPosition(status.agent.maxPosition);
     }
   }, [status?.agent]);
+
+  useEffect(() => {
+    return () => {
+      subscribeTimersRef.current.forEach(clearTimeout);
+    };
+  }, []);
 
   const autoSubscribedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -318,6 +343,9 @@ export default function FuturesScanner() {
 
       es.onopen = () => {
         setStreamStatus("connected");
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/futures/bars", selectedSymbol] });
+        }, 500);
       };
 
       es.onmessage = (event) => {
@@ -422,6 +450,25 @@ export default function FuturesScanner() {
     setInstaTradeOpen(true);
   };
 
+  const openQuickTrade = () => {
+    if (!lastTick) return;
+    const price = lastTick.price;
+    const info = availableSymbols.find((s) => s.symbol === selectedSymbol);
+    const tickSize = info?.tickSize ?? 0.25;
+    setInstaTradeOpp({
+      symbol: selectedSymbol,
+      setup: "Manual",
+      score: 0,
+      entry: price,
+      stop: Math.round((price - tickSize * 20) * 100) / 100,
+      target: Math.round((price + tickSize * 40) * 100) / 100,
+      side: "buy",
+      timeframe: "1s",
+      reason: "Manual trade entry",
+    });
+    setInstaTradeOpen(true);
+  };
+
   const scoreColor = (score: number) => {
     if (score >= 80) return "default";
     if (score >= 60) return "secondary";
@@ -464,6 +511,17 @@ export default function FuturesScanner() {
             {streamStatus === "disconnected" && <WifiOff className="h-3 w-3 mr-1" />}
             {streamStatus === "streaming" ? "Streaming" : streamStatus === "connected" ? "Connected" : "Disconnected"}
           </Badge>
+
+          {isSubscribed && lastTick && (
+            <Button
+              variant="default"
+              onClick={openQuickTrade}
+              data-testid="button-quick-trade"
+            >
+              <Zap className="h-4 w-4 mr-1" />
+              InstaTrade
+            </Button>
+          )}
         </div>
 
         {lastTick && (

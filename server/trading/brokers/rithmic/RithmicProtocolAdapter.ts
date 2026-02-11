@@ -77,12 +77,101 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
 
     await loadProtoRoot();
 
+    const gatewayUri = this.config.tickerPlantUri;
+    if (gatewayUri) {
+      try {
+        const discovered = await this.discoverGateways(gatewayUri);
+        if (discovered) {
+          const tickerPlant = this.plants.get("ticker")!;
+          const orderPlant = this.plants.get("order")!;
+          if (discovered.ticker) {
+            tickerPlant.uri = discovered.ticker;
+            console.log(`[Rithmic] Discovered ticker URI: ${discovered.ticker}`);
+          }
+          if (discovered.order) {
+            orderPlant.uri = discovered.order;
+            console.log(`[Rithmic] Discovered order URI: ${discovered.order}`);
+          }
+        }
+      } catch (err) {
+        console.warn(`[Rithmic] Gateway discovery failed, using configured URIs: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
     await this.connectPlant("ticker");
     await this.connectPlant("order");
 
     this._connected = true;
     this.emit("status", "connected");
     console.log("[Rithmic] Connected to all plants");
+  }
+
+  private async discoverGateways(gatewayUri: string): Promise<{ ticker?: string; order?: string } | null> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(gatewayUri, { perMessageDeflate: false });
+      ws.binaryType = "nodebuffer";
+
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("Gateway discovery timeout"));
+      }, 10000);
+
+      ws.on("open", () => {
+        const buf = packMessage("RequestRithmicSystemGatewayInfo", {
+          templateId: templateIds.RequestRithmicSystemGatewayInfo,
+          systemName: this.config.systemName,
+        });
+        ws.send(buf);
+      });
+
+      const uris: { ticker?: string; order?: string } = {};
+      let receivedCount = 0;
+
+      ws.on("message", (data: Buffer) => {
+        const msgBuf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        const tid = peekTemplateIdFast(msgBuf);
+
+        if (tid === templateIds.ResponseRithmicSystemGatewayInfo) {
+          try {
+            const resp = decode("ResponseRithmicSystemGatewayInfo", msgBuf) as Record<string, unknown>;
+            const names = resp.gatewayName as string[] | undefined;
+            const gatewayUris = resp.gatewayUri as string[] | undefined;
+
+            console.log(`[Rithmic] Gateway info: names=${JSON.stringify(names)}, uris=${JSON.stringify(gatewayUris)}`);
+
+            if (names && gatewayUris) {
+              for (let i = 0; i < names.length; i++) {
+                const name = names[i]?.toLowerCase() ?? "";
+                const uri = gatewayUris[i];
+                if (!uri) continue;
+                if (name.includes("ticker")) uris.ticker = uri;
+                else if (name.includes("order")) uris.order = uri;
+              }
+            }
+
+            receivedCount++;
+            if (receivedCount >= 1) {
+              clearTimeout(timeout);
+              ws.close();
+              if (uris.ticker || uris.order) {
+                resolve(uris);
+              } else {
+                resolve(null);
+              }
+            }
+          } catch (err) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(err);
+          }
+        }
+      });
+
+      ws.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
   }
 
   async disconnect(): Promise<void> {

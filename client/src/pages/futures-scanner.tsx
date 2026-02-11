@@ -158,13 +158,14 @@ export default function FuturesScanner() {
   const [emaPeriods, setEmaPeriods] = useState<number[]>([9, 21]);
   const [newEmaPeriod, setNewEmaPeriod] = useState("");
 
-  const [chartVersion, setChartVersion] = useState(0);
-
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<any>(null);
   const emaSeriesRefs = useRef<Map<number, any>>(new Map());
   const barsRef = useRef<FuturesBar[]>([]);
+  const barsDataRef = useRef<BarsResponse | undefined>(undefined);
+  const emaPeriodsRef = useRef<number[]>(emaPeriods);
+  emaPeriodsRef.current = emaPeriods;
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const { data: status, isLoading: statusLoading } = useQuery<FuturesStatus>({
@@ -181,6 +182,7 @@ export default function FuturesScanner() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || !data.bars || data.bars.length === 0) return 2000;
+      if (!seriesRef.current) return 1000;
       return false;
     },
   });
@@ -308,7 +310,7 @@ export default function FuturesScanner() {
     }
   }, [status?.enabled, status?.workerRunning, status?.subscribedSymbols, selectedSymbol]);
 
-  useEffect(() => {
+  const initChart = useCallback(() => {
     if (!chartContainerRef.current) return;
 
     const isDark = theme === "dark";
@@ -322,6 +324,9 @@ export default function FuturesScanner() {
       emaSeriesRefs.current.clear();
     }
 
+    const container = chartContainerRef.current;
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
+
     const etFormatter = (ts: number) => {
       const d = new Date(ts * 1000);
       return d.toLocaleString("en-US", {
@@ -333,7 +338,9 @@ export default function FuturesScanner() {
       });
     };
 
-    const chart = createChart(chartContainerRef.current, {
+    const chart = createChart(container, {
+      width: container.clientWidth,
+      height: container.clientHeight,
       layout: {
         background: { type: ColorType.Solid, color: isDark ? "#1a1a2e" : "#ffffff" },
         textColor: isDark ? "#d1d5db" : "#333333",
@@ -371,28 +378,9 @@ export default function FuturesScanner() {
     });
 
     seriesRef.current = series;
-    setChartVersion((v) => v + 1);
 
-    const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    handleResize();
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      chart.remove();
-      chartApiRef.current = null;
-      seriesRef.current = null;
-      emaSeriesRefs.current.clear();
-    };
-  }, [theme, selectedSymbol]);
+    return chart;
+  }, [theme]);
 
   const populateChart = useCallback((bars: FuturesBar[], periods: number[]) => {
     if (!seriesRef.current || !chartApiRef.current || bars.length === 0) return;
@@ -436,14 +424,50 @@ export default function FuturesScanner() {
   }, []);
 
   useEffect(() => {
-    if (barsData?.bars && barsData.bars.length > 0) {
-      barsRef.current = barsData.bars;
-      populateChart(barsData.bars, emaPeriods);
+    const chart = initChart();
+    if (!chart) return;
+
+    if (barsDataRef.current?.bars && barsDataRef.current.bars.length > 0) {
+      barsRef.current = barsDataRef.current.bars;
+      populateChart(barsDataRef.current.bars, emaPeriodsRef.current);
     }
+
+    const handleResize = () => {
+      if (chartContainerRef.current && chartApiRef.current) {
+        chartApiRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight,
+        });
+      }
+    };
+
+    const ro = new ResizeObserver(handleResize);
+    ro.observe(chartContainerRef.current!);
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      ro.disconnect();
+      chart.remove();
+      chartApiRef.current = null;
+      seriesRef.current = null;
+      emaSeriesRefs.current.clear();
+    };
+  }, [theme, selectedSymbol, initChart, populateChart]);
+
+  useEffect(() => {
+    barsDataRef.current = barsData;
+
+    if (!seriesRef.current || !chartApiRef.current) return;
+    if (!barsData?.bars || barsData.bars.length === 0) return;
+
+    barsRef.current = barsData.bars;
+    populateChart(barsData.bars, emaPeriods);
+
     if (barsData?.lastTick) {
       setLastTick(barsData.lastTick);
     }
-  }, [barsData, emaPeriods, populateChart, chartVersion]);
+  }, [barsData, emaPeriods, populateChart]);
 
   useEffect(() => {
     if (eventSourceRef.current) {

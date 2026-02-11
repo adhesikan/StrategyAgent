@@ -1,9 +1,12 @@
 import protobuf from "protobufjs";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import templateIds from "./templateIds.json";
 
-const PROTO_DIR = path.join(__dirname, "proto");
+const __filename_esm = fileURLToPath(import.meta.url);
+const __dirname_esm = path.dirname(__filename_esm);
+const PROTO_DIR = path.join(__dirname_esm, "proto");
 
 let rootInstance: protobuf.Root | null = null;
 

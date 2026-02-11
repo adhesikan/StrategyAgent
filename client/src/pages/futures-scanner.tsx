@@ -42,11 +42,17 @@ interface FuturesSymbolInfo {
 
 interface FuturesStatus {
   enabled: boolean;
+  tradingEnabled: boolean;
+  selectedFeed: string;
   workerRunning: boolean;
   subscribedSymbols: string[];
   availableSymbols: FuturesSymbolInfo[];
   feedType?: "mock" | "rithmic";
   feedDetail?: string;
+  adapterActive?: "mock" | "rithmic";
+  rithmicModeDetected?: "protocol" | "plant" | null;
+  missingEnvVars?: string[];
+  lastInitError?: string | null;
   agent: {
     enabled: boolean;
     symbol: string;
@@ -654,28 +660,78 @@ export default function FuturesScanner() {
 
   const feedType = status.feedType ?? "mock";
   const feedDetail = status.feedDetail;
+  const rithmicMode = status.rithmicModeDetected;
+  const missingVars = status.missingEnvVars ?? [];
+  const lastInitError = status.lastInitError;
+  const tradingEnabled = status.tradingEnabled ?? false;
+
+  const buildMockBannerMessage = (): string => {
+    if (feedDetail && feedDetail !== "default" && feedDetail !== "FUTURES_FEED not set to rithmic") {
+      return feedDetail;
+    }
+    return "Running with simulated data. To connect to Rithmic, set FUTURES_FEED=rithmic and provide credentials.";
+  };
+
+  const buildMissingVarsHint = (): string | null => {
+    if (missingVars.length === 0) return null;
+    if (rithmicMode === "protocol") {
+      return `Protocol mode requires: RITHMIC_WS_URL, RITHMIC_SYSTEM_NAME, RITHMIC_USER_ID, RITHMIC_PASSWORD. Missing: ${missingVars.join(", ")}`;
+    }
+    if (rithmicMode === "plant") {
+      return `Plant mode requires: RITHMIC_TICKER_PLANT_URI, RITHMIC_ORDER_PLANT_URI, RITHMIC_SYSTEM_NAME, RITHMIC_USER_ID, RITHMIC_PASSWORD. Missing: ${missingVars.join(", ")}`;
+    }
+    return `Set either (A) RITHMIC_WS_URL for Protocol mode, or (B) both RITHMIC_TICKER_PLANT_URI + RITHMIC_ORDER_PLANT_URI for Plant mode. Also required: RITHMIC_USER_ID, RITHMIC_PASSWORD. Missing: ${missingVars.join(", ")}`;
+  };
 
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4" data-testid="futures-scanner-container">
       {feedType === "rithmic" ? (
         <div
-          className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-1.5 flex items-center justify-center gap-2"
+          className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-2 space-y-1"
           data-testid="banner-futures-feed-live"
         >
-          <Wifi className="h-3.5 w-3.5 text-green-500" />
-          <span className="text-xs text-green-600 dark:text-green-400">
-            Futures Feed: Rithmic{feedDetail ? ` - ${feedDetail}` : ""}
-          </span>
+          <div className="flex items-center justify-center gap-2">
+            <Wifi className="h-3.5 w-3.5 text-green-500" />
+            <span className="text-xs text-green-600 dark:text-green-400">
+              Futures Feed: Rithmic Connected{rithmicMode ? ` (${rithmicMode === "protocol" ? "Protocol Server" : "Plant"} mode)` : ""}
+              {feedDetail ? ` - ${feedDetail}` : ""}
+            </span>
+          </div>
+          {!tradingEnabled && (
+            <p className="text-[10px] text-center text-green-600/70 dark:text-green-400/70" data-testid="text-trading-disabled-note">
+              Trading disabled (market data only). Set FUTURES_TRADING_ENABLED=true to enable orders.
+            </p>
+          )}
         </div>
       ) : (
         <div
-          className="bg-yellow-500/10 border border-yellow-500/20 rounded-md px-4 py-1.5 flex items-center justify-center gap-2"
+          className="bg-yellow-500/10 border border-yellow-500/20 rounded-md px-4 py-2 space-y-1"
           data-testid="banner-futures-feed-mock"
         >
-          <WifiOff className="h-3.5 w-3.5 text-yellow-500" />
-          <span className="text-xs text-yellow-600 dark:text-yellow-400">
-            Futures Feed: Mock Data{feedDetail && feedDetail !== "default" ? ` (${feedDetail})` : ""}
-          </span>
+          <div className="flex items-center justify-center gap-2">
+            <WifiOff className="h-3.5 w-3.5 text-yellow-500" />
+            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+              Futures Feed: Mock Data
+            </span>
+          </div>
+          <p className="text-[10px] text-center text-yellow-600/70 dark:text-yellow-400/70" data-testid="text-mock-reason">
+            {buildMockBannerMessage()}
+          </p>
+          {missingVars.length > 0 && (
+            <p className="text-[10px] text-center text-yellow-600/60 dark:text-yellow-400/60" data-testid="text-missing-vars">
+              {buildMissingVarsHint()}
+            </p>
+          )}
+          {lastInitError && (
+            <p className="text-[10px] text-center text-red-500/80" data-testid="text-init-error">
+              Init error: {lastInitError}
+            </p>
+          )}
+          {!tradingEnabled && (
+            <p className="text-[10px] text-center text-yellow-600/60 dark:text-yellow-400/60" data-testid="text-trading-disabled-note">
+              Trading disabled (market data only). Set FUTURES_TRADING_ENABLED=true to enable orders.
+            </p>
+          )}
         </div>
       )}
 

@@ -15,7 +15,8 @@ import { FUTURES_SYMBOLS } from "../brokers/futures/types";
 import { upsertTick, upsertBar } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
-import { createFuturesAdapter, type FuturesFeedType } from "./adapterFactory";
+import { createFuturesAdapter, type FuturesFeedType, type AdapterResult } from "./adapterFactory";
+import type { RithmicMode } from "../brokers/rithmic/config";
 
 const POLL_INTERVAL_MS = 750;
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -42,6 +43,9 @@ interface AgentConfig {
 let adapter: IFuturesBrokerAdapter | null = null;
 let currentFeedType: FuturesFeedType = "mock";
 let currentFeedDetail: string | undefined;
+let currentRithmicMode: RithmicMode | null = null;
+let currentMissingEnvVars: string[] = [];
+let currentLastInitError: string | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let agentTimer: ReturnType<typeof setInterval> | null = null;
@@ -77,29 +81,62 @@ export function isWorkerRunning(): boolean {
   return running;
 }
 
-export function getFeedInfo(): { feedType: FuturesFeedType; feedDetail?: string } {
-  return { feedType: currentFeedType, feedDetail: currentFeedDetail };
+export interface FeedInfo {
+  feedType: FuturesFeedType;
+  feedDetail?: string;
+  rithmicModeDetected: RithmicMode | null;
+  missingEnvVars: string[];
+  lastInitError: string | null;
+}
+
+export function getFeedInfo(): FeedInfo {
+  return {
+    feedType: currentFeedType,
+    feedDetail: currentFeedDetail,
+    rithmicModeDetected: currentRithmicMode,
+    missingEnvVars: currentMissingEnvVars,
+    lastInitError: currentLastInitError,
+  };
+}
+
+function applyAdapterResult(result: AdapterResult): void {
+  adapter = result.adapter;
+  currentFeedType = result.feedType;
+  currentFeedDetail = result.feedDetail;
+  currentRithmicMode = result.rithmicModeDetected;
+  currentMissingEnvVars = result.missingEnvVars;
+  currentLastInitError = result.lastInitError;
 }
 
 export async function startFuturesWorker(): Promise<void> {
   if (running) return;
-  if (process.env.FUTURES_TRADING_ENABLED !== "true") {
-    console.log("[FuturesWorker] Disabled (set FUTURES_TRADING_ENABLED=true to enable)");
-    return;
-  }
 
-  console.log("[FuturesWorker] Starting...");
+  const tradingEnabled = process.env.FUTURES_TRADING_ENABLED === "true";
+  console.log(`[FuturesWorker] Starting... (trading ${tradingEnabled ? "enabled" : "disabled - market data only"})`);
   running = true;
 
   const result = await createFuturesAdapter();
-  adapter = result.adapter;
-  currentFeedType = result.feedType;
-  currentFeedDetail = result.feedDetail;
-  await adapter.connect();
+  applyAdapterResult(result);
 
-  adapter.on("tick", (tick) => upsertTick(tick));
-  adapter.on("bar", (bar) => upsertBar(bar));
-  adapter.on("orderUpdate", (update) => handleOrderUpdate(update));
+  try {
+    await adapter!.connect();
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[FuturesWorker] Adapter connect failed: ${errMsg}`);
+    if (currentFeedType === "rithmic") {
+      console.warn("[FuturesWorker] Rithmic connect failed, falling back to mock");
+      const mockAdapter = new MockFuturesAdapter();
+      adapter = mockAdapter;
+      currentFeedType = "mock";
+      currentFeedDetail = `Rithmic connect failed: ${errMsg}`;
+      currentLastInitError = errMsg;
+      await adapter.connect();
+    }
+  }
+
+  adapter!.on("tick", (tick) => upsertTick(tick));
+  adapter!.on("bar", (bar) => upsertBar(bar));
+  adapter!.on("orderUpdate", (update) => handleOrderUpdate(update));
 
   const rows = await db.select().from(futuresWorkerStatus).limit(1);
   if (rows.length > 0) {
@@ -207,6 +244,9 @@ async function executeCommand(userId: string, payload: FuturesCommandPayload, cm
       await adapter.unsubscribeMarketData(payload.symbol);
       break;
     case "placeOrder": {
+      if (process.env.FUTURES_TRADING_ENABLED !== "true") {
+        throw new Error("Trading is disabled (market data only). Set FUTURES_TRADING_ENABLED=true to enable orders.");
+      }
       checkRateLimit(userId);
       await checkPositionLimit(userId, payload.symbol, payload.qty);
 
@@ -240,6 +280,9 @@ async function executeCommand(userId: string, payload: FuturesCommandPayload, cm
       break;
     }
     case "cancelOrder": {
+      if (process.env.FUTURES_TRADING_ENABLED !== "true") {
+        throw new Error("Trading is disabled. Set FUTURES_TRADING_ENABLED=true to enable orders.");
+      }
       await adapter.cancelOrder(payload.brokerOrderId);
       await db
         .update(futuresOrders)

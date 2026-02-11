@@ -1,0 +1,116 @@
+You are working in the VCP Trader monorepo (React + Vite + TypeScript frontend, Express + TypeScript backend, Drizzle + Zod schemas).
+
+Goal:
+Modify the Futures tab behavior so that:
+
+1) The Futures module ALWAYS loads if the user has access to the platform.
+2) If trading is disabled (either by user entitlement OR FUTURES_TRADING_ENABLED env var), the tab runs in DATA-ONLY MODE instead of blocking the entire screen.
+3) InstaTrade and Auto Agent are disabled when trading is disabled.
+4) Market data, charts, and scanning remain functional.
+5) The existing Mock fallback logic remains intact.
+6) No breaking changes to Stocks or Options modules.
+
+---------------------------------------------
+PART 1 – BACKEND ADJUSTMENT
+---------------------------------------------
+
+1) Locate any backend logic that blocks Futures entirely based on:
+   - user.futuresEnabled
+   - account.features.futures
+   - hasFuturesAccess
+   - similar flags
+
+2) Replace hard blocking behavior like:
+
+   if (!user.futuresEnabled) {
+      return res.status(403).json({ error: "Futures disabled" });
+   }
+
+   OR frontend returning a disabled screen entirely
+
+3) Instead:
+   - Allow Futures API endpoints to load market data and status.
+   - Add a flag to /api/futures/status response:
+
+     {
+       tradingEnabled: process.env.FUTURES_TRADING_ENABLED === "true",
+       userFuturesAccess: user.futuresEnabled ?? true,
+       dataMode: true | false
+     }
+
+   - dataMode should be true when:
+       userFuturesAccess === false OR FUTURES_TRADING_ENABLED !== "true"
+
+4) Ensure:
+   - placeOrder and cancelOrder endpoints still check FUTURES_TRADING_ENABLED === "true"
+   - If trading disabled, return 403 with clear message:
+       "Futures trading is disabled (data-only mode)."
+
+---------------------------------------------
+PART 2 – FRONTEND MODIFICATION
+---------------------------------------------
+
+1) Locate the component rendering:
+
+   "Futures Trading Disabled – Contact support or enable it in your settings."
+
+2) Remove full-screen blocking behavior.
+
+3) Replace with:
+
+   IF dataMode === true:
+      - Render Futures page normally:
+          - Chart
+          - Scanner results
+          - Market data
+      - Disable:
+          - InstaTrade button
+          - Auto Agent toggle
+      - Show a non-blocking banner at top:
+
+         <Banner variant="warning">
+           Futures Trading is disabled. Market data is live, but order placement and automation are turned off.
+         </Banner>
+
+   IF tradingEnabled === true:
+      - Render normally without warning.
+
+4) Ensure:
+   - InstaTrade button is disabled with tooltip:
+       "Trading disabled (data-only mode)"
+   - Auto Agent toggle disabled with same tooltip.
+
+---------------------------------------------
+PART 3 – UI CLEANUP
+---------------------------------------------
+
+1) Do NOT remove Futures tab.
+2) Do NOT remove Mock fallback logic.
+3) Do NOT require FUTURES_TRADING_ENABLED=true to view charts.
+4) Keep consistent dark theme styling.
+
+---------------------------------------------
+PART 4 – SAFETY
+---------------------------------------------
+
+- No breaking changes to Stocks or Options modules.
+- No change to Rithmic adapter initialization logic.
+- No change to environment variable handling beyond adding the dataMode concept.
+- Ensure app compiles successfully.
+
+---------------------------------------------
+EXPECTED RESULT
+---------------------------------------------
+
+When FUTURES_TRADING_ENABLED=false:
+- Futures tab loads
+- Chart streams (mock or rithmic)
+- Scanner works
+- InstaTrade disabled
+- Auto Agent disabled
+- Warning banner visible
+
+When FUTURES_TRADING_ENABLED=true:
+- Full trading enabled
+
+Proceed to implement cleanly and modularly.

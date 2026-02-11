@@ -53,5 +53,6 @@ FUTURES_FEED = "rithmic"
 RITHMIC_TICKER_PLANT_URI = "wss://rituz00100.rithmic.com:443"
 RITHMIC_ORDER_PLANT_URI = "wss://rituz00100.rithmic.com:443"
 RITHMIC_SYSTEM_NAME = "Rithmic Test"
+RITHMIC_WS_URL = "wss://rituz00100.rithmic.com:443"
 
 [userenv.production]

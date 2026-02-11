@@ -1,0 +1,112 @@
+You are working in the existing VCP Trader monorepo on Replit (React/Vite TS frontend, Express TS backend, Drizzle + Zod in shared/schema.ts). There is an existing Futures tab that can run in mock mode and optionally in Rithmic mode, with a UI banner that explains why it fell back to mock.
+
+Goal:
+Update the Futures “feed status/banner” logic AND the Rithmic adapter initialization logic to support TWO configuration modes:
+
+MODE A) Protocol Server Mode (single URL)
+- Uses: RITHMIC_WS_URL (or fallback to wss://rituz00100.rithmic.com:443)
+- Uses: RITHMIC_SYSTEM_NAME (default "Rithmic Test")
+- Uses: RITHMIC_USER_ID
+- Uses: RITHMIC_PASSWORD
+
+MODE B) Plant Mode (ticker plant + order plant URIs)
+- Uses: RITHMIC_TICKER_PLANT_URI
+- Uses: RITHMIC_ORDER_PLANT_URI
+- Uses: RITHMIC_SYSTEM_NAME
+- Uses: RITHMIC_USER_ID (or if code uses ticker-plant-specific user id, support that too)
+- Uses: RITHMIC_PASSWORD
+
+CRITICAL REQUIREMENTS:
+1) Do NOT remove or break the MockFuturesAdapter; mock must remain the default and automatic fallback.
+2) The app must NOT crash when env vars are missing. It must fall back to mock and show a clear banner stating why.
+3) The banner must accurately reflect required env vars based on which mode is selected/available.
+4) The Rithmic adapter init must attempt to determine mode automatically:
+   - If RITHMIC_WS_URL is present => Protocol Server mode
+   - Else if BOTH RITHMIC_TICKER_PLANT_URI and RITHMIC_ORDER_PLANT_URI are present => Plant mode
+   - Else => missing config => fallback to mock with clear reason
+5) FUTURES_TRADING_ENABLED must NOT be required for market data connection. It only gates order placement/cancel.
+6) Add thorough structured logs so it’s easy to debug in production.
+
+Implementation details:
+
+A) Create a shared config resolver:
+1) Add file: /trading/brokers/rithmic/config.ts
+Implement:
+- type RithmicMode = "protocol" | "plant"
+- interface RithmicConfigResolved { mode: RithmicMode; wsUrl?: string; tickerPlantUri?: string; orderPlantUri?: string; systemName: string; userId: string; password: string; missing: string[] }
+- function resolveRithmicConfig(env: NodeJS.ProcessEnv): RithmicConfigResolved
+Behavior:
+- systemName default: env.RITHMIC_SYSTEM_NAME ?? "Rithmic Test"
+- userId: env.RITHMIC_USER_ID (required)
+- password: env.RITHMIC_PASSWORD (required)
+- If env.RITHMIC_WS_URL exists => mode="protocol"
+  - wsUrl = env.RITHMIC_WS_URL
+- Else if env.RITHMIC_TICKER_PLANT_URI and env.RITHMIC_ORDER_PLANT_URI exist => mode="plant"
+  - tickerPlantUri/orderPlantUri set
+- Else => missing mode config
+- Collect missing keys into missing[] (include FUTURES_FEED if not set to rithmic when user intends rithmic)
+Return resolved config and missing list (do not throw).
+
+B) Update the adapter init to use the resolver and support both modes:
+1) In /trading/brokers/rithmic/RithmicProtocolAdapter.ts (or the current rithmic adapter file):
+- Replace current direct env var reads (that demand plant URIs) with resolveRithmicConfig(process.env)
+- If missing[] non-empty or mode cannot be determined:
+  - throw a controlled error with a machine-readable code (e.g., "RITHMIC_CONFIG_MISSING") and include missing[]
+- Implement connection logic:
+  - If mode="protocol": connect to cfg.wsUrl (wss://...)
+  - If mode="plant": use cfg.tickerPlantUri and cfg.orderPlantUri as per existing plant logic (keep existing implementation)
+- Ensure connect/login sequence works for both and reconnect logic remains.
+- Ensure order placement checks FUTURES_TRADING_ENABLED === "true" before sending any order/cancel; otherwise reject with a clear error, but keep market data working.
+
+NOTE: If your codebase currently has separate classes for plant vs protocol, keep them, but route based on cfg.mode. Otherwise, keep one adapter and branch inside connect().
+
+C) Update the banner/status logic:
+Locate the Futures banner code (frontend component or backend status endpoint). Update it so:
+1) It calls a backend status endpoint (or uses existing status info) that includes:
+   - selectedFeed: process.env.FUTURES_FEED (server-side) or the configured feed in DB
+   - rithmicModeDetected: "protocol" | "plant" | null
+   - missingEnvVars: string[]
+   - lastInitError: string | null
+   - adapterActive: "rithmic" | "mock"
+2) The banner message must change based on config:
+- If active="mock" due to missing Rithmic config:
+  - If RITHMIC_WS_URL exists: show Protocol-mode required vars list:
+    - FUTURES_FEED=rithmic
+    - RITHMIC_WS_URL
+    - RITHMIC_SYSTEM_NAME
+    - RITHMIC_USER_ID
+    - RITHMIC_PASSWORD
+  - Else if plant vars exist partially: show Plant-mode required list:
+    - FUTURES_FEED=rithmic
+    - RITHMIC_TICKER_PLANT_URI
+    - RITHMIC_ORDER_PLANT_URI
+    - RITHMIC_SYSTEM_NAME
+    - RITHMIC_USER_ID
+    - RITHMIC_PASSWORD
+  - Else: show BOTH modes and say “Set either (A) RITHMIC_WS_URL … OR (B) both plant URIs …”
+- If active="rithmic":
+  - Show “Rithmic connected” and the detected mode (protocol/plant)
+- Do NOT say FUTURES_TRADING_ENABLED must be true to get data. Instead:
+  - If FUTURES_TRADING_ENABLED is not true: show a small note “Trading is disabled (market data only). Set FUTURES_TRADING_ENABLED=true to enable orders.”
+
+D) Backend status endpoint:
+If not present, add GET /api/futures/status to return the above fields. If present, extend it.
+- Ensure it returns adapterActive, missingEnvVars, lastInitError, and rithmicModeDetected.
+
+E) Keep fallback behavior:
+- If FUTURES_FEED != "rithmic": run mock.
+- If FUTURES_FEED == "rithmic": attempt Rithmic init; on any error, switch to mock and set status fields accordingly.
+
+F) Tests (lightweight):
+- Add a small unit test (or simple function test) for resolveRithmicConfig() with:
+  - protocol mode env
+  - plant mode env
+  - missing env
+Ensure missing[] is correct.
+
+Finally:
+- Make minimal changes and keep architecture clean.
+- Do not remove any existing features.
+- Ensure the banner is accurate and prevents confusion in production.
+
+Proceed to implement all of the above now in the repo.

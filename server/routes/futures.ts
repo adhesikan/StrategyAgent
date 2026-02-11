@@ -21,7 +21,9 @@ export function registerFuturesRoutes(app: Express): void {
       const feedInfo = getFeedInfo();
 
       res.json({
-        enabled: process.env.FUTURES_TRADING_ENABLED === "true",
+        enabled: isWorkerRunning(),
+        tradingEnabled: process.env.FUTURES_TRADING_ENABLED === "true",
+        selectedFeed: process.env.FUTURES_FEED ?? "mock",
         workerRunning: isWorkerRunning(),
         workerStatus: workerRow?.status ?? "stopped",
         lastHeartbeat: workerRow?.lastHeartbeatAt ?? null,
@@ -30,6 +32,10 @@ export function registerFuturesRoutes(app: Express): void {
         agent: agentCfg,
         feedType: feedInfo.feedType,
         feedDetail: feedInfo.feedDetail,
+        adapterActive: feedInfo.feedType,
+        rithmicModeDetected: feedInfo.rithmicModeDetected,
+        missingEnvVars: feedInfo.missingEnvVars,
+        lastInitError: feedInfo.lastInitError,
       });
     } catch (error) {
       console.error("Error fetching futures status:", error);

@@ -66,13 +66,17 @@ interface NewsResponse {
 
 function isMarketOpen(): boolean {
   const now = new Date();
-  const etOffset = -5;
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  const et = new Date(utc + 3600000 * etOffset);
-  const hour = et.getHours();
-  const minute = et.getMinutes();
-  const day = et.getDay();
-  if (day === 0 || day === 6) return false;
+  const etParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+    weekday: "short",
+  }).formatToParts(now);
+  const hour = parseInt(etParts.find((p) => p.type === "hour")?.value || "0");
+  const minute = parseInt(etParts.find((p) => p.type === "minute")?.value || "0");
+  const weekday = etParts.find((p) => p.type === "weekday")?.value || "";
+  if (weekday === "Sat" || weekday === "Sun") return false;
   const timeInMinutes = hour * 60 + minute;
   return timeInMinutes >= 570 && timeInMinutes <= 960;
 }
@@ -139,7 +143,7 @@ export default function CommandCenter() {
   });
 
   const { data: scanResults } = useQuery<ScanResult[]>({
-    queryKey: ["/api/scan"],
+    queryKey: ["/api/scan/results"],
   });
 
   const { data: trades } = useQuery<Trade[]>({

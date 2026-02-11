@@ -46,6 +46,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   private plants = new Map<PlantType, PlantConnection>();
   private subscribedSymbols = new Set<string>();
   private _connected = false;
+  private _dataOnly = false;
   private orderCounter = 0;
   private pendingOrderMap = new Map<string, { resolve: (id: string) => void; reject: (err: Error) => void }>();
   private tickState = new Map<string, Partial<FuturesTick>>();
@@ -99,11 +100,19 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     }
 
     await this.connectPlant("ticker");
-    await this.connectPlant("order");
+
+    try {
+      await this.connectPlant("order");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Rithmic] Order plant connection failed: ${msg}`);
+      console.warn("[Rithmic] Running in data-only mode (market data available, trading disabled)");
+      this._dataOnly = true;
+    }
 
     this._connected = true;
     this.emit("status", "connected");
-    console.log("[Rithmic] Connected to all plants");
+    console.log(`[Rithmic] Connected${this._dataOnly ? " (data-only mode)" : " to all plants"}`);
   }
 
   private async discoverGateways(gatewayUri: string): Promise<{ ticker?: string; order?: string } | null> {
@@ -204,6 +213,10 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     return this._connected;
   }
 
+  isDataOnly(): boolean {
+    return this._dataOnly;
+  }
+
   getSubscribedSymbols(): string[] {
     return Array.from(this.subscribedSymbols);
   }
@@ -260,6 +273,9 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   }
 
   async placeOrder(req: FuturesOrderRequest): Promise<{ brokerOrderId: string }> {
+    if (this._dataOnly) {
+      throw new Error("[Rithmic] Trading is not available - running in data-only mode (order plant not connected)");
+    }
     const plant = this.plants.get("order");
     if (!plant?.ws || plant.ws.readyState !== WebSocket.OPEN) {
       throw new Error("[Rithmic] Order plant not connected");

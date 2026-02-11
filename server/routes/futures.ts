@@ -20,9 +20,15 @@ export function registerFuturesRoutes(app: Express): void {
       const agentCfg = getAgentConfig();
       const feedInfo = getFeedInfo();
 
+      const tradingEnabledEnv = process.env.FUTURES_TRADING_ENABLED === "true";
+      const userFuturesAccess = true;
+      const dataMode = !userFuturesAccess || !tradingEnabledEnv;
+
       res.json({
-        enabled: isWorkerRunning(),
-        tradingEnabled: process.env.FUTURES_TRADING_ENABLED === "true",
+        enabled: true,
+        tradingEnabled: tradingEnabledEnv,
+        userFuturesAccess,
+        dataMode,
         selectedFeed: process.env.FUTURES_FEED ?? "mock",
         workerRunning: isWorkerRunning(),
         workerStatus: workerRow?.status ?? "stopped",

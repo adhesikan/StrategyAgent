@@ -31,7 +31,9 @@ import {
   Radio,
   Plus,
   X,
+  AlertTriangle,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface FuturesSymbolInfo {
   symbol: string;
@@ -43,6 +45,8 @@ interface FuturesSymbolInfo {
 interface FuturesStatus {
   enabled: boolean;
   tradingEnabled: boolean;
+  userFuturesAccess: boolean;
+  dataMode: boolean;
   selectedFeed: string;
   workerRunning: boolean;
   subscribedSymbols: string[];
@@ -605,25 +609,7 @@ export default function FuturesScanner() {
     );
   }
 
-  if (!status?.enabled) {
-    return (
-      <div className="flex items-center justify-center h-full p-6" data-testid="futures-disabled">
-        <Card className="max-w-md w-full">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <WifiOff className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <CardTitle data-testid="text-futures-disabled">Futures Trading Disabled</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center">
-            <p className="text-muted-foreground" data-testid="text-futures-disabled-message">
-              Futures trading is not currently enabled. Contact support or enable it in your settings.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const dataMode = status?.dataMode ?? true;
 
   const isSubscribed = status.subscribedSymbols?.includes(selectedSymbol);
   const availableSymbols = status.availableSymbols || [];
@@ -697,11 +683,6 @@ export default function FuturesScanner() {
               {feedDetail ? ` - ${feedDetail}` : ""}
             </span>
           </div>
-          {!tradingEnabled && (
-            <p className="text-[10px] text-center text-green-600/70 dark:text-green-400/70" data-testid="text-trading-disabled-note">
-              Trading disabled (market data only). Set FUTURES_TRADING_ENABLED=true to enable orders.
-            </p>
-          )}
         </div>
       ) : (
         <div
@@ -727,11 +708,18 @@ export default function FuturesScanner() {
               Init error: {lastInitError}
             </p>
           )}
-          {!tradingEnabled && (
-            <p className="text-[10px] text-center text-yellow-600/60 dark:text-yellow-400/60" data-testid="text-trading-disabled-note">
-              Trading disabled (market data only). Set FUTURES_TRADING_ENABLED=true to enable orders.
-            </p>
-          )}
+        </div>
+      )}
+
+      {dataMode && (
+        <div
+          className="bg-orange-500/10 border border-orange-500/20 rounded-md px-4 py-2 flex items-center justify-center gap-2"
+          data-testid="banner-data-only-mode"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+          <span className="text-xs text-orange-600 dark:text-orange-400">
+            Futures Trading is disabled. Market data is live, but order placement and automation are turned off.
+          </span>
         </div>
       )}
 
@@ -771,14 +759,26 @@ export default function FuturesScanner() {
           </Badge>
 
           {isSubscribed && lastTick && (
-            <Button
-              variant="default"
-              onClick={openQuickTrade}
-              data-testid="button-quick-trade"
-            >
-              <Zap className="h-4 w-4 mr-1" />
-              InstaTrade
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    variant="default"
+                    onClick={openQuickTrade}
+                    disabled={dataMode}
+                    data-testid="button-quick-trade"
+                  >
+                    <Zap className="h-4 w-4 mr-1" />
+                    InstaTrade
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {dataMode && (
+                <TooltipContent>
+                  <p>Trading disabled (data-only mode)</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
           )}
         </div>
 
@@ -964,15 +964,27 @@ export default function FuturesScanner() {
                       <TableCell className="font-mono text-sm text-green-500">{opp.target.toFixed(2)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{opp.reason}</TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openInstaTrade(opp)}
-                          data-testid={`button-instatrade-${i}`}
-                        >
-                          <Zap className="h-3 w-3 mr-1" />
-                          InstaTrade
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openInstaTrade(opp)}
+                                disabled={dataMode}
+                                data-testid={`button-instatrade-${i}`}
+                              >
+                                <Zap className="h-3 w-3 mr-1" />
+                                InstaTrade
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {dataMode && (
+                            <TooltipContent>
+                              <p>Trading disabled (data-only mode)</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1007,8 +1019,8 @@ export default function FuturesScanner() {
                   {status.agent.tradesToday}/{agentMaxTrades} trades
                 </span>
               )}
-              <Badge variant={agentEnabled ? "default" : "outline"} data-testid="badge-agent-status">
-                {agentEnabled ? "Active" : "Inactive"}
+              <Badge variant={dataMode ? "outline" : agentEnabled ? "default" : "outline"} data-testid="badge-agent-status">
+                {dataMode ? "Disabled" : agentEnabled ? "Active" : "Inactive"}
               </Badge>
               {agentOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
             </div>
@@ -1017,12 +1029,24 @@ export default function FuturesScanner() {
         {agentOpen && (
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
-              <Switch
-                checked={agentEnabled}
-                onCheckedChange={setAgentEnabled}
-                data-testid="switch-agent-enabled"
-              />
-              <Label>Enable Auto Agent</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Switch
+                      checked={dataMode ? false : agentEnabled}
+                      onCheckedChange={setAgentEnabled}
+                      disabled={dataMode}
+                      data-testid="switch-agent-enabled"
+                    />
+                  </span>
+                </TooltipTrigger>
+                {dataMode && (
+                  <TooltipContent>
+                    <p>Trading disabled (data-only mode)</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <Label className={dataMode ? "text-muted-foreground" : ""}>Enable Auto Agent</Label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

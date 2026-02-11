@@ -744,16 +744,15 @@ export default function FuturesScanner() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          {barsLoading ? (
-            <Skeleton className="w-full h-[400px]" data-testid="skeleton-chart" />
-          ) : (
-            <div
-              ref={chartContainerRef}
-              className="w-full h-[400px]"
-              data-testid="futures-chart"
-            />
+        <CardContent className="p-0 relative">
+          {barsLoading && (
+            <Skeleton className="w-full h-[400px] absolute inset-0 z-10" data-testid="skeleton-chart" />
           )}
+          <div
+            ref={chartContainerRef}
+            className="w-full h-[400px]"
+            data-testid="futures-chart"
+          />
         </CardContent>
       </Card>
 

@@ -23,8 +23,10 @@ export interface FuturesOrderRequest {
   symbol: string;
   side: "buy" | "sell";
   qty: number;
-  orderType: "market" | "limit";
+  orderType: "market" | "limit" | "stop";
   limitPrice?: number;
+  stopPrice?: number;
+  linkedToOrderId?: string;
 }
 
 export interface FuturesOrderUpdate {

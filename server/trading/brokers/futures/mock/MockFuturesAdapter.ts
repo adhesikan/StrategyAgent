@@ -41,6 +41,8 @@ export class MockFuturesAdapter extends EventEmitter implements IFuturesBrokerAd
   private orderCounter = 0;
   private rng: () => number;
   private tickIntervalMs: number;
+  private pendingStopOrders = new Map<string, FuturesOrderRequest>();
+  private pendingLimitOrders = new Map<string, FuturesOrderRequest>();
 
   constructor(options?: { seed?: number; tickIntervalMs?: number }) {
     super();
@@ -166,6 +168,7 @@ export class MockFuturesAdapter extends EventEmitter implements IFuturesBrokerAd
       timestamp: Date.now(),
     };
     this.emit("tick", tick);
+    this.checkPendingOrders(symbol, state.price);
 
     const now = Date.now();
     const barSecond = Math.floor(now / 1000) * 1000;
@@ -207,6 +210,16 @@ export class MockFuturesAdapter extends EventEmitter implements IFuturesBrokerAd
     };
     setTimeout(() => this.emit("orderUpdate", acceptUpdate), 100);
 
+    if (req.orderType === "stop" && req.stopPrice) {
+      this.pendingStopOrders.set(brokerOrderId, req);
+      return { brokerOrderId };
+    }
+
+    if (req.orderType === "limit" && req.limitPrice) {
+      this.pendingLimitOrders.set(brokerOrderId, req);
+      return { brokerOrderId };
+    }
+
     const state = this.symbols.get(req.symbol);
     const fillPrice = state
       ? req.side === "buy"
@@ -217,29 +230,101 @@ export class MockFuturesAdapter extends EventEmitter implements IFuturesBrokerAd
     const roundedFillPrice = Math.round(fillPrice * 100) / 100;
 
     setTimeout(() => {
-      this.orders.set(brokerOrderId, { req, status: "filled" });
-
-      const fillUpdate: FuturesOrderUpdate = {
-        brokerOrderId,
-        symbol: req.symbol,
-        side: req.side,
-        qty: req.qty,
-        status: "filled",
-        fillPrice: roundedFillPrice,
-        filledAt: Date.now(),
-      };
-      this.emit("orderUpdate", fillUpdate);
-
-      this.updatePosition(req.symbol, req.side, req.qty, roundedFillPrice);
+      this.fillOrder(brokerOrderId, req, roundedFillPrice);
     }, 500 + Math.floor(this.rng() * 500));
 
     return { brokerOrderId };
+  }
+
+  private fillOrder(brokerOrderId: string, req: FuturesOrderRequest, fillPrice: number): void {
+    const order = this.orders.get(brokerOrderId);
+    if (!order || order.status === "canceled") return;
+
+    this.orders.set(brokerOrderId, { req, status: "filled" });
+
+    const fillUpdate: FuturesOrderUpdate = {
+      brokerOrderId,
+      symbol: req.symbol,
+      side: req.side,
+      qty: req.qty,
+      status: "filled",
+      fillPrice,
+      filledAt: Date.now(),
+    };
+    this.emit("orderUpdate", fillUpdate);
+    this.updatePosition(req.symbol, req.side, req.qty, fillPrice);
+
+    if (req.linkedToOrderId) {
+      this.cancelLinkedOrders(req.linkedToOrderId, brokerOrderId);
+    }
+  }
+
+  private cancelLinkedOrders(groupId: string, exceptOrderId: string): void {
+    for (const [id, req] of Array.from(this.pendingStopOrders.entries())) {
+      if (id !== exceptOrderId && req.linkedToOrderId === groupId) {
+        this.pendingStopOrders.delete(id);
+        this.cancelOrderSilent(id);
+      }
+    }
+    for (const [id, req] of Array.from(this.pendingLimitOrders.entries())) {
+      if (id !== exceptOrderId && req.linkedToOrderId === groupId) {
+        this.pendingLimitOrders.delete(id);
+        this.cancelOrderSilent(id);
+      }
+    }
+    for (const [id, entry] of Array.from(this.orders.entries())) {
+      if (id !== exceptOrderId && entry.req.linkedToOrderId === groupId && entry.status === "accepted") {
+        this.pendingStopOrders.delete(id);
+        this.pendingLimitOrders.delete(id);
+        this.cancelOrderSilent(id);
+      }
+    }
+  }
+
+  private cancelOrderSilent(brokerOrderId: string): void {
+    const order = this.orders.get(brokerOrderId);
+    if (order && order.status !== "filled") {
+      order.status = "canceled";
+      this.emit("orderUpdate", {
+        brokerOrderId,
+        symbol: order.req.symbol,
+        side: order.req.side,
+        qty: order.req.qty,
+        status: "canceled",
+      });
+    }
+  }
+
+  private checkPendingOrders(symbol: string, price: number): void {
+    for (const [id, req] of Array.from(this.pendingStopOrders.entries())) {
+      if (req.symbol !== symbol) continue;
+      const triggered =
+        (req.side === "sell" && price <= req.stopPrice!) ||
+        (req.side === "buy" && price >= req.stopPrice!);
+      if (triggered) {
+        this.pendingStopOrders.delete(id);
+        this.fillOrder(id, req, Math.round(price * 100) / 100);
+      }
+    }
+    for (const [id, req] of Array.from(this.pendingLimitOrders.entries())) {
+      if (req.symbol !== symbol) continue;
+      const triggered =
+        (req.side === "sell" && price >= req.limitPrice!) ||
+        (req.side === "buy" && price <= req.limitPrice!);
+      if (triggered) {
+        this.pendingLimitOrders.delete(id);
+        this.fillOrder(id, req, req.limitPrice!);
+      }
+    }
   }
 
   async cancelOrder(brokerOrderId: string): Promise<void> {
     const order = this.orders.get(brokerOrderId);
     if (!order) throw new Error(`Order not found: ${brokerOrderId}`);
     if (order.status === "filled") throw new Error("Cannot cancel filled order");
+
+    this.pendingStopOrders.delete(brokerOrderId);
+    this.pendingLimitOrders.delete(brokerOrderId);
 
     order.status = "canceled";
     const update: FuturesOrderUpdate = {

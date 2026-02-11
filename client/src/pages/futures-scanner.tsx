@@ -51,6 +51,13 @@ interface FuturesStatus {
     minScore: number;
     maxTradesPerDay: number;
     maxPosition: number;
+    sizeMode: "contracts" | "dollars";
+    tradeSize: number;
+    entryTimeStart: string;
+    entryTimeEnd: string;
+    exitTime: string;
+    takeProfit: number;
+    stopLoss: number;
     tradesToday: number;
   } | null;
 }
@@ -136,6 +143,13 @@ export default function FuturesScanner() {
   const [agentMinScore, setAgentMinScore] = useState(70);
   const [agentMaxTrades, setAgentMaxTrades] = useState(5);
   const [agentMaxPosition, setAgentMaxPosition] = useState(2);
+  const [agentSizeMode, setAgentSizeMode] = useState<"contracts" | "dollars">("contracts");
+  const [agentTradeSize, setAgentTradeSize] = useState(1);
+  const [agentEntryStart, setAgentEntryStart] = useState("09:30");
+  const [agentEntryEnd, setAgentEntryEnd] = useState("15:30");
+  const [agentExitTime, setAgentExitTime] = useState("15:55");
+  const [agentTakeProfit, setAgentTakeProfit] = useState(0);
+  const [agentStopLoss, setAgentStopLoss] = useState(0);
 
   const [instaTradeOpp, setInstaTradeOpp] = useState<FuturesOpportunity | null>(null);
   const [instaTradeOpen, setInstaTradeOpen] = useState(false);
@@ -234,9 +248,18 @@ export default function FuturesScanner() {
         commandType: "toggleAgent",
         enabled: agentEnabled,
         symbol: selectedSymbol,
-        minScore: agentMinScore,
-        maxTradesPerDay: agentMaxTrades,
-        maxPosition: agentMaxPosition,
+        rules: {
+          minScore: agentMinScore,
+          maxTradesPerDay: agentMaxTrades,
+          maxPosition: agentMaxPosition,
+          sizeMode: agentSizeMode,
+          tradeSize: agentTradeSize,
+          entryTimeStart: agentEntryStart,
+          entryTimeEnd: agentEntryEnd,
+          exitTime: agentExitTime,
+          takeProfit: agentTakeProfit,
+          stopLoss: agentStopLoss,
+        },
       });
     },
     onSuccess: () => {
@@ -254,6 +277,13 @@ export default function FuturesScanner() {
       setAgentMinScore(status.agent.minScore);
       setAgentMaxTrades(status.agent.maxTradesPerDay);
       setAgentMaxPosition(status.agent.maxPosition);
+      if (status.agent.sizeMode) setAgentSizeMode(status.agent.sizeMode);
+      if (status.agent.tradeSize) setAgentTradeSize(status.agent.tradeSize);
+      if (status.agent.entryTimeStart) setAgentEntryStart(status.agent.entryTimeStart);
+      if (status.agent.entryTimeEnd) setAgentEntryEnd(status.agent.entryTimeEnd);
+      if (status.agent.exitTime) setAgentExitTime(status.agent.exitTime);
+      if (status.agent.takeProfit !== undefined) setAgentTakeProfit(status.agent.takeProfit);
+      if (status.agent.stopLoss !== undefined) setAgentStopLoss(status.agent.stopLoss);
     }
   }, [status?.agent]);
 
@@ -823,6 +853,11 @@ export default function FuturesScanner() {
               Auto Agent
             </CardTitle>
             <div className="flex items-center gap-2">
+              {status?.agent?.tradesToday !== undefined && (
+                <span className="text-xs text-muted-foreground font-mono" data-testid="text-trades-today">
+                  {status.agent.tradesToday}/{agentMaxTrades} trades
+                </span>
+              )}
               <Badge variant={agentEnabled ? "default" : "outline"} data-testid="badge-agent-status">
                 {agentEnabled ? "Active" : "Inactive"}
               </Badge>
@@ -880,6 +915,95 @@ export default function FuturesScanner() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Trade Size</Label>
+                <div className="flex items-center gap-2">
+                  <Select value={agentSizeMode} onValueChange={(v) => setAgentSizeMode(v as "contracts" | "dollars")}>
+                    <SelectTrigger className="w-[120px]" data-testid="select-size-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contracts">Contracts</SelectItem>
+                      <SelectItem value="dollars">$ Amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={agentTradeSize}
+                    onChange={(e) => setAgentTradeSize(Math.max(1, parseFloat(e.target.value) || 1))}
+                    className="flex-1"
+                    data-testid="input-trade-size"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {agentSizeMode === "contracts" ? "Number of contracts per trade" : "Dollar amount per trade (auto-calculates contracts)"}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Trading Hours (ET)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="time"
+                    value={agentEntryStart}
+                    onChange={(e) => setAgentEntryStart(e.target.value)}
+                    className="flex-1"
+                    data-testid="input-entry-start"
+                  />
+                  <span className="text-muted-foreground text-xs">to</span>
+                  <Input
+                    type="time"
+                    value={agentEntryEnd}
+                    onChange={(e) => setAgentEntryEnd(e.target.value)}
+                    className="flex-1"
+                    data-testid="input-entry-end"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">New entries only placed during this window</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="agent-exit-time">Exit Time (ET)</Label>
+                <Input
+                  id="agent-exit-time"
+                  type="time"
+                  value={agentExitTime}
+                  onChange={(e) => setAgentExitTime(e.target.value)}
+                  data-testid="input-exit-time"
+                />
+                <p className="text-xs text-muted-foreground">Close all positions at this time</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-take-profit">Take Profit (points)</Label>
+                <Input
+                  id="agent-take-profit"
+                  type="number"
+                  min={0}
+                  step={0.25}
+                  value={agentTakeProfit}
+                  onChange={(e) => setAgentTakeProfit(Math.max(0, parseFloat(e.target.value) || 0))}
+                  data-testid="input-take-profit"
+                />
+                <p className="text-xs text-muted-foreground">{agentTakeProfit > 0 ? `Limit order ${agentTakeProfit} pts from entry` : "No take profit"}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-stop-loss">Stop Loss (points)</Label>
+                <Input
+                  id="agent-stop-loss"
+                  type="number"
+                  min={0}
+                  step={0.25}
+                  value={agentStopLoss}
+                  onChange={(e) => setAgentStopLoss(Math.max(0, parseFloat(e.target.value) || 0))}
+                  data-testid="input-stop-loss"
+                />
+                <p className="text-xs text-muted-foreground">{agentStopLoss > 0 ? `Limit order ${agentStopLoss} pts from entry` : "No stop loss"}</p>
+              </div>
+            </div>
+
             <Button
               onClick={() => agentMutation.mutate()}
               disabled={agentMutation.isPending}
@@ -893,6 +1017,9 @@ export default function FuturesScanner() {
               <div className="text-xs text-muted-foreground border-t pt-3 mt-3" data-testid="agent-last-action">
                 <p className="font-medium text-foreground mb-1">Last Agent Action</p>
                 <p>{auditLog[0].action} - {auditLog[0].symbol} - {new Date(auditLog[0].createdAt).toLocaleString()}</p>
+                {auditLog[0].details?.qty && (
+                  <p className="mt-0.5">Qty: {auditLog[0].details.qty} | Side: {auditLog[0].details.side}</p>
+                )}
               </div>
             )}
           </CardContent>

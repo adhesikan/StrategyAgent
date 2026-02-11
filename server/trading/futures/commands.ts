@@ -15,8 +15,10 @@ export const placeOrderCommandSchema = z.object({
   symbol: z.string().min(1).max(10),
   side: z.enum(["buy", "sell"]),
   qty: z.number().int().min(1).max(100),
-  orderType: z.enum(["market", "limit"]),
+  orderType: z.enum(["market", "limit", "stop"]),
   limitPrice: z.number().optional(),
+  stopPrice: z.number().optional(),
+  linkedToOrderId: z.string().optional(),
 });
 
 export const cancelOrderCommandSchema = z.object({
@@ -33,6 +35,13 @@ export const toggleAgentCommandSchema = z.object({
       minScore: z.number().min(0).max(100).optional(),
       maxTradesPerDay: z.number().int().min(1).max(50).optional(),
       maxPosition: z.number().int().min(1).max(20).optional(),
+      sizeMode: z.enum(["contracts", "dollars"]).optional(),
+      tradeSize: z.number().min(1).optional(),
+      entryTimeStart: z.string().optional(),
+      entryTimeEnd: z.string().optional(),
+      exitTime: z.string().optional(),
+      takeProfit: z.number().min(0).optional(),
+      stopLoss: z.number().min(0).optional(),
     })
     .optional(),
 });

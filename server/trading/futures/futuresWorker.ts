@@ -11,6 +11,7 @@ import {
 } from "@shared/schema";
 import { MockFuturesAdapter } from "../brokers/futures/mock/MockFuturesAdapter";
 import type { IFuturesBrokerAdapter, FuturesOrderUpdate } from "../brokers/futures/types";
+import { FUTURES_SYMBOLS } from "../brokers/futures/types";
 import { upsertTick, upsertBar } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
@@ -26,6 +27,13 @@ interface AgentConfig {
   minScore: number;
   maxTradesPerDay: number;
   maxPosition: number;
+  sizeMode: "contracts" | "dollars";
+  tradeSize: number;
+  entryTimeStart: string;
+  entryTimeEnd: string;
+  exitTime: string;
+  takeProfit: number;
+  stopLoss: number;
   tradesToday: number;
   lastResetDate: string;
 }
@@ -43,6 +51,13 @@ const agentConfig: AgentConfig = {
   minScore: 70,
   maxTradesPerDay: 5,
   maxPosition: 3,
+  sizeMode: "contracts",
+  tradeSize: 1,
+  entryTimeStart: "09:30",
+  entryTimeEnd: "15:30",
+  exitTime: "15:55",
+  takeProfit: 0,
+  stopLoss: 0,
   tradesToday: 0,
   lastResetDate: new Date().toISOString().slice(0, 10),
 };
@@ -205,6 +220,8 @@ async function executeCommand(userId: string, payload: FuturesCommandPayload, cm
         qty: payload.qty,
         orderType: payload.orderType,
         limitPrice: payload.limitPrice,
+        stopPrice: payload.stopPrice,
+        linkedToOrderId: payload.linkedToOrderId,
       });
 
       await db
@@ -228,6 +245,13 @@ async function executeCommand(userId: string, payload: FuturesCommandPayload, cm
         if (payload.rules.minScore !== undefined) agentConfig.minScore = payload.rules.minScore;
         if (payload.rules.maxTradesPerDay !== undefined) agentConfig.maxTradesPerDay = payload.rules.maxTradesPerDay;
         if (payload.rules.maxPosition !== undefined) agentConfig.maxPosition = payload.rules.maxPosition;
+        if (payload.rules.sizeMode !== undefined) agentConfig.sizeMode = payload.rules.sizeMode;
+        if (payload.rules.tradeSize !== undefined) agentConfig.tradeSize = payload.rules.tradeSize;
+        if (payload.rules.entryTimeStart !== undefined) agentConfig.entryTimeStart = payload.rules.entryTimeStart;
+        if (payload.rules.entryTimeEnd !== undefined) agentConfig.entryTimeEnd = payload.rules.entryTimeEnd;
+        if (payload.rules.exitTime !== undefined) agentConfig.exitTime = payload.rules.exitTime;
+        if (payload.rules.takeProfit !== undefined) agentConfig.takeProfit = payload.rules.takeProfit;
+        if (payload.rules.stopLoss !== undefined) agentConfig.stopLoss = payload.rules.stopLoss;
       }
       break;
     }
@@ -329,6 +353,41 @@ async function upsertPosition(userId: string, update: FuturesOrderUpdate): Promi
   }
 }
 
+function getETNow(): { hours: number; minutes: number; timeStr: string } {
+  const d = new Date();
+  const etStr = d.toLocaleString("en-US", { timeZone: "America/New_York", hour12: false, hour: "2-digit", minute: "2-digit" });
+  const [h, m] = etStr.split(":").map(Number);
+  return { hours: h, minutes: m, timeStr: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}` };
+}
+
+function parseTimeStr(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function isInTimeWindow(now: string, start: string, end: string): boolean {
+  const n = parseTimeStr(now);
+  const s = parseTimeStr(start);
+  const e = parseTimeStr(end);
+  return n >= s && n <= e;
+}
+
+function computeContractQty(symbol: string, price: number): number {
+  if (agentConfig.sizeMode === "contracts") {
+    return Math.max(1, Math.round(agentConfig.tradeSize));
+  }
+  const info = FUTURES_SYMBOLS.find((s) => s.symbol === symbol);
+  const pointValue = info?.pointValue ?? 5;
+  const contractValue = price * pointValue;
+  if (contractValue <= 0) return 1;
+  const qty = Math.floor(agentConfig.tradeSize / contractValue);
+  if (qty < 1) {
+    console.warn(`[FuturesAgent] Dollar amount $${agentConfig.tradeSize} insufficient for ${symbol} at $${price} (contract value $${contractValue}). Skipping trade.`);
+    return 0;
+  }
+  return qty;
+}
+
 async function runAgentLoop(): Promise<void> {
   if (!agentConfig.enabled || !agentConfig.symbol || !adapter) return;
 
@@ -339,12 +398,33 @@ async function runAgentLoop(): Promise<void> {
   }
   if (agentConfig.tradesToday >= agentConfig.maxTradesPerDay) return;
 
+  const etNow = getETNow();
+
+  if (agentConfig.exitTime) {
+    const exitMin = parseTimeStr(agentConfig.exitTime);
+    const nowMin = parseTimeStr(etNow.timeStr);
+    if (nowMin >= exitMin) {
+      await closeAllAgentPositions(agentConfig.symbol, "exit_time");
+      return;
+    }
+  }
+
+  if (agentConfig.entryTimeStart && agentConfig.entryTimeEnd) {
+    if (!isInTimeWindow(etNow.timeStr, agentConfig.entryTimeStart, agentConfig.entryTimeEnd)) {
+      return;
+    }
+  }
+
   try {
     const opportunities = scanFuturesOpportunities(agentConfig.symbol);
     const qualifying = opportunities.filter((o) => o.score >= agentConfig.minScore);
     if (qualifying.length === 0) return;
 
     const best = qualifying[0];
+    const qty = computeContractQty(best.symbol, best.entry);
+    if (qty === 0) return;
+
+    const bracketGroupId = `agent-bracket-${Date.now()}`;
 
     await db.insert(futuresCommands).values({
       userId: "agent",
@@ -353,7 +433,7 @@ async function runAgentLoop(): Promise<void> {
         commandType: "placeOrder",
         symbol: best.symbol,
         side: best.side,
-        qty: 1,
+        qty,
         orderType: "market" as const,
       },
       status: "pending",
@@ -361,14 +441,103 @@ async function runAgentLoop(): Promise<void> {
 
     agentConfig.tradesToday++;
 
+    const hasBracket = agentConfig.takeProfit > 0 || agentConfig.stopLoss > 0;
+
+    if (agentConfig.takeProfit > 0) {
+      const tpSide = best.side === "buy" ? "sell" : "buy";
+      const tpPrice = best.side === "buy"
+        ? Math.round((best.entry + agentConfig.takeProfit) * 100) / 100
+        : Math.round((best.entry - agentConfig.takeProfit) * 100) / 100;
+      await db.insert(futuresCommands).values({
+        userId: "agent",
+        commandType: "placeOrder",
+        payload: {
+          commandType: "placeOrder",
+          symbol: best.symbol,
+          side: tpSide,
+          qty,
+          orderType: "limit" as const,
+          limitPrice: tpPrice,
+          ...(hasBracket ? { linkedToOrderId: bracketGroupId } : {}),
+        },
+        status: "pending",
+      });
+    }
+
+    if (agentConfig.stopLoss > 0) {
+      const slSide = best.side === "buy" ? "sell" : "buy";
+      const slPrice = best.side === "buy"
+        ? Math.round((best.entry - agentConfig.stopLoss) * 100) / 100
+        : Math.round((best.entry + agentConfig.stopLoss) * 100) / 100;
+      await db.insert(futuresCommands).values({
+        userId: "agent",
+        commandType: "placeOrder",
+        payload: {
+          commandType: "placeOrder",
+          symbol: best.symbol,
+          side: slSide,
+          qty,
+          orderType: "stop" as const,
+          stopPrice: slPrice,
+          ...(hasBracket ? { linkedToOrderId: bracketGroupId } : {}),
+        },
+        status: "pending",
+      });
+    }
+
     const { futuresAgentAuditLog } = await import("@shared/schema");
     await db.insert(futuresAgentAuditLog).values({
       userId: "agent",
       action: "auto_trade",
       symbol: best.symbol,
-      details: { setup: best.setup, score: best.score, side: best.side, entry: best.entry },
+      details: {
+        setup: best.setup,
+        score: best.score,
+        side: best.side,
+        entry: best.entry,
+        qty,
+        sizeMode: agentConfig.sizeMode,
+        takeProfit: agentConfig.takeProfit || undefined,
+        stopLoss: agentConfig.stopLoss || undefined,
+      },
     });
   } catch (e) {
     console.error("[FuturesAgent] Error:", e);
+  }
+}
+
+async function closeAllAgentPositions(symbol: string, reason: string): Promise<void> {
+  try {
+    const positions = await db
+      .select()
+      .from(futuresPositions)
+      .where(and(eq(futuresPositions.userId, "agent"), eq(futuresPositions.symbol, symbol)));
+
+    for (const pos of positions) {
+      if (pos.qty === 0) continue;
+      const closeSide = pos.qty > 0 ? "sell" : "buy";
+      await db.insert(futuresCommands).values({
+        userId: "agent",
+        commandType: "placeOrder",
+        payload: {
+          commandType: "placeOrder",
+          symbol,
+          side: closeSide,
+          qty: Math.abs(pos.qty),
+          orderType: "market" as const,
+        },
+        status: "pending",
+      });
+
+      const { futuresAgentAuditLog } = await import("@shared/schema");
+      await db.insert(futuresAgentAuditLog).values({
+        userId: "agent",
+        action: reason,
+        symbol,
+        details: { qty: Math.abs(pos.qty), side: closeSide, reason },
+      });
+    }
+  } catch (e) {
+    console.error("[FuturesAgent] closeAllPositions error:", e);
   }
 }

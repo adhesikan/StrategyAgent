@@ -3,9 +3,24 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, "..");
+function resolveScriptDir(): string {
+  try {
+    if (typeof import.meta.url === "string" && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {}
+  if (typeof __dirname === "string") {
+    return __dirname;
+  }
+  return process.cwd();
+}
+
+const scriptDir = resolveScriptDir();
+const PROJECT_ROOT = scriptDir.endsWith("scripts")
+  ? path.resolve(scriptDir, "..")
+  : fs.existsSync(path.join(scriptDir, "package.json"))
+    ? scriptDir
+    : process.cwd();
 const EXTERNAL_DIR = path.join(PROJECT_ROOT, "external", "rithmic_api_extracted");
 const PROTO_DEST = path.join(PROJECT_ROOT, "server", "trading", "brokers", "rithmic", "proto");
 const DOCS_DEST = path.join(PROJECT_ROOT, "server", "trading", "brokers", "rithmic", "docs");
@@ -91,7 +106,7 @@ export async function importRithmicApi(): Promise<boolean> {
 
 const isMain = process.argv[1] && (
   process.argv[1].includes("import-rithmic-api") ||
-  import.meta.url.endsWith(process.argv[1].replace(/^.*\//, ""))
+  (typeof import.meta.url === "string" && import.meta.url.endsWith(process.argv[1].replace(/^.*\//, "")))
 );
 
 if (isMain) {

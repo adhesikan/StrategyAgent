@@ -4,9 +4,28 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import templateIds from "./templateIds.json";
 
-const __filename_esm = fileURLToPath(import.meta.url);
-const __dirname_esm = path.dirname(__filename_esm);
-const PROTO_DIR = path.join(__dirname_esm, "proto");
+function resolveDir(): string {
+  try {
+    if (typeof import.meta.url === "string" && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {}
+  if (typeof __dirname === "string") {
+    return __dirname;
+  }
+  return process.cwd();
+}
+
+function resolveProtoDir(): string {
+  const dir = resolveDir();
+  const candidate = path.join(dir, "proto");
+  if (fs.existsSync(candidate)) return candidate;
+  const fromRoot = path.join(process.cwd(), "server", "trading", "brokers", "rithmic", "proto");
+  if (fs.existsSync(fromRoot)) return fromRoot;
+  return candidate;
+}
+
+const PROTO_DIR = resolveProtoDir();
 
 let rootInstance: protobuf.Root | null = null;
 

@@ -1,0 +1,29 @@
+2:18:40 PM [express] GET /api/platform/risk-profile 200 in 8ms :: {"id":"48a307fb-3c38-4d85-b357-a72a1d026e97","risk_mode":"aggressive","risk_per_trade":3,"max_deploy":70,"protections_enabled":true,"guardrails_json":{},"protections_json":{}}
+Batch 1 failed: Tradier API error: 401
+[BrokerService] accounts error: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+2:18:42 PM [express] GET /api/broker/accounts 500 in 25ms :: {"error":"Failed to fetch accounts"}
+Batch 2 failed: Tradier API error: 401
+Batch 3 failed: Tradier API error: 401
+[Scan] Received 0 quotes from broker, session=extended, applying filters: minPrice=5, maxPrice=500, minVolume=skipped, minRvol=skipped
+[Scan] 0 quotes passed filters
+[Scan] Generated 0 scan results for strategy VCP
+2:18:42 PM [express] POST /api/scan/live 200 in 233ms :: {"results":[],"metadata":{"isLive":true,"provider":"tradier","symbolsRequested":503,"symbolsReturned":0,"batchCount":3,"scanTimeMs":221,"timestamp":"2026-02-11T14:18:42.517Z","marketSession":"extended"}}
+Batch 1 failed: Tradier API error: 401
+Batch 2 failed: Tradier API error: 401
+Batch 3 failed: Tradier API error: 401
+[Scan] Received 0 quotes from broker, session=extended, applying filters: minPrice=5, maxPrice=500, minVolume=skipped, minRvol=skipped
+[Scan] 0 quotes passed filters
+[Scan] Generated 0 scan results for strategy VCP
+2:18:42 PM [express] POST /api/scan/live 200 in 230ms :: {"results":[],"metadata":{"isLive":true,"provider":"tradier","symbolsRequested":503,"symbolsReturned":0,"batchCount":3,"scanTimeMs":216,"timestamp":"2026-02-11T14:18:42.977Z","marketSession":"extended"}}
+[BrokerService] accounts error: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+2:18:47 PM [express] GET /api/broker/accounts 500 in 28ms :: {"error":"Failed to fetch accounts"}
+[OptionsScanner] Fetching quotes for 503 symbols...
+[Tradier] Batch quote error for 100 symbols: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+[Tradier] Batch quote error for 100 symbols: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+[Tradier] Batch quote error for 100 symbols: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+[Tradier] Batch quote error for 100 symbols: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+[Tradier] Batch quote error for 100 symbols: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+[Tradier] Batch quote error for 3 symbols: Tradier API error 401: {"fault":{"faultstring":"Access Token expired","detail":{"errorcode":"keymanagement.service.access_token_expired"}}}
+[OptionsScanner] Got 0 quotes
+[OptionsScanner] No valid stock quotes returned from broker
+2:18:48 PM [express] POST /api/options/scan 200 in 94ms :: {"strategyKey":"long-options","universeId":"sp500","scannedAt":"2026-02-11T14:18:48.573Z","candidateCount":0,"candidates":[]}

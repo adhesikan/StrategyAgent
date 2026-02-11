@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ScanLine } from "lucide-react";
+import { Search, ScanLine, BarChart3 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Scanner from "@/pages/scanner";
 import OptionsScanner from "@/pages/options-scanner";
+import FuturesScanner from "@/pages/futures-scanner";
 
 interface MeResponse {
   user: { id: string; email: string; role: string };
@@ -22,7 +23,9 @@ export default function DiscoverPage() {
   const params = new URLSearchParams(searchString);
   const tabParam = params.get("tab");
 
-  const [activeTab, setActiveTab] = useState(tabParam === "options" ? "options" : "stocks");
+  const [activeTab, setActiveTab] = useState(
+    tabParam === "options" ? "options" : tabParam === "futures" ? "futures" : "stocks"
+  );
 
   const { data: me } = useQuery<MeResponse>({
     queryKey: ["/api/auth/me"],
@@ -33,6 +36,8 @@ export default function DiscoverPage() {
   useEffect(() => {
     if (tabParam === "options" && hasOptions) {
       setActiveTab("options");
+    } else if (tabParam === "futures") {
+      setActiveTab("futures");
     } else if (tabParam === "stocks") {
       setActiveTab("stocks");
     }
@@ -53,6 +58,10 @@ export default function DiscoverPage() {
                 Options
               </TabsTrigger>
             )}
+            <TabsTrigger value="futures" className="gap-2" data-testid="tab-futures">
+              <BarChart3 className="h-4 w-4" />
+              Futures
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -65,6 +74,10 @@ export default function DiscoverPage() {
             <OptionsScanner />
           </TabsContent>
         )}
+
+        <TabsContent value="futures" className="flex-1 mt-0 overflow-auto">
+          <FuturesScanner />
+        </TabsContent>
       </Tabs>
     </div>
   );

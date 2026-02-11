@@ -609,7 +609,15 @@ export default function FuturesScanner() {
     );
   }
 
-  const dataMode = status?.dataMode ?? true;
+  if (!status) {
+    return (
+      <div className="flex items-center justify-center h-full" data-testid="loading-futures">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const dataMode = status.dataMode ?? true;
 
   const isSubscribed = status.subscribedSymbols?.includes(selectedSymbol);
   const availableSymbols = status.availableSymbols || [];
@@ -652,6 +660,12 @@ export default function FuturesScanner() {
   const tradingEnabled = status.tradingEnabled ?? false;
 
   const buildMockBannerMessage = (): string => {
+    if (missingVars.length > 0) {
+      return "Rithmic credentials incomplete. Falling back to simulated data.";
+    }
+    if (lastInitError) {
+      return "Rithmic connection failed. Falling back to simulated data.";
+    }
     if (feedDetail && feedDetail !== "default" && feedDetail !== "FUTURES_FEED not set to rithmic") {
       return feedDetail;
     }

@@ -12,7 +12,7 @@ import {
 import { MockFuturesAdapter } from "../brokers/futures/mock/MockFuturesAdapter";
 import type { IFuturesBrokerAdapter, FuturesOrderUpdate } from "../brokers/futures/types";
 import { FUTURES_SYMBOLS } from "../brokers/futures/types";
-import { upsertTick, upsertBar } from "./marketState";
+import { upsertTick, upsertBar, getLastTick, getRecentBars } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
 import { createFuturesAdapter, type FuturesFeedType, type AdapterResult } from "./adapterFactory";
@@ -113,7 +113,6 @@ export async function startFuturesWorker(): Promise<void> {
 
   const tradingEnabled = process.env.FUTURES_TRADING_ENABLED === "true";
   console.log(`[FuturesWorker] Starting... (trading ${tradingEnabled ? "enabled" : "disabled - market data only"})`);
-  running = true;
 
   const result = await createFuturesAdapter();
   applyAdapterResult(result);
@@ -137,6 +136,8 @@ export async function startFuturesWorker(): Promise<void> {
   adapter!.on("tick", (tick) => upsertTick(tick));
   adapter!.on("bar", (bar) => upsertBar(bar));
   adapter!.on("orderUpdate", (update) => handleOrderUpdate(update));
+
+  running = true;
 
   const rows = await db.select().from(futuresWorkerStatus).limit(1);
   if (rows.length > 0) {
@@ -233,12 +234,53 @@ async function pollCommands(): Promise<void> {
   }
 }
 
+const dataCheckTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const subscribeRetries = new Map<string, number>();
+const MAX_SUBSCRIBE_RETRIES = 2;
+const DATA_CHECK_DELAY_MS = 15000;
+
+function scheduleDataCheck(symbol: string): void {
+  if (dataCheckTimers.has(symbol)) {
+    clearTimeout(dataCheckTimers.get(symbol)!);
+  }
+  const timer = setTimeout(async () => {
+    dataCheckTimers.delete(symbol);
+    const tick = getLastTick(symbol);
+    const bars = getRecentBars(symbol, 1);
+    if (!tick && bars.length === 0) {
+      const retries = subscribeRetries.get(symbol) ?? 0;
+      if (retries < MAX_SUBSCRIBE_RETRIES && adapter) {
+        console.warn(`[FuturesWorker] No data received for ${symbol} after ${DATA_CHECK_DELAY_MS / 1000}s, re-subscribing (attempt ${retries + 1}/${MAX_SUBSCRIBE_RETRIES})`);
+        subscribeRetries.set(symbol, retries + 1);
+        try {
+          await adapter.unsubscribeMarketData(symbol);
+          await adapter.subscribeMarketData(symbol);
+          scheduleDataCheck(symbol);
+        } catch (err) {
+          console.error(`[FuturesWorker] Re-subscribe failed for ${symbol}:`, err);
+        }
+      } else {
+        console.warn(`[FuturesWorker] No data for ${symbol} after ${MAX_SUBSCRIBE_RETRIES} retries. Rithmic Test environment may not provide data for this symbol.`);
+      }
+    } else {
+      subscribeRetries.delete(symbol);
+      console.log(`[FuturesWorker] Data confirmed flowing for ${symbol} (last tick: ${tick.price})`);
+    }
+  }, DATA_CHECK_DELAY_MS);
+  dataCheckTimers.set(symbol, timer);
+}
+
 async function executeCommand(userId: string, payload: FuturesCommandPayload, cmdId: string): Promise<void> {
   if (!adapter) throw new Error("Adapter not initialized");
 
+  console.log(`[FuturesWorker] Executing command: ${payload.commandType} (symbol=${"symbol" in payload ? payload.symbol : "n/a"}, cmdId=${cmdId})`);
+
   switch (payload.commandType) {
     case "subscribe":
+      console.log(`[FuturesWorker] Subscribing to ${payload.symbol}, adapter connected: ${adapter.isConnected()}`);
       await adapter.subscribeMarketData(payload.symbol);
+      console.log(`[FuturesWorker] Subscription complete for ${payload.symbol}`);
+      scheduleDataCheck(payload.symbol);
       break;
     case "unsubscribe":
       await adapter.unsubscribeMarketData(payload.symbol);

@@ -53,6 +53,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   private tickState = new Map<string, Partial<FuturesTick>>();
   private tickCounter = 0;
   private barCounter = 0;
+  private unhandledTemplateIds = new Set<number>();
 
   constructor(config: RithmicConfig) {
     super();
@@ -255,7 +256,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     plant.ws.send(barBuf);
 
     this.subscribedSymbols.add(symbol);
-    console.log(`[Rithmic] Subscribed to market data: ${symbol} -> ${rithmicSymbol} on ${exchange}`);
+    console.log(`[Rithmic] Subscribed to market data: ${symbol} -> ${rithmicSymbol} on ${exchange} (ticker plant ready: ${plant.ws.readyState === WebSocket.OPEN})`);
   }
 
   async unsubscribeMarketData(symbol: string): Promise<void> {
@@ -600,8 +601,15 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
         this.emit("status", "disconnected");
         break;
 
-      default:
+      default: {
+        if (this.unhandledTemplateIds.size < 50) {
+          if (!this.unhandledTemplateIds.has(tid)) {
+            this.unhandledTemplateIds.add(tid);
+            console.log(`[Rithmic] Unhandled template ID: ${tid}`);
+          }
+        }
         break;
+      }
     }
   }
 
@@ -666,7 +674,6 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     const monthCode = monthCodes[contractMonth];
     const yearCode = contractYear % 10;
     const mapped = `${symbol}${monthCode}${yearCode}`;
-    console.log(`[Rithmic] Symbol mapping: ${symbol} -> ${mapped}`);
     return mapped;
   }
 

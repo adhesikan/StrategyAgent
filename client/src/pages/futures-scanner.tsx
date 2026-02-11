@@ -308,17 +308,22 @@ export default function FuturesScanner() {
     };
   }, []);
 
-  const autoSubscribedRef = useRef<Set<string>>(new Set());
+  const autoSubscribeAttemptRef = useRef<Record<string, number>>({});
   useEffect(() => {
     if (
       status?.enabled &&
       status?.workerRunning &&
       !status?.subscribedSymbols?.includes(selectedSymbol) &&
-      !subscribeMutation.isPending &&
-      !autoSubscribedRef.current.has(selectedSymbol)
+      !subscribeMutation.isPending
     ) {
-      autoSubscribedRef.current.add(selectedSymbol);
-      subscribeMutation.mutate("subscribe");
+      const attempts = autoSubscribeAttemptRef.current[selectedSymbol] ?? 0;
+      if (attempts < 3) {
+        autoSubscribeAttemptRef.current[selectedSymbol] = attempts + 1;
+        subscribeMutation.mutate("subscribe");
+      }
+    }
+    if (status?.subscribedSymbols?.includes(selectedSymbol)) {
+      autoSubscribeAttemptRef.current[selectedSymbol] = 0;
     }
   }, [status?.enabled, status?.workerRunning, status?.subscribedSymbols, selectedSymbol]);
 

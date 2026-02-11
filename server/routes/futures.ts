@@ -7,7 +7,7 @@ import { futuresOrders, futuresPositions, futuresCommands, futuresWorkerStatus, 
 import { futuresCommandSchema } from "../trading/futures/commands";
 import { getRecentBars, getLastTick, getAllSubscribedSymbols } from "../trading/futures/marketState";
 import { scanFuturesOpportunities } from "../trading/futures/mockScanner";
-import { getAdapter, getAgentConfig, isWorkerRunning } from "../trading/futures/futuresWorker";
+import { getAdapter, getAgentConfig, isWorkerRunning, getFeedInfo } from "../trading/futures/futuresWorker";
 import { FUTURES_SYMBOLS } from "../trading/brokers/futures/types";
 
 export function registerFuturesRoutes(app: Express): void {
@@ -18,6 +18,7 @@ export function registerFuturesRoutes(app: Express): void {
       const workerRow = rows[0] ?? null;
       const subscribedSymbols = getAdapter()?.getSubscribedSymbols() ?? [];
       const agentCfg = getAgentConfig();
+      const feedInfo = getFeedInfo();
 
       res.json({
         enabled: process.env.FUTURES_TRADING_ENABLED === "true",
@@ -27,6 +28,8 @@ export function registerFuturesRoutes(app: Express): void {
         subscribedSymbols,
         availableSymbols: FUTURES_SYMBOLS.map((s) => ({ symbol: s.symbol, name: s.name, tickSize: s.tickSize, pointValue: s.pointValue })),
         agent: agentCfg,
+        feedType: feedInfo.feedType,
+        feedDetail: feedInfo.feedDetail,
       });
     } catch (error) {
       console.error("Error fetching futures status:", error);

@@ -15,7 +15,7 @@ import { FUTURES_SYMBOLS } from "../brokers/futures/types";
 import { upsertTick, upsertBar } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
-import { createFuturesAdapter } from "./adapterFactory";
+import { createFuturesAdapter, type FuturesFeedType } from "./adapterFactory";
 
 const POLL_INTERVAL_MS = 750;
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -40,6 +40,8 @@ interface AgentConfig {
 }
 
 let adapter: IFuturesBrokerAdapter | null = null;
+let currentFeedType: FuturesFeedType = "mock";
+let currentFeedDetail: string | undefined;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let agentTimer: ReturnType<typeof setInterval> | null = null;
@@ -75,6 +77,10 @@ export function isWorkerRunning(): boolean {
   return running;
 }
 
+export function getFeedInfo(): { feedType: FuturesFeedType; feedDetail?: string } {
+  return { feedType: currentFeedType, feedDetail: currentFeedDetail };
+}
+
 export async function startFuturesWorker(): Promise<void> {
   if (running) return;
   if (process.env.FUTURES_TRADING_ENABLED !== "true") {
@@ -85,7 +91,10 @@ export async function startFuturesWorker(): Promise<void> {
   console.log("[FuturesWorker] Starting...");
   running = true;
 
-  adapter = await createFuturesAdapter();
+  const result = await createFuturesAdapter();
+  adapter = result.adapter;
+  currentFeedType = result.feedType;
+  currentFeedDetail = result.feedDetail;
   await adapter.connect();
 
   adapter.on("tick", (tick) => upsertTick(tick));

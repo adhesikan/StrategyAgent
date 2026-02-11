@@ -45,6 +45,8 @@ interface FuturesStatus {
   workerRunning: boolean;
   subscribedSymbols: string[];
   availableSymbols: FuturesSymbolInfo[];
+  feedType?: "mock" | "rithmic";
+  feedDetail?: string;
   agent: {
     enabled: boolean;
     symbol: string;
@@ -650,8 +652,33 @@ export default function FuturesScanner() {
     return "outline";
   };
 
+  const feedType = status.feedType ?? "mock";
+  const feedDetail = status.feedDetail;
+
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4" data-testid="futures-scanner-container">
+      {feedType === "rithmic" ? (
+        <div
+          className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-1.5 flex items-center justify-center gap-2"
+          data-testid="banner-futures-feed-live"
+        >
+          <Wifi className="h-3.5 w-3.5 text-green-500" />
+          <span className="text-xs text-green-600 dark:text-green-400">
+            Futures Feed: Rithmic{feedDetail ? ` - ${feedDetail}` : ""}
+          </span>
+        </div>
+      ) : (
+        <div
+          className="bg-yellow-500/10 border border-yellow-500/20 rounded-md px-4 py-1.5 flex items-center justify-center gap-2"
+          data-testid="banner-futures-feed-mock"
+        >
+          <WifiOff className="h-3.5 w-3.5 text-yellow-500" />
+          <span className="text-xs text-yellow-600 dark:text-yellow-400">
+            Futures Feed: Mock Data{feedDetail && feedDetail !== "default" ? ` (${feedDetail})` : ""}
+          </span>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>

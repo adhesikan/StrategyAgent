@@ -1,7 +1,19 @@
 import type { IFuturesBrokerAdapter } from "../brokers/futures/types";
 import { MockFuturesAdapter } from "../brokers/futures/mock/MockFuturesAdapter";
 
-export async function createFuturesAdapter(): Promise<IFuturesBrokerAdapter> {
+export type FuturesFeedType = "mock" | "rithmic";
+
+export interface AdapterResult {
+  adapter: IFuturesBrokerAdapter;
+  feedType: FuturesFeedType;
+  feedDetail?: string;
+}
+
+function mockResult(reason?: string): AdapterResult {
+  return { adapter: new MockFuturesAdapter(), feedType: "mock", feedDetail: reason ?? "default" };
+}
+
+export async function createFuturesAdapter(): Promise<AdapterResult> {
   const feed = process.env.FUTURES_FEED?.toLowerCase();
 
   if (feed === "rithmic") {
@@ -13,7 +25,7 @@ export async function createFuturesAdapter(): Promise<IFuturesBrokerAdapter> {
 
       if (!importOk) {
         console.warn("[AdapterFactory] Rithmic proto import failed, falling back to mock");
-        return new MockFuturesAdapter();
+        return mockResult("Rithmic proto import failed");
       }
 
       const { validateProtos } = await import("../brokers/rithmic/codec");
@@ -22,7 +34,7 @@ export async function createFuturesAdapter(): Promise<IFuturesBrokerAdapter> {
       if (!validation.valid) {
         console.warn(`[AdapterFactory] Rithmic proto validation failed: ${validation.errors.join(", ")}`);
         console.warn("[AdapterFactory] Falling back to mock adapter");
-        return new MockFuturesAdapter();
+        return mockResult("Proto validation failed");
       }
 
       const tickerUri = process.env.RITHMIC_TICKER_PLANT_URI;
@@ -34,7 +46,7 @@ export async function createFuturesAdapter(): Promise<IFuturesBrokerAdapter> {
       if (!tickerUri || !orderUri || !systemName || !userId || !password) {
         console.warn("[AdapterFactory] Missing Rithmic config env vars (RITHMIC_TICKER_PLANT_URI, RITHMIC_ORDER_PLANT_URI, RITHMIC_SYSTEM_NAME, RITHMIC_USER_ID, RITHMIC_PASSWORD)");
         console.warn("[AdapterFactory] Falling back to mock adapter");
-        return new MockFuturesAdapter();
+        return mockResult("Missing Rithmic credentials");
       }
 
       const { RithmicProtocolAdapter } = await import("../brokers/rithmic/RithmicProtocolAdapter");
@@ -52,14 +64,14 @@ export async function createFuturesAdapter(): Promise<IFuturesBrokerAdapter> {
       });
 
       console.log("[AdapterFactory] Rithmic adapter created successfully");
-      return adapter;
+      return { adapter, feedType: "rithmic", feedDetail: `${systemName} (${userId})` };
     } catch (err) {
       console.error("[AdapterFactory] Rithmic adapter creation failed:", err instanceof Error ? err.message : err);
       console.warn("[AdapterFactory] Falling back to mock adapter");
-      return new MockFuturesAdapter();
+      return mockResult(`Rithmic init error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   console.log("[AdapterFactory] Using mock futures adapter (set FUTURES_FEED=rithmic to use Rithmic)");
-  return new MockFuturesAdapter();
+  return mockResult();
 }

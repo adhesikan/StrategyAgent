@@ -291,6 +291,17 @@ export default function FuturesScanner() {
       emaSeriesRefs.current.clear();
     }
 
+    const etFormatter = (ts: number) => {
+      const d = new Date(ts * 1000);
+      return d.toLocaleString("en-US", {
+        timeZone: "America/New_York",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+    };
+
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: isDark ? "#1a1a2e" : "#ffffff" },
@@ -308,6 +319,9 @@ export default function FuturesScanner() {
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 5,
+      },
+      localization: {
+        timeFormatter: etFormatter,
       },
       crosshair: {
         mode: 0,

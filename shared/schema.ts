@@ -1184,3 +1184,130 @@ export const insertManagedExitSchema = createInsertSchema(managedExits).omit({
 });
 export type InsertManagedExit = z.infer<typeof insertManagedExitSchema>;
 export type ManagedExit = typeof managedExits.$inferSelect;
+
+// ─── Futures Orders ───────────────────────────────────────────────
+export const FuturesOrderStatus = {
+  CREATED: "created",
+  SENT: "sent",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+  PART_FILLED: "part_filled",
+  FILLED: "filled",
+  CANCELED: "canceled",
+  ERROR: "error",
+} as const;
+export type FuturesOrderStatusType = typeof FuturesOrderStatus[keyof typeof FuturesOrderStatus];
+
+export const futuresOrders = pgTable("futures_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  qty: integer("qty").notNull(),
+  orderType: text("order_type").notNull(),
+  limitPrice: real("limit_price"),
+  status: text("status").notNull().default("created"),
+  brokerOrderId: text("broker_order_id"),
+  raw: jsonb("raw").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFuturesOrderSchema = createInsertSchema(futuresOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertFuturesOrder = z.infer<typeof insertFuturesOrderSchema>;
+export type FuturesOrder = typeof futuresOrders.$inferSelect;
+
+// ─── Futures Fills ────────────────────────────────────────────────
+export const futuresFills = pgTable("futures_fills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull(),
+  fillPrice: real("fill_price").notNull(),
+  fillQty: integer("fill_qty").notNull(),
+  filledAt: timestamp("filled_at").defaultNow(),
+  raw: jsonb("raw").default({}),
+});
+
+export const insertFuturesFillSchema = createInsertSchema(futuresFills).omit({
+  id: true,
+  filledAt: true,
+});
+export type InsertFuturesFill = z.infer<typeof insertFuturesFillSchema>;
+export type FuturesFill = typeof futuresFills.$inferSelect;
+
+// ─── Futures Positions ────────────────────────────────────────────
+export const futuresPositions = pgTable("futures_positions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  qty: integer("qty").notNull(),
+  avgPrice: real("avg_price").notNull(),
+  unrealizedPnl: real("unrealized_pnl"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  raw: jsonb("raw").default({}),
+});
+
+export const insertFuturesPositionSchema = createInsertSchema(futuresPositions).omit({
+  id: true,
+  updatedAt: true,
+});
+export type InsertFuturesPosition = z.infer<typeof insertFuturesPositionSchema>;
+export type FuturesPosition = typeof futuresPositions.$inferSelect;
+
+// ─── Futures Commands ─────────────────────────────────────────────
+export const FuturesCommandStatus = {
+  PENDING: "pending",
+  PROCESSING: "processing",
+  DONE: "done",
+  FAILED: "failed",
+} as const;
+export type FuturesCommandStatusType = typeof FuturesCommandStatus[keyof typeof FuturesCommandStatus];
+
+export const futuresCommands = pgTable("futures_commands", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  commandType: text("command_type").notNull(),
+  payload: jsonb("payload").notNull().default({}),
+  status: text("status").notNull().default("pending"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFuturesCommandSchema = createInsertSchema(futuresCommands).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertFuturesCommand = z.infer<typeof insertFuturesCommandSchema>;
+export type FuturesCommand = typeof futuresCommands.$inferSelect;
+
+// ─── Futures Worker Status ────────────────────────────────────────
+export const futuresWorkerStatus = pgTable("futures_worker_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("stopped"),
+  lastHeartbeatAt: timestamp("last_heartbeat_at").defaultNow(),
+  details: jsonb("details").default({}),
+});
+
+export type FuturesWorkerStatus = typeof futuresWorkerStatus.$inferSelect;
+
+// ─── Futures Agent Audit Log ──────────────────────────────────────
+export const futuresAgentAuditLog = pgTable("futures_agent_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  action: text("action").notNull(),
+  symbol: text("symbol"),
+  details: jsonb("details").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFuturesAgentAuditLogSchema = createInsertSchema(futuresAgentAuditLog).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertFuturesAgentAuditLog = z.infer<typeof insertFuturesAgentAuditLogSchema>;
+export type FuturesAgentAuditLog = typeof futuresAgentAuditLog.$inferSelect;

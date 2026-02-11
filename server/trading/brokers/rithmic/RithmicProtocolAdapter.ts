@@ -700,9 +700,9 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
         const rpCode = Array.isArray(data.rpCode) ? data.rpCode[0] : data.rpCode;
         const userMsg = Array.isArray(data.userMsg) ? data.userMsg.join("; ") : (data.userMsg ?? "");
         if (rpCode && rpCode !== "0") {
-          console.warn(`[Rithmic] Market data subscription response: code=${rpCode}, msg="${userMsg}", symbol=${data.symbol}`);
+          console.warn(`[Rithmic] Market data subscription response: code=${rpCode}, msg="${userMsg}"`);
         } else {
-          console.log(`[Rithmic] Market data subscription confirmed for ${data.symbol}`);
+          console.log(`[Rithmic] Market data subscription confirmed`);
         }
         break;
       }
@@ -865,9 +865,11 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     const currentMinuteKey = Math.floor(now / 60000) * 60000;
 
     for (const [symbol, bucket] of Array.from(this.tickBarAggregator.entries())) {
-      if (bucket.minuteKey < currentMinuteKey && bucket.tradeCount > 0) {
+      if (bucket.tradeCount > 0) {
         this.emitTickBar(bucket);
-        this.tickBarAggregator.delete(symbol);
+        if (bucket.minuteKey < currentMinuteKey) {
+          this.tickBarAggregator.delete(symbol);
+        }
       }
     }
   }
@@ -876,7 +878,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     if (this.nativeBarSymbols.has(bucket.symbol)) return;
     const bar: FuturesBar = {
       symbol: bucket.symbol,
-      time: bucket.minuteKey,
+      time: Math.floor(bucket.minuteKey / 1000),
       open: bucket.open,
       high: bucket.high,
       low: bucket.low,

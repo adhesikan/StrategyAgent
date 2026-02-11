@@ -15,6 +15,7 @@ import { FUTURES_SYMBOLS } from "../brokers/futures/types";
 import { upsertTick, upsertBar } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
+import { createFuturesAdapter } from "./adapterFactory";
 
 const POLL_INTERVAL_MS = 750;
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -84,8 +85,7 @@ export async function startFuturesWorker(): Promise<void> {
   console.log("[FuturesWorker] Starting...");
   running = true;
 
-  // TODO: Replace MockFuturesAdapter with real Rithmic adapter here
-  adapter = new MockFuturesAdapter();
+  adapter = await createFuturesAdapter();
   await adapter.connect();
 
   adapter.on("tick", (tick) => upsertTick(tick));

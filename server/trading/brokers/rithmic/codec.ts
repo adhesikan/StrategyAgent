@@ -94,6 +94,7 @@ export async function validateProtos(): Promise<{ valid: boolean; errors: string
     const root = await loadProtoRoot();
 
     const criticalMessages = [
+      "Base",
       "RequestLogin",
       "ResponseLogin",
       "RequestHeartbeat",

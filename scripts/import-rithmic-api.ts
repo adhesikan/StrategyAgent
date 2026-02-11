@@ -1,7 +1,10 @@
 import AdmZip from "adm-zip";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const EXTERNAL_DIR = path.join(PROJECT_ROOT, "external", "rithmic_api_extracted");
 const PROTO_DEST = path.join(PROJECT_ROOT, "server", "trading", "brokers", "rithmic", "proto");
@@ -24,6 +27,25 @@ function findRithmicZip(): string | null {
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function walkDir(dir: string, counts: { proto: number; doc: number }) {
+  if (!fs.existsSync(dir)) return;
+  const items = fs.readdirSync(dir, { withFileTypes: true });
+  for (const item of items) {
+    const fullPath = path.join(dir, item.name);
+    if (item.isDirectory()) {
+      walkDir(fullPath, counts);
+    } else if (item.name.endsWith(".proto")) {
+      const dest = path.join(PROTO_DEST, item.name);
+      fs.copyFileSync(fullPath, dest);
+      counts.proto++;
+    } else if (/\.(pdf|txt|md|doc|docx)$/i.test(item.name)) {
+      const dest = path.join(DOCS_DEST, item.name);
+      fs.copyFileSync(fullPath, dest);
+      counts.doc++;
+    }
   }
 }
 
@@ -54,42 +76,25 @@ export async function importRithmicApi(): Promise<boolean> {
     zip.extractAllTo(EXTERNAL_DIR, true);
     console.log(`[RithmicImporter] Extracted to ${EXTERNAL_DIR}`);
 
-    let protoCount = 0;
-    let docCount = 0;
+    const counts = { proto: 0, doc: 0 };
+    walkDir(EXTERNAL_DIR, counts);
 
-    function walkDir(dir: string) {
-      if (!fs.existsSync(dir)) return;
-      const items = fs.readdirSync(dir, { withFileTypes: true });
-      for (const item of items) {
-        const fullPath = path.join(dir, item.name);
-        if (item.isDirectory()) {
-          if (item.name === "samples") continue;
-          walkDir(fullPath);
-        } else if (item.name.endsWith(".proto")) {
-          const dest = path.join(PROTO_DEST, item.name);
-          fs.copyFileSync(fullPath, dest);
-          protoCount++;
-        } else if (/\.(pdf|txt|md|doc|docx)$/i.test(item.name)) {
-          const dest = path.join(DOCS_DEST, item.name);
-          fs.copyFileSync(fullPath, dest);
-          docCount++;
-        }
-      }
-    }
+    console.log(`[RithmicImporter] Copied ${counts.proto} proto files to ${PROTO_DEST}`);
+    console.log(`[RithmicImporter] Copied ${counts.doc} doc files to ${DOCS_DEST}`);
 
-    walkDir(EXTERNAL_DIR);
-
-    console.log(`[RithmicImporter] Copied ${protoCount} proto files to ${PROTO_DEST}`);
-    console.log(`[RithmicImporter] Copied ${docCount} doc files to ${DOCS_DEST}`);
-
-    return protoCount > 0;
+    return counts.proto > 0;
   } catch (err) {
     console.error("[RithmicImporter] Extraction failed:", err);
     return false;
   }
 }
 
-if (require.main === module) {
+const isMain = process.argv[1] && (
+  process.argv[1].includes("import-rithmic-api") ||
+  import.meta.url.endsWith(process.argv[1].replace(/^.*\//, ""))
+);
+
+if (isMain) {
   importRithmicApi().then((ok) => {
     console.log(ok ? "[RithmicImporter] Success" : "[RithmicImporter] Failed");
     process.exit(ok ? 0 : 1);

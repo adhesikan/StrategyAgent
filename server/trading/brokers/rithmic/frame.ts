@@ -1,4 +1,4 @@
-import { lookupType, getTemplateId, getMessageName } from "./codec";
+import { lookupType, getTemplateId } from "./codec";
 
 export function packMessage(messageName: string, payload: Record<string, unknown>): Buffer {
   const type = lookupType(messageName);
@@ -8,33 +8,12 @@ export function packMessage(messageName: string, payload: Record<string, unknown
   }
   const msg = type.create(payload);
   const body = Buffer.from(type.encode(msg).finish());
-
-  const frame = Buffer.alloc(4 + body.length);
-  frame.writeUInt32BE(body.length, 0);
-  body.copy(frame, 4);
-  return frame;
-}
-
-export function unpackFrames(buffer: Buffer): { messages: Buffer[]; remainder: Buffer } {
-  const messages: Buffer[] = [];
-  let offset = 0;
-
-  while (offset + 4 <= buffer.length) {
-    const msgLen = buffer.readUInt32BE(offset);
-    if (offset + 4 + msgLen > buffer.length) break;
-    messages.push(buffer.subarray(offset + 4, offset + 4 + msgLen));
-    offset += 4 + msgLen;
-  }
-
-  return {
-    messages,
-    remainder: offset < buffer.length ? buffer.subarray(offset) : Buffer.alloc(0),
-  };
+  return body;
 }
 
 export function peekTemplateId(msgBuf: Buffer): number | null {
   try {
-    const BaseType = lookupType("RequestHeartbeat");
+    const BaseType = lookupType("Base");
     const decoded = BaseType.decode(new Uint8Array(msgBuf));
     const obj = BaseType.toObject(decoded, { defaults: false }) as Record<string, unknown>;
     return typeof obj.templateId === "number" ? obj.templateId : null;

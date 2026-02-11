@@ -4,3 +4,9 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Rithmic API extracted files and uploaded zips
+external/rithmic_api_extracted
+**/RProtocolAPI*.zip
+server/trading/brokers/rithmic/proto/*.proto
+server/trading/brokers/rithmic/docs/*

@@ -8,8 +8,8 @@ import type {
   FuturesOrderUpdate,
   FuturesAdapterEvents,
 } from "../futures/types";
-import { loadProtoRoot, validateProtos, encode, decode, lookupType } from "./codec";
-import { packMessage, unpackFrames, peekTemplateIdFast } from "./frame";
+import { loadProtoRoot, validateProtos, decode } from "./codec";
+import { packMessage, peekTemplateIdFast } from "./frame";
 import {
   normalizeLastTrade,
   normalizeBbo,
@@ -39,7 +39,6 @@ interface PlantConnection {
   uri: string;
   infraType: number;
   heartbeatTimer: ReturnType<typeof setInterval> | null;
-  recvBuffer: Buffer;
 }
 
 export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrokerAdapter {
@@ -60,7 +59,6 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       uri: config.tickerPlantUri,
       infraType: 1,
       heartbeatTimer: null,
-      recvBuffer: Buffer.alloc(0),
     });
 
     this.plants.set("order", {
@@ -68,7 +66,6 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       uri: config.orderPlantUri,
       infraType: 2,
       heartbeatTimer: null,
-      recvBuffer: Buffer.alloc(0),
     });
   }
 
@@ -313,28 +310,23 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       const loginTimeout = setTimeout(() => reject(new Error(`[Rithmic] Login timeout for ${type}`)), 10000);
 
       const originalHandler = (data: Buffer) => {
-        const { messages, remainder } = unpackFrames(Buffer.concat([plant.recvBuffer, data]));
-        plant.recvBuffer = remainder;
-
-        for (const msgBuf of messages) {
-          const tid = peekTemplateIdFast(msgBuf);
-          if (tid === templateIds.ResponseLogin) {
-            clearTimeout(loginTimeout);
-            plant.ws!.removeListener("message", originalHandler);
-            try {
-              const resp = decode("ResponseLogin", msgBuf) as Record<string, unknown>;
-              const rpCode = resp.rpCode as string[] | string | undefined;
-              const codeStr = Array.isArray(rpCode) ? rpCode[0] : rpCode;
-              if (codeStr && codeStr !== "0") {
-                reject(new Error(`[Rithmic] Login failed for ${type}: ${codeStr}`));
-              } else {
-                console.log(`[Rithmic] Logged into ${type} plant`);
-                resolve();
-              }
-            } catch (err) {
-              reject(err);
+        const msgBuf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        const tid = peekTemplateIdFast(msgBuf);
+        if (tid === templateIds.ResponseLogin) {
+          clearTimeout(loginTimeout);
+          plant.ws!.removeListener("message", originalHandler);
+          try {
+            const resp = decode("ResponseLogin", msgBuf) as Record<string, unknown>;
+            const rpCode = resp.rpCode as string[] | string | undefined;
+            const codeStr = Array.isArray(rpCode) ? rpCode[0] : rpCode;
+            if (codeStr && codeStr !== "0") {
+              reject(new Error(`[Rithmic] Login failed for ${type}: ${codeStr}`));
+            } else {
+              console.log(`[Rithmic] Logged into ${type} plant`);
+              resolve();
             }
-            return;
+          } catch (err) {
+            reject(err);
           }
         }
       };
@@ -365,19 +357,13 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   }
 
   private handleMessage(type: PlantType, raw: Buffer) {
-    const plant = this.plants.get(type)!;
-    const { messages, remainder } = unpackFrames(Buffer.concat([plant.recvBuffer, raw]));
-    plant.recvBuffer = remainder;
+    const tid = peekTemplateIdFast(raw);
+    if (tid === null) return;
 
-    for (const msgBuf of messages) {
-      const tid = peekTemplateIdFast(msgBuf);
-      if (tid === null) continue;
-
-      try {
-        this.dispatch(tid, msgBuf);
-      } catch (err) {
-        console.error(`[Rithmic] Error dispatching template ${tid}:`, err);
-      }
+    try {
+      this.dispatch(tid, raw);
+    } catch (err) {
+      console.error(`[Rithmic] Error dispatching template ${tid}:`, err);
     }
   }
 

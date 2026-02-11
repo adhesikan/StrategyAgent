@@ -1,0 +1,195 @@
+You are working in the existing VCP Trader monorepo on Replit.
+
+Stack/Context:
+- Frontend: React + Vite + TypeScript
+- Backend: Node.js/Express + TypeScript
+- Shared types/schemas: shared/schema.ts using Zod
+- DB: PostgreSQL via Drizzle ORM (type-safe)
+- Existing features: built-in scanning strategies for Stocks and Options, Opportunity Engine UI, Automation agents, and InstaTrade (one-click order placement) for supported brokers.
+
+Goal:
+Add a NEW "Futures" tab end-to-end using a Mock Futures Adapter + Mock streaming market data, and display tick/1s bars with TradingView Lightweight Charts. The futures feature should integrate cleanly with the existing scanning/agent/instatrade patterns without breaking current Stocks/Options flows.
+
+Hard Requirements:
+1) Do NOT break existing Stocks/Options scanning, automation, or InstaTrade.
+2) Implement futures with a mock adapter and mock market data so everything works without any external APIs.
+3) Use TradingView Lightweight Charts in the Futures UI to render streaming data (prefer 1-second OHLC aggregation over raw tick plotting).
+4) Keep architecture modular: Futures broker adapter must implement a generic interface so a real broker (Rithmic) can replace the mock later without changing UI/business logic.
+5) Add a Futures tab in the same top toggle area where "Stocks" and "Options" exist, matching the current UI style (dark theme, clean panels, the Opportunity Engine layout).
+6) Add an “InstaTrade” button for Futures results that triggers mock order placement and shows order status updates.
+7) Add a minimal Futures “Auto Agent” toggle with guardrails, using the same automation patterns as existing agents.
+
+Deliverables:
+A) Backend modules for Futures:
+- Create /trading/brokers/futures/types.ts:
+  - Define normalized types: FuturesTick, FuturesBar, FuturesOrderRequest, FuturesOrderUpdate, FuturesPosition
+  - Define IFuturesBrokerAdapter interface:
+    connect(): Promise<void>
+    disconnect(): Promise<void>
+    subscribeMarketData(symbol: string): Promise<void>
+    unsubscribeMarketData(symbol: string): Promise<void>
+    placeOrder(req: FuturesOrderRequest): Promise<{ brokerOrderId: string }>
+    cancelOrder(brokerOrderId: string): Promise<void>
+    on(event: 'tick'|'bar'|'orderUpdate'|'position'|'status', handler): void
+
+- Create /trading/brokers/futures/mock/MockFuturesAdapter.ts:
+  - Implements IFuturesBrokerAdapter
+  - Generates mock tick stream for selectable symbols (e.g., MES, MNQ, ES, NQ) using a random walk and configurable tick size (0.25)
+  - Aggregates ticks into 1-second OHLC bars and emits both 'tick' and 'bar'
+  - Simulates order placement:
+    - Immediately returns brokerOrderId
+    - Emits orderUpdate: 'accepted' then 'filled' after small delay
+    - Updates positions and emits 'position'
+    - Optional slippage/spread simulation
+  - Simulates disconnect/reconnect events
+  - Must be deterministic enough for testing (seeded RNG option)
+
+- Create /trading/futures/marketState.ts:
+  - In-memory cache keyed by symbol: lastTick, lastBar, rolling bars array (last N minutes)
+  - Helper functions: upsertTick, upsertBar, getSnapshot(symbol), getRecentBars(symbol, limit)
+
+- Create /trading/futures/commands.ts:
+  - Define command payload schemas (Zod) for futures actions:
+    - subscribe, unsubscribe, placeOrder, cancelOrder, toggleAgent
+  - Normalize API <-> worker messaging
+
+B) Database (Drizzle + Zod in shared/schema.ts):
+Add tables needed for futures prototype:
+1) futures_orders:
+   - id (uuid), userId, symbol, side, qty, orderType, limitPrice nullable
+   - status (created|sent|accepted|rejected|part_filled|filled|canceled|error)
+   - brokerOrderId nullable, raw jsonb, createdAt, updatedAt
+
+2) futures_fills:
+   - id, orderId, fillPrice, fillQty, filledAt, raw
+
+3) futures_positions:
+   - id, userId, symbol, qty, avgPrice, unrealizedPnl nullable, updatedAt, raw
+
+4) futures_commands (server -> worker command queue):
+   - id, userId, commandType, payload jsonb, status (pending|processing|done|failed), error nullable, createdAt, updatedAt
+
+5) futures_worker_status:
+   - single row per env or instance: status, lastHeartbeatAt, details jsonb
+
+6) agent_audit_log (if not already present):
+   - log agent decisions for futures agent testing
+
+Create migrations consistent with the repo’s existing Drizzle migration workflow. Ensure Zod schemas exist where you already define them.
+
+C) Worker process (preferred) OR single-process fallback:
+- Create /worker/futuresWorker.ts (or /worker/index.ts if you already have worker):
+  - Instantiate MockFuturesAdapter
+  - Poll futures_commands every 500-1000ms:
+    - claim pending rows (atomic update)
+    - execute on adapter
+    - update futures_orders/futures_positions as events occur
+  - Maintain a heartbeat in futures_worker_status every 5 seconds
+  - Emit market updates into in-memory marketState, and optionally persist last bar snapshots for UI
+  - Implement FUTURES_TRADING_ENABLED env kill switch (default false)
+  - Rate limit: max orders/min per user + max position per symbol (env-configurable)
+
+If the repo does not currently support multiple processes in Replit, provide a fallback mode that runs worker logic inside the Express server process, but keep the code isolated so it can be moved to a true worker later.
+
+D) Backend API Routes (Express):
+Add routes under /api/futures:
+1) GET /api/futures/status
+   - returns worker status, subscribed symbols, available mock symbols
+
+2) POST /api/futures/command
+   - inserts into futures_commands
+   - supports command types:
+     - subscribe { symbol }
+     - unsubscribe { symbol }
+     - placeOrder { symbol, side, qty, orderType, limitPrice? }
+     - cancelOrder { brokerOrderId }
+     - toggleAgent { enabled, symbol, rules... }
+
+3) GET /api/futures/bars?symbol=...&limit=...
+   - returns recent bars from marketState (or DB snapshots)
+
+4) GET /api/futures/orders
+   - returns recent futures_orders for user
+
+Ensure auth middleware is applied (same as existing protected routes) and that users only see their own data.
+
+E) Frontend UI (React/Vite/TS):
+1) Add “Futures” tab next to “Stocks” and “Options” in the Opportunity Engine header toggle.
+   - Route: /discover?asset=futures or /discover/futures (match existing routing pattern)
+   - Keep existing layout: Opportunity Engine title, scan controls, results panel, and “Customize Your Scan” area.
+
+2) Futures Opportunity Engine View:
+   - Symbol selector dropdown (MES, MNQ, ES, NQ) + Subscribe button
+   - Live status pill: Connected/Streaming (mock)
+   - Lightweight Charts panel:
+     - Candlestick chart using 1-second bars
+     - Show last price, bid/ask (from ticks) above chart
+     - Keep last N minutes bars (e.g., 5–15 minutes)
+   - Futures “Scan Now” button:
+     - Runs a mock “scanner” that returns a few opportunities based on bar pattern (e.g., breakout from range, momentum)
+     - Present opportunities in a table consistent with your existing Opportunities list style (symbol, setup score, entry, stop, target, timeframe)
+   - Each opportunity row has:
+     - InstaTrade button (opens a side modal like existing InstaTrade if you have one; otherwise build a minimal modal)
+     - Modal inputs:
+       - qty (default 1)
+       - order type (market/limit)
+       - limit price (if limit)
+       - confirm -> sends placeOrder command
+     - Display order status and update in UI as it changes (poll /orders every 2s or add SSE)
+
+3) Futures Auto Agent toggle:
+   - Toggle "Auto Agent" ON/OFF for futures
+   - Provide 2–3 simple rule inputs (minimal):
+     - minScore threshold
+     - maxTradesPerDay
+     - maxPosition
+   - When enabled:
+     - agent loop can run in worker using the mock opportunities + risk gates
+     - log to agent_audit_log
+   - UI should show “Last agent action” summary.
+
+4) Lightweight Charts implementation details:
+   - Add dependency: lightweight-charts
+   - Implement a reusable component: <FuturesChart symbol="MES" />
+   - On mount, fetch initial bars then poll every 1s OR use an in-app event stream if available
+   - Use series.update() for incremental bars
+
+F) Mock Futures Scanner Logic:
+- Create /trading/futures/mockScanner.ts:
+  - Given last N bars, compute:
+    - simple range breakout score
+    - volume proxy (can be random)
+    - trend strength
+  - Output a list of “opportunities” in the same normalized shape your UI expects.
+
+G) Quality/Engineering Requirements:
+- Strong typing end-to-end
+- Zod validation for command payloads
+- Drizzle queries must be type-safe
+- Never store secrets for mock adapter
+- Clean separation between:
+  - UI
+  - API
+  - command queue
+  - adapter
+  - market state
+- Add inline TODO markers indicating where the real Rithmic adapter will plug in later (do not implement Rithmic now).
+
+H) Replit Run:
+- Ensure the project runs by pressing Run in Replit with no manual commands.
+- If multiple processes are supported, configure package.json scripts (or a single entrypoint index.ts) so server + worker start automatically.
+- If not, implement worker in-process but keep it modular.
+
+Implementation Steps:
+1) Add schema + migrations
+2) Add futures command queue + routes
+3) Add MockFuturesAdapter + marketState + mockScanner
+4) Add worker processor + heartbeat
+5) Add frontend Futures tab + chart + opportunities + instatrade modal
+6) Add auto-agent toggle + basic risk gates
+7) Test end-to-end with mock data streaming and mock order fills
+
+After implementing:
+- Provide brief notes in README: how futures mock mode works, env vars, and where to swap in real Rithmic adapter later.
+
+Proceed to implement all of the above now in this repo.

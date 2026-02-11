@@ -19,10 +19,12 @@ interface SymbolState {
 }
 
 const BASE_PRICES: Record<string, number> = {
-  MES: 5420,
-  MNQ: 19250,
-  ES: 5420,
-  NQ: 19250,
+  ES: 6050, NQ: 21800, YM: 44200, RTY: 2250,
+  MES: 6050, MNQ: 21800, MYM: 44200, M2K: 2250,
+  GC: 2650, SI: 31.5, CL: 72.5, NG: 2.8,
+  ZB: 118, ZN: 110, ZC: 450, ZS: 1180, ZW: 580,
+  HE: 88, LE: 185, MGC: 2650, MCL: 72.5,
+  "6E": 1.085, "6J": 0.0067, "6B": 1.27,
 };
 
 function seededRandom(seed: number): () => number {

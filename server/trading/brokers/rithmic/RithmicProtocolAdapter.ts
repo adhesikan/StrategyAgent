@@ -18,6 +18,7 @@ import {
   normalizePositionUpdate,
 } from "./normalize";
 import templateIds from "./templateIds.json";
+import { FUTURES_SYMBOLS } from "../futures/types";
 
 interface RithmicConfig {
   tickerPlantUri: string;
@@ -50,6 +51,8 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   private orderCounter = 0;
   private pendingOrderMap = new Map<string, { resolve: (id: string) => void; reject: (err: Error) => void }>();
   private tickState = new Map<string, Partial<FuturesTick>>();
+  private tickCounter = 0;
+  private barCounter = 0;
 
   constructor(config: RithmicConfig) {
     super();
@@ -230,11 +233,12 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     }
 
     const rithmicSymbol = this.toRithmicSymbol(symbol);
+    const exchange = this.getExchange(symbol);
 
     const mdBuf = packMessage("RequestMarketDataUpdate", {
       templateId: templateIds.RequestMarketDataUpdate,
       symbol: rithmicSymbol,
-      exchange: "CME",
+      exchange,
       requestType: 1,
       updateBits: 1 | 2 | 4,
     });
@@ -243,7 +247,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     const barBuf = packMessage("RequestTimeBarUpdate", {
       templateId: templateIds.RequestTimeBarUpdate,
       symbol: rithmicSymbol,
-      exchange: "CME",
+      exchange,
       requestType: 1,
       barType: 1,
       barSubType: 1,
@@ -251,7 +255,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     plant.ws.send(barBuf);
 
     this.subscribedSymbols.add(symbol);
-    console.log(`[Rithmic] Subscribed to market data: ${symbol} (${rithmicSymbol})`);
+    console.log(`[Rithmic] Subscribed to market data: ${symbol} -> ${rithmicSymbol} on ${exchange}`);
   }
 
   async unsubscribeMarketData(symbol: string): Promise<void> {
@@ -260,10 +264,11 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     const plant = this.plants.get("ticker");
     if (plant?.ws && plant.ws.readyState === WebSocket.OPEN) {
       const rithmicSymbol = this.toRithmicSymbol(symbol);
+      const exchange = this.getExchange(symbol);
       const buf = packMessage("RequestMarketDataUpdate", {
         templateId: templateIds.RequestMarketDataUpdate,
         symbol: rithmicSymbol,
-        exchange: "CME",
+        exchange,
         requestType: 2,
       });
       plant.ws.send(buf);
@@ -284,11 +289,12 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     const userTag = `VCP-${++this.orderCounter}-${Date.now()}`;
     const rithmicSymbol = this.toRithmicSymbol(req.symbol);
 
+    const exchange = this.getExchange(req.symbol);
     let priceType = 2;
     const payload: Record<string, unknown> = {
       templateId: templateIds.RequestNewOrder,
       symbol: rithmicSymbol,
-      exchange: "CME",
+      exchange,
       transactionType: req.side === "buy" ? 1 : 2,
       quantity: req.qty,
       duration: 1,
@@ -484,6 +490,10 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
         const data = decode("LastTrade", msgBuf) as Record<string, unknown>;
         const partial = normalizeLastTrade(data);
         if (partial && partial.symbol) {
+          this.tickCounter++;
+          if (this.tickCounter <= 3) {
+            console.log(`[Rithmic] Tick #${this.tickCounter}: ${partial.symbol} @ ${partial.price} (raw symbol: ${data.symbol})`);
+          }
           const existing = this.tickState.get(partial.symbol) ?? {};
           const merged: FuturesTick = {
             symbol: partial.symbol,
@@ -522,6 +532,10 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
         const data = decode("ResponseTimeBarUpdate", msgBuf) as Record<string, unknown>;
         const bar = normalizeTimeBar(data);
         if (bar) {
+          this.barCounter++;
+          if (this.barCounter <= 3) {
+            console.log(`[Rithmic] Bar #${this.barCounter}: ${bar.symbol} O=${bar.open} H=${bar.high} L=${bar.low} C=${bar.close} (raw: ${data.symbol})`);
+          }
           this.emit("bar", bar);
         }
         break;
@@ -557,11 +571,22 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
 
       case templateIds.ResponseLogin:
       case templateIds.ResponseLogout:
-      case templateIds.ResponseMarketDataUpdate:
       case templateIds.ResponseNewOrder:
       case templateIds.ResponseCancelOrder:
       case templateIds.ResponseSubscribeForOrderUpdates:
         break;
+
+      case templateIds.ResponseMarketDataUpdate: {
+        const data = decode("ResponseMarketDataUpdate", msgBuf) as Record<string, unknown>;
+        const rpCode = Array.isArray(data.rpCode) ? data.rpCode[0] : data.rpCode;
+        const userMsg = Array.isArray(data.userMsg) ? data.userMsg.join("; ") : (data.userMsg ?? "");
+        if (rpCode && rpCode !== "0") {
+          console.warn(`[Rithmic] Market data subscription response: code=${rpCode}, msg="${userMsg}", symbol=${data.symbol}`);
+        } else {
+          console.log(`[Rithmic] Market data subscription confirmed for ${data.symbol}`);
+        }
+        break;
+      }
 
       case templateIds.Reject: {
         const data = decode("Reject", msgBuf) as Record<string, unknown>;
@@ -594,8 +619,55 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     }
   }
 
+  private getExchange(symbol: string): string {
+    let info = FUTURES_SYMBOLS.find((s) => s.symbol === symbol);
+    if (!info) {
+      const knownRoots = FUTURES_SYMBOLS.map(s => s.symbol).sort((a, b) => b.length - a.length);
+      const upper = symbol.toUpperCase();
+      const root = knownRoots.find(r => upper.startsWith(r));
+      if (root) info = FUTURES_SYMBOLS.find(s => s.symbol === root);
+    }
+    return info?.exchange ?? "CME";
+  }
+
   private toRithmicSymbol(symbol: string): string {
-    return symbol;
+    if (/[FGHJKMNQUVXZ]\d{1,2}$/.test(symbol)) {
+      return symbol;
+    }
+
+    const monthCodes = "FGHJKMNQUVXZ";
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const quarterlyMonths = [2, 5, 8, 11];
+    const quarterlySymbols = new Set([
+      "ES", "NQ", "YM", "RTY", "MES", "MNQ", "MYM", "M2K",
+      "ZB", "ZN", "ZF", "ZT", "6E", "6J", "6B", "6A", "6C", "6S",
+    ]);
+
+    let contractMonth: number;
+    let contractYear = currentYear;
+
+    if (quarterlySymbols.has(symbol)) {
+      contractMonth = quarterlyMonths.find(m => m >= currentMonth) ?? quarterlyMonths[0];
+      if (contractMonth < currentMonth) {
+        contractYear++;
+      }
+    } else {
+      contractMonth = currentMonth;
+      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      if (now.getDate() > daysInMonth - 5) {
+        contractMonth = (currentMonth + 1) % 12;
+        if (contractMonth < currentMonth) contractYear++;
+      }
+    }
+
+    const monthCode = monthCodes[contractMonth];
+    const yearCode = contractYear % 10;
+    const mapped = `${symbol}${monthCode}${yearCode}`;
+    console.log(`[Rithmic] Symbol mapping: ${symbol} -> ${mapped}`);
+    return mapped;
   }
 
   on<K extends keyof FuturesAdapterEvents>(event: K, listener: FuturesAdapterEvents[K]): this {

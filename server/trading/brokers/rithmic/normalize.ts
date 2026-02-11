@@ -94,8 +94,20 @@ export function normalizePositionUpdate(data: Record<string, unknown>): FuturesP
 }
 
 function normalizeSymbol(raw: string): string {
-  const match = raw.match(/^(ES|NQ|MES|MNQ)/i);
-  return match ? match[1].toUpperCase() : raw;
+  const knownRoots = [
+    "MES", "MNQ", "MYM", "M2K", "MGC", "MCL",
+    "ES", "NQ", "YM", "RTY",
+    "GC", "SI", "CL", "NG",
+    "ZB", "ZN", "ZC", "ZS", "ZW", "ZF", "ZT",
+    "HE", "LE",
+    "6E", "6J", "6B", "6A", "6C", "6S",
+  ];
+  for (const root of knownRoots) {
+    if (raw.toUpperCase().startsWith(root) && raw.length > root.length) {
+      return root;
+    }
+  }
+  return raw;
 }
 
 function mapOrderStatus(notifyType: number | string | undefined): "accepted" | "filled" | "rejected" | "canceled" {

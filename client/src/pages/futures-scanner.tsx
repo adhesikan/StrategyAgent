@@ -153,6 +153,7 @@ export default function FuturesScanner() {
 
   const [instaTradeOpp, setInstaTradeOpp] = useState<FuturesOpportunity | null>(null);
   const [instaTradeOpen, setInstaTradeOpen] = useState(false);
+  const [strategiesOpen, setStrategiesOpen] = useState(false);
 
   const [emaPeriods, setEmaPeriods] = useState<number[]>([9, 21]);
   const [newEmaPeriod, setNewEmaPeriod] = useState("");
@@ -775,6 +776,48 @@ export default function FuturesScanner() {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-3">
+            <button
+              onClick={() => setStrategiesOpen(!strategiesOpen)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover-elevate rounded-md px-2 py-1"
+              data-testid="button-toggle-strategies"
+            >
+              {strategiesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              Scan Strategies
+            </button>
+            {strategiesOpen && (
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs" data-testid="strategies-list">
+                <div className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
+                  <TrendingUp className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-foreground">Range Breakout</p>
+                    <p className="text-muted-foreground">Buy when price nears resistance with upward trend</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
+                  <TrendingDown className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-foreground">Range Breakdown</p>
+                    <p className="text-muted-foreground">Sell when price nears support with downward trend</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
+                  <TrendingUp className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-foreground">Momentum Long</p>
+                    <p className="text-muted-foreground">Buy on strong upward momentum above average price</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 p-2 rounded-md bg-muted/50">
+                  <TrendingDown className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-foreground">Momentum Short</p>
+                    <p className="text-muted-foreground">Sell on strong downward momentum below average price</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           {opportunities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm" data-testid="text-no-opportunities">
               No opportunities found. Click "Scan Now" to search for trade setups.

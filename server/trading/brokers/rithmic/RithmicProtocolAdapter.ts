@@ -42,10 +42,22 @@ interface PlantConnection {
   heartbeatTimer: ReturnType<typeof setInterval> | null;
 }
 
+interface TickBarBucket {
+  symbol: string;
+  minuteKey: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  tradeCount: number;
+}
+
 export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrokerAdapter {
   private config: RithmicConfig;
   private plants = new Map<PlantType, PlantConnection>();
   private subscribedSymbols = new Set<string>();
+  private pendingSubscriptions = new Set<string>();
   private _connected = false;
   private _dataOnly = false;
   private orderCounter = 0;
@@ -55,6 +67,10 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   private barCounter = 0;
   private unhandledTemplateIds = new Set<number>();
   private frontMonthCache = new Map<string, string>();
+  private tickBarAggregator = new Map<string, TickBarBucket>();
+  private tickBarEnabled = new Set<string>();
+  private tickBarTimer: ReturnType<typeof setInterval> | null = null;
+  private nativeBarSymbols = new Set<string>();
 
   constructor(config: RithmicConfig) {
     super();
@@ -210,6 +226,13 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
       plant.ws = null;
     }
     this.subscribedSymbols.clear();
+    this.tickBarEnabled.clear();
+    this.tickBarAggregator.clear();
+    this.nativeBarSymbols.clear();
+    if (this.tickBarTimer) {
+      clearInterval(this.tickBarTimer);
+      this.tickBarTimer = null;
+    }
     this._connected = false;
     this.emit("status", "disconnected");
   }
@@ -227,10 +250,12 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
   }
 
   async subscribeMarketData(symbol: string): Promise<void> {
-    if (this.subscribedSymbols.has(symbol)) return;
+    if (this.subscribedSymbols.has(symbol) || this.pendingSubscriptions.has(symbol)) return;
+    this.pendingSubscriptions.add(symbol);
 
     const plant = this.plants.get("ticker");
     if (!plant?.ws || plant.ws.readyState !== WebSocket.OPEN) {
+      this.pendingSubscriptions.delete(symbol);
       throw new Error("[Rithmic] Ticker plant not connected");
     }
 
@@ -265,6 +290,7 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     plant.ws.send(barBuf);
 
     this.subscribedSymbols.add(symbol);
+    this.pendingSubscriptions.delete(symbol);
     console.log(`[Rithmic] Subscribed to market data: ${symbol} -> ${rithmicSymbol} on ${exchange}`);
   }
 
@@ -285,6 +311,10 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     }
 
     this.subscribedSymbols.delete(symbol);
+    this.tickBarEnabled.delete(symbol);
+    this.tickBarAggregator.delete(symbol);
+    this.nativeBarSymbols.delete(symbol);
+    this.maybeStopTickBarTimer();
   }
 
   async placeOrder(req: FuturesOrderRequest): Promise<{ brokerOrderId: string }> {
@@ -565,6 +595,10 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
           };
           this.tickState.set(partial.symbol, merged);
           this.emit("tick", merged);
+
+          if (this.tickBarEnabled.has(partial.symbol) && merged.price > 0) {
+            this.ingestTickForBar(partial.symbol, merged.price, merged.volume || 1);
+          }
         }
         break;
       }
@@ -596,13 +630,29 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
           const bar = normalizeTimeBar(data);
           if (bar) {
             this.barCounter++;
+            this.nativeBarSymbols.add(bar.symbol);
+            this.tickBarEnabled.delete(bar.symbol);
+            this.tickBarAggregator.delete(bar.symbol);
+            this.maybeStopTickBarTimer();
             if (this.barCounter <= 5) {
               console.log(`[Rithmic] Bar #${this.barCounter}: ${bar.symbol} O=${bar.open} H=${bar.high} L=${bar.low} C=${bar.close} V=${bar.volume} (raw: ${data.symbol})`);
             }
             this.emit("bar", bar);
           }
         } else if (rpCode && rpCode !== "0") {
-          console.warn(`[Rithmic] Time bar subscription response: code=${rpCode}, symbol=${data.symbol}`);
+          const rawSymbol = data.symbol as string | undefined;
+          const normalSymbol = rawSymbol ? this.reverseSymbolLookup(rawSymbol) : undefined;
+          console.warn(`[Rithmic] Time bar subscription rejected: code=${rpCode}, rawSymbol=${rawSymbol}`);
+          const fallbackSymbol = normalSymbol || this.findSubscribedSymbolForRaw(rawSymbol);
+          if (fallbackSymbol) {
+            this.enableTickBarFallback(fallbackSymbol);
+          } else {
+            for (const sym of Array.from(this.subscribedSymbols)) {
+              if (!this.nativeBarSymbols.has(sym) && !this.tickBarEnabled.has(sym)) {
+                this.enableTickBarFallback(sym);
+              }
+            }
+          }
         } else {
           console.log(`[Rithmic] Time bar subscription confirmed for ${data.symbol}`);
         }
@@ -743,6 +793,101 @@ export class RithmicProtocolAdapter extends EventEmitter implements IFuturesBrok
     const yearCode = contractYear % 10;
     const mapped = `${symbol}${monthCode}${yearCode}`;
     return mapped;
+  }
+
+  private reverseSymbolLookup(rithmicSymbol: string): string | undefined {
+    for (const [base, resolved] of Array.from(this.frontMonthCache.entries())) {
+      if (resolved === rithmicSymbol) return base;
+    }
+    const root = rithmicSymbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
+    if (root && root !== rithmicSymbol && FUTURES_SYMBOLS.some(s => s.symbol === root)) {
+      return root;
+    }
+    return undefined;
+  }
+
+  private findSubscribedSymbolForRaw(rawSymbol: string | undefined): string | undefined {
+    if (!rawSymbol) return undefined;
+    const normal = this.reverseSymbolLookup(rawSymbol);
+    if (normal && this.subscribedSymbols.has(normal)) return normal;
+    if (this.subscribedSymbols.has(rawSymbol)) return rawSymbol;
+    return undefined;
+  }
+
+  private enableTickBarFallback(symbol: string): void {
+    if (this.nativeBarSymbols.has(symbol)) return;
+    if (this.tickBarEnabled.has(symbol)) return;
+    this.tickBarEnabled.add(symbol);
+    console.log(`[Rithmic] Tick-to-bar aggregation enabled for ${symbol} (will deactivate if native bars arrive)`);
+
+    if (!this.tickBarTimer) {
+      this.tickBarTimer = setInterval(() => this.flushTickBars(), 5000);
+    }
+  }
+
+  private maybeStopTickBarTimer(): void {
+    if (this.tickBarEnabled.size === 0 && this.tickBarTimer) {
+      clearInterval(this.tickBarTimer);
+      this.tickBarTimer = null;
+    }
+  }
+
+  private ingestTickForBar(symbol: string, price: number, volume: number): void {
+    const now = Date.now();
+    const minuteKey = Math.floor(now / 60000) * 60000;
+
+    const existing = this.tickBarAggregator.get(symbol);
+    if (existing && existing.minuteKey === minuteKey) {
+      existing.high = Math.max(existing.high, price);
+      existing.low = Math.min(existing.low, price);
+      existing.close = price;
+      existing.volume += volume;
+      existing.tradeCount++;
+    } else {
+      if (existing && existing.minuteKey < minuteKey) {
+        this.emitTickBar(existing);
+      }
+      this.tickBarAggregator.set(symbol, {
+        symbol,
+        minuteKey,
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+        volume,
+        tradeCount: 1,
+      });
+    }
+  }
+
+  private flushTickBars(): void {
+    const now = Date.now();
+    const currentMinuteKey = Math.floor(now / 60000) * 60000;
+
+    for (const [symbol, bucket] of Array.from(this.tickBarAggregator.entries())) {
+      if (bucket.minuteKey < currentMinuteKey && bucket.tradeCount > 0) {
+        this.emitTickBar(bucket);
+        this.tickBarAggregator.delete(symbol);
+      }
+    }
+  }
+
+  private emitTickBar(bucket: TickBarBucket): void {
+    if (this.nativeBarSymbols.has(bucket.symbol)) return;
+    const bar: FuturesBar = {
+      symbol: bucket.symbol,
+      time: bucket.minuteKey,
+      open: bucket.open,
+      high: bucket.high,
+      low: bucket.low,
+      close: bucket.close,
+      volume: bucket.volume,
+    };
+    this.barCounter++;
+    if (this.barCounter <= 5) {
+      console.log(`[Rithmic] TickBar #${this.barCounter}: ${bar.symbol} O=${bar.open} H=${bar.high} L=${bar.low} C=${bar.close} V=${bar.volume} (aggregated from ${bucket.tradeCount} ticks)`);
+    }
+    this.emit("bar", bar);
   }
 
   on<K extends keyof FuturesAdapterEvents>(event: K, listener: FuturesAdapterEvents[K]): this {

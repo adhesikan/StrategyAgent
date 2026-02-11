@@ -143,6 +143,8 @@ export default function FuturesScanner() {
   const [emaPeriods, setEmaPeriods] = useState<number[]>([9, 21]);
   const [newEmaPeriod, setNewEmaPeriod] = useState("");
 
+  const [chartVersion, setChartVersion] = useState(0);
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<any>(null);
@@ -324,6 +326,7 @@ export default function FuturesScanner() {
     });
 
     seriesRef.current = series;
+    setChartVersion((v) => v + 1);
 
     const handleResize = () => {
       if (chartContainerRef.current) {
@@ -346,7 +349,7 @@ export default function FuturesScanner() {
     };
   }, [theme, selectedSymbol]);
 
-  const updateChartData = useCallback((bars: FuturesBar[]) => {
+  const populateChart = useCallback((bars: FuturesBar[], periods: number[]) => {
     if (!seriesRef.current || !chartApiRef.current || bars.length === 0) return;
 
     const chartBars = bars.map((b) => ({
@@ -366,7 +369,7 @@ export default function FuturesScanner() {
     });
     emaSeriesRefs.current.clear();
 
-    emaPeriods.forEach((period, idx) => {
+    periods.forEach((period, idx) => {
       const emaValues = computeEMA(closes, period);
       const emaData = emaValues
         .map((v, i) => ({ time: bars[i]?.time as any, value: v }))
@@ -385,23 +388,17 @@ export default function FuturesScanner() {
     });
 
     chart.timeScale().scrollToRealTime();
-  }, [emaPeriods]);
+  }, []);
 
   useEffect(() => {
     if (barsData?.bars && barsData.bars.length > 0) {
       barsRef.current = barsData.bars;
-      updateChartData(barsData.bars);
+      populateChart(barsData.bars, emaPeriods);
     }
     if (barsData?.lastTick) {
       setLastTick(barsData.lastTick);
     }
-  }, [barsData, updateChartData]);
-
-  useEffect(() => {
-    if (barsRef.current.length > 0) {
-      updateChartData(barsRef.current);
-    }
-  }, [emaPeriods, updateChartData]);
+  }, [barsData, emaPeriods, populateChart, chartVersion]);
 
   useEffect(() => {
     if (eventSourceRef.current) {

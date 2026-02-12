@@ -271,14 +271,14 @@ export default function Scanner() {
 
   const getTopPicks = (results: ScanResult[]): ScanResult[] => {
     if (!results || results.length === 0) return [];
+    const stageBonus: Record<string, number> = { BREAKOUT: 0.2, READY: 0.1, FORMING: 0 };
     const scored = results
-      .filter(r => r.stage === "BREAKOUT")
       .map(r => {
         const confidence = (r.patternScore || 0) / 100;
         const rr = getRiskReward(r);
         const rrScore = rr ? Math.min(rr / 3, 1) : 0;
         const volScore = Math.min((r.rvol || 0) / 3, 1);
-        let composite = confidence * 0.4 + rrScore * 0.3 + volScore * 0.2;
+        let composite = confidence * 0.4 + rrScore * 0.3 + volScore * 0.2 + (stageBonus[r.stage || "FORMING"] || 0);
 
         const distance = getDistanceToEntry(r);
         const status = getTradeStatus(r);
@@ -295,7 +295,7 @@ export default function Scanner() {
         return { result: r, composite };
       })
       .sort((a, b) => b.composite - a.composite);
-    return scored.slice(0, 3).map(s => s.result);
+    return scored.slice(0, 5).map(s => s.result);
   };
   const [filters, setFilters] = useState<ScannerFilters>({
     minPrice: 5,
@@ -1027,7 +1027,7 @@ export default function Scanner() {
       </div>
 
       {/* First-time Coach Mark */}
-      {!coachDismissed && liveResults && liveResults.length > 0 && (
+      {!coachDismissed && rawResults && rawResults.length > 0 && (
         <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5" data-testid="coach-mark">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary shrink-0" />
@@ -1048,7 +1048,7 @@ export default function Scanner() {
       )}
 
       {/* Quick Filters Bar */}
-      {liveResults && liveResults.length > 0 && (() => {
+      {rawResults && rawResults.length > 0 && (() => {
         const activeFilterCount = [
           minPatternScore !== null,
           filterMinPrice !== null,
@@ -1099,7 +1099,7 @@ export default function Scanner() {
               )}
               {activeFilterCount > 0 && (
                 <span className="text-xs text-muted-foreground" data-testid="text-filter-count">
-                  Showing {filteredResults?.filter(r => r.stage === "BREAKOUT").length || 0} of {liveResults.filter(r => r.stage === "BREAKOUT").length} breakouts
+                  Showing {filteredResults?.length || 0} of {(liveResults || storedResults || []).length} opportunities
                 </span>
               )}
             </div>
@@ -1229,12 +1229,11 @@ export default function Scanner() {
       })()}
 
       {/* View Mode Toggle & Sorting */}
-      {filteredResults && filteredResults.filter(r => r.stage === "BREAKOUT").length > 0 && (() => {
-        const breakoutResults = filteredResults.filter(r => r.stage === "BREAKOUT");
-        const totalBreakouts = liveResults?.filter(r => r.stage === "BREAKOUT").length || 0;
-        const topPicks = getTopPicks(breakoutResults);
+      {filteredResults && filteredResults.length > 0 && (() => {
+        const allResults = filteredResults;
+        const topPicks = getTopPicks(allResults);
         const topPickIds = new Set(topPicks.map(p => p.id));
-        const remainingResults = breakoutResults.filter(r => !topPickIds.has(r.id));
+        const remainingResults = allResults.filter(r => !topPickIds.has(r.id));
         const groupedResults: Record<string, ScanResult[]> = {};
         remainingResults.forEach(r => {
           const group = getStrategyGroup(r);
@@ -1519,7 +1518,7 @@ export default function Scanner() {
               <Flame className="h-5 w-5 text-orange-500" />
               <h2 className="text-lg font-semibold">Active Opportunities</h2>
               <span className="text-xs text-muted-foreground">
-                {breakoutResults.length}{breakoutResults.length !== totalBreakouts ? ` of ${totalBreakouts}` : ""} signals
+                {allResults.length} opportunities
               </span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1628,7 +1627,7 @@ export default function Scanner() {
                     <span className="w-12 text-center">Score</span>
                     <span className="w-24"></span>
                   </div>
-                  {breakoutResults.map(result => renderAdvancedRow(result))}
+                  {allResults.map(result => renderAdvancedRow(result))}
                 </div>
               </CardContent>
             </Card>
@@ -1638,13 +1637,13 @@ export default function Scanner() {
       })()}
 
       {/* Empty State for No Opportunities */}
-      {liveResults && liveResults.filter(r => r.stage === "BREAKOUT").length === 0 && (
+      {(!filteredResults || filteredResults.length === 0) && !isLoading && (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
             <Target className="h-10 w-10 mx-auto mb-4 text-muted-foreground/50" />
-            <h3 className="text-lg font-medium mb-2">No active breakouts right now</h3>
+            <h3 className="text-lg font-medium mb-2">No opportunities found</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
-              We'll surface opportunities when volume expands from tight consolidations.
+              We'll surface bullish setups when patterns are detected across all stages.
             </p>
             <p className="text-xs text-muted-foreground/70">
               Try "Scan Now" or adjust filters in Customize Your Scan below.

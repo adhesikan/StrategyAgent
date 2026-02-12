@@ -1,0 +1,259 @@
+You are updating the existing VCP Trader codebase. Do NOT create a new repo. Preserve existing functionality and routes. This is a UI/UX refactor + light backend wiring to remove user confusion around “two automation systems”.
+
+GOAL
+Refactor the UI so users experience ONE concept: “Automation Modes”, with a clean, guided flow.
+Hide technical details (webhooks) by default.
+Unify the two automation modules (Built-in Auto Agent vs AlgoPilotX execution) under a single, simple “Automation” experience.
+
+PRIMARY UX OUTCOME
+Users should understand and complete setup in < 2 minutes:
+1) Choose how the platform acts (Alerts / Assisted / Autonomous)
+2) If Autonomous: choose engine (Built-in / AlgoPilotX Advanced)
+3) Connect broker (if needed)
+4) Run scan → take action from one unified “Command Center” and one unified “Automation Center”.
+
+DO NOT BREAK
+- Existing scan + opportunities pages
+- Existing Auto Agent settings
+- Existing AlgoPilotX webhook endpoint system
+- Existing Execution Cockpit functionality
+
+========================================================
+A) NEW IA (INFORMATION ARCHITECTURE)
+========================================================
+
+1) Add a new top-level page: “Command Center”
+- Route: /command-center
+- Purpose: status + next actions + opportunities summary + automation status
+- Make this the default landing page after login if user_settings.setup_completed=false OR if user has not selected an automation mode.
+
+2) Replace sidebar item “Automation” with a single entry:
+- “Automation Center” (route: /automation)
+This is the ONLY place users manage automation modes and engines.
+
+3) Keep “Execution” but simplify it:
+- Rename tab label to “Execution & Monitoring”
+- Move deep “Auto Agent” config behind an “Advanced Settings” link within Automation Center (still accessible).
+
+4) Keep “Settings” but remove duplication:
+- Broker connections remain in Settings -> Broker
+- Also surface broker status and connect CTA inside Automation Center and Command Center.
+
+========================================================
+B) SINGLE CONCEPT: AUTOMATION MODES
+========================================================
+
+Create a persistent user setting:
+user_settings.automation_mode = 'ALERTS' | 'ASSISTED' | 'AUTONOMOUS'
+user_settings.automation_engine = 'BUILT_IN' | 'ALGOPILOTX' (only relevant when mode = AUTONOMOUS)
+
+Definitions (use this language exactly in UI):
+- Alerts: “Get notified. You decide.”
+- Assisted: “One-click execution with your approval.”
+- Autonomous: “User-configured automation executes within your limits.”
+
+IMPORTANT: Do NOT use phrases like “we trade for you”, “guaranteed”, “profit”, “returns”.
+
+========================================================
+C) AUTOMATION CENTER PAGE (/automation)
+========================================================
+
+Build a single page with 4 sections (cards), in this order:
+
+1) Automation Mode Selector (Required)
+Three large cards w/ radio selection:
+- Alerts Only (recommended for new users)
+- Assisted Execution (recommended for most users)
+- Autonomous Trading (advanced)
+
+When user picks:
+- Save immediately (debounced) to user_settings.automation_mode
+- Show contextual “Next step” CTA.
+
+2) Engine Selector (Conditional)
+Only show if mode == AUTONOMOUS.
+Two cards:
+- Built-in Auto Agent (Simpler)
+- Advanced Automation (AlgoPilotX)
+Save to user_settings.automation_engine
+
+3) Broker & Data Connection (Contextual)
+Show connection status badges:
+- Market data provider (current “Live: Tradier” etc.)
+- Execution broker connection (if applicable)
+CTAs:
+- “Connect Brokerage” -> deep link to Settings -> Broker tab
+- “Test Connection”
+- “Disconnect”
+Make it explicit:
+“Broker credentials are handled via OAuth on the broker’s site.”
+
+4) Safety & Controls (Unified)
+Always show the same control surface regardless of engine:
+- Status: Armed / Paused / Disabled
+- Buttons: Arm / Pause / Disable / Emergency Stop
+
+Rules:
+- If mode != AUTONOMOUS, hide Arm/Pause/Disable (show “Not applicable in this mode”).
+- Emergency Stop can remain visible but should describe what it stops:
+  - Built-in: stops in-app automation actions
+  - AlgoPilotX: stops forwarding / disables endpoint in VCP Trader (and provides link to AlgoPilotX dashboard)
+
+Add an “Advanced Settings” accordion:
+- If engine == BUILT_IN:
+  Embed the existing Auto Agent form inside accordion (no route jump).
+- If engine == ALGOPILOTX:
+  Show “Automation Profiles” UI (see section D).
+
+========================================================
+D) ALGOPILOTX INTEGRATION: HIDE WEBHOOKS BY DEFAULT
+========================================================
+
+Current behavior requires copy/paste webhook URLs. Replace default UI with “Automation Profiles”:
+
+1) Create UI concept: “Automation Profile”
+- Name
+- Description
+- Status
+- “Connect” button
+
+2) Implementation approach:
+- If you DO NOT have an AlgoPilotX API to list automations:
+  Keep webhook system, but hide it behind “Manual Setup (Advanced)” toggle.
+  Default path should feel non-technical:
+  - Step 1: “Open AlgoPilotX Dashboard” button
+  - Step 2: “Paste Webhook URL” only appears after user clicks “I have a webhook URL”
+  - Validate webhook format client-side and server-side.
+
+3) Improve the setup wizard inside Automation Center:
+- Show progress:
+  (1) Open AlgoPilotX
+  (2) Create automation
+  (3) Add to VCP Trader
+  (4) Select profile
+Use simple copy and a success check after each step.
+
+4) Make selection easy:
+- Once at least one endpoint exists, show a dropdown:
+  “Selected Automation Profile”
+  - Default = most recently added
+
+========================================================
+E) COMMAND CENTER PAGE (/command-center)
+========================================================
+
+Build a clean “Status + Next actions” hub:
+
+1) Top Status Strip
+Badges:
+- Market: Open/Closed
+- Scan: Live/Manual/Off
+- Mode: Alerts/Assisted/Autonomous
+- Engine (if autonomous): Built-in / AlgoPilotX
+- Broker: Connected/Not connected
+Buttons:
+- “Run Scan”
+- “Automation Center”
+- “Execution & Monitoring”
+- Emergency Stop (prominent)
+
+2) Setup Checklist (only if incomplete)
+Checklist items:
+- Choose automation mode
+- (If assisted/autonomous) Connect broker
+- (If autonomous) Configure safety limits
+- (If AlgoPilotX) Connect automation profile
+Button: “Finish Setup” -> /automation with highlight on missing section
+
+3) Opportunities Preview
+Embed the top opportunities list/cards (reuse existing component).
+Primary CTA on each card depends on mode:
+- Alerts -> “Set Alert”
+- Assisted -> “Review & Approve”
+- Autonomous -> “Managed by Automation” (shows status + last evaluation time)
+
+========================================================
+F) EXECUTION PAGE CLEANUP
+========================================================
+
+In the current Execution area, remove duplicated setup UI.
+Replace with:
+- A single “Execution & Monitoring” view:
+  - Shows trade activity, positions, logs, and quick links.
+  - Shows a small “Automation status” pill and “Go to Automation Center” link.
+Keep detailed agent configuration out of this page (it belongs in Automation Center).
+
+========================================================
+G) COMPLIANCE COPY UPDATES (LIGHT, APP-WIDE)
+========================================================
+
+Add/ensure persistent disclaimer text on:
+- Command Center
+- Automation Center
+- Execution & Monitoring
+
+Text:
+“VCP Trader and AlgoPilotX are software tools for self-directed traders. Educational and informational use only. Not investment advice. No guarantees. Users control all trading decisions and automation.”
+
+Automation acknowledgement gate (only for AUTONOMOUS mode, before “Arm”):
+Modal with checkboxes:
+[ ] “I understand automation follows rules I configured and approved.”
+[ ] “I understand I can pause/disable automation at any time and I am responsible for monitoring.”
+Button: “Arm Automation”
+
+Store:
+user_settings.auto_ack=true
+user_settings.auto_ack_at timestamp
+
+========================================================
+H) DATA + API WIRING (MINIMAL)
+========================================================
+
+1) Add GET/PUT endpoints for user_settings:
+- GET /api/user-settings
+- PUT /api/user-settings (patch updates)
+Include:
+automation_mode, automation_engine, selected_algopilotx_endpoint_id, safety_limits, auto_ack
+
+2) Add/extend endpoint listing:
+- GET /api/automation/endpoints (existing)
+- POST /api/automation/endpoints (existing)
+- PUT /api/automation/endpoints/:id/select (new) sets selected endpoint
+
+3) Ensure multi-tenant scoping:
+All queries must use tenant_id from session/auth; never accept from client.
+
+========================================================
+I) UI IMPLEMENTATION DETAILS
+========================================================
+
+- Use your existing component library and styles (dark UI).
+- Favor large cards, 1 primary CTA per section.
+- Use progressive disclosure:
+  - Hide advanced forms until “Advanced Settings” is expanded.
+- Add contextual helper tooltips:
+  - “Assisted” = you approve each trade
+  - “Autonomous” = automation executes within your limits
+  - “AlgoPilotX” = dedicated execution platform; VCP Trader forwards signals
+
+========================================================
+J) QA CHECKLIST
+========================================================
+
+- New user: lands on Command Center -> guided to Automation Center -> picks mode -> returns with clear status
+- Existing user: nothing breaks; can still access old routes
+- Auto Agent can still be configured and run
+- AlgoPilotX endpoints still work; manual webhook path still available
+- No UI exposes webhooks unless user chooses manual advanced setup
+- Emergency stop visible and works
+- No prohibited language (profits/guarantees) added
+
+DELIVERABLE
+Implement:
+- /command-center
+- /automation (Automation Center)
+- automation modes + engine selector
+- unified safety controls and acknowledgement gate
+- hide AlgoPilotX webhook setup behind a clean “Automation Profile” flow
+- clean up Execution area to remove duplication and link to Automation Center
+All in the existing VCP Trader app.

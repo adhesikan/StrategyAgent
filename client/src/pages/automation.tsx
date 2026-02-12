@@ -263,22 +263,25 @@ function ModeSelector({ currentMode, onSelect, isPending }: {
           {MODE_CARDS.map(({ mode, title, subtitle, description, icon: Icon, recommended }) => {
             const isSelected = currentMode === mode;
             return (
-              <button
+              <div
                 key={mode}
-                onClick={() => onSelect(mode)}
-                disabled={isPending}
+                role="button"
+                tabIndex={0}
+                onClick={() => !isPending && onSelect(mode)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); !isPending && onSelect(mode); }}}
                 className={cn(
-                  "relative flex flex-col items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors",
+                  "relative flex flex-col items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors cursor-pointer",
                   isSelected
                     ? "border-primary bg-primary/5"
                     : "border-border hover-elevate",
+                  isPending && "opacity-50 pointer-events-none",
                 )}
                 data-testid={`button-mode-${mode.toLowerCase()}`}
               >
                 {recommended && (
                   <Badge
                     variant={isSelected ? "default" : "secondary"}
-                    className="text-[10px] absolute top-2 right-2"
+                    className="text-[10px] absolute top-2 right-2 no-default-hover-elevate no-default-active-elevate"
                   >
                     {recommended}
                   </Badge>
@@ -300,7 +303,7 @@ function ModeSelector({ currentMode, onSelect, isPending }: {
                     Active
                   </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
@@ -428,15 +431,18 @@ function EngineSelector({ currentEngine, onSelect, isPending, endpoints, endpoin
           {ENGINE_CARDS.map(({ engine, title, description, icon: Icon }) => {
             const isSelected = currentEngine === engine;
             return (
-              <button
+              <div
                 key={engine}
-                onClick={() => onSelect(engine)}
-                disabled={isPending}
+                role="button"
+                tabIndex={0}
+                onClick={() => !isPending && onSelect(engine)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); !isPending && onSelect(engine); }}}
                 className={cn(
-                  "flex flex-col items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors",
+                  "flex flex-col items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors cursor-pointer",
                   isSelected
                     ? "border-primary bg-primary/5"
                     : "border-border hover-elevate",
+                  isPending && "opacity-50 pointer-events-none",
                 )}
                 data-testid={`button-engine-${engine.toLowerCase()}`}
               >
@@ -470,7 +476,7 @@ function EngineSelector({ currentEngine, onSelect, isPending, endpoints, endpoin
                     </Button>
                   )}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>

@@ -2,7 +2,7 @@ import cron from "node-cron";
 import crypto from "crypto";
 import { storage } from "./storage";
 import { ingestOpportunitiesFromScan } from "./opportunity-service";
-import { fetchQuotesFromBroker, isBullishQuote } from "./broker-service";
+import { fetchQuotesFromBroker, isBullishQuote, verifyBullishTrend } from "./broker-service";
 import { StrategyType } from "@shared/schema";
 import type { ScanResult } from "@shared/schema";
 import { classifyQuote } from "./strategies";
@@ -132,10 +132,11 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
     console.log(`[ScheduledScan] Fetched ${allQuotes.length} quotes from ${DEFAULT_SCAN_UNIVERSE.length} symbols`);
     
     for (const strategy of strategies) {
-      const results = quotesToScanResults(allQuotes, strategy);
+      const rawResults = quotesToScanResults(allQuotes, strategy);
+      const results = await verifyBullishTrend(connectionWithToken, rawResults);
       
       if (results.length > 0) {
-        console.log(`[ScheduledScan] Strategy ${strategy}: ${results.length} qualifying opportunities`);
+        console.log(`[ScheduledScan] Strategy ${strategy}: ${rawResults.length} raw -> ${results.length} bullish-verified opportunities`);
         
         try {
           const ingested = await ingestOpportunitiesFromScan(connection.userId, results, strategy, "1d");

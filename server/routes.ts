@@ -14,6 +14,7 @@ import {
   fetchQuotesFromBroker, 
   quotesToScanResults, 
   runMultidayScan,
+  verifyBullishTrend,
   fetchHistoryFromBroker,
   fetchHistoryWithDateRange,
   processChartData,
@@ -447,7 +448,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             
             const multidayResults = await runMultidayScan(connection, quotes);
             
-            const allResults = [...intradayResults, ...multidayResults];
+            const combined = [...intradayResults, ...multidayResults];
+            const allResults = await verifyBullishTrend(connection, combined);
             
             if (includeMeta) {
               return res.json({ data: allResults, isLive: true, provider: connection.provider });
@@ -565,11 +567,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       
       console.log(`[Scan] ${filteredQuotes.length} quotes passed filters`);
       
-      const results = quotesToScanResults(filteredQuotes, strategy);
-      console.log(`[Scan] Generated ${results.length} scan results for strategy ${strategy}`);
+      const rawResults = quotesToScanResults(filteredQuotes, strategy);
+      console.log(`[Scan] Generated ${rawResults.length} raw scan results for strategy ${strategy}`);
+      const results = await verifyBullishTrend(connection, rawResults);
+      console.log(`[Scan] ${results.length} results passed bullish trend verification`);
       const scanTime = Date.now() - startTime;
       
-      // Store results in storage so chart page can access them
       await storage.clearScanResults();
       for (const result of results) {
         await storage.createScanResult(result);

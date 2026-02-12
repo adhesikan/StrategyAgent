@@ -620,11 +620,17 @@ export function isBullishQuote(quote: QuoteData): boolean {
   return true;
 }
 
-export function isBullishScanResult(r: { changePercent?: number | null; ema9?: number | null; ema21?: number | null }): boolean {
+export function isBullishScanResult(r: { price?: number | null; changePercent?: number | null; ema9?: number | null; ema21?: number | null }): boolean {
   if ((r.changePercent ?? 0) < -2) return false;
   const e9 = r.ema9 ?? 0;
   const e21 = r.ema21 ?? 0;
   if (e9 > 0 && e21 > 0 && e9 < e21 * 0.98) return false;
+  const price = r.price ?? 0;
+  if (price > 0 && e9 > 0 && e21 > 0) {
+    const e9pct = Math.abs(e9 - price * 0.99) / price;
+    const e21pct = Math.abs(e21 - price * 0.97) / price;
+    if (e9pct < 0.001 && e21pct < 0.001) return false;
+  }
   return true;
 }
 
@@ -695,6 +701,58 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
 
 import { vcpMultidayStrategy } from "./strategies/vcpMultiday";
 import { Candle } from "./strategies/types";
+
+function computeEMA(values: number[], period: number): number {
+  if (values.length === 0) return 0;
+  if (values.length < period) {
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+  const k = 2 / (period + 1);
+  let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+export async function verifyBullishTrend(
+  connection: DecryptedBrokerConnection,
+  results: ScanResult[]
+): Promise<ScanResult[]> {
+  if (results.length === 0) return results;
+  const CONCURRENCY = 5;
+  const verified: ScanResult[] = [];
+
+  async function check(r: ScanResult): Promise<ScanResult | null> {
+    try {
+      const candles = await fetchHistoryFromBroker(connection, r.ticker, "3M");
+      if (!candles || candles.length < 21) return null;
+      const closes = candles.map(c => c.close);
+      const ema9 = computeEMA(closes, 9);
+      const ema21 = computeEMA(closes, 21);
+      const ema50 = closes.length >= 50 ? computeEMA(closes, 50) : 0;
+      const currentPrice = closes[closes.length - 1];
+      r.ema9 = Number(ema9.toFixed(2));
+      r.ema21 = Number(ema21.toFixed(2));
+      if (ema9 < ema21 * 0.98) return null;
+      if (ema50 > 0 && currentPrice < ema50 * 0.90) return null;
+      return r;
+    } catch {
+      return null;
+    }
+  }
+
+  for (let i = 0; i < results.length; i += CONCURRENCY) {
+    const batch = results.slice(i, i + CONCURRENCY);
+    const checked = await Promise.all(batch.map(check));
+    verified.push(...checked.filter((r): r is ScanResult => r !== null));
+    if (i + CONCURRENCY < results.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  return verified;
+}
 
 export async function runMultidayScan(
   connection: DecryptedBrokerConnection,

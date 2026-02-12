@@ -425,42 +425,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.get("/api/scan/results", async (req, res) => {
     try {
-      const userId = req.session?.userId;
       const includeMeta = req.query.meta === "true";
       
-      // Get user's preferred data source
-      let preferredDataSource = "brokerage";
-      if (userId) {
-        const userSettings = await storage.getUserSettings(userId);
-        if (userSettings?.preferredDataSource) {
-          preferredDataSource = userSettings.preferredDataSource;
-        }
-      }
-      
-      // If user prefers brokerage and has a connection, use it
-      if (userId && preferredDataSource === "brokerage") {
-        const connection = await storage.getBrokerConnectionWithToken(userId);
-        if (connection?.accessToken && connection?.isConnected) {
-          try {
-            const quotes = await fetchQuotesFromBroker(connection, DEFAULT_SCAN_SYMBOLS);
-            const intradayResults = quotesToScanResults(quotes);
-            
-            const multidayResults = await runMultidayScan(connection, quotes);
-            
-            const combined = [...intradayResults, ...multidayResults];
-            const allResults = await verifyBullishTrend(connection, combined);
-            
-            if (includeMeta) {
-              return res.json({ data: allResults, isLive: true, provider: connection.provider });
-            }
-            return res.json(allResults);
-          } catch (brokerError: any) {
-            console.error("Broker fetch failed:", brokerError.message);
-          }
-        }
-      }
-      
-      // Fallback to stored results (filter out bearish)
       const storedResults = await storage.getScanResults();
       if (includeMeta) {
         return res.json({ data: storedResults, isLive: false });

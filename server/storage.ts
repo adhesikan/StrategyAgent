@@ -1548,6 +1548,10 @@ export class MemStorage implements IStorage {
     if (settings.autoAgentAcknowledged !== undefined) dbSettings.autoAgentAcknowledged = settings.autoAgentAcknowledged;
     if (settings.autoAgentAcknowledgedAt !== undefined) dbSettings.autoAgentAcknowledgedAt = settings.autoAgentAcknowledgedAt;
     if (settings.autoAgentAckVersion !== undefined) dbSettings.autoAgentAckVersion = settings.autoAgentAckVersion;
+    if (settings.automationMode !== undefined) dbSettings.automationMode = settings.automationMode;
+    if (settings.automationEngine !== undefined) dbSettings.automationEngine = settings.automationEngine;
+    if (settings.selectedAlgopilotxEndpointId !== undefined) dbSettings.selectedAlgopilotxEndpointId = settings.selectedAlgopilotxEndpointId;
+    if (settings.automationStatus !== undefined) dbSettings.automationStatus = settings.automationStatus;
     
     if (existing) {
       const [updated] = await db

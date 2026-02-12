@@ -213,8 +213,9 @@ export default function CommandCenter() {
 
   const { data: scanResults } = useQuery<ScanResult[]>({
     queryKey: ["/api/scan/results"],
-    staleTime: 60_000,
+    staleTime: 5_000,
     refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const { data: chartData, isLoading: chartLoading } = useQuery<ChartData>({

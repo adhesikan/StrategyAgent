@@ -47,8 +47,8 @@ The Futures module offers a complete futures trading experience with streaming m
 ### Automation Center
 A unified "Automation Center" at `/automation` consolidates all automation systems under a single interface with 4 sections: Mode Selector (ALERTS/ASSISTED/AUTONOMOUS), Engine Selector (BUILT_IN/ALGOPILOTX), Broker Connection status, and Safety Controls (kill switch, daily loss limit, max position size). The `user_settings` table stores `automationMode`, `automationEngine`, `selectedAlgopilotxEndpointId`, and `automationStatus` (ARMED/PAUSED/DISABLED). AUTONOMOUS mode requires a compliance acknowledgement gate before activation. The Command Center displays live automation status badges and a dynamic setup checklist. AlgoPilotX integration uses webhook endpoints abstracted as "Automation Profiles" with connection testing. The execution page (`/execution`) provides profile management and the built-in Auto Agent panel.
 
-### Trade Ticket v2 (InstaTrade)
-A Sheet-based drawer replaces the old InstaTrade dialog for direct broker orders, offering simple and advanced modes, exit plan (bracket/TradeGuard) options, and API endpoints for trade preview and placement.
+### Trade Ticket v2 (InstaTrade™)
+A Sheet-based drawer for direct broker orders, offering simple and advanced modes, exit plan (bracket/TradeGuard) options, and API endpoints for trade preview and placement. InstaTrade™ is a trademarked feature name and must always display with the ™ symbol in all user-facing text throughout the application. The Command Center chart drawer opens InstaTrade™ directly instead of linking to separate pages.
 
 ### Exit Manager (TradeGuard)
 A server-side cron worker monitors managed exits during market hours, fetching live quotes, checking conditions, and placing market close orders when triggers are met.

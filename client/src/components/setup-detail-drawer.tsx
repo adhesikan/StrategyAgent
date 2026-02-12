@@ -93,7 +93,7 @@ export function SetupDetailDrawer({
     },
     onSuccess: (data: any) => {
       toast({
-        title: "InstaTrade Sent",
+        title: "InstaTrade™ Sent",
         description: `Entry signal sent for ${result?.ticker}`,
       });
       setShowEndpointDialog(false);
@@ -102,7 +102,7 @@ export function SetupDetailDrawer({
     },
     onError: (error: any) => {
       toast({
-        title: "InstaTrade Failed",
+        title: "InstaTrade™ Failed",
         description: error.message || "Could not send entry signal",
         variant: "destructive",
       });
@@ -641,7 +641,7 @@ export function SetupDetailDrawer({
                 disabled={!selectedEndpoint || instatradeMutation.isPending}
                 data-testid="button-confirm-instatrade"
               >
-                {instatradeMutation.isPending ? "Sending..." : "Send InstaTrade"}
+                {instatradeMutation.isPending ? "Sending..." : "Send InstaTrade™"}
               </Button>
             ) : (
               <Button

@@ -407,7 +407,7 @@ export default function Scanner() {
     },
     onSuccess: () => {
       toast({
-        title: "InstaTrade Sent",
+        title: "InstaTrade™ Sent",
         description: `Entry signal sent for ${instaTradeResult?.ticker}`,
       });
       setShowEndpointDialog(false);
@@ -416,7 +416,7 @@ export default function Scanner() {
     },
     onError: (error: any) => {
       toast({
-        title: "InstaTrade Failed",
+        title: "InstaTrade™ Failed",
         description: error.message || "Could not send entry signal",
         variant: "destructive",
       });

@@ -466,7 +466,7 @@ export default function AutomationAgentPage() {
                   <div>
                     <p className="font-medium">InstaTrade™</p>
                     <p className="text-sm text-muted-foreground">
-                      Click InstaTrade to send setup to your endpoint
+                      Click InstaTrade™ to send setup to your endpoint
                     </p>
                   </div>
                 </div>
@@ -518,7 +518,7 @@ export default function AutomationAgentPage() {
                   <Zap className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No open trades</p>
                   <p className="text-sm mt-1">
-                    Use InstaTrade from the{" "}
+                    Use InstaTrade™ from the{" "}
                     <Link href="/" className="text-primary underline">
                       Opportunity Engine
                     </Link>

@@ -139,7 +139,7 @@ export function FuturesTradeTicket({
         <SheetHeader className="px-4 pt-4 pb-3 border-b">
           <SheetTitle className="flex items-center gap-2 text-base" data-testid="futures-trade-ticket-title">
             <Zap className="h-4 w-4 text-primary" />
-            InstaTrade {opportunity.symbol}
+            InstaTrade™ {opportunity.symbol}
           </SheetTitle>
           <SheetDescription className="text-xs" data-testid="futures-trade-ticket-description">
             Place a futures mock order

@@ -16,6 +16,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { TradingReadinessWizard } from "@/components/trading-readiness-wizard";
 import { PriceChart } from "@/components/price-chart";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import {
   Activity,
   AlertCircle,
@@ -172,6 +173,31 @@ export default function CommandCenter() {
     queryKey: ["/api/broker/token-health"],
     refetchInterval: 5 * 60 * 1000,
   });
+
+  interface BrokerAccount {
+    id: string;
+    name: string;
+    type: string;
+    buyingPower: number;
+    equity: number;
+    currency: string;
+  }
+
+  const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: brokerStatus?.isConnected === true,
+  });
+
+  const selectedBrokerAccount = useMemo(() => {
+    if (brokerAccounts.length === 0) return null;
+    if (brokerStatus?.preferredAccountId) {
+      const preferred = brokerAccounts.find(a => a.id === brokerStatus.preferredAccountId);
+      if (preferred) return preferred;
+    }
+    return brokerAccounts[0];
+  }, [brokerAccounts, brokerStatus?.preferredAccountId]);
+
+  const [showTradeTicket, setShowTradeTicket] = useState(false);
 
   const { data: agentState } = useQuery<AgentState | null>({
     queryKey: ["/api/agent/state"],
@@ -1269,22 +1295,38 @@ export default function CommandCenter() {
             )}
 
             <div className="flex gap-2 pt-2">
-              <Button variant="default" size="sm" className="flex-1" asChild>
-                <Link href={`/discover?ticker=${selectedTicker}`} data-testid="link-view-on-discover">
-                  <TrendingUp className="h-4 w-4 mr-1" />
-                  View Full Chart
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" className="flex-1" asChild>
-                <Link href={`/execution?symbol=${selectedTicker}`} data-testid="link-go-to-execution">
-                  <Rocket className="h-4 w-4 mr-1" />
-                  Execution Cockpit
-                </Link>
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="flex-1" 
+                data-testid="button-instatrade-chart"
+                disabled={!brokerConnected}
+                onClick={() => setShowTradeTicket(true)}
+              >
+                <Zap className="h-4 w-4 mr-1" />
+                InstaTrade™
               </Button>
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      <StockTradeTicket
+        open={showTradeTicket}
+        onOpenChange={setShowTradeTicket}
+        scanResult={selectedResult ? {
+          ticker: selectedResult.ticker,
+          price: selectedResult.price ?? 0,
+          resistance: selectedResult.resistance ?? null,
+          stopLoss: selectedResult.stopLoss ?? null,
+          stage: selectedResult.stage ?? "",
+          patternScore: selectedResult.patternScore ?? 0,
+          rvol: selectedResult.rvol ?? undefined,
+        } : null}
+        brokerAccounts={brokerAccounts}
+        selectedAccount={selectedBrokerAccount}
+        onAccountChange={() => {}}
+      />
 
       <TradingReadinessWizard
         open={showWizard}

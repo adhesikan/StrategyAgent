@@ -299,7 +299,7 @@ export default function OptionsScanner() {
     },
     onSuccess: () => {
       toast({
-        title: "InstaTrade Sent",
+        title: "InstaTrade™ Sent",
         description: `Options entry signal sent for ${instaTradeCandidate?.underlying}`,
       });
       setShowInstaTradeDialog(false);
@@ -307,7 +307,7 @@ export default function OptionsScanner() {
     },
     onError: (error: any) => {
       toast({
-        title: "InstaTrade Failed",
+        title: "InstaTrade™ Failed",
         description: error.message || "Could not send entry signal",
         variant: "destructive",
       });
@@ -944,7 +944,7 @@ export default function OptionsScanner() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-primary" />
-              InstaTrade - Options
+              InstaTrade™ - Options
             </DialogTitle>
             <DialogDescription>
               {instaTradeCandidate && (
@@ -1233,7 +1233,7 @@ function CandidateCard({ c, isTopPick, onInstaTrade, canInstaTrade }: { c: Optio
               data-testid={`button-instatrade-option-${c.rank}`}
             >
               <Zap className="h-3.5 w-3.5 mr-1" />
-              InstaTrade
+              InstaTrade™
             </Button>
           )}
         </div>

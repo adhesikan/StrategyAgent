@@ -334,7 +334,7 @@ function ModeGuidance({ currentMode, isConnected, agentState, endpoints, setting
     steps.push(
       { label: "Connect your brokerage for live data and execution", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
       { label: "Choose an execution engine below", done: true },
-      { label: "When opportunities appear, use InstaTrade to execute with one click", done: true, action: { label: "Go to Discover", href: "/discover" } },
+      { label: "When opportunities appear, use InstaTrade™ to execute with one click", done: true, action: { label: "Go to Discover", href: "/discover" } },
     );
   } else if (currentMode === "AUTONOMOUS") {
     const engineType = settings?.automationEngine || "BUILT_IN";

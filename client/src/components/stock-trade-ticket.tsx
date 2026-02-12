@@ -174,7 +174,7 @@ export function StockTradeTicket({
         <SheetHeader className="px-4 pt-4 pb-3 border-b">
           <SheetTitle className="flex items-center gap-2 text-base" data-testid="stock-trade-ticket-title">
             <Zap className="h-4 w-4 text-primary" />
-            InstaTrade {scanResult.ticker}
+            InstaTrade™ {scanResult.ticker}
           </SheetTitle>
           <SheetDescription className="text-xs" data-testid="stock-trade-ticket-description">
             Place a stock order with your broker

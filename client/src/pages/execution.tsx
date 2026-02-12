@@ -178,7 +178,7 @@ export default function ExecutionCockpit() {
     {
       number: 4,
       title: "Ready for Execution",
-      description: "Use InstaTrade from any opportunity to send to AlgoPilotX",
+      description: "Use InstaTrade™ from any opportunity to send to AlgoPilotX",
       completed: hasActiveEndpoint,
       action: undefined,
       buttonText: undefined,
@@ -464,7 +464,7 @@ export default function ExecutionCockpit() {
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-medium text-primary">2</div>
                   <div>
                     <div className="font-medium">Send to AlgoPilotX</div>
-                    <div className="text-muted-foreground">Click InstaTrade to send setup details</div>
+                    <div className="text-muted-foreground">Click InstaTrade™ to send setup details</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -524,7 +524,7 @@ export default function ExecutionCockpit() {
                     <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
                     <h3 className="text-lg font-medium">No Trades Yet</h3>
                     <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                      When you send trades via InstaTrade or automated alerts, they'll appear here.
+                      When you send trades via InstaTrade™ or automated alerts, they'll appear here.
                     </p>
                   </div>
                 </CardContent>
@@ -559,7 +559,7 @@ export default function ExecutionCockpit() {
                               ) : trade.endpointId ? (
                                 <Badge variant="secondary" className="text-xs gap-1">
                                   <Zap className="h-3 w-3" />
-                                  InstaTrade
+                                  InstaTrade™
                                 </Badge>
                               ) : null}
                             </div>

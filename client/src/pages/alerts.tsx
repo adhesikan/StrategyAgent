@@ -898,7 +898,7 @@ export default function Alerts() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-sm">Send Webhook</span>
-                    <p className="text-xs text-muted-foreground">Execute InstaTrade entry</p>
+                    <p className="text-xs text-muted-foreground">Execute InstaTrade™ entry</p>
                   </div>
                   <Switch
                     checked={newRule.sendWebhook}

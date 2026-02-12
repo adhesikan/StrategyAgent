@@ -677,6 +677,7 @@ export const userSettings = pgTable("user_settings", {
   automationEngine: text("automation_engine").notNull().default("BUILT_IN"),
   selectedAlgopilotxEndpointId: text("selected_algopilotx_endpoint_id"),
   automationStatus: text("automation_status").notNull().default("DISABLED"),
+  ccFilterPresets: jsonb("cc_filter_presets").default(null),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -719,6 +720,7 @@ export const userSettingsUpdateSchema = z.object({
   automationEngine: z.enum(["BUILT_IN", "ALGOPILOTX"]).optional(),
   selectedAlgopilotxEndpointId: z.string().nullable().optional(),
   automationStatus: z.enum(["ARMED", "PAUSED", "DISABLED"]).optional(),
+  ccFilterPresets: z.any().nullable().optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;

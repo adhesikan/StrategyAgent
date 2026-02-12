@@ -1552,6 +1552,7 @@ export class MemStorage implements IStorage {
     if (settings.automationEngine !== undefined) dbSettings.automationEngine = settings.automationEngine;
     if (settings.selectedAlgopilotxEndpointId !== undefined) dbSettings.selectedAlgopilotxEndpointId = settings.selectedAlgopilotxEndpointId;
     if (settings.automationStatus !== undefined) dbSettings.automationStatus = settings.automationStatus;
+    if (settings.ccFilterPresets !== undefined) dbSettings.ccFilterPresets = settings.ccFilterPresets;
     
     if (existing) {
       const [updated] = await db

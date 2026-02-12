@@ -182,6 +182,8 @@ export default function CommandCenter() {
 
   const { data: scanResults } = useQuery<ScanResult[]>({
     queryKey: ["/api/scan/results"],
+    staleTime: 60_000,
+    refetchOnMount: "always",
   });
 
   const { data: chartData, isLoading: chartLoading } = useQuery<ChartData>({
@@ -260,10 +262,6 @@ export default function CommandCenter() {
     if (!scanResults) return [];
     const best = new Map<string, ScanResult>();
     for (const r of scanResults) {
-      if ((r.changePercent ?? 0) < -2) continue;
-      const e9 = r.ema9 ?? 0;
-      const e21 = r.ema21 ?? 0;
-      if (e9 > 0 && e21 > 0 && e9 < e21 * 0.98) continue;
       const key = r.ticker;
       const existing = best.get(key);
       if (!existing || (r.patternScore ?? 0) > (existing.patternScore ?? 0)) {

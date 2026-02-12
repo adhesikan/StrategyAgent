@@ -657,6 +657,7 @@ export default function Scanner() {
         setLiveResults(data.results);
         setLastScanTime(new Date());
         setScanMetadata(data.metadata || null);
+        queryClient.invalidateQueries({ queryKey: ["/api/scan/results"] });
         toast({
           title: "Scan Complete",
           description: `Found ${data.results.length} opportunities from ${data.metadata?.provider || "broker"}`,
@@ -665,6 +666,7 @@ export default function Scanner() {
         setLiveResults(data);
         setLastScanTime(new Date());
         setScanMetadata(null);
+        queryClient.invalidateQueries({ queryKey: ["/api/scan/results"] });
         toast({
           title: "Scan Complete",
           description: `Found ${data.length} opportunities`,

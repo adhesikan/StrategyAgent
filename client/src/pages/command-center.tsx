@@ -258,10 +258,35 @@ export default function CommandCenter() {
     return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
   };
 
+  const getRiskReward = (result: ScanResult): number | null => {
+    if (!result.resistance || !result.stopLoss || !result.price) return null;
+    const reward = result.resistance - result.price;
+    const risk = result.price - result.stopLoss;
+    if (risk <= 0) return null;
+    return reward / risk;
+  };
+
+  const getDistanceToEntry = (result: ScanResult): number | null => {
+    if (!result.resistance || !result.price) return null;
+    return ((result.resistance - result.price) / result.price) * 100;
+  };
+
+  const getTradeStatus = (result: ScanResult): string => {
+    const distance = getDistanceToEntry(result);
+    if (distance === null) return "AWAITING_BREAKOUT";
+    if (distance <= 0) return "EXTENDED";
+    if (distance <= 1.5) return "IN_ENTRY_ZONE";
+    return "AWAITING_BREAKOUT";
+  };
+
   const deduplicatedResults = useMemo(() => {
     if (!scanResults) return [];
     const best = new Map<string, ScanResult>();
     for (const r of scanResults) {
+      const e9 = r.ema9 ?? 0;
+      const e21 = r.ema21 ?? 0;
+      if (e9 > 0 && e21 > 0 && e9 < e21 * 0.97) continue;
+      if ((r.changePercent ?? 0) < -3) continue;
       const key = r.ticker;
       const existing = best.get(key);
       if (!existing || (r.patternScore ?? 0) > (existing.patternScore ?? 0)) {
@@ -287,28 +312,48 @@ export default function CommandCenter() {
       filtered = filtered.filter(r => r.strategy === strategyFilter);
     }
 
-    const stageOrder: Record<string, number> = { BREAKOUT: 0, READY: 1, FORMING: 2 };
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      switch (sortField) {
-        case "ticker":
-          comparison = (a.ticker || "").localeCompare(b.ticker || "");
-          break;
-        case "stage":
-          comparison = (stageOrder[a.stage] ?? 3) - (stageOrder[b.stage] ?? 3);
-          break;
-        case "price":
-          comparison = (a.price || 0) - (b.price || 0);
-          break;
-        case "patternScore":
-          comparison = (a.patternScore ?? 0) - (b.patternScore ?? 0);
-          break;
-      }
-      return sortDirection === "asc" ? comparison : -comparison;
+    const stageBonus: Record<string, number> = { BREAKOUT: 0.2, READY: 0.1, FORMING: 0 };
+    const scored = filtered.map(r => {
+      const confidence = (r.patternScore || 0) / 100;
+      const rr = getRiskReward(r);
+      const rrScore = rr ? Math.min(rr / 3, 1) : 0;
+      const volScore = Math.min((r.rvol || 0) / 3, 1);
+      let composite = confidence * 0.4 + rrScore * 0.3 + volScore * 0.2 + (stageBonus[r.stage || "FORMING"] || 0);
+
+      const distance = getDistanceToEntry(r);
+      const status = getTradeStatus(r);
+
+      if (status === "IN_ENTRY_ZONE") composite += 0.15;
+      if (distance !== null && distance > 0 && distance <= 2) composite += 0.1;
+      if (rr !== null && rr >= 2) composite += 0.05;
+
+      if (rr !== null && rr < 1) composite *= 0.5;
+      if (distance !== null && distance > 5) composite *= 0.4;
+      if (status === "EXTENDED") composite *= 0.3;
+      if (status === "AWAITING_BREAKOUT" && distance !== null && distance > 3) composite *= 0.6;
+
+      return { result: r, composite };
     });
 
-    return filtered.slice(0, 10);
-  }, [scanResults, stageFilter, scoreFilter, strategyFilter, sortField, sortDirection]);
+    if (sortField === "patternScore" || sortField === "stage") {
+      scored.sort((a, b) => b.composite - a.composite);
+    } else {
+      scored.sort((a, b) => {
+        let comparison = 0;
+        switch (sortField) {
+          case "ticker":
+            comparison = (a.result.ticker || "").localeCompare(b.result.ticker || "");
+            break;
+          case "price":
+            comparison = (a.result.price || 0) - (b.result.price || 0);
+            break;
+        }
+        return sortDirection === "asc" ? comparison : -comparison;
+      });
+    }
+
+    return scored.slice(0, 10).map(s => s.result);
+  }, [deduplicatedResults, stageFilter, scoreFilter, strategyFilter, sortField, sortDirection]);
 
   const totalFilteredCount = useMemo(() => {
     if (!deduplicatedResults.length) return 0;
@@ -1023,7 +1068,7 @@ export default function CommandCenter() {
       </div>
 
       <Sheet open={!!selectedTicker} onOpenChange={(open) => { if (!open) setSelectedTicker(null); }}>
-        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto" data-testid="sheet-chart-drawer">
+        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto" data-testid="sheet-chart-drawer">
           <SheetHeader className="pb-4">
             <div className="flex items-center gap-3 flex-wrap">
               <SheetTitle className="font-mono text-xl" data-testid="text-sheet-ticker">
@@ -1037,18 +1082,23 @@ export default function CommandCenter() {
                   {selectedResult.stage}
                 </Badge>
               )}
+              {selectedResult?.patternScore != null && (
+                <Badge variant="secondary" className="text-xs font-mono" data-testid="badge-sheet-score">
+                  Score: {selectedResult.patternScore}
+                </Badge>
+              )}
             </div>
             <SheetDescription>
               <span className="flex items-center gap-3 flex-wrap">
                 {selectedResult?.price != null && (
-                  <span className="font-mono font-semibold text-foreground" data-testid="text-sheet-price">
+                  <span className="font-mono font-semibold text-foreground text-lg" data-testid="text-sheet-price">
                     ${selectedResult.price.toFixed(2)}
                   </span>
                 )}
-                {selectedResult?.patternScore != null && (
-                  <Badge variant="secondary" className="text-xs font-mono" data-testid="badge-sheet-score">
-                    Score: {selectedResult.patternScore}%
-                  </Badge>
+                {selectedResult?.changePercent != null && (
+                  <span className={cn("font-mono text-sm font-medium", (selectedResult.changePercent ?? 0) >= 0 ? "text-green-500" : "text-destructive")}>
+                    {(selectedResult.changePercent ?? 0) >= 0 ? "+" : ""}{selectedResult.changePercent?.toFixed(2)}%
+                  </span>
                 )}
                 {selectedResult?.strategy && (
                   <Badge variant="outline" className="text-xs" data-testid="badge-sheet-strategy">
@@ -1062,8 +1112,10 @@ export default function CommandCenter() {
           <div className="space-y-4">
             {chartLoading ? (
               <div className="space-y-3">
-                <Skeleton className="h-[300px] w-full rounded-md" />
+                <Skeleton className="h-[400px] w-full rounded-md" />
                 <div className="flex gap-3">
+                  <Skeleton className="h-16 flex-1 rounded-md" />
+                  <Skeleton className="h-16 flex-1 rounded-md" />
                   <Skeleton className="h-16 flex-1 rounded-md" />
                   <Skeleton className="h-16 flex-1 rounded-md" />
                 </div>
@@ -1078,10 +1130,10 @@ export default function CommandCenter() {
                   resistanceLevel={chartData.resistance ?? selectedResult?.resistance ?? undefined}
                   stopLevel={chartData.stopLevel ?? selectedResult?.stopLoss ?? undefined}
                   ticker={selectedTicker || undefined}
-                  className="h-[300px]"
+                  className="h-[400px]"
                   data-testid="chart-opportunity"
                 />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {(chartData.resistance ?? selectedResult?.resistance) != null && (
                     <div className="p-3 rounded-lg border">
                       <p className="text-xs text-muted-foreground mb-1">Resistance</p>
@@ -1092,16 +1144,30 @@ export default function CommandCenter() {
                   )}
                   {(chartData.stopLevel ?? selectedResult?.stopLoss) != null && (
                     <div className="p-3 rounded-lg border">
-                      <p className="text-xs text-muted-foreground mb-1">Stop Level</p>
+                      <p className="text-xs text-muted-foreground mb-1">Stop Loss</p>
                       <p className="font-mono font-semibold text-destructive" data-testid="text-chart-stop">
                         ${(chartData.stopLevel ?? selectedResult?.stopLoss)?.toFixed(2)}
                       </p>
                     </div>
                   )}
+                  {selectedResult?.rvol != null && (
+                    <div className="p-3 rounded-lg border">
+                      <p className="text-xs text-muted-foreground mb-1">RVOL</p>
+                      <p className={cn("font-mono font-semibold", (selectedResult.rvol ?? 0) >= 1.5 && "text-chart-2")} data-testid="text-rvol">
+                        {selectedResult.rvol?.toFixed(2)}x
+                      </p>
+                    </div>
+                  )}
+                  {selectedResult?.atr != null && (
+                    <div className="p-3 rounded-lg border">
+                      <p className="text-xs text-muted-foreground mb-1">ATR (14)</p>
+                      <p className="font-mono font-semibold" data-testid="text-atr">${selectedResult.atr?.toFixed(2)}</p>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center h-[300px] text-center rounded-md border border-dashed bg-muted/20">
+              <div className="flex flex-col items-center justify-center h-[400px] text-center rounded-md border border-dashed bg-muted/20">
                 <BarChart3 className="h-10 w-10 text-muted-foreground/50 mb-3" />
                 <p className="text-muted-foreground">No chart data available</p>
                 <p className="text-xs text-muted-foreground mt-1">Chart data could not be loaded for {selectedTicker}</p>
@@ -1109,37 +1175,84 @@ export default function CommandCenter() {
             )}
 
             {selectedResult && (
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                {selectedResult.rvol != null && (
-                  <div className="p-2 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">RVOL</p>
-                    <p className={cn("font-mono font-medium", (selectedResult.rvol ?? 0) >= 1.5 && "text-chart-2")} data-testid="text-rvol">
-                      {selectedResult.rvol?.toFixed(2)}x
-                    </p>
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">Technical Analysis</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Trend</span>
+                      <span className={cn("font-medium", (() => {
+                        const e9 = selectedResult.ema9 ?? 0;
+                        const e21 = selectedResult.ema21 ?? 0;
+                        if (e9 > 0 && e21 > 0) return e9 > e21 ? "text-green-500" : "text-destructive";
+                        return "";
+                      })())}>
+                        {(() => {
+                          const e9 = selectedResult.ema9 ?? 0;
+                          const e21 = selectedResult.ema21 ?? 0;
+                          if (e9 > 0 && e21 > 0) return e9 > e21 ? "Bullish" : "Bearish";
+                          return "N/A";
+                        })()}
+                      </span>
+                    </div>
+                    {selectedResult.ema9 != null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">EMA 9</span>
+                        <span className="font-mono">${selectedResult.ema9.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {selectedResult.ema21 != null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">EMA 21</span>
+                        <span className="font-mono">${selectedResult.ema21.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const rr = getRiskReward(selectedResult);
+                      return rr != null ? (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Risk/Reward</span>
+                          <span className={cn("font-mono font-medium", rr >= 2 ? "text-green-500" : rr >= 1 ? "text-foreground" : "text-destructive")}>
+                            {rr.toFixed(2)}:1
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                    {(() => {
+                      const dist = getDistanceToEntry(selectedResult);
+                      return dist != null ? (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">To Resistance</span>
+                          <span className="font-mono">{dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</span>
+                        </div>
+                      ) : null;
+                    })()}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status</span>
+                      <Badge variant={(() => {
+                        const s = getTradeStatus(selectedResult);
+                        return s === "IN_ENTRY_ZONE" ? "default" : s === "EXTENDED" ? "destructive" : "secondary";
+                      })()} className="text-[10px]">
+                        {getTradeStatus(selectedResult).replace(/_/g, " ")}
+                      </Badge>
+                    </div>
                   </div>
-                )}
-                {selectedResult.atr != null && (
-                  <div className="p-2 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">ATR</p>
-                    <p className="font-mono font-medium" data-testid="text-atr">${selectedResult.atr?.toFixed(2)}</p>
-                  </div>
-                )}
-                {selectedResult.changePercent != null && (
-                  <div className="p-2 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Change</p>
-                    <p className={cn("font-mono font-medium", (selectedResult.changePercent ?? 0) >= 0 ? "text-chart-2" : "text-destructive")} data-testid="text-change">
-                      {(selectedResult.changePercent ?? 0) >= 0 ? "+" : ""}{selectedResult.changePercent?.toFixed(2)}%
-                    </p>
-                  </div>
-                )}
-              </div>
+                </div>
+              </>
             )}
 
-            <div className="pt-2">
-              <Button variant="outline" size="sm" className="w-full" asChild>
+            <div className="flex gap-2 pt-2">
+              <Button variant="default" size="sm" className="flex-1" asChild>
+                <Link href={`/discover?ticker=${selectedTicker}`} data-testid="link-view-on-discover">
+                  <TrendingUp className="h-4 w-4 mr-1" />
+                  View Full Chart
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="flex-1" asChild>
                 <Link href={`/execution?symbol=${selectedTicker}`} data-testid="link-go-to-execution">
                   <Rocket className="h-4 w-4 mr-1" />
-                  Open in Execution Cockpit
+                  Execution Cockpit
                 </Link>
               </Button>
             </div>

@@ -39,7 +39,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: "Dashboard", description: "Overview & positions", url: "/command-center", icon: Target },
   { title: "Discover", description: "Scan & explore", url: "/discover", icon: Search },
-  { title: "Automation", description: "Agents & alerts", url: "/automation", icon: Bot },
+  { title: "Automation Center", description: "Modes & controls", url: "/automation", icon: Bot },
   { title: "News", description: "Market headlines", url: "/news", icon: Newspaper },
   { title: "Settings", description: "Account & config", url: "/settings", icon: Settings },
 ];

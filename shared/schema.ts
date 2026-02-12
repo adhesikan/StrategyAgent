@@ -673,6 +673,10 @@ export const userSettings = pgTable("user_settings", {
   autoAgentAcknowledged: boolean("auto_agent_acknowledged").default(false),
   autoAgentAcknowledgedAt: timestamp("auto_agent_acknowledged_at"),
   autoAgentAckVersion: text("auto_agent_ack_version"),
+  automationMode: text("automation_mode").notNull().default("ALERTS"),
+  automationEngine: text("automation_engine").notNull().default("BUILT_IN"),
+  selectedAlgopilotxEndpointId: text("selected_algopilotx_endpoint_id"),
+  automationStatus: text("automation_status").notNull().default("DISABLED"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -711,6 +715,10 @@ export const userSettingsUpdateSchema = z.object({
   autoAgentAcknowledged: z.boolean().optional(),
   autoAgentAcknowledgedAt: z.coerce.date().optional(),
   autoAgentAckVersion: z.string().optional(),
+  automationMode: z.enum(["ALERTS", "ASSISTED", "AUTONOMOUS"]).optional(),
+  automationEngine: z.enum(["BUILT_IN", "ALGOPILOTX"]).optional(),
+  selectedAlgopilotxEndpointId: z.string().nullable().optional(),
+  automationStatus: z.enum(["ARMED", "PAUSED", "DISABLED"]).optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;

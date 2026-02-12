@@ -192,10 +192,18 @@ export default function ExecutionCockpit() {
       <div className="container max-w-6xl mx-auto p-4 md:p-6 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold" data-testid="text-page-title">Trade Execution</h1>
+            <h1 className="text-2xl font-semibold" data-testid="text-page-title">Execution & Monitoring</h1>
             <p className="text-muted-foreground">
-              Manage and monitor trade actions in one place
+              View trade activity, positions, and execution logs
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/automation">
+              <Button variant="outline" size="sm" className="gap-2" data-testid="link-automation-center">
+                <Shield className="h-4 w-4" />
+                Automation Center
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -203,11 +211,11 @@ export default function ExecutionCockpit() {
           <TabsList>
             <TabsTrigger value="setup" data-testid="tab-setup">
               <Zap className="h-4 w-4 mr-2" />
-              Setup
+              Connections
             </TabsTrigger>
             <TabsTrigger value="agent" data-testid="tab-agent">
               <Bot className="h-4 w-4 mr-2" />
-              Auto Agent
+              Agent Activity
             </TabsTrigger>
             <TabsTrigger value="trades" data-testid="tab-trades">
               <History className="h-4 w-4 mr-2" />

@@ -3691,6 +3691,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           autoAgentAcknowledged: false,
           autoAgentAcknowledgedAt: null,
           autoAgentAckVersion: null,
+          automationMode: "ALERTS",
+          automationEngine: "BUILT_IN",
+          selectedAlgopilotxEndpointId: null,
+          automationStatus: "DISABLED",
         });
       }
       
@@ -3718,6 +3722,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         autoAgentAcknowledged: settings.autoAgentAcknowledged ?? false,
         autoAgentAcknowledgedAt: settings.autoAgentAcknowledgedAt || null,
         autoAgentAckVersion: settings.autoAgentAckVersion || null,
+        automationMode: settings.automationMode || "ALERTS",
+        automationEngine: settings.automationEngine || "BUILT_IN",
+        selectedAlgopilotxEndpointId: settings.selectedAlgopilotxEndpointId || null,
+        automationStatus: settings.automationStatus || "DISABLED",
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -3760,6 +3768,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         autoAgentAcknowledged: settings.autoAgentAcknowledged ?? false,
         autoAgentAcknowledgedAt: settings.autoAgentAcknowledgedAt || null,
         autoAgentAckVersion: settings.autoAgentAckVersion || null,
+        automationMode: settings.automationMode || "ALERTS",
+        automationEngine: settings.automationEngine || "BUILT_IN",
+        selectedAlgopilotxEndpointId: settings.selectedAlgopilotxEndpointId || null,
+        automationStatus: settings.automationStatus || "DISABLED",
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -4324,6 +4336,26 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     } catch (error) {
       console.error("Failed to delete automation endpoint:", error);
       res.status(500).json({ error: "Failed to delete endpoint" });
+    }
+  });
+
+  app.put("/api/automation-endpoints/:id/select", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const existing = await storage.getAutomationEndpoint(req.params.id);
+      if (!existing || existing.userId !== userId) {
+        return res.status(404).json({ error: "Endpoint not found" });
+      }
+
+      await storage.setUserSettings(userId, { selectedAlgopilotxEndpointId: req.params.id });
+      res.json({ success: true, selectedEndpointId: req.params.id });
+    } catch (error) {
+      console.error("Failed to select automation endpoint:", error);
+      res.status(500).json({ error: "Failed to select endpoint" });
     }
   });
 

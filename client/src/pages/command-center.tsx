@@ -333,6 +333,8 @@ export default function CommandCenter() {
   const agentPaused = agentState?.paused ?? false;
   const emergencyStop = agentState?.emergencyStop ?? false;
   const actionMode = userSettings?.actionMode || "ALERTS_ONLY";
+  const automationMode = (userSettings as any)?.automationMode || "ALERTS";
+  const automationEngine = (userSettings as any)?.automationEngine || "BUILT_IN";
   const setupComplete = userSettings?.setupCompleted ?? false;
 
   const todaysTrades = trades?.filter(t => {
@@ -382,93 +384,124 @@ export default function CommandCenter() {
             icon={Wifi}
           />
           <StatusCard 
-            status={agentStatus.status} 
-            label={`Agent: ${agentStatus.label}`} 
-            icon={Bot}
+            status={automationMode === "AUTONOMOUS" ? (agentStatus.status) : "offline"} 
+            label={automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : `Auto: ${agentStatus.label}`}
+            icon={automationMode === "AUTONOMOUS" ? Bot : Bell}
           />
         </div>
       </div>
 
-      {!setupComplete ? (
-        <Card className="border-primary/50 bg-primary/5">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Settings className="h-5 w-5 text-primary" />
+      {(() => {
+        const modeLabel = automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : "Autonomous";
+        const engineLabel = automationEngine === "BUILT_IN" ? "Built-in" : "AlgoPilotX";
+        const needsBroker = automationMode !== "ALERTS";
+        const needsAutoCfg = automationMode === "AUTONOMOUS";
+        const checklistItems = [
+          { label: "Choose automation mode", done: true, link: "/automation" },
+          ...(needsBroker ? [{ label: "Connect brokerage", done: brokerConnected, link: "/settings" }] : []),
+          ...(needsAutoCfg ? [{ label: "Configure safety limits", done: agentEnabled || (userSettings as any)?.autoAgentAcknowledged, link: "/automation" }] : []),
+        ];
+        const allDone = checklistItems.every(c => c.done);
+
+        return !allDone ? (
+          <Card className="border-primary/50 bg-primary/5" data-testid="card-setup-checklist">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Settings className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Finish Your Setup</CardTitle>
+                    <CardDescription>Complete these steps to start using VCP Trader</CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle className="text-base">Complete Your Setup</CardTitle>
-                  <CardDescription>Configure your trading preferences to get started</CardDescription>
-                </div>
+                <Button asChild data-testid="button-finish-setup">
+                  <Link href="/automation">
+                    Finish Setup
+                    <ArrowRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
               </div>
-              <Button onClick={() => setShowWizard(true)} data-testid="button-finish-setup">
-                Finish Setup
-                <ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-        </Card>
-      ) : (
-        <Card className="border-muted">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <CheckCircle2 className="h-5 w-5 text-green-500" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Trading Configuration</CardTitle>
-                  <CardDescription>Your current trading preferences and mode</CardDescription>
-                </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-2">
+                {checklistItems.map((item, i) => (
+                  <Link href={item.link} key={i}>
+                    <div className="flex items-center gap-3 text-sm hover-elevate p-2 rounded-md" data-testid={`checklist-item-${i}`}>
+                      {item.done ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/50 flex-shrink-0" />
+                      )}
+                      <span className={item.done ? "text-muted-foreground line-through" : ""}>{item.label}</span>
+                      {!item.done && <ChevronRight className="h-3.5 w-3.5 ml-auto text-muted-foreground" />}
+                    </div>
+                  </Link>
+                ))}
               </div>
-              <Button variant="outline" onClick={() => setShowWizard(true)} data-testid="button-edit-setup">
-                <Settings className="h-4 w-4 mr-1" />
-                Edit Configuration
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex flex-wrap gap-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border">
-                <span className="text-xs text-muted-foreground">Mode:</span>
-                <span className="text-sm font-medium">
-                  {actionMode === "ALERTS_ONLY" ? "Alerts Only" : 
-                   actionMode === "ASSISTED" ? "Assisted Trading" : "Auto Trading"}
-                </span>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-muted" data-testid="card-status-strip">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-green-500/10">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Trading Configuration</CardTitle>
+                    <CardDescription>Your current automation mode and connections</CardDescription>
+                  </div>
+                </div>
+                <Button variant="outline" asChild data-testid="button-edit-config">
+                  <Link href="/automation">
+                    <Settings className="h-4 w-4 mr-1" />
+                    Automation Center
+                  </Link>
+                </Button>
               </div>
-              {brokerConnected && (
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20">
-                  <Wifi className="h-3.5 w-3.5 text-green-500" />
-                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                    {brokerStatus?.provider}
-                  </span>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap gap-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border" data-testid="badge-mode">
+                  <span className="text-xs text-muted-foreground">Mode:</span>
+                  <span className="text-sm font-medium">{modeLabel}</span>
                 </div>
-              )}
-              {agentEnabled && (
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20">
-                  <Bot className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-sm font-medium">Auto Agent {agentPaused ? "Paused" : "Active"}</span>
-                </div>
-              )}
-              {userSettings?.pushNotificationsEnabled === "true" && (
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border">
-                  <Bell className="h-3.5 w-3.5" />
-                  <span className="text-sm font-medium">Push Alerts</span>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                {automationMode === "AUTONOMOUS" && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border" data-testid="badge-engine">
+                    <span className="text-xs text-muted-foreground">Engine:</span>
+                    <span className="text-sm font-medium">{engineLabel}</span>
+                  </div>
+                )}
+                {brokerConnected && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20">
+                    <Wifi className="h-3.5 w-3.5 text-green-500" />
+                    <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                      {brokerStatus?.provider}
+                    </span>
+                  </div>
+                )}
+                {agentEnabled && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20">
+                    <Bot className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-sm font-medium">Auto Agent {agentPaused ? "Paused" : "Active"}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-muted/50 border">
         <span className="text-sm font-medium mr-2">Quick Actions:</span>
         
         <Button variant="outline" size="sm" asChild>
-          <Link href="/execution" data-testid="link-execution-cockpit">
-            <Rocket className="h-4 w-4 mr-1" />
-            Execution Cockpit
+          <Link href="/automation" data-testid="link-automation-center">
+            <Shield className="h-4 w-4 mr-1" />
+            Automation Center
           </Link>
         </Button>
 
@@ -1124,6 +1157,10 @@ export default function CommandCenter() {
         }}
         onClose={() => setShowWizard(false)}
       />
+
+      <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
+        VCP Trader and AlgoPilotX are software tools for self-directed traders. Educational and informational use only. Not investment advice. No guarantees. Users control all trading decisions and automation.
+      </div>
     </div>
   );
 }

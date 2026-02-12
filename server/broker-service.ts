@@ -621,16 +621,10 @@ export function isBullishQuote(quote: QuoteData): boolean {
 }
 
 export function isBullishScanResult(r: { price?: number | null; changePercent?: number | null; ema9?: number | null; ema21?: number | null }): boolean {
-  if ((r.changePercent ?? 0) < -2) return false;
+  if ((r.changePercent ?? 0) < -3) return false;
   const e9 = r.ema9 ?? 0;
   const e21 = r.ema21 ?? 0;
-  if (e9 > 0 && e21 > 0 && e9 < e21 * 0.98) return false;
-  const price = r.price ?? 0;
-  if (price > 0 && e9 > 0 && e21 > 0) {
-    const e9pct = Math.abs(e9 - price * 0.99) / price;
-    const e21pct = Math.abs(e21 - price * 0.97) / price;
-    if (e9pct < 0.001 && e21pct < 0.001) return false;
-  }
+  if (e9 > 0 && e21 > 0 && e9 < e21 * 0.97) return false;
   return true;
 }
 
@@ -734,7 +728,7 @@ export async function verifyBullishTrend(
       const currentPrice = closes[closes.length - 1];
       r.ema9 = Number(ema9.toFixed(2));
       r.ema21 = Number(ema21.toFixed(2));
-      if (ema9 < ema21 * 0.98) return null;
+      if (ema9 < ema21 * 0.97) return null;
       if (ema50 > 0 && currentPrice < ema50 * 0.90) return null;
       return r;
     } catch {

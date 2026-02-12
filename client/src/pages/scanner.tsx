@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { 
@@ -836,7 +836,23 @@ export default function Scanner() {
     }
   };
 
-  const rawResults = liveResults || storedResults;
+  const rawResults = useMemo(() => {
+    const source = liveResults || storedResults;
+    if (!source) return undefined;
+    const best = new Map<string, ScanResult>();
+    for (const r of source) {
+      const e9 = r.ema9 ?? 0;
+      const e21 = r.ema21 ?? 0;
+      if (e9 > 0 && e21 > 0 && e9 < e21 * 0.97) continue;
+      if ((r.changePercent ?? 0) < -3) continue;
+      const key = r.ticker;
+      const existing = best.get(key);
+      if (!existing || (r.patternScore ?? 0) > (existing.patternScore ?? 0)) {
+        best.set(key, r);
+      }
+    }
+    return Array.from(best.values());
+  }, [liveResults, storedResults]);
   
   const getResistancePercent = (result: ScanResult) => {
     if (!result.resistance || !result.price) return null;

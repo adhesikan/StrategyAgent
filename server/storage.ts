@@ -249,6 +249,7 @@ export interface IStorage {
   // Options Scans
   createOptionsScan(scan: InsertOptionsScan): Promise<OptionsScan>;
   getOptionsScans(userId: string, limit?: number): Promise<OptionsScan[]>;
+  getLatestOptionsScan(userId: string): Promise<OptionsScan | null>;
 
   // Risk Profiles
   getRiskProfile(userId: string): Promise<RiskProfile | null>;
@@ -2305,6 +2306,16 @@ export class MemStorage implements IStorage {
       .where(eq(optionsScansTable.userId, userId))
       .orderBy(desc(optionsScansTable.createdAt))
       .limit(limit);
+  }
+
+  async getLatestOptionsScan(userId: string): Promise<OptionsScan | null> {
+    const [scan] = await db
+      .select()
+      .from(optionsScansTable)
+      .where(eq(optionsScansTable.userId, userId))
+      .orderBy(desc(optionsScansTable.createdAt))
+      .limit(1);
+    return scan ?? null;
   }
 
   // Risk Profiles

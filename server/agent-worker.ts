@@ -309,6 +309,153 @@ function buildOptionsOrderPayload(
   };
 }
 
+function filterCandidateByPolicy(candidate: OptionCandidate, policy: AgentPolicy): boolean {
+  const optionType = policy.optionType ?? "calls";
+  if (optionType !== "both") {
+    const filterType = optionType === "calls" ? "call" : "put";
+    if (candidate.optionType !== filterType) return false;
+  }
+
+  const delta = Math.abs(candidate.delta);
+  if (policy.optionsDeltaMin != null && delta < policy.optionsDeltaMin) return false;
+  if (policy.optionsDeltaMax != null && delta > policy.optionsDeltaMax) return false;
+
+  if (policy.optionsDteMin != null && candidate.dte < policy.optionsDteMin) return false;
+  if (policy.optionsDteMax != null && candidate.dte > policy.optionsDteMax) return false;
+
+  if (policy.optionsMinOpenInterest != null && candidate.openInterest < policy.optionsMinOpenInterest) return false;
+  if (policy.optionsMinVolume != null && candidate.volume < policy.optionsMinVolume) return false;
+
+  if (policy.optionsPremiumMin != null && candidate.mid < policy.optionsPremiumMin) return false;
+  if (policy.optionsPremiumMax != null && candidate.mid > policy.optionsPremiumMax) return false;
+
+  if (policy.optionsMaxRiskUsd != null && Math.abs(candidate.maxLoss) > policy.optionsMaxRiskUsd) return false;
+
+  return true;
+}
+
+function buildOptionsScanOrderPayload(candidate: OptionCandidate, policy: AgentPolicy): object {
+  const maxRisk = policy.optionsMaxRiskUsd ?? 500;
+  const contractCost = candidate.mid * 100;
+  const quantity = contractCost > 0 ? Math.max(1, Math.floor(maxRisk / contractCost)) : 1;
+
+  return {
+    symbol: candidate.symbol,
+    underlying: candidate.underlying,
+    action: candidate.legs[0]?.side === "sell" ? "SELL_TO_OPEN" : "BUY_TO_OPEN",
+    orderType: "LIMIT",
+    limitPrice: candidate.mid,
+    quantity,
+    optionType: candidate.optionType,
+    strike: candidate.strike,
+    expiration: candidate.expiration,
+    strategy: candidate.strategy,
+    delta: candidate.delta,
+    dte: candidate.dte,
+    maxLoss: candidate.maxLoss,
+    maxProfit: candidate.maxProfit,
+    breakeven: candidate.breakeven,
+    legs: candidate.legs,
+    score: candidate.score,
+    rationale: candidate.rationale,
+    isOptionsOrder: true,
+    source: "options_scan",
+  };
+}
+
+async function processOptionsScanResults(userId: string): Promise<void> {
+  const policy = await getOrCreatePolicy(userId);
+
+  if (!policy.optionsEnabled) return;
+
+  const latestScan = await storage.getLatestOptionsScan(userId);
+  if (!latestScan) return;
+
+  const scanAge = Date.now() - new Date(latestScan.createdAt).getTime();
+  const MAX_SCAN_AGE_MS = 60 * 60 * 1000; // 1 hour
+  if (scanAge > MAX_SCAN_AGE_MS) {
+    return;
+  }
+
+  const result = latestScan.resultJson as any;
+  if (!result?.candidates || !Array.isArray(result.candidates) || result.candidates.length === 0) {
+    return;
+  }
+
+  const candidates: OptionCandidate[] = result.candidates;
+  const filtered = candidates.filter((c) => filterCandidateByPolicy(c, policy));
+
+  if (filtered.length === 0) {
+    console.log(`[AgentWorker] Options scan: ${candidates.length} candidates, 0 passed policy filters for user ${userId}`);
+    return;
+  }
+
+  filtered.sort((a, b) => b.score - a.score);
+  const topCandidates = filtered.slice(0, policy.maxTradesPerDay ?? 2);
+
+  console.log(`[AgentWorker] Options scan: ${candidates.length} candidates, ${filtered.length} passed filters, processing top ${topCandidates.length} for user ${userId}`);
+
+  for (const candidate of topCandidates) {
+    const authorization = await authorizeOrder(userId, policy, candidate.underlying);
+    if (!authorization.allowed) {
+      const decision: InsertAgentDecision = {
+        userId,
+        policyId: policy.id,
+        symbol: candidate.underlying,
+        action: AgentAction.SKIP,
+        reasons: [...authorization.reasons, `Options: ${candidate.optionType.toUpperCase()} $${candidate.strike} exp ${candidate.expiration}`],
+      };
+      await recordDecision(decision);
+      continue;
+    }
+
+    if (policy.mode === AgentMode.SUGGEST) {
+      const decision: InsertAgentDecision = {
+        userId,
+        policyId: policy.id,
+        symbol: candidate.underlying,
+        action: AgentAction.SUGGEST,
+        reasons: [
+          `Options scan match: ${candidate.optionType.toUpperCase()} $${candidate.strike} exp ${candidate.expiration}`,
+          `Score: ${candidate.score}, Delta: ${candidate.delta.toFixed(2)}, DTE: ${candidate.dte}`,
+          candidate.rationale,
+        ],
+        orderPayload: buildOptionsScanOrderPayload(candidate, policy),
+      };
+      await recordDecision(decision);
+      console.log(`[AgentWorker] SUGGEST options: ${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike} for user ${userId}`);
+    } else if (policy.mode === AgentMode.AUTO) {
+      try {
+        const orderPayload = buildOptionsScanOrderPayload(candidate, policy);
+        const decision: InsertAgentDecision = {
+          userId,
+          policyId: policy.id,
+          symbol: candidate.underlying,
+          action: AgentAction.EXECUTE,
+          reasons: [
+            `Auto-executed options from scan: ${candidate.optionType.toUpperCase()} $${candidate.strike} exp ${candidate.expiration}`,
+            `Score: ${candidate.score}, Delta: ${candidate.delta.toFixed(2)}, DTE: ${candidate.dte}`,
+          ],
+          orderPayload,
+        };
+        await recordDecision(decision);
+        await incrementTradesToday(userId);
+        console.log(`[AgentWorker] EXECUTE options: ${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike} for user ${userId}`);
+      } catch (error: any) {
+        const decision: InsertAgentDecision = {
+          userId,
+          policyId: policy.id,
+          symbol: candidate.underlying,
+          action: AgentAction.ERROR,
+          reasons: [`Options execution failed: ${error.message}`],
+        };
+        await recordDecision(decision);
+        console.error(`[AgentWorker] ERROR options: ${candidate.underlying} - ${error.message}`);
+      }
+    }
+  }
+}
+
 function buildOrderPayload(opportunity: Opportunity, policy: any): object {
   const price = opportunity.lastPrice || opportunity.detectedPrice || 0;
   const stop = opportunity.stopReferencePrice || 0;
@@ -352,6 +499,7 @@ async function runAgentWorker(): Promise<void> {
     for (const user of usersToProcess) {
       try {
         await processUserOpportunities(user.userId);
+        await processOptionsScanResults(user.userId);
       } catch (error: any) {
         console.error(`[AgentWorker] Error processing user ${user.userId}:`, error.message);
       }

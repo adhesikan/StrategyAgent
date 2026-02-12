@@ -620,8 +620,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
         <div className="mt-4 pt-4 border-t">
           <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
             VCP Trader provides educational and informational market scanning tools. 
-            Not investment advice. No guarantees. Users control all trading decisions and automation. 
-            Execution occurs in AlgoPilotX when enabled.
+            Not investment advice. No guarantees. Users control all trading decisions and automation.
           </p>
         </div>
       </DialogContent>

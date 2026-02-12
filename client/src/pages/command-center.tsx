@@ -726,7 +726,6 @@ export default function CommandCenter() {
 
       {(() => {
         const modeLabel = automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : "Autonomous";
-        const engineLabel = automationEngine === "BUILT_IN" ? "Built-in" : "AlgoPilotX";
         const needsBroker = automationMode !== "ALERTS";
         const needsAutoCfg = automationMode === "AUTONOMOUS";
         const checklistItems = [
@@ -791,7 +790,7 @@ export default function CommandCenter() {
                 <Button variant="outline" asChild data-testid="button-edit-config">
                   <Link href="/automation">
                     <Settings className="h-4 w-4 mr-1" />
-                    Automation Center
+                    Trade Autopilot
                   </Link>
                 </Button>
               </div>
@@ -802,12 +801,6 @@ export default function CommandCenter() {
                   <span className="text-xs text-muted-foreground">Mode:</span>
                   <span className="text-sm font-medium">{modeLabel}</span>
                 </div>
-                {automationMode === "AUTONOMOUS" && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 border" data-testid="badge-engine">
-                    <span className="text-xs text-muted-foreground">Engine:</span>
-                    <span className="text-sm font-medium">{engineLabel}</span>
-                  </div>
-                )}
                 {brokerConnected && (
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/20">
                     <Wifi className="h-3.5 w-3.5 text-green-500" />
@@ -832,9 +825,9 @@ export default function CommandCenter() {
         <span className="text-sm font-medium mr-2">Quick Actions:</span>
         
         <Button variant="outline" size="sm" asChild>
-          <Link href="/automation" data-testid="link-automation-center">
+          <Link href="/automation" data-testid="link-trade-autopilot">
             <Shield className="h-4 w-4 mr-1" />
-            Automation Center
+            Trade Autopilot
           </Link>
         </Button>
 
@@ -1592,7 +1585,7 @@ export default function CommandCenter() {
               <div className="flex items-start gap-2">
                 <Shield className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  VCP Trader and AlgoPilotX are software tools for self-directed traders. 
+                  VCP Trader is a software tool for self-directed traders. 
                   Educational and informational use only. Not investment advice. No guarantees. 
                   Users control all trading decisions and automation.
                 </p>
@@ -1891,7 +1884,7 @@ export default function CommandCenter() {
       />
 
       <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
-        All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader and AlgoPilotX are software tools for self-directed traders. No guarantees. Users control all trading decisions and automation.
+        All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader is a software tool for self-directed traders. No guarantees. Users control all trading decisions and automation.
       </div>
     </div>
   );

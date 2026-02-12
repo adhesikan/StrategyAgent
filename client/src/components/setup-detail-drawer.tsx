@@ -492,7 +492,7 @@ export function SetupDetailDrawer({
                     <div className="flex items-start gap-3">
                       <Zap className="h-5 w-5 text-primary mt-0.5" />
                       <div>
-                        <p className="font-medium">Connect AlgoPilotX</p>
+                        <p className="font-medium">Set Up Automation</p>
                         <p className="text-sm text-muted-foreground">
                           Create an automation endpoint to execute setups with InstaTrade™.
                         </p>
@@ -502,7 +502,7 @@ export function SetupDetailDrawer({
                       variant="default" 
                       className="w-full gap-2"
                       onClick={() => window.location.href = "/automation"}
-                      data-testid="button-connect-algopilotx"
+                      data-testid="button-connect-automation"
                     >
                       <ExternalLink className="h-4 w-4" />
                       Create Endpoint
@@ -621,7 +621,7 @@ export function SetupDetailDrawer({
                   <div className="flex items-start gap-3">
                     <Zap className="h-5 w-5 text-primary mt-0.5" />
                     <div>
-                      <p className="font-medium">Connect AlgoPilotX</p>
+                      <p className="font-medium">Set Up Automation</p>
                       <p className="text-sm text-muted-foreground">
                         Create an automation endpoint to execute trades with InstaTrade™.
                       </p>

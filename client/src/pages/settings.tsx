@@ -1754,10 +1754,10 @@ function AutomationSettings() {
         <CardHeader>
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <Bot className="h-5 w-5" />
-            AlgoPilotX Integration
+            Webhook Integration
           </CardTitle>
           <CardDescription>
-            Connect to AlgoPilotX for automated trade execution based on breakout alerts
+            Configure webhook automation for trade execution based on breakout alerts
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -1784,7 +1784,7 @@ function AutomationSettings() {
               <Input
                 id="webhookUrl"
                 type="url"
-                placeholder="https://algopilotx.com/webhook/..."
+                placeholder="https://your-webhook-url.com/..."
                 value={webhookUrl}
                 onChange={(e) => {
                   setWebhookUrl(e.target.value);
@@ -1793,7 +1793,7 @@ function AutomationSettings() {
                 data-testid="input-webhook-url"
               />
               <p className="text-xs text-muted-foreground">
-                Your AlgoPilotX webhook URL for receiving trade signals
+                Your webhook URL for receiving trade signals
               </p>
             </div>
 
@@ -1804,7 +1804,7 @@ function AutomationSettings() {
               <Input
                 id="apiKey"
                 type="password"
-                placeholder={settings?.hasApiKey ? "Enter new key to replace existing" : "Enter your AlgoPilotX API key"}
+                placeholder={settings?.hasApiKey ? "Enter new key to replace existing" : "Enter your API key"}
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
@@ -1915,7 +1915,7 @@ function AutomationSettings() {
             Recent Activity
           </CardTitle>
           <CardDescription>
-            Latest webhook signals sent to AlgoPilotX
+            Latest webhook signals sent to automation endpoints
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -2141,7 +2141,7 @@ function AutomationProfiles() {
           <div className="text-center py-8 text-muted-foreground">
             <Bot className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">No automation profiles configured</p>
-            <p className="text-xs mt-1">Create a profile to connect to AlgoPilotX or other webhook destinations</p>
+            <p className="text-xs mt-1">Create a profile to connect to webhook destinations</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -2246,7 +2246,7 @@ function AutomationProfiles() {
               <Label htmlFor="profile-name">Profile Name</Label>
               <Input
                 id="profile-name"
-                placeholder="e.g., AlgoPilotX Main"
+                placeholder="e.g., My Automation"
                 value={newProfile.name}
                 onChange={(e) => setNewProfile({ ...newProfile, name: e.target.value })}
                 data-testid="input-profile-name"

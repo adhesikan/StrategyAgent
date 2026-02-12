@@ -267,7 +267,7 @@ export default function OptionsScanner() {
   const [instaTradeCandidate, setInstaTradeCandidate] = useState<OptionCandidate | null>(null);
   const [showInstaTradeDialog, setShowInstaTradeDialog] = useState(false);
   const [showTradeTicket, setShowTradeTicket] = useState(false);
-  const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "broker">("algopilotx");
+  const [executionMethod, setExecutionMethod] = useState<"endpoint" | "broker">("endpoint");
   const [selectedEndpoint, setSelectedEndpoint] = useState<AutomationEndpoint | null>(null);
   const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
@@ -323,7 +323,7 @@ export default function OptionsScanner() {
       setShowTradeTicket(true);
     } else if (hasEndpoints) {
       setSelectedEndpoint(automationEndpoints![0]);
-      setExecutionMethod("algopilotx");
+      setExecutionMethod("endpoint");
       setShowInstaTradeDialog(true);
     } else if (hasBrokerAccounts) {
       setExecutionMethod("broker");
@@ -334,7 +334,7 @@ export default function OptionsScanner() {
   };
 
   const handleConfirmOptionInstaTrade = () => {
-    if (executionMethod === "algopilotx" && selectedEndpoint && instaTradeCandidate) {
+    if (executionMethod === "endpoint" && selectedEndpoint && instaTradeCandidate) {
       optionsInstatradeMutation.mutate({ endpointId: selectedEndpoint.id, candidate: instaTradeCandidate });
     }
   };

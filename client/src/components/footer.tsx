@@ -7,7 +7,7 @@ export function Footer() {
     <footer className="border-t bg-background/95 py-4 px-6">
       <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
         <p className="text-xs text-center max-w-2xl" data-testid="text-footer-disclaimer">
-          VCP Trader and AlgoPilotX are software tools for self-directed traders. Educational content only. Not investment advice. No guarantees. Users control all trading decisions and automation.
+          VCP Trader is a software tool for self-directed traders. Educational content only. Not investment advice. No guarantees. Users control all trading decisions and automation.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
           <p data-testid="text-copyright">

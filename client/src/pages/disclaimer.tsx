@@ -31,7 +31,7 @@ export default function DisclaimerPage() {
           </CardHeader>
           <CardContent className="prose prose-sm dark:prose-invert max-w-none space-y-4">
             <p>
-              VCP Trader and AlgoPilotX are software platforms offered by the same operator and are designed to help self-directed traders and investors analyze financial markets, explore trading ideas, and optionally automate trade execution based on user-defined rules.
+              VCP Trader is a software platform designed to help self-directed traders and investors analyze financial markets, explore trading ideas, and optionally automate trade execution based on user-defined rules.
             </p>
 
             <p>
@@ -39,23 +39,23 @@ export default function DisclaimerPage() {
             </p>
 
             <p>
-              AlgoPilotX provides optional, self-directed automation tools, including InstaTrade™, which allow users to automate trade execution only according to rules, conditions, and risk settings defined and authorized by the user. AlgoPilotX does not create strategies, select securities, or determine trade suitability for any user.
+              VCP Trader includes optional, self-directed automation tools, including InstaTrade™ and the built-in Auto Agent, which allow users to automate trade execution only according to rules, conditions, and risk settings defined and authorized by the user. VCP Trader does not create strategies, select securities, or determine trade suitability for any user.
             </p>
 
             <p>
-              All data, charts, alerts, strategy descriptions, automation tools, and outputs provided by VCP Trader and AlgoPilotX are for educational and informational purposes only and do not constitute investment advice, trading advice, recommendations, endorsements, or a solicitation to buy or sell any security or financial instrument.
+              All data, charts, alerts, strategy descriptions, automation tools, and outputs provided by VCP Trader are for educational and informational purposes only and do not constitute investment advice, trading advice, recommendations, endorsements, or a solicitation to buy or sell any security or financial instrument.
             </p>
 
             <p>
-              Neither VCP Trader nor AlgoPilotX is registered as an investment adviser or broker-dealer. The platforms do not provide personalized investment advice, do not act in a fiduciary capacity, and do not assess the suitability of any strategy or trade for any individual user. The platforms do not manage accounts, exercise discretionary trading authority, or place trades except as explicitly directed and authorized by the user through their selected brokerage.
+              VCP Trader is not registered as an investment adviser or broker-dealer. The platform does not provide personalized investment advice, does not act in a fiduciary capacity, and does not assess the suitability of any strategy or trade for any individual user. The platform does not manage accounts, exercise discretionary trading authority, or place trades except as explicitly directed and authorized by the user through their selected brokerage.
             </p>
 
             <p>
-              Users may place trades manually through their own brokerage accounts or may optionally connect AlgoPilotX for automated execution. All trading activity—manual or automated—is initiated, configured, and controlled by the user and executed through the user's chosen brokerage. The platforms do not hold customer funds or securities and do not have direct access to user brokerage credentials beyond what is necessary to carry out user-authorized actions.
+              Users may place trades manually through their own brokerage accounts or may optionally use the built-in Auto Agent for automated execution. All trading activity—manual or automated—is initiated, configured, and controlled by the user and executed through the user's chosen brokerage. The platform does not hold customer funds or securities and does not have direct access to user brokerage credentials beyond what is necessary to carry out user-authorized actions.
             </p>
 
             <p>
-              Trading and investing involve substantial risk, including the potential loss of capital. Past performance, backtested results, or hypothetical examples do not guarantee future results. Users are solely responsible for all trading decisions, automation settings, risk management choices, tax consequences, and outcomes resulting from their use of the platforms.
+              Trading and investing involve substantial risk, including the potential loss of capital. Past performance, backtested results, or hypothetical examples do not guarantee future results. Users are solely responsible for all trading decisions, automation settings, risk management choices, tax consequences, and outcomes resulting from their use of the platform.
             </p>
           </CardContent>
         </Card>

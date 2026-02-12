@@ -5,7 +5,7 @@ import {
   Search, Loader2, RefreshCw, List, Info, ChevronDown, ChevronRight, 
   TrendingUp, Layers, Activity, Zap, Target, X, LayoutGrid, LayoutList,
   AlertTriangle, Clock, CheckCircle2, Flame, TrendingDown, BookOpen, ExternalLink,
-  ArrowUpDown, Filter, SlidersHorizontal, Sparkles, Circle, Bell
+  ArrowUpDown, Filter, SlidersHorizontal, Sparkles, Circle, Bell, Link2
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -395,7 +395,7 @@ export default function Scanner() {
   const [instaTradeResult, setInstaTradeResult] = useState<ScanResult | null>(null);
   const [showEndpointDialog, setShowEndpointDialog] = useState(false);
   const [selectedEndpoint, setSelectedEndpoint] = useState<AutomationEndpoint | null>(null);
-  const [executionMethod, setExecutionMethod] = useState<"algopilotx" | "broker">("algopilotx");
+  const [executionMethod, setExecutionMethod] = useState<"broker">("broker");
   const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
   const [showStockTradeTicket, setShowStockTradeTicket] = useState(false);
@@ -498,9 +498,7 @@ export default function Scanner() {
   };
 
   const handleConfirmInstaTrade = () => {
-    if (executionMethod === "algopilotx" && selectedEndpoint && instaTradeResult) {
-      instatradeMutation.mutate({ endpointId: selectedEndpoint.id, result: instaTradeResult });
-    } else if (executionMethod === "broker" && instaTradeResult) {
+    if (instaTradeResult) {
       setShowEndpointDialog(false);
       setShowStockTradeTicket(true);
     }
@@ -2324,76 +2322,39 @@ export default function Scanner() {
               </div>
             )}
 
-            {(hasEndpoints || hasBrokerAccounts) ? (
-              <Tabs value={executionMethod} onValueChange={(v) => setExecutionMethod(v as "algopilotx" | "broker")}>
-                <TabsList className="w-full">
-                  <TabsTrigger value="algopilotx" className="flex-1 gap-1" disabled={!hasEndpoints} data-testid="tab-algopilotx">
-                    <Zap className="h-3 w-3" />
-                    AlgoPilotX
-                  </TabsTrigger>
-                  <TabsTrigger value="broker" className="flex-1 gap-1" disabled={!hasBrokerAccounts} data-testid="tab-broker">
-                    <ExternalLink className="h-3 w-3" />
-                    Direct Broker
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="algopilotx" className="mt-3 space-y-3">
-                  <Label className="text-sm font-medium">Select Endpoint</Label>
-                  <Select
-                    value={selectedEndpoint?.id || ""}
-                    onValueChange={(value) => {
-                      const endpoint = automationEndpoints?.find(e => e.id === value);
-                      if (endpoint) setSelectedEndpoint(endpoint);
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-instatrade-endpoint">
-                      <Zap className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Choose an endpoint" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {automationEndpoints?.map((endpoint) => (
-                        <SelectItem key={endpoint.id} value={endpoint.id}>
-                          {endpoint.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Sends trade setup to AlgoPilotX for automated execution.
-                  </p>
-                </TabsContent>
-                <TabsContent value="broker" className="mt-3 space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Opens the Trade Ticket where you can set your entry price, quantity, and optionally add a bracket exit (target + stop loss) as an OCO order.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 text-xs p-2 rounded-md bg-muted/30">
-                    <div>
-                      <span className="text-muted-foreground">Entry Price:</span>{" "}
-                      <span className="font-medium">You choose</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Order Types:</span>{" "}
-                      <span className="font-medium">Market / Limit</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Bracket:</span>{" "}
-                      <span className="font-medium">Target + Stop (OCO)</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Provider:</span>{" "}
-                      <Badge variant="outline" className="text-xs">{brokerStatus?.provider || "Broker"}</Badge>
-                    </div>
+            {hasBrokerAccounts ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Opens the Trade Ticket where you can set your entry price, quantity, and optionally add a bracket exit (target + stop loss) as an OCO order.
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-xs p-2 rounded-md bg-muted/30">
+                  <div>
+                    <span className="text-muted-foreground">Entry Price:</span>{" "}
+                    <span className="font-medium">You choose</span>
                   </div>
-                </TabsContent>
-              </Tabs>
+                  <div>
+                    <span className="text-muted-foreground">Order Types:</span>{" "}
+                    <span className="font-medium">Market / Limit</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Bracket:</span>{" "}
+                    <span className="font-medium">Target + Stop (OCO)</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Provider:</span>{" "}
+                    <Badge variant="outline" className="text-xs">{brokerStatus?.provider || "Broker"}</Badge>
+                  </div>
+                </div>
+              </div>
             ) : (
               <Card className="border-primary/20 bg-primary/5">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start gap-3">
-                    <Zap className="h-5 w-5 text-primary mt-0.5" />
+                    <Link2 className="h-5 w-5 text-primary mt-0.5" />
                     <div>
-                      <p className="font-medium">No Execution Methods Connected</p>
+                      <p className="font-medium">No Broker Connected</p>
                       <p className="text-sm text-muted-foreground">
-                        Connect AlgoPilotX endpoints or a brokerage account in Settings to execute trades.
+                        Connect a brokerage account in Settings to execute trades.
                       </p>
                     </div>
                   </div>
@@ -2405,19 +2366,12 @@ export default function Scanner() {
             <Button variant="outline" onClick={() => setShowEndpointDialog(false)}>
               Close
             </Button>
-            {(hasEndpoints || hasBrokerAccounts) ? (
+            {hasBrokerAccounts ? (
               <Button
                 onClick={handleConfirmInstaTrade}
-                disabled={
-                  (executionMethod === "algopilotx" && (!selectedEndpoint || instatradeMutation.isPending))
-                }
                 data-testid="button-confirm-instatrade"
               >
-                {instatradeMutation.isPending
-                  ? "Sending..." 
-                  : executionMethod === "algopilotx" 
-                    ? "Send to AlgoPilotX" 
-                    : "Open Trade Ticket"}
+                Open Trade Ticket
               </Button>
             ) : (
               <Button
@@ -2425,7 +2379,7 @@ export default function Scanner() {
                 data-testid="button-goto-settings"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Connect Execution
+                Connect Broker
               </Button>
             )}
           </DialogFooter>

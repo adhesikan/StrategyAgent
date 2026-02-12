@@ -68,7 +68,6 @@ interface Trade {
   createdAt: string;
 }
 
-const ALGOPILOTX_URL = "https://app.algopilotx.com";
 
 export default function ExecutionCockpit() {
   const { toast } = useToast();
@@ -153,32 +152,24 @@ export default function ExecutionCockpit() {
   const wizardSteps = [
     {
       number: 1,
-      title: "Open AlgoPilotX",
-      description: "Login or create your AlgoPilotX account",
-      completed: false,
-      action: () => window.open(ALGOPILOTX_URL, "_blank"),
-      buttonText: "Open AlgoPilotX Login",
+      title: "Configure Automation",
+      description: "Set up your automation endpoints in Trade Autopilot",
+      completed: hasEndpoints,
+      action: () => window.location.href = "/automation",
+      buttonText: "Open Trade Autopilot",
     },
     {
       number: 2,
-      title: "Create an Automation",
-      description: "Create a new Automation in AlgoPilotX and copy its webhook URL",
-      completed: false,
-      action: () => window.open(ALGOPILOTX_URL, "_blank"),
-      buttonText: "Open Automations",
-    },
-    {
-      number: 3,
-      title: "Add Endpoint in VCP Trader",
-      description: "Paste the webhook URL to create your automation endpoint",
+      title: "Add Endpoint",
+      description: "Create a webhook endpoint for trade execution",
       completed: hasEndpoints,
       action: () => setDialogOpen(true),
       buttonText: hasEndpoints ? "Add Another Endpoint" : "Add Endpoint",
     },
     {
-      number: 4,
+      number: 3,
       title: "Ready for Execution",
-      description: "Use InstaTrade™ from any opportunity to send to AlgoPilotX",
+      description: "Use InstaTrade™ from any opportunity to execute trades",
       completed: hasActiveEndpoint,
       action: undefined,
       buttonText: undefined,
@@ -199,9 +190,9 @@ export default function ExecutionCockpit() {
           </div>
           <div className="flex items-center gap-2">
             <Link href="/automation">
-              <Button variant="outline" size="sm" className="gap-2" data-testid="link-automation-center">
+              <Button variant="outline" size="sm" className="gap-2" data-testid="link-trade-autopilot">
                 <Shield className="h-4 w-4" />
-                Automation Center
+                Trade Autopilot
               </Button>
             </Link>
           </div>
@@ -230,11 +221,11 @@ export default function ExecutionCockpit() {
           <AlertDescription className="space-y-2">
             <p>
               VCP Trader delivers real-time market intelligence, strategy signals, and alert-driven trade ideas.
-              When you choose, these signals can be forwarded to AlgoPilotX, where you control how trades are executed through your own automation rules, risk limits, and brokerage connections.
+              When you choose, these signals can be forwarded to your automation endpoints, where you control how trades are executed through your own automation rules, risk limits, and brokerage connections.
             </p>
             <p className="font-medium">
               VCP Trader does not place trades, manage accounts, or access brokerage credentials.
-              All execution decisions, sizing, and risk management are configured and approved by you inside AlgoPilotX.
+              All execution decisions, sizing, and risk management are configured and approved by you.
             </p>
           </AlertDescription>
         </Alert>
@@ -248,7 +239,7 @@ export default function ExecutionCockpit() {
                   Setup Wizard
                 </CardTitle>
                 <CardDescription>
-                  Complete these steps to connect VCP Trader with AlgoPilotX
+                  Complete these steps to set up trade automation
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -309,7 +300,7 @@ export default function ExecutionCockpit() {
                 <div>
                   <CardTitle>Automation Endpoints</CardTitle>
                   <CardDescription>
-                    Your saved AlgoPilotX webhook connections
+                    Your saved webhook connections
                   </CardDescription>
                 </div>
                 <Button onClick={() => setDialogOpen(true)} size="sm" data-testid="button-add-endpoint">
@@ -402,46 +393,39 @@ export default function ExecutionCockpit() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => window.open(ALGOPILOTX_URL, "_blank")}
-                  data-testid="button-open-dashboard"
-                >
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Open AlgoPilotX Dashboard
-                  <ExternalLink className="h-3 w-3 ml-auto" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => window.open("https://app.algopilotx.com/brokerage-settings", "_blank")}
-                  data-testid="button-broker-connections"
-                >
-                  <Wallet className="h-4 w-4 mr-2" />
-                  Broker Connections
-                  <ExternalLink className="h-3 w-3 ml-auto" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => window.open(ALGOPILOTX_URL, "_blank")}
-                  data-testid="button-automations"
-                >
-                  <Zap className="h-4 w-4 mr-2" />
-                  Automations
-                  <ExternalLink className="h-3 w-3 ml-auto" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => window.open(ALGOPILOTX_URL, "_blank")}
-                  data-testid="button-trade-activity"
-                >
-                  <Activity className="h-4 w-4 mr-2" />
-                  Trade Activity
-                  <ExternalLink className="h-3 w-3 ml-auto" />
-                </Button>
+                <Link href="/automation">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    data-testid="button-open-automation"
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    Trade Autopilot
+                    <ArrowRight className="h-3 w-3 ml-auto" />
+                  </Button>
+                </Link>
+                <Link href="/settings">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    data-testid="button-broker-connections"
+                  >
+                    <Wallet className="h-4 w-4 mr-2" />
+                    Broker Connections
+                    <ArrowRight className="h-3 w-3 ml-auto" />
+                  </Button>
+                </Link>
+                <Link href="/automation">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    data-testid="button-automations"
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    Automation Endpoints
+                    <ArrowRight className="h-3 w-3 ml-auto" />
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
 
@@ -463,14 +447,14 @@ export default function ExecutionCockpit() {
                 <div className="flex items-start gap-3">
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-medium text-primary">2</div>
                   <div>
-                    <div className="font-medium">Send to AlgoPilotX</div>
+                    <div className="font-medium">Send to Automation</div>
                     <div className="text-muted-foreground">Click InstaTrade™ to send setup details</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-medium text-primary">3</div>
                   <div>
-                    <div className="font-medium">Execute in AlgoPilotX</div>
+                    <div className="font-medium">Execute Trade</div>
                     <div className="text-muted-foreground">Review and confirm trade execution</div>
                   </div>
                 </div>
@@ -496,7 +480,7 @@ export default function ExecutionCockpit() {
                   </div>
                   <Separator className="my-2" />
                   <div className="text-xs text-muted-foreground">
-                    VCP Trader does not execute trades. AlgoPilotX executes trades based on your configuration.
+                    VCP Trader does not execute trades. Trade execution happens through your configured automation endpoints.
                   </div>
                 </CardContent>
               </Card>
@@ -640,7 +624,7 @@ export default function ExecutionCockpit() {
           <DialogHeader>
             <DialogTitle>Add Automation Endpoint</DialogTitle>
             <DialogDescription>
-              Paste the webhook URL from your AlgoPilotX Automation
+              Paste the webhook URL from your automation service
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -658,13 +642,13 @@ export default function ExecutionCockpit() {
               <Label htmlFor="webhook">Webhook URL</Label>
               <Input
                 id="webhook"
-                placeholder="https://app.algopilotx.com/webhook/..."
+                placeholder="https://your-webhook-url.com/..."
                 value={formWebhookUrl}
                 onChange={(e) => setFormWebhookUrl(e.target.value)}
                 data-testid="input-webhook-url"
               />
               <p className="text-xs text-muted-foreground">
-                Copy this from your AlgoPilotX Automation settings
+                Copy this from your automation service settings
               </p>
             </div>
           </div>

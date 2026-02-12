@@ -94,7 +94,6 @@ interface Trade {
 export default function AutomationAgentPage() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [algoPilotXHelperOpen, setAlgoPilotXHelperOpen] = useState(false);
   const [editingEndpoint, setEditingEndpoint] = useState<AutomationEndpoint | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
@@ -230,7 +229,7 @@ export default function AutomationAgentPage() {
     onSuccess: () => {
       toast({
         title: "Exit Sent",
-        description: "Exit signal sent to AlgoPilotX",
+        description: "Exit signal sent to automation endpoint",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       queryClient.invalidateQueries({ queryKey: ["/api/execution-requests"] });
@@ -263,19 +262,11 @@ export default function AutomationAgentPage() {
   const openCreateDialog = () => {
     setEditingEndpoint(null);
     setFormName("");
-    setFormWebhookUrl("https://app.algopilotx.com/webhook/");
+    setFormWebhookUrl("");
     setFormWebhookSecret("");
     setDialogOpen(true);
   };
 
-  const openAlgoPilotXHelper = () => {
-    setAlgoPilotXHelperOpen(true);
-  };
-
-  const proceedToCreateEndpoint = () => {
-    setAlgoPilotXHelperOpen(false);
-    openCreateDialog();
-  };
 
   const handleSave = () => {
     if (editingEndpoint) {
@@ -313,7 +304,7 @@ export default function AutomationAgentPage() {
           Automation
         </h1>
         <p className="text-sm text-muted-foreground">
-          Connect AlgoPilotX endpoints for InstaTrade™ execution
+          Manage automation endpoints for InstaTrade™ execution
         </p>
       </div>
 
@@ -343,10 +334,10 @@ export default function AutomationAgentPage() {
                     Automation Endpoints
                   </CardTitle>
                   <CardDescription>
-                    Create named endpoints to connect to AlgoPilotX or other webhook destinations
+                    Create named webhook endpoints for automation
                   </CardDescription>
                 </div>
-                <Button onClick={openAlgoPilotXHelper} className="gap-2" data-testid="button-add-endpoint">
+                <Button onClick={openCreateDialog} className="gap-2" data-testid="button-add-endpoint">
                   <Plus className="h-4 w-4" />
                   Add Endpoint
                 </Button>
@@ -363,7 +354,7 @@ export default function AutomationAgentPage() {
                   <Settings className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No automation endpoints configured</p>
                   <p className="text-sm mt-1">
-                    Create an endpoint to connect to AlgoPilotX
+                    Create an endpoint to get started
                   </p>
                 </div>
               ) : (
@@ -488,8 +479,8 @@ export default function AutomationAgentPage() {
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <p>
-                  VCP Trader provides market intelligence only. All trade execution happens in AlgoPilotX 
-                  after your explicit confirmation. This is educational and informational only, not investment advice.
+                  VCP Trader provides market intelligence only. All trade execution happens through your configured 
+                  automation endpoints after your explicit confirmation. This is educational and informational only, not investment advice.
                 </p>
               </div>
             </CardContent>
@@ -653,7 +644,7 @@ export default function AutomationAgentPage() {
                 Execution History
               </CardTitle>
               <CardDescription>
-                Track setups sent to AlgoPilotX and their execution status
+                Track setups sent to automation endpoints and their execution status
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -726,7 +717,7 @@ export default function AutomationAgentPage() {
               <Label htmlFor="name">Endpoint Name</Label>
               <Input
                 id="name"
-                placeholder="e.g., AlgoPilotX Main"
+                placeholder="e.g., My Automation"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 data-testid="input-endpoint-name"
@@ -736,7 +727,7 @@ export default function AutomationAgentPage() {
               <Label htmlFor="webhookUrl">Webhook URL</Label>
               <Input
                 id="webhookUrl"
-                placeholder="https://app.algopilotx.com/webhook/..."
+                placeholder="https://your-webhook-url.com/..."
                 value={formWebhookUrl}
                 onChange={(e) => setFormWebhookUrl(e.target.value)}
                 data-testid="input-webhook-url"
@@ -792,91 +783,6 @@ export default function AutomationAgentPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={algoPilotXHelperOpen} onOpenChange={setAlgoPilotXHelperOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
-              Connect to AlgoPilotX
-            </DialogTitle>
-            <DialogDescription>
-              Follow these steps to get your webhook URL from AlgoPilotX
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-3">
-              <div className="flex gap-3 items-start">
-                <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                  1
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Login to AlgoPilotX</p>
-                  <p className="text-sm text-muted-foreground">
-                    Open AlgoPilotX and sign in to your account
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 items-start">
-                <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                  2
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Create an Automation</p>
-                  <p className="text-sm text-muted-foreground">
-                    Set up a new automation for your trading strategy
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 items-start">
-                <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                  3
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Copy the Webhook URL</p>
-                  <p className="text-sm text-muted-foreground">
-                    Find and copy the webhook URL from your automation settings
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 items-start">
-                <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                  4
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Paste it Here</p>
-                  <p className="text-sm text-muted-foreground">
-                    Return here and paste the webhook URL when creating your endpoint
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Separator />
-            <div className="bg-muted/50 rounded-lg p-4 text-center">
-              <Button
-                variant="default"
-                className="gap-2"
-                onClick={() => window.open("https://app.algopilotx.com", "_blank")}
-                data-testid="button-open-algopilotx"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open AlgoPilotX
-              </Button>
-              <p className="text-xs text-muted-foreground mt-2">
-                Opens in a new tab
-              </p>
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setAlgoPilotXHelperOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={proceedToCreateEndpoint} className="gap-2" data-testid="button-proceed-create-endpoint">
-              <Plus className="h-4 w-4" />
-              Create Endpoint
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

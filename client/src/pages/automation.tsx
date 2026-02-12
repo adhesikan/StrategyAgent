@@ -5,9 +5,6 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -17,56 +14,19 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { AutoAgentPanel } from "@/components/auto-agent-panel";
 import { cn } from "@/lib/utils";
 import {
-  Bell, Handshake, Bot, Shield, Settings, Zap, ChevronRight,
-  ExternalLink, Plus, RefreshCw, CheckCircle2, XCircle, Link2,
-  Power, Pause, Play, AlertTriangle, Radio, Copy, Trash2,
-  MoreVertical, History, ArrowRight, Info,
+  Bell, Handshake, Bot, Shield, Settings,
+  RefreshCw, CheckCircle2, Link2,
+  Power, Pause, Play, AlertTriangle,
+  ArrowRight, Info,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type { UserSettings } from "@shared/schema";
-import { format } from "date-fns";
-
-interface AutomationEndpoint {
-  id: string;
-  userId: string;
-  name: string;
-  webhookUrl: string;
-  isActive: boolean;
-  lastTestedAt?: string;
-  lastTestSuccess?: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
 
 interface AgentState {
   userId: string;
@@ -78,12 +38,9 @@ interface AgentState {
   dailyPnlEstimate: number | null;
 }
 
-const ALGOPILOTX_URL = "https://app.algopilotx.com";
-
-const DISCLAIMER_TEXT = "All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader and AlgoPilotX are software tools for self-directed traders. No guarantees. Users control all trading decisions and automation.";
+const DISCLAIMER_TEXT = "All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader is a software tool for self-directed traders. No guarantees. Users control all trading decisions and automation.";
 
 type AutomationMode = "ALERTS" | "ASSISTED" | "AUTONOMOUS";
-type AutomationEngine = "BUILT_IN" | "ALGOPILOTX";
 
 const MODE_CARDS: { mode: AutomationMode; title: string; subtitle: string; description: string; icon: typeof Bell; recommended?: string }[] = [
   {
@@ -112,21 +69,6 @@ const MODE_CARDS: { mode: AutomationMode; title: string; subtitle: string; descr
   },
 ];
 
-const ENGINE_CARDS: { engine: AutomationEngine; title: string; description: string; icon: typeof Bot }[] = [
-  {
-    engine: "BUILT_IN",
-    title: "Built-in Auto Agent",
-    description: "VCP Trader's integrated automation engine. Simpler setup, runs within the platform using your connected broker.",
-    icon: Bot,
-  },
-  {
-    engine: "ALGOPILOTX",
-    title: "Advanced Automation (AlgoPilotX)",
-    description: "Dedicated execution platform with advanced automation rules, position management, and multi-strategy support.",
-    icon: Zap,
-  },
-];
-
 export default function AutomationPage() {
   const { toast } = useToast();
   const searchString = useSearch();
@@ -142,16 +84,11 @@ export default function AutomationPage() {
     queryKey: ["/api/agent/state"],
   });
 
-  const { data: endpoints, isLoading: endpointsLoading } = useQuery<AutomationEndpoint[]>({
-    queryKey: ["/api/automation-endpoints"],
-  });
 
   const { isConnected, providerName, status: brokerStatus } = useBrokerStatus();
 
   const currentMode: AutomationMode = settings?.automationMode || "ALERTS";
-  const currentEngine: AutomationEngine = settings?.automationEngine || "BUILT_IN";
   const currentStatus: string = settings?.automationStatus || "DISABLED";
-  const selectedEndpointId: string | null = settings?.selectedAlgopilotxEndpointId || null;
 
   const updateSettings = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
@@ -165,11 +102,6 @@ export default function AutomationPage() {
   const handleModeChange = (mode: AutomationMode) => {
     updateSettings.mutate({ automationMode: mode });
     toast({ title: `Mode set to ${MODE_CARDS.find(m => m.mode === mode)?.title}` });
-  };
-
-  const handleEngineChange = (engine: AutomationEngine) => {
-    updateSettings.mutate({ automationEngine: engine });
-    toast({ title: `Engine set to ${ENGINE_CARDS.find(e => e.engine === engine)?.title}` });
   };
 
   if (settingsLoading) {
@@ -187,15 +119,15 @@ export default function AutomationPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" data-testid="automation-center-page">
+    <div className="flex-1 overflow-auto" data-testid="trade-autopilot-page">
       <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-8">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2" data-testid="text-page-title">
             <Shield className="h-6 w-6" />
-            Automation Center
+            Trade Autopilot
           </h1>
           <p className="text-sm text-muted-foreground">
-            Configure how VCP Trader acts on opportunities. Choose your mode, connect your tools, and set your limits.
+            Configure how VCP Trader acts on opportunities. Choose your mode, connect your broker, and set your limits.
           </p>
         </div>
 
@@ -209,19 +141,11 @@ export default function AutomationPage() {
           currentMode={currentMode}
           isConnected={isConnected}
           agentState={agentState}
-          endpoints={endpoints}
           settings={settings}
         />
 
         {(currentMode === "ASSISTED" || currentMode === "AUTONOMOUS") && (
-          <EngineSelector
-            currentEngine={currentEngine}
-            onSelect={handleEngineChange}
-            isPending={updateSettings.isPending}
-            endpoints={endpoints}
-            endpointsLoading={endpointsLoading ?? false}
-            selectedEndpointId={selectedEndpointId}
-          />
+          <AutoAgentConfig />
         )}
 
         <BrokerConnectionSection
@@ -232,7 +156,6 @@ export default function AutomationPage() {
 
         <SafetyControlsSection
           currentMode={currentMode}
-          currentEngine={currentEngine}
           agentState={agentState}
           settings={settings}
         />
@@ -312,11 +235,10 @@ function ModeSelector({ currentMode, onSelect, isPending }: {
   );
 }
 
-function ModeGuidance({ currentMode, isConnected, agentState, endpoints, settings }: {
+function ModeGuidance({ currentMode, isConnected, agentState, settings }: {
   currentMode: AutomationMode;
   isConnected: boolean;
   agentState?: AgentState;
-  endpoints?: AutomationEndpoint[];
   settings?: any;
 }) {
   const steps: { label: string; done: boolean; action?: { label: string; href: string } }[] = [];
@@ -330,21 +252,14 @@ function ModeGuidance({ currentMode, isConnected, agentState, endpoints, setting
   } else if (currentMode === "ASSISTED") {
     steps.push(
       { label: "Connect your brokerage for live data and execution", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
-      { label: "Choose an execution engine below", done: true },
+      { label: "Configure the Auto Agent below", done: true },
       { label: "When opportunities appear, use InstaTrade™ to execute with one click", done: true, action: { label: "Go to Discover", href: "/discover" } },
     );
   } else if (currentMode === "AUTONOMOUS") {
-    const engineType = settings?.automationEngine || "BUILT_IN";
-    const hasEndpoints = endpoints && endpoints.length > 0;
     steps.push(
       { label: "Connect your brokerage", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
-      { label: "Choose an execution engine below", done: true },
-    );
-    if (engineType === "ALGOPILOTX") {
-      steps.push({ label: "Set up an Automation Profile (webhook)", done: !!hasEndpoints, action: { label: "Manage Profiles", href: "/execution" } });
-    }
-    steps.push(
-      { label: "Configure safety limits in the controls below", done: true },
+      { label: "Configure the Auto Agent below", done: true },
+      { label: "Set safety limits in the controls below", done: true },
       { label: "Arm the Auto Agent to begin", done: !!agentState?.enabled, action: !agentState?.enabled ? { label: "Scroll to Controls", href: "#safety" } : undefined },
     );
   }
@@ -400,102 +315,20 @@ function ModeGuidance({ currentMode, isConnected, agentState, endpoints, setting
   );
 }
 
-function EngineSelector({ currentEngine, onSelect, isPending, endpoints, endpointsLoading, selectedEndpointId }: {
-  currentEngine: AutomationEngine;
-  onSelect: (engine: AutomationEngine) => void;
-  isPending: boolean;
-  endpoints?: AutomationEndpoint[];
-  endpointsLoading: boolean;
-  selectedEndpointId: string | null;
-}) {
-  const [expandedEngine, setExpandedEngine] = useState<AutomationEngine | null>(null);
-
-  const handleConfigureClick = (engine: AutomationEngine, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (currentEngine !== engine) {
-      onSelect(engine);
-    }
-    setExpandedEngine(prev => prev === engine ? null : engine);
-  };
-
+function AutoAgentConfig() {
   return (
-    <Card data-testid="section-engine-selector">
+    <Card data-testid="section-auto-agent-config">
       <CardHeader>
-        <CardTitle className="text-lg">2. Automation Engine</CardTitle>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Bot className="h-5 w-5" />
+          2. Auto Agent Setup
+        </CardTitle>
         <CardDescription>
-          Choose your execution engine and configure its trading rules.
+          Configure your Auto Agent's trading rules, entry criteria, and position sizing.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {ENGINE_CARDS.map(({ engine, title, description, icon: Icon }) => {
-            const isSelected = currentEngine === engine;
-            return (
-              <div
-                key={engine}
-                role="button"
-                tabIndex={0}
-                onClick={() => !isPending && onSelect(engine)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); !isPending && onSelect(engine); }}}
-                className={cn(
-                  "flex flex-col items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors cursor-pointer",
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover-elevate",
-                  isPending && "opacity-50 pointer-events-none",
-                )}
-                data-testid={`button-engine-${engine.toLowerCase()}`}
-              >
-                <div className={cn(
-                  "h-10 w-10 rounded-lg flex items-center justify-center",
-                  isSelected ? "bg-primary text-primary-foreground" : "bg-muted"
-                )}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="font-semibold text-sm">{title}</div>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{description}</p>
-                </div>
-                <div className="flex items-center gap-2 w-full">
-                  {isSelected && (
-                    <div className="flex items-center gap-1 text-xs text-primary font-medium">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Selected
-                    </div>
-                  )}
-                  {isSelected && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="ml-auto gap-1"
-                      onClick={(e) => handleConfigureClick(engine, e)}
-                      data-testid={`button-configure-${engine.toLowerCase()}`}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      {expandedEngine === engine ? "Hide" : "Configure"}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {expandedEngine === "BUILT_IN" && currentEngine === "BUILT_IN" && (
-          <div className="pt-2" data-testid="panel-builtin-config">
-            <AutoAgentPanel />
-          </div>
-        )}
-
-        {expandedEngine === "ALGOPILOTX" && currentEngine === "ALGOPILOTX" && (
-          <div className="pt-2" data-testid="panel-algopilotx-config">
-            <AlgoPilotXProfilesPanel
-              endpoints={endpoints}
-              endpointsLoading={endpointsLoading}
-              selectedEndpointId={selectedEndpointId}
-            />
-          </div>
-        )}
+      <CardContent>
+        <AutoAgentPanel />
       </CardContent>
     </Card>
   );
@@ -573,9 +406,8 @@ function BrokerConnectionSection({ isConnected, providerName, isPaper }: {
   );
 }
 
-function SafetyControlsSection({ currentMode, currentEngine, agentState, settings }: {
+function SafetyControlsSection({ currentMode, agentState, settings }: {
   currentMode: AutomationMode;
-  currentEngine: AutomationEngine;
   agentState: AgentState | undefined;
   settings: any;
 }) {
@@ -729,18 +561,9 @@ function SafetyControlsSection({ currentMode, currentEngine, agentState, setting
                 Emergency Stop
               </Button>
 
-              {currentEngine === "ALGOPILOTX" && (
-                <p className="text-xs text-muted-foreground">
-                  Emergency Stop disables signal forwarding from VCP Trader. To stop running automations inside AlgoPilotX,{" "}
-                  <a href={ALGOPILOTX_URL} target="_blank" rel="noopener noreferrer" className="underline">
-                    visit your AlgoPilotX dashboard
-                  </a>.
-                </p>
-              )}
-
               <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg flex items-center gap-2">
                 <Info className="h-3.5 w-3.5 flex-shrink-0" />
-                <span>Configure entry criteria, trade sizing, and position limits in the Automation Engine section above.</span>
+                <span>Configure entry criteria, trade sizing, and position limits in the Auto Agent Setup section above.</span>
               </div>
             </>
           ) : (
@@ -768,272 +591,6 @@ function SafetyControlsSection({ currentMode, currentEngine, agentState, setting
         }}
       />
     </>
-  );
-}
-
-function AlgoPilotXProfilesPanel({ endpoints, endpointsLoading, selectedEndpointId }: {
-  endpoints: AutomationEndpoint[] | undefined;
-  endpointsLoading: boolean;
-  selectedEndpointId: string | null;
-}) {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-  const [showManualSetup, setShowManualSetup] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [formName, setFormName] = useState("");
-  const [formWebhookUrl, setFormWebhookUrl] = useState("https://app.algopilotx.com/webhook/");
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/automation-endpoints", {
-        name: formName,
-        webhookUrl: formWebhookUrl,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Automation Profile Created" });
-      setDialogOpen(false);
-      setFormName("");
-      setFormWebhookUrl("https://app.algopilotx.com/webhook/");
-      qc.invalidateQueries({ queryKey: ["/api/automation-endpoints"] });
-    },
-    onError: (error: any) => {
-      toast({ title: "Failed to create profile", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const selectMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("PUT", `/api/automation-endpoints/${id}/select`);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/user/settings"] });
-      toast({ title: "Profile selected" });
-    },
-  });
-
-  const testMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiRequest("POST", `/api/automation-endpoints/${id}/test`);
-      return response.json();
-    },
-    onSuccess: (data: any) => {
-      toast({
-        title: data.success ? "Connection verified" : "Connection failed",
-        description: data.success ? "Webhook is responding" : data.error || "Could not reach endpoint",
-        variant: data.success ? "default" : "destructive",
-      });
-      qc.invalidateQueries({ queryKey: ["/api/automation-endpoints"] });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/automation-endpoints/${id}`);
-    },
-    onSuccess: () => {
-      toast({ title: "Profile removed" });
-      setDeleteConfirmId(null);
-      qc.invalidateQueries({ queryKey: ["/api/automation-endpoints"] });
-    },
-  });
-
-  const hasEndpoints = endpoints && endpoints.length > 0;
-
-  const wizardSteps = [
-    { number: 1, title: "Open AlgoPilotX Dashboard", completed: false },
-    { number: 2, title: "Create an automation in AlgoPilotX", completed: false },
-    { number: 3, title: "Add profile to VCP Trader", completed: hasEndpoints },
-    { number: 4, title: "Select your active profile", completed: !!selectedEndpointId },
-  ];
-
-  return (
-    <div className="space-y-6" data-testid="algopilotx-profiles">
-      <div className="space-y-3">
-        <div className="text-sm font-medium">Setup Guide</div>
-        <div className="space-y-2">
-          {wizardSteps.map((step) => (
-            <div key={step.number} className="flex items-center gap-3 text-sm">
-              <div className={cn(
-                "h-6 w-6 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0",
-                step.completed ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              )}>
-                {step.completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : step.number}
-              </div>
-              <span className={step.completed ? "text-muted-foreground line-through" : ""}>{step.title}</span>
-              {step.number === 1 && !step.completed && (
-                <Button variant="outline" size="sm" onClick={() => window.open(ALGOPILOTX_URL, "_blank")} data-testid="button-open-algopilotx">
-                  Open <ExternalLink className="h-3 w-3 ml-1" />
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-medium">Automation Profiles</div>
-          <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)} className="gap-1" data-testid="button-add-profile">
-            <Plus className="h-3.5 w-3.5" /> Add Profile
-          </Button>
-        </div>
-
-        {endpointsLoading ? (
-          <div className="text-center py-6 text-sm text-muted-foreground">Loading profiles...</div>
-        ) : !hasEndpoints ? (
-          <div className="text-center py-6 space-y-2">
-            <p className="text-sm text-muted-foreground">No automation profiles yet.</p>
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)} data-testid="button-add-first-profile">
-              <Plus className="h-4 w-4 mr-1" /> Add Your First Profile
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {endpoints?.map((ep) => {
-              const isSelected = selectedEndpointId === ep.id;
-              return (
-                <div
-                  key={ep.id}
-                  className={cn(
-                    "flex items-center gap-3 p-3 rounded-lg border",
-                    isSelected ? "border-primary bg-primary/5" : "border-border"
-                  )}
-                  data-testid={`profile-card-${ep.id}`}
-                >
-                  <div className={cn(
-                    "h-2.5 w-2.5 rounded-full flex-shrink-0",
-                    ep.lastTestSuccess === true ? "bg-green-500" :
-                    ep.lastTestSuccess === false ? "bg-red-500" :
-                    "bg-muted-foreground"
-                  )} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium flex items-center gap-2">
-                      {ep.name}
-                      {isSelected && <Badge variant="default" className="text-[10px]">Active</Badge>}
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate">{ep.webhookUrl}</div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {!isSelected && (
-                      <Button size="sm" variant="outline" onClick={() => selectMutation.mutate(ep.id)} disabled={selectMutation.isPending} data-testid={`button-select-${ep.id}`}>
-                        Select
-                      </Button>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" data-testid={`button-profile-menu-${ep.id}`}>
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => testMutation.mutate(ep.id)}>
-                          <RefreshCw className="h-4 w-4 mr-2" /> Test Connection
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeleteConfirmId(ep.id)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" /> Remove
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {!showManualSetup && hasEndpoints && (
-        <button
-          onClick={() => setShowManualSetup(!showManualSetup)}
-          className="text-xs text-muted-foreground underline"
-          data-testid="button-toggle-manual-setup"
-        >
-          Manual Setup (Advanced)
-        </button>
-      )}
-
-      {showManualSetup && (
-        <div className="text-xs text-muted-foreground space-y-2 p-3 bg-muted/50 rounded-lg">
-          <p className="font-medium">Manual Webhook Setup</p>
-          <p>If you need to manually configure a webhook URL, click "Add Profile" above and paste your AlgoPilotX webhook URL.</p>
-        </div>
-      )}
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Automation Profile</DialogTitle>
-            <DialogDescription>
-              Connect an AlgoPilotX automation by pasting its webhook URL.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="profile-name">Profile Name</Label>
-              <Input
-                id="profile-name"
-                placeholder="My Trading Strategy"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                data-testid="input-profile-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="webhook-url">Webhook URL</Label>
-              <Input
-                id="webhook-url"
-                placeholder="https://app.algopilotx.com/webhook/..."
-                value={formWebhookUrl}
-                onChange={(e) => setFormWebhookUrl(e.target.value)}
-                data-testid="input-webhook-url"
-              />
-              <p className="text-xs text-muted-foreground">
-                Find this in your AlgoPilotX automation settings.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => createMutation.mutate()}
-              disabled={!formName || !formWebhookUrl || createMutation.isPending}
-              data-testid="button-save-profile"
-            >
-              {createMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin mr-1" /> : null}
-              Save Profile
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Profile?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the automation profile and its webhook connection. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
-              className="bg-destructive text-destructive-foreground"
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
   );
 }
 

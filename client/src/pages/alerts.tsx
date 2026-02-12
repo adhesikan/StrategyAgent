@@ -297,7 +297,7 @@ function AlertEventCard({
           {deliveryStatus?.webhook && (
             <Badge variant="secondary" className="gap-1 text-xs">
               <Zap className="h-3 w-3" />
-              {deliveryStatus.endpointName || "AlgoPilotX"} {deliveryStatus.webhookSentAt && `@ ${formatDeliveryTime(deliveryStatus.webhookSentAt)}`}
+              {deliveryStatus.endpointName || "Webhook"} {deliveryStatus.webhookSentAt && `@ ${formatDeliveryTime(deliveryStatus.webhookSentAt)}`}
             </Badge>
           )}
           {!deliveryStatus?.push && !deliveryStatus?.webhook && (

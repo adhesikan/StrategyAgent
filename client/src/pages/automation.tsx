@@ -41,7 +41,7 @@ import {
   Bell, Handshake, Bot, Shield, Settings, Zap, ChevronRight,
   ExternalLink, Plus, RefreshCw, CheckCircle2, XCircle, Link2,
   Power, Pause, Play, AlertTriangle, Radio, Copy, Trash2,
-  MoreVertical, History,
+  MoreVertical, History, ArrowRight, Info,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -211,7 +211,15 @@ export default function AutomationPage() {
           isPending={updateSettings.isPending}
         />
 
-        {currentMode === "AUTONOMOUS" && (
+        <ModeGuidance
+          currentMode={currentMode}
+          isConnected={isConnected}
+          agentState={agentState}
+          endpoints={endpoints}
+          settings={settings}
+        />
+
+        {(currentMode === "ASSISTED" || currentMode === "AUTONOMOUS") && (
           <EngineSelector
             currentEngine={currentEngine}
             onSelect={handleEngineChange}
@@ -301,6 +309,94 @@ function ModeSelector({ currentMode, onSelect, isPending }: {
               </button>
             );
           })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ModeGuidance({ currentMode, isConnected, agentState, endpoints, settings }: {
+  currentMode: AutomationMode;
+  isConnected: boolean;
+  agentState?: AgentState;
+  endpoints?: AutomationEndpoint[];
+  settings?: any;
+}) {
+  const steps: { label: string; done: boolean; action?: { label: string; href: string } }[] = [];
+
+  if (currentMode === "ALERTS") {
+    steps.push(
+      { label: "Connect your brokerage for live data", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
+      { label: "Configure your alert preferences in Settings", done: !!settings?.pushEnabled, action: { label: "Settings", href: "/settings" } },
+      { label: "View opportunities on the Discover page", done: true, action: { label: "Go to Discover", href: "/discover" } },
+    );
+  } else if (currentMode === "ASSISTED") {
+    steps.push(
+      { label: "Connect your brokerage for live data and execution", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
+      { label: "Choose an execution engine below", done: true },
+      { label: "When opportunities appear, use InstaTrade to execute with one click", done: true, action: { label: "Go to Discover", href: "/discover" } },
+    );
+  } else if (currentMode === "AUTONOMOUS") {
+    const engineType = settings?.automationEngine || "BUILT_IN";
+    const hasEndpoints = endpoints && endpoints.length > 0;
+    steps.push(
+      { label: "Connect your brokerage", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
+      { label: "Choose an execution engine below", done: true },
+    );
+    if (engineType === "ALGOPILOTX") {
+      steps.push({ label: "Set up an Automation Profile (webhook)", done: !!hasEndpoints, action: { label: "Manage Profiles", href: "/execution" } });
+    }
+    steps.push(
+      { label: "Configure safety limits in the controls below", done: true },
+      { label: "Arm the Auto Agent to begin", done: !!agentState?.enabled, action: !agentState?.enabled ? { label: "Scroll to Controls", href: "#safety" } : undefined },
+    );
+  }
+
+  const completedCount = steps.filter(s => s.done).length;
+  const allDone = completedCount === steps.length;
+
+  return (
+    <Card className={cn(allDone ? "border-green-500/30" : "border-primary/30")} data-testid="section-mode-guidance">
+      <CardContent className="pt-5 pb-4">
+        <div className="flex items-start gap-3">
+          <div className={cn(
+            "h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+            allDone ? "bg-green-500/10 text-green-600" : "bg-primary/10 text-primary"
+          )}>
+            {allDone ? <CheckCircle2 className="h-4 w-4" /> : <Info className="h-4 w-4" />}
+          </div>
+          <div className="flex-1 space-y-3">
+            <div>
+              <p className="font-medium text-sm">
+                {allDone
+                  ? `${MODE_CARDS.find(m => m.mode === currentMode)?.title} is active and ready.`
+                  : `Set up ${MODE_CARDS.find(m => m.mode === currentMode)?.title}`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {completedCount} of {steps.length} steps complete
+              </p>
+            </div>
+            <div className="space-y-2">
+              {steps.map((step, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  {step.done ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
+                  )}
+                  <span className={cn(step.done && "text-muted-foreground")}>{step.label}</span>
+                  {step.action && !step.done && (
+                    <Button variant="ghost" size="sm" className="h-6 ml-auto text-xs" asChild>
+                      <Link href={step.action.href}>
+                        {step.action.label}
+                        <ArrowRight className="h-3 w-3 ml-1" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

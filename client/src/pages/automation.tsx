@@ -10,12 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -224,6 +218,9 @@ export default function AutomationPage() {
             currentEngine={currentEngine}
             onSelect={handleEngineChange}
             isPending={updateSettings.isPending}
+            endpoints={endpoints}
+            endpointsLoading={endpointsLoading ?? false}
+            selectedEndpointId={selectedEndpointId}
           />
         )}
 
@@ -238,9 +235,6 @@ export default function AutomationPage() {
           currentEngine={currentEngine}
           agentState={agentState}
           settings={settings}
-          endpoints={endpoints}
-          endpointsLoading={endpointsLoading}
-          selectedEndpointId={selectedEndpointId}
         />
 
         <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
@@ -403,20 +397,33 @@ function ModeGuidance({ currentMode, isConnected, agentState, endpoints, setting
   );
 }
 
-function EngineSelector({ currentEngine, onSelect, isPending }: {
+function EngineSelector({ currentEngine, onSelect, isPending, endpoints, endpointsLoading, selectedEndpointId }: {
   currentEngine: AutomationEngine;
   onSelect: (engine: AutomationEngine) => void;
   isPending: boolean;
+  endpoints?: AutomationEndpoint[];
+  endpointsLoading: boolean;
+  selectedEndpointId: string | null;
 }) {
+  const [expandedEngine, setExpandedEngine] = useState<AutomationEngine | null>(null);
+
+  const handleConfigureClick = (engine: AutomationEngine, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentEngine !== engine) {
+      onSelect(engine);
+    }
+    setExpandedEngine(prev => prev === engine ? null : engine);
+  };
+
   return (
     <Card data-testid="section-engine-selector">
       <CardHeader>
         <CardTitle className="text-lg">2. Automation Engine</CardTitle>
         <CardDescription>
-          Choose which system handles autonomous execution.
+          Choose your execution engine and configure its trading rules.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {ENGINE_CARDS.map(({ engine, title, description, icon: Icon }) => {
             const isSelected = currentEngine === engine;
@@ -443,16 +450,46 @@ function EngineSelector({ currentEngine, onSelect, isPending }: {
                   <div className="font-semibold text-sm">{title}</div>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{description}</p>
                 </div>
-                {isSelected && (
-                  <div className="flex items-center gap-1 text-xs text-primary font-medium">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Selected
-                  </div>
-                )}
+                <div className="flex items-center gap-2 w-full">
+                  {isSelected && (
+                    <div className="flex items-center gap-1 text-xs text-primary font-medium">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Selected
+                    </div>
+                  )}
+                  {isSelected && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto gap-1"
+                      onClick={(e) => handleConfigureClick(engine, e)}
+                      data-testid={`button-configure-${engine.toLowerCase()}`}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      {expandedEngine === engine ? "Hide" : "Configure"}
+                    </Button>
+                  )}
+                </div>
               </button>
             );
           })}
         </div>
+
+        {expandedEngine === "BUILT_IN" && currentEngine === "BUILT_IN" && (
+          <div className="pt-2" data-testid="panel-builtin-config">
+            <AutoAgentPanel />
+          </div>
+        )}
+
+        {expandedEngine === "ALGOPILOTX" && currentEngine === "ALGOPILOTX" && (
+          <div className="pt-2" data-testid="panel-algopilotx-config">
+            <AlgoPilotXProfilesPanel
+              endpoints={endpoints}
+              endpointsLoading={endpointsLoading}
+              selectedEndpointId={selectedEndpointId}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -530,14 +567,11 @@ function BrokerConnectionSection({ isConnected, providerName, isPaper }: {
   );
 }
 
-function SafetyControlsSection({ currentMode, currentEngine, agentState, settings, endpoints, endpointsLoading, selectedEndpointId }: {
+function SafetyControlsSection({ currentMode, currentEngine, agentState, settings }: {
   currentMode: AutomationMode;
   currentEngine: AutomationEngine;
   agentState: AgentState | undefined;
   settings: any;
-  endpoints: AutomationEndpoint[] | undefined;
-  endpointsLoading: boolean;
-  selectedEndpointId: string | null;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -698,27 +732,10 @@ function SafetyControlsSection({ currentMode, currentEngine, agentState, setting
                 </p>
               )}
 
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="advanced">
-                  <AccordionTrigger data-testid="button-advanced-settings">
-                    <span className="flex items-center gap-2 text-sm">
-                      <Settings className="h-4 w-4" />
-                      Advanced Settings
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-4">
-                    {currentEngine === "BUILT_IN" ? (
-                      <AutoAgentPanel />
-                    ) : (
-                      <AlgoPilotXProfilesPanel
-                        endpoints={endpoints}
-                        endpointsLoading={endpointsLoading}
-                        selectedEndpointId={selectedEndpointId}
-                      />
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+              <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg flex items-center gap-2">
+                <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>Configure entry criteria, trade sizing, and position limits in the Automation Engine section above.</span>
+              </div>
             </>
           ) : (
             <div className="text-center py-8 space-y-3">

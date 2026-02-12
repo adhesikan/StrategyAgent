@@ -1,0 +1,146 @@
+ 
+[Region: us-east4]
+==============
+Using Nixpacks
+==============
+
+context: hlh5-oJpX
+╔═════════════════════ Nixpacks v1.38.0 ═════════════════════╗
+║ setup      │ nodejs_20, npm-9_x, openssl                   ║
+║────────────────────────────────────────────────────────────║
+║ caddy      │ pkgs: caddy                                   ║
+║            │ cmds: caddy fmt --overwrite /assets/Caddyfile ║
+║────────────────────────────────────────────────────────────║
+║ install    │ npm ci                                        ║
+║────────────────────────────────────────────────────────────║
+║ build      │ npm run build                                 ║
+║────────────────────────────────────────────────────────────║
+║ start      │ npx tsx script/migrate.ts && npm run start    ║
+╚════════════════════════════════════════════════════════════╝
+
+internal
+load build definition from Dockerfile
+0ms
+
+internal
+load metadata for ghcr.io/railwayapp/nixpacks:ubuntu-1745885067
+222ms
+
+internal
+load .dockerignore
+0ms
+
+stage-0
+FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+8ms
+
+internal
+load build context
+0ms
+
+stage-0
+WORKDIR /app/
+117ms
+
+stage-0
+COPY .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix
+11ms
+
+stage-0
+RUN nix-env -if .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix && nix-collect-garbage -d
+27s
+36 store paths deleted, 243.63 MiB freed
+
+stage-0
+COPY .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix
+33ms
+
+stage-0
+RUN nix-env -if .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix && nix-collect-garbage -d
+34s
+61 store paths deleted, 559.55 MiB freed
+
+stage-0
+COPY .nixpacks/assets /assets/
+106ms
+
+stage-0
+COPY . /app/.
+61ms
+
+stage-0
+RUN  caddy fmt --overwrite /assets/Caddyfile
+111ms
+
+stage-0
+COPY . /app/.
+75ms
+
+stage-0
+RUN npm ci
+2s
+npm warn config production Use `--omit=dev` instead.
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'vite@7.3.0',
+npm warn EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm warn EBADENGINE   current: { node: 'v20.18.1', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm error code EUSAGE
+npm error
+npm error `npm ci` can only install packages when your package.json and package-lock.json or npm-shrinkwrap.json are in sync. Please update your lock file with `npm install` before continuing.
+
+npm error
+npm error Invalid: lock file's @radix-ui/react-popover@1.1.7 does not satisfy @radix-ui/react-popover@1.1.15
+npm error Missing: @radix-ui/primitive@1.1.3 from lock file
+
+npm error Missing: @radix-ui/react-dismissable-layer@1.1.11 from lock file
+
+npm error Missing: @radix-ui/react-focus-guards@1.1.3 from lock file
+
+npm error Missing: @radix-ui/react-focus-scope@1.1.7 from lock file
+
+npm error Missing: @radix-ui/react-popper@1.2.8 from lock file
+
+npm error Missing: @radix-ui/react-portal@1.1.9 from lock file
+
+npm error Missing: @radix-ui/react-presence@1.1.5 from lock file
+
+npm error Missing: @radix-ui/react-primitive@2.1.3 from lock file
+
+npm error Missing: @radix-ui/react-slot@1.2.3 from lock file
+
+npm error Missing: @radix-ui/react-use-controllable-state@1.2.2 from lock file
+
+npm error Missing: @radix-ui/react-arrow@1.1.7 from lock file
+
+npm error Missing: @radix-ui/react-use-effect-event@0.0.2 from lock file
+
+npm error
+npm error Clean install a project
+npm error
+npm error Usage:
+npm error npm ci
+npm error
+npm error Options:
+npm error [--install-strategy <hoisted|nested|shallow|linked>] [--legacy-bundling]
+npm error [--global-style] [--omit <dev|optional|peer> [--omit <dev|optional|peer> ...]]
+npm error [--include <prod|dev|optional|peer> [--include <prod|dev|optional|peer> ...]]
+npm error [--strict-peer-deps] [--foreground-scripts] [--ignore-scripts] [--no-audit]
+npm error [--no-bin-links] [--no-fund] [--dry-run]
+npm error [-w|--workspace <workspace-name> [-w|--workspace <workspace-name> ...]]
+npm error [-ws|--workspaces] [--include-workspace-root] [--install-links]
+npm error
+npm error aliases: clean-install, ic, install-clean, isntall-clean
+npm error
+npm error Run "npm help ci" for more info
+npm error A complete log of this run can be found in: /root/.npm/_logs/2026-02-12T17_21_33_765Z-debug-0.log
+Dockerfile:26
+-------------------
+24 |     ENV NIXPACKS_PATH=/app/node_modules/.bin:$NIXPACKS_PATH
+25 |     COPY . /app/.
+26 | >>> RUN --mount=type=cache,id=s/4e7da56b-ca99-4705-8f50-ffeaebfd0f13-/root/npm,target=/root/.npm npm ci
+27 |
+28 |     # build phase
+-------------------
+ERROR: failed to build: failed to solve: process "/bin/bash -ol pipefail -c npm ci" did not complete successfully: exit code: 1
+Error: Docker build failed

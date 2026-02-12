@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Shield, AlertTriangle, Bot } from "lucide-react";
+import { AlertTriangle, Bot } from "lucide-react";
 
 interface AutoAgentAcknowledgementModalProps {
   open: boolean;
@@ -128,18 +128,6 @@ export function AutoAgentAcknowledgementModal({
             </div>
           </div>
 
-          <Card className="bg-muted/50">
-            <CardContent className="pt-4">
-              <div className="flex items-start gap-2">
-                <Shield className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  VCP Trader provides tools for self-directed traders. Automation follows your 
-                  rules. You are responsible for configuration and monitoring. Not investment 
-                  advice. No guarantees.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <DialogFooter>

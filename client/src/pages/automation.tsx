@@ -38,7 +38,7 @@ interface AgentState {
   dailyPnlEstimate: number | null;
 }
 
-const DISCLAIMER_TEXT = "All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader is a software tool for self-directed traders. No guarantees. Users control all trading decisions and automation.";
+const DISCLAIMER_TEXT = "All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan.";
 
 type AutomationMode = "ALERTS" | "ASSISTED" | "AUTONOMOUS";
 

@@ -512,12 +512,6 @@ export function SetupDetailDrawer({
               )}
             </div>
 
-            <div className="pt-4 border-t">
-              <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                Educational & informational only. Not investment advice.
-              </p>
-            </div>
           </div>
         </SheetContent>
       </Sheet>

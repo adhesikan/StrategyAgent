@@ -1580,18 +1580,6 @@ export default function CommandCenter() {
             </CardFooter>
           </Card>
 
-          <Card className="bg-muted/30">
-            <CardContent className="pt-4">
-              <div className="flex items-start gap-2">
-                <Shield className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  VCP Trader is a software tool for self-directed traders. 
-                  Educational and informational use only. Not investment advice. No guarantees. 
-                  Users control all trading decisions and automation.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -1884,7 +1872,7 @@ export default function CommandCenter() {
       />
 
       <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
-        All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader is a software tool for self-directed traders. No guarantees. Users control all trading decisions and automation.
+        All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan.
       </div>
     </div>
   );

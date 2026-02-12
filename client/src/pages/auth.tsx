@@ -152,9 +152,6 @@ export default function AuthPage() {
             >
               {isLogin ? "Need an account? Sign up" : "Already have an account? Sign in"}
             </Button>
-            <p className="text-xs text-muted-foreground text-center max-w-sm" data-testid="text-auth-disclaimer">
-              VCP Trader is a software tool for self-directed traders. Educational content only. Not investment advice. No guarantees. Users control all trading decisions and automation.
-            </p>
             <div className="flex justify-center gap-4 text-xs text-muted-foreground">
               <Link href="/terms" className="hover:text-foreground" data-testid="link-auth-terms">Terms</Link>
               <Link href="/disclaimer" className="hover:text-foreground" data-testid="link-auth-disclaimer">Disclaimer</Link>

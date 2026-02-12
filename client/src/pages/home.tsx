@@ -698,9 +698,6 @@ function LandingFooter() {
             </a>
           </div>
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-8" data-testid="text-footer-disclaimer">
-          VCP Trader is a Sunfish Technologies LLC platform. Not investment advice.
-        </p>
       </div>
     </footer>
   );

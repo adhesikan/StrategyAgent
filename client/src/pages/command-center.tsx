@@ -213,7 +213,8 @@ export default function CommandCenter() {
 
   const { data: scanResults } = useQuery<ScanResult[]>({
     queryKey: ["/api/scan/results"],
-    staleTime: 5_000,
+    staleTime: 0,
+    gcTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
   });

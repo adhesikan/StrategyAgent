@@ -1303,6 +1303,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.get("/api/broker/token-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const brokerService = await import("./broker/index");
+      const health = await brokerService.getTokenHealth(userId);
+      res.json(health);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check token health" });
+    }
+  });
+
   app.get("/api/data-source/status", async (req, res) => {
     try {
       const userId = req.session?.userId;
@@ -2313,12 +2324,16 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.redirect("/settings?tradier_error=no_access_token");
       }
 
-      // Store the connection with encrypted access token
+      const tradierExpiresAt = tokenData.expires_in
+        ? new Date(Date.now() + tokenData.expires_in * 1000)
+        : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
       await storage.setBrokerConnectionWithTokens(
         userId,
         "tradier",
         accessToken,
-        tokenData.refresh_token || undefined
+        tokenData.refresh_token || undefined,
+        tradierExpiresAt
       );
 
       // Mark connection as active

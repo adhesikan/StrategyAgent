@@ -82,9 +82,59 @@ async function refreshTradeStationToken(userId: string, refreshToken: string): P
     );
 
     console.log(`[BrokerService] TradeStation token refreshed for user ${userId}`);
+    invalidateBrokerCache(userId);
     return data.access_token;
   } catch (error) {
     console.error("[BrokerService] TradeStation token refresh error:", (error as Error).message);
+    return null;
+  }
+}
+
+async function refreshTradierToken(userId: string, refreshToken: string): Promise<string | null> {
+  const clientId = process.env.TRADIER_CLIENT_ID;
+  const clientSecret = process.env.TRADIER_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  try {
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const response = await fetch("https://api.tradier.com/v1/oauth/refreshtoken", {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[BrokerService] Tradier token refresh failed: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!data.access_token) return null;
+
+    const expiresAt = data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await storage.setBrokerConnectionWithTokens(
+      userId,
+      "tradier",
+      data.access_token,
+      data.refresh_token || refreshToken,
+      expiresAt,
+    );
+
+    console.log(`[BrokerService] Tradier token refreshed for user ${userId}`);
+    invalidateBrokerCache(userId);
+    return data.access_token;
+  } catch (error) {
+    console.error("[BrokerService] Tradier token refresh error:", (error as Error).message);
     return null;
   }
 }
@@ -95,11 +145,19 @@ async function getConnectionForUser(userId: string) {
     return null;
   }
 
-  if (connection.provider === "tradestation" && connection.accessTokenExpiresAt) {
+  if (connection.accessTokenExpiresAt) {
     const expiresAt = new Date(connection.accessTokenExpiresAt).getTime();
     const fiveMinutesFromNow = Date.now() + 5 * 60 * 1000;
+
     if (expiresAt < fiveMinutesFromNow && connection.refreshToken) {
-      const newToken = await refreshTradeStationToken(userId, connection.refreshToken);
+      let newToken: string | null = null;
+
+      if (connection.provider === "tradestation") {
+        newToken = await refreshTradeStationToken(userId, connection.refreshToken);
+      } else if (connection.provider === "tradier") {
+        newToken = await refreshTradierToken(userId, connection.refreshToken);
+      }
+
       if (newToken) {
         return { ...connection, accessToken: newToken };
       }
@@ -107,6 +165,36 @@ async function getConnectionForUser(userId: string) {
   }
 
   return connection;
+}
+
+export async function getTokenHealth(userId: string): Promise<{ status: "valid" | "expiring" | "expired" | "unknown"; expiresAt: string | null; provider: string | null }> {
+  const connection = await storage.getBrokerConnectionWithToken(userId);
+  if (!connection || !connection.isConnected) {
+    return { status: "unknown", expiresAt: null, provider: null };
+  }
+
+  if (!connection.accessTokenExpiresAt) {
+    return { status: "unknown", expiresAt: null, provider: connection.provider };
+  }
+
+  const expiresAt = new Date(connection.accessTokenExpiresAt).getTime();
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+
+  let status: "valid" | "expiring" | "expired" | "unknown";
+  if (expiresAt <= now) {
+    status = "expired";
+  } else if (expiresAt <= now + oneHour) {
+    status = "expiring";
+  } else {
+    status = "valid";
+  }
+
+  return {
+    status,
+    expiresAt: new Date(expiresAt).toISOString(),
+    provider: connection.provider,
+  };
 }
 
 export async function getBrokerStatus(userId: string): Promise<BrokerStatus> {

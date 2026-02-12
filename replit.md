@@ -62,10 +62,11 @@ The platform includes an automated multi-strategy scanning system that runs at 5
 - **PostgreSQL**: Primary database for all application data.
 
 ### Brokerage Integrations
-The application connects to multiple brokerage providers, storing encrypted connections and allowing users to select a preferred trading account.
-- **Tradier**: OAuth-based integration for market data and trading.
-- **TradeStation**: OAuth-based integration (Authorization Code flow) for market data and trading via TradeStation v3 API, with automatic token refresh.
+The application connects to multiple brokerage providers, storing encrypted connections and allowing users to select a preferred trading account. All OAuth tokens have automatic refresh support when refresh tokens are available.
+- **Tradier**: OAuth-based integration for market data and trading. Access tokens expire after 24 hours and are auto-refreshed via `refreshTradierToken()` in `server/broker/index.ts`. Token expiration is stored in `accessTokenExpiresAt` on the broker connection.
+- **TradeStation**: OAuth-based integration (Authorization Code flow) for market data and trading via TradeStation v3 API, with automatic token refresh (~20 min TTL).
 - **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages, supporting dual execution methods.
+- **Token Health Monitoring**: The `/api/broker/token-health` endpoint reports token status (valid/expiring/expired) and the Command Center displays a notification banner when tokens need attention.
 
 ### Push Notifications
 - **Web Push API**: Used for real-time alert delivery.

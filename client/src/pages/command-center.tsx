@@ -168,6 +168,11 @@ export default function CommandCenter() {
     queryKey: ["/api/broker/status"],
   });
 
+  const { data: tokenHealth } = useQuery<{ status: string; expiresAt: string | null; provider: string | null }>({
+    queryKey: ["/api/broker/token-health"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+
   const { data: agentState } = useQuery<AgentState | null>({
     queryKey: ["/api/agent/state"],
   });
@@ -422,9 +427,9 @@ export default function CommandCenter() {
             icon={Activity}
           />
           <StatusCard 
-            status={brokerConnected ? "online" : "offline"} 
-            label={brokerConnected ? `${brokerStatus?.provider}` : "No Broker"} 
-            icon={Wifi}
+            status={brokerConnected && tokenHealth?.status === "expired" ? "offline" : brokerConnected && tokenHealth?.status === "expiring" ? "warning" : brokerConnected ? "online" : "offline"} 
+            label={brokerConnected && tokenHealth?.status === "expired" ? "Token Expired" : brokerConnected && tokenHealth?.status === "expiring" ? "Token Expiring" : brokerConnected ? `${brokerStatus?.provider}` : "No Broker"} 
+            icon={brokerConnected && tokenHealth?.status === "expired" ? WifiOff : Wifi}
           />
           <StatusCard 
             status={automationMode === "AUTONOMOUS" ? (agentStatus.status) : "offline"} 
@@ -433,6 +438,27 @@ export default function CommandCenter() {
           />
         </div>
       </div>
+
+      {brokerConnected && (tokenHealth?.status === "expired" || tokenHealth?.status === "expiring") && (
+        <div className={cn(
+          "flex items-center gap-3 p-3 rounded-lg border",
+          tokenHealth.status === "expired"
+            ? "bg-destructive/10 border-destructive/30 text-destructive"
+            : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400"
+        )} data-testid="banner-token-health">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <div className="flex-1 text-sm">
+            {tokenHealth.status === "expired" ? (
+              <span>Your {tokenHealth.provider} access token has expired. Reconnect in Settings to restore live data.</span>
+            ) : (
+              <span>Your {tokenHealth.provider} access token expires soon{tokenHealth.expiresAt ? ` (${new Date(tokenHealth.expiresAt).toLocaleTimeString()})` : ""}. Reconnect in Settings to avoid disruption.</span>
+            )}
+          </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/settings" data-testid="link-reconnect-broker">Reconnect</Link>
+          </Button>
+        </div>
+      )}
 
       {(() => {
         const modeLabel = automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : "Autonomous";

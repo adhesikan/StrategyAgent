@@ -235,6 +235,7 @@ export default function CommandCenter() {
   }, [brokerAccounts, brokerStatus?.preferredAccountId]);
 
   const [showTradeTicket, setShowTradeTicket] = useState(false);
+  const [tradeTicker, setTradeTicker] = useState<string | null>(null);
 
   const { data: agentState } = useQuery<AgentState | null>({
     queryKey: ["/api/agent/state"],
@@ -638,6 +639,12 @@ export default function CommandCenter() {
     if (!selectedTicker) return null;
     return deduplicatedResults.find(r => r.ticker === selectedTicker) || null;
   }, [selectedTicker, deduplicatedResults]);
+
+  const tradeResult = useMemo(() => {
+    const ticker = tradeTicker || selectedTicker;
+    if (!ticker) return null;
+    return deduplicatedResults.find(r => r.ticker === ticker) || null;
+  }, [tradeTicker, selectedTicker, deduplicatedResults]);
 
   const marketOpen = isMarketOpen();
   const brokerConnected = brokerStatus?.isConnected ?? false;
@@ -1323,12 +1330,12 @@ export default function CommandCenter() {
                                   disabled={!brokerConnected}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedTicker(result.ticker);
+                                    setTradeTicker(result.ticker);
                                     setShowTradeTicket(true);
                                   }}
                                   data-testid={`button-instatrade-${result.ticker}`}
                                 >
-                                  <Zap className="h-4 w-4" />
+                                  <Zap className="h-4 w-4 text-amber-500" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>{brokerConnected ? "InstaTrade™" : "Connect broker to trade"}</TooltipContent>
@@ -1853,9 +1860,12 @@ export default function CommandCenter() {
                 className="flex-1" 
                 data-testid="button-instatrade-chart"
                 disabled={!brokerConnected}
-                onClick={() => setShowTradeTicket(true)}
+                onClick={() => {
+                  if (selectedTicker) setTradeTicker(selectedTicker);
+                  setShowTradeTicket(true);
+                }}
               >
-                <Zap className="h-4 w-4 mr-1" />
+                <Zap className="h-4 w-4 mr-1 text-amber-300" />
                 InstaTrade™
               </Button>
             </div>
@@ -1865,15 +1875,18 @@ export default function CommandCenter() {
 
       <StockTradeTicket
         open={showTradeTicket}
-        onOpenChange={setShowTradeTicket}
-        scanResult={selectedResult ? {
-          ticker: selectedResult.ticker,
-          price: selectedResult.price ?? 0,
-          resistance: selectedResult.resistance ?? null,
-          stopLoss: selectedResult.stopLoss ?? null,
-          stage: selectedResult.stage ?? "",
-          patternScore: selectedResult.patternScore ?? 0,
-          rvol: selectedResult.rvol ?? undefined,
+        onOpenChange={(open) => {
+          setShowTradeTicket(open);
+          if (!open) setTradeTicker(null);
+        }}
+        scanResult={tradeResult ? {
+          ticker: tradeResult.ticker,
+          price: tradeResult.price ?? 0,
+          resistance: tradeResult.resistance ?? null,
+          stopLoss: tradeResult.stopLoss ?? null,
+          stage: tradeResult.stage ?? "",
+          patternScore: tradeResult.patternScore ?? 0,
+          rvol: tradeResult.rvol ?? undefined,
         } : null}
         brokerAccounts={brokerAccounts}
         selectedAccount={selectedBrokerAccount}

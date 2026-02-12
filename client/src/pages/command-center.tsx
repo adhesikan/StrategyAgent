@@ -680,6 +680,10 @@ export default function CommandCenter() {
 
   const openPositions = trades?.filter(t => t.status === "OPEN") || [];
 
+  const instatradeTodayCount = todaysTrades.filter(t => t.source === "instatrade").length;
+  const agentTodayCount = todaysTrades.filter(t => t.source === "auto_agent").length;
+  const manualTodayCount = todaysTrades.length - instatradeTodayCount - agentTodayCount;
+
   const getAgentStatus = () => {
     if (emergencyStop) return { label: "Emergency Stop", status: "offline" as const };
     if (!agentEnabled) return { label: "Disabled", status: "offline" as const };
@@ -1511,14 +1515,27 @@ export default function CommandCenter() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-lg bg-muted/50 text-center">
-                  <p className="text-2xl font-bold">{openPositions.length}</p>
+                  <p className="text-2xl font-bold" data-testid="text-open-positions">{openPositions.length}</p>
                   <p className="text-xs text-muted-foreground">Open Positions</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 text-center">
-                  <p className="text-2xl font-bold">{todaysTrades.length}</p>
+                  <p className="text-2xl font-bold" data-testid="text-trades-today">{todaysTrades.length}</p>
                   <p className="text-xs text-muted-foreground">Trades Today</p>
                 </div>
               </div>
+              {todaysTrades.length > 0 && (
+                <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                  {instatradeTodayCount > 0 && (
+                    <span data-testid="text-instatrade-count">InstaTrade™: {instatradeTodayCount}</span>
+                  )}
+                  {agentTodayCount > 0 && (
+                    <span data-testid="text-agent-count">Auto Agent: {agentTodayCount}</span>
+                  )}
+                  {manualTodayCount > 0 && (
+                    <span data-testid="text-manual-count">Manual: {manualTodayCount}</span>
+                  )}
+                </div>
+              )}
 
               {agentState?.lastRunAt && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -4416,6 +4416,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         setupPayload,
         side: "LONG",
         status: "OPEN",
+        source: "manual",
         entryTimestamp: new Date(),
       });
       res.json(trade);
@@ -4525,6 +4526,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             entryExecutionId: executionRequest.id,
             side: "LONG",
             status: "OPEN",
+            source: "instatrade",
             entryPrice: setupPayload?.price || setupPayload?.entryTrigger,
             stopLoss: setupPayload?.stopLoss,
             target: setupPayload?.resistance,

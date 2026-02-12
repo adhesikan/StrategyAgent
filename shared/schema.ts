@@ -891,6 +891,7 @@ export const trades = pgTable("trades", {
   entryTimestamp: timestamp("entry_timestamp").defaultNow(),
   exitTimestamp: timestamp("exit_timestamp"),
   createdAt: timestamp("created_at").defaultNow(),
+  source: text("source").default("manual"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

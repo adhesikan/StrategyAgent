@@ -968,6 +968,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     avoidFirstMinutes: z.number().int().min(0).max(240).optional(),
     cooldownMinutes: z.number().int().min(0).max(1440).optional(),
     scanIntervalMinutes: z.number().int().min(1).max(60).optional(),
+    optionsEnabled: z.boolean().optional(),
+    optionType: z.enum(["calls", "puts", "both"]).optional(),
+    optionsStrategy: z.enum(["long_calls", "long_puts", "covered_calls", "credit_spreads", "cash_secured_puts"]).optional(),
+    optionsDeltaMin: z.number().min(0.05).max(0.95).optional(),
+    optionsDeltaMax: z.number().min(0.05).max(0.95).optional(),
+    optionsDteMin: z.number().int().min(1).max(365).optional(),
+    optionsDteMax: z.number().int().min(1).max(365).optional(),
+    optionsPremiumMin: z.number().min(0).nullable().optional(),
+    optionsPremiumMax: z.number().min(0).nullable().optional(),
+    optionsMinOpenInterest: z.number().int().min(0).optional(),
+    optionsMinVolume: z.number().int().min(0).optional(),
+    optionsMaxRiskUsd: z.number().min(0).max(100000).optional(),
   }).strict();
 
   app.put("/api/agent/policy", isAuthenticated, async (req, res) => {

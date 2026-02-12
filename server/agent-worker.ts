@@ -13,7 +13,13 @@ import {
   AgentMode,
   InsertAgentDecision,
   Opportunity,
+  AgentPolicy,
 } from "@shared/schema";
+import {
+  runOptionsScan,
+  type OptionCandidate,
+  type ScanPreferences,
+} from "./engines/options-scanner/index";
 
 let agentWorkerInterval: NodeJS.Timeout | null = null;
 const WORKER_INTERVAL_MS = 60 * 1000; // Check every 1 minute for users whose scan interval has elapsed
@@ -117,20 +123,42 @@ async function processUserOpportunities(userId: string): Promise<void> {
     }
     
     if (policy.mode === AgentMode.SUGGEST) {
+      const reasons = ["Opportunity passed all policy criteria"];
+
+      let optionsCandidate: OptionCandidate | null = null;
+      if (policy.optionsEnabled) {
+        optionsCandidate = await evaluateOptionsForOpportunity(userId, policy, item.opportunity);
+        if (optionsCandidate) {
+          reasons.push(`Options match: ${optionsCandidate.optionType.toUpperCase()} $${optionsCandidate.strike} exp ${optionsCandidate.expiration} (delta ${optionsCandidate.delta.toFixed(2)}, score ${optionsCandidate.score})`);
+        }
+      }
+
       const decision: InsertAgentDecision = {
         userId,
         policyId: policy.id,
         opportunityId: item.opportunity.id,
         symbol: item.opportunity.symbol,
         action: AgentAction.SUGGEST,
-        reasons: ["Opportunity passed all policy criteria"],
+        reasons,
         metricsSnapshot: item.eligibility.metrics,
+        orderPayload: optionsCandidate ? buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate) : undefined,
       };
       await recordDecision(decision);
-      console.log(`[AgentWorker] SUGGEST: ${item.opportunity.symbol} for user ${userId}`);
+      console.log(`[AgentWorker] SUGGEST: ${item.opportunity.symbol}${optionsCandidate ? ` (options: ${optionsCandidate.optionType} $${optionsCandidate.strike})` : ""} for user ${userId}`);
     } else if (policy.mode === AgentMode.AUTO) {
       try {
-        const orderPayload = buildOrderPayload(item.opportunity, policy);
+        let orderPayload: object;
+        let optionsCandidate: OptionCandidate | null = null;
+
+        if (policy.optionsEnabled) {
+          optionsCandidate = await evaluateOptionsForOpportunity(userId, policy, item.opportunity);
+        }
+
+        if (optionsCandidate) {
+          orderPayload = buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate);
+        } else {
+          orderPayload = buildOrderPayload(item.opportunity, policy);
+        }
         
         const decision: InsertAgentDecision = {
           userId,
@@ -138,14 +166,16 @@ async function processUserOpportunities(userId: string): Promise<void> {
           opportunityId: item.opportunity.id,
           symbol: item.opportunity.symbol,
           action: AgentAction.EXECUTE,
-          reasons: ["Auto-executed by agent"],
+          reasons: optionsCandidate 
+            ? [`Auto-executed options: ${optionsCandidate.optionType.toUpperCase()} $${optionsCandidate.strike} exp ${optionsCandidate.expiration}`]
+            : ["Auto-executed by agent"],
           metricsSnapshot: item.eligibility.metrics,
           orderPayload,
         };
         await recordDecision(decision);
         await incrementTradesToday(userId);
         
-        console.log(`[AgentWorker] EXECUTE: ${item.opportunity.symbol} for user ${userId}`);
+        console.log(`[AgentWorker] EXECUTE: ${item.opportunity.symbol}${optionsCandidate ? ` (options: ${optionsCandidate.optionType} $${optionsCandidate.strike})` : ""} for user ${userId}`);
       } catch (error: any) {
         const decision: InsertAgentDecision = {
           userId,
@@ -161,6 +191,122 @@ async function processUserOpportunities(userId: string): Promise<void> {
       }
     }
   }
+}
+
+function mapPolicyToStrategyKey(strategy: string | null): string {
+  switch (strategy) {
+    case "long_calls":
+    case "long_puts":
+      return "long-options";
+    case "covered_calls":
+    case "cash_secured_puts":
+      return "wheel";
+    case "credit_spreads":
+      return "credit-spreads";
+    default:
+      return "long-options";
+  }
+}
+
+async function evaluateOptionsForOpportunity(
+  userId: string,
+  policy: AgentPolicy,
+  opportunity: Opportunity,
+): Promise<OptionCandidate | null> {
+  if (!policy.optionsEnabled) return null;
+
+  const brokerConnection = await storage.getBrokerConnectionWithToken(userId);
+  if (!brokerConnection?.accessToken) {
+    console.log(`[AgentWorker] No broker token for options evaluation, user ${userId}`);
+    return null;
+  }
+
+  const scanPrefs: ScanPreferences = {
+    dteMin: policy.optionsDteMin ?? 14,
+    dteMax: policy.optionsDteMax ?? 45,
+    deltaMin: policy.optionsDeltaMin ?? 0.30,
+    deltaMax: policy.optionsDeltaMax ?? 0.70,
+    minPremiumPct: 0.5,
+  };
+
+  const strategyKey = mapPolicyToStrategyKey(policy.optionsStrategy);
+
+  try {
+    const result = await runOptionsScan(
+      {
+        universeId: "agent",
+        strategyKey,
+        symbols: [opportunity.symbol],
+        scanPreferences: scanPrefs,
+      },
+      brokerConnection.accessToken,
+    );
+
+    if (result.candidates.length === 0) return null;
+
+    const optionType = policy.optionType ?? "calls";
+    let filtered = result.candidates;
+
+    if (optionType !== "both") {
+      const filterType = optionType === "calls" ? "call" : "put";
+      filtered = filtered.filter((c) => c.optionType === filterType);
+    }
+
+    if (policy.optionsMinOpenInterest) {
+      filtered = filtered.filter((c) => c.openInterest >= (policy.optionsMinOpenInterest ?? 0));
+    }
+    if (policy.optionsMinVolume) {
+      filtered = filtered.filter((c) => c.volume >= (policy.optionsMinVolume ?? 0));
+    }
+    if (policy.optionsPremiumMin != null) {
+      filtered = filtered.filter((c) => c.mid >= (policy.optionsPremiumMin ?? 0));
+    }
+    if (policy.optionsPremiumMax != null) {
+      filtered = filtered.filter((c) => c.mid <= (policy.optionsPremiumMax ?? Infinity));
+    }
+    if (policy.optionsMaxRiskUsd != null) {
+      filtered = filtered.filter((c) => Math.abs(c.maxLoss) <= (policy.optionsMaxRiskUsd ?? Infinity));
+    }
+
+    if (filtered.length === 0) return null;
+
+    filtered.sort((a, b) => b.score - a.score);
+    return filtered[0];
+  } catch (error: any) {
+    console.error(`[AgentWorker] Options evaluation error for ${opportunity.symbol}: ${error.message}`);
+    return null;
+  }
+}
+
+function buildOptionsOrderPayload(
+  opportunity: Opportunity,
+  policy: AgentPolicy,
+  candidate: OptionCandidate,
+): object {
+  const maxRisk = policy.optionsMaxRiskUsd ?? 500;
+  const contractCost = candidate.mid * 100;
+  const quantity = contractCost > 0 ? Math.max(1, Math.floor(maxRisk / contractCost)) : 1;
+
+  return {
+    symbol: candidate.symbol,
+    underlying: candidate.underlying,
+    action: candidate.legs[0]?.side === "sell" ? "SELL_TO_OPEN" : "BUY_TO_OPEN",
+    orderType: "LIMIT",
+    limitPrice: candidate.mid,
+    quantity,
+    optionType: candidate.optionType,
+    strike: candidate.strike,
+    expiration: candidate.expiration,
+    strategy: candidate.strategy,
+    delta: candidate.delta,
+    dte: candidate.dte,
+    maxLoss: candidate.maxLoss,
+    maxProfit: candidate.maxProfit,
+    breakeven: candidate.breakeven,
+    legs: candidate.legs,
+    opportunityId: opportunity.id,
+    isOptionsOrder: true,
+  };
 }
 
 function buildOrderPayload(opportunity: Opportunity, policy: any): object {

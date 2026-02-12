@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend
-The frontend is a React 18 application with TypeScript, built using Vite. It uses Wouter for routing, TanStack React Query for server state, shadcn/ui (built on Radix UI) for components, and Tailwind CSS for styling. TradingView lightweight-charts are used for price visualization, and PWA capabilities are enabled via a service worker and Web Push API. The UI employs a 3-column layout with a collapsible Smart Panel for contextual information and uses Radix UI primitives for accessibility.
+The frontend is a React 18 application with TypeScript, built using Vite. It uses Wouter for routing, TanStack React Query for server state, shadcn/ui (built on Radix UI) for components, and Tailwind CSS for styling. TradingView lightweight-charts are used for price visualization, and PWA capabilities are enabled via a service worker and Web Push API. The UI uses Radix UI primitives for accessibility.
 
 ### Backend
 The backend is built with Node.js and Express.js, written in TypeScript, featuring RESTful API endpoints. It uses Drizzle ORM with PostgreSQL for data persistence and Zod for schema validation. The build system uses custom esbuild scripts.

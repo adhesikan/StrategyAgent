@@ -7,7 +7,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AppSidebar } from "@/components/app-sidebar";
-import { SmartPanel } from "@/components/smart-panel";
 import { LegalAcceptanceModal } from "@/components/legal-acceptance-modal";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { Footer } from "@/components/footer";
@@ -251,7 +250,6 @@ function AppLayout() {
         <SidebarProvider style={sidebarStyle}>
           <div className="flex h-screen w-full">
             <AppSidebar />
-            <SmartPanel />
             <SidebarInset className="flex flex-col flex-1 min-w-0">
               <AppHeader />
               <StatusBanner />

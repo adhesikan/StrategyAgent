@@ -256,9 +256,22 @@ export default function CommandCenter() {
     return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
   };
 
-  const filteredSortedResults = useMemo(() => {
+  const deduplicatedResults = useMemo(() => {
     if (!scanResults) return [];
-    let filtered = [...scanResults];
+    const best = new Map<string, ScanResult>();
+    for (const r of scanResults) {
+      const key = r.ticker;
+      const existing = best.get(key);
+      if (!existing || (r.patternScore ?? 0) > (existing.patternScore ?? 0)) {
+        best.set(key, r);
+      }
+    }
+    return Array.from(best.values());
+  }, [scanResults]);
+
+  const filteredSortedResults = useMemo(() => {
+    if (!deduplicatedResults.length) return [];
+    let filtered = [...deduplicatedResults];
 
     if (stageFilter !== "all") {
       filtered = filtered.filter(r => r.stage === stageFilter);
@@ -296,19 +309,19 @@ export default function CommandCenter() {
   }, [scanResults, stageFilter, scoreFilter, strategyFilter, sortField, sortDirection]);
 
   const totalFilteredCount = useMemo(() => {
-    if (!scanResults) return 0;
-    let filtered = [...scanResults];
+    if (!deduplicatedResults.length) return 0;
+    let filtered = [...deduplicatedResults];
     if (stageFilter !== "all") filtered = filtered.filter(r => r.stage === stageFilter);
     if (scoreFilter === "60") filtered = filtered.filter(r => (r.patternScore ?? 0) >= 60);
     else if (scoreFilter === "80") filtered = filtered.filter(r => (r.patternScore ?? 0) >= 80);
     if (strategyFilter !== "all") filtered = filtered.filter(r => r.strategy === strategyFilter);
     return filtered.length;
-  }, [scanResults, stageFilter, scoreFilter, strategyFilter]);
+  }, [deduplicatedResults, stageFilter, scoreFilter, strategyFilter]);
 
   const selectedResult = useMemo(() => {
-    if (!selectedTicker || !scanResults) return null;
-    return scanResults.find(r => r.ticker === selectedTicker) || null;
-  }, [selectedTicker, scanResults]);
+    if (!selectedTicker) return null;
+    return deduplicatedResults.find(r => r.ticker === selectedTicker) || null;
+  }, [selectedTicker, deduplicatedResults]);
 
   const marketOpen = isMarketOpen();
   const brokerConnected = brokerStatus?.isConnected ?? false;

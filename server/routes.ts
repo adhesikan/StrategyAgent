@@ -18,7 +18,6 @@ import {
   fetchHistoryFromBroker,
   fetchHistoryWithDateRange,
   processChartData,
-  isBullishScanResult,
   DEFAULT_SCAN_SYMBOLS,
   DOW_30,
   NASDAQ_100,
@@ -462,7 +461,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
       
       // Fallback to stored results (filter out bearish)
-      const storedResults = (await storage.getScanResults()).filter(isBullishScanResult);
+      const storedResults = await storage.getScanResults();
       if (includeMeta) {
         return res.json({ data: storedResults, isLive: false });
       }

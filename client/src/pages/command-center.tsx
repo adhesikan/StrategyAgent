@@ -314,10 +314,6 @@ export default function CommandCenter() {
     if (!scanResults) return [];
     const best = new Map<string, ScanResult>();
     for (const r of scanResults) {
-      const e9 = r.ema9 ?? 0;
-      const e21 = r.ema21 ?? 0;
-      if (e9 > 0 && e21 > 0 && e9 < e21 * 0.97) continue;
-      if ((r.changePercent ?? 0) < -3) continue;
       const key = r.ticker;
       const existing = best.get(key);
       if (!existing || (r.patternScore ?? 0) > (existing.patternScore ?? 0)) {
@@ -362,6 +358,19 @@ export default function CommandCenter() {
       if (distance !== null && distance > 5) composite *= 0.4;
       if (status === "EXTENDED") composite *= 0.3;
       if (status === "AWAITING_BREAKOUT" && distance !== null && distance > 3) composite *= 0.6;
+
+      const e9 = r.ema9 ?? 0;
+      const e21 = r.ema21 ?? 0;
+      if (e9 > 0 && e21 > 0) {
+        const emaRatio = e9 / e21;
+        if (emaRatio < 0.97) composite *= 0.15;
+        else if (emaRatio < 0.99) composite *= 0.5;
+        else if (emaRatio < 1.0) composite *= 0.8;
+      }
+      const chg = r.changePercent ?? 0;
+      if (chg < -5) composite *= 0.1;
+      else if (chg < -3) composite *= 0.3;
+      else if (chg < -1) composite *= 0.7;
 
       return { result: r, composite };
     });

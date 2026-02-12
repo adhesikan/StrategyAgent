@@ -728,8 +728,6 @@ export async function verifyBullishTrend(
       const currentPrice = closes[closes.length - 1];
       r.ema9 = Number(ema9.toFixed(2));
       r.ema21 = Number(ema21.toFixed(2));
-      if (ema9 < ema21 * 0.97) return null;
-      if (ema50 > 0 && currentPrice < ema50 * 0.90) return null;
       return r;
     } catch {
       return null;

@@ -89,10 +89,143 @@ export function classifyQuote(
   config?: StrategyConfig
 ): ScanResultItem | null {
   const strategy = strategies.get(strategyId);
-  if (!strategy) return null;
-  
-  const classification = strategy.classify(quote, candles, config);
-  
+  if (strategy) {
+    const classification = strategy.classify(quote, candles, config);
+    
+    return {
+      symbol: quote.symbol,
+      name: quote.symbol,
+      price: Number(quote.last.toFixed(2)),
+      change: Number(quote.change.toFixed(2)),
+      changePercent: Number(quote.changePercent.toFixed(2)),
+      volume: quote.volume,
+      avgVolume: quote.avgVolume || null,
+      rvol: classification.rvol ? Number(classification.rvol.toFixed(2)) : null,
+      stage: classification.stage,
+      strategyId,
+      resistance: classification.levels.resistance || 0,
+      stopLevel: classification.levels.stopLevel,
+      entryTrigger: classification.levels.entryTrigger,
+      exitRule: classification.levels.exitRule,
+      score: classification.score,
+      ema9: Number((classification.ema9 || quote.last * 0.99).toFixed(2)),
+      ema21: Number((classification.ema21 || quote.last * 0.97).toFixed(2)),
+      vwap: classification.vwap,
+      explanation: classification.explanation,
+    };
+  }
+
+  const plugin = strategyPlugins.get(strategyId);
+  if (plugin) {
+    if (candles && candles.length >= 20) {
+      const candleData: CandleData[] = candles.map(c => ({
+        time: String(typeof c.timestamp === "number" ? c.timestamp : new Date(c.timestamp).getTime() / 1000),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume,
+      }));
+      const result = plugin.scan({
+        symbol: quote.symbol,
+        candles: candleData,
+        timeframe: "1d",
+        params: config || plugin.defaultParams,
+        quote,
+      });
+      if (result) {
+        return {
+          symbol: result.symbol,
+          name: result.name || quote.symbol,
+          price: result.price,
+          change: Number(quote.change.toFixed(2)),
+          changePercent: Number(quote.changePercent.toFixed(2)),
+          volume: quote.volume,
+          avgVolume: quote.avgVolume || null,
+          rvol: result.rvol ? Number(result.rvol.toFixed(2)) : null,
+          stage: result.stage,
+          strategyId,
+          resistance: result.levels.resistance || result.levels.entryTrigger || quote.last * 1.02,
+          stopLevel: result.levels.stopLevel,
+          entryTrigger: result.levels.entryTrigger,
+          exitRule: result.levels.exitRule,
+          score: Math.min(100, Math.round(result.score)),
+          ema9: Number((quote.last * 0.99).toFixed(2)),
+          ema21: Number((quote.last * 0.97).toFixed(2)),
+          explanation: result.explanation,
+        };
+      }
+    }
+
+    return classifyQuoteFromPlugin(strategyId, quote);
+  }
+
+  return null;
+}
+
+function classifyQuoteFromPlugin(
+  strategyId: StrategyIdType,
+  quote: QuoteData
+): ScanResultItem | null {
+  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
+  const priceFromOpen = quote.open ? ((quote.last - quote.open) / quote.open) * 100 : 0;
+  const gapPercent = quote.prevClose ? ((quote.open - quote.prevClose) / quote.prevClose) * 100 : quote.changePercent;
+
+  let stage = "FORMING";
+  let score = 40;
+  let qualifies = false;
+  let resistance = quote.high || quote.last * 1.02;
+  let stopLevel = quote.last * 0.95;
+
+  switch (strategyId) {
+    case StrategyId.ORB5:
+    case StrategyId.ORB15: {
+      qualifies = Math.abs(priceFromOpen) > 0.5 && volumeRatio > 1.0;
+      if (priceFromOpen > 1.5 && volumeRatio > 1.5) { stage = "BREAKOUT"; score = 80 + Math.min(20, Math.floor(volumeRatio * 5)); }
+      else if (priceFromOpen > 0.5 && volumeRatio > 1.2) { stage = "READY"; score = 60 + Math.min(20, Math.floor(volumeRatio * 5)); }
+      else { score = 40 + Math.min(20, Math.floor(Math.abs(priceFromOpen) * 10)); }
+      resistance = quote.last * 1.015;
+      stopLevel = quote.open || quote.last * 0.985;
+      break;
+    }
+    case StrategyId.GAP_AND_GO: {
+      qualifies = gapPercent > 2 && priceFromOpen >= 0 && volumeRatio > 1.2;
+      if (gapPercent > 3 && priceFromOpen > 1 && volumeRatio > 2) { stage = "BREAKOUT"; score = 80 + Math.min(20, Math.floor(gapPercent * 3)); }
+      else if (gapPercent > 2 && priceFromOpen >= 0 && volumeRatio > 1.5) { stage = "READY"; score = 60 + Math.min(20, Math.floor(gapPercent * 4)); }
+      else { score = 40 + Math.min(20, Math.floor(gapPercent * 5)); }
+      stopLevel = quote.open || quote.last * 0.97;
+      break;
+    }
+    case StrategyId.VWAP_RECLAIM: {
+      const vwapProxy = (quote.high + quote.low + quote.last) / 3;
+      const priceFromVWAP = vwapProxy ? ((quote.last - vwapProxy) / vwapProxy) * 100 : 0;
+      qualifies = Math.abs(priceFromVWAP) < 1 && volumeRatio > 0.8;
+      if (priceFromVWAP > 0.3 && priceFromVWAP < 1 && volumeRatio > 1.3) { stage = "BREAKOUT"; score = 75 + Math.min(25, Math.floor(volumeRatio * 8)); }
+      else if (Math.abs(priceFromVWAP) < 0.5 && volumeRatio > 1.0) { stage = "READY"; score = 60 + Math.min(20, Math.floor(volumeRatio * 8)); }
+      else { score = 45 + Math.min(15, Math.floor(volumeRatio * 5)); }
+      resistance = quote.high || quote.last * 1.015;
+      stopLevel = vwapProxy * 0.99;
+      break;
+    }
+    case StrategyId.HIGH_RVOL: {
+      qualifies = volumeRatio > 2.0 && quote.change > 0;
+      if (volumeRatio > 3.0 && quote.changePercent > 2) { stage = "BREAKOUT"; score = 80 + Math.min(20, Math.floor(volumeRatio * 4)); }
+      else if (volumeRatio > 2.5 && quote.changePercent > 0.5) { stage = "READY"; score = 65 + Math.min(20, Math.floor(volumeRatio * 4)); }
+      else { score = 40 + Math.min(20, Math.floor(volumeRatio * 8)); }
+      break;
+    }
+    default: {
+      qualifies = quote.changePercent > 2 && volumeRatio > 1.5;
+      if (qualifies) { stage = "BREAKOUT"; score = 75; }
+      else if (quote.changePercent > 0 && volumeRatio > 1.0) { qualifies = true; stage = "READY"; score = 55; }
+      break;
+    }
+  }
+
+  if (!qualifies) return null;
+
+  score = Math.min(100, Math.max(0, Math.round(score)));
+
   return {
     symbol: quote.symbol,
     name: quote.symbol,
@@ -101,18 +234,14 @@ export function classifyQuote(
     changePercent: Number(quote.changePercent.toFixed(2)),
     volume: quote.volume,
     avgVolume: quote.avgVolume || null,
-    rvol: classification.rvol ? Number(classification.rvol.toFixed(2)) : null,
-    stage: classification.stage,
+    rvol: volumeRatio > 0 ? Number(volumeRatio.toFixed(2)) : null,
+    stage,
     strategyId,
-    resistance: classification.levels.resistance || 0,
-    stopLevel: classification.levels.stopLevel,
-    entryTrigger: classification.levels.entryTrigger,
-    exitRule: classification.levels.exitRule,
-    score: classification.score,
-    ema9: Number((classification.ema9 || quote.last * 0.99).toFixed(2)),
-    ema21: Number((classification.ema21 || quote.last * 0.97).toFixed(2)),
-    vwap: classification.vwap,
-    explanation: classification.explanation,
+    resistance: Number(resistance.toFixed(2)),
+    stopLevel: Number(stopLevel.toFixed(2)),
+    score,
+    ema9: Number((quote.last * 0.99).toFixed(2)),
+    ema21: Number((quote.last * 0.97).toFixed(2)),
   };
 }
 

@@ -211,9 +211,9 @@ export default function Charts() {
                 {scanResult.stage}
               </Badge>
             )}
-            {chartData?.patternScore && (
+            {(scanResult?.patternScore ?? chartData?.patternScore) != null && (
               <Badge variant="outline" className="font-mono text-xs">
-                Score: {chartData.patternScore}
+                Score: {scanResult?.patternScore ?? chartData?.patternScore}
               </Badge>
             )}
           </div>

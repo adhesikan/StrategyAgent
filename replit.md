@@ -23,6 +23,9 @@ The project is organized into `client/` for the React frontend, `server/` for th
 ### Key Design Patterns
 A Storage Interface Pattern abstracts data access. Path aliases streamline imports, and type sharing between frontend and backend is achieved via `@shared/schema`. Client-server communication is handled through a `fetch` wrapper with React Query.
 
+### Centralized Strategy Scoring
+All pattern score calculations are centralized in the strategy modules under `server/strategies/`. The `classifyQuote()` function in `server/strategies/index.ts` is the single entry point for scoring any strategy from quote data. It handles both `Strategy` types (VCP, VCP_MULTIDAY, CLASSIC_PULLBACK) and `StrategyPlugin` types (ORB, GAP_AND_GO, VWAP_RECLAIM, HIGH_RVOL, etc.). When candles are available, plugin strategies use their full `scan()` method; otherwise, a quote-based fallback with qualifying criteria is used. Chart data (`processChartData`) does not compute its own `patternScore` - the UI always uses the score from the scan result.
+
 ### Trade Status System
 A centralized system computes the actionability of scan results based on price proximity to resistance/entry levels, categorizing them as `AWAITING_BREAKOUT`, `IN_ENTRY_ZONE`, or `EXTENDED`.
 

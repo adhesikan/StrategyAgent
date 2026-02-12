@@ -614,16 +614,37 @@ function calculateStageForStrategy(quote: QuoteData, strategy: string): string {
 
 export function quotesToScanResults(quotes: QuoteData[], strategy: string = StrategyType.VCP): ScanResult[] {
   return quotes.map((quote) => {
+    const strategyId = strategy as import("./strategies/types").StrategyIdType;
+    const classified = classifyQuote(strategyId, quote);
+
+    if (classified) {
+      return {
+        id: randomUUID(),
+        scanRunId: null,
+        ticker: classified.symbol,
+        name: classified.name,
+        price: classified.price,
+        change: classified.change,
+        changePercent: classified.changePercent,
+        volume: classified.volume,
+        avgVolume: classified.avgVolume,
+        rvol: classified.rvol,
+        stage: classified.stage,
+        resistance: classified.resistance,
+        stopLoss: classified.stopLevel,
+        patternScore: classified.score,
+        ema9: classified.ema9,
+        ema21: classified.ema21,
+        atr: Number((quote.last * 0.02).toFixed(2)),
+        createdAt: new Date(),
+        strategy: strategy,
+      };
+    }
+
     const stage = calculateStageForStrategy(quote, strategy);
-    
-    // Use quote.high if available, otherwise fallback to current price * 1.02
     const highPrice = quote.high && quote.high > 0 ? quote.high : quote.last;
     const resistance = highPrice * 1.02;
     const stopLoss = quote.last * 0.93;
-    const patternScore = Math.min(100, Math.max(50, 
-      70 + (quote.changePercent > 0 ? 10 : -10) + 
-      (quote.volume > (quote.avgVolume || quote.volume) ? 10 : 0)
-    ));
 
     return {
       id: randomUUID(),
@@ -639,7 +660,7 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
       stage,
       resistance: Number(resistance.toFixed(2)),
       stopLoss: Number(stopLoss.toFixed(2)),
-      patternScore,
+      patternScore: 50,
       ema9: Number((quote.last * 0.99).toFixed(2)),
       ema21: Number((quote.last * 0.97).toFixed(2)),
       atr: Number((quote.last * 0.02).toFixed(2)),
@@ -1342,7 +1363,6 @@ export function processChartData(candles: CandleData[], ticker: string): {
   avgVolume: number;
   atr: number;
   rvol: number;
-  patternScore: number;
   stage: string;
   contractionZones: Array<{ start: string; end: string; highLevel: number; lowLevel: number }>;
   vcpAnnotations: Array<{ time: string; price: number; type: string; label?: string }>;
@@ -1364,7 +1384,6 @@ export function processChartData(candles: CandleData[], ticker: string): {
       avgVolume: 0,
       atr: 2,
       rvol: 1,
-      patternScore: 50,
       stage: "FORMING",
       contractionZones: [],
       vcpAnnotations: [],
@@ -1402,10 +1421,6 @@ export function processChartData(candles: CandleData[], ticker: string): {
   } else if (priceFromHigh < 2) {
     stage = "APPROACHING";
   }
-  
-  const patternScore = Math.min(100, Math.max(50,
-    70 + (changePercent > 0 ? 10 : -10) + (rvol > 1.5 ? 10 : 0)
-  ));
 
   const contractionZones: Array<{ start: string; end: string; highLevel: number; lowLevel: number }> = [];
   const vcpAnnotations: Array<{ time: string; price: number; type: string; label?: string }> = [];
@@ -1462,7 +1477,6 @@ export function processChartData(candles: CandleData[], ticker: string): {
     avgVolume: Math.round(avgVolume),
     atr: Number(atr.toFixed(2)),
     rvol: Number(rvol.toFixed(2)),
-    patternScore,
     stage,
     contractionZones,
     vcpAnnotations,

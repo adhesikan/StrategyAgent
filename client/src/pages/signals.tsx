@@ -126,9 +126,10 @@ interface SignalDetailDialogProps {
   open: boolean;
   onClose: () => void;
   ticker: string;
+  patternScore?: number | null;
 }
 
-function SignalDetailDialog({ open, onClose, ticker }: SignalDetailDialogProps) {
+function SignalDetailDialog({ open, onClose, ticker, patternScore: propScore }: SignalDetailDialogProps) {
   const [showEMA9, setShowEMA9] = useState(true);
   const [showEMA21, setShowEMA21] = useState(true);
   const [showEMA50, setShowEMA50] = useState(false);
@@ -173,8 +174,8 @@ function SignalDetailDialog({ open, onClose, ticker }: SignalDetailDialogProps) 
                   {chartData.stage}
                 </Badge>
               )}
-              {chartData?.patternScore && (
-                <Badge variant="outline" className="font-mono">Score: {chartData.patternScore}</Badge>
+              {(propScore ?? chartData?.patternScore) != null && (
+                <Badge variant="outline" className="font-mono">Score: {propScore ?? chartData?.patternScore}</Badge>
               )}
               <Button 
                 variant="ghost" 
@@ -343,7 +344,7 @@ function SignalDetailDialog({ open, onClose, ticker }: SignalDetailDialogProps) 
                     stopLoss={chartData.stopLoss}
                     atr={chartData.atr}
                     rvol={chartData.rvol}
-                    patternScore={chartData.patternScore}
+                    patternScore={propScore ?? chartData.patternScore}
                     stage={chartData.stage}
                     volume={chartData.volume}
                     avgVolume={chartData.avgVolume}
@@ -425,6 +426,7 @@ export default function Signals() {
       rvol: result.rvol || 1.0,
       atr: result.atr || result.price * 0.02,
       strategy: result.strategy || "VCP",
+      patternScore: result.patternScore as number | null,
     }));
 
     // Filter by stage
@@ -701,6 +703,7 @@ export default function Signals() {
         open={!!selectedTicker}
         onClose={() => setSelectedTicker(null)}
         ticker={selectedTicker || ""}
+        patternScore={signalData.find(s => s.ticker === selectedTicker)?.patternScore}
       />
 
     </div>

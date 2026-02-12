@@ -3,9 +3,10 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { ingestOpportunitiesFromScan } from "./opportunity-service";
 import { fetchQuotesFromBroker } from "./broker-service";
-import { classifyVCPStage } from "./alert-engine";
 import { StrategyType } from "@shared/schema";
 import type { ScanResult } from "@shared/schema";
+import { classifyQuote } from "./strategies";
+import type { StrategyIdType } from "./strategies/types";
 
 const DEFAULT_SCAN_UNIVERSE = [
   "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "CRM",
@@ -41,117 +42,6 @@ const STRATEGY_GROUPS = {
   EXTENDED_HOURS_STRATEGIES: [StrategyType.VCP, StrategyType.VCP_MULTIDAY, StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
 };
 
-interface StrategyClassification {
-  qualifies: boolean;
-  stage: "FORMING" | "READY" | "BREAKOUT";
-  volumeRatio: number;
-  resistance: number;
-  stopLoss: number;
-  score: number;
-}
-
-function classifyORB(quote: any): StrategyClassification {
-  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
-  const priceFromOpen = quote.open ? ((quote.last - quote.open) / quote.open) * 100 : 0;
-  
-  // ORB looks for strong moves from open with volume
-  // Breakout: >1.5% from open with high volume
-  // Ready: 0.5-1.5% from open with decent volume
-  const qualifies = Math.abs(priceFromOpen) > 0.5 && volumeRatio > 1.0;
-  
-  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
-  if (priceFromOpen > 1.5 && volumeRatio > 1.5) {
-    stage = "BREAKOUT";
-  } else if (priceFromOpen > 0.5 && volumeRatio > 1.2) {
-    stage = "READY";
-  }
-  
-  return {
-    qualifies,
-    stage,
-    volumeRatio,
-    resistance: quote.last * 1.015,
-    stopLoss: quote.open || quote.last * 0.985,
-    score: Math.min(100, 50 + Math.floor(volumeRatio * 15) + Math.floor(Math.abs(priceFromOpen) * 10)),
-  };
-}
-
-function classifyGapAndGo(quote: any): StrategyClassification {
-  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
-  // Gap is the difference between today's open and yesterday's close (approximated by prevClose if available)
-  const gapPercent = quote.prevClose ? ((quote.open - quote.prevClose) / quote.prevClose) * 100 : quote.changePercent;
-  const priceFromOpen = quote.open ? ((quote.last - quote.open) / quote.open) * 100 : 0;
-  
-  // Gap & Go: Strong gap up (>2%) that continues higher with volume
-  const qualifies = gapPercent > 2 && priceFromOpen >= 0 && volumeRatio > 1.2;
-  
-  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
-  if (gapPercent > 3 && priceFromOpen > 1 && volumeRatio > 2) {
-    stage = "BREAKOUT";
-  } else if (gapPercent > 2 && priceFromOpen >= 0 && volumeRatio > 1.5) {
-    stage = "READY";
-  }
-  
-  return {
-    qualifies,
-    stage,
-    volumeRatio,
-    resistance: quote.high || quote.last * 1.02,
-    stopLoss: quote.open || quote.last * 0.97,
-    score: Math.min(100, 50 + Math.floor(gapPercent * 8) + Math.floor(volumeRatio * 10)),
-  };
-}
-
-function classifyVWAP(quote: any): StrategyClassification {
-  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
-  // VWAP is approximated as midpoint between high and low weighted by volume patterns
-  // For simplicity, use the day's average price as VWAP proxy
-  const vwapProxy = (quote.high + quote.low + quote.last) / 3;
-  const priceFromVWAP = vwapProxy ? ((quote.last - vwapProxy) / vwapProxy) * 100 : 0;
-  
-  // VWAP bounce: Price near or just above VWAP with volume
-  const qualifies = Math.abs(priceFromVWAP) < 1 && volumeRatio > 0.8;
-  
-  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
-  if (priceFromVWAP > 0.3 && priceFromVWAP < 1 && volumeRatio > 1.3) {
-    stage = "BREAKOUT";
-  } else if (Math.abs(priceFromVWAP) < 0.5 && volumeRatio > 1.0) {
-    stage = "READY";
-  }
-  
-  return {
-    qualifies,
-    stage,
-    volumeRatio,
-    resistance: quote.high || quote.last * 1.015,
-    stopLoss: vwapProxy * 0.99,
-    score: Math.min(100, 60 + Math.floor(volumeRatio * 15)),
-  };
-}
-
-function classifyHighRvol(quote: any): StrategyClassification {
-  const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
-  
-  // High RVOL: Stocks with significantly higher than average volume
-  // Indicates unusual activity and potential momentum
-  const qualifies = volumeRatio > 2.0 && quote.change > 0;
-  
-  let stage: "FORMING" | "READY" | "BREAKOUT" = "FORMING";
-  if (volumeRatio > 3.0 && quote.changePercent > 2) {
-    stage = "BREAKOUT";
-  } else if (volumeRatio > 2.5 && quote.changePercent > 0.5) {
-    stage = "READY";
-  }
-  
-  return {
-    qualifies,
-    stage,
-    volumeRatio,
-    resistance: quote.high || quote.last * 1.02,
-    stopLoss: quote.last * 0.95,
-    score: Math.min(100, 40 + Math.floor(volumeRatio * 15) + Math.floor(quote.changePercent * 5)),
-  };
-}
 
 function isTradingDay(date: Date = new Date()): boolean {
   const dayOfWeek = date.getDay();
@@ -165,65 +55,33 @@ function isTradingDay(date: Date = new Date()): boolean {
 
 function quotesToScanResults(quotes: any[], strategy: string): ScanResult[] {
   const results: ScanResult[] = [];
+  const strategyId = strategy as StrategyIdType;
   
   for (const quote of quotes) {
-    let classification: StrategyClassification | null = null;
-    
-    // Use strategy-specific classification
-    switch (strategy) {
-      case StrategyType.VCP:
-      case StrategyType.VCP_MULTIDAY: {
-        const vcpResult = classifyVCPStage(quote);
-        if (vcpResult.stage === "FORMING" || vcpResult.stage === "READY" || vcpResult.stage === "BREAKOUT") {
-          classification = {
-            qualifies: true,
-            stage: vcpResult.stage,
-            volumeRatio: vcpResult.volumeRatio,
-            resistance: vcpResult.resistance,
-            stopLoss: vcpResult.stopLoss,
-            score: Math.min(100, 60 + Math.floor(vcpResult.volumeRatio * 10)),
-          };
-        }
-        break;
-      }
-      case StrategyType.ORB5:
-      case StrategyType.ORB15:
-        classification = classifyORB(quote);
-        break;
-      case StrategyType.GAP_AND_GO:
-        classification = classifyGapAndGo(quote);
-        break;
-      case StrategyType.VWAP_RECLAIM:
-        classification = classifyVWAP(quote);
-        break;
-      case StrategyType.HIGH_RVOL:
-        classification = classifyHighRvol(quote);
-        break;
-    }
-    
-    if (classification && classification.qualifies) {
-      results.push({
-        id: crypto.randomUUID(),
-        ticker: quote.symbol,
-        name: quote.symbol,
-        price: quote.last,
-        change: quote.change,
-        changePercent: quote.changePercent,
-        volume: quote.volume,
-        avgVolume: quote.avgVolume || 0,
-        rvol: classification.volumeRatio,
-        stage: classification.stage,
-        patternScore: classification.score,
-        resistance: classification.resistance,
-        stopLoss: classification.stopLoss,
-        strategy: strategy,
-        createdAt: new Date(),
-        scanRunId: null,
-        atr: null,
-        ema9: null,
-        ema21: null,
-      });
-    }
+    const classified = classifyQuote(strategyId, quote);
+    if (!classified) continue;
+
+    results.push({
+      id: crypto.randomUUID(),
+      ticker: classified.symbol,
+      name: classified.name,
+      price: classified.price,
+      change: classified.change,
+      changePercent: classified.changePercent,
+      volume: classified.volume,
+      avgVolume: classified.avgVolume || 0,
+      rvol: classified.rvol,
+      stage: classified.stage,
+      patternScore: classified.score,
+      resistance: classified.resistance,
+      stopLoss: classified.stopLevel,
+      strategy: strategy,
+      createdAt: new Date(),
+      scanRunId: null,
+      atr: null,
+      ema9: classified.ema9,
+      ema21: classified.ema21,
+    });
   }
   
   return results;

@@ -445,7 +445,7 @@ export default function CommandCenter() {
   const getTargetPrice = (result: ScanResult): number | null => {
     if (!result.resistance || !result.stopLoss) return null;
     const baseDepth = result.resistance - result.stopLoss;
-    return result.resistance + baseDepth;
+    return result.resistance + (baseDepth * 0.5);
   };
 
   const getRiskReward = (result: ScanResult): number | null => {

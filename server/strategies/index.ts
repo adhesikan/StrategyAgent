@@ -175,7 +175,8 @@ function classifyQuoteFromPlugin(
   let score = 40;
   let qualifies = false;
   let resistance = quote.high || quote.last * 1.02;
-  let stopLevel = quote.last * 0.95;
+  const lowPrice = quote.low && quote.low > 0 ? quote.low : quote.last * 0.97;
+  let stopLevel = Math.min(lowPrice * 0.995, quote.last * 0.97);
 
   switch (strategyId) {
     case StrategyId.ORB5:

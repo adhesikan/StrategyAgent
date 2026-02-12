@@ -19,7 +19,7 @@ export interface EligibilityResult {
 export function computeTargetPrice(resistance: number, stop: number): number {
   if (!resistance || !stop || resistance <= 0 || stop <= 0) return 0;
   const baseDepth = resistance - stop;
-  return resistance + baseDepth;
+  return resistance + (baseDepth * 0.5);
 }
 
 export function computeUpsidePct(price: number, resistance: number, stop?: number): number {

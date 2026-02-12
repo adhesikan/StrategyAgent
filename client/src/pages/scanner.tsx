@@ -257,7 +257,7 @@ export default function Scanner() {
   const getRiskReward = (result: ScanResult): number | null => {
     if (!result.resistance || !result.stopLoss || !result.price) return null;
     const baseDepth = result.resistance - result.stopLoss;
-    const target = result.resistance + baseDepth;
+    const target = result.resistance + (baseDepth * 0.5);
     const reward = target - result.price;
     const risk = result.price - result.stopLoss;
     if (risk <= 0) return null;

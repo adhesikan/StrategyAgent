@@ -61,6 +61,7 @@ import type {
   Trade,
   ScanResult 
 } from "@shared/schema";
+import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 
 interface NewsArticle {
   title: string;
@@ -219,6 +220,41 @@ export default function CommandCenter() {
     refetchOnWindowFocus: true,
   });
 
+  const [lastAutoScanTime, setLastAutoScanTime] = useState<Date | null>(null);
+  const [autoScanRunning, setAutoScanRunning] = useState(false);
+
+  const autoScanMutation = useMutation({
+    mutationFn: async (strategy: string) => {
+      setAutoScanRunning(true);
+      const response = await apiRequest("POST", "/api/scan/live", {
+        strategy: strategy === "all" ? "VCP" : strategy,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan/results"] });
+      setLastAutoScanTime(new Date());
+      setAutoScanRunning(false);
+    },
+    onError: () => {
+      setAutoScanRunning(false);
+    },
+  });
+
+  useEffect(() => {
+    if (!brokerStatus?.isConnected) return;
+
+    autoScanMutation.mutate(strategyFilter);
+
+    const interval = setInterval(() => {
+      if (!autoScanMutation.isPending) {
+        autoScanMutation.mutate(strategyFilter);
+      }
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [brokerStatus?.isConnected, strategyFilter]);
+
   const { data: chartData, isLoading: chartLoading } = useQuery<ChartData>({
     queryKey: ["/api/charts", selectedTicker, "3M"],
     enabled: !!selectedTicker,
@@ -271,11 +307,8 @@ export default function CommandCenter() {
   }, [viewMode]);
 
   const availableStrategies = useMemo(() => {
-    if (!scanResults) return [];
-    const strategies = new Set<string>();
-    scanResults.forEach(r => { if (r.strategy) strategies.add(r.strategy); });
-    return Array.from(strategies).sort();
-  }, [scanResults]);
+    return STRATEGY_CONFIGS.map(s => ({ id: s.id, displayName: s.displayName }));
+  }, []);
 
   const handleSortToggle = (field: OpportunitySortField) => {
     if (sortField === field) {
@@ -657,6 +690,25 @@ export default function CommandCenter() {
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-primary" />
                   <CardTitle>Today's Top Picks</CardTitle>
+                  {autoScanRunning && (
+                    <Badge variant="secondary" className="text-xs gap-1">
+                      <Activity className="h-3 w-3 animate-pulse" />
+                      Scanning
+                    </Badge>
+                  )}
+                  {!autoScanRunning && lastAutoScanTime && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="text-xs gap-1 cursor-help">
+                          <Clock className="h-3 w-3" />
+                          Live
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Auto-scans every 5 min. Last: {lastAutoScanTime.toLocaleTimeString()}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
@@ -714,19 +766,17 @@ export default function CommandCenter() {
                     <SelectItem value="80">80%+</SelectItem>
                   </SelectContent>
                 </Select>
-                {availableStrategies.length > 0 && (
-                  <Select value={strategyFilter} onValueChange={setStrategyFilter}>
-                    <SelectTrigger className="w-[130px]" data-testid="select-strategy-filter">
-                      <SelectValue placeholder="Strategy" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Strategies</SelectItem>
-                      {availableStrategies.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select value={strategyFilter} onValueChange={setStrategyFilter}>
+                  <SelectTrigger className="w-[170px]" data-testid="select-strategy-filter">
+                    <SelectValue placeholder="Strategy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Strategies</SelectItem>
+                    {availableStrategies.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.displayName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {(stageFilter !== "all" || scoreFilter !== "all" || strategyFilter !== "all") && (
                   <Button
                     variant="ghost"
@@ -799,7 +849,7 @@ export default function CommandCenter() {
                             </TableCell>
                             <TableCell className="text-right">
                               {result.strategy && (
-                                <Badge variant="outline" className="text-xs">{result.strategy}</Badge>
+                                <Badge variant="outline" className="text-xs">{getStrategyDisplayName(result.strategy)}</Badge>
                               )}
                             </TableCell>
                           </TableRow>
@@ -841,7 +891,7 @@ export default function CommandCenter() {
                               ${result.price?.toFixed(2)}
                             </span>
                             {result.strategy && (
-                              <Badge variant="outline" className="text-xs">{result.strategy}</Badge>
+                              <Badge variant="outline" className="text-xs">{getStrategyDisplayName(result.strategy)}</Badge>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
@@ -1165,7 +1215,7 @@ export default function CommandCenter() {
                 )}
                 {selectedResult?.strategy && (
                   <Badge variant="outline" className="text-xs" data-testid="badge-sheet-strategy">
-                    {selectedResult.strategy}
+                    {getStrategyDisplayName(selectedResult.strategy)}
                   </Badge>
                 )}
               </span>

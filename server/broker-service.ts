@@ -612,13 +612,33 @@ function calculateStageForStrategy(quote: QuoteData, strategy: string): string {
   }
 }
 
+export function isBullishQuote(quote: QuoteData): boolean {
+  if (quote.changePercent < -2) return false;
+  const priceFromHigh = quote.high > 0 ? ((quote.high - quote.last) / quote.high) * 100 : 0;
+  if (priceFromHigh > 8 && quote.changePercent < 0) return false;
+  if (quote.prevClose && quote.last < quote.prevClose * 0.97) return false;
+  return true;
+}
+
+export function isBullishScanResult(r: { changePercent?: number | null; ema9?: number | null; ema21?: number | null }): boolean {
+  if ((r.changePercent ?? 0) < -2) return false;
+  const e9 = r.ema9 ?? 0;
+  const e21 = r.ema21 ?? 0;
+  if (e9 > 0 && e21 > 0 && e9 < e21 * 0.98) return false;
+  return true;
+}
+
 export function quotesToScanResults(quotes: QuoteData[], strategy: string = StrategyType.VCP): ScanResult[] {
-  return quotes.map((quote) => {
+  const results: ScanResult[] = [];
+
+  for (const quote of quotes) {
+    if (!isBullishQuote(quote)) continue;
+
     const strategyId = strategy as import("./strategies/types").StrategyIdType;
     const classified = classifyQuote(strategyId, quote);
 
     if (classified) {
-      return {
+      results.push({
         id: randomUUID(),
         scanRunId: null,
         ticker: classified.symbol,
@@ -638,7 +658,8 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
         atr: Number((quote.last * 0.02).toFixed(2)),
         createdAt: new Date(),
         strategy: strategy,
-      };
+      });
+      continue;
     }
 
     const stage = calculateStageForStrategy(quote, strategy);
@@ -646,7 +667,7 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
     const resistance = highPrice * 1.02;
     const stopLoss = quote.last * 0.93;
 
-    return {
+    results.push({
       id: randomUUID(),
       scanRunId: null,
       ticker: quote.symbol,
@@ -666,8 +687,10 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
       atr: Number((quote.last * 0.02).toFixed(2)),
       createdAt: new Date(),
       strategy: strategy,
-    };
-  });
+    });
+  }
+
+  return results;
 }
 
 import { vcpMultidayStrategy } from "./strategies/vcpMultiday";
@@ -681,6 +704,7 @@ export async function runMultidayScan(
   const results: ScanResult[] = [];
   
   async function processQuote(quote: QuoteData): Promise<ScanResult | null> {
+    if (!isBullishQuote(quote)) return null;
     try {
       const candles = await fetchHistoryFromBroker(connection, quote.symbol, "3M");
       

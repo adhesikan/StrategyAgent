@@ -415,7 +415,12 @@ export default function Signals() {
     
     const mapped = (scanResults ?? []).filter(result => {
       const resultStrategy = result.strategy || "VCP";
-      return resultStrategy === strategyFilter;
+      if (resultStrategy !== strategyFilter) return false;
+      if ((result.changePercent ?? 0) < -2) return false;
+      const e9 = result.ema9 ?? 0;
+      const e21 = result.ema21 ?? 0;
+      if (e9 > 0 && e21 > 0 && e9 < e21 * 0.98) return false;
+      return true;
     }).map(result => ({
       id: result.ticker,
       ticker: result.ticker,

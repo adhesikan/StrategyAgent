@@ -2,7 +2,7 @@ import cron from "node-cron";
 import crypto from "crypto";
 import { storage } from "./storage";
 import { ingestOpportunitiesFromScan } from "./opportunity-service";
-import { fetchQuotesFromBroker } from "./broker-service";
+import { fetchQuotesFromBroker, isBullishQuote } from "./broker-service";
 import { StrategyType } from "@shared/schema";
 import type { ScanResult } from "@shared/schema";
 import { classifyQuote } from "./strategies";
@@ -58,6 +58,8 @@ function quotesToScanResults(quotes: any[], strategy: string): ScanResult[] {
   const strategyId = strategy as StrategyIdType;
   
   for (const quote of quotes) {
+    if (!isBullishQuote(quote)) continue;
+
     const classified = classifyQuote(strategyId, quote);
     if (!classified) continue;
 

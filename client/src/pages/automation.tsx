@@ -20,11 +20,15 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { AutoAgentPanel } from "@/components/auto-agent-panel";
 import { cn } from "@/lib/utils";
+import { Switch as SwitchInput } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
 import {
   Bell, Handshake, Bot, Shield, Settings,
   RefreshCw, CheckCircle2, Link2,
   Power, Pause, Play, AlertTriangle,
-  ArrowRight, Info,
+  ArrowRight, Info, Zap, Volume2,
 } from "lucide-react";
 import type { UserSettings } from "@shared/schema";
 
@@ -241,74 +245,264 @@ function ModeGuidance({ currentMode, isConnected, agentState, settings }: {
   agentState?: AgentState;
   settings?: any;
 }) {
-  const steps: { label: string; done: boolean; action?: { label: string; href: string } }[] = [];
-
   if (currentMode === "ALERTS") {
-    steps.push(
-      { label: "Connect your brokerage for live data", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
-      { label: "Configure your alert preferences in Settings", done: !!settings?.pushEnabled, action: { label: "Settings", href: "/settings" } },
-      { label: "View opportunities on the Discover page", done: true, action: { label: "Go to Discover", href: "/discover" } },
-    );
-  } else if (currentMode === "ASSISTED") {
-    steps.push(
-      { label: "Connect your brokerage for live data and execution", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
-      { label: "Configure the Auto Agent below", done: true },
-      { label: "When opportunities appear, use InstaTrade™ to execute with one click", done: true, action: { label: "Go to Discover", href: "/discover" } },
-    );
-  } else if (currentMode === "AUTONOMOUS") {
-    steps.push(
-      { label: "Connect your brokerage", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
-      { label: "Configure the Auto Agent below", done: true },
-      { label: "Set safety limits in the controls below", done: true },
-      { label: "Arm the Auto Agent to begin", done: !!agentState?.enabled, action: !agentState?.enabled ? { label: "Scroll to Controls", href: "#safety" } : undefined },
-    );
+    return <AlertsConfigSection isConnected={isConnected} settings={settings} />;
   }
+  if (currentMode === "ASSISTED") {
+    return <AssistedGuidance isConnected={isConnected} />;
+  }
+  if (currentMode === "AUTONOMOUS") {
+    return <AutonomousGuidance isConnected={isConnected} agentState={agentState} />;
+  }
+  return null;
+}
 
-  const completedCount = steps.filter(s => s.done).length;
-  const allDone = completedCount === steps.length;
+function AlertsConfigSection({ isConnected, settings }: { isConnected: boolean; settings?: any }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const pushEnabled = settings?.pushNotificationsEnabled === "true" || settings?.pushNotificationsEnabled === true;
+  const breakoutEnabled = settings?.breakoutAlertsEnabled !== "false";
+  const stopEnabled = settings?.stopAlertsEnabled !== "false";
+  const emaEnabled = settings?.emaAlertsEnabled !== "false";
+  const approachingEnabled = settings?.approachingAlertsEnabled !== "false";
+  const confidenceMin = settings?.scanConfidenceMin ?? 75;
+
+  const updateSetting = useMutation({
+    mutationFn: async (updates: Record<string, any>) => {
+      return apiRequest("PUT", "/api/user/settings", updates);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/user/settings"] });
+    },
+  });
+
+  const handleToggle = (key: string, value: boolean) => {
+    updateSetting.mutate({ [key]: value });
+  };
+
+  const handleEnablePush = async () => {
+    try {
+      if (!("Notification" in window)) {
+        toast({ title: "Not Supported", description: "Push notifications are not supported in this browser.", variant: "destructive" });
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") {
+        updateSetting.mutate({ pushNotificationsEnabled: true });
+        toast({ title: "Push notifications enabled" });
+      } else {
+        toast({ title: "Permission Denied", description: "Please allow notifications in your browser settings.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Could not enable push notifications.", variant: "destructive" });
+    }
+  };
 
   return (
-    <Card className={cn(allDone ? "border-green-500/30" : "border-primary/30")} data-testid="section-mode-guidance">
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start gap-3">
-          <div className={cn(
-            "h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-            allDone ? "bg-green-500/10 text-green-600" : "bg-primary/10 text-primary"
-          )}>
-            {allDone ? <CheckCircle2 className="h-4 w-4" /> : <Info className="h-4 w-4" />}
-          </div>
-          <div className="flex-1 space-y-3">
-            <div>
-              <p className="font-medium text-sm">
-                {allDone
-                  ? `${MODE_CARDS.find(m => m.mode === currentMode)?.title} is active and ready.`
-                  : `Set up ${MODE_CARDS.find(m => m.mode === currentMode)?.title}`}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {completedCount} of {steps.length} steps complete
-              </p>
+    <Card data-testid="section-alerts-config">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Volume2 className="h-5 w-5" />
+          2. Alert Preferences
+        </CardTitle>
+        <CardDescription>
+          Choose which alerts you want to receive and how they're delivered.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="p-4 rounded-lg border space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Label className="font-medium text-sm">Push Notifications</Label>
             </div>
-            <div className="space-y-2">
-              {steps.map((step, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  {step.done ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                  ) : (
-                    <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
-                  )}
-                  <span className={cn(step.done && "text-muted-foreground")}>{step.label}</span>
-                  {step.action && !step.done && (
-                    <Button variant="ghost" size="sm" className="h-6 ml-auto text-xs" asChild>
-                      <Link href={step.action.href}>
-                        {step.action.label}
-                        <ArrowRight className="h-3 w-3 ml-1" />
-                      </Link>
-                    </Button>
-                  )}
+            {pushEnabled ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="border-green-500/40 text-green-600 no-default-hover-elevate no-default-active-elevate" data-testid="badge-push-enabled">
+                  <CheckCircle2 className="h-3 w-3 mr-1" /> Enabled
+                </Badge>
+                <Button variant="ghost" size="sm" onClick={() => handleToggle("pushNotificationsEnabled", false)} disabled={updateSetting.isPending} data-testid="button-disable-push">
+                  Disable
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" onClick={handleEnablePush} disabled={updateSetting.isPending} data-testid="button-enable-push">
+                Enable
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {pushEnabled
+              ? "You'll receive browser notifications when opportunities are detected."
+              : "Enable push notifications to get instant alerts when patterns are detected."}
+          </p>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Alert Types</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { key: "breakoutAlertsEnabled", label: "Breakout Alerts", desc: "Price breaks above resistance", enabled: breakoutEnabled },
+              { key: "approachingAlertsEnabled", label: "Approaching Entry", desc: "Price nearing entry zone", enabled: approachingEnabled },
+              { key: "stopAlertsEnabled", label: "Stop Level Alerts", desc: "Price near stop loss level", enabled: stopEnabled },
+              { key: "emaAlertsEnabled", label: "EMA Alerts", desc: "EMA crossover signals", enabled: emaEnabled },
+            ].map(({ key, label, desc, enabled }) => (
+              <div key={key} className="flex items-center justify-between gap-2 p-3 rounded-lg border">
+                <div>
+                  <Label className="text-sm">{label}</Label>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
-              ))}
-            </div>
+                <SwitchInput
+                  checked={enabled}
+                  onCheckedChange={(v) => handleToggle(key, v)}
+                  disabled={updateSetting.isPending}
+                  data-testid={`switch-${key}`}
+                />
+              </div>
+            ))}
           </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <p className="text-sm font-medium">Minimum Confidence</p>
+              <p className="text-xs text-muted-foreground">Only alert when pattern score meets this threshold</p>
+            </div>
+            <Badge variant="secondary" className="font-mono" data-testid="badge-confidence-value">{confidenceMin}%</Badge>
+          </div>
+          <Slider
+            value={[confidenceMin]}
+            min={50}
+            max={95}
+            step={5}
+            onValueCommit={([v]) => updateSetting.mutate({ scanConfidenceMin: v })}
+            data-testid="slider-confidence"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>More alerts (50%)</span>
+            <span>Higher quality (95%)</span>
+          </div>
+        </div>
+
+        {!isConnected && (
+          <>
+            <Separator />
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">No broker connected</p>
+                <p className="text-xs text-muted-foreground">Connect a brokerage for live price data and faster alerts.</p>
+              </div>
+              <Button variant="outline" size="sm" asChild data-testid="button-connect-broker-alerts">
+                <Link href="/settings">Connect</Link>
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AssistedGuidance({ isConnected }: { isConnected: boolean }) {
+  return (
+    <Card data-testid="section-assisted-guidance">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Zap className="h-5 w-5" />
+          2. How Assisted Execution Works
+        </CardTitle>
+        <CardDescription>
+          Opportunities are prepared for you. Review and execute with InstaTrade™.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-3">
+          {[
+            { step: "1", label: "Scans detect opportunities matching your criteria", done: true },
+            { step: "2", label: "Connect brokerage for live data and order execution", done: isConnected },
+            { step: "3", label: "Review each opportunity on the Discover page", done: true },
+            { step: "4", label: "Execute with one click via InstaTrade™", done: true },
+          ].map(({ step, label, done }) => (
+            <div key={step} className="flex items-center gap-3 text-sm">
+              <div className={cn(
+                "h-6 w-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0",
+                done ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"
+              )}>
+                {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : step}
+              </div>
+              <span className={cn(!done && "text-muted-foreground")}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-2">
+          {!isConnected && (
+            <Button size="sm" asChild data-testid="button-connect-broker-assisted">
+              <Link href="/settings">
+                <Link2 className="h-4 w-4 mr-1" />
+                Connect Brokerage
+              </Link>
+            </Button>
+          )}
+          <Button variant={isConnected ? "default" : "outline"} size="sm" asChild data-testid="button-goto-discover">
+            <Link href="/discover">
+              <ArrowRight className="h-4 w-4 mr-1" />
+              Go to Discover
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AutonomousGuidance({ isConnected, agentState }: { isConnected: boolean; agentState?: AgentState }) {
+  return (
+    <Card data-testid="section-autonomous-guidance">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Bot className="h-5 w-5" />
+          2. Autonomous Setup Checklist
+        </CardTitle>
+        <CardDescription>
+          Complete these steps to enable fully automated execution.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {[
+            { label: "Connect your brokerage for execution", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
+            { label: "Configure the Auto Agent (entry criteria, sizing, timing)", done: true, note: "See section below" },
+            { label: "Set safety limits (daily loss, max positions)", done: true, note: "See Safety & Controls below" },
+            { label: "Arm the Auto Agent to begin automated trading", done: !!agentState?.enabled, note: !agentState?.enabled ? "Use the Arm button in Safety & Controls" : undefined },
+          ].map((step, i) => (
+            <div key={i} className="flex items-center gap-3 text-sm">
+              {step.done ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+              ) : (
+                <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
+              )}
+              <span className={cn("flex-1", step.done && "text-muted-foreground")}>{step.label}</span>
+              {step.action && !step.done && (
+                <Button variant="ghost" size="sm" className="h-6 text-xs" asChild>
+                  <Link href={step.action.href}>
+                    {step.action.label}
+                    <ArrowRight className="h-3 w-3 ml-1" />
+                  </Link>
+                </Button>
+              )}
+              {step.note && !step.done && (
+                <span className="text-xs text-muted-foreground hidden sm:inline">{step.note}</span>
+              )}
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

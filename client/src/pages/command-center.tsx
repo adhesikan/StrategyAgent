@@ -38,14 +38,13 @@ import {
   Clock,
   ExternalLink,
   Filter,
-  History,
   LayoutGrid,
   List,
   Newspaper,
   Pause,
   Play,
   Radio,
-  Rocket,
+  Link2,
   Save,
   Settings,
   Shield,
@@ -127,6 +126,24 @@ const DEFAULT_FILTERS: CCFilterConfig = {
   changeMax: "",
   showCount: "10",
 };
+
+function getBrokerageDashboardUrl(provider: string): string {
+  const urls: Record<string, string> = {
+    tradier: "https://dash.tradier.com",
+    tradestation: "https://www.tradestation.com/login/",
+    snaptrade: "https://app.snaptrade.com",
+  };
+  return urls[provider.toLowerCase()] || "https://www.google.com/search?q=" + encodeURIComponent(provider + " brokerage login");
+}
+
+function formatProviderName(provider: string): string {
+  const names: Record<string, string> = {
+    tradier: "Tradier",
+    tradestation: "TradeStation",
+    snaptrade: "SnapTrade",
+  };
+  return names[provider.toLowerCase()] || provider.charAt(0).toUpperCase() + provider.slice(1);
+}
 
 function isMarketOpen(): boolean {
   const now = new Date();
@@ -816,7 +833,7 @@ export default function CommandCenter() {
                     </span>
                   </div>
                 )}
-                {agentEnabled && (
+                {agentEnabled && automationMode === "AUTONOMOUS" && (
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20">
                     <Bot className="h-3.5 w-3.5 text-primary" />
                     <span className="text-sm font-medium">Auto Agent {agentPaused ? "Paused" : "Active"}</span>
@@ -838,7 +855,7 @@ export default function CommandCenter() {
           </Link>
         </Button>
 
-        {agentEnabled && !emergencyStop && (
+        {agentEnabled && !emergencyStop && automationMode === "AUTONOMOUS" && (
           agentPaused ? (
             <Button 
               variant="outline" 
@@ -1510,19 +1527,27 @@ export default function CommandCenter() {
                 </div>
               )}
             </CardContent>
-            <CardFooter className="border-t pt-3 flex-col gap-2">
-              <Button variant="outline" size="sm" className="w-full" asChild>
-                <Link href="/execution" data-testid="link-open-cockpit">
-                  <Rocket className="h-4 w-4 mr-1" />
-                  Open Execution Cockpit
-                </Link>
-              </Button>
-              <Button variant="ghost" size="sm" className="w-full" asChild>
-                <Link href="/opportunities" data-testid="link-view-history">
-                  <History className="h-4 w-4 mr-1" />
-                  View Trade History
-                </Link>
-              </Button>
+            <CardFooter className="border-t pt-3">
+              {brokerConnected && brokerStatus?.provider ? (
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <a
+                    href={getBrokerageDashboardUrl(brokerStatus.provider)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    data-testid="link-brokerage-dashboard"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Open {formatProviderName(brokerStatus.provider)} Dashboard
+                  </a>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <Link href="/settings" data-testid="link-connect-broker">
+                    <Link2 className="h-4 w-4 mr-1" />
+                    Connect a Broker
+                  </Link>
+                </Button>
+              )}
             </CardFooter>
           </Card>
 

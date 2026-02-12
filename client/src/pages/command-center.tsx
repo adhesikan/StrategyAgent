@@ -1198,34 +1198,62 @@ export default function CommandCenter() {
                 />
                 <div className="grid grid-cols-4 gap-3">
                   {(chartData.resistance ?? selectedResult?.resistance) != null && (
-                    <div className="p-3 rounded-lg border">
-                      <p className="text-xs text-muted-foreground mb-1">Resistance</p>
-                      <p className="font-mono font-semibold text-chart-2" data-testid="text-chart-resistance">
-                        ${(chartData.resistance ?? selectedResult?.resistance)?.toFixed(2)}
-                      </p>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="p-3 rounded-lg border cursor-help">
+                          <p className="text-xs text-muted-foreground mb-1">Resistance</p>
+                          <p className="font-mono font-semibold text-chart-2" data-testid="text-chart-resistance">
+                            ${(chartData.resistance ?? selectedResult?.resistance)?.toFixed(2)}
+                          </p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>Price level where selling pressure has historically prevented further upside. A breakout above this level signals potential continuation.</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {(chartData.stopLevel ?? selectedResult?.stopLoss) != null && (
-                    <div className="p-3 rounded-lg border">
-                      <p className="text-xs text-muted-foreground mb-1">Stop Loss</p>
-                      <p className="font-mono font-semibold text-destructive" data-testid="text-chart-stop">
-                        ${(chartData.stopLevel ?? selectedResult?.stopLoss)?.toFixed(2)}
-                      </p>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="p-3 rounded-lg border cursor-help">
+                          <p className="text-xs text-muted-foreground mb-1">Stop Loss</p>
+                          <p className="font-mono font-semibold text-destructive" data-testid="text-chart-stop">
+                            ${(chartData.stopLevel ?? selectedResult?.stopLoss)?.toFixed(2)}
+                          </p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>Suggested exit price to limit downside risk. Placed below a key support level to protect against adverse moves.</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {selectedResult?.rvol != null && (
-                    <div className="p-3 rounded-lg border">
-                      <p className="text-xs text-muted-foreground mb-1">RVOL</p>
-                      <p className={cn("font-mono font-semibold", (selectedResult.rvol ?? 0) >= 1.5 && "text-chart-2")} data-testid="text-rvol">
-                        {selectedResult.rvol?.toFixed(2)}x
-                      </p>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="p-3 rounded-lg border cursor-help">
+                          <p className="text-xs text-muted-foreground mb-1">RVOL</p>
+                          <p className={cn("font-mono font-semibold", (selectedResult.rvol ?? 0) >= 1.5 && "text-chart-2")} data-testid="text-rvol">
+                            {selectedResult.rvol?.toFixed(2)}x
+                          </p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>Relative Volume compared to average. Above 1.5x indicates unusual activity and stronger conviction behind the move.</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {selectedResult?.atr != null && (
-                    <div className="p-3 rounded-lg border">
-                      <p className="text-xs text-muted-foreground mb-1">ATR (14)</p>
-                      <p className="font-mono font-semibold" data-testid="text-atr">${selectedResult.atr?.toFixed(2)}</p>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="p-3 rounded-lg border cursor-help">
+                          <p className="text-xs text-muted-foreground mb-1">ATR (14)</p>
+                          <p className="font-mono font-semibold" data-testid="text-atr">${selectedResult.atr?.toFixed(2)}</p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>Average True Range over 14 periods. Measures daily price volatility to help size positions and set realistic stop distances.</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               </>
@@ -1243,63 +1271,105 @@ export default function CommandCenter() {
                 <div className="space-y-3">
                   <p className="text-sm font-medium">Technical Analysis</p>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Trend</span>
-                      <span className={cn("font-medium", (() => {
-                        const e9 = selectedResult.ema9 ?? 0;
-                        const e21 = selectedResult.ema21 ?? 0;
-                        if (e9 > 0 && e21 > 0) return e9 > e21 ? "text-green-500" : "text-destructive";
-                        return "";
-                      })())}>
-                        {(() => {
-                          const e9 = selectedResult.ema9 ?? 0;
-                          const e21 = selectedResult.ema21 ?? 0;
-                          if (e9 > 0 && e21 > 0) return e9 > e21 ? "Bullish" : "Bearish";
-                          return "N/A";
-                        })()}
-                      </span>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex justify-between cursor-help">
+                          <span className="text-muted-foreground">Trend</span>
+                          <span className={cn("font-medium", (() => {
+                            const e9 = selectedResult.ema9 ?? 0;
+                            const e21 = selectedResult.ema21 ?? 0;
+                            if (e9 > 0 && e21 > 0) return e9 > e21 ? "text-green-500" : "text-destructive";
+                            return "";
+                          })())}>
+                            {(() => {
+                              const e9 = selectedResult.ema9 ?? 0;
+                              const e21 = selectedResult.ema21 ?? 0;
+                              if (e9 > 0 && e21 > 0) return e9 > e21 ? "Bullish" : "Bearish";
+                              return "N/A";
+                            })()}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>Overall trend direction based on EMA crossover. Bullish when the 9-day EMA is above the 21-day EMA.</p>
+                      </TooltipContent>
+                    </Tooltip>
                     {selectedResult.ema9 != null && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">EMA 9</span>
-                        <span className="font-mono">${selectedResult.ema9.toFixed(2)}</span>
-                      </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex justify-between cursor-help">
+                            <span className="text-muted-foreground">EMA 9</span>
+                            <span className="font-mono">${selectedResult.ema9.toFixed(2)}</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[220px]">
+                          <p>9-period Exponential Moving Average. A fast-moving trend indicator that tracks short-term momentum.</p>
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                     {selectedResult.ema21 != null && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">EMA 21</span>
-                        <span className="font-mono">${selectedResult.ema21.toFixed(2)}</span>
-                      </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex justify-between cursor-help">
+                            <span className="text-muted-foreground">EMA 21</span>
+                            <span className="font-mono">${selectedResult.ema21.toFixed(2)}</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[220px]">
+                          <p>21-period Exponential Moving Average. An intermediate trend indicator. Price holding above this level confirms a healthy uptrend.</p>
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                     {(() => {
                       const rr = getRiskReward(selectedResult);
                       return rr != null ? (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Risk/Reward</span>
-                          <span className={cn("font-mono font-medium", rr >= 2 ? "text-green-500" : rr >= 1 ? "text-foreground" : "text-destructive")}>
-                            {rr.toFixed(2)}:1
-                          </span>
-                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex justify-between cursor-help">
+                              <span className="text-muted-foreground">Risk/Reward</span>
+                              <span className={cn("font-mono font-medium", rr >= 2 ? "text-green-500" : rr >= 1 ? "text-foreground" : "text-destructive")}>
+                                {rr.toFixed(2)}:1
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-[220px]">
+                            <p>Ratio of potential profit to potential loss. A ratio of 2:1 or higher means the reward is at least double the risk, which is generally favorable.</p>
+                          </TooltipContent>
+                        </Tooltip>
                       ) : null;
                     })()}
                     {(() => {
                       const dist = getDistanceToEntry(selectedResult);
                       return dist != null ? (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">To Resistance</span>
-                          <span className="font-mono">{dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</span>
-                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex justify-between cursor-help">
+                              <span className="text-muted-foreground">To Resistance</span>
+                              <span className="font-mono">{dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-[220px]">
+                            <p>How far the current price is from the resistance level. A small positive percentage means the stock is approaching breakout territory.</p>
+                          </TooltipContent>
+                        </Tooltip>
                       ) : null;
                     })()}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status</span>
-                      <Badge variant={(() => {
-                        const s = getTradeStatus(selectedResult);
-                        return s === "IN_ENTRY_ZONE" ? "default" : s === "EXTENDED" ? "destructive" : "secondary";
-                      })()} className="text-[10px]">
-                        {getTradeStatus(selectedResult).replace(/_/g, " ")}
-                      </Badge>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex justify-between cursor-help">
+                          <span className="text-muted-foreground">Status</span>
+                          <Badge variant={(() => {
+                            const s = getTradeStatus(selectedResult);
+                            return s === "IN_ENTRY_ZONE" ? "default" : s === "EXTENDED" ? "destructive" : "secondary";
+                          })()} className="text-[10px]">
+                            {getTradeStatus(selectedResult).replace(/_/g, " ")}
+                          </Badge>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>Trade actionability. "Awaiting Breakout" means price hasn't reached resistance yet. "In Entry Zone" means it's at or near the entry. "Extended" means it has moved too far past the entry.</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
               </>

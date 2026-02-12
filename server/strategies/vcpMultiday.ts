@@ -176,7 +176,7 @@ export const vcpMultidayStrategy: Strategy = {
       score = Math.min(95, 70 + numContractions * 5 + Math.floor((5 - priceFromHigh) * 3));
     } else if (numContractions >= 1 && inUptrend) {
       stage = PatternStage.FORMING;
-      score = Math.max(40, 55 + numContractions * 5 - Math.floor(priceFromHigh));
+      score = Math.min(100, Math.max(40, 55 + numContractions * 5 - Math.floor(priceFromHigh)));
     } else {
       stage = PatternStage.FORMING;
       score = Math.max(20, 40 - Math.floor(priceFromHigh * 2));

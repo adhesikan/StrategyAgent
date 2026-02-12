@@ -80,7 +80,7 @@ interface AgentState {
 
 const ALGOPILOTX_URL = "https://app.algopilotx.com";
 
-const DISCLAIMER_TEXT = "VCP Trader and AlgoPilotX are software tools for self-directed traders. Educational and informational use only. Not investment advice. No guarantees. Users control all trading decisions and automation.";
+const DISCLAIMER_TEXT = "All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader and AlgoPilotX are software tools for self-directed traders. No guarantees. Users control all trading decisions and automation.";
 
 type AutomationMode = "ALERTS" | "ASSISTED" | "AUTONOMOUS";
 type AutomationEngine = "BUILT_IN" | "ALGOPILOTX";

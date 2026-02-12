@@ -2448,6 +2448,10 @@ export default function Scanner() {
         selectedAccount={selectedBrokerAccount}
         onAccountChange={setSelectedBrokerAccount}
       />
+
+      <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-scanner-disclaimer">
+        All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan.
+      </div>
     </div>
   );
 }

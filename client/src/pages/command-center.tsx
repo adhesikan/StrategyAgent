@@ -1380,7 +1380,7 @@ export default function CommandCenter() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Reference levels are informational only. Not investment advice.
+                All metrics, levels, and calculated values are for informational purposes only. Always rely on your own trading plan before acting.
               </p>
             </CardFooter>
           </Card>
@@ -1891,7 +1891,7 @@ export default function CommandCenter() {
       />
 
       <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
-        VCP Trader and AlgoPilotX are software tools for self-directed traders. Educational and informational use only. Not investment advice. No guarantees. Users control all trading decisions and automation.
+        All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan. VCP Trader and AlgoPilotX are software tools for self-directed traders. No guarantees. Users control all trading decisions and automation.
       </div>
     </div>
   );

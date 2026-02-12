@@ -292,8 +292,18 @@ export default function CommandCenter() {
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
-    return filtered;
+    return filtered.slice(0, 10);
   }, [scanResults, stageFilter, scoreFilter, strategyFilter, sortField, sortDirection]);
+
+  const totalFilteredCount = useMemo(() => {
+    if (!scanResults) return 0;
+    let filtered = [...scanResults];
+    if (stageFilter !== "all") filtered = filtered.filter(r => r.stage === stageFilter);
+    if (scoreFilter === "60") filtered = filtered.filter(r => (r.patternScore ?? 0) >= 60);
+    else if (scoreFilter === "80") filtered = filtered.filter(r => (r.patternScore ?? 0) >= 80);
+    if (strategyFilter !== "all") filtered = filtered.filter(r => r.strategy === strategyFilter);
+    return filtered.length;
+  }, [scanResults, stageFilter, scoreFilter, strategyFilter]);
 
   const selectedResult = useMemo(() => {
     if (!selectedTicker || !scanResults) return null;
@@ -490,7 +500,7 @@ export default function CommandCenter() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-primary" />
-                  <CardTitle>Today's Opportunities</CardTitle>
+                  <CardTitle>Today's Top Picks</CardTitle>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
@@ -512,7 +522,7 @@ export default function CommandCenter() {
                     <List className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="sm" asChild>
-                    <Link href="/" data-testid="link-view-all-opportunities">
+                    <Link href="/discover" data-testid="link-view-all-opportunities">
                       View All
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Link>
@@ -573,7 +583,9 @@ export default function CommandCenter() {
                   </Button>
                 )}
                 <Badge variant="secondary" className="ml-auto text-xs" data-testid="text-results-count">
-                  {filteredSortedResults.length} result{filteredSortedResults.length !== 1 ? "s" : ""}
+                  {totalFilteredCount > filteredSortedResults.length
+                    ? `Top ${filteredSortedResults.length} of ${totalFilteredCount}`
+                    : `${filteredSortedResults.length} result${filteredSortedResults.length !== 1 ? "s" : ""}`}
                 </Badge>
               </div>
 
@@ -730,7 +742,15 @@ export default function CommandCenter() {
                 </div>
               )}
             </CardContent>
-            <CardFooter className="border-t pt-3">
+            <CardFooter className="border-t pt-3 flex-col items-start gap-1">
+              {totalFilteredCount > filteredSortedResults.length && (
+                <p className="text-xs text-muted-foreground">
+                  Showing top {filteredSortedResults.length} of {totalFilteredCount} opportunities.{" "}
+                  <Link href="/discover" className="text-primary underline underline-offset-2" data-testid="link-discover-footer">
+                    View all opportunities on the Discover page
+                  </Link>
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Reference levels are informational only. Not investment advice.
               </p>

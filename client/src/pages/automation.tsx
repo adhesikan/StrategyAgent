@@ -29,7 +29,9 @@ import {
   RefreshCw, CheckCircle2, Link2,
   Power, Pause, Play, AlertTriangle,
   ArrowRight, Info, Zap, Volume2,
+  ChevronDown, Scan, Filter, BarChart3, Crosshair,
 } from "lucide-react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { UserSettings } from "@shared/schema";
 
 interface AgentState {
@@ -504,8 +506,78 @@ function AutonomousGuidance({ isConnected, agentState }: { isConnected: boolean;
             </div>
           ))}
         </div>
+
+        <Separator className="my-4" />
+
+        <HowAutonomousTradingWorks />
       </CardContent>
     </Card>
+  );
+}
+
+function HowAutonomousTradingWorks() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const steps = [
+    {
+      icon: Scan,
+      title: "Opportunities are discovered",
+      description: "The scanner runs at scheduled times throughout the trading day, detecting patterns across multiple strategies (VCP, pullbacks, momentum, etc.). Options scans from the Discover page are also picked up automatically.",
+    },
+    {
+      icon: Filter,
+      title: "Your policy filters are applied",
+      description: "Every candidate is checked against your Auto Agent settings — option type (calls/puts), delta range, DTE, open interest, volume, premium limits, and maximum risk per trade. Only opportunities that pass all your criteria move forward.",
+    },
+    {
+      icon: BarChart3,
+      title: "Candidates are ranked by score",
+      description: "Qualifying opportunities are sorted by pattern score (highest first) and capped at your daily trade limit. Only the top-scoring setups that fit your rules are considered.",
+    },
+    {
+      icon: Crosshair,
+      title: "Action is taken automatically",
+      description: "When armed, the Auto Agent builds orders with proper position sizing based on your max risk setting, sets limit prices, and records every decision for your review. All trades respect your daily trade limit and safety controls.",
+    },
+  ];
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} data-testid="section-how-it-works">
+      <CollapsibleTrigger asChild>
+        <button
+          className="flex items-center flex-wrap gap-2 w-full text-left text-sm font-medium text-muted-foreground py-1"
+          data-testid="button-how-it-works-toggle"
+        >
+          <Info className="h-4 w-4" />
+          How Autonomous Trading Works
+          <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", isOpen && "rotate-180")} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-3 space-y-4">
+          {steps.map((step, i) => (
+            <div key={i} className="flex flex-wrap gap-3">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <step.icon className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{step.title}</p>
+                {step.description && (
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{step.description}</p>
+                )}
+              </div>
+            </div>
+          ))}
+
+          <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground flex gap-2">
+            <Shield className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+            <div>
+              <span className="font-medium text-foreground">Safety first:</span> The agent only runs during market hours, respects your daily trade limit and loss limits, and can be stopped instantly with the Emergency Stop button.
+            </div>
+          </div>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

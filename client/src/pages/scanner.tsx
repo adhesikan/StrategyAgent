@@ -1325,6 +1325,12 @@ export default function Scanner() {
                   </span>
                 </div>
 
+                {result.strategy && (
+                  <span className="text-xs text-muted-foreground" data-testid={`text-strategy-${result.ticker}`}>
+                    {getStrategyDisplayName(result.strategy)}
+                  </span>
+                )}
+
                 {result.resistance && (
                   <div className="flex items-center gap-1" data-testid={`text-entry-${result.ticker}`}>
                     <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">

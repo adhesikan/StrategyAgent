@@ -29,12 +29,16 @@ const US_MARKET_HOLIDAYS_2025_2026 = [
 
 // Strategy groups for different scan times
 const STRATEGY_GROUPS = {
+  // 8:00 AM - Premarket scan (gap analysis, overnight setups)
+  PREMARKET_STRATEGIES: [StrategyType.GAP_AND_GO, StrategyType.VCP, StrategyType.VCP_MULTIDAY],
   // 9:45 AM - VCP patterns (swing/position strategies)
   VCP_STRATEGIES: [StrategyType.VCP, StrategyType.VCP_MULTIDAY],
   // 10:00 AM - Early morning momentum plays
   EARLY_MOMENTUM_STRATEGIES: [StrategyType.ORB5, StrategyType.ORB15, StrategyType.GAP_AND_GO],
   // 11:00 AM - Mid-morning setups
   MID_MORNING_STRATEGIES: [StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
+  // 4:15 PM - Extended hours scan (post-close review)
+  EXTENDED_HOURS_STRATEGIES: [StrategyType.VCP, StrategyType.VCP_MULTIDAY, StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
 };
 
 interface StrategyClassification {
@@ -293,6 +297,14 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
 }
 
 export function startScheduledScanService(): void {
+  // 8:00 AM ET - Premarket scan (gap analysis, overnight setups)
+  cron.schedule("0 8 * * 1-5", async () => {
+    console.log("[ScheduledScan] 8:00 AM ET - Premarket scan triggered");
+    await runScheduledScan(STRATEGY_GROUPS.PREMARKET_STRATEGIES, "Premarket (8:00 AM)");
+  }, {
+    timezone: "America/New_York"
+  });
+
   // 9:45 AM ET - VCP strategies (swing/position plays)
   cron.schedule("45 9 * * 1-5", async () => {
     console.log("[ScheduledScan] 9:45 AM ET - VCP strategies scan triggered");
@@ -316,11 +328,21 @@ export function startScheduledScanService(): void {
   }, {
     timezone: "America/New_York"
   });
+
+  // 4:15 PM ET - Extended hours scan (post-close review for next day)
+  cron.schedule("15 16 * * 1-5", async () => {
+    console.log("[ScheduledScan] 4:15 PM ET - Extended hours scan triggered");
+    await runScheduledScan(STRATEGY_GROUPS.EXTENDED_HOURS_STRATEGIES, "Extended Hours (4:15 PM)");
+  }, {
+    timezone: "America/New_York"
+  });
   
   console.log("[ScheduledScan] Scheduled scan service started with multiple scan times:");
+  console.log("  - 8:00 AM ET: Premarket (Gap Force, VCP patterns)");
   console.log("  - 9:45 AM ET: Momentum Breakout, Power Breakout (swing strategies)");
   console.log("  - 10:00 AM ET: Open Drive (5m/15m), Gap Force (early momentum)");
   console.log("  - 11:00 AM ET: Institutional Reclaim, Volume Surge (mid-morning)");
+  console.log("  - 4:15 PM ET: Extended Hours (VCP, VWAP Reclaim, Volume Surge)");
 }
 
 export async function runManualScheduledScan(): Promise<{ success: boolean; message: string; ingestedCount?: number }> {

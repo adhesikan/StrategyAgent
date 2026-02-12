@@ -48,7 +48,7 @@ A Sheet-based drawer replaces the old InstaTrade dialog for direct broker orders
 A server-side cron worker monitors managed exits during market hours, fetching live quotes, checking conditions, and placing market close orders when triggers are met.
 
 ### Automated Scanning and Price Tracking
-The platform includes an automated multi-strategy scanning system that runs at scheduled times, detecting VCP-related strategies and ingesting opportunities. Extended hours price tracking updates prices to determine outcomes.
+The platform includes an automated multi-strategy scanning system that runs at 5 scheduled times covering premarket through extended hours: 8:00 AM ET (premarket: Gap Force, VCP), 9:45 AM ET (swing strategies), 10:00 AM ET (early momentum), 11:00 AM ET (mid-morning), and 4:15 PM ET (extended hours: VCP, VWAP Reclaim, Volume Surge). The Command Center's "Today's Opportunities" section provides sortable columns (ticker, stage, price, pattern score), multi-criteria filtering (stage, confidence threshold, strategy), card/list view toggle with localStorage persistence, and click-to-view-chart via a Sheet drawer showing PriceChart with candles, EMAs, resistance/stop levels, and trading statistics. Market hours detection spans 8:00 AM - 4:30 PM ET. Extended hours price tracking updates prices to determine outcomes.
 
 ## External Dependencies
 

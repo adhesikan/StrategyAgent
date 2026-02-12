@@ -202,6 +202,25 @@ async function runStartupMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS ticker_universe_members_universe_symbol_idx
       ON ticker_universe_members (universe_id, symbol);
     `);
+
+    // Add onboarding columns to user_settings
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'user_settings' AND column_name = 'trader_type'
+        ) THEN
+          ALTER TABLE user_settings ADD COLUMN trader_type TEXT DEFAULT 'swing';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'user_settings' AND column_name = 'onboarding_step'
+        ) THEN
+          ALTER TABLE user_settings ADD COLUMN onboarding_step INTEGER DEFAULT 0;
+        END IF;
+      END $$;
+    `);
     
     log("Startup migrations completed successfully", "migrations");
   } catch (error) {

@@ -1315,6 +1315,24 @@ export default function CommandCenter() {
                                 {result.patternScore}%
                               </Badge>
                             )}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={!brokerConnected}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedTicker(result.ticker);
+                                    setShowTradeTicket(true);
+                                  }}
+                                  data-testid={`button-instatrade-${result.ticker}`}
+                                >
+                                  <Zap className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{brokerConnected ? "InstaTrade™" : "Connect broker to trade"}</TooltipContent>
+                            </Tooltip>
                             {actionMode === "ALERTS_ONLY" && (
                               <Tooltip>
                                 <TooltipTrigger asChild>

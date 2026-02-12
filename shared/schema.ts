@@ -678,6 +678,8 @@ export const userSettings = pgTable("user_settings", {
   selectedAlgopilotxEndpointId: text("selected_algopilotx_endpoint_id"),
   automationStatus: text("automation_status").notNull().default("DISABLED"),
   ccFilterPresets: jsonb("cc_filter_presets").default(null),
+  traderType: text("trader_type").default("swing"),
+  onboardingStep: integer("onboarding_step").default(0),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -721,6 +723,8 @@ export const userSettingsUpdateSchema = z.object({
   selectedAlgopilotxEndpointId: z.string().nullable().optional(),
   automationStatus: z.enum(["ARMED", "PAUSED", "DISABLED"]).optional(),
   ccFilterPresets: z.any().nullable().optional(),
+  traderType: z.enum(["day", "swing", "options", "futures"]).optional(),
+  onboardingStep: z.number().min(0).max(5).optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;

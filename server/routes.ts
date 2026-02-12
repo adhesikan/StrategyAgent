@@ -3675,6 +3675,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           automationEngine: "BUILT_IN",
           selectedAlgopilotxEndpointId: null,
           automationStatus: "DISABLED",
+          traderType: "swing",
+          onboardingStep: 0,
         });
       }
       
@@ -3706,6 +3708,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         automationEngine: settings.automationEngine || "BUILT_IN",
         selectedAlgopilotxEndpointId: settings.selectedAlgopilotxEndpointId || null,
         automationStatus: settings.automationStatus || "DISABLED",
+        traderType: settings.traderType || "swing",
+        onboardingStep: settings.onboardingStep ?? 0,
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -3752,6 +3756,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         automationEngine: settings.automationEngine || "BUILT_IN",
         selectedAlgopilotxEndpointId: settings.selectedAlgopilotxEndpointId || null,
         automationStatus: settings.automationStatus || "DISABLED",
+        traderType: settings.traderType || "swing",
+        onboardingStep: settings.onboardingStep ?? 0,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

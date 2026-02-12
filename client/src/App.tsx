@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SmartPanel } from "@/components/smart-panel";
 import { LegalAcceptanceModal } from "@/components/legal-acceptance-modal";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { Footer } from "@/components/footer";
 import {
   SidebarProvider,
@@ -205,10 +206,17 @@ interface LegalStatus {
 
 function AppLayout() {
   const [showLegalModal, setShowLegalModal] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const { user } = useAuth();
   
   const { data: legalStatus, isLoading: legalLoading } = useReactQuery<LegalStatus>({
     queryKey: ["/api/auth/legal-status"],
+    enabled: !!user,
+  });
+
+  const { data: userSettings } = useReactQuery<{ setupCompleted: boolean }>({
+    queryKey: ["/api/user/settings"],
     enabled: !!user,
   });
 
@@ -217,6 +225,12 @@ function AppLayout() {
       setShowLegalModal(true);
     }
   }, [legalStatus]);
+
+  useEffect(() => {
+    if (userSettings && !userSettings.setupCompleted && legalStatus?.accepted && !showLegalModal && !onboardingDismissed) {
+      setShowOnboarding(true);
+    }
+  }, [userSettings, legalStatus, showLegalModal, onboardingDismissed]);
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -256,6 +270,17 @@ function AppLayout() {
       <LegalAcceptanceModal
         open={showLegalModal}
         onAccepted={() => setShowLegalModal(false)}
+      />
+      <OnboardingWizard
+        open={showOnboarding}
+        onComplete={() => {
+          setShowOnboarding(false);
+          setOnboardingDismissed(true);
+        }}
+        onClose={() => {
+          setShowOnboarding(false);
+          setOnboardingDismissed(true);
+        }}
       />
     </>
   );

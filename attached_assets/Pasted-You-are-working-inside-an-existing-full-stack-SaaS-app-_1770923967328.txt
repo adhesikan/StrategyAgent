@@ -1,0 +1,132 @@
+You are working inside an existing full-stack SaaS app called “VCP Trader” (React + Tailwind UI + Node/Express API + Postgres). Your job is to implement the UX refactor + onboarding described below, WITHOUT breaking any existing chart behavior.
+
+ABSOLUTE NON-NEGOTIABLE (READ THIS FIRST)
+1) When an Opportunity Card is clicked (card container click), the EXISTING chart behavior MUST remain intact (whatever it currently does: open side panel chart, navigate to chart route, update chart context, etc.). DO NOT change that behavior.
+2) The new CTA buttons on the card (InstaTrade™, Review, Alert, Save) MUST NOT trigger the card click. Use stopPropagation (and preventDefault if inside a Link). The card container remains the chart opener.
+
+PRIMARY GOALS
+- Optimize for day/swing + options traders
+- “First value in 60 seconds” onboarding flow
+- Reduce cognitive load
+- Make Discover → Review → Execute the primary flow
+- Keep language compliant (“self-directed”, “you control”, “not investment advice”, “no guarantees”)
+
+NEW REQUIREMENTS (ADDED)
+A) Every opportunity card (Stocks/Options/Futures) MUST include a prominent “InstaTrade™” button.
+   - Clicking InstaTrade™ opens the Trade Ticket modal pre-filled for that opportunity:
+     symbol, instrumentType (stock/option/future), strategy/stage, suggested entry/limit, default size, and OCO defaults (target/stop).
+   - Must allow submitting to connected broker where supported.
+B) Futures tab MUST be visible on Discover page alongside Stocks and Options (can label “Beta”).
+   - Preserve and expose ALL existing futures work already implemented (scanning/results/cards/chart panel/trade ticket where supported).
+   - Do NOT hide Futures behind Advanced mode.
+
+DELIVERABLES TO IMPLEMENT
+1) New IA / navigation:
+   - DISCOVER: Opportunities (tabs Stocks | Options | Futures(Beta)), Watchlists (optional)
+   - TRADE: Ticket/Execution, Trade Autopilot, Activity
+   - CONTROL: Broker & Data, Risk & Limits, Notifications, Legal
+   - New Home route: /home (Trading Command Center)
+2) Onboarding Wizard:
+   - Auto-shows after signup/login until completed
+   - Accessible later: Help → Setup Wizard
+   - Stepper with Quick Start (default) and Advanced Setup (collapsed)
+   - Steps: Trader Type → Automation Mode → Market Data (broker or demo) → Risk Preset → Run Scan → Review First Opportunity → Choose Next Action
+   - Persist onboarding state per-user
+3) Opportunities page improvements:
+   - /discover/opportunities with top tabs: Stocks | Options | Futures(Beta)
+   - Default Simple mode; Advanced toggle may exist but Futures stays visible
+   - Pinned “Start Here” strip until onboarding complete
+   - Opportunity Cards:
+     - Show Stage/Score/Entry/Stop/R:R/RVOL/ATR (ATR optional)
+     - ALWAYS show InstaTrade™ button
+     - Card click continues to open existing chart behavior
+     - CTAs must NOT trigger chart click (stopPropagation)
+4) Trade Autopilot unified page:
+   - /trade/autopilot with 4 modes: Alerts, Assisted, Autopilot (internal), Advanced Autopilot (external/AlgoPilotX) hidden behind advanced section
+   - Safety controls: Armed toggle, Pause/Resume, Disable, Emergency Stop always visible
+5) Control pages reorganized:
+   - /control/broker-data, /control/risk-limits, /control/notifications, /control/legal
+   - Ensure Terms/Privacy/Disclaimer/Open Source reachable from footer and /control/legal
+6) Minimal DB changes:
+   - Store onboarding_completed, onboarding_step, trader_type, autopilot_mode, advanced_mode, risk preset (or link to existing settings)
+   - If a user_settings table exists, extend it; otherwise add minimal columns to users.
+
+IMPLEMENTATION INSTRUCTIONS (DO THIS SYSTEMATICALLY)
+Step 0 — Repo inspection (MANDATORY)
+- Print the repo tree focusing on:
+  - router / routes config
+  - left nav component
+  - opportunities list + opportunity card component(s)
+  - chart panel / chart route logic
+  - futures components (scanning/results/cards/chart)
+  - trade ticket modal/component + its prefill API/types
+  - existing autopilot/agent pages
+  - user settings and onboarding-like logic (if any)
+- Identify exact files/paths for each and summarize before editing.
+
+Step 1 — Navigation + routes
+- Add /home route and new nav groups (DISCOVER/TRADE/CONTROL) without deleting old routes yet.
+- Re-route existing pages into the new structure while keeping old paths temporarily (add redirects if needed).
+- Keep dark theme and existing component patterns.
+
+Step 2 — Onboarding Wizard
+- Create /onboarding route (or modal) plus a reusable OnboardingWizard component.
+- Add a “Setup Wizard” entry in Help menu to reopen.
+- Add server endpoints for reading/updating onboarding state and user prefs.
+- On login, if onboarding not completed, route to /onboarding (or open modal) safely.
+
+Step 3 — Opportunity Card CTAs with chart-preservation
+- Add InstaTrade™ button to EVERY opportunity card (stocks/options/futures).
+- Ensure the card container onClick remains the chart opener (do not change existing handler).
+- For CTA buttons: implement stopPropagation and preventDefault where needed.
+- Wire InstaTrade™ to open Trade Ticket modal with a prefill payload from the opportunity object:
+  - symbol, instrumentType, stage/strategyTag, suggestedEntry (limit), quantity default, OCO defaults.
+- Add fallback logic if some fields missing.
+
+Step 4 — Futures tab visible on Discover
+- Ensure Discover opportunities page always shows Futures tab (Beta label allowed).
+- Reuse existing futures scanning/results/cards/chart panel components.
+- Do not remove or refactor futures core logic unless required for tabs.
+- If futures execution not supported, in the ticket show a message “Execution coming soon — you can still set alerts and track levels.”
+
+Step 5 — Home dashboard
+- Create /home “Trading Command Center” dashboard:
+  - Next Best Action
+  - status chips: Mode/Data/Risk/Agent status
+  - Today’s Top Picks with opportunity rows/cards and InstaTrade™ button
+  - Execution summary + Quick actions (Run scan, Opportunities, Autopilot, Emergency Stop)
+  - Optional collapsed headlines widget
+
+Step 6 — Trade Autopilot unify
+- Consolidate internal agent + external (AlgoPilotX) under one page:
+  - Mode cards and safety controls
+  - Advanced section for external engine connection stepper
+  - Keep language: “self-directed”, “you control”, “pause anytime”, “no guarantees”
+- Avoid “two automations” framing.
+
+Step 7 — Control pages + legal microcopy
+- Create /control pages and move existing settings UI under them.
+- Add footer disclaimer and modal microcopy:
+  - Trade ticket: “Review before submitting.”
+  - Autopilot: safety callouts, emergency stop
+  - Onboarding: risk and self-directed language
+
+Step 8 — DB migration
+- Determine whether stack uses Prisma or raw SQL migrations.
+- Add minimal columns/table changes accordingly.
+- Update types on server + client.
+
+Step 9 — Tests / build
+- Update any route tests or smoke tests.
+- Ensure build passes and no broken routes.
+
+OUTPUT REQUIRED
+1) A concise PR-style plan listing file-by-file edits (before coding).
+2) Then implement the code changes directly:
+   - new/updated React components
+   - updated router/nav config
+   - API endpoints
+   - DB migration (Prisma or SQL)
+   - types
+3) Add TODOs where exact ORM/table names are unknown, but DO NOT block progress—make best guesses and isolate in TODOs.
+4) Ensure Opportunity card click still opens chart exactly as before; CTAs must not hijack it.

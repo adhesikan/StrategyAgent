@@ -9,6 +9,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -27,12 +30,14 @@ import {
   ArrowUpDown,
   BarChart3,
   Bell,
+  Bookmark,
   Bot,
   Check,
   CheckCircle2,
   ChevronRight,
   Clock,
   ExternalLink,
+  Filter,
   History,
   LayoutGrid,
   List,
@@ -41,11 +46,13 @@ import {
   Play,
   Radio,
   Rocket,
+  Save,
   Settings,
   Shield,
   SlidersHorizontal,
   Square,
   Target,
+  Trash2,
   TrendingUp,
   Wifi,
   WifiOff,
@@ -91,6 +98,35 @@ interface ChartData {
 type OpportunitySortField = "ticker" | "stage" | "price" | "patternScore";
 type OpportunitySortDirection = "asc" | "desc";
 type OpportunityViewMode = "card" | "list";
+
+interface CCFilterConfig {
+  riskReward: string;
+  tradeStatus: string;
+  priceMin: string;
+  priceMax: string;
+  rvolMin: string;
+  changeMin: string;
+  changeMax: string;
+  showCount: string;
+}
+
+interface CCFilterPreset {
+  id: string;
+  name: string;
+  filters: CCFilterConfig;
+  isDefault: boolean;
+}
+
+const DEFAULT_FILTERS: CCFilterConfig = {
+  riskReward: "all",
+  tradeStatus: "all",
+  priceMin: "",
+  priceMax: "",
+  rvolMin: "",
+  changeMin: "",
+  changeMax: "",
+  showCount: "10",
+};
 
 function isMarketOpen(): boolean {
   const now = new Date();
@@ -222,6 +258,10 @@ export default function CommandCenter() {
 
   const [lastAutoScanTime, setLastAutoScanTime] = useState<Date | null>(null);
   const [autoScanRunning, setAutoScanRunning] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<CCFilterConfig>(DEFAULT_FILTERS);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [showSavePreset, setShowSavePreset] = useState(false);
 
   const autoScanMutation = useMutation({
     mutationFn: async (strategy: string) => {
@@ -310,6 +350,84 @@ export default function CommandCenter() {
     return STRATEGY_CONFIGS.map(s => ({ id: s.id, displayName: s.displayName }));
   }, []);
 
+  const savedPresets = useMemo<CCFilterPreset[]>(() => {
+    const raw = (userSettings as any)?.ccFilterPresets;
+    if (Array.isArray(raw)) return raw;
+    return [];
+  }, [userSettings]);
+
+  const defaultPresetId = useMemo(() => {
+    const def = savedPresets.find(p => p.isDefault);
+    return def?.id ?? null;
+  }, [savedPresets]);
+
+  useEffect(() => {
+    const defaultPreset = savedPresets.find(p => p.isDefault);
+    if (defaultPreset) {
+      const filters = { ...DEFAULT_FILTERS, ...defaultPreset.filters };
+      setAdvancedFilters(filters);
+      if (filters.riskReward !== "all" || filters.tradeStatus !== "all" ||
+          filters.priceMin || filters.priceMax ||
+          filters.rvolMin || filters.changeMin || filters.changeMax ||
+          filters.showCount !== "10") {
+        setShowAdvancedFilters(true);
+      }
+    }
+  }, [defaultPresetId]);
+
+  const savePresetMutation = useMutation({
+    mutationFn: async (presets: CCFilterPreset[]) => {
+      const response = await apiRequest("PATCH", "/api/user/settings", {
+        ccFilterPresets: presets,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
+      toast({ title: "Preset saved", description: "Your filter configuration has been saved." });
+    },
+  });
+
+  const handleSavePreset = () => {
+    if (!presetName.trim()) return;
+    const newPreset: CCFilterPreset = {
+      id: Date.now().toString(),
+      name: presetName.trim(),
+      filters: { ...advancedFilters },
+      isDefault: savedPresets.length === 0,
+    };
+    savePresetMutation.mutate([...savedPresets, newPreset]);
+    setPresetName("");
+    setShowSavePreset(false);
+  };
+
+  const handleSetDefaultPreset = (presetId: string) => {
+    const updated = savedPresets.map(p => ({ ...p, isDefault: p.id === presetId }));
+    savePresetMutation.mutate(updated);
+  };
+
+  const handleDeletePreset = (presetId: string) => {
+    const updated = savedPresets.filter(p => p.id !== presetId);
+    savePresetMutation.mutate(updated);
+  };
+
+  const handleLoadPreset = (preset: CCFilterPreset) => {
+    setAdvancedFilters(preset.filters);
+  };
+
+  const advancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (advancedFilters.riskReward !== "all") count++;
+    if (advancedFilters.tradeStatus !== "all") count++;
+    if (advancedFilters.priceMin) count++;
+    if (advancedFilters.priceMax) count++;
+    if (advancedFilters.rvolMin) count++;
+    if (advancedFilters.changeMin) count++;
+    if (advancedFilters.changeMax) count++;
+    if (advancedFilters.showCount !== "10") count++;
+    return count;
+  }, [advancedFilters]);
+
   const handleSortToggle = (field: OpportunitySortField) => {
     if (sortField === field) {
       setSortDirection(prev => prev === "asc" ? "desc" : "asc");
@@ -374,6 +492,47 @@ export default function CommandCenter() {
       filtered = filtered.filter(r => r.strategy === strategyFilter);
     }
 
+    if (advancedFilters.riskReward !== "all") {
+      filtered = filtered.filter(r => {
+        const rr = getRiskReward(r);
+        if (rr === null) return false;
+        switch (advancedFilters.riskReward) {
+          case "3plus": return rr >= 3;
+          case "2plus": return rr >= 2;
+          case "1plus": return rr >= 1;
+          case "below1": return rr < 1;
+          default: return true;
+        }
+      });
+    }
+
+    if (advancedFilters.tradeStatus !== "all") {
+      filtered = filtered.filter(r => getTradeStatus(r) === advancedFilters.tradeStatus);
+    }
+
+    const priceMin = advancedFilters.priceMin ? parseFloat(advancedFilters.priceMin) : null;
+    const priceMax = advancedFilters.priceMax ? parseFloat(advancedFilters.priceMax) : null;
+    if (priceMin !== null && !isNaN(priceMin)) {
+      filtered = filtered.filter(r => (r.price ?? 0) >= priceMin);
+    }
+    if (priceMax !== null && !isNaN(priceMax)) {
+      filtered = filtered.filter(r => (r.price ?? 0) <= priceMax);
+    }
+
+    const rvolMin = advancedFilters.rvolMin ? parseFloat(advancedFilters.rvolMin) : null;
+    if (rvolMin !== null && !isNaN(rvolMin)) {
+      filtered = filtered.filter(r => (r.rvol ?? 0) >= rvolMin);
+    }
+
+    const changeMin = advancedFilters.changeMin ? parseFloat(advancedFilters.changeMin) : null;
+    const changeMax = advancedFilters.changeMax ? parseFloat(advancedFilters.changeMax) : null;
+    if (changeMin !== null && !isNaN(changeMin)) {
+      filtered = filtered.filter(r => (r.changePercent ?? 0) >= changeMin);
+    }
+    if (changeMax !== null && !isNaN(changeMax)) {
+      filtered = filtered.filter(r => (r.changePercent ?? 0) <= changeMax);
+    }
+
     const stageBonus: Record<string, number> = { BREAKOUT: 0.2, READY: 0.1, FORMING: 0 };
     const scored = filtered.map(r => {
       const confidence = (r.patternScore || 0) / 100;
@@ -427,8 +586,9 @@ export default function CommandCenter() {
       });
     }
 
-    return scored.slice(0, 10).map(s => s.result);
-  }, [deduplicatedResults, stageFilter, scoreFilter, strategyFilter, sortField, sortDirection]);
+    const maxResults = parseInt(advancedFilters.showCount) || 10;
+    return scored.slice(0, maxResults).map(s => s.result);
+  }, [deduplicatedResults, stageFilter, scoreFilter, strategyFilter, sortField, sortDirection, advancedFilters]);
 
   const totalFilteredCount = useMemo(() => {
     if (!deduplicatedResults.length) return 0;
@@ -437,8 +597,34 @@ export default function CommandCenter() {
     if (scoreFilter === "60") filtered = filtered.filter(r => (r.patternScore ?? 0) >= 60);
     else if (scoreFilter === "80") filtered = filtered.filter(r => (r.patternScore ?? 0) >= 80);
     if (strategyFilter !== "all") filtered = filtered.filter(r => r.strategy === strategyFilter);
+    if (advancedFilters.riskReward !== "all") {
+      filtered = filtered.filter(r => {
+        const rr = getRiskReward(r);
+        if (rr === null) return false;
+        switch (advancedFilters.riskReward) {
+          case "3plus": return rr >= 3;
+          case "2plus": return rr >= 2;
+          case "1plus": return rr >= 1;
+          case "below1": return rr < 1;
+          default: return true;
+        }
+      });
+    }
+    if (advancedFilters.tradeStatus !== "all") {
+      filtered = filtered.filter(r => getTradeStatus(r) === advancedFilters.tradeStatus);
+    }
+    const pMin = advancedFilters.priceMin ? parseFloat(advancedFilters.priceMin) : null;
+    const pMax = advancedFilters.priceMax ? parseFloat(advancedFilters.priceMax) : null;
+    if (pMin !== null && !isNaN(pMin)) filtered = filtered.filter(r => (r.price ?? 0) >= pMin);
+    if (pMax !== null && !isNaN(pMax)) filtered = filtered.filter(r => (r.price ?? 0) <= pMax);
+    const rvMin = advancedFilters.rvolMin ? parseFloat(advancedFilters.rvolMin) : null;
+    if (rvMin !== null && !isNaN(rvMin)) filtered = filtered.filter(r => (r.rvol ?? 0) >= rvMin);
+    const chgMin = advancedFilters.changeMin ? parseFloat(advancedFilters.changeMin) : null;
+    const chgMax = advancedFilters.changeMax ? parseFloat(advancedFilters.changeMax) : null;
+    if (chgMin !== null && !isNaN(chgMin)) filtered = filtered.filter(r => (r.changePercent ?? 0) >= chgMin);
+    if (chgMax !== null && !isNaN(chgMax)) filtered = filtered.filter(r => (r.changePercent ?? 0) <= chgMax);
     return filtered.length;
-  }, [deduplicatedResults, stageFilter, scoreFilter, strategyFilter]);
+  }, [deduplicatedResults, stageFilter, scoreFilter, strategyFilter, advancedFilters]);
 
   const selectedResult = useMemo(() => {
     if (!selectedTicker) return null;
@@ -788,12 +974,240 @@ export default function CommandCenter() {
                     Clear
                   </Button>
                 )}
+                <Button
+                  variant={showAdvancedFilters ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className="gap-1"
+                  data-testid="button-toggle-advanced-filters"
+                >
+                  <Filter className="h-3 w-3" />
+                  Filters
+                  {advancedFilterCount > 0 && (
+                    <Badge variant="default" className="text-xs px-1.5 py-0">
+                      {advancedFilterCount}
+                    </Badge>
+                  )}
+                </Button>
                 <Badge variant="secondary" className="ml-auto text-xs" data-testid="text-results-count">
                   {totalFilteredCount > filteredSortedResults.length
                     ? `Top ${filteredSortedResults.length} of ${totalFilteredCount}`
                     : `${filteredSortedResults.length} result${filteredSortedResults.length !== 1 ? "s" : ""}`}
                 </Badge>
               </div>
+
+              {showAdvancedFilters && (
+                <div className="border rounded-md p-3 space-y-3" data-testid="panel-advanced-filters">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-sm font-medium">Advanced Filters</span>
+                    <div className="flex items-center gap-1">
+                      {savedPresets.length > 0 && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" className="gap-1" data-testid="button-load-preset">
+                              <Bookmark className="h-3 w-3" />
+                              Presets
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64" align="end">
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Saved Presets</p>
+                              <Separator />
+                              {savedPresets.map(preset => (
+                                <div key={preset.id} className="flex items-center justify-between gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="flex-1 justify-start gap-1 text-left"
+                                    onClick={() => handleLoadPreset(preset)}
+                                    data-testid={`button-preset-${preset.id}`}
+                                  >
+                                    {preset.isDefault && <Check className="h-3 w-3 text-green-500 shrink-0" />}
+                                    <span className="truncate">{preset.name}</span>
+                                  </Button>
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className={cn("h-7 w-7", preset.isDefault && "text-green-500")}
+                                          onClick={() => handleSetDefaultPreset(preset.id)}
+                                          data-testid={`button-preset-default-${preset.id}`}
+                                        >
+                                          <Bookmark className="h-3 w-3" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{preset.isDefault ? "Default preset" : "Set as default"}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive"
+                                      onClick={() => handleDeletePreset(preset.id)}
+                                      data-testid={`button-preset-delete-${preset.id}`}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                      {showSavePreset ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            placeholder="Preset name"
+                            value={presetName}
+                            onChange={(e) => setPresetName(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleSavePreset()}
+                            className="h-8 w-32 text-sm"
+                            data-testid="input-preset-name"
+                          />
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={handleSavePreset}
+                            disabled={!presetName.trim() || savePresetMutation.isPending}
+                            data-testid="button-confirm-save-preset"
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setShowSavePreset(false); setPresetName(""); }}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="gap-1" onClick={() => setShowSavePreset(true)} data-testid="button-save-preset">
+                          <Save className="h-3 w-3" />
+                          Save
+                        </Button>
+                      )}
+                      {advancedFilterCount > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAdvancedFilters(DEFAULT_FILTERS)}
+                          data-testid="button-reset-advanced-filters"
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Reset
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Risk/Reward</Label>
+                      <Select value={advancedFilters.riskReward} onValueChange={(v) => setAdvancedFilters(f => ({ ...f, riskReward: v }))}>
+                        <SelectTrigger className="h-8 text-sm" data-testid="select-rr-filter">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Any R:R</SelectItem>
+                          <SelectItem value="3plus">3:1+</SelectItem>
+                          <SelectItem value="2plus">2:1+</SelectItem>
+                          <SelectItem value="1plus">1:1+</SelectItem>
+                          <SelectItem value="below1">Below 1:1</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Trade Status</Label>
+                      <Select value={advancedFilters.tradeStatus} onValueChange={(v) => setAdvancedFilters(f => ({ ...f, tradeStatus: v }))}>
+                        <SelectTrigger className="h-8 text-sm" data-testid="select-status-filter">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Any Status</SelectItem>
+                          <SelectItem value="IN_ENTRY_ZONE">In Entry Zone</SelectItem>
+                          <SelectItem value="AWAITING_BREAKOUT">Awaiting Breakout</SelectItem>
+                          <SelectItem value="EXTENDED">Extended</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Price Range ($)</Label>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          placeholder="Min"
+                          value={advancedFilters.priceMin}
+                          onChange={(e) => setAdvancedFilters(f => ({ ...f, priceMin: e.target.value }))}
+                          className="h-8 text-sm"
+                          data-testid="input-price-min"
+                        />
+                        <span className="text-xs text-muted-foreground">-</span>
+                        <Input
+                          type="number"
+                          placeholder="Max"
+                          value={advancedFilters.priceMax}
+                          onChange={(e) => setAdvancedFilters(f => ({ ...f, priceMax: e.target.value }))}
+                          className="h-8 text-sm"
+                          data-testid="input-price-max"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Show Results</Label>
+                      <Select value={advancedFilters.showCount} onValueChange={(v) => setAdvancedFilters(f => ({ ...f, showCount: v }))}>
+                        <SelectTrigger className="h-8 text-sm" data-testid="select-show-count">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">Top 5</SelectItem>
+                          <SelectItem value="10">Top 10</SelectItem>
+                          <SelectItem value="15">Top 15</SelectItem>
+                          <SelectItem value="25">Top 25</SelectItem>
+                          <SelectItem value="50">All (50)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min RVOL</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        placeholder="e.g. 1.5"
+                        value={advancedFilters.rvolMin}
+                        onChange={(e) => setAdvancedFilters(f => ({ ...f, rvolMin: e.target.value }))}
+                        className="h-8 text-sm"
+                        data-testid="input-rvol-min"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Change % Range</Label>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Min %"
+                          value={advancedFilters.changeMin}
+                          onChange={(e) => setAdvancedFilters(f => ({ ...f, changeMin: e.target.value }))}
+                          className="h-8 text-sm"
+                          data-testid="input-change-min"
+                        />
+                        <span className="text-xs text-muted-foreground">-</span>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Max %"
+                          value={advancedFilters.changeMax}
+                          onChange={(e) => setAdvancedFilters(f => ({ ...f, changeMax: e.target.value }))}
+                          className="h-8 text-sm"
+                          data-testid="input-change-max"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {filteredSortedResults.length > 0 ? (
                 <ScrollArea className="max-h-[340px]">

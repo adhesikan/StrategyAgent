@@ -1,0 +1,52 @@
+[ExitManager] Checking 1 active managed exits
+[Rithmic] Gateway discovery failed, using configured URIs: Gateway discovery timeout
+[Rithmic] Logged into ticker plant (fcmId=Rithmic-FCM, ibId=Prospects)
+[Rithmic] Connected to all plants
+[FuturesWorker] Started successfully
+[Rithmic] Logged into order plant (fcmId=Rithmic-FCM, ibId=Prospects)
+7:38:32 PM [express] GET /api/scan/results 200 in 89ms :: []
+7:38:35 PM [express] GET /api/auth/user 304 in 12ms :: {"id":"e4f4da88-5589-4478-86cf-ed369d87fb9e","email":"admin@vcptrader.com","firstName":"Admin","lastName":"User","profileImageUrl":null,"role":"admin","stripeCustomerId":null,"subscriptionStatus":null,"subscriptionPlanId":null,"subscriptionEndDate":null,"acceptedLegalVersion":"2026-01-01","acceptedAt":"2026-01-01T18:34:03.000Z","acceptedIp":"50.35.55.84","acceptedUserAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36","snaptradeUserId":"e4f4da88-5589-4478-86cf-ed369d87fb9e","snaptradeUserSecret":"{\"ciphertext\":\"3JEg+jURz6BzPScUF33W7jDpc3Fr4R5TRe+V08P4Zv0iK2VT\",\"iv\":\"311oQv161ehne2Ys\",\"authTag\":\"2/+u0ERVLQwCMA+8/76k5w==\"}","createdAt":"2026-01-01T18:34:03.000Z","updatedAt":"2026-01-26T01:51:08.290Z"}
+Failed to get user settings: error: column "cc_filter_presets" does not exist
+    at /app/dist/index.cjs:64:13330
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:38053
+    at async Yx.getUserSettings (/app/dist/index.cjs:70:164935)
+    at async /app/dist/index.cjs:116:71377 {
+  length: 118,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '665',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3716',
+  routine: 'errorMissingColumn'
+}
+7:38:35 PM [express] GET /api/user/settings 500 in 16ms :: {"error":"Failed to get user settings"}
+7:38:35 PM [express] GET /api/auth/legal-status 304 in 87ms :: {"accepted":true,"currentVersion":"2026-01-01","acceptedVersion":"2026-01-01","acceptedAt":"2026-01-01T18:34:03.000Z"}
+Failed to get user settings: error: column "cc_filter_presets" does not exist
+    at /app/dist/index.cjs:64:13330
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:70:38053
+    at async Yx.getUserSettings (/app/dist/index.cjs:70:164935)
+    at async /app/dist/index.cjs:116:71377 {
+  length: 118,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '665',
+7:38:35 PM [express] GET /api/platform/risk-profile 304 in 89ms :: {"id":"48a307fb-3c38-4d85-b357-a72a1d026e97","risk_mode":"aggressive","risk_per_trade":3,"max_deploy":70,"protections_enabled":true,"guardrails_json":{},"protections_json":{}}
+  internalPosition: undefined,
+  internalQuery: undefined,
+7:38:35 PM [express] GET /api/scan/results 304 in 74ms :: []
+  where: undefined,
+7:38:35 PM [express] GET /api/trades 304 

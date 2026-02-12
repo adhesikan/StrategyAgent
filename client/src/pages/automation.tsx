@@ -148,7 +148,7 @@ export default function AutomationPage() {
           settings={settings}
         />
 
-        {(currentMode === "ASSISTED" || currentMode === "AUTONOMOUS") && (
+        {currentMode === "AUTONOMOUS" && (
           <AutoAgentConfig />
         )}
 

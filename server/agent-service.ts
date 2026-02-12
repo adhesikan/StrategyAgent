@@ -16,9 +16,16 @@ export interface EligibilityResult {
   metrics: AgentDecisionMetrics;
 }
 
-export function computeUpsidePct(price: number, resistance: number): number {
+export function computeTargetPrice(resistance: number, stop: number): number {
+  if (!resistance || !stop || resistance <= 0 || stop <= 0) return 0;
+  const baseDepth = resistance - stop;
+  return resistance + baseDepth;
+}
+
+export function computeUpsidePct(price: number, resistance: number, stop?: number): number {
   if (!price || price <= 0 || !resistance) return 0;
-  return ((resistance - price) / price) * 100;
+  const target = stop ? computeTargetPrice(resistance, stop) : resistance;
+  return ((target - price) / price) * 100;
 }
 
 export function computeRiskPct(price: number, stop: number): number {
@@ -45,7 +52,7 @@ export function isEligible(
   const confidence = opportunity.score || 0;
   const rvol = opportunity.rvol || 0;
   
-  const upsidePct = computeUpsidePct(price, resistance);
+  const upsidePct = computeUpsidePct(price, resistance, stop);
   const riskPct = computeRiskPct(price, stop);
   const rewardRisk = computeRewardRisk(upsidePct, riskPct);
   

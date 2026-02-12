@@ -442,9 +442,17 @@ export default function CommandCenter() {
     return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
   };
 
+  const getTargetPrice = (result: ScanResult): number | null => {
+    if (!result.resistance || !result.stopLoss) return null;
+    const baseDepth = result.resistance - result.stopLoss;
+    return result.resistance + baseDepth;
+  };
+
   const getRiskReward = (result: ScanResult): number | null => {
     if (!result.resistance || !result.stopLoss || !result.price) return null;
-    const reward = result.resistance - result.price;
+    const target = getTargetPrice(result);
+    if (!target) return null;
+    const reward = target - result.price;
     const risk = result.price - result.stopLoss;
     if (risk <= 0) return null;
     return reward / risk;

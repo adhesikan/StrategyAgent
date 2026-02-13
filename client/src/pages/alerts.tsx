@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bell, Bot, Plus, Check, Trash2, List, Power, PowerOff, Clock, AlertCircle, TrendingUp, ExternalLink, HelpCircle, ArrowUpDown } from "lucide-react";
 import { Link, useSearch } from "wouter";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1131,9 +1131,18 @@ export default function Alerts() {
                         >
                           {trade.status}
                         </Badge>
-                        <span className="text-xs text-muted-foreground" data-testid={`text-trade-time-${trade.id}`}>
-                          {trade.createdAt ? formatDistanceToNow(new Date(trade.createdAt), { addSuffix: true }) : ""}
-                        </span>
+                        <div className="flex flex-col items-end gap-0.5" data-testid={`text-trade-time-${trade.id}`}>
+                          {trade.createdAt && (
+                            <>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(trade.createdAt), "MMM d, yyyy h:mm a")}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground/70">
+                                {formatDistanceToNow(new Date(trade.createdAt), { addSuffix: true })}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </CardContent>

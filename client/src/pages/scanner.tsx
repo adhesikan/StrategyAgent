@@ -1317,12 +1317,35 @@ export default function Scanner() {
                 
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-medium">${result.price?.toFixed(2)}</span>
-                  <span className={cn(
-                    "text-sm font-medium",
-                    (result.changePercent || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                  )}>
-                    {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(2)}%
-                  </span>
+                  {(() => {
+                    if (result.resistance && result.stopLoss && result.price) {
+                      const baseDepth = result.resistance - result.stopLoss;
+                      const target1R = result.resistance + (baseDepth * 0.5);
+                      const targetUpside = ((target1R - result.price) / result.price) * 100;
+                      if (targetUpside > 0) {
+                        return (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-sm font-medium text-green-600 dark:text-green-400 cursor-help" data-testid={`text-upside-${result.ticker}`}>
+                                +{targetUpside.toFixed(1)}% target
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[220px] text-xs">
+                              Estimated gain to the 1R profit target (${target1R.toFixed(2)}), calculated from the pattern's base depth. Actual results may vary.
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      }
+                    }
+                    return (
+                      <span className={cn(
+                        "text-sm font-medium",
+                        (result.changePercent || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {(result.changePercent || 0) >= 0 ? "+" : ""}{result.changePercent?.toFixed(2)}%
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {result.strategy && (

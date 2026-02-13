@@ -1526,66 +1526,6 @@ export default function CommandCenter() {
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" />
-                <CardTitle>Execution Summary</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-muted/50 text-center">
-                  <p className="text-2xl font-bold" data-testid="text-open-positions">{openPositions.length}</p>
-                  <p className="text-xs text-muted-foreground">Open Positions</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/50 text-center">
-                  <p className="text-2xl font-bold" data-testid="text-trades-today">{todaysTrades.length}</p>
-                  <p className="text-xs text-muted-foreground">Trades Today</p>
-                </div>
-              </div>
-              {todaysTrades.length > 0 && (
-                <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-                  {instatradeTodayCount > 0 && (
-                    <span data-testid="text-instatrade-count">InstaTrade™: {instatradeTodayCount}</span>
-                  )}
-                  {agentTodayCount > 0 && (
-                    <span data-testid="text-agent-count">Auto Agent: {agentTodayCount}</span>
-                  )}
-                </div>
-              )}
-
-              {agentState?.lastRunAt && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  Last scan: {new Date(agentState.lastRunAt).toLocaleTimeString()}
-                </div>
-              )}
-            </CardContent>
-            <CardFooter className="border-t pt-3">
-              {brokerConnected && brokerStatus?.provider ? (
-                <Button variant="outline" size="sm" className="w-full" asChild>
-                  <a
-                    href={getBrokerageDashboardUrl(brokerStatus.provider)}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    data-testid="link-brokerage-dashboard"
-                  >
-                    <ExternalLink className="h-4 w-4 mr-1" />
-                    Open {formatProviderName(brokerStatus.provider)} Dashboard
-                  </a>
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" className="w-full" asChild>
-                  <Link href="/settings" data-testid="link-connect-broker">
-                    <Link2 className="h-4 w-4 mr-1" />
-                    Connect a Broker
-                  </Link>
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-
           <Card data-testid="card-todays-trades">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1668,6 +1608,28 @@ export default function CommandCenter() {
                 </div>
               )}
             </CardContent>
+            <CardFooter className="border-t pt-3">
+              {brokerConnected && brokerStatus?.provider ? (
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <a
+                    href={getBrokerageDashboardUrl(brokerStatus.provider)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    data-testid="link-brokerage-dashboard"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Open {formatProviderName(brokerStatus.provider)} Dashboard
+                  </a>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <Link href="/settings" data-testid="link-connect-broker">
+                    <Link2 className="h-4 w-4 mr-1" />
+                    Connect a Broker
+                  </Link>
+                </Button>
+              )}
+            </CardFooter>
           </Card>
 
           <Card>

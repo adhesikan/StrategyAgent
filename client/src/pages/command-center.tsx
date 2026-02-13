@@ -1552,10 +1552,10 @@ export default function CommandCenter() {
                     size="sm"
                     onClick={() => setShowRejectedTrades(!showRejectedTrades)}
                     className={`text-xs toggle-elevate ${showRejectedTrades ? "toggle-elevated" : ""}`}
-                    data-testid="button-toggle-rejected"
+                    data-testid="button-toggle-skipped"
                   >
                     <AlertCircle className="h-3.5 w-3.5 mr-1" />
-                    Rejected
+                    Skipped
                   </Button>
                   <Button variant="ghost" size="sm" asChild>
                     <Link href="/alerts?tab=trades" data-testid="link-view-all-trades">
@@ -1569,24 +1569,24 @@ export default function CommandCenter() {
             <CardContent>
               {todaysTrades.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-trades">
-                  {showRejectedTrades ? "No trades or rejections today" : "No trades executed today"}
+                  {showRejectedTrades ? "No trades or skipped entries today" : "No trades executed today"}
                 </p>
               ) : (
                 <div className="space-y-2">
                   {todaysTrades.slice(0, 5).map((trade) => (
                     <div
                       key={trade.id}
-                      className={`flex items-center justify-between gap-2 p-2 rounded-lg ${trade.status === "rejected" ? "bg-destructive/5 border border-destructive/20" : "bg-muted/50"}`}
+                      className={`flex items-center justify-between gap-2 p-2 rounded-lg ${trade.status === "skipped" ? "bg-destructive/5 border border-destructive/20" : "bg-muted/50"}`}
                       data-testid={`trade-row-${trade.id}`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Badge
-                          variant={trade.status === "rejected" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
+                          variant={trade.status === "skipped" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
                           className="text-xs shrink-0"
                           data-testid={`badge-source-${trade.id}`}
                         >
-                          {trade.status === "rejected" ? (
-                            <><AlertCircle className="h-3 w-3 mr-1" />Rejected</>
+                          {trade.status === "skipped" ? (
+                            <><AlertCircle className="h-3 w-3 mr-1" />Skipped</>
                           ) : trade.source === "auto_agent" ? (
                             <><Bot className="h-3 w-3 mr-1" />Agent</>
                           ) : (
@@ -1603,7 +1603,7 @@ export default function CommandCenter() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {trade.status === "rejected" ? (
+                        {trade.status === "skipped" ? (
                           <span className="text-xs text-destructive/80 truncate max-w-[150px]" title={trade.reasons ? (trade.reasons as string[]).join(", ") : ""}>
                             {trade.reasons && (trade.reasons as string[]).length > 0 ? (trade.reasons as string[])[0] : "Skipped"}
                           </span>

@@ -1146,7 +1146,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           quantity: (d.orderPayload as any)?.quantity || 0,
           orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
           price: (d.orderPayload as any)?.limitPrice || null,
-          status: d.action === "SKIP" ? "rejected" : ((d.orderPayload as any)?.brokerStatus || "executed"),
+          status: d.action === "SKIP" ? "skipped" : ((d.orderPayload as any)?.brokerStatus || "executed"),
           brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
           isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
           optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {
@@ -1226,7 +1226,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           quantity: (d.orderPayload as any)?.quantity || 0,
           orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
           price: (d.orderPayload as any)?.limitPrice || null,
-          status: d.action === "SKIP" ? "rejected" : ((d.orderPayload as any)?.brokerStatus || "executed"),
+          status: d.action === "SKIP" ? "skipped" : ((d.orderPayload as any)?.brokerStatus || "executed"),
           brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
           isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
           optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {

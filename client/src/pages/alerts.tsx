@@ -1081,12 +1081,12 @@ export default function Alerts() {
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <Badge
-                          variant={trade.status === "rejected" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
+                          variant={trade.status === "skipped" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
                           className="text-xs shrink-0"
                           data-testid={`badge-trade-source-${trade.id}`}
                         >
                           {trade.source === "auto_agent" ? (
-                            <><Bot className="h-3 w-3 mr-1" />{trade.status === "rejected" ? "Rejected" : "Auto Agent"}</>
+                            <><Bot className="h-3 w-3 mr-1" />{trade.status === "skipped" ? "Skipped" : "Auto Agent"}</>
                           ) : (
                             <><Zap className="h-3 w-3 mr-1" />InstaTrade™</>
                           )}
@@ -1096,7 +1096,7 @@ export default function Alerts() {
                             <span className="font-mono font-bold text-sm" data-testid={`text-trade-sym-${trade.id}`}>
                               {trade.symbol}
                             </span>
-                            {trade.status !== "rejected" && (
+                            {trade.status !== "skipped" && (
                               <Badge variant="outline" className="text-xs uppercase">
                                 {trade.side}
                               </Badge>
@@ -1107,7 +1107,7 @@ export default function Alerts() {
                               </span>
                             )}
                           </div>
-                          {trade.status !== "rejected" && (
+                          {trade.status !== "skipped" && (
                             <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
                               <span>Qty: {trade.quantity}</span>
                               {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
@@ -1120,8 +1120,8 @@ export default function Alerts() {
                           {trade.reasons && trade.reasons.length > 0 && (
                             <div className="mt-1 space-y-0.5">
                               {(trade.reasons as string[]).map((reason, i) => (
-                                <p key={i} className={`text-xs ${trade.status === "rejected" ? "text-destructive/80" : "text-muted-foreground"}`}>
-                                  {trade.status === "rejected" && <AlertCircle className="h-3 w-3 inline mr-1 -mt-0.5" />}
+                                <p key={i} className={`text-xs ${trade.status === "skipped" ? "text-destructive/80" : "text-muted-foreground"}`}>
+                                  {trade.status === "skipped" && <AlertCircle className="h-3 w-3 inline mr-1 -mt-0.5" />}
                                   {reason}
                                 </p>
                               ))}
@@ -1134,7 +1134,7 @@ export default function Alerts() {
                           variant={
                             trade.status === "filled" || trade.status === "executed" ? "default" :
                             trade.status === "pending" ? "outline" :
-                            trade.status === "rejected" || trade.status === "cancelled" ? "destructive" : "secondary"
+                            trade.status === "skipped" || trade.status === "cancelled" ? "destructive" : "secondary"
                           }
                           className="text-xs"
                           data-testid={`badge-trade-status-${trade.id}`}
@@ -1164,7 +1164,7 @@ export default function Alerts() {
               <ArrowUpDown className="h-10 w-10 text-muted-foreground/50 mb-3" />
               <p className="text-sm font-medium">No trade activity</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Executed and rejected trades from Auto Agent and InstaTrade™ will appear here
+                Executed and skipped trades from Auto Agent and InstaTrade™ will appear here
               </p>
             </div>
           )}

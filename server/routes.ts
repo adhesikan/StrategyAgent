@@ -1457,6 +1457,59 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  const brokerPingCache = new Map<string, { ok: boolean; reason?: string; provider?: string | null; checkedAt: number }>();
+  const BROKER_PING_LIVE_TTL = 5000;
+
+  app.get("/api/broker/ping", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      if (!connection || !connection.isConnected) {
+        return res.json({ ok: false, reason: "not_connected" });
+      }
+
+      const cached = brokerPingCache.get(userId);
+      if (cached && Date.now() - cached.checkedAt < BROKER_PING_LIVE_TTL) {
+        return res.json(cached);
+      }
+
+      const brokerService = await import("./broker/index");
+      const health = await brokerService.getTokenHealth(userId);
+      if (health.status === "expired") {
+        const result = { ok: false, reason: "expired", provider: health.provider, checkedAt: Date.now() };
+        brokerPingCache.set(userId, result);
+        return res.json(result);
+      }
+
+      let liveOk = false;
+      try {
+        if (connection.provider === "tradier" && connection.accessToken) {
+          const liveRes = await fetch("https://api.tradier.com/v1/user/profile", {
+            headers: { "Authorization": `Bearer ${connection.accessToken}`, "Accept": "application/json" },
+          });
+          liveOk = liveRes.ok;
+        } else if (connection.provider === "tradestation" && connection.accessToken) {
+          const liveRes = await fetch("https://api.tradestation.com/v3/brokerage/accounts", {
+            headers: { "Authorization": `Bearer ${connection.accessToken}` },
+          });
+          liveOk = liveRes.ok;
+        } else {
+          liveOk = health.status === "valid" || health.status === "expiring";
+        }
+      } catch {
+        liveOk = false;
+      }
+
+      const result = liveOk
+        ? { ok: true, provider: health.provider, checkedAt: Date.now() }
+        : { ok: false, reason: "access_failed", provider: health.provider, checkedAt: Date.now() };
+      brokerPingCache.set(userId, result);
+      return res.json(result);
+    } catch (error) {
+      return res.json({ ok: false, reason: "error" });
+    }
+  });
+
   app.get("/api/data-source/status", async (req, res) => {
     try {
       const userId = req.session?.userId;

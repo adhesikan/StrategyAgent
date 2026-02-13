@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./use-auth";
 
@@ -33,6 +33,9 @@ interface BrokerStatusContextValue {
   dataStatus: DataStatus | null;
   dataSourceStatus: DataSourceStatus | null;
   hasDataSource: boolean;
+  connectionLost: boolean;
+  connectionLostProvider: string | null;
+  dismissConnectionLost: () => void;
 }
 
 const BrokerStatusContext = createContext<BrokerStatusContextValue | null>(null);
@@ -44,6 +47,9 @@ const providerNames: Record<string, string> = {
   schwab: "Charles Schwab",
   ibkr: "Interactive Brokers",
 };
+
+const HEARTBEAT_INTERVAL_MS = 1000;
+const FAILURE_THRESHOLD = 3;
 
 export function BrokerStatusProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -67,11 +73,75 @@ export function BrokerStatusProvider({ children }: { children: ReactNode }) {
     provider: dataSourceStatus.activeProvider || undefined,
   } : null;
   
-  // Has data source if broker is connected
   const hasDataSource = isConnected || false;
 
+  const [connectionLost, setConnectionLost] = useState(false);
+  const [connectionLostProvider, setConnectionLostProvider] = useState<string | null>(null);
+  const failCountRef = useRef(0);
+  const dismissedRef = useRef(false);
+
+  const dismissConnectionLost = useCallback(() => {
+    dismissedRef.current = true;
+    setConnectionLost(false);
+  }, []);
+
+  useEffect(() => {
+    if (!user || !isConnected) {
+      failCountRef.current = 0;
+      setConnectionLost(false);
+      return;
+    }
+
+    dismissedRef.current = false;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/broker/ping", { credentials: "include" });
+        if (!res.ok) {
+          failCountRef.current++;
+        } else {
+          const data = await res.json();
+          if (data.ok) {
+            failCountRef.current = 0;
+            if (!dismissedRef.current) {
+              setConnectionLost(false);
+              setConnectionLostProvider(null);
+            }
+          } else {
+            failCountRef.current++;
+            if (failCountRef.current >= FAILURE_THRESHOLD && !dismissedRef.current) {
+              setConnectionLost(true);
+              setConnectionLostProvider(
+                data.provider ? (providerNames[data.provider] || data.provider) : providerName
+              );
+            }
+          }
+        }
+      } catch {
+        failCountRef.current++;
+        if (failCountRef.current >= FAILURE_THRESHOLD && !dismissedRef.current) {
+          setConnectionLost(true);
+          setConnectionLostProvider(providerName);
+        }
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [user, isConnected, providerName]);
+
   return (
-    <BrokerStatusContext.Provider value={{ status: status ?? null, isConnected, isLoading, providerName, dataStatus, dataSourceStatus: dataSourceStatus ?? null, hasDataSource }}>
+    <BrokerStatusContext.Provider value={{
+      status: status ?? null,
+      isConnected,
+      isLoading,
+      providerName,
+      dataStatus,
+      dataSourceStatus: dataSourceStatus ?? null,
+      hasDataSource,
+      connectionLost,
+      connectionLostProvider,
+      dismissConnectionLost,
+    }}>
       {children}
     </BrokerStatusContext.Provider>
   );
@@ -80,7 +150,18 @@ export function BrokerStatusProvider({ children }: { children: ReactNode }) {
 export function useBrokerStatus() {
   const context = useContext(BrokerStatusContext);
   if (!context) {
-    return { status: null, isConnected: false, isLoading: false, providerName: null, dataStatus: null, dataSourceStatus: null, hasDataSource: false };
+    return {
+      status: null,
+      isConnected: false,
+      isLoading: false,
+      providerName: null,
+      dataStatus: null,
+      dataSourceStatus: null,
+      hasDataSource: false,
+      connectionLost: false,
+      connectionLostProvider: null,
+      dismissConnectionLost: () => {},
+    };
   }
   return context;
 }

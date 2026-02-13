@@ -1,8 +1,37 @@
-import { Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle, X } from "lucide-react";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 export function StatusBanner() {
-  const { isLoading, dataStatus, dataSourceStatus } = useBrokerStatus();
+  const { isLoading, dataStatus, dataSourceStatus, connectionLost, connectionLostProvider, dismissConnectionLost } = useBrokerStatus();
+
+  if (connectionLost) {
+    return (
+      <div
+        className="bg-destructive/10 border-b border-destructive/30 px-4 py-2.5 flex items-center justify-center gap-3"
+        data-testid="banner-connection-lost"
+      >
+        <WifiOff className="h-4 w-4 text-destructive shrink-0" />
+        <span className="text-sm text-destructive">
+          {connectionLostProvider
+            ? `Your ${connectionLostProvider} brokerage access has expired. Please reconnect to continue trading.`
+            : "Your brokerage access has expired. Please reconnect to continue trading."}
+        </span>
+        <Button variant="outline" size="sm" asChild className="shrink-0">
+          <Link href="/settings" data-testid="link-reconnect-broker-heartbeat">Reconnect</Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={dismissConnectionLost}
+          data-testid="button-dismiss-connection-lost"
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return null;

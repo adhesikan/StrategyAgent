@@ -98,6 +98,7 @@ interface TodayTrade {
   id: string;
   symbol: string;
   source: "auto_agent" | "instatrade";
+  action?: string;
   side: string;
   quantity: number;
   orderType: string;
@@ -342,8 +343,15 @@ export default function CommandCenter() {
     queryKey: ["/api/trades"],
   });
 
+  const [showRejectedTrades, setShowRejectedTrades] = useState(false);
+
   const { data: todayTradesData } = useQuery<TodayTrade[]>({
-    queryKey: ["/api/today-trades"],
+    queryKey: ["/api/today-trades", { includeRejected: showRejectedTrades }],
+    queryFn: async () => {
+      const url = showRejectedTrades ? "/api/today-trades?includeRejected=true" : "/api/today-trades";
+      const res = await fetch(url, { credentials: "include" });
+      return res.json();
+    },
     refetchInterval: 60000,
   });
 
@@ -1538,34 +1546,48 @@ export default function CommandCenter() {
                     </Badge>
                   )}
                 </div>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/alerts?tab=trades" data-testid="link-view-all-trades">
-                    View all
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Link>
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowRejectedTrades(!showRejectedTrades)}
+                    className={`text-xs toggle-elevate ${showRejectedTrades ? "toggle-elevated" : ""}`}
+                    data-testid="button-toggle-rejected"
+                  >
+                    <AlertCircle className="h-3.5 w-3.5 mr-1" />
+                    Rejected
+                  </Button>
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href="/alerts?tab=trades" data-testid="link-view-all-trades">
+                      View all
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Link>
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
               {todaysTrades.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-trades">
-                  No trades executed today
+                  {showRejectedTrades ? "No trades or rejections today" : "No trades executed today"}
                 </p>
               ) : (
                 <div className="space-y-2">
                   {todaysTrades.slice(0, 5).map((trade) => (
                     <div
                       key={trade.id}
-                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50"
+                      className={`flex items-center justify-between gap-2 p-2 rounded-lg ${trade.status === "rejected" ? "bg-destructive/5 border border-destructive/20" : "bg-muted/50"}`}
                       data-testid={`trade-row-${trade.id}`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Badge
-                          variant={trade.source === "auto_agent" ? "default" : "secondary"}
+                          variant={trade.status === "rejected" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
                           className="text-xs shrink-0"
                           data-testid={`badge-source-${trade.id}`}
                         >
-                          {trade.source === "auto_agent" ? (
+                          {trade.status === "rejected" ? (
+                            <><AlertCircle className="h-3 w-3 mr-1" />Rejected</>
+                          ) : trade.source === "auto_agent" ? (
                             <><Bot className="h-3 w-3 mr-1" />Agent</>
                           ) : (
                             <><Zap className="h-3 w-3 mr-1" />InstaTrade™</>
@@ -1581,19 +1603,27 @@ export default function CommandCenter() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs text-muted-foreground">
-                          {trade.quantity} @ {trade.price ? `$${trade.price.toFixed(2)}` : trade.orderType}
-                        </span>
-                        <Badge
-                          variant={
-                            trade.status === "filled" || trade.status === "executed" ? "default" :
-                            trade.status === "pending" ? "outline" : "secondary"
-                          }
-                          className="text-xs"
-                          data-testid={`badge-status-${trade.id}`}
-                        >
-                          {trade.status}
-                        </Badge>
+                        {trade.status === "rejected" ? (
+                          <span className="text-xs text-destructive/80 truncate max-w-[150px]" title={trade.reasons ? (trade.reasons as string[]).join(", ") : ""}>
+                            {trade.reasons && (trade.reasons as string[]).length > 0 ? (trade.reasons as string[])[0] : "Skipped"}
+                          </span>
+                        ) : (
+                          <>
+                            <span className="text-xs text-muted-foreground">
+                              {trade.quantity} @ {trade.price ? `$${trade.price.toFixed(2)}` : trade.orderType}
+                            </span>
+                            <Badge
+                              variant={
+                                trade.status === "filled" || trade.status === "executed" ? "default" :
+                                trade.status === "pending" ? "outline" : "secondary"
+                              }
+                              className="text-xs"
+                              data-testid={`badge-status-${trade.id}`}
+                            >
+                              {trade.status}
+                            </Badge>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}

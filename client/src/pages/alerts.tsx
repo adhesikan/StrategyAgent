@@ -397,6 +397,7 @@ export default function Alerts() {
     id: string;
     symbol: string;
     source: "auto_agent" | "instatrade";
+    action?: string;
     side: string;
     quantity: number;
     orderType: string;
@@ -1080,12 +1081,12 @@ export default function Alerts() {
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <Badge
-                          variant={trade.source === "auto_agent" ? "default" : "secondary"}
+                          variant={trade.status === "rejected" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
                           className="text-xs shrink-0"
                           data-testid={`badge-trade-source-${trade.id}`}
                         >
                           {trade.source === "auto_agent" ? (
-                            <><Bot className="h-3 w-3 mr-1" />Auto Agent</>
+                            <><Bot className="h-3 w-3 mr-1" />{trade.status === "rejected" ? "Rejected" : "Auto Agent"}</>
                           ) : (
                             <><Zap className="h-3 w-3 mr-1" />InstaTrade™</>
                           )}
@@ -1095,27 +1096,36 @@ export default function Alerts() {
                             <span className="font-mono font-bold text-sm" data-testid={`text-trade-sym-${trade.id}`}>
                               {trade.symbol}
                             </span>
-                            <Badge variant="outline" className="text-xs uppercase">
-                              {trade.side}
-                            </Badge>
+                            {trade.status !== "rejected" && (
+                              <Badge variant="outline" className="text-xs uppercase">
+                                {trade.side}
+                              </Badge>
+                            )}
                             {trade.isOptions && trade.optionDetails && (
                               <span className="text-xs text-muted-foreground">
                                 {trade.optionDetails.optionType?.toUpperCase()} ${trade.optionDetails.strike} exp {trade.optionDetails.expiration}
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
-                            <span>Qty: {trade.quantity}</span>
-                            {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
-                            <span>{trade.orderType}</span>
-                            {trade.brokerOrderId && (
-                              <span className="font-mono">#{trade.brokerOrderId}</span>
-                            )}
-                          </div>
+                          {trade.status !== "rejected" && (
+                            <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
+                              <span>Qty: {trade.quantity}</span>
+                              {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
+                              <span>{trade.orderType}</span>
+                              {trade.brokerOrderId && (
+                                <span className="font-mono">#{trade.brokerOrderId}</span>
+                              )}
+                            </div>
+                          )}
                           {trade.reasons && trade.reasons.length > 0 && (
-                            <p className="text-xs text-muted-foreground mt-1 truncate max-w-md">
-                              {(trade.reasons as string[]).join(" | ")}
-                            </p>
+                            <div className="mt-1 space-y-0.5">
+                              {(trade.reasons as string[]).map((reason, i) => (
+                                <p key={i} className={`text-xs ${trade.status === "rejected" ? "text-destructive/80" : "text-muted-foreground"}`}>
+                                  {trade.status === "rejected" && <AlertCircle className="h-3 w-3 inline mr-1 -mt-0.5" />}
+                                  {reason}
+                                </p>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1152,9 +1162,9 @@ export default function Alerts() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <ArrowUpDown className="h-10 w-10 text-muted-foreground/50 mb-3" />
-              <p className="text-sm font-medium">No executed trades</p>
+              <p className="text-sm font-medium">No trade activity</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Trades from Auto Agent and InstaTrade™ will appear here
+                Executed and rejected trades from Auto Agent and InstaTrade™ will appear here
               </p>
             </div>
           )}

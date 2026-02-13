@@ -1106,13 +1106,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
+      const includeRejected = req.query.includeRejected === "true";
+      const actionFilter = includeRejected
+        ? sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP')`
+        : eq(agentDecisions.action, "EXECUTE");
+
       const agentTrades = await db
         .select()
         .from(agentDecisions)
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            eq(agentDecisions.action, "EXECUTE"),
+            actionFilter,
             gte(agentDecisions.createdAt, todayStart)
           )
         )
@@ -1136,11 +1141,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           id: d.id,
           symbol: d.symbol,
           source: "auto_agent" as const,
+          action: d.action,
           side: (d.orderPayload as any)?.action === "SELL" ? "sell" : "buy",
           quantity: (d.orderPayload as any)?.quantity || 0,
           orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
           price: (d.orderPayload as any)?.limitPrice || null,
-          status: (d.orderPayload as any)?.brokerStatus || "executed",
+          status: d.action === "SKIP" ? "rejected" : ((d.orderPayload as any)?.brokerStatus || "executed"),
           brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
           isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
           optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {
@@ -1197,7 +1203,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            eq(agentDecisions.action, "EXECUTE")
+            sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP')`
           )
         )
         .orderBy(sql`${agentDecisions.createdAt} DESC`)
@@ -1215,11 +1221,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           id: d.id,
           symbol: d.symbol,
           source: "auto_agent" as const,
+          action: d.action,
           side: (d.orderPayload as any)?.action === "SELL" ? "sell" : "buy",
           quantity: (d.orderPayload as any)?.quantity || 0,
           orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
           price: (d.orderPayload as any)?.limitPrice || null,
-          status: (d.orderPayload as any)?.brokerStatus || "executed",
+          status: d.action === "SKIP" ? "rejected" : ((d.orderPayload as any)?.brokerStatus || "executed"),
           brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
           isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
           optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {

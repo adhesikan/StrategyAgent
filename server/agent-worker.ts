@@ -20,6 +20,8 @@ import {
   type OptionCandidate,
   type ScanPreferences,
 } from "./engines/options-scanner/index";
+import { placeBrokerOrder } from "./broker/index";
+import type { OrderRequest } from "./broker/types";
 
 let agentWorkerInterval: NodeJS.Timeout | null = null;
 const WORKER_INTERVAL_MS = 60 * 1000; // Check every 1 minute for users whose scan interval has elapsed
@@ -159,7 +161,19 @@ async function processUserOpportunities(userId: string): Promise<void> {
         } else {
           orderPayload = buildOrderPayload(item.opportunity, policy);
         }
-        
+
+        const connection = await storage.getBrokerConnection(userId);
+        if (!connection || !connection.isConnected || !connection.preferredAccountId) {
+          throw new Error("No connected broker account found for order execution");
+        }
+
+        const brokerOrder = toBrokerOrderRequest(orderPayload as any, connection.preferredAccountId);
+        const orderResult = await placeBrokerOrder(userId, brokerOrder);
+
+        if (!isOrderSuccessful(orderResult.status)) {
+          throw new Error(`Broker rejected order: ${orderResult.status} (orderId: ${orderResult.orderId})`);
+        }
+
         const decision: InsertAgentDecision = {
           userId,
           policyId: policy.id,
@@ -167,15 +181,15 @@ async function processUserOpportunities(userId: string): Promise<void> {
           symbol: item.opportunity.symbol,
           action: AgentAction.EXECUTE,
           reasons: optionsCandidate 
-            ? [`Auto-executed options: ${optionsCandidate.optionType.toUpperCase()} $${optionsCandidate.strike} exp ${optionsCandidate.expiration}`]
-            : ["Auto-executed by agent"],
+            ? [`Auto-executed options: ${optionsCandidate.optionType.toUpperCase()} $${optionsCandidate.strike} exp ${optionsCandidate.expiration}`, `Broker order ${orderResult.orderId} ${orderResult.status}`]
+            : [`Auto-executed by agent`, `Broker order ${orderResult.orderId} ${orderResult.status}`],
           metricsSnapshot: item.eligibility.metrics,
-          orderPayload,
+          orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },
         };
         await recordDecision(decision);
         await incrementTradesToday(userId);
         
-        console.log(`[AgentWorker] EXECUTE: ${item.opportunity.symbol}${optionsCandidate ? ` (options: ${optionsCandidate.optionType} $${optionsCandidate.strike})` : ""} for user ${userId}`);
+        console.log(`[AgentWorker] EXECUTE: ${item.opportunity.symbol}${optionsCandidate ? ` (options: ${optionsCandidate.optionType} $${optionsCandidate.strike})` : ""} -> order ${orderResult.orderId} for user ${userId}`);
       } catch (error: any) {
         const decision: InsertAgentDecision = {
           userId,
@@ -427,6 +441,19 @@ async function processOptionsScanResults(userId: string): Promise<void> {
     } else if (policy.mode === AgentMode.AUTO) {
       try {
         const orderPayload = buildOptionsScanOrderPayload(candidate, policy);
+
+        const connection = await storage.getBrokerConnection(userId);
+        if (!connection || !connection.isConnected || !connection.preferredAccountId) {
+          throw new Error("No connected broker account found for options order execution");
+        }
+
+        const brokerOrder = toBrokerOrderRequest(orderPayload, connection.preferredAccountId);
+        const orderResult = await placeBrokerOrder(userId, brokerOrder);
+
+        if (!isOrderSuccessful(orderResult.status)) {
+          throw new Error(`Broker rejected options order: ${orderResult.status} (orderId: ${orderResult.orderId})`);
+        }
+
         const decision: InsertAgentDecision = {
           userId,
           policyId: policy.id,
@@ -435,12 +462,13 @@ async function processOptionsScanResults(userId: string): Promise<void> {
           reasons: [
             `Auto-executed options from scan: ${candidate.optionType.toUpperCase()} $${candidate.strike} exp ${candidate.expiration}`,
             `Score: ${candidate.score}, Delta: ${candidate.delta.toFixed(2)}, DTE: ${candidate.dte}`,
+            `Broker order ${orderResult.orderId} ${orderResult.status}`,
           ],
-          orderPayload,
+          orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },
         };
         await recordDecision(decision);
         await incrementTradesToday(userId);
-        console.log(`[AgentWorker] EXECUTE options: ${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike} for user ${userId}`);
+        console.log(`[AgentWorker] EXECUTE options: ${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike} -> order ${orderResult.orderId} for user ${userId}`);
       } catch (error: any) {
         const decision: InsertAgentDecision = {
           userId,
@@ -479,6 +507,66 @@ function buildOrderPayload(opportunity: Opportunity, policy: any): object {
     strategyId: opportunity.strategyId,
     opportunityId: opportunity.id,
   };
+}
+
+function mapOrderType(raw: string | undefined): OrderRequest["orderType"] {
+  switch (raw?.toUpperCase()) {
+    case "LIMIT": return "limit";
+    case "STOP": return "stop";
+    case "STOP_LIMIT": return "stop_limit";
+    default: return "market";
+  }
+}
+
+function mapOptionSide(action: string | undefined): OrderRequest["optionSide"] {
+  switch (action?.toUpperCase()) {
+    case "SELL_TO_OPEN": return "sell_to_open";
+    case "SELL_TO_CLOSE": return "sell_to_close";
+    case "BUY_TO_CLOSE": return "buy_to_close";
+    default: return "buy_to_open";
+  }
+}
+
+function toBrokerOrderRequest(payload: any, accountId: string): OrderRequest {
+  const orderType = mapOrderType(payload.orderType);
+
+  if (payload.isOptionsOrder) {
+    const optionSide = mapOptionSide(payload.action);
+    const side: "buy" | "sell" = optionSide.startsWith("sell") ? "sell" : "buy";
+    return {
+      accountId,
+      symbol: payload.underlying || payload.symbol,
+      side,
+      quantity: payload.quantity || 1,
+      orderType,
+      price: orderType === "limit" || orderType === "stop_limit" ? payload.limitPrice : undefined,
+      stopPrice: orderType === "stop" || orderType === "stop_limit" ? payload.stopPrice : undefined,
+      duration: "day",
+      orderClass: "option",
+      optionSymbol: payload.symbol,
+      optionSide,
+    };
+  }
+
+  const side: "buy" | "sell" = payload.action?.toUpperCase() === "SELL" ? "sell" : "buy";
+  const resolvedStopPrice = payload.stopPrice || payload.stopLoss;
+  return {
+    accountId,
+    symbol: payload.symbol,
+    side,
+    quantity: payload.quantity || 1,
+    orderType,
+    price: orderType === "limit" || orderType === "stop_limit" ? payload.limitPrice : undefined,
+    stopPrice: orderType === "stop" || orderType === "stop_limit" ? resolvedStopPrice : undefined,
+    duration: "day",
+    bracketTarget: payload.target || undefined,
+    bracketStop: payload.stopLoss || undefined,
+  };
+}
+
+function isOrderSuccessful(status: string): boolean {
+  const failed = ["rejected", "canceled", "cancelled", "expired", "error"];
+  return !failed.includes(status.toLowerCase());
 }
 
 async function runAgentWorker(): Promise<void> {

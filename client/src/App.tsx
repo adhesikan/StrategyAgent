@@ -45,6 +45,7 @@ import PrivacyPage from "@/pages/privacy";
 import OpenSourcePage from "@/pages/open-source";
 import StrategyGuide from "@/pages/strategy-guide";
 import AutomationPage from "@/pages/automation";
+import AlertsPage from "@/pages/alerts";
 import SnaptradeCallback from "@/pages/snaptrade-callback";
 import NewsPage from "@/pages/news";
 import CommandCenter from "@/pages/command-center";
@@ -85,7 +86,7 @@ function AppRouter() {
       <Route path="/app/options">{() => <Redirect to="/discover?tab=options" />}</Route>
       <Route path="/execution">{() => <Redirect to="/automation?view=cockpit" />}</Route>
       <Route path="/opportunities">{() => <Redirect to="/automation?view=outcomes" />}</Route>
-      <Route path="/alerts">{() => <Redirect to="/automation?view=alerts" />}</Route>
+      <Route path="/alerts" component={AlertsPage} />
       <Route path="/app/automation">{() => <Redirect to="/automation" />}</Route>
       <Route path="/learn/news">{() => <Redirect to="/news" />}</Route>
       <Route path="/strategy-guide">{() => <Redirect to="/help" />}</Route>

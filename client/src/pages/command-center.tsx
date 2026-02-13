@@ -1239,7 +1239,7 @@ export default function CommandCenter() {
               )}
 
               {filteredSortedResults.length > 0 ? (
-                <ScrollArea className="max-h-[340px]">
+                <ScrollArea className="max-h-[600px]">
                   {viewMode === "list" ? (
                     <Table data-testid="table-opportunities">
                       <TableHeader>

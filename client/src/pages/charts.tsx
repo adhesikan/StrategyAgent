@@ -267,7 +267,7 @@ export default function Charts() {
                   </span>
                   {(scanResult?.resistance || chartData.resistance) && chartData.price && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {(((scanResult?.resistance || chartData.resistance)! - chartData.price) / chartData.price * 100).toFixed(1)}% upside
+                      {(((scanResult?.resistance || chartData.resistance)! - chartData.price) / chartData.price * 100).toFixed(1)}% to breakout
                     </p>
                   )}
                 </CardContent>

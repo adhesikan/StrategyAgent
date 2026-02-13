@@ -106,7 +106,7 @@ export function AgentActivity({ limit = 50, showCard = true }: AgentActivityProp
                           <span>${decision.metricsSnapshot.price.toFixed(2)}</span>
                         )}
                         {decision.metricsSnapshot.upsidePct !== undefined && (
-                          <span>Upside: {decision.metricsSnapshot.upsidePct.toFixed(1)}%</span>
+                          <span>To Breakout: {decision.metricsSnapshot.upsidePct.toFixed(1)}%</span>
                         )}
                         {decision.metricsSnapshot.rewardRisk !== undefined && (
                           <span>R:R {decision.metricsSnapshot.rewardRisk.toFixed(2)}</span>

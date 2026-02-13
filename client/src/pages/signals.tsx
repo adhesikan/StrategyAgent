@@ -97,7 +97,7 @@ function SignalCard({ ticker, type, price, resistance, stopLoss, rvol, atr, stra
               <InfoTooltip term="resistance" />
             </p>
             <p className="font-mono font-medium text-chart-2">${resistance.toFixed(2)}</p>
-            <p className="text-xs text-muted-foreground">{upside}% upside</p>
+            <p className="text-xs text-muted-foreground">{upside}% to breakout</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
@@ -236,7 +236,7 @@ function SignalDetailDialog({ open, onClose, ticker, patternScore: propScore }: 
                       </span>
                       {chartData?.resistance && chartData?.price && (
                         <p className="text-xs text-muted-foreground">
-                          {((chartData.resistance - chartData.price) / chartData.price * 100).toFixed(1)}% upside
+                          {((chartData.resistance - chartData.price) / chartData.price * 100).toFixed(1)}% to breakout
                         </p>
                       )}
                     </CardContent>

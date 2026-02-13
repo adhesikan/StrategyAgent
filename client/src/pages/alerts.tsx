@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, Plus, Check, Trash2, List, Power, PowerOff, Clock, AlertCircle, TrendingUp, ExternalLink, HelpCircle } from "lucide-react";
+import { Bell, Bot, Plus, Check, Trash2, List, Power, PowerOff, Clock, AlertCircle, TrendingUp, ExternalLink, HelpCircle, ArrowUpDown } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -355,7 +355,8 @@ function AlertEventCard({
 export default function Alerts() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
-  const initialTab = urlParams.get("tab") === "history" ? "history" : "rules";
+  const tabParam = urlParams.get("tab");
+  const initialTab = tabParam === "history" ? "history" : tabParam === "trades" ? "trades" : "rules";
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedWatchlist, setSelectedWatchlist] = useState<string>("none");
@@ -390,6 +391,30 @@ export default function Alerts() {
 
   const { data: automationEndpoints = [] } = useQuery<AutomationEndpoint[]>({
     queryKey: ["/api/automation-endpoints"],
+  });
+
+  interface ExecutedTrade {
+    id: string;
+    symbol: string;
+    source: "auto_agent" | "instatrade";
+    side: string;
+    quantity: number;
+    orderType: string;
+    price: number | null;
+    status: string;
+    brokerOrderId: string | null;
+    isOptions: boolean;
+    optionDetails: {
+      optionType: string;
+      strike: number;
+      expiration: string;
+    } | null;
+    reasons: string[] | null;
+    createdAt: string;
+  }
+
+  const { data: allTrades, isLoading: tradesLoading } = useQuery<ExecutedTrade[]>({
+    queryKey: ["/api/all-trades"],
   });
 
   const selectedWatchlistData = watchlists?.find(w => w.id === selectedWatchlist);
@@ -963,6 +988,9 @@ export default function Alerts() {
           <TabsTrigger value="history" data-testid="tab-history">
             History ({events?.length || 0})
           </TabsTrigger>
+          <TabsTrigger value="trades" data-testid="tab-trades">
+            Trades ({allTrades?.length || 0})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="rules" className="mt-6">
@@ -1034,6 +1062,90 @@ export default function Alerts() {
               <p className="text-sm font-medium">No alert events</p>
               <p className="text-xs text-muted-foreground mt-1">
                 Events will appear here when your rules are triggered
+              </p>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="trades" className="mt-6 space-y-4">
+          {tradesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : allTrades && allTrades.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {allTrades.map((trade) => (
+                <Card key={trade.id} data-testid={`trade-card-${trade.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Badge
+                          variant={trade.source === "auto_agent" ? "default" : "secondary"}
+                          className="text-xs shrink-0"
+                          data-testid={`badge-trade-source-${trade.id}`}
+                        >
+                          {trade.source === "auto_agent" ? (
+                            <><Bot className="h-3 w-3 mr-1" />Auto Agent</>
+                          ) : (
+                            <><Zap className="h-3 w-3 mr-1" />InstaTrade™</>
+                          )}
+                        </Badge>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-sm" data-testid={`text-trade-sym-${trade.id}`}>
+                              {trade.symbol}
+                            </span>
+                            <Badge variant="outline" className="text-xs uppercase">
+                              {trade.side}
+                            </Badge>
+                            {trade.isOptions && trade.optionDetails && (
+                              <span className="text-xs text-muted-foreground">
+                                {trade.optionDetails.optionType?.toUpperCase()} ${trade.optionDetails.strike} exp {trade.optionDetails.expiration}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
+                            <span>Qty: {trade.quantity}</span>
+                            {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
+                            <span>{trade.orderType}</span>
+                            {trade.brokerOrderId && (
+                              <span className="font-mono">#{trade.brokerOrderId}</span>
+                            )}
+                          </div>
+                          {trade.reasons && trade.reasons.length > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1 truncate max-w-md">
+                              {(trade.reasons as string[]).join(" | ")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <Badge
+                          variant={
+                            trade.status === "filled" || trade.status === "executed" ? "default" :
+                            trade.status === "pending" ? "outline" :
+                            trade.status === "rejected" || trade.status === "cancelled" ? "destructive" : "secondary"
+                          }
+                          className="text-xs"
+                          data-testid={`badge-trade-status-${trade.id}`}
+                        >
+                          {trade.status}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground" data-testid={`text-trade-time-${trade.id}`}>
+                          {trade.createdAt ? formatDistanceToNow(new Date(trade.createdAt), { addSuffix: true }) : ""}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <ArrowUpDown className="h-10 w-10 text-muted-foreground/50 mb-3" />
+              <p className="text-sm font-medium">No executed trades</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Trades from Auto Agent and InstaTrade™ will appear here
               </p>
             </div>
           )}

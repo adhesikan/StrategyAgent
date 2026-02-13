@@ -94,6 +94,26 @@ interface ChartData {
   stopLevel?: number;
 }
 
+interface TodayTrade {
+  id: string;
+  symbol: string;
+  source: "auto_agent" | "instatrade";
+  side: string;
+  quantity: number;
+  orderType: string;
+  price: number | null;
+  status: string;
+  brokerOrderId: string | null;
+  isOptions: boolean;
+  optionDetails: {
+    optionType: string;
+    strike: number;
+    expiration: string;
+  } | null;
+  reasons: string[] | null;
+  createdAt: string;
+}
+
 type OpportunitySortField = "ticker" | "stage" | "price" | "patternScore";
 type OpportunitySortDirection = "asc" | "desc";
 type OpportunityViewMode = "card" | "list";
@@ -320,6 +340,11 @@ export default function CommandCenter() {
 
   const { data: trades } = useQuery<Trade[]>({
     queryKey: ["/api/trades"],
+  });
+
+  const { data: todayTradesData } = useQuery<TodayTrade[]>({
+    queryKey: ["/api/today-trades"],
+    refetchInterval: 60000,
   });
 
   const { data: newsData } = useQuery<NewsResponse>({
@@ -673,16 +698,12 @@ export default function CommandCenter() {
   const automationEngine = (userSettings as any)?.automationEngine || "BUILT_IN";
   const setupComplete = userSettings?.setupCompleted ?? false;
 
-  const todaysTrades = trades?.filter(t => {
-    const today = new Date().toDateString();
-    return new Date(t.createdAt || "").toDateString() === today;
-  }) || [];
+  const todaysTrades = todayTradesData || [];
 
   const openPositions = trades?.filter(t => t.status === "OPEN") || [];
 
   const instatradeTodayCount = todaysTrades.filter(t => t.source === "instatrade").length;
   const agentTodayCount = todaysTrades.filter(t => t.source === "auto_agent").length;
-  const manualTodayCount = todaysTrades.length - instatradeTodayCount - agentTodayCount;
 
   const getAgentStatus = () => {
     if (emergencyStop) return { label: "Emergency Stop", status: "offline" as const };
@@ -1531,9 +1552,6 @@ export default function CommandCenter() {
                   {agentTodayCount > 0 && (
                     <span data-testid="text-agent-count">Auto Agent: {agentTodayCount}</span>
                   )}
-                  {manualTodayCount > 0 && (
-                    <span data-testid="text-manual-count">Manual: {manualTodayCount}</span>
-                  )}
                 </div>
               )}
 
@@ -1566,6 +1584,90 @@ export default function CommandCenter() {
                 </Button>
               )}
             </CardFooter>
+          </Card>
+
+          <Card data-testid="card-todays-trades">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  <CardTitle>Today's Trades</CardTitle>
+                  {todaysTrades.length > 0 && (
+                    <Badge variant="secondary" className="text-xs" data-testid="badge-trade-count">
+                      {todaysTrades.length}
+                    </Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/alerts?tab=trades" data-testid="link-view-all-trades">
+                    View all
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {todaysTrades.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-trades">
+                  No trades executed today
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {todaysTrades.slice(0, 5).map((trade) => (
+                    <div
+                      key={trade.id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50"
+                      data-testid={`trade-row-${trade.id}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge
+                          variant={trade.source === "auto_agent" ? "default" : "secondary"}
+                          className="text-xs shrink-0"
+                          data-testid={`badge-source-${trade.id}`}
+                        >
+                          {trade.source === "auto_agent" ? (
+                            <><Bot className="h-3 w-3 mr-1" />Agent</>
+                          ) : (
+                            <><Zap className="h-3 w-3 mr-1" />InstaTrade™</>
+                          )}
+                        </Badge>
+                        <span className="font-mono font-medium text-sm truncate" data-testid={`text-trade-symbol-${trade.id}`}>
+                          {trade.symbol}
+                        </span>
+                        {trade.isOptions && trade.optionDetails && (
+                          <span className="text-xs text-muted-foreground truncate">
+                            {trade.optionDetails.optionType?.toUpperCase()} ${trade.optionDetails.strike}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground">
+                          {trade.quantity} @ {trade.price ? `$${trade.price.toFixed(2)}` : trade.orderType}
+                        </span>
+                        <Badge
+                          variant={
+                            trade.status === "filled" || trade.status === "executed" ? "default" :
+                            trade.status === "pending" ? "outline" : "secondary"
+                          }
+                          className="text-xs"
+                          data-testid={`badge-status-${trade.id}`}
+                        >
+                          {trade.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {todaysTrades.length > 5 && (
+                    <Button variant="ghost" size="sm" className="w-full" asChild>
+                      <Link href="/alerts?tab=trades" data-testid="link-see-more-trades">
+                        See {todaysTrades.length - 5} more trades
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
           </Card>
 
           <Card>

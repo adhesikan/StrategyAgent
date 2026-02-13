@@ -1096,6 +1096,172 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.get("/api/today-trades", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { db } = await import("./db");
+      const { agentDecisions, tradeOrders } = await import("@shared/schema");
+      const { gte, eq, and, sql } = await import("drizzle-orm");
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const agentTrades = await db
+        .select()
+        .from(agentDecisions)
+        .where(
+          and(
+            eq(agentDecisions.userId, userId),
+            eq(agentDecisions.action, "EXECUTE"),
+            gte(agentDecisions.createdAt, todayStart)
+          )
+        )
+        .orderBy(sql`${agentDecisions.createdAt} DESC`)
+        .limit(50);
+
+      const instaTradeOrders = await db
+        .select()
+        .from(tradeOrders)
+        .where(
+          and(
+            eq(tradeOrders.userId, userId),
+            gte(tradeOrders.createdAt, todayStart)
+          )
+        )
+        .orderBy(sql`${tradeOrders.createdAt} DESC`)
+        .limit(50);
+
+      const combined = [
+        ...agentTrades.map((d: any) => ({
+          id: d.id,
+          symbol: d.symbol,
+          source: "auto_agent" as const,
+          side: (d.orderPayload as any)?.action === "SELL" ? "sell" : "buy",
+          quantity: (d.orderPayload as any)?.quantity || 0,
+          orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
+          price: (d.orderPayload as any)?.limitPrice || null,
+          status: (d.orderPayload as any)?.brokerStatus || "executed",
+          brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
+          isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
+          optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {
+            optionType: (d.orderPayload as any)?.optionType,
+            strike: (d.orderPayload as any)?.strike,
+            expiration: (d.orderPayload as any)?.expiration,
+          } : null,
+          reasons: d.reasons,
+          createdAt: d.createdAt,
+        })),
+        ...instaTradeOrders.map((o: any) => ({
+          id: o.id,
+          symbol: o.symbol,
+          source: "instatrade" as const,
+          side: o.side,
+          quantity: o.quantity,
+          orderType: o.orderType,
+          price: o.limitPrice || o.fillPrice || null,
+          status: o.status,
+          brokerOrderId: o.brokerOrderId || null,
+          isOptions: !!o.optionSymbol,
+          optionDetails: o.optionSymbol ? {
+            optionType: o.optionType,
+            strike: o.strike,
+            expiration: o.expiration,
+          } : null,
+          reasons: null,
+          createdAt: o.createdAt,
+        })),
+      ].sort((a, b) => {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tB - tA;
+      });
+
+      res.json(combined);
+    } catch (error: any) {
+      console.error("Error getting today trades:", error);
+      res.status(500).json({ error: "Failed to get today's trades" });
+    }
+  });
+
+  app.get("/api/all-trades", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = parseInt(req.query.limit as string) || 200;
+      const { db } = await import("./db");
+      const { agentDecisions, tradeOrders } = await import("@shared/schema");
+      const { eq, and, sql } = await import("drizzle-orm");
+
+      const agentTrades = await db
+        .select()
+        .from(agentDecisions)
+        .where(
+          and(
+            eq(agentDecisions.userId, userId),
+            eq(agentDecisions.action, "EXECUTE")
+          )
+        )
+        .orderBy(sql`${agentDecisions.createdAt} DESC`)
+        .limit(limit);
+
+      const instaTradeOrders = await db
+        .select()
+        .from(tradeOrders)
+        .where(eq(tradeOrders.userId, userId))
+        .orderBy(sql`${tradeOrders.createdAt} DESC`)
+        .limit(limit);
+
+      const combined = [
+        ...agentTrades.map((d: any) => ({
+          id: d.id,
+          symbol: d.symbol,
+          source: "auto_agent" as const,
+          side: (d.orderPayload as any)?.action === "SELL" ? "sell" : "buy",
+          quantity: (d.orderPayload as any)?.quantity || 0,
+          orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
+          price: (d.orderPayload as any)?.limitPrice || null,
+          status: (d.orderPayload as any)?.brokerStatus || "executed",
+          brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
+          isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
+          optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {
+            optionType: (d.orderPayload as any)?.optionType,
+            strike: (d.orderPayload as any)?.strike,
+            expiration: (d.orderPayload as any)?.expiration,
+          } : null,
+          reasons: d.reasons,
+          createdAt: d.createdAt,
+        })),
+        ...instaTradeOrders.map((o: any) => ({
+          id: o.id,
+          symbol: o.symbol,
+          source: "instatrade" as const,
+          side: o.side,
+          quantity: o.quantity,
+          orderType: o.orderType,
+          price: o.limitPrice || o.fillPrice || null,
+          status: o.status,
+          brokerOrderId: o.brokerOrderId || null,
+          isOptions: !!o.optionSymbol,
+          optionDetails: o.optionSymbol ? {
+            optionType: o.optionType,
+            strike: o.strike,
+            expiration: o.expiration,
+          } : null,
+          reasons: null,
+          createdAt: o.createdAt,
+        })),
+      ].sort((a, b) => {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tB - tA;
+      });
+
+      res.json(combined);
+    } catch (error: any) {
+      console.error("Error getting all trades:", error);
+      res.status(500).json({ error: "Failed to get all trades" });
+    }
+  });
+
   app.get("/api/agent/evaluate/:opportunityId", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;

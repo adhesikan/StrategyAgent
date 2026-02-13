@@ -560,7 +560,7 @@ export function TechnicalAnalysisWidget({
             </div>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">To Resistance</span>
+            <span className="text-muted-foreground">To Breakout</span>
             <span className={`font-mono ${distanceToResistance > 0 ? "text-chart-2" : "text-destructive"}`}>
               {distanceToResistance > 0 ? "+" : ""}{distanceToResistance.toFixed(2)}%
             </span>

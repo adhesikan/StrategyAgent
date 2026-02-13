@@ -1728,7 +1728,7 @@ export default function CommandCenter() {
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-[220px]">
-                        <p>Price level where selling pressure has historically prevented further upside. A breakout above this level signals potential continuation.</p>
+                        <p>Price level the stock needs to break above. This is the breakout trigger, not a ceiling — successful breakouts often lead to gains well beyond this level.</p>
                       </TooltipContent>
                     </Tooltip>
                   )}
@@ -1864,12 +1864,12 @@ export default function CommandCenter() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div className="flex justify-between cursor-help">
-                              <span className="text-muted-foreground">To Resistance</span>
+                              <span className="text-muted-foreground">To Breakout</span>
                               <span className="font-mono">{dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</span>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="max-w-[220px]">
-                            <p>How far the current price is from the resistance level. A small positive percentage means the stock is approaching breakout territory.</p>
+                            <p>How far the current price is from the breakout level. This is NOT the total upside — gains after a successful breakout are often significantly larger.</p>
                           </TooltipContent>
                         </Tooltip>
                       ) : null;

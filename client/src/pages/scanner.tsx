@@ -1334,14 +1334,14 @@ export default function Scanner() {
                 {result.resistance && (
                   <div className="flex items-center gap-1" data-testid={`text-entry-${result.ticker}`}>
                     <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
-                      Best entry at ${result.resistance.toFixed(2)}
+                      Breakout level ${result.resistance.toFixed(2)}
                     </p>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Info className="h-3 w-3 text-muted-foreground cursor-help shrink-0" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[220px] text-xs">
-                        This is the resistance breakout level. You can enter below this price if you prefer — manage your risk accordingly.
+                        The price where a breakout triggers. This is not the upside target — gains after a successful breakout are often much larger. You can enter below this level if you prefer.
                       </TooltipContent>
                     </Tooltip>
                   </div>

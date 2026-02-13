@@ -174,7 +174,10 @@ export function AppSidebar() {
     }
     if (url === "/automation") {
       if (search.includes("view=alerts") || search.includes("view=history")) return false;
-      return location === "/automation" || location === "/app/automation" || location === "/execution" || location === "/opportunities" || location === "/alerts";
+      return location === "/automation" || location === "/app/automation" || location === "/execution" || location === "/opportunities";
+    }
+    if (url === "/alerts") {
+      return location === "/alerts";
     }
     if (url === "/news") return location === "/news" || location === "/learn/news";
     if (url === "/help") {

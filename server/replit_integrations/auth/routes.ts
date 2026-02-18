@@ -117,6 +117,7 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       req.session.userId = user.id;
+      delete req.session.partnerUserId;
       
       const { password: _, ...safeUser } = user;
       res.json(safeUser);

@@ -1,0 +1,26 @@
+[AlertEngine] Rule 57eebe16-fca2-4de9-8c45-1841c8f261de: Found 0 matching results
+[AlertEngine] Processing 1 watchlist rule(s) against 0 scan results
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Looking for stage=BREAKOUT in watchlist MyTechWatch (1 symbols)
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Found 0 matching results
+11:15:26 PM [express] GET /api/auth/user 403 in 86ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:26 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:28 PM [express] GET /api/auth/user 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:28 PM [express] GET /api/auth/user 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:28 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:28 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:28 PM [express] GET /api/auth/user 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:29 PM [express] GET /api/auth/user 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:29 PM [express] GET /api/auth/user 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:29 PM [express] GET /api/auth/user 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:29 PM [express] GET /api/auth/user 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:29 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:29 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:30 PM [express] GET /api/auth/user 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:30 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:30 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:30 PM [express] GET /api/auth/user 403 in 12ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:30 PM [express] GET /api/auth/user 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:30 PM [express] GET /api/auth/user 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:31 PM [express] GET /api/auth/user 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:31 PM [express] GET /api/auth/user 403 in 16ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+11:15:31 PM [express] GET /api/auth/user 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}

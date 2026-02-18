@@ -1500,6 +1500,10 @@ export const agentSettings = pgTable("agent_settings", {
   limitOffsetPercent: real("limit_offset_percent").default(0.05),
   missingStopsPolicy: text("missing_stops_policy").default("skip"),
   bracketEnabled: boolean("bracket_enabled").default(true),
+  bracketStopMethod: text("bracket_stop_method").default("signal"),
+  bracketStopValue: real("bracket_stop_value"),
+  bracketTargetMethod: text("bracket_target_method").default("signal"),
+  bracketTargetValue: real("bracket_target_value"),
   requireStops: boolean("require_stops").default(true),
 
   // Filters & sizing
@@ -1547,3 +1551,20 @@ export const insertAgentSettingsAuditSchema = createInsertSchema(agentSettingsAu
 });
 export type InsertAgentSettingsAudit = z.infer<typeof insertAgentSettingsAuditSchema>;
 export type AgentSettingsAudit = typeof agentSettingsAudit.$inferSelect;
+
+export const autoModeConsents = pgTable("auto_mode_consents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  email: text("email").notNull(),
+  consentedAt: timestamp("consented_at").defaultNow(),
+  clientIp: text("client_ip").notNull(),
+  userAgent: text("user_agent"),
+  consentText: text("consent_text").notNull(),
+});
+
+export const insertAutoModeConsentSchema = createInsertSchema(autoModeConsents).omit({
+  id: true,
+  consentedAt: true,
+});
+export type InsertAutoModeConsent = z.infer<typeof insertAutoModeConsentSchema>;
+export type AutoModeConsent = typeof autoModeConsents.$inferSelect;

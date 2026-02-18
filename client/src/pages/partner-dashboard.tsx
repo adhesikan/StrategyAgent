@@ -29,6 +29,11 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Link2,
   Bot,
   History,
@@ -52,8 +57,26 @@ import {
   Filter,
   Wrench,
   Crosshair,
+  Info,
+  AlertTriangle,
+  Scale,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+
+function FieldTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help inline-block ml-1 shrink-0" />
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[240px] text-xs">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+const AUTO_MODE_CONSENT_TEXT = "I understand that enabling Auto mode will allow the trading agent to automatically execute trades in my brokerage account without manual review. I accept full responsibility for all trades placed by the agent and acknowledge that automated trading involves significant risk, including the potential for substantial financial losses. I have reviewed and configured the risk limits, and I agree that VCP Trader and its partners are not liable for any trading losses incurred while Auto mode is active.";
 
 interface PartnerProfile {
   id: string;
@@ -262,6 +285,10 @@ interface AgentSettingsData {
   limitOffsetPercent?: number;
   missingStopsPolicy?: string;
   bracketEnabled?: boolean;
+  bracketStopMethod?: string;
+  bracketStopValue?: number | null;
+  bracketTargetMethod?: string;
+  bracketTargetValue?: number | null;
   requireStops?: boolean;
   direction?: string;
   sizingMethod?: string;
@@ -297,9 +324,18 @@ function AgentTab() {
     },
   });
 
+  const consentMutation = useMutation({
+    mutationFn: async (consentText: string) => {
+      const res = await apiRequest("POST", "/api/partner/auto-mode-consent", { consentText });
+      return res.json();
+    },
+  });
+
   const [formData, setFormData] = useState<Partial<AgentSettingsData>>({});
   const [allowlistText, setAllowlistText] = useState("");
   const [blocklistText, setBlocklistText] = useState("");
+  const [showAutoConfirm, setShowAutoConfirm] = useState(false);
+  const [autoConsentChecked, setAutoConsentChecked] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -315,6 +351,28 @@ function AgentTab() {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleModeChange = (val: string) => {
+    if (val === "auto" && current.mode !== "auto") {
+      setShowAutoConfirm(true);
+      setAutoConsentChecked(false);
+    } else {
+      updateField("mode", val);
+    }
+  };
+
+  const confirmAutoMode = async () => {
+    try {
+      await consentMutation.mutateAsync(AUTO_MODE_CONSENT_TEXT);
+      const saveData = { ...formData, mode: "auto" };
+      await updateMutation.mutateAsync(saveData);
+      setFormData({});
+      setShowAutoConfirm(false);
+      setAutoConsentChecked(false);
+    } catch {
+      toast({ title: "Failed to enable auto mode", variant: "destructive" });
+    }
+  };
+
   const handleSave = () => {
     updateMutation.mutate(formData);
     setFormData({});
@@ -326,6 +384,53 @@ function AgentTab() {
 
   return (
     <div className="space-y-4">
+      {showAutoConfirm && (
+        <Card className="border-destructive" data-testid="card-auto-mode-confirm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Confirm Auto Mode
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-md bg-destructive/10 p-3 text-sm" data-testid="text-auto-consent">
+              {AUTO_MODE_CONSENT_TEXT}
+            </div>
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="consent-check"
+                checked={autoConsentChecked}
+                onChange={(e) => setAutoConsentChecked(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-input"
+                data-testid="checkbox-auto-consent"
+              />
+              <label htmlFor="consent-check" className="text-sm cursor-pointer">
+                I have read and agree to the above terms
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="destructive"
+                onClick={confirmAutoMode}
+                disabled={!autoConsentChecked || consentMutation.isPending}
+                data-testid="button-confirm-auto-mode"
+              >
+                {consentMutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                Enable Auto Mode
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => { setShowAutoConfirm(false); setAutoConsentChecked(false); }}
+                data-testid="button-cancel-auto-mode"
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Section 1: Auto Agent Configuration */}
       <Card data-testid="card-agent-config">
         <CardHeader className="pb-3">
@@ -338,7 +443,7 @@ function AgentTab() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <Label className="font-medium">Agent Enabled</Label>
+              <Label className="font-medium inline-flex items-center">Agent Enabled <FieldTip text="Master switch. When off, the agent ignores all incoming signals." /></Label>
               <p className="text-xs text-muted-foreground">Turn on/off automated signal processing</p>
             </div>
             <Switch
@@ -349,10 +454,10 @@ function AgentTab() {
           </div>
 
           <div className="space-y-2">
-            <Label>Agent Mode</Label>
+            <Label className="inline-flex items-center">Agent Mode <FieldTip text="Suggest mode queues signals for your review. Auto mode executes trades immediately without confirmation." /></Label>
             <Select
               value={current.mode || "suggest"}
-              onValueChange={(val) => updateField("mode", val)}
+              onValueChange={handleModeChange}
             >
               <SelectTrigger data-testid="select-agent-mode">
                 <SelectValue />
@@ -366,7 +471,7 @@ function AgentTab() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Trading Window Start</Label>
+              <Label className="inline-flex items-center">Trading Window Start <FieldTip text="The earliest time the agent will place orders. Uses 24-hour format (e.g. 09:35)." /></Label>
               <Input
                 type="text"
                 placeholder="09:35"
@@ -376,7 +481,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Trading Window End</Label>
+              <Label className="inline-flex items-center">Trading Window End <FieldTip text="The latest time the agent will place new orders. Existing orders remain active." /></Label>
               <Input
                 type="text"
                 placeholder="15:50"
@@ -388,7 +493,7 @@ function AgentTab() {
           </div>
 
           <div className="space-y-2">
-            <Label>Timezone</Label>
+            <Label className="inline-flex items-center">Timezone <FieldTip text="The timezone used for interpreting trading window times." /></Label>
             <Select
               value={current.timezone || "America/New_York"}
               onValueChange={(val) => updateField("timezone", val)}
@@ -419,7 +524,7 @@ function AgentTab() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label>Risk Per Trade ($)</Label>
+              <Label className="inline-flex items-center">Risk Per Trade ($) <FieldTip text="Maximum dollar amount at risk on any single trade. Used for position sizing when sizing method is risk-based." /></Label>
               <Input
                 type="number"
                 value={current.riskPerTradeUsd ?? 100}
@@ -428,7 +533,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Max Daily Loss ($)</Label>
+              <Label className="inline-flex items-center">Max Daily Loss ($) <FieldTip text="When total realized + unrealized losses exceed this amount, the agent stops trading for the day." /></Label>
               <Input
                 type="number"
                 value={current.maxDailyLossUsd ?? 200}
@@ -437,7 +542,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Max Concurrent Positions</Label>
+              <Label className="inline-flex items-center">Max Concurrent Positions <FieldTip text="Maximum number of open positions allowed at the same time." /></Label>
               <Input
                 type="number"
                 value={current.maxConcurrentPositions ?? 2}
@@ -446,7 +551,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Max Trades Per Day</Label>
+              <Label className="inline-flex items-center">Max Trades Per Day <FieldTip text="Maximum total number of new entries per day. Prevents over-trading during volatile sessions." /></Label>
               <Input
                 type="number"
                 value={current.maxTradesPerDay ?? 2}
@@ -458,7 +563,7 @@ function AgentTab() {
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
-              <Label>Min Price ($)</Label>
+              <Label className="inline-flex items-center">Min Price ($) <FieldTip text="Reject signals for stocks priced below this amount. Helps avoid penny stocks and illiquid names." /></Label>
               <Input
                 type="number"
                 value={current.minPrice ?? 5}
@@ -467,7 +572,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Max Price ($)</Label>
+              <Label className="inline-flex items-center">Max Price ($) <FieldTip text="Reject signals for stocks priced above this amount. Keeps position sizes manageable." /></Label>
               <Input
                 type="number"
                 value={current.maxPrice ?? 500}
@@ -476,7 +581,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Min R:R</Label>
+              <Label className="inline-flex items-center">Min R:R <FieldTip text="Minimum reward-to-risk ratio required. E.g., 2.0 means the target must be at least 2x the stop distance." /></Label>
               <Input
                 type="number"
                 step="0.1"
@@ -501,7 +606,7 @@ function AgentTab() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Entry Order Type</Label>
+              <Label className="inline-flex items-center">Entry Order Type <FieldTip text="Market orders fill immediately at current price. Limit orders fill at your specified price or better." /></Label>
               <Select
                 value={current.entryOrderType || "limit"}
                 onValueChange={(val) => updateField("entryOrderType", val)}
@@ -516,7 +621,7 @@ function AgentTab() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Time in Force</Label>
+              <Label className="inline-flex items-center">Time in Force <FieldTip text="Day orders cancel at market close. GTC (Good Till Cancel) orders remain active until filled or manually cancelled." /></Label>
               <Select
                 value={current.timeInForce || "day"}
                 onValueChange={(val) => updateField("timeInForce", val)}
@@ -534,8 +639,7 @@ function AgentTab() {
 
           {current.entryOrderType === "limit" && (
             <div className="space-y-1">
-              <Label>Limit Offset (%)</Label>
-              <p className="text-xs text-muted-foreground">How far above/below signal price to place the limit</p>
+              <Label className="inline-flex items-center">Limit Offset (%) <FieldTip text="How far above (for buys) or below (for sells) the signal price to set the limit. E.g., 0.05 means 0.05% offset." /></Label>
               <Input
                 type="number"
                 step="0.01"
@@ -547,8 +651,7 @@ function AgentTab() {
           )}
 
           <div className="space-y-2">
-            <Label>Missing Stops Policy</Label>
-            <p className="text-xs text-muted-foreground">What to do when a signal has no stop price</p>
+            <Label className="inline-flex items-center">Missing Stops Policy <FieldTip text="Determines how the agent handles signals that arrive without a stop-loss price." /></Label>
             <Select
               value={current.missingStopsPolicy || "skip"}
               onValueChange={(val) => updateField("missingStopsPolicy", val)}
@@ -566,7 +669,7 @@ function AgentTab() {
 
           <div className="flex items-center justify-between gap-2">
             <div>
-              <Label className="font-medium">Bracket Orders</Label>
+              <Label className="font-medium inline-flex items-center">Bracket Orders <FieldTip text="When enabled, the agent automatically attaches a stop-loss and profit-target order to every entry." /></Label>
               <p className="text-xs text-muted-foreground">Automatically attach stop + target to entries</p>
             </div>
             <Switch
@@ -576,9 +679,81 @@ function AgentTab() {
             />
           </div>
 
+          {(current.bracketEnabled ?? true) && (
+            <div className="rounded-md border p-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">Bracket Order Pricing</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs inline-flex items-center">Stop Price Method <FieldTip text="How to determine the stop-loss price. 'From Signal' uses the stop provided by the alert. Other options let you override with a fixed distance." /></Label>
+                  <Select
+                    value={current.bracketStopMethod || "signal"}
+                    onValueChange={(val) => {
+                      updateField("bracketStopMethod", val);
+                      if (val === "signal") updateField("bracketStopValue", null);
+                    }}
+                  >
+                    <SelectTrigger data-testid="select-bracket-stop-method">
+                      <SelectValue placeholder="From Signal" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="signal">From Signal</SelectItem>
+                      <SelectItem value="percent">% from Entry Price</SelectItem>
+                      <SelectItem value="dollar">$ from Entry Price</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {current.bracketStopMethod && current.bracketStopMethod !== "signal" && (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder={current.bracketStopMethod === "percent" ? "e.g. 2.0" : "e.g. 1.50"}
+                      value={current.bracketStopValue ?? ""}
+                      onChange={(e) => updateField("bracketStopValue", e.target.value ? Number(e.target.value) : null)}
+                      data-testid="input-bracket-stop-value"
+                    />
+                  )}
+                  {current.bracketStopMethod === "percent" && <p className="text-xs text-muted-foreground">Stop placed this % below entry (for longs)</p>}
+                  {current.bracketStopMethod === "dollar" && <p className="text-xs text-muted-foreground">Stop placed this $ amount below entry (for longs)</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs inline-flex items-center">Target Price Method <FieldTip text="How to determine the profit target. 'R:R Ratio' sets target as a multiple of the stop distance (e.g. 2:1 means target is 2x the risk)." /></Label>
+                  <Select
+                    value={current.bracketTargetMethod || "signal"}
+                    onValueChange={(val) => {
+                      updateField("bracketTargetMethod", val);
+                      if (val === "signal") updateField("bracketTargetValue", null);
+                    }}
+                  >
+                    <SelectTrigger data-testid="select-bracket-target-method">
+                      <SelectValue placeholder="From Signal" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="signal">From Signal</SelectItem>
+                      <SelectItem value="percent">% from Entry Price</SelectItem>
+                      <SelectItem value="dollar">$ from Entry Price</SelectItem>
+                      <SelectItem value="rr">Risk:Reward Ratio</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {current.bracketTargetMethod && current.bracketTargetMethod !== "signal" && (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder={current.bracketTargetMethod === "rr" ? "e.g. 2.0" : current.bracketTargetMethod === "percent" ? "e.g. 4.0" : "e.g. 3.00"}
+                      value={current.bracketTargetValue ?? ""}
+                      onChange={(e) => updateField("bracketTargetValue", e.target.value ? Number(e.target.value) : null)}
+                      data-testid="input-bracket-target-value"
+                    />
+                  )}
+                  {current.bracketTargetMethod === "percent" && <p className="text-xs text-muted-foreground">Target placed this % above entry (for longs)</p>}
+                  {current.bracketTargetMethod === "dollar" && <p className="text-xs text-muted-foreground">Target placed this $ amount above entry (for longs)</p>}
+                  {current.bracketTargetMethod === "rr" && <p className="text-xs text-muted-foreground">Target = entry + (risk distance x this ratio)</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-2">
             <div>
-              <Label className="font-medium">Require Stops</Label>
+              <Label className="font-medium inline-flex items-center">Require Stops <FieldTip text="When enabled, the agent will only execute trades that have a defined stop-loss price. Adds an extra safety layer." /></Label>
               <p className="text-xs text-muted-foreground">Only execute trades that have a defined stop loss</p>
             </div>
             <Switch
@@ -602,7 +777,7 @@ function AgentTab() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Direction</Label>
+              <Label className="inline-flex items-center">Direction <FieldTip text="Restrict the agent to only long trades, only short trades, or allow both directions." /></Label>
               <Select
                 value={current.direction || "both"}
                 onValueChange={(val) => updateField("direction", val)}
@@ -618,7 +793,7 @@ function AgentTab() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Sizing Method</Label>
+              <Label className="inline-flex items-center">Sizing Method <FieldTip text="Risk-Based calculates shares from your risk-per-trade and stop distance. Fixed Quantity uses a set share count. Fixed Dollar uses a set dollar amount." /></Label>
               <Select
                 value={current.sizingMethod || "riskBased"}
                 onValueChange={(val) => updateField("sizingMethod", val)}
@@ -637,7 +812,7 @@ function AgentTab() {
 
           {current.sizingMethod === "fixedQty" && (
             <div className="space-y-1">
-              <Label>Fixed Quantity (shares)</Label>
+              <Label className="inline-flex items-center">Fixed Quantity (shares) <FieldTip text="The exact number of shares to buy/sell for every signal, regardless of price." /></Label>
               <Input
                 type="number"
                 value={current.fixedQuantity ?? ""}
@@ -649,7 +824,7 @@ function AgentTab() {
 
           {current.sizingMethod === "fixedNotional" && (
             <div className="space-y-1">
-              <Label>Fixed Notional ($)</Label>
+              <Label className="inline-flex items-center">Fixed Notional ($) <FieldTip text="The total dollar amount to allocate per trade. Shares are calculated by dividing this by the entry price." /></Label>
               <Input
                 type="number"
                 value={current.fixedNotionalUsd ?? ""}
@@ -661,7 +836,7 @@ function AgentTab() {
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
-              <Label>Duplicate Signal Window (min)</Label>
+              <Label className="inline-flex items-center text-xs">Dup Window (min) <FieldTip text="Ignore duplicate signals for the same symbol within this many minutes. Prevents double entries from repeated alerts." /></Label>
               <Input
                 type="number"
                 value={current.duplicateSignalWindowMinutes ?? 10}
@@ -670,7 +845,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Cooldown After Exit (min)</Label>
+              <Label className="inline-flex items-center text-xs">Cooldown (min) <FieldTip text="After exiting a position, wait this many minutes before re-entering the same symbol." /></Label>
               <Input
                 type="number"
                 value={current.cooldownMinutesAfterExit ?? 15}
@@ -679,7 +854,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Max Per Symbol</Label>
+              <Label className="inline-flex items-center text-xs">Max Per Symbol <FieldTip text="Maximum number of open positions allowed in a single symbol at the same time." /></Label>
               <Input
                 type="number"
                 value={current.maxPositionsPerSymbol ?? 1}
@@ -690,8 +865,7 @@ function AgentTab() {
           </div>
 
           <div className="space-y-1">
-            <Label>Symbol Allowlist</Label>
-            <p className="text-xs text-muted-foreground">Comma-separated. Only these symbols will be traded (leave blank for all).</p>
+            <Label className="inline-flex items-center">Symbol Allowlist <FieldTip text="Only trade these specific symbols. Leave blank to allow all symbols." /></Label>
             <Input
               type="text"
               placeholder="e.g. AAPL, TSLA, NVDA"
@@ -706,8 +880,7 @@ function AgentTab() {
           </div>
 
           <div className="space-y-1">
-            <Label>Symbol Blocklist</Label>
-            <p className="text-xs text-muted-foreground">Comma-separated. These symbols will never be traded.</p>
+            <Label className="inline-flex items-center">Symbol Blocklist <FieldTip text="Never trade these symbols, even if a signal arrives for them." /></Label>
             <Input
               type="text"
               placeholder="e.g. GME, AMC"
@@ -739,7 +912,7 @@ function AgentTab() {
                 <p className="text-xs text-muted-foreground">Additional constraints when the agent trades options. Leave blank to use defaults.</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Max Delta</Label>
+                    <Label className="text-xs inline-flex items-center">Max Delta <FieldTip text="Maximum option delta allowed. Lower delta means further out-of-the-money and less risk." /></Label>
                     <Input
                       type="number"
                       step="0.05"
@@ -753,7 +926,7 @@ function AgentTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Min DTE</Label>
+                    <Label className="text-xs inline-flex items-center">Min DTE <FieldTip text="Minimum days to expiration. Avoids short-dated options that decay quickly." /></Label>
                     <Input
                       type="number"
                       placeholder="7"
@@ -766,7 +939,7 @@ function AgentTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Max Premium ($)</Label>
+                    <Label className="text-xs inline-flex items-center">Max Premium ($) <FieldTip text="Maximum price per contract you're willing to pay. Limits capital committed per options trade." /></Label>
                     <Input
                       type="number"
                       placeholder="5.00"
@@ -779,7 +952,7 @@ function AgentTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Min Open Interest</Label>
+                    <Label className="text-xs inline-flex items-center">Min Open Interest <FieldTip text="Minimum open interest required. Ensures sufficient liquidity to enter and exit positions." /></Label>
                     <Input
                       type="number"
                       placeholder="100"
@@ -801,7 +974,7 @@ function AgentTab() {
                 <p className="text-xs text-muted-foreground">Additional constraints for futures trading. Leave blank to use defaults.</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Max Contracts</Label>
+                    <Label className="text-xs inline-flex items-center">Max Contracts <FieldTip text="Maximum number of futures contracts per trade. Controls leverage and risk exposure." /></Label>
                     <Input
                       type="number"
                       placeholder="2"
@@ -814,7 +987,7 @@ function AgentTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Allowed Products</Label>
+                    <Label className="text-xs inline-flex items-center">Allowed Products <FieldTip text="Comma-separated list of futures products the agent can trade (e.g., ES, NQ, MES)." /></Label>
                     <Input
                       type="text"
                       placeholder="ES, NQ, MES"
@@ -836,7 +1009,7 @@ function AgentTab() {
                 <p className="text-xs text-muted-foreground">How the agent handles transient failures when placing orders.</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Max Retries</Label>
+                    <Label className="text-xs inline-flex items-center">Max Retries <FieldTip text="Number of times to retry a failed order submission before giving up." /></Label>
                     <Input
                       type="number"
                       placeholder="2"
@@ -849,7 +1022,7 @@ function AgentTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Retry Delay (ms)</Label>
+                    <Label className="text-xs inline-flex items-center">Retry Delay (ms) <FieldTip text="Time in milliseconds to wait between retry attempts. Gives the broker time to recover." /></Label>
                     <Input
                       type="number"
                       placeholder="1000"
@@ -1232,6 +1405,47 @@ export default function PartnerDashboard() {
             <TradesTab />
           </TabsContent>
         </Tabs>
+
+        <div className="mt-8 border-t pt-6 pb-8" data-testid="section-legal-disclaimer">
+          <div className="flex items-start gap-3">
+            <Scale className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+            <div className="space-y-2 text-xs text-muted-foreground">
+              <p className="font-semibold text-sm">Important Disclosures & Legal Disclaimer</p>
+              <p>
+                VCP Trader provides automated trade execution software as a technology service only.
+                VCP Trader is not a registered broker-dealer, investment adviser, or financial planner.
+                Nothing on this platform constitutes investment advice, a recommendation, or a solicitation
+                to buy or sell any security.
+              </p>
+              <p>
+                <span className="font-medium">Risk Warning:</span> Trading stocks, options, and futures
+                involves substantial risk of loss and is not suitable for every investor. You could lose
+                more than your initial investment. Past performance of any trading strategy or signal
+                provider does not guarantee future results. Automated trading systems carry additional
+                risks, including but not limited to software errors, connectivity failures, and execution
+                delays.
+              </p>
+              <p>
+                <span className="font-medium">No Guarantee of Profits:</span> There is no guarantee
+                that the use of this platform or any signal provider will result in profits. All trading
+                decisions executed by the Auto Agent are based on configurations set by you. You are
+                solely responsible for reviewing and adjusting your risk parameters.
+              </p>
+              <p>
+                <span className="font-medium">Your Responsibility:</span> By using this platform, you
+                acknowledge that you understand the risks of automated trading and accept full
+                responsibility for all trades placed through your connected brokerage account. VCP Trader,
+                its affiliates, and partner signal providers shall not be held liable for any trading
+                losses, damages, or other costs resulting from the use of this service.
+              </p>
+              <p>
+                <span className="font-medium">Regulatory Notice:</span> This platform does not provide
+                tax, legal, or accounting advice. Consult a qualified professional regarding your
+                individual financial situation before making trading decisions.
+              </p>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );

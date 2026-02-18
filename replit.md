@@ -77,7 +77,13 @@ The application connects to multiple brokerage providers, storing encrypted conn
 -   **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages.
 
 ### Partner Dashboard (Standalone Auto-Trading)
-A standalone partner dashboard at `/partner/dashboard` allows newsletter subscribers to automate trade execution from external signals. Partners are registered, and subscribers are onboarded via JWT validation, creating linked user accounts and provisioning API keys. The dashboard provides broker connection, agent configuration, and trade history features.
+A standalone partner dashboard at `/partner/dashboard` allows newsletter subscribers to automate trade execution from external signals. Partners are registered, and subscribers are onboarded via JWT validation, creating linked user accounts and provisioning API keys. The dashboard provides broker connection, agent configuration (with tooltips on all metrics), and trade history features. A strong legal disclaimer is displayed at the bottom of the dashboard.
+
+### Auto Mode Consent System
+When a partner user switches their Agent Mode to "Auto" (autonomous execution), a confirmation dialog requires explicit acknowledgment of trading risks. Consent records (email, timestamp, client IP, user agent, consent text) are stored in the `auto_mode_consents` table and can be used for compliance reporting. The consent + mode change are saved atomically.
+
+### Bracket Order Customization
+The agent configuration supports custom bracket order pricing for both stop-loss and profit-target legs. Stop methods: From Signal, % from Entry, $ from Entry. Target methods: From Signal, % from Entry, $ from Entry, Risk:Reward Ratio. Fields are stored in `bracket_stop_method`, `bracket_stop_value`, `bracket_target_method`, `bracket_target_value` columns on `agent_settings`.
 
 ### Partner Subscription (Stripe)
 Partner subscriptions are managed via Stripe Checkout and Billing Portal.

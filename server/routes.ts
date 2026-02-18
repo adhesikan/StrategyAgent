@@ -5453,6 +5453,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     limitOffsetPercent: z.number().min(0).max(5).optional(),
     missingStopsPolicy: z.enum(["skip", "suggest", "defaults"]).optional(),
     bracketEnabled: z.boolean().optional(),
+    bracketStopMethod: z.enum(["signal", "percent", "dollar"]).optional(),
+    bracketStopValue: z.number().positive().nullable().optional(),
+    bracketTargetMethod: z.enum(["signal", "percent", "dollar", "rr"]).optional(),
+    bracketTargetValue: z.number().positive().nullable().optional(),
     requireStops: z.boolean().optional(),
     direction: z.enum(["long", "short", "both"]).optional(),
     sizingMethod: z.enum(["fixedQty", "fixedNotional", "riskBased"]).optional(),
@@ -5631,6 +5635,38 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update agent settings" });
+    }
+  });
+
+  app.post("/api/partner/auto-mode-consent", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+
+      const { consentText } = req.body;
+      if (!consentText || typeof consentText !== "string") {
+        return res.status(400).json({ error: "Consent text is required" });
+      }
+
+      const partnerUser = await storage.getPartnerUserById(req.session.partnerUserId!);
+      if (!partnerUser) return res.status(400).json({ error: "Partner user not found" });
+
+      const clientIp = req.headers["x-forwarded-for"]
+        ? String(req.headers["x-forwarded-for"]).split(",")[0].trim()
+        : req.socket.remoteAddress || "unknown";
+
+      const consent = await storage.createAutoModeConsent({
+        userId,
+        email: partnerUser.email,
+        clientIp,
+        userAgent: req.headers["user-agent"] || null,
+        consentText,
+      });
+
+      res.json(consent);
+    } catch (error) {
+      console.error("Error recording auto mode consent:", error);
+      res.status(500).json({ error: "Failed to record consent" });
     }
   });
 

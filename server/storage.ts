@@ -83,8 +83,11 @@ import type {
   InsertAgentSettings,
   AgentSettingsAudit,
   InsertAgentSettingsAudit,
+  AutoModeConsent,
+  InsertAutoModeConsent,
   agentSettings as agentSettingsTable,
   agentSettingsAudit as agentSettingsAuditTable,
+  autoModeConsents as autoModeConsentsTable,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -2220,6 +2223,18 @@ export class MemStorage implements IStorage {
   async createAgentSettingsAudit(audit: InsertAgentSettingsAudit): Promise<AgentSettingsAudit> {
     const [created] = await db.insert(agentSettingsAuditTable).values(audit).returning();
     return created;
+  }
+
+  async createAutoModeConsent(consent: InsertAutoModeConsent): Promise<AutoModeConsent> {
+    const [created] = await db.insert(autoModeConsentsTable).values(consent).returning();
+    return created;
+  }
+
+  async getAutoModeConsents(userId?: string): Promise<AutoModeConsent[]> {
+    if (userId) {
+      return db.select().from(autoModeConsentsTable).where(eq(autoModeConsentsTable.userId, userId)).orderBy(autoModeConsentsTable.consentedAt);
+    }
+    return db.select().from(autoModeConsentsTable).orderBy(autoModeConsentsTable.consentedAt);
   }
 
   async getAgentPolicy(userId: string, strategyId?: string | null): Promise<AgentPolicy | null> {

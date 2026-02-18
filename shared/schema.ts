@@ -1426,3 +1426,45 @@ export const insertExternalAlertApiKeySchema = createInsertSchema(externalAlertA
 });
 export type InsertExternalAlertApiKey = z.infer<typeof insertExternalAlertApiKeySchema>;
 export type ExternalAlertApiKey = typeof externalAlertApiKeys.$inferSelect;
+
+export const partnerConfigs = pgTable("partner_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  sharedSecret: text("shared_secret").notNull(),
+  isActive: boolean("is_active").default(true),
+  logoUrl: text("logo_url"),
+  primaryColor: text("primary_color"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPartnerConfigSchema = createInsertSchema(partnerConfigs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPartnerConfig = z.infer<typeof insertPartnerConfigSchema>;
+export type PartnerConfig = typeof partnerConfigs.$inferSelect;
+
+export const partnerUsers = pgTable("partner_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  partnerId: varchar("partner_id").notNull(),
+  partnerSubscriberId: text("partner_subscriber_id").notNull(),
+  email: text("email").notNull(),
+  name: text("name"),
+  linkedUserId: varchar("linked_user_id"),
+  isActive: boolean("is_active").default(true),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPartnerUserSchema = createInsertSchema(partnerUsers).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPartnerUser = z.infer<typeof insertPartnerUserSchema>;
+export type PartnerUser = typeof partnerUsers.$inferSelect;
+
+export const partnerLoginSchema = z.object({
+  token: z.string().min(1),
+  partner: z.string().min(1),
+});

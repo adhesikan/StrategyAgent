@@ -5,6 +5,8 @@ import connectPg from "connect-pg-simple";
 declare module "express-session" {
   interface SessionData {
     userId?: string;
+    partnerUserId?: string;
+    partnerSlug?: string;
     tradierOAuthState?: string;
     tradierOAuthUserId?: string;
     tradestationOAuthState?: string;
@@ -48,6 +50,9 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+  if (req.session.partnerUserId) {
+    return res.status(403).json({ message: "Partner accounts cannot access the full platform. Use /api/partner/* endpoints." });
   }
   next();
 };

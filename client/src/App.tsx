@@ -53,6 +53,7 @@ import DiscoverPage from "@/pages/discover";
 import RiskProfilePage from "@/pages/risk-profile";
 import UniversesPage from "@/pages/universes";
 import TradeAlertsPage from "@/pages/trade-alerts";
+import PartnerDashboard from "@/pages/partner-dashboard";
 import NotFound from "@/pages/not-found";
 import { Redirect } from "wouter";
 
@@ -303,6 +304,11 @@ function PublicRoutes() {
 function AuthenticatedApp() {
   const { isAuthenticated, isLoading } = useAuth();
   const [location] = useLocation();
+
+  const isPartnerRoute = location.startsWith("/partner");
+  if (isPartnerRoute) {
+    return <PartnerDashboard />;
+  }
 
   const publicRoutes = ["/", "/terms", "/disclaimer", "/privacy", "/open-source", "/auth"];
   const isPublicRoute = publicRoutes.includes(location);

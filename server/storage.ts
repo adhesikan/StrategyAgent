@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count, isNull } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -75,6 +75,10 @@ import type {
   InsertExternalAlert,
   ExternalAlertApiKey,
   InsertExternalAlertApiKey,
+  PartnerConfig,
+  InsertPartnerConfig,
+  PartnerUser,
+  InsertPartnerUser,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -284,6 +288,15 @@ export interface IStorage {
   deleteExternalAlertApiKey(id: string): Promise<void>;
   findExternalAlertApiKeyByHash(keyHash: string): Promise<ExternalAlertApiKey | null>;
   updateExternalAlertApiKeyLastUsed(id: string): Promise<void>;
+
+  // Partner system
+  getPartnerConfig(slug: string): Promise<PartnerConfig | null>;
+  getPartnerConfigById(id: string): Promise<PartnerConfig | null>;
+  createPartnerConfig(config: InsertPartnerConfig): Promise<PartnerConfig>;
+  getPartnerUser(partnerId: string, partnerSubscriberId: string): Promise<PartnerUser | null>;
+  getPartnerUserById(id: string): Promise<PartnerUser | null>;
+  createPartnerUser(user: InsertPartnerUser): Promise<PartnerUser>;
+  updatePartnerUser(id: string, data: Partial<PartnerUser>): Promise<PartnerUser | null>;
 }
 
 export interface OpportunityFilters {
@@ -2499,6 +2512,64 @@ export class MemStorage implements IStorage {
       .update(externalAlertApiKeysTable)
       .set({ lastUsedAt: new Date() })
       .where(eq(externalAlertApiKeysTable.id, id));
+  }
+
+  async getPartnerConfig(slug: string): Promise<PartnerConfig | null> {
+    const [result] = await db
+      .select()
+      .from(partnerConfigsTable)
+      .where(and(eq(partnerConfigsTable.slug, slug), eq(partnerConfigsTable.isActive, true)))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async getPartnerConfigById(id: string): Promise<PartnerConfig | null> {
+    const [result] = await db
+      .select()
+      .from(partnerConfigsTable)
+      .where(eq(partnerConfigsTable.id, id))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async createPartnerConfig(config: InsertPartnerConfig): Promise<PartnerConfig> {
+    const [result] = await db.insert(partnerConfigsTable).values(config).returning();
+    return result;
+  }
+
+  async getPartnerUser(partnerId: string, partnerSubscriberId: string): Promise<PartnerUser | null> {
+    const [result] = await db
+      .select()
+      .from(partnerUsersTable)
+      .where(and(
+        eq(partnerUsersTable.partnerId, partnerId),
+        eq(partnerUsersTable.partnerSubscriberId, partnerSubscriberId)
+      ))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async getPartnerUserById(id: string): Promise<PartnerUser | null> {
+    const [result] = await db
+      .select()
+      .from(partnerUsersTable)
+      .where(eq(partnerUsersTable.id, id))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async createPartnerUser(user: InsertPartnerUser): Promise<PartnerUser> {
+    const [result] = await db.insert(partnerUsersTable).values(user).returning();
+    return result;
+  }
+
+  async updatePartnerUser(id: string, data: Partial<PartnerUser>): Promise<PartnerUser | null> {
+    const [result] = await db
+      .update(partnerUsersTable)
+      .set(data)
+      .where(eq(partnerUsersTable.id, id))
+      .returning();
+    return result ?? null;
   }
 }
 

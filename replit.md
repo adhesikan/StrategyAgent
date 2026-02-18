@@ -77,6 +77,9 @@ The application connects to multiple brokerage providers, storing encrypted conn
 - **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages, supporting dual execution methods.
 - **Token Health Monitoring**: The `/api/broker/token-health` endpoint reports token status (valid/expiring/expired) and the Command Center displays a notification banner when tokens need attention.
 
+### Partner Dashboard (Standalone Auto-Trading)
+The platform supports a standalone partner dashboard at `/partner/dashboard` for newsletter subscribers to automate trade execution from external signals. Partners (e.g., Strategy Fundamentals) are registered via `POST /api/admin/partners` with a slug, name, and shared JWT secret. The partner platform redirects subscribers via `GET /api/partner/login?token=<JWT>&partner=<slug>`, which validates the JWT (requires `sub` and `email` claims), auto-creates a linked VCP Trader user account and partner_user record, provisions an API key for webhook alerts, and starts a session. The partner dashboard shows three tabs: Connect Broker (Tradier/TradeStation OAuth), Configure Agent (mode, risk limits, price filters), and Trade History (signal execution log). Partner users cannot access the full VCP Trader platform. Tables: `partner_configs` (partner settings, shared secret), `partner_users` (subscriber mapping to linked user accounts).
+
 ### Push Notifications
 - **Web Push API**: Used for real-time alert delivery.
 

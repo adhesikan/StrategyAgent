@@ -5196,5 +5196,228 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // =============================================
+  // Partner Dashboard Routes
+  // =============================================
+
+  const isPartnerAuthenticated: RequestHandler = async (req, res, next) => {
+    if (!req.session.partnerUserId) {
+      return res.status(401).json({ error: "Partner authentication required" });
+    }
+    next();
+  };
+
+  // Partner login via signed token
+  app.get("/api/partner/login", async (req, res) => {
+    try {
+      const { token, partner } = req.query as { token?: string; partner?: string };
+      if (!token || !partner) {
+        return res.status(400).json({ error: "Missing token or partner parameter" });
+      }
+
+      const partnerConfig = await storage.getPartnerConfig(partner);
+      if (!partnerConfig) {
+        return res.status(404).json({ error: "Unknown partner" });
+      }
+
+      let payload: { sub: string; email: string; name?: string; exp?: number; iat?: number };
+      try {
+        const jwt = await import("jsonwebtoken");
+        payload = jwt.default.verify(token, partnerConfig.sharedSecret) as typeof payload;
+      } catch (err: any) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+
+      if (!payload.sub || !payload.email) {
+        return res.status(400).json({ error: "Token must contain sub and email claims" });
+      }
+
+      let partnerUser = await storage.getPartnerUser(partnerConfig.id, payload.sub);
+
+      if (!partnerUser) {
+        const randomPassword = crypto.randomBytes(32).toString("hex");
+        const partnerEmail = `partner_${partner}_${payload.sub}@vcptrader.internal`;
+
+        const linkedUser = await authStorage.createUser(
+          partnerEmail,
+          randomPassword,
+          payload.name || payload.email.split("@")[0],
+          ""
+        );
+
+        partnerUser = await storage.createPartnerUser({
+          partnerId: partnerConfig.id,
+          partnerSubscriberId: payload.sub,
+          email: payload.email,
+          name: payload.name || null,
+          linkedUserId: linkedUser.id,
+          isActive: true,
+        });
+
+        await storage.createExternalAlertApiKey({
+          userId: linkedUser.id,
+          keyHash: crypto.createHash("sha256").update(`auto_${linkedUser.id}`).digest("hex"),
+          keyPrefix: "auto-provisioned",
+          label: `${partnerConfig.name} Auto`,
+          isActive: true,
+        });
+      } else {
+        await storage.updatePartnerUser(partnerUser.id, { lastLoginAt: new Date() });
+      }
+
+      req.session.partnerUserId = partnerUser.id;
+      req.session.partnerSlug = partner;
+      req.session.userId = partnerUser.linkedUserId || undefined;
+
+      res.redirect("/partner/dashboard");
+    } catch (error) {
+      console.error("Partner login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Partner profile
+  app.get("/api/partner/me", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const partnerUser = await storage.getPartnerUserById(req.session.partnerUserId!);
+      if (!partnerUser) {
+        return res.status(404).json({ error: "Partner user not found" });
+      }
+
+      const partnerConfig = await storage.getPartnerConfigById(partnerUser.partnerId);
+
+      res.json({
+        id: partnerUser.id,
+        email: partnerUser.email,
+        name: partnerUser.name,
+        partnerName: partnerConfig?.name || "Partner",
+        partnerLogo: partnerConfig?.logoUrl || null,
+        partnerColor: partnerConfig?.primaryColor || null,
+        linkedUserId: partnerUser.linkedUserId,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch profile" });
+    }
+  });
+
+  // Partner logout
+  app.post("/api/partner/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ error: "Logout failed" });
+      res.json({ success: true });
+    });
+  });
+
+  // Partner broker connection (reuses existing broker infrastructure)
+  app.get("/api/partner/broker", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const connection = await storage.getBrokerConnection(userId);
+      res.json(connection || { connected: false });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get broker status" });
+    }
+  });
+
+  // Partner agent policy (reuses existing agent policy infrastructure)
+  app.get("/api/partner/agent-policy", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const policy = await storage.getAgentPolicy(userId);
+      res.json(policy || { exists: false });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get agent policy" });
+    }
+  });
+
+  app.put("/api/partner/agent-policy", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+
+      const allowedFields = [
+        "mode", "riskPerTradeUsd", "maxDailyLossUsd", "maxConcurrentPositions",
+        "maxTradesPerDay", "priceMin", "priceMax", "minRewardRisk", "enabled"
+      ];
+      const filtered: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (req.body[key] !== undefined) filtered[key] = req.body[key];
+      }
+
+      let policy = await storage.getAgentPolicy(userId);
+      if (policy) {
+        policy = await storage.updateAgentPolicy(userId, filtered);
+      } else {
+        policy = await storage.createAgentPolicy({
+          userId,
+          mode: "SUGGEST",
+          riskPerTradeUsd: 500,
+          maxDailyLossUsd: 1000,
+          maxConcurrentPositions: 3,
+          maxTradesPerDay: 2,
+          priceMin: 5,
+          priceMax: 500,
+          minRewardRisk: 2,
+          enabled: true,
+          ...filtered,
+        });
+      }
+      res.json(policy);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update agent policy" });
+    }
+  });
+
+  // Partner trade history (reuses existing external alerts)
+  app.get("/api/partner/trades", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const alerts = await storage.getExternalAlerts(userId, 100);
+      res.json(alerts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get trade history" });
+    }
+  });
+
+  // Partner API key management
+  app.get("/api/partner/api-keys", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const keys = await storage.getExternalAlertApiKeys(userId);
+      res.json(keys.map(k => ({
+        id: k.id,
+        prefix: k.keyPrefix,
+        label: k.label,
+        isActive: k.isActive,
+        lastUsedAt: k.lastUsedAt,
+        createdAt: k.createdAt,
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get API keys" });
+    }
+  });
+
+  // Admin: register a new partner
+  app.post("/api/admin/partners", isAuthenticated as RequestHandler, isAdmin, async (req, res) => {
+    try {
+      const { slug, name, sharedSecret, logoUrl, primaryColor } = req.body;
+      if (!slug || !name || !sharedSecret) {
+        return res.status(400).json({ error: "slug, name, and sharedSecret are required" });
+      }
+      const config = await storage.createPartnerConfig({
+        slug, name, sharedSecret, isActive: true,
+        logoUrl: logoUrl || null,
+        primaryColor: primaryColor || null,
+      });
+      res.status(201).json({ id: config.id, slug: config.slug, name: config.name });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create partner" });
+    }
+  });
+
   return httpServer;
 }

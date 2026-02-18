@@ -252,10 +252,10 @@ function ExternalAlertsWidget() {
             <div className="flex items-center gap-2 min-w-0">
               <span className="font-mono font-medium text-sm">{alert.symbol}</span>
               <Badge
-                variant="outline"
-                className={alert.direction === "Long" ? "border-green-500 text-green-600" : "border-red-500 text-red-600"}
+                variant={alert.alertType === "exit" ? "secondary" : "outline"}
+                className={alert.alertType === "exit" ? "" : alert.direction === "Long" ? "border-green-500 text-green-600" : "border-red-500 text-red-600"}
               >
-                {alert.direction}
+                {alert.alertType === "exit" ? "EXIT" : alert.direction}
               </Badge>
             </div>
             <Badge

@@ -1360,13 +1360,15 @@ export const externalAlerts = pgTable("external_alerts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   source: text("source").notNull().default("strategy_fundamentals"),
+  alertType: text("alert_type").notNull().default("entry"),
   symbol: text("symbol").notNull(),
   direction: text("direction").notNull().default("Long"),
   strategyName: text("strategy_name").notNull(),
   strategyGroup: text("strategy_group"),
   entryPrice: real("entry_price").notNull(),
-  riskPrice: real("risk_price").notNull(),
-  targetPrice: real("target_price").notNull(),
+  riskPrice: real("risk_price"),
+  targetPrice: real("target_price"),
+  exitReason: text("exit_reason"),
   alertTimestamp: timestamp("alert_timestamp").notNull(),
   status: text("status").notNull().default("PENDING"),
   skipReason: text("skip_reason"),
@@ -1398,6 +1400,14 @@ export const externalAlertWebhookSchema = z.object({
   timestamp: z.string().optional(),
 });
 export type ExternalAlertWebhook = z.infer<typeof externalAlertWebhookSchema>;
+
+export const externalAlertRawTextSchema = z.object({
+  rawText: z.string().min(1),
+  strategy_name: z.string().optional(),
+  strategy_group: z.string().optional(),
+  timestamp: z.string().optional(),
+});
+export type ExternalAlertRawText = z.infer<typeof externalAlertRawTextSchema>;
 
 export const externalAlertApiKeys = pgTable("external_alert_api_keys", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

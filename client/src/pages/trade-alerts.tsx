@@ -72,6 +72,7 @@ function getStatusBadge(status: string) {
 
 function AlertCard({ alert }: { alert: ExternalAlert }) {
   const isLong = alert.direction === "Long";
+  const isExit = alert.alertType === "exit";
   const riskReward = alert.targetPrice && alert.riskPrice && alert.entryPrice
     ? ((alert.targetPrice - alert.entryPrice) / (alert.entryPrice - alert.riskPrice)).toFixed(1)
     : null;
@@ -81,14 +82,18 @@ function AlertCard({ alert }: { alert: ExternalAlert }) {
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <ArrowUpRight className={cn("w-5 h-5", isLong ? "text-green-500" : "text-red-500")} />
+            {isExit ? (
+              <TrendingDown className="w-5 h-5 text-orange-500" />
+            ) : (
+              <ArrowUpRight className={cn("w-5 h-5", isLong ? "text-green-500" : "text-red-500")} />
+            )}
             <span className="font-bold text-lg" data-testid={`text-symbol-${alert.id}`}>{alert.symbol}</span>
             <Badge
-              variant="outline"
-              className={isLong ? "border-green-500 text-green-600" : "border-red-500 text-red-600"}
+              variant={isExit ? "secondary" : "outline"}
+              className={isExit ? "" : isLong ? "border-green-500 text-green-600" : "border-red-500 text-red-600"}
               data-testid={`badge-direction-${alert.id}`}
             >
-              {alert.direction}
+              {isExit ? "EXIT" : alert.direction}
             </Badge>
           </div>
           {getStatusBadge(alert.status)}
@@ -99,31 +104,62 @@ function AlertCard({ alert }: { alert: ExternalAlert }) {
           {alert.strategyGroup && <span> - {alert.strategyGroup}</span>}
         </div>
 
+        {alert.exitReason && (
+          <div className="text-sm font-medium text-orange-500 mb-1" data-testid={`text-exit-reason-${alert.id}`}>
+            {alert.exitReason}
+          </div>
+        )}
+
         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-3">
           <Clock className="w-3 h-3" />
           <span data-testid={`text-timestamp-${alert.id}`}>{formatDate(alert.alertTimestamp)}</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-md border p-2 text-center">
-            <div className="text-xs text-muted-foreground mb-1">Reference Entry Level</div>
-            <div className="font-semibold text-sm" data-testid={`text-entry-${alert.id}`}>
-              {formatPrice(alert.entryPrice)}
-            </div>
+        {isExit ? (
+          <div className="grid grid-cols-2 gap-2">
+            {alert.targetPrice != null && (
+              <div className="rounded-md border p-2 text-center">
+                <div className="text-xs text-muted-foreground mb-1">Target Price</div>
+                <div className="font-semibold text-sm text-green-500" data-testid={`text-target-${alert.id}`}>
+                  {formatPrice(alert.targetPrice)}
+                </div>
+              </div>
+            )}
+            {alert.riskPrice != null && (
+              <div className="rounded-md border p-2 text-center">
+                <div className="text-xs text-muted-foreground mb-1">Stop Level</div>
+                <div className="font-semibold text-sm text-red-500" data-testid={`text-risk-${alert.id}`}>
+                  {formatPrice(alert.riskPrice)}
+                </div>
+              </div>
+            )}
           </div>
-          <div className="rounded-md border p-2 text-center">
-            <div className="text-xs text-muted-foreground mb-1">Risk Reference Level</div>
-            <div className="font-semibold text-sm text-red-500" data-testid={`text-risk-${alert.id}`}>
-              {formatPrice(alert.riskPrice)}
+        ) : (
+          <div className={cn("grid gap-2", alert.riskPrice != null && alert.targetPrice != null ? "grid-cols-3" : "grid-cols-1")}>
+            <div className="rounded-md border p-2 text-center">
+              <div className="text-xs text-muted-foreground mb-1">Entry Level</div>
+              <div className="font-semibold text-sm" data-testid={`text-entry-${alert.id}`}>
+                {formatPrice(alert.entryPrice)}
+              </div>
             </div>
+            {alert.riskPrice != null && (
+              <div className="rounded-md border p-2 text-center">
+                <div className="text-xs text-muted-foreground mb-1">Risk Level</div>
+                <div className="font-semibold text-sm text-red-500" data-testid={`text-risk-${alert.id}`}>
+                  {formatPrice(alert.riskPrice)}
+                </div>
+              </div>
+            )}
+            {alert.targetPrice != null && (
+              <div className="rounded-md border p-2 text-center">
+                <div className="text-xs text-muted-foreground mb-1">Target Level</div>
+                <div className="font-semibold text-sm text-green-500" data-testid={`text-target-${alert.id}`}>
+                  {formatPrice(alert.targetPrice)}
+                </div>
+              </div>
+            )}
           </div>
-          <div className="rounded-md border p-2 text-center">
-            <div className="text-xs text-muted-foreground mb-1">Upside Reference Level</div>
-            <div className="font-semibold text-sm text-green-500" data-testid={`text-target-${alert.id}`}>
-              {formatPrice(alert.targetPrice)}
-            </div>
-          </div>
-        </div>
+        )}
 
         {riskReward && (
           <div className="mt-2 text-xs text-muted-foreground text-right">
@@ -335,15 +371,15 @@ function ApiKeysSection() {
               <code className="ml-1 bg-muted px-1 py-0.5 rounded">X-API-Key: your_api_key</code>
             </div>
             <div>
-              <span className="font-medium">Body (JSON):</span>
+              <span className="font-medium">Strategy Fundamentals Format:</span>
               <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify({
-                symbol: "PWR",
-                direction: "Long",
-                strategy_name: "Quick Range Breakout",
-                strategy_group: "Energy Stars",
-                entry_price: 534.78,
-                risk_price: 408.36,
-                target_price: 584.90,
+                rawText: 'enter sym=PWR lp=534.78 tp=584.9 sl=408.36',
+              }, null, 2)}</pre>
+            </div>
+            <div className="pt-1">
+              <span className="font-medium">Exit Signal:</span>
+              <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify({
+                rawText: 'exit sym=WDC reason="Profit Target1" tp=307.96',
               }, null, 2)}</pre>
             </div>
           </div>

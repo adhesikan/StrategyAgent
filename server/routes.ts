@@ -4927,7 +4927,51 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   // ─── External Trade Alerts (Strategy Fundamentals) ────────────────────
 
+  // Parse Strategy Fundamentals rawText format
+  // Entry: "enter sym=PWR lp=534.78 tp=584.9 sl=408.36"
+  // Exit:  "exit sym=WDC reason=\"Profit Target1\" tp=307.96"
+  // Exit:  "exit sym=XLY reason=\"Stop Loss\" sl=115.4"
+  function parseSfRawText(rawText: string): {
+    alertType: "entry" | "exit";
+    symbol: string;
+    entryPrice: number;
+    riskPrice: number | null;
+    targetPrice: number | null;
+    exitReason: string | null;
+  } | null {
+    const text = rawText.trim();
+    const actionMatch = text.match(/^(enter|exit)\s+/i);
+    if (!actionMatch) return null;
+
+    const alertType = actionMatch[1].toLowerCase() as "entry" | "exit";
+
+    const symMatch = text.match(/sym=(\S+)/i);
+    if (!symMatch) return null;
+    const symbol = symMatch[1].toUpperCase();
+
+    const lpMatch = text.match(/lp=([\d.]+)/i);
+    const tpMatch = text.match(/tp=([\d.]+)/i);
+    const slMatch = text.match(/sl=([\d.]+)/i);
+    const reasonMatch = text.match(/reason="([^"]+)"/i)
+      || text.match(/reason=(.+?)(?:\s+(?:tp|sl|sym|lp)=|$)/i);
+
+    const targetPrice = tpMatch ? parseFloat(tpMatch[1]) : null;
+    const riskPrice = slMatch ? parseFloat(slMatch[1]) : null;
+    const exitReason = reasonMatch ? reasonMatch[1].trim() : null;
+
+    if (alertType === "entry") {
+      if (!lpMatch) return null;
+      const entryPrice = parseFloat(lpMatch[1]);
+      if (!entryPrice || entryPrice <= 0) return null;
+      return { alertType, symbol, entryPrice, riskPrice, targetPrice, exitReason };
+    } else {
+      const exitPrice = tpMatch ? parseFloat(tpMatch[1]) : slMatch ? parseFloat(slMatch[1]) : 0;
+      return { alertType, symbol, entryPrice: exitPrice, riskPrice, targetPrice, exitReason };
+    }
+  }
+
   // Webhook endpoint - authenticated via API key (not session)
+  // Accepts either structured JSON or rawText from Strategy Fundamentals
   app.post("/api/external-alerts/webhook", async (req, res) => {
     try {
       const apiKey = req.headers["x-api-key"] as string;
@@ -4943,45 +4987,96 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       await storage.updateExternalAlertApiKeyLastUsed(apiKeyRecord.id);
 
-      const { externalAlertWebhookSchema } = await import("@shared/schema");
-      const parsed = externalAlertWebhookSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({
-          error: "Invalid alert payload",
-          details: parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`),
-        });
+      const body = req.body;
+      let alertData: {
+        alertType: "entry" | "exit";
+        symbol: string;
+        direction: string;
+        strategyName: string;
+        strategyGroup: string | null;
+        entryPrice: number;
+        riskPrice: number | null;
+        targetPrice: number | null;
+        exitReason: string | null;
+      };
+
+      if (body.rawText) {
+        const parsed = parseSfRawText(body.rawText);
+        if (!parsed) {
+          return res.status(400).json({
+            error: "Could not parse rawText",
+            hint: 'Expected format: "enter sym=PWR lp=534.78 tp=584.9 sl=408.36" or "exit sym=WDC reason=\\"Stop Loss\\" sl=115.4"',
+          });
+        }
+        alertData = {
+          alertType: parsed.alertType,
+          symbol: parsed.symbol,
+          direction: parsed.alertType === "entry" ? "Long" : "Long",
+          strategyName: body.strategy_name || "Strategy Fundamentals",
+          strategyGroup: body.strategy_group || null,
+          entryPrice: parsed.entryPrice,
+          riskPrice: parsed.riskPrice,
+          targetPrice: parsed.targetPrice,
+          exitReason: parsed.exitReason,
+        };
+      } else {
+        const { externalAlertWebhookSchema } = await import("@shared/schema");
+        const parsed = externalAlertWebhookSchema.safeParse(body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            error: "Invalid alert payload",
+            details: parsed.error.issues.map((i: any) => `${i.path.join(".")}: ${i.message}`),
+          });
+        }
+        const data = parsed.data;
+        alertData = {
+          alertType: "entry",
+          symbol: data.symbol.toUpperCase(),
+          direction: data.direction,
+          strategyName: data.strategy_name,
+          strategyGroup: data.strategy_group ?? null,
+          entryPrice: data.entry_price,
+          riskPrice: data.risk_price,
+          targetPrice: data.target_price,
+          exitReason: null,
+        };
       }
 
-      const data = parsed.data;
       const alert = await storage.createExternalAlert({
         userId: apiKeyRecord.userId,
         source: "strategy_fundamentals",
-        symbol: data.symbol.toUpperCase(),
-        direction: data.direction,
-        strategyName: data.strategy_name,
-        strategyGroup: data.strategy_group ?? null,
-        entryPrice: data.entry_price,
-        riskPrice: data.risk_price,
-        targetPrice: data.target_price,
-        alertTimestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+        alertType: alertData.alertType,
+        symbol: alertData.symbol,
+        direction: alertData.direction,
+        strategyName: alertData.strategyName,
+        strategyGroup: alertData.strategyGroup,
+        entryPrice: alertData.entryPrice,
+        riskPrice: alertData.riskPrice,
+        targetPrice: alertData.targetPrice,
+        exitReason: alertData.exitReason,
+        alertTimestamp: body.timestamp ? new Date(body.timestamp) : new Date(),
         status: "PENDING",
-        rawPayload: req.body,
+        rawPayload: body,
       });
 
-      console.log(`[ExternalAlerts] Received alert: ${data.symbol} ${data.direction} from ${data.strategy_name} for user ${apiKeyRecord.userId}`);
+      const typeLabel = alertData.alertType === "exit" ? "EXIT" : "ENTRY";
+      console.log(`[ExternalAlerts] ${typeLabel}: ${alertData.symbol} ${alertData.exitReason ? `(${alertData.exitReason})` : ""} for user ${apiKeyRecord.userId}`);
 
       res.status(201).json({
         success: true,
         alertId: alert.id,
-        message: `Alert received for ${data.symbol}`,
+        alertType: alertData.alertType,
+        message: `${typeLabel} alert received for ${alertData.symbol}`,
       });
 
-      try {
-        const { processExternalAlerts } = await import("./agent-worker");
-        processExternalAlerts(apiKeyRecord.userId).catch((err: any) =>
-          console.error(`[ExternalAlerts] Background processing error for ${apiKeyRecord.userId}:`, err.message)
-        );
-      } catch (e) {}
+      if (alertData.alertType === "entry") {
+        try {
+          const { processExternalAlerts } = await import("./agent-worker");
+          processExternalAlerts(apiKeyRecord.userId).catch((err: any) =>
+            console.error(`[ExternalAlerts] Background processing error for ${apiKeyRecord.userId}:`, err.message)
+          );
+        } catch (e) {}
+      }
     } catch (error: any) {
       console.error("[ExternalAlerts] Webhook error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -5082,6 +5177,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const alert = await storage.createExternalAlert({
         userId,
         source: "test",
+        alertType: "entry",
         symbol: "AAPL",
         direction: "Long",
         strategyName: "Quick Range Breakout - Test",
@@ -5091,7 +5187,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         targetPrice: 198.00,
         alertTimestamp: new Date(),
         status: "PENDING",
-        rawPayload: { test: true },
+        rawPayload: { rawText: "enter sym=AAPL lp=185.50 tp=198.00 sl=178.25", test: true },
       });
 
       res.json({ success: true, alertId: alert.id, message: "Test alert created" });

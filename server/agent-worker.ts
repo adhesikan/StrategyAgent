@@ -497,6 +497,14 @@ async function processExternalAlerts(userId: string): Promise<void> {
     try {
       await storage.updateExternalAlert(alert.id, { status: "EVALUATING" });
 
+      if (alert.alertType === "exit") {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: `Exit signal: ${alert.exitReason || "position closed"}`,
+        });
+        continue;
+      }
+
       if (alert.direction === "Short") {
         await storage.updateExternalAlert(alert.id, {
           status: "SKIPPED",
@@ -516,6 +524,14 @@ async function processExternalAlerts(userId: string): Promise<void> {
         await storage.updateExternalAlert(alert.id, {
           status: "SKIPPED",
           skipReason: `Entry price $${alert.entryPrice} above maximum $${policy.priceMax}`,
+        });
+        continue;
+      }
+
+      if (!alert.riskPrice || !alert.targetPrice) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: "Missing risk or target price levels for entry evaluation",
         });
         continue;
       }

@@ -56,3 +56,10 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
   next();
 };
+
+export const isAuthenticatedOrPartner: RequestHandler = async (req, res, next) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
+};

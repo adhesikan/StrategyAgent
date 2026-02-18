@@ -180,7 +180,7 @@ function BrokerTab() {
               <Card
                 key={bp.id}
                 className={`cursor-pointer hover-elevate ${isBrokerConnected ? "border-primary" : ""}`}
-                onClick={() => !isBrokerConnected && bp.supportsOAuth && (window.location.href = `/api/broker/connect/${bp.id}`)}
+                onClick={() => !isBrokerConnected && bp.supportsOAuth && (window.location.href = `/api/${bp.id}/oauth`)}
                 data-testid={`broker-${bp.id}`}
               >
                 <CardContent className="p-4">

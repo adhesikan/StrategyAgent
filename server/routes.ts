@@ -9,7 +9,7 @@ import { classifyMarketRegime, getRegimeAdjustment } from "./engine/regime";
 import { aggregateConfluence, rankByConfluence, filterByMinMatches, ConfluenceResult } from "./engine/confluence";
 import { CandleData } from "./engine/indicators";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage, verifyJwt } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, isAuthenticatedOrPartner, authStorage, verifyJwt } from "./replit_integrations/auth";
 import { 
   fetchQuotesFromBroker, 
   quotesToScanResults, 
@@ -1577,7 +1577,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/broker/connect", isAuthenticated, async (req, res) => {
+  app.post("/api/broker/connect", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const { provider, accessToken, secretKey } = req.body;
@@ -2428,7 +2428,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   });
 
   // Initiate Tradier OAuth flow
-  app.get("/api/tradier/oauth", isAuthenticated, async (req, res) => {
+  app.get("/api/tradier/oauth", isAuthenticatedOrPartner, async (req, res) => {
     try {
       if (!isTradierOAuthConfigured()) {
         return res.status(503).json({ error: "Tradier OAuth is not configured" });
@@ -2586,7 +2586,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   });
 
   // Initiate TradeStation OAuth flow
-  app.get("/api/tradestation/oauth", isAuthenticated, async (req, res) => {
+  app.get("/api/tradestation/oauth", isAuthenticatedOrPartner, async (req, res) => {
     try {
       if (!isTradeStationOAuthConfigured()) {
         return res.status(503).json({ error: "TradeStation OAuth is not configured" });

@@ -1,7 +1,15 @@
-import { getUncachableStripeClient } from '../server/stripeClient';
+import Stripe from 'stripe';
 
 async function seedPartnerSubscriptionProduct() {
-  const stripe = await getUncachableStripeClient();
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    console.error('STRIPE_SECRET_KEY environment variable is not set');
+    process.exit(1);
+  }
+
+  const stripe = new Stripe(secretKey, {
+    apiVersion: '2025-11-17.clover' as any,
+  });
 
   const products = await stripe.products.search({ query: "name:'Auto Trading Subscription'" });
   if (products.data.length > 0) {

@@ -23,6 +23,12 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Link2,
   Bot,
   History,
@@ -42,6 +48,10 @@ import {
   Shield,
   BarChart3,
   ExternalLink,
+  Target,
+  Filter,
+  Wrench,
+  Crosshair,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -63,20 +73,6 @@ interface BrokerStatus {
   isConnected?: boolean;
   connected?: boolean;
   preferredAccountId?: string;
-}
-
-interface AgentPolicy {
-  id?: string;
-  exists?: boolean;
-  mode?: string;
-  enabled?: boolean;
-  riskPerTradeUsd?: number;
-  maxDailyLossUsd?: number;
-  maxConcurrentPositions?: number;
-  maxTradesPerDay?: number;
-  priceMin?: number;
-  priceMax?: number;
-  minRewardRisk?: number;
 }
 
 interface TradeAlert {
@@ -221,19 +217,55 @@ function BrokerTab() {
   );
 }
 
+interface AgentSettingsData {
+  id?: string;
+  userId?: string;
+  enabled?: boolean;
+  mode?: string;
+  assetTypes?: string[];
+  timezone?: string;
+  tradingWindowStart?: string;
+  tradingWindowEnd?: string;
+  riskPerTradeUsd?: number;
+  maxDailyLossUsd?: number;
+  maxTradesPerDay?: number;
+  maxConcurrentPositions?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  minRr?: number;
+  entryOrderType?: string;
+  timeInForce?: string;
+  limitOffsetPercent?: number;
+  missingStopsPolicy?: string;
+  bracketEnabled?: boolean;
+  requireStops?: boolean;
+  direction?: string;
+  sizingMethod?: string;
+  fixedQuantity?: number | null;
+  fixedNotionalUsd?: number | null;
+  symbolAllowlist?: string[] | null;
+  symbolBlocklist?: string[] | null;
+  duplicateSignalWindowMinutes?: number;
+  cooldownMinutesAfterExit?: number;
+  maxPositionsPerSymbol?: number;
+  optionsConstraints?: Record<string, any>;
+  futuresConstraints?: Record<string, any>;
+  reliability?: Record<string, any>;
+}
+
 function AgentTab() {
   const { toast } = useToast();
-  const { data: policy, isLoading } = useQuery<AgentPolicy>({
-    queryKey: ["/api/partner/agent-policy"],
+  const { data: settings, isLoading } = useQuery<AgentSettingsData>({
+    queryKey: ["/api/partner/agent-settings"],
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: Partial<AgentPolicy>) => {
-      const res = await apiRequest("PUT", "/api/partner/agent-policy", data);
+    mutationFn: async (data: Partial<AgentSettingsData>) => {
+      const res = await apiRequest("PUT", "/api/partner/agent-settings", data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/partner/agent-policy"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/agent-settings"] });
       toast({ title: "Agent settings saved" });
     },
     onError: () => {
@@ -241,19 +273,38 @@ function AgentTab() {
     },
   });
 
-  const [formData, setFormData] = useState<Partial<AgentPolicy>>({});
+  const [formData, setFormData] = useState<Partial<AgentSettingsData>>({});
+  const [allowlistText, setAllowlistText] = useState("");
+  const [blocklistText, setBlocklistText] = useState("");
 
-  const currentPolicy = { ...policy, ...formData };
+  useEffect(() => {
+    if (settings) {
+      setAllowlistText((settings.symbolAllowlist || []).join(", "));
+      setBlocklistText((settings.symbolBlocklist || []).join(", "));
+    }
+  }, [settings]);
+
+  const current = { ...settings, ...formData };
   const hasChanges = Object.keys(formData).length > 0;
 
+  const updateField = (key: string, value: any) => {
+    setFormData(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = () => {
+    updateMutation.mutate(formData);
+    setFormData({});
+  };
+
   if (isLoading) {
-    return <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>;
+    return <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>;
   }
 
   return (
     <div className="space-y-4">
+      {/* Section 1: Auto Agent Configuration */}
       <Card data-testid="card-agent-config">
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <Bot className="w-5 h-5" />
             Auto Agent Configuration
@@ -267,8 +318,8 @@ function AgentTab() {
               <p className="text-xs text-muted-foreground">Turn on/off automated signal processing</p>
             </div>
             <Switch
-              checked={currentPolicy.enabled ?? true}
-              onCheckedChange={(val) => setFormData(prev => ({ ...prev, enabled: val }))}
+              checked={current.enabled ?? false}
+              onCheckedChange={(val) => updateField("enabled", val)}
               data-testid="switch-agent-enabled"
             />
           </div>
@@ -276,27 +327,70 @@ function AgentTab() {
           <div className="space-y-2">
             <Label>Agent Mode</Label>
             <Select
-              value={currentPolicy.mode || "SUGGEST"}
-              onValueChange={(val) => setFormData(prev => ({ ...prev, mode: val }))}
+              value={current.mode || "suggest"}
+              onValueChange={(val) => updateField("mode", val)}
             >
               <SelectTrigger data-testid="select-agent-mode">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="SUGGEST">Suggest (Review before executing)</SelectItem>
-                <SelectItem value="AUTO">Auto (Execute automatically)</SelectItem>
+                <SelectItem value="suggest">Suggest (Review before executing)</SelectItem>
+                <SelectItem value="auto">Auto (Execute automatically)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Trading Window Start</Label>
+              <Input
+                type="text"
+                placeholder="09:35"
+                value={current.tradingWindowStart || "09:35:00"}
+                onChange={(e) => updateField("tradingWindowStart", e.target.value)}
+                data-testid="input-window-start"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Trading Window End</Label>
+              <Input
+                type="text"
+                placeholder="15:50"
+                value={current.tradingWindowEnd || "15:50:00"}
+                onChange={(e) => updateField("tradingWindowEnd", e.target.value)}
+                data-testid="input-window-end"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Timezone</Label>
+            <Select
+              value={current.timezone || "America/New_York"}
+              onValueChange={(val) => updateField("timezone", val)}
+            >
+              <SelectTrigger data-testid="select-timezone">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
+                <SelectItem value="America/Chicago">Central (CT)</SelectItem>
+                <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
+                <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
+      {/* Section 2: Risk Limits */}
       <Card data-testid="card-risk-limits">
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5" />
             Risk Limits
           </CardTitle>
+          <CardDescription>Set guardrails for how much capital is at risk</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -304,8 +398,8 @@ function AgentTab() {
               <Label>Risk Per Trade ($)</Label>
               <Input
                 type="number"
-                value={currentPolicy.riskPerTradeUsd || 500}
-                onChange={(e) => setFormData(prev => ({ ...prev, riskPerTradeUsd: Number(e.target.value) }))}
+                value={current.riskPerTradeUsd ?? 100}
+                onChange={(e) => updateField("riskPerTradeUsd", Number(e.target.value))}
                 data-testid="input-risk-per-trade"
               />
             </div>
@@ -313,8 +407,8 @@ function AgentTab() {
               <Label>Max Daily Loss ($)</Label>
               <Input
                 type="number"
-                value={currentPolicy.maxDailyLossUsd || 1000}
-                onChange={(e) => setFormData(prev => ({ ...prev, maxDailyLossUsd: Number(e.target.value) }))}
+                value={current.maxDailyLossUsd ?? 200}
+                onChange={(e) => updateField("maxDailyLossUsd", Number(e.target.value))}
                 data-testid="input-max-daily-loss"
               />
             </div>
@@ -322,8 +416,8 @@ function AgentTab() {
               <Label>Max Concurrent Positions</Label>
               <Input
                 type="number"
-                value={currentPolicy.maxConcurrentPositions || 3}
-                onChange={(e) => setFormData(prev => ({ ...prev, maxConcurrentPositions: Number(e.target.value) }))}
+                value={current.maxConcurrentPositions ?? 2}
+                onChange={(e) => updateField("maxConcurrentPositions", Number(e.target.value))}
                 data-testid="input-max-positions"
               />
             </div>
@@ -331,8 +425,8 @@ function AgentTab() {
               <Label>Max Trades Per Day</Label>
               <Input
                 type="number"
-                value={currentPolicy.maxTradesPerDay || 2}
-                onChange={(e) => setFormData(prev => ({ ...prev, maxTradesPerDay: Number(e.target.value) }))}
+                value={current.maxTradesPerDay ?? 2}
+                onChange={(e) => updateField("maxTradesPerDay", Number(e.target.value))}
                 data-testid="input-max-trades-day"
               />
             </div>
@@ -343,18 +437,18 @@ function AgentTab() {
               <Label>Min Price ($)</Label>
               <Input
                 type="number"
-                value={currentPolicy.priceMin || 5}
-                onChange={(e) => setFormData(prev => ({ ...prev, priceMin: Number(e.target.value) }))}
-                data-testid="input-price-min"
+                value={current.minPrice ?? 5}
+                onChange={(e) => updateField("minPrice", Number(e.target.value))}
+                data-testid="input-min-price"
               />
             </div>
             <div className="space-y-1">
               <Label>Max Price ($)</Label>
               <Input
                 type="number"
-                value={currentPolicy.priceMax || 500}
-                onChange={(e) => setFormData(prev => ({ ...prev, priceMax: Number(e.target.value) }))}
-                data-testid="input-price-max"
+                value={current.maxPrice ?? 500}
+                onChange={(e) => updateField("maxPrice", Number(e.target.value))}
+                data-testid="input-max-price"
               />
             </div>
             <div className="space-y-1">
@@ -362,27 +456,404 @@ function AgentTab() {
               <Input
                 type="number"
                 step="0.1"
-                value={currentPolicy.minRewardRisk || 2}
-                onChange={(e) => setFormData(prev => ({ ...prev, minRewardRisk: Number(e.target.value) }))}
+                value={current.minRr ?? 2}
+                onChange={(e) => updateField("minRr", Number(e.target.value))}
                 data-testid="input-min-rr"
               />
             </div>
           </div>
-
-          <Button
-            onClick={() => {
-              updateMutation.mutate(formData);
-              setFormData({});
-            }}
-            disabled={!hasChanges || updateMutation.isPending}
-            className="w-full"
-            data-testid="button-save-agent"
-          >
-            {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Settings className="w-4 h-4 mr-1" />}
-            Save Settings
-          </Button>
         </CardContent>
       </Card>
+
+      {/* Section 3: Execution */}
+      <Card data-testid="card-execution">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Crosshair className="w-5 h-5" />
+            Execution
+          </CardTitle>
+          <CardDescription>How orders are placed when signals are triggered</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Entry Order Type</Label>
+              <Select
+                value={current.entryOrderType || "limit"}
+                onValueChange={(val) => updateField("entryOrderType", val)}
+              >
+                <SelectTrigger data-testid="select-entry-order-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="market">Market</SelectItem>
+                  <SelectItem value="limit">Limit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Time in Force</Label>
+              <Select
+                value={current.timeInForce || "day"}
+                onValueChange={(val) => updateField("timeInForce", val)}
+              >
+                <SelectTrigger data-testid="select-time-in-force">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="day">Day</SelectItem>
+                  <SelectItem value="gtc">GTC (Good Till Cancel)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {current.entryOrderType === "limit" && (
+            <div className="space-y-1">
+              <Label>Limit Offset (%)</Label>
+              <p className="text-xs text-muted-foreground">How far above/below signal price to place the limit</p>
+              <Input
+                type="number"
+                step="0.01"
+                value={current.limitOffsetPercent ?? 0.05}
+                onChange={(e) => updateField("limitOffsetPercent", Number(e.target.value))}
+                data-testid="input-limit-offset"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Missing Stops Policy</Label>
+            <p className="text-xs text-muted-foreground">What to do when a signal has no stop price</p>
+            <Select
+              value={current.missingStopsPolicy || "skip"}
+              onValueChange={(val) => updateField("missingStopsPolicy", val)}
+            >
+              <SelectTrigger data-testid="select-missing-stops">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="skip">Skip the trade</SelectItem>
+                <SelectItem value="suggest">Suggest (manual review)</SelectItem>
+                <SelectItem value="defaults">Use default stop distance</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <Label className="font-medium">Bracket Orders</Label>
+              <p className="text-xs text-muted-foreground">Automatically attach stop + target to entries</p>
+            </div>
+            <Switch
+              checked={current.bracketEnabled ?? true}
+              onCheckedChange={(val) => updateField("bracketEnabled", val)}
+              data-testid="switch-bracket-enabled"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <Label className="font-medium">Require Stops</Label>
+              <p className="text-xs text-muted-foreground">Only execute trades that have a defined stop loss</p>
+            </div>
+            <Switch
+              checked={current.requireStops ?? true}
+              onCheckedChange={(val) => updateField("requireStops", val)}
+              data-testid="switch-require-stops"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 4: Filters & Sizing */}
+      <Card data-testid="card-filters-sizing">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="w-5 h-5" />
+            Filters & Sizing
+          </CardTitle>
+          <CardDescription>Control which signals are accepted and how positions are sized</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Direction</Label>
+              <Select
+                value={current.direction || "both"}
+                onValueChange={(val) => updateField("direction", val)}
+              >
+                <SelectTrigger data-testid="select-direction">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="long">Long Only</SelectItem>
+                  <SelectItem value="short">Short Only</SelectItem>
+                  <SelectItem value="both">Both</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sizing Method</Label>
+              <Select
+                value={current.sizingMethod || "riskBased"}
+                onValueChange={(val) => updateField("sizingMethod", val)}
+              >
+                <SelectTrigger data-testid="select-sizing-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="riskBased">Risk-Based ($ at risk per trade)</SelectItem>
+                  <SelectItem value="fixedQty">Fixed Quantity</SelectItem>
+                  <SelectItem value="fixedNotional">Fixed Dollar Amount</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {current.sizingMethod === "fixedQty" && (
+            <div className="space-y-1">
+              <Label>Fixed Quantity (shares)</Label>
+              <Input
+                type="number"
+                value={current.fixedQuantity ?? ""}
+                onChange={(e) => updateField("fixedQuantity", e.target.value ? Number(e.target.value) : null)}
+                data-testid="input-fixed-quantity"
+              />
+            </div>
+          )}
+
+          {current.sizingMethod === "fixedNotional" && (
+            <div className="space-y-1">
+              <Label>Fixed Notional ($)</Label>
+              <Input
+                type="number"
+                value={current.fixedNotionalUsd ?? ""}
+                onChange={(e) => updateField("fixedNotionalUsd", e.target.value ? Number(e.target.value) : null)}
+                data-testid="input-fixed-notional"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label>Duplicate Signal Window (min)</Label>
+              <Input
+                type="number"
+                value={current.duplicateSignalWindowMinutes ?? 10}
+                onChange={(e) => updateField("duplicateSignalWindowMinutes", Number(e.target.value))}
+                data-testid="input-dup-window"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Cooldown After Exit (min)</Label>
+              <Input
+                type="number"
+                value={current.cooldownMinutesAfterExit ?? 15}
+                onChange={(e) => updateField("cooldownMinutesAfterExit", Number(e.target.value))}
+                data-testid="input-cooldown"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Max Per Symbol</Label>
+              <Input
+                type="number"
+                value={current.maxPositionsPerSymbol ?? 1}
+                onChange={(e) => updateField("maxPositionsPerSymbol", Number(e.target.value))}
+                data-testid="input-max-per-symbol"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Symbol Allowlist</Label>
+            <p className="text-xs text-muted-foreground">Comma-separated. Only these symbols will be traded (leave blank for all).</p>
+            <Input
+              type="text"
+              placeholder="e.g. AAPL, TSLA, NVDA"
+              value={allowlistText}
+              onChange={(e) => {
+                setAllowlistText(e.target.value);
+                const arr = e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+                updateField("symbolAllowlist", arr.length ? arr : null);
+              }}
+              data-testid="input-symbol-allowlist"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label>Symbol Blocklist</Label>
+            <p className="text-xs text-muted-foreground">Comma-separated. These symbols will never be traded.</p>
+            <Input
+              type="text"
+              placeholder="e.g. GME, AMC"
+              value={blocklistText}
+              onChange={(e) => {
+                setBlocklistText(e.target.value);
+                const arr = e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+                updateField("symbolBlocklist", arr.length ? arr : null);
+              }}
+              data-testid="input-symbol-blocklist"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 5: Advanced (Accordion) */}
+      <Card data-testid="card-advanced">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Wrench className="w-5 h-5" />
+            Advanced
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="options" className="border-none">
+              <AccordionTrigger className="text-sm py-3" data-testid="accordion-options">Options Constraints</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Additional constraints when the agent trades options. Leave blank to use defaults.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max Delta</Label>
+                    <Input
+                      type="number"
+                      step="0.05"
+                      placeholder="0.40"
+                      value={(current.optionsConstraints as any)?.maxDelta ?? ""}
+                      onChange={(e) => updateField("optionsConstraints", {
+                        ...(current.optionsConstraints || {}),
+                        maxDelta: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-options-max-delta"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Min DTE</Label>
+                    <Input
+                      type="number"
+                      placeholder="7"
+                      value={(current.optionsConstraints as any)?.minDte ?? ""}
+                      onChange={(e) => updateField("optionsConstraints", {
+                        ...(current.optionsConstraints || {}),
+                        minDte: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-options-min-dte"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max Premium ($)</Label>
+                    <Input
+                      type="number"
+                      placeholder="5.00"
+                      value={(current.optionsConstraints as any)?.maxPremium ?? ""}
+                      onChange={(e) => updateField("optionsConstraints", {
+                        ...(current.optionsConstraints || {}),
+                        maxPremium: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-options-max-premium"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Min Open Interest</Label>
+                    <Input
+                      type="number"
+                      placeholder="100"
+                      value={(current.optionsConstraints as any)?.minOi ?? ""}
+                      onChange={(e) => updateField("optionsConstraints", {
+                        ...(current.optionsConstraints || {}),
+                        minOi: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-options-min-oi"
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="futures" className="border-none">
+              <AccordionTrigger className="text-sm py-3" data-testid="accordion-futures">Futures Constraints</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Additional constraints for futures trading. Leave blank to use defaults.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max Contracts</Label>
+                    <Input
+                      type="number"
+                      placeholder="2"
+                      value={(current.futuresConstraints as any)?.maxContracts ?? ""}
+                      onChange={(e) => updateField("futuresConstraints", {
+                        ...(current.futuresConstraints || {}),
+                        maxContracts: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-futures-max-contracts"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Allowed Products</Label>
+                    <Input
+                      type="text"
+                      placeholder="ES, NQ, MES"
+                      value={(current.futuresConstraints as any)?.allowedProducts ?? ""}
+                      onChange={(e) => updateField("futuresConstraints", {
+                        ...(current.futuresConstraints || {}),
+                        allowedProducts: e.target.value,
+                      })}
+                      data-testid="input-futures-products"
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="reliability" className="border-none">
+              <AccordionTrigger className="text-sm py-3" data-testid="accordion-reliability">Reliability & Retries</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">How the agent handles transient failures when placing orders.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max Retries</Label>
+                    <Input
+                      type="number"
+                      placeholder="2"
+                      value={(current.reliability as any)?.maxRetries ?? ""}
+                      onChange={(e) => updateField("reliability", {
+                        ...(current.reliability || {}),
+                        maxRetries: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-reliability-max-retries"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Retry Delay (ms)</Label>
+                    <Input
+                      type="number"
+                      placeholder="1000"
+                      value={(current.reliability as any)?.retryDelayMs ?? ""}
+                      onChange={(e) => updateField("reliability", {
+                        ...(current.reliability || {}),
+                        retryDelayMs: e.target.value ? Number(e.target.value) : undefined,
+                      })}
+                      data-testid="input-reliability-retry-delay"
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </CardContent>
+      </Card>
+
+      {/* Save Button */}
+      <Button
+        onClick={handleSave}
+        disabled={!hasChanges || updateMutation.isPending}
+        className="w-full"
+        data-testid="button-save-agent"
+      >
+        {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Settings className="w-4 h-4 mr-1" />}
+        Save Settings
+      </Button>
     </div>
   );
 }

@@ -1,0 +1,231 @@
+You are working inside my existing full-stack SaaS app called “VCP Trader”.
+
+STACK
+- Frontend: React + Tailwind (dark UI)
+- Backend: Node.js + Express API
+- Database: Postgres
+- Auth: existing user auth (use current user_id)
+- Existing screen: “Auto Agent Configuration” under the Agent tab. It already saves basic fields (enabled, mode, risk limits). DO NOT break existing behavior.
+
+GOAL
+Upgrade the Auto Agent Configuration to a complete, production-ready configuration system with:
+- clear MUST-HAVE inputs (safety + intent)
+- OPTIONAL inputs (filters + sizing + bracket behavior)
+- ADVANCED inputs (options/futures constraints + reliability settings)
+Keep the UI clean using sections + accordions. Backward compatible.
+
+HARD REQUIREMENTS
+1) Preserve existing saved settings (migrate safely with defaults).
+2) JWT/partner work is NOT part of this task.
+3) Add server-side validation (Zod or equivalent) and reject invalid configs with clear errors.
+4) Add audit logging for changes (who changed what + timestamp).
+5) Never show “secret” fields anywhere (not applicable here but keep security posture).
+6) Compliance-friendly copy: no guarantees, “self-directed”, user-controlled, show risk warnings near Auto mode.
+
+========================================
+PART A — DATABASE (SAFE MIGRATION)
+========================================
+Implement a migration that:
+- Creates `agent_settings` if missing
+- Adds missing columns if table exists
+- Creates `agent_settings_audit` table for change logs
+
+1) Create/extend `agent_settings`
+Use a single source of truth schema and apply ALTERs idempotently.
+
+Target schema (Postgres):
+
+- id UUID PK default gen_random_uuid()
+- user_id UUID unique not null references users(id) on delete cascade
+
+Core:
+- enabled boolean default false
+- mode text check in ('suggest','auto') default 'suggest'
+- asset_types jsonb default '["stocks"]'::jsonb   (allowed values: stocks, options, futures)
+- timezone text default 'America/New_York'
+- trading_window_start time default '09:35:00'
+- trading_window_end time default '15:50:00'
+
+Risk limits:
+- risk_per_trade_usd numeric default 100
+- max_daily_loss_usd numeric default 200
+- max_trades_per_day int default 2
+- max_concurrent_positions int default 2
+- min_price numeric default 5
+- max_price numeric default 500
+- min_rr numeric default 2
+
+Execution:
+- entry_order_type text check in ('market','limit') default 'limit'
+- time_in_force text check in ('day','gtc') default 'day'
+- limit_offset_percent numeric default 0.05  (0.05 = 0.05%)
+- missing_stops_policy text check in ('skip','suggest','defaults') default 'skip'
+- bracket_enabled boolean default true
+- require_stops boolean default true
+
+Filters & sizing:
+- direction text check in ('long','short','both') default 'both'
+- sizing_method text check in ('fixedQty','fixedNotional','riskBased') default 'riskBased'
+- fixed_quantity int null
+- fixed_notional_usd numeric null
+- symbol_allowlist text[] null
+- symbol_blocklist text[] null
+- duplicate_signal_window_minutes int default 10
+- cooldown_minutes_after_exit int default 15
+- max_positions_per_symbol int default 1
+
+Advanced (store as jsonb to avoid schema bloat for now):
+- options_constraints jsonb default '{}'::jsonb
+  (fields supported: min_dte, max_dte, min_delta, max_delta, max_premium_usd, max_contracts, allowed_strategies[])
+- futures_constraints jsonb default '{}'::jsonb
+  (fields supported: allowed_products[], max_contracts, rth_only boolean)
+- reliability jsonb default '{}'::jsonb
+  (fields supported: max_retries int, retry_backoff_ms int, partial_fill_policy 'accept'|'cancelRemainder')
+
+Timestamps:
+- created_at timestamptz default now()
+- updated_at timestamptz default now()
+
+2) Create `agent_settings_audit`
+- id uuid pk default gen_random_uuid()
+- user_id uuid not null
+- changed_by uuid not null (admin/user id, usually same as user_id)
+- changed_at timestamptz default now()
+- before jsonb not null
+- after jsonb not null
+- source text default 'ui' (ui/api/system)
+
+3) Add a trigger to update updated_at on agent_settings changes.
+
+MIGRATION RULES
+- If existing table has older columns, map them:
+  - risk_per_trade -> risk_per_trade_usd
+  - max_daily_loss -> max_daily_loss_usd
+  - max_positions -> max_concurrent_positions
+  - min_rr -> min_rr (keep)
+- If old table already stores JSON settings, merge carefully.
+- Create one row per user if missing when they first open the Agent tab.
+
+========================================
+PART B — BACKEND API
+========================================
+Create/extend endpoints:
+
+GET /api/agent-settings
+- returns current user settings, creating defaults if none exist
+
+PUT /api/agent-settings
+- validates input (Zod)
+- updates agent_settings (upsert)
+- writes agent_settings_audit with before/after snapshots
+- returns updated settings
+
+Validation rules (enforce):
+- mode required (suggest|auto)
+- if mode=auto then enabled must be true OR show warning? (Allow enabled true + mode auto; if enabled false ignore mode)
+- risk_per_trade_usd > 0
+- max_daily_loss_usd >= risk_per_trade_usd
+- max_trades_per_day between 0 and 50
+- max_concurrent_positions between 1 and 50
+- min_price >= 0, max_price >= min_price
+- min_rr >= 0
+- limit_offset_percent between 0 and 5 (percent)
+- trading_window_start < trading_window_end
+- asset_types must be subset of ['stocks','options','futures']
+- if sizing_method=fixedQty -> fixed_quantity required positive int
+- if sizing_method=fixedNotional -> fixed_notional_usd required positive
+- symbol_allowlist and symbol_blocklist must be uppercase tickers, dedupe, max 500 entries
+- options_constraints/futures_constraints/reliability must be objects (optional)
+Return 400 with field-level errors.
+
+SECURITY
+- Always scope by authenticated user_id
+- Never allow user_id to be passed from client
+- Rate limit PUT endpoint (basic) to prevent spam
+
+========================================
+PART C — FRONTEND UI (CLEAN SECTIONS)
+========================================
+Update the Agent tab UI to match this structure:
+
+1) Auto Agent Configuration (Card)
+- Toggle: Agent Enabled
+- Select: Agent Mode (Suggest / Auto)
+- Inline broker status indicator (Connected / Not connected) using existing broker state
+- Trading Window: Start time, End time, Timezone dropdown (default America/New_York)
+- If mode=Auto: show a compliance-friendly confirmation checkbox + modal on save:
+  “I understand this may place real trades automatically. I remain fully responsible. No guarantees.”
+  Block enabling Auto until checked.
+
+2) Risk Limits (Card)
+- Risk per trade ($)
+- Max daily loss ($)
+- Max trades/day
+- Max concurrent positions
+- Max positions per symbol
+- Min price / Max price
+- Min R:R
+
+3) Execution (Card)
+- Entry order type (Market/Limit)
+- Time in force (DAY/GTC)
+- If Limit: Limit offset (%) input with helper text (e.g., 0.05%)
+- Bracket Enabled toggle (OCO if supported)
+- Require stops toggle
+- Missing stops policy dropdown: Skip / Suggest only / Use defaults
+
+4) Filters & Sizing (Card) — Optional
+- Direction: Long/Short/Both
+- Sizing method: Risk-based / Fixed Qty / Fixed Notional
+  - Show conditional fields for fixed qty or notional
+- Symbol allowlist and blocklist as multi-input chips
+- Duplicate signal window (minutes)
+- Cooldown after exit (minutes)
+
+5) Advanced (Accordion)
+- Options constraints (only show if asset_types includes options)
+  - Min DTE, Max DTE, Min Delta, Max Delta, Max Premium, Max Contracts, Allowed Strategies multiselect
+- Futures constraints (only show if futures enabled)
+  - Allowed products chips, Max contracts, RTH only toggle
+- Reliability
+  - Max retries, Retry backoff ms, Partial fill policy dropdown
+
+UX RULES
+- Keep defaults safe: mode=suggest, enabled=false, bracket_enabled=true, require_stops=true
+- “Save Settings” persists via PUT /api/agent-settings
+- Show “Saved” toast + last saved timestamp
+- Show validation errors inline under fields
+- Add “Disable Agent Now” prominent button when enabled=true (kill switch)
+- Never use performance language; add small disclaimer text near Auto mode.
+
+IMPLEMENTATION DETAILS
+- Reuse existing components/styles as much as possible.
+- Use controlled forms and a single settings state object.
+- Add a small “Reset to Defaults” button that resets client state only (then user must Save).
+
+========================================
+PART D — BACKWARD COMPATIBILITY
+========================================
+- When loading settings, if older fields exist, map them into the new shape.
+- If asset_types missing, default to ["stocks"].
+- If existing users already had agent enabled, preserve that.
+
+========================================
+PART E — TESTING
+========================================
+Add minimal tests or scripts:
+- Backend: validate that invalid payloads return 400 with errors
+- Migration: idempotent (can run twice without failing)
+- UI: ensure Save calls API and reload reflects updated values
+
+DELIVERABLES
+- Migration file(s)
+- Updated Express routes/controllers
+- Zod schema
+- Updated React Agent settings page with sections + accordions
+- Audit logging on every PUT
+
+Go implement all changes now. Output:
+1) Files changed list
+2) Key code snippets for migration + API + Zod schema
+3) Notes on any assumptions and how to run migrations/tests

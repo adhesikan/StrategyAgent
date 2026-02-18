@@ -79,6 +79,12 @@ import type {
   InsertPartnerConfig,
   PartnerUser,
   InsertPartnerUser,
+  AgentSettings,
+  InsertAgentSettings,
+  AgentSettingsAudit,
+  InsertAgentSettingsAudit,
+  agentSettings as agentSettingsTable,
+  agentSettingsAudit as agentSettingsAuditTable,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -230,6 +236,11 @@ export interface IStorage {
   updateOpportunity(id: string, data: Partial<Opportunity>): Promise<Opportunity | null>;
   findOpportunityByDedupeKey(dedupeKey: string): Promise<Opportunity | null>;
   getOpportunitySummary(userId: string, filters?: OpportunityFilters): Promise<OpportunitySummary>;
+
+  // Agent Settings (new comprehensive config)
+  getAgentSettings(userId: string): Promise<AgentSettings | null>;
+  upsertAgentSettings(userId: string, data: Partial<InsertAgentSettings>): Promise<AgentSettings>;
+  createAgentSettingsAudit(audit: InsertAgentSettingsAudit): Promise<AgentSettingsAudit>;
 
   // Auto Agent
   getAgentPolicy(userId: string, strategyId?: string | null): Promise<AgentPolicy | null>;
@@ -2181,6 +2192,34 @@ export class MemStorage implements IStorage {
       avgMaxFavorableMovePercent: summary?.avgMaxFavorableMovePercent ? Number(summary.avgMaxFavorableMovePercent) : null,
       avgMaxAdverseMovePercent: summary?.avgMaxAdverseMovePercent ? Number(summary.avgMaxAdverseMovePercent) : null,
     };
+  }
+
+  async getAgentSettings(userId: string): Promise<AgentSettings | null> {
+    const [settings] = await db.select().from(agentSettingsTable).where(eq(agentSettingsTable.userId, userId)).limit(1);
+    return settings || null;
+  }
+
+  async upsertAgentSettings(userId: string, data: Partial<InsertAgentSettings>): Promise<AgentSettings> {
+    const existing = await this.getAgentSettings(userId);
+    if (existing) {
+      const [updated] = await db
+        .update(agentSettingsTable)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(agentSettingsTable.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(agentSettingsTable)
+        .values({ ...data, userId })
+        .returning();
+      return created;
+    }
+  }
+
+  async createAgentSettingsAudit(audit: InsertAgentSettingsAudit): Promise<AgentSettingsAudit> {
+    const [created] = await db.insert(agentSettingsAuditTable).values(audit).returning();
+    return created;
   }
 
   async getAgentPolicy(userId: string, strategyId?: string | null): Promise<AgentPolicy | null> {

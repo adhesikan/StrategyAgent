@@ -5419,6 +5419,210 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // =============================================
+  // AGENT SETTINGS (new comprehensive config)
+  // =============================================
+
+  const agentSettingsUpdateSchema = z.object({
+    enabled: z.boolean().optional(),
+    mode: z.enum(["suggest", "auto"]).optional(),
+    assetTypes: z.array(z.enum(["stocks", "options", "futures"])).min(1).optional(),
+    timezone: z.string().min(1).max(100).optional(),
+    tradingWindowStart: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Use HH:MM or HH:MM:SS format").optional(),
+    tradingWindowEnd: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Use HH:MM or HH:MM:SS format").optional(),
+    riskPerTradeUsd: z.number().positive("Must be greater than 0").optional(),
+    maxDailyLossUsd: z.number().positive("Must be greater than 0").optional(),
+    maxTradesPerDay: z.number().int().min(0).max(50).optional(),
+    maxConcurrentPositions: z.number().int().min(1).max(50).optional(),
+    minPrice: z.number().min(0).optional(),
+    maxPrice: z.number().min(0).optional(),
+    minRr: z.number().min(0).optional(),
+    entryOrderType: z.enum(["market", "limit"]).optional(),
+    timeInForce: z.enum(["day", "gtc"]).optional(),
+    limitOffsetPercent: z.number().min(0).max(5).optional(),
+    missingStopsPolicy: z.enum(["skip", "suggest", "defaults"]).optional(),
+    bracketEnabled: z.boolean().optional(),
+    requireStops: z.boolean().optional(),
+    direction: z.enum(["long", "short", "both"]).optional(),
+    sizingMethod: z.enum(["fixedQty", "fixedNotional", "riskBased"]).optional(),
+    fixedQuantity: z.number().int().positive().nullable().optional(),
+    fixedNotionalUsd: z.number().positive().nullable().optional(),
+    symbolAllowlist: z.array(z.string().toUpperCase()).max(500).nullable().optional(),
+    symbolBlocklist: z.array(z.string().toUpperCase()).max(500).nullable().optional(),
+    duplicateSignalWindowMinutes: z.number().int().min(0).max(1440).optional(),
+    cooldownMinutesAfterExit: z.number().int().min(0).max(1440).optional(),
+    maxPositionsPerSymbol: z.number().int().min(1).max(50).optional(),
+    optionsConstraints: z.record(z.any()).optional(),
+    futuresConstraints: z.record(z.any()).optional(),
+    reliability: z.record(z.any()).optional(),
+  }).strict();
+
+  function mapAgentPolicyToSettings(policy: any): Record<string, any> {
+    return {
+      enabled: policy.enabled ?? false,
+      mode: (policy.mode || "SUGGEST").toLowerCase(),
+      riskPerTradeUsd: policy.riskPerTradeUsd ?? 100,
+      maxDailyLossUsd: policy.maxDailyLossUsd ?? 200,
+      maxTradesPerDay: policy.maxTradesPerDay ?? 2,
+      maxConcurrentPositions: policy.maxConcurrentPositions ?? 2,
+      minPrice: policy.priceMin ?? 5,
+      maxPrice: policy.priceMax ?? 500,
+      minRr: policy.minRewardRisk ?? 2,
+    };
+  }
+
+  async function getOrCreateAgentSettings(userId: string) {
+    let settings = await storage.getAgentSettings(userId);
+    if (!settings) {
+      const existingPolicy = await storage.getAgentPolicy(userId);
+      const mapped = existingPolicy ? mapAgentPolicyToSettings(existingPolicy) : {};
+      settings = await storage.upsertAgentSettings(userId, mapped);
+    }
+    return settings;
+  }
+
+  app.get("/api/agent-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const settings = await getOrCreateAgentSettings(userId);
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error getting agent settings:", error);
+      res.status(500).json({ error: "Failed to get agent settings" });
+    }
+  });
+
+  app.put("/api/agent-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const parseResult = agentSettingsUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          error: "Invalid settings",
+          details: parseResult.error.flatten(),
+        });
+      }
+
+      const data = parseResult.data;
+      if (data.maxDailyLossUsd !== undefined && data.riskPerTradeUsd !== undefined) {
+        if (data.maxDailyLossUsd < data.riskPerTradeUsd) {
+          return res.status(400).json({
+            error: "Invalid settings",
+            details: { fieldErrors: { maxDailyLossUsd: ["Must be >= risk per trade"] } },
+          });
+        }
+      }
+      if (data.maxPrice !== undefined && data.minPrice !== undefined) {
+        if (data.maxPrice < data.minPrice) {
+          return res.status(400).json({
+            error: "Invalid settings",
+            details: { fieldErrors: { maxPrice: ["Must be >= min price"] } },
+          });
+        }
+      }
+      if (data.sizingMethod === "fixedQty" && !data.fixedQuantity) {
+        return res.status(400).json({
+          error: "Invalid settings",
+          details: { fieldErrors: { fixedQuantity: ["Required when sizing method is Fixed Qty"] } },
+        });
+      }
+      if (data.sizingMethod === "fixedNotional" && !data.fixedNotionalUsd) {
+        return res.status(400).json({
+          error: "Invalid settings",
+          details: { fieldErrors: { fixedNotionalUsd: ["Required when sizing method is Fixed Notional"] } },
+        });
+      }
+
+      const before = await getOrCreateAgentSettings(userId);
+      const updated = await storage.upsertAgentSettings(userId, data);
+
+      await storage.createAgentSettingsAudit({
+        userId,
+        changedBy: userId,
+        before: before as any,
+        after: updated as any,
+        source: "ui",
+      });
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating agent settings:", error);
+      res.status(500).json({ error: "Failed to update agent settings" });
+    }
+  });
+
+  // Partner agent settings endpoints
+  app.get("/api/partner/agent-settings", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const settings = await getOrCreateAgentSettings(userId);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get agent settings" });
+    }
+  });
+
+  app.put("/api/partner/agent-settings", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+
+      const parseResult = agentSettingsUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          error: "Invalid settings",
+          details: parseResult.error.flatten(),
+        });
+      }
+
+      const data = parseResult.data;
+      if (data.maxDailyLossUsd !== undefined && data.riskPerTradeUsd !== undefined) {
+        if (data.maxDailyLossUsd < data.riskPerTradeUsd) {
+          return res.status(400).json({
+            error: "Invalid settings",
+            details: { fieldErrors: { maxDailyLossUsd: ["Must be >= risk per trade"] } },
+          });
+        }
+      }
+      if (data.maxPrice !== undefined && data.minPrice !== undefined) {
+        if (data.maxPrice < data.minPrice) {
+          return res.status(400).json({
+            error: "Invalid settings",
+            details: { fieldErrors: { maxPrice: ["Must be >= min price"] } },
+          });
+        }
+      }
+      if (data.sizingMethod === "fixedQty" && !data.fixedQuantity) {
+        return res.status(400).json({
+          error: "Invalid settings",
+          details: { fieldErrors: { fixedQuantity: ["Required when sizing method is Fixed Qty"] } },
+        });
+      }
+      if (data.sizingMethod === "fixedNotional" && !data.fixedNotionalUsd) {
+        return res.status(400).json({
+          error: "Invalid settings",
+          details: { fieldErrors: { fixedNotionalUsd: ["Required when sizing method is Fixed Notional"] } },
+        });
+      }
+
+      const before = await getOrCreateAgentSettings(userId);
+      const updated = await storage.upsertAgentSettings(userId, data);
+
+      await storage.createAgentSettingsAudit({
+        userId,
+        changedBy: req.session.partnerUserId || userId,
+        before: before as any,
+        after: updated as any,
+        source: "ui",
+      });
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update agent settings" });
+    }
+  });
+
   // Partner trade history (reuses existing external alerts)
   app.get("/api/partner/trades", isPartnerAuthenticated as RequestHandler, async (req, res) => {
     try {

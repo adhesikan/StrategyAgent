@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1471,3 +1471,79 @@ export const partnerLoginSchema = z.object({
   token: z.string().min(1),
   partner: z.string().min(1),
 });
+
+// Agent Settings - comprehensive auto agent configuration
+export const agentSettings = pgTable("agent_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+
+  // Core
+  enabled: boolean("enabled").default(false),
+  mode: text("mode").default("suggest"),
+  assetTypes: jsonb("asset_types").default(["stocks"]),
+  timezone: text("timezone").default("America/New_York"),
+  tradingWindowStart: text("trading_window_start").default("09:35:00"),
+  tradingWindowEnd: text("trading_window_end").default("15:50:00"),
+
+  // Risk limits
+  riskPerTradeUsd: real("risk_per_trade_usd").default(100),
+  maxDailyLossUsd: real("max_daily_loss_usd").default(200),
+  maxTradesPerDay: integer("max_trades_per_day").default(2),
+  maxConcurrentPositions: integer("max_concurrent_positions").default(2),
+  minPrice: real("min_price").default(5),
+  maxPrice: real("max_price").default(500),
+  minRr: real("min_rr").default(2),
+
+  // Execution
+  entryOrderType: text("entry_order_type").default("limit"),
+  timeInForce: text("time_in_force").default("day"),
+  limitOffsetPercent: real("limit_offset_percent").default(0.05),
+  missingStopsPolicy: text("missing_stops_policy").default("skip"),
+  bracketEnabled: boolean("bracket_enabled").default(true),
+  requireStops: boolean("require_stops").default(true),
+
+  // Filters & sizing
+  direction: text("direction").default("both"),
+  sizingMethod: text("sizing_method").default("riskBased"),
+  fixedQuantity: integer("fixed_quantity"),
+  fixedNotionalUsd: real("fixed_notional_usd"),
+  symbolAllowlist: text("symbol_allowlist").array(),
+  symbolBlocklist: text("symbol_blocklist").array(),
+  duplicateSignalWindowMinutes: integer("duplicate_signal_window_minutes").default(10),
+  cooldownMinutesAfterExit: integer("cooldown_minutes_after_exit").default(15),
+  maxPositionsPerSymbol: integer("max_positions_per_symbol").default(1),
+
+  // Advanced (JSONB to avoid schema bloat)
+  optionsConstraints: jsonb("options_constraints").default({}),
+  futuresConstraints: jsonb("futures_constraints").default({}),
+  reliability: jsonb("reliability").default({}),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAgentSettingsSchema = createInsertSchema(agentSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAgentSettings = z.infer<typeof insertAgentSettingsSchema>;
+export type AgentSettings = typeof agentSettings.$inferSelect;
+
+// Agent Settings Audit Log
+export const agentSettingsAudit = pgTable("agent_settings_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  changedBy: varchar("changed_by").notNull(),
+  changedAt: timestamp("changed_at").defaultNow(),
+  before: jsonb("before").notNull(),
+  after: jsonb("after").notNull(),
+  source: text("source").default("ui"),
+});
+
+export const insertAgentSettingsAuditSchema = createInsertSchema(agentSettingsAudit).omit({
+  id: true,
+  changedAt: true,
+});
+export type InsertAgentSettingsAudit = z.infer<typeof insertAgentSettingsAuditSchema>;
+export type AgentSettingsAudit = typeof agentSettingsAudit.$inferSelect;

@@ -30,6 +30,14 @@ import {
   Eye,
   EyeOff,
   ShieldAlert,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Link2,
+  Bot,
+  History as HistoryIcon,
+  Webhook,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -281,6 +289,136 @@ function PartnerCard({ partner }: { partner: Partner }) {
   );
 }
 
+function SetupGuide() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Card data-testid="card-setup-guide">
+      <CardHeader
+        className="cursor-pointer select-none"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-muted-foreground" />
+            <CardTitle className="text-base">How Partner Integration Works</CardTitle>
+          </div>
+          {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </div>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-6 pt-0">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              This system lets external newsletter or signal providers (like Strategy Fundamentals) offer their subscribers automated trade execution through your platform. Here's how everything connects:
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
+              One-Time Setup (You Do This Once Per Provider)
+            </h4>
+            <div className="pl-8 space-y-2 text-sm text-muted-foreground">
+              <p>Click <span className="font-medium text-foreground">"Add Partner"</span> and fill in:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li><span className="font-medium text-foreground">Partner Name</span> — The display name (e.g., "Strategy Fundamentals")</li>
+                <li><span className="font-medium text-foreground">Slug</span> — A URL-safe identifier (e.g., "strategy-fundamentals"). Used in the login URL.</li>
+                <li><span className="font-medium text-foreground">JWT Shared Secret</span> — A secret key shared between you and the partner. They use it to sign login tokens for their subscribers.</li>
+              </ul>
+              <p>That's it. One entry covers all of that provider's subscribers.</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
+              Share With The Partner
+            </h4>
+            <div className="pl-8 space-y-2 text-sm text-muted-foreground">
+              <p>After creating a partner, expand "Integration Details" on their card to get:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li><span className="font-medium text-foreground">Login URL</span> — The partner embeds this in their newsletter/platform. When a subscriber clicks it, they land on their personal trading dashboard.</li>
+                <li><span className="font-medium text-foreground">Webhook URL</span> — Where the partner sends trade signals (entry/exit alerts).</li>
+                <li><span className="font-medium text-foreground">JWT Format</span> — The partner signs a JWT with the shared secret containing <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">sub</code> (subscriber ID) and <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">email</code>.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">3</span>
+              What Each Subscriber Gets
+            </h4>
+            <div className="pl-8 space-y-2 text-sm text-muted-foreground">
+              <p>When a subscriber clicks the partner's login link, the system automatically:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>Creates their account (linked internally, isolated from full platform)</li>
+                <li>Provisions a webhook API key for receiving trade signals</li>
+                <li>Starts their session on a standalone partner dashboard</li>
+              </ul>
+              <p>From there, each subscriber independently manages:</p>
+              <div className="grid gap-2 mt-2">
+                <div className="flex items-start gap-2">
+                  <Link2 className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span><span className="font-medium text-foreground">Broker Connection</span> — Connect their own Tradier or TradeStation account via OAuth</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Bot className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span><span className="font-medium text-foreground">Agent Configuration</span> — Choose Suggest or Auto mode, set risk limits, price filters</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <HistoryIcon className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span><span className="font-medium text-foreground">Trade History</span> — View all signals received, executed, or skipped with reasons</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">4</span>
+              How Trade Signals Flow
+            </h4>
+            <div className="pl-8 space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
+                <Badge variant="outline">Partner sends signal</Badge>
+                <ArrowRight className="w-3 h-3 shrink-0" />
+                <Badge variant="outline">Webhook receives alert</Badge>
+                <ArrowRight className="w-3 h-3 shrink-0" />
+                <Badge variant="outline">Agent evaluates risk</Badge>
+                <ArrowRight className="w-3 h-3 shrink-0" />
+                <Badge variant="outline">Execute or skip</Badge>
+              </div>
+              <p className="mt-2">
+                Each subscriber's agent independently evaluates signals against their personal risk settings (position size, daily loss limit, price range, reward/risk ratio) and either suggests or auto-executes the trade.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <Webhook className="w-4 h-4" />
+              Webhook Signal Format
+            </h4>
+            <div className="pl-6 space-y-2 text-sm text-muted-foreground">
+              <p>Signals are sent as plain text via <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">POST</code> to the webhook URL with the subscriber's API key in the <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">X-API-Key</code> header:</p>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-foreground">Entry alert:</p>
+                <code className="block text-xs bg-muted p-2 rounded font-mono">enter sym=AAPL lp=185.50 tp=195.00 sl=180.00</code>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-foreground">Exit alert:</p>
+                <code className="block text-xs bg-muted p-2 rounded font-mono">exit sym=AAPL reason='target reached' tp=195.00</code>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 export default function AdminPartnersPage() {
   const { user } = useAuth();
   const { data: partners = [], isLoading } = useQuery<Partner[]>({
@@ -309,6 +447,8 @@ export default function AdminPartnersPage() {
         </div>
         <AddPartnerDialog />
       </div>
+
+      <SetupGuide />
 
       {isLoading ? (
         <div className="space-y-3">

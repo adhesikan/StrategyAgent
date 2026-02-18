@@ -443,15 +443,15 @@ async function fetchTradeStationQuotes(accessToken: string, symbols: string[]): 
 
   return quotesData.map((q: any) => ({
     symbol: q.Symbol,
-    last: q.Last || 0,
-    change: q.NetChange || 0,
-    changePercent: q.NetChangePct || 0,
-    volume: q.Volume || 0,
-    avgVolume: q.AvgVolume || 0,
-    high: q.High || 0,
-    low: q.Low || 0,
-    open: q.Open || 0,
-    previousClose: q.PreviousClose || 0,
+    last: parseFloat(q.Last) || 0,
+    change: parseFloat(q.NetChange) || 0,
+    changePercent: parseFloat(q.NetChangePct) || 0,
+    volume: parseInt(q.Volume, 10) || 0,
+    avgVolume: parseInt(q.AvgVolume, 10) || 0,
+    high: parseFloat(q.High) || 0,
+    low: parseFloat(q.Low) || 0,
+    open: parseFloat(q.Open) || 0,
+    previousClose: parseFloat(q.PreviousClose) || 0,
   }));
 }
 

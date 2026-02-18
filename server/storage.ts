@@ -297,6 +297,7 @@ export interface IStorage {
   getPartnerUserById(id: string): Promise<PartnerUser | null>;
   createPartnerUser(user: InsertPartnerUser): Promise<PartnerUser>;
   updatePartnerUser(id: string, data: Partial<PartnerUser>): Promise<PartnerUser | null>;
+  getPartnerUserByStripeCustomerId(customerId: string): Promise<PartnerUser | null>;
 }
 
 export interface OpportunityFilters {
@@ -2586,6 +2587,15 @@ export class MemStorage implements IStorage {
       .set(data)
       .where(eq(partnerUsersTable.id, id))
       .returning();
+    return result ?? null;
+  }
+
+  async getPartnerUserByStripeCustomerId(customerId: string): Promise<PartnerUser | null> {
+    const [result] = await db
+      .select()
+      .from(partnerUsersTable)
+      .where(eq(partnerUsersTable.stripeCustomerId, customerId))
+      .limit(1);
     return result ?? null;
   }
 }

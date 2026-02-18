@@ -12,6 +12,9 @@ import cron from "node-cron";
 import { resolveOpportunities, updateOpportunityPrices } from "./opportunity-service";
 import { startScheduledScanService } from "./scheduled-scan-service";
 import { fetchQuotesFromBroker } from "./broker-service";
+import { runMigrations } from 'stripe-replit-sync';
+import { getStripeSync } from "./stripeClient";
+import { WebhookHandlers } from "./webhookHandlers";
 
 // Run inline migrations on startup (more reliable than separate script)
 async function runStartupMigrations() {
@@ -221,6 +224,31 @@ async function runStartupMigrations() {
         END IF;
       END $$;
     `);
+
+    // Add Stripe subscription columns to partner_users
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'partner_users' AND column_name = 'stripe_customer_id'
+        ) THEN
+          ALTER TABLE partner_users ADD COLUMN stripe_customer_id TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'partner_users' AND column_name = 'stripe_subscription_id'
+        ) THEN
+          ALTER TABLE partner_users ADD COLUMN stripe_subscription_id TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'partner_users' AND column_name = 'subscription_status'
+        ) THEN
+          ALTER TABLE partner_users ADD COLUMN subscription_status TEXT;
+        END IF;
+      END $$;
+    `);
     
     log("Startup migrations completed successfully", "migrations");
   } catch (error) {
@@ -236,6 +264,29 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature) {
+      return res.status(400).json({ error: 'Missing stripe-signature' });
+    }
+    try {
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      if (!Buffer.isBuffer(req.body)) {
+        console.error('STRIPE WEBHOOK ERROR: req.body is not a Buffer');
+        return res.status(500).json({ error: 'Webhook processing error' });
+      }
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      console.error('Webhook error:', error.message);
+      res.status(400).json({ error: 'Webhook processing error' });
+    }
+  }
+);
 
 app.use(
   express.json({
@@ -314,6 +365,29 @@ async function restoreBrokerConnections() {
 (async () => {
   // Run migrations first to ensure schema is up to date
   await runStartupMigrations();
+
+  // Initialize Stripe schema and sync
+  try {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (databaseUrl) {
+      log("Initializing Stripe schema...", "stripe");
+      await runMigrations({ databaseUrl, schema: 'stripe' });
+      log("Stripe schema ready", "stripe");
+
+      const stripeSync = await getStripeSync();
+      const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      const { webhook } = await stripeSync.findOrCreateManagedWebhook(
+        `${webhookBaseUrl}/api/stripe/webhook`
+      );
+      log(`Stripe webhook configured: ${webhook.url}`, "stripe");
+
+      stripeSync.syncBackfill()
+        .then(() => log("Stripe data synced", "stripe"))
+        .catch((err: any) => log(`Stripe sync error: ${err.message}`, "stripe"));
+    }
+  } catch (error: any) {
+    log(`Stripe init error (non-fatal): ${error.message}`, "stripe");
+  }
   
   configurePushService();
   await restoreBrokerConnections();
@@ -408,6 +482,34 @@ async function restoreBrokerConnections() {
   const { startExitManager } = await import("./exit-manager");
   startExitManager();
   log("Exit manager started (TradeGuard)");
+
+  // Sync Stripe subscription statuses to partner_users (every 2 minutes)
+  cron.schedule("*/2 * * * *", async () => {
+    try {
+      const partnerUsers = await db.execute(
+        sql`SELECT id, stripe_customer_id FROM partner_users WHERE stripe_customer_id IS NOT NULL`
+      );
+      if (partnerUsers.rows.length === 0) return;
+
+      for (const pu of partnerUsers.rows) {
+        try {
+          const subResult = await db.execute(
+            sql`SELECT id, status FROM stripe.subscriptions WHERE customer = ${pu.stripe_customer_id as string} ORDER BY created DESC LIMIT 1`
+          );
+          if (subResult.rows[0]) {
+            const sub = subResult.rows[0];
+            await db.execute(
+              sql`UPDATE partner_users SET stripe_subscription_id = ${sub.id as string}, subscription_status = ${sub.status as string} WHERE id = ${pu.id as string}`
+            );
+          }
+        } catch {
+          // Skip individual sync errors
+        }
+      }
+    } catch (error: any) {
+      // Non-fatal: stripe schema might not exist yet
+    }
+  });
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

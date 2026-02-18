@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -37,6 +37,10 @@ import {
   ShieldCheck,
   DollarSign,
   Settings,
+  CreditCard,
+  Zap,
+  Shield,
+  BarChart3,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -48,6 +52,8 @@ interface PartnerProfile {
   partnerLogo: string | null;
   partnerColor: string | null;
   linkedUserId: string;
+  subscriptionActive?: boolean;
+  subscriptionStatus?: string | null;
 }
 
 interface BrokerStatus {
@@ -456,6 +462,105 @@ function TradesTab() {
   );
 }
 
+function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; onLogout: () => void }) {
+  const { toast } = useToast();
+
+  const checkoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/partner/checkout");
+      return res.json();
+    },
+    onSuccess: (data: { url: string }) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to start checkout", description: "Please try again or contact support.", variant: "destructive" });
+    },
+  });
+
+  const features = [
+    { icon: Zap, text: "Automated trade execution from signals" },
+    { icon: Link2, text: "Direct brokerage connectivity" },
+    { icon: Shield, text: "Configurable risk controls" },
+    { icon: BarChart3, text: "Real-time trade history and tracking" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center justify-between gap-4 px-4 h-14 max-w-4xl mx-auto">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-green-500" />
+            <span className="font-semibold text-sm">{profile.partnerName}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:inline" data-testid="text-partner-email">{profile.email}</span>
+            <ThemeToggle />
+            <Button variant="ghost" size="icon" onClick={onLogout} data-testid="button-partner-logout">
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-lg mx-auto p-4 mt-8">
+        <Card data-testid="card-subscription-paywall">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <CreditCard className="w-6 h-6 text-primary" />
+            </div>
+            <CardTitle className="text-xl">Activate Auto Trading</CardTitle>
+            <CardDescription>
+              Subscribe to start receiving and executing trade signals automatically from {profile.partnerName}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="text-center">
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-4xl font-bold" data-testid="text-subscription-price">$39</span>
+                <span className="text-muted-foreground">/month</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Cancel anytime</p>
+            </div>
+
+            <div className="space-y-3">
+              {features.map((feature, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                    <feature.icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <span className="text-sm">{feature.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={() => checkoutMutation.mutate()}
+              disabled={checkoutMutation.isPending}
+              data-testid="button-subscribe"
+            >
+              {checkoutMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <CreditCard className="w-4 h-4 mr-2" />
+              )}
+              Subscribe Now
+            </Button>
+
+            <p className="text-xs text-center text-muted-foreground">
+              Secure payment powered by Stripe. You can manage or cancel your subscription at any time.
+            </p>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
 export default function PartnerDashboard() {
   const { toast } = useToast();
 
@@ -471,6 +576,31 @@ export default function PartnerDashboard() {
       window.location.href = "/";
     },
   });
+
+  const billingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/partner/billing-portal");
+      return res.json();
+    },
+    onSuccess: (data: { url: string }) => {
+      if (data.url) window.location.href = data.url;
+    },
+    onError: () => {
+      toast({ title: "Failed to open billing portal", variant: "destructive" });
+    },
+  });
+
+  const checkoutHandled = useRef(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutResult = params.get("checkout");
+    if (checkoutResult === "success" && !checkoutHandled.current) {
+      checkoutHandled.current = true;
+      toast({ title: "Subscription activated!", description: "Welcome to Auto Trading." });
+      window.history.replaceState({}, "", "/partner/dashboard");
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/me"] });
+    }
+  }, [toast]);
 
   if (profileLoading) {
     return (
@@ -499,6 +629,10 @@ export default function PartnerDashboard() {
     );
   }
 
+  if (!profile.subscriptionActive) {
+    return <SubscriptionPaywall profile={profile} onLogout={() => logoutMutation.mutate()} />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -508,8 +642,18 @@ export default function PartnerDashboard() {
             <span className="font-semibold text-sm">{profile.partnerName}</span>
             <Badge variant="secondary">Auto Trading</Badge>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground hidden sm:inline" data-testid="text-partner-email">{profile.email}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => billingMutation.mutate()}
+              disabled={billingMutation.isPending}
+              data-testid="button-manage-billing"
+            >
+              <CreditCard className="w-4 h-4 mr-1" />
+              <span className="hidden sm:inline">Billing</span>
+            </Button>
             <ThemeToggle />
             <Button
               variant="ghost"

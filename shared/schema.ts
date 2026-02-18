@@ -1453,6 +1453,9 @@ export const partnerUsers = pgTable("partner_users", {
   name: text("name"),
   linkedUserId: varchar("linked_user_id"),
   isActive: boolean("is_active").default(true),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status"),
   lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });

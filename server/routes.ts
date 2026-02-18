@@ -5286,6 +5286,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       const partnerConfig = await storage.getPartnerConfigById(partnerUser.partnerId);
 
+      const isSubscribed = partnerUser.subscriptionStatus === 'active' || partnerUser.subscriptionStatus === 'trialing';
       res.json({
         id: partnerUser.id,
         email: partnerUser.email,
@@ -5294,6 +5295,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         partnerLogo: partnerConfig?.logoUrl || null,
         partnerColor: partnerConfig?.primaryColor || null,
         linkedUserId: partnerUser.linkedUserId,
+        subscriptionActive: isSubscribed,
+        subscriptionStatus: partnerUser.subscriptionStatus,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch profile" });
@@ -5398,6 +5401,182 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       })));
     } catch (error) {
       res.status(500).json({ error: "Failed to get API keys" });
+    }
+  });
+
+  // Partner subscription status
+  app.get("/api/partner/subscription", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const partnerUser = await storage.getPartnerUserById(req.session.partnerUserId!);
+      if (!partnerUser) return res.status(404).json({ error: "Partner user not found" });
+
+      if (!partnerUser.stripeSubscriptionId) {
+        return res.json({ active: false, status: null });
+      }
+
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const subResult = await db.execute(
+        sql`SELECT id, status, current_period_end, cancel_at_period_end FROM stripe.subscriptions WHERE id = ${partnerUser.stripeSubscriptionId}`
+      );
+      const sub = subResult.rows[0];
+      if (!sub) {
+        return res.json({ active: false, status: partnerUser.subscriptionStatus });
+      }
+
+      const isActive = sub.status === 'active' || sub.status === 'trialing';
+      res.json({
+        active: isActive,
+        status: sub.status,
+        currentPeriodEnd: sub.current_period_end,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      });
+    } catch (error) {
+      console.error("Partner subscription check error:", error);
+      res.status(500).json({ error: "Failed to check subscription" });
+    }
+  });
+
+  // Partner create checkout session
+  app.post("/api/partner/checkout", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const partnerUser = await storage.getPartnerUserById(req.session.partnerUserId!);
+      if (!partnerUser) return res.status(404).json({ error: "Partner user not found" });
+
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+
+      let customerId = partnerUser.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: partnerUser.email,
+          metadata: { partnerUserId: partnerUser.id, partnerId: partnerUser.partnerId },
+        });
+        customerId = customer.id;
+        await storage.updatePartnerUser(partnerUser.id, { stripeCustomerId: customerId });
+      }
+
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const priceResult = await db.execute(
+        sql`SELECT pr.id FROM stripe.prices pr
+            JOIN stripe.products p ON pr.product = p.id
+            WHERE p.metadata->>'type' = 'partner_subscription'
+            AND pr.active = true
+            AND pr.recurring IS NOT NULL
+            LIMIT 1`
+      );
+
+      if (!priceResult.rows[0]) {
+        return res.status(500).json({ error: "Subscription product not configured. Contact support." });
+      }
+
+      const priceId = priceResult.rows[0].id as string;
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        success_url: `${baseUrl}/api/partner/checkout-complete?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/partner/dashboard?checkout=cancel`,
+        metadata: { partnerUserId: partnerUser.id },
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Partner checkout error:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  // Checkout complete redirect - syncs subscription immediately then redirects to dashboard
+  app.get("/api/partner/checkout-complete", async (req, res) => {
+    try {
+      const sessionId = req.query.session_id as string;
+      if (!sessionId) return res.redirect("/partner/dashboard");
+
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['subscription'] });
+
+      if (session.metadata?.partnerUserId && session.subscription) {
+        let subId: string;
+        let subStatus: string;
+
+        if (typeof session.subscription === 'string') {
+          subId = session.subscription;
+          const sub = await stripe.subscriptions.retrieve(session.subscription);
+          subStatus = sub.status;
+        } else {
+          subId = session.subscription.id;
+          subStatus = session.subscription.status;
+        }
+
+        await storage.updatePartnerUser(session.metadata.partnerUserId, {
+          stripeSubscriptionId: subId,
+          subscriptionStatus: subStatus,
+        });
+      }
+
+      res.redirect("/partner/dashboard?checkout=success");
+    } catch (error) {
+      console.error("Checkout complete error:", error);
+      res.redirect("/partner/dashboard?checkout=success");
+    }
+  });
+
+  // Partner manage subscription (customer portal)
+  app.post("/api/partner/billing-portal", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const partnerUser = await storage.getPartnerUserById(req.session.partnerUserId!);
+      if (!partnerUser?.stripeCustomerId) {
+        return res.status(400).json({ error: "No billing account found" });
+      }
+
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: partnerUser.stripeCustomerId,
+        return_url: `${baseUrl}/partner/dashboard`,
+      });
+
+      res.json({ url: portalSession.url });
+    } catch (error) {
+      console.error("Partner billing portal error:", error);
+      res.status(500).json({ error: "Failed to create billing portal session" });
+    }
+  });
+
+  // Stripe webhook handler for subscription status sync
+  app.post("/api/partner/stripe-sync", async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+
+      const subs = await db.execute(
+        sql`SELECT s.id, s.customer, s.status FROM stripe.subscriptions s
+            WHERE s.status IN ('active', 'trialing', 'past_due', 'canceled', 'unpaid')`
+      );
+
+      for (const sub of subs.rows) {
+        const customerId = sub.customer as string;
+        const partnerUser = await storage.getPartnerUserByStripeCustomerId(customerId);
+        if (partnerUser) {
+          await storage.updatePartnerUser(partnerUser.id, {
+            stripeSubscriptionId: sub.id as string,
+            subscriptionStatus: sub.status as string,
+          });
+        }
+      }
+
+      res.json({ synced: subs.rows.length });
+    } catch (error) {
+      console.error("Stripe sync error:", error);
+      res.status(500).json({ error: "Failed to sync subscriptions" });
     }
   });
 

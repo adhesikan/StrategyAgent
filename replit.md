@@ -1,7 +1,7 @@
 # VCP Trader
 
 ## Overview
-VCP Trader is a production-grade SaaS web application for active day traders, specializing in identifying, tracking, and alerting on Volatility Contraction Pattern (VCP) breakouts in the US stock market. It provides real-time notifications, automatically draws resistance and stop levels, supports direct brokerage market data connectivity, and functions as a mobile-ready Progressive Web App (PWA). The platform's core purpose is to automate the detection of VCP patterns (FORMING, READY, BREAKOUT stages) to deliver timely, actionable insights.
+VCP Trader is a production-grade SaaS web application designed for active day traders. Its primary purpose is to automate the detection, tracking, and real-time alerting of Volatility Contraction Pattern (VCP) breakouts in the US stock market. The platform provides timely, actionable insights by identifying VCP patterns in their FORMING, READY, and BREAKOUT stages, automatically drawing resistance and stop levels, and supporting direct brokerage market data connectivity. It functions as a mobile-ready Progressive Web App (PWA) and aims to automate trade execution through advanced features like an auto-agent and options trading capabilities. The business vision is to empower traders with sophisticated tools for automated strategy execution and risk management.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,79 +9,85 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend
-The frontend is a React 18 application with TypeScript, built using Vite. It uses Wouter for routing, TanStack React Query for server state, shadcn/ui (built on Radix UI) for components, and Tailwind CSS for styling. TradingView lightweight-charts are used for price visualization, and PWA capabilities are enabled via a service worker and Web Push API. The UI uses Radix UI primitives for accessibility.
+The frontend is a React 18 application built with TypeScript and Vite. It utilizes Wouter for routing, TanStack React Query for server state management, shadcn/ui (built on Radix UI) for accessible components, and Tailwind CSS for styling. TradingView lightweight-charts are used for price visualization, and PWA capabilities are enabled via a service worker and Web Push API.
 
 ### Backend
-The backend is built with Node.js and Express.js, written in TypeScript, featuring RESTful API endpoints. It uses Drizzle ORM with PostgreSQL for data persistence and Zod for schema validation. The build system uses custom esbuild scripts.
+The backend is developed with Node.js and Express.js, written in TypeScript, providing RESTful API endpoints. It uses Drizzle ORM with PostgreSQL for data persistence and Zod for schema validation. Custom esbuild scripts manage the build process.
 
 ### Data Storage
-PostgreSQL is the primary database, managed by Drizzle ORM. Database migrations are automatically applied during the build process.
+PostgreSQL serves as the primary database, managed by Drizzle ORM, with automatic migration application during builds.
 
 ### Project Structure
-The project is organized into `client/` for the React frontend, `server/` for the Express backend, and `shared/` for common code, including database schemas.
+The project is modularized into `client/` for the React frontend, `server/` for the Express backend, and `shared/` for common code and type sharing.
 
 ### Key Design Patterns
-A Storage Interface Pattern abstracts data access. Path aliases streamline imports, and type sharing between frontend and backend is achieved via `@shared/schema`. Client-server communication is handled through a `fetch` wrapper with React Query.
+A Storage Interface Pattern abstracts data access. Path aliases streamline imports, and type sharing between frontend and backend is achieved via `@shared/schema`. Client-server communication is handled through a `fetch` wrapper integrated with React Query.
 
 ### Centralized Strategy Scoring
-All pattern score calculations are centralized in the strategy modules under `server/strategies/`. The `classifyQuote()` function in `server/strategies/index.ts` is the single entry point for scoring any strategy from quote data. It handles both `Strategy` types (VCP, VCP_MULTIDAY, CLASSIC_PULLBACK) and `StrategyPlugin` types (ORB, GAP_AND_GO, VWAP_RECLAIM, HIGH_RVOL, etc.). When candles are available, plugin strategies use their full `scan()` method; otherwise, a quote-based fallback with qualifying criteria is used. Chart data (`processChartData`) does not compute its own `patternScore` - the UI always uses the score from the scan result.
+All pattern score calculations are centralized in strategy modules, with `classifyQuote()` serving as the single entry point for scoring various strategies (VCP, VCP_MULTIDAY, CLASSIC_PULLBACK) and plugin types (ORB, GAP_AND_GO, VWAP_RECLAIM, HIGH_RVOL).
 
 ### Trade Status System
-A centralized system computes the actionability of scan results based on price proximity to resistance/entry levels, categorizing them as `AWAITING_BREAKOUT`, `IN_ENTRY_ZONE`, or `EXTENDED`.
+A centralized system computes the actionability of scan results, categorizing them as `AWAITING_BREAKOUT`, `IN_ENTRY_ZONE`, or `EXTENDED` based on price proximity to resistance/entry levels.
 
 ### Centralized Broker Service API
-A provider adapter pattern normalizes brokerage data across providers, including an in-memory cache to manage rate limits. It provides endpoints for accounts, positions, orders, and sandbox token management.
+A provider adapter pattern normalizes brokerage data across different providers, including an in-memory cache for rate limit management. It offers endpoints for accounts, positions, and orders.
 
 ### Paper Trading
-Tradier paper trading is supported using a separate sandbox API token, allowing users to simulate trades without real capital.
+Tradier paper trading is supported using a separate sandbox API token for simulated trades.
 
 ### Authentication & Authorization
 The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions, supporting `user` and `admin` roles with role-based access control.
 
 ### Options Scanner
-A modular options scanning engine provides strategy-based candidate discovery for Long Options, Wheel Strategy, and Credit Spreads. Scan results are persisted, and the API offers endpoints for strategies, scanning, and scan history. The UI supports viewing and configuring scan preferences.
+A modular options scanning engine provides strategy-based candidate discovery for Long Options, Wheel Strategy, and Credit Spreads, with persisted results and configurable preferences.
 
-### Futures Trading Module (Mock + Rithmic)
-The Futures module offers a complete futures trading experience with streaming market data, pattern scanning, order execution, and automated agent support. It uses a modular adapter pattern (`IFuturesBrokerAdapter`) with an adapter factory (`server/trading/futures/adapterFactory.ts`) that selects between mock and real data feeds. The `MockFuturesAdapter` is the default and automatic fallback. Setting `FUTURES_FEED=rithmic` activates the `RithmicProtocolAdapter` which connects to Rithmic R|Protocol API via WebSocket for live market data and order execution. An automated importer (`scripts/import-rithmic-api.ts`) extracts uploaded Rithmic API zip files and copies proto definitions to `server/trading/brokers/rithmic/proto/`. If Rithmic initialization fails for any reason, the system automatically falls back to mock. The Rithmic adapter includes a tick-to-bar aggregation fallback: when native time bar subscriptions fail (e.g., code 1015 on test servers), it automatically builds 1-minute OHLCV bars from incoming tick data, ensuring bars are always available when ticks flow. The fallback auto-deactivates if native bars start arriving. Front-month contract resolution queries Rithmic for correct trading symbols (e.g., MESH6) with computed symbol fallback. The mock adapter supports market, limit, and stop order types with OCO-linked bracket orders. The Auto Agent supports configurable trade sizing (contracts or dollar amount), entry/exit time windows in Eastern Time, and bracket orders with take profit (limit) and stop loss (stop) exits.
+### Futures Trading Module
+The Futures module offers a complete trading experience with streaming market data, pattern scanning, and order execution. It uses a modular adapter pattern (`IFuturesBrokerAdapter`) with an adapter factory (`server/trading/futures/adapterFactory.ts`) for selecting between mock and real data feeds (Rithmic). Tick-to-bar aggregation ensures data availability, and front-month contract resolution is supported. The mock adapter supports market, limit, and stop orders with OCO-linked bracket orders. An Auto Agent supports configurable trade sizing, entry/exit windows, and bracket orders.
 
 ### Trade Autopilot
-The "Trade Autopilot" page at `/automation` consolidates all automation under a single interface with 4 sections: Mode Selector (ALERTS/ASSISTED/AUTONOMOUS), Auto Agent Setup (built-in automation engine), Broker Connection status, and Safety Controls (kill switch, daily loss limit, max position size). The `user_settings` table stores `automationMode`, `automationEngine`, and `automationStatus` (ARMED/PAUSED/DISABLED). AUTONOMOUS mode requires a compliance acknowledgement gate before activation. The Command Center displays live automation status badges and a dynamic setup checklist.
+The `/automation` page consolidates all automation features, offering a Mode Selector (ALERTS/ASSISTED/AUTONOMOUS), Auto Agent Setup, Broker Connection status, and Safety Controls (kill switch, daily loss limit, max position size). AUTONOMOUS mode requires compliance acknowledgment.
 
 ### Automated Options Trading
-The Auto Agent supports automated options trading when `optionsEnabled` is true in the agent policy. The `agent_policies` table includes options-specific fields: `optionType` (calls/puts/both), `optionsStrategy` (long_calls, long_puts, covered_calls, credit_spreads, cash_secured_puts), delta range (`optionsDeltaMin`/`optionsDeltaMax`), DTE range (`optionsDteMin`/`optionsDteMax`), premium range (`optionsPremiumMin`/`optionsPremiumMax`), `optionsMinOpenInterest`, `optionsMinVolume`, and `optionsMaxRiskUsd`. When enabled, the agent worker (`server/agent-worker.ts`) evaluates eligible equity opportunities through the options scanner engine, filtering candidates by the policy's options criteria (delta, DTE, premium, OI, volume, max risk) and either suggests or auto-executes options orders depending on the agent mode. The Auto Agent panel UI (`client/src/components/auto-agent-panel.tsx`) provides an "Options Trading" toggle section with all configuration inputs.
+The Auto Agent supports automated options trading, evaluating eligible equity opportunities through the options scanner engine and filtering candidates by policy-defined options criteria (delta, DTE, premium, OI, volume, max risk).
 
 ### Trade Ticket v2 (InstaTrade™)
-A Sheet-based drawer for direct broker orders, offering simple and advanced modes, exit plan (bracket/TradeGuard) options, and API endpoints for trade preview and placement. InstaTrade™ is a trademarked feature name and must always display with the ™ symbol in all user-facing text throughout the application. The Command Center chart drawer opens InstaTrade™ directly instead of linking to separate pages.
+A sheet-based drawer for direct broker orders, offering simple and advanced modes, exit plan options (bracket/TradeGuard), and API endpoints for trade preview and placement. InstaTrade™ is a trademarked feature.
 
 ### Exit Manager (TradeGuard)
 A server-side cron worker monitors managed exits during market hours, fetching live quotes, checking conditions, and placing market close orders when triggers are met.
 
 ### Automated Scanning and Price Tracking
-The platform includes an automated multi-strategy scanning system that runs at 5 scheduled times covering premarket through extended hours: 8:00 AM ET (premarket: Gap Force, VCP), 9:45 AM ET (swing strategies), 10:00 AM ET (early momentum), 11:00 AM ET (mid-morning), and 4:15 PM ET (extended hours: VCP, VWAP Reclaim, Volume Surge). The Command Center's "Today's Opportunities" section provides sortable columns (ticker, stage, price, pattern score), multi-criteria filtering (stage, confidence threshold, strategy), card/list view toggle with localStorage persistence, and click-to-view-chart via a Sheet drawer showing PriceChart with candles, EMAs, resistance/stop levels, and trading statistics. Market hours detection spans 8:00 AM - 4:30 PM ET. Extended hours price tracking updates prices to determine outcomes.
+The platform includes an automated multi-strategy scanning system that runs at scheduled times covering premarket through extended hours. The Command Center displays "Today's Opportunities" with sortable columns, multi-criteria filtering, and chart viewing capabilities.
 
 ### External Trade Alerts (Strategy Fundamentals)
-A webhook-based alert ingestion system receives trade signals from Strategy Fundamentals (or other external providers) for autonomous execution. Alerts are received via `POST /api/external-alerts/webhook` authenticated with an API key in the `X-API-Key` header. Each alert includes symbol, direction (Long/Short), strategy name/group, entry/risk/target price levels, and timestamp. Alerts are stored in the `external_alerts` table with lifecycle statuses: PENDING, EVALUATING, EXECUTED, SKIPPED, EXPIRED, ERROR. API keys are managed per-user via the `external_alert_api_keys` table with SHA-256 hashing (keys are shown once on creation). The agent worker (`server/agent-worker.ts`) processes pending external alerts during each cycle via `processExternalAlerts()`, evaluating them against the user's agent policy (price range, R:R ratio, authorization checks) and either suggesting or auto-executing based on mode (SUGGEST/AUTO). Immediate background processing is triggered when a webhook is received. The Trade Alerts page (`/trade-alerts`) displays alerts in Strategy Fundamentals card format with entry/risk/target levels, API key management, webhook integration docs, and test alert functionality. The Command Center shows a summary widget with recent alerts and execution status.
+A webhook-based alert ingestion system receives trade signals from external providers for autonomous execution. Alerts are stored in the `external_alerts` table with lifecycle statuses. The agent worker processes these alerts, evaluating them against user policies.
 
 ### Command Center Advanced Filters & Presets
-The Command Center "Today's Top Picks" section has an expandable advanced filter panel allowing users to filter results by: Risk/Reward ratio (3:1+, 2:1+, 1:1+, Below 1:1), Trade Status (In Entry Zone, Awaiting Breakout, Extended), Price Range (min/max), minimum RVOL, Change % range, and result count (5/10/15/25/50). Users can save filter combinations as named presets, set a default preset that auto-loads on page load, load/delete saved presets, and reset all filters. Presets are persisted in the `ccFilterPresets` JSONB column on the `user_settings` table.
+The Command Center's "Today's Top Picks" section features an expandable advanced filter panel for filtering results by Risk/Reward, Trade Status, Price Range, RVOL, Change %, and result count. Users can save, load, and manage named filter presets.
 
 ## External Dependencies
 
 ### Database
-- **PostgreSQL**: Primary database for all application data.
+-   **PostgreSQL**: Primary database for all application data.
 
 ### Brokerage Integrations
-The application connects to multiple brokerage providers, storing encrypted connections and allowing users to select a preferred trading account. All OAuth tokens have automatic refresh support when refresh tokens are available.
-- **Tradier**: OAuth-based integration for market data and trading. Access tokens expire after 24 hours and are auto-refreshed via `refreshTradierToken()` in `server/broker/index.ts`. Token expiration is stored in `accessTokenExpiresAt` on the broker connection.
-- **TradeStation**: OAuth-based integration (Authorization Code flow) for market data and trading via TradeStation v3 API, with automatic token refresh (~20 min TTL).
-- **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages, supporting dual execution methods.
-- **Token Health Monitoring**: The `/api/broker/token-health` endpoint reports token status (valid/expiring/expired) and the Command Center displays a notification banner when tokens need attention.
+The application connects to multiple brokerage providers, storing encrypted connections and allowing users to select a preferred trading account. All OAuth tokens have automatic refresh support.
+-   **Tradier**: OAuth-based integration for market data and trading.
+-   **TradeStation**: OAuth-based integration for market data and trading via TradeStation v3 API.
+-   **SnapTrade**: OAuth-based integration for direct order execution with 20+ brokerages.
 
 ### Partner Dashboard (Standalone Auto-Trading)
-The platform supports a standalone partner dashboard at `/partner/dashboard` for newsletter subscribers to automate trade execution from external signals. Partners (e.g., Strategy Fundamentals) are registered via `POST /api/admin/partners` with a slug, name, and shared JWT secret. The partner platform redirects subscribers via `GET /api/partner/login?token=<JWT>&partner=<slug>`, which validates the JWT (requires `sub` and `email` claims), auto-creates a linked VCP Trader user account and partner_user record, provisions an API key for webhook alerts, and starts a session. The partner dashboard shows three tabs: Connect Broker (Tradier/TradeStation OAuth), Configure Agent (mode, risk limits, price filters), and Trade History (signal execution log). Partner users cannot access the full VCP Trader platform. Tables: `partner_configs` (partner settings, shared secret), `partner_users` (subscriber mapping to linked user accounts).
+A standalone partner dashboard at `/partner/dashboard` allows newsletter subscribers to automate trade execution from external signals. Partners are registered, and subscribers are onboarded via JWT validation, creating linked user accounts and provisioning API keys. The dashboard provides broker connection, agent configuration, and trade history features.
+
+### Partner Subscription (Stripe)
+Partner subscriptions are managed via Stripe Checkout and Billing Portal.
+-   **Stripe Integration**: `server/stripeClient.ts` fetches credentials, and `server/webhookHandlers.ts` processes Stripe webhooks.
+-   **Product**: "Auto Trading Subscription" product with a $39/month recurring price.
+-   **Paywall**: The partner dashboard displays a `SubscriptionPaywall` component for unsubscribed users.
+-   **Sync**: A cron job syncs subscription statuses from Stripe to `partner_users`.
 
 ### Push Notifications
-- **Web Push API**: Used for real-time alert delivery.
+-   **Web Push API**: Used for real-time alert delivery.
 
 ### News & Research
-- **Stock News API**: Provides compliance-safe news headlines by ticker symbol with caching and rate limiting.
+-   **Stock News API**: Provides compliance-safe news headlines by ticker symbol with caching and rate limiting.

@@ -41,6 +41,7 @@ import {
   Zap,
   Shield,
   BarChart3,
+  ExternalLink,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -110,6 +111,30 @@ function formatDate(date: string | Date): string {
   });
 }
 
+const brokerProviders = [
+  {
+    id: "tradier",
+    name: "Tradier",
+    description: "Commission-free trading platform",
+    supportsOAuth: true,
+    signupUrl: "https://join.tradier.com/partner?platform=261",
+  },
+  {
+    id: "tradestation",
+    name: "TradeStation",
+    description: "Professional trading platform",
+    supportsOAuth: true,
+    signupUrl: "https://getstarted2.tradestation.com/intro?offer=ALGOAGRB",
+  },
+  {
+    id: "alpaca",
+    name: "Alpaca",
+    description: "API-first stock trading",
+    supportsOAuth: false,
+    signupUrl: "https://app.alpaca.markets/signup",
+  },
+];
+
 function BrokerTab() {
   const { data: broker, isLoading } = useQuery<BrokerStatus>({
     queryKey: ["/api/partner/broker"],
@@ -123,61 +148,75 @@ function BrokerTab() {
 
   return (
     <div className="space-y-4">
-      <Card data-testid="card-broker-status">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="w-5 h-5" />
-            Brokerage Connection
-          </CardTitle>
-          <CardDescription>Connect your brokerage account to enable automated trading</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isConnected ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <span className="font-medium">Connected</span>
-                <Badge variant="outline">{broker?.provider}</Badge>
-              </div>
-              {broker?.preferredAccountId && (
-                <p className="text-sm text-muted-foreground">
-                  Account: {broker.preferredAccountId}
-                </p>
-              )}
+      {isConnected && (
+        <Card data-testid="card-broker-status">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span className="font-medium">Connected</span>
+              <Badge variant="outline">{broker?.provider}</Badge>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <AlertCircle className="w-5 h-5" />
-                <span>No brokerage connected</span>
-              </div>
-              <div className="grid gap-2">
-                <Button
-                  onClick={() => window.location.href = "/api/broker/connect/tradier"}
-                  variant="outline"
-                  className="justify-start gap-2"
-                  data-testid="button-connect-tradier"
-                >
-                  <Link2 className="w-4 h-4" />
-                  Connect Tradier
-                </Button>
-                <Button
-                  onClick={() => window.location.href = "/api/broker/connect/tradestation"}
-                  variant="outline"
-                  className="justify-start gap-2"
-                  data-testid="button-connect-tradestation"
-                >
-                  <Link2 className="w-4 h-4" />
-                  Connect TradeStation
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                You will be redirected to your broker to authorize the connection.
+            {broker?.preferredAccountId && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Account: {broker.preferredAccountId}
               </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Link2 className="w-5 h-5" />
+          <h3 className="text-base font-medium">Brokerage Connection</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Select a brokerage to connect for automated trading
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {brokerProviders.map((bp) => {
+            const isBrokerConnected = broker?.provider === bp.id && isConnected;
+            return (
+              <Card
+                key={bp.id}
+                className={`cursor-pointer hover-elevate ${isBrokerConnected ? "border-primary" : ""}`}
+                onClick={() => !isBrokerConnected && bp.supportsOAuth && (window.location.href = `/api/broker/connect/${bp.id}`)}
+                data-testid={`broker-${bp.id}`}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-medium">{bp.name}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {bp.description}
+                      </p>
+                    </div>
+                    {isBrokerConnected && (
+                      <Badge variant="default" className="text-xs">Active</Badge>
+                    )}
+                  </div>
+                  {bp.signupUrl && !isBrokerConnected && (
+                    <a
+                      href={bp.signupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`link-${bp.id}-signup`}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Open a {bp.name} Account
+                    </a>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground mt-4">
+          You will be redirected to your broker to authorize the connection.
+        </p>
+      </div>
     </div>
   );
 }
@@ -492,8 +531,9 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between gap-4 px-4 h-14 max-w-4xl mx-auto">
           <div className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-green-500" />
-            <span className="font-semibold text-sm">{profile.partnerName}</span>
+            <Bot className="w-5 h-5 text-primary" />
+            <span className="font-semibold text-sm" data-testid="text-partner-branding">VCP Trader Autonomous Agent</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">| {profile.partnerName}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground hidden sm:inline" data-testid="text-partner-email">{profile.email}</span>
@@ -638,9 +678,9 @@ export default function PartnerDashboard() {
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between gap-4 px-4 h-14 max-w-4xl mx-auto">
           <div className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-green-500" />
-            <span className="font-semibold text-sm">{profile.partnerName}</span>
-            <Badge variant="secondary">Auto Trading</Badge>
+            <Bot className="w-5 h-5 text-primary" />
+            <span className="font-semibold text-sm" data-testid="text-partner-branding">VCP Trader Autonomous Agent</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">| {profile.partnerName}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground hidden sm:inline" data-testid="text-partner-email">{profile.email}</span>

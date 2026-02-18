@@ -132,11 +132,31 @@ const brokerProviders = [
 ];
 
 function BrokerTab() {
+  const { toast } = useToast();
   const { data: broker, isLoading } = useQuery<BrokerStatus>({
     queryKey: ["/api/partner/broker"],
   });
 
+  const [connectingBroker, setConnectingBroker] = useState<string | null>(null);
+
   const isConnected = broker?.isConnected || broker?.connected;
+
+  async function handleBrokerConnect(providerId: string) {
+    try {
+      setConnectingBroker(providerId);
+      const res = await fetch(`/api/${providerId}/oauth`, { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to start broker connection");
+      }
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to connect broker", variant: "destructive" });
+      setConnectingBroker(null);
+    }
+  }
 
   if (isLoading) {
     return <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-12 w-full" /></div>;
@@ -172,11 +192,12 @@ function BrokerTab() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {brokerProviders.map((bp) => {
             const isBrokerConnected = broker?.provider === bp.id && isConnected;
+            const isConnecting = connectingBroker === bp.id;
             return (
               <Card
                 key={bp.id}
                 className={`cursor-pointer hover-elevate ${isBrokerConnected ? "border-primary" : ""}`}
-                onClick={() => !isBrokerConnected && bp.supportsOAuth && (window.location.href = `/api/${bp.id}/oauth`)}
+                onClick={() => !isBrokerConnected && !isConnecting && bp.supportsOAuth && handleBrokerConnect(bp.id)}
                 data-testid={`broker-${bp.id}`}
               >
                 <CardContent className="p-4">
@@ -189,6 +210,9 @@ function BrokerTab() {
                     </div>
                     {isBrokerConnected && (
                       <Badge variant="default" className="text-xs">Active</Badge>
+                    )}
+                    {isConnecting && (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     )}
                   </div>
                   {bp.signupUrl && !isBrokerConnected && (

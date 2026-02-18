@@ -2405,9 +2405,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     return !!(TRADIER_CLIENT_ID && TRADIER_CLIENT_SECRET);
   }
   
-  function getTradierCallbackUrl(): string {
-    // Build callback URL dynamically based on environment
-    // Uses /tradier-callback to match the registered OAuth callback URL
+  function getTradierCallbackUrl(req?: any): string {
+    if (req) {
+      const host = req.get("host");
+      const proto = req.get("x-forwarded-proto") || req.protocol || "https";
+      if (host) {
+        return `${proto}://${host}/tradier-callback`;
+      }
+    }
     let baseUrl: string;
     if (process.env.APP_URL) {
       baseUrl = process.env.APP_URL;
@@ -2450,8 +2455,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         });
       });
 
-      // Build callback URL dynamically
-      const callbackUrl = getTradierCallbackUrl();
+      const callbackUrl = getTradierCallbackUrl(req);
       console.log(`[Tradier OAuth] Using callback URL: ${callbackUrl}`);
 
       // Redirect user to Tradier authorization page
@@ -2544,11 +2548,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       console.log(`[Tradier OAuth] User ${userId} successfully connected to Tradier`);
       
-      // Redirect to settings page with success message
-      res.redirect("/settings?tradier_success=true");
+      const redirectBase = req.session.partnerUserId ? "/partner/dashboard?tab=broker" : "/settings";
+      res.redirect(`${redirectBase}${redirectBase.includes("?") ? "&" : "?"}tradier_success=true`);
     } catch (error: any) {
       console.error("Tradier OAuth callback error:", error);
-      res.redirect("/settings?tradier_error=unknown");
+      const redirectBase = req.session?.partnerUserId ? "/partner/dashboard?tab=broker" : "/settings";
+      res.redirect(`${redirectBase}${redirectBase.includes("?") ? "&" : "?"}tradier_error=unknown`);
     }
   }
 
@@ -2565,7 +2570,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     return !!(TRADESTATION_CLIENT_ID && TRADESTATION_CLIENT_SECRET);
   }
   
-  function getTradeStationCallbackUrl(): string {
+  function getTradeStationCallbackUrl(req?: any): string {
+    if (req) {
+      const host = req.get("host");
+      const proto = req.get("x-forwarded-proto") || req.protocol || "https";
+      if (host) {
+        return `${proto}://${host}/api/tradestation/callback`;
+      }
+    }
     let baseUrl: string;
     if (process.env.APP_URL) {
       baseUrl = process.env.APP_URL;
@@ -2605,7 +2617,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         });
       });
 
-      const callbackUrl = getTradeStationCallbackUrl();
+      const callbackUrl = getTradeStationCallbackUrl(req);
       console.log(`[TradeStation OAuth] Using callback URL: ${callbackUrl}`);
 
       // TradeStation v3 OAuth - requires audience parameter per API docs
@@ -2651,8 +2663,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       delete req.session.tradestationOAuthState;
       delete req.session.tradestationOAuthUserId;
 
-      // Exchange authorization code for access token
-      const callbackUrl = getTradeStationCallbackUrl();
+      const callbackUrl = getTradeStationCallbackUrl(req);
       
       const tokenResponse = await fetch("https://signin.tradestation.com/oauth/token", {
         method: "POST",

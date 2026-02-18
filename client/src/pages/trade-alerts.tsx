@@ -273,7 +273,16 @@ function ApiKeysSection() {
             {generatedKey ? (
               <div className="space-y-3">
                 <div className="rounded-md border bg-muted p-3">
-                  <Label className="text-xs text-muted-foreground">Your API Key (save it now)</Label>
+                  <Label className="text-xs text-muted-foreground">Webhook URL</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="text-xs break-all flex-1" data-testid="text-webhook-full-url">https://www.vcptrader.com/api/external-alerts/webhook</code>
+                    <Button size="icon" variant="ghost" onClick={() => copyKey("https://www.vcptrader.com/api/external-alerts/webhook")} data-testid="button-copy-url">
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-md border bg-muted p-3">
+                  <Label className="text-xs text-muted-foreground">API Key (X-API-Key header)</Label>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="text-xs break-all flex-1" data-testid="text-generated-key">{generatedKey}</code>
                     <Button size="icon" variant="ghost" onClick={() => copyKey(generatedKey)} data-testid="button-copy-key">
@@ -283,7 +292,7 @@ function ApiKeysSection() {
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
-                  This key will not be shown again. Copy it now.
+                  Save both values now. The API key will not be shown again.
                 </p>
                 <Button onClick={() => { setShowDialog(false); setGeneratedKey(null); }} className="w-full" data-testid="button-done-key">
                   Done
@@ -363,7 +372,7 @@ function ApiKeysSection() {
             <div>
               <span className="font-medium">Endpoint:</span>
               <code className="ml-1 bg-muted px-1 py-0.5 rounded" data-testid="text-webhook-url">
-                POST {window.location.origin}/api/external-alerts/webhook
+                POST https://www.vcptrader.com/api/external-alerts/webhook
               </code>
             </div>
             <div>

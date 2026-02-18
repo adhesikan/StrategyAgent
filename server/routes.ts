@@ -5265,6 +5265,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         await storage.updatePartnerUser(partnerUser.id, { lastLoginAt: new Date() });
       }
 
+      if ((payload as any)._admin_skip_checkout === true) {
+        await storage.updatePartnerUser(partnerUser.id, {
+          subscriptionStatus: "active",
+        });
+      }
+
       req.session.partnerUserId = partnerUser.id;
       req.session.partnerSlug = partner;
       req.session.userId = partnerUser.linkedUserId || undefined;
@@ -5273,6 +5279,46 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     } catch (error) {
       console.error("Partner login error:", error);
       res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Admin: generate partner test login URL
+  app.post("/api/admin/partners/:id/test-login", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const partnerConfig = await storage.getPartnerConfigById(req.params.id);
+      if (!partnerConfig) {
+        return res.status(404).json({ error: "Partner not found" });
+      }
+
+      const { email, name, subscriberId, skipCheckout } = req.body as {
+        email?: string;
+        name?: string;
+        subscriberId?: string;
+        skipCheckout?: boolean;
+      };
+
+      const sub = subscriberId || `test-${Date.now()}`;
+      const testEmail = email || `test-${sub}@example.com`;
+      const testName = name || "Test User";
+
+      const jwt = await import("jsonwebtoken");
+      const claims: Record<string, any> = { sub, email: testEmail, name: testName };
+      if (skipCheckout) {
+        claims._admin_skip_checkout = true;
+      }
+      const token = jwt.default.sign(
+        claims,
+        partnerConfig.sharedSecret,
+        { expiresIn: "24h" }
+      );
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const loginUrl = `${baseUrl}/api/partner/login?token=${token}&partner=${partnerConfig.slug}`;
+
+      res.json({ loginUrl, token, expiresIn: "24h", subscriber: { sub, email: testEmail, name: testName } });
+    } catch (error) {
+      console.error("Generate test login error:", error);
+      res.status(500).json({ error: "Failed to generate test login URL" });
     }
   });
 

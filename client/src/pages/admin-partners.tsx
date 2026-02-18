@@ -38,7 +38,9 @@ import {
   Bot,
   History as HistoryIcon,
   Webhook,
+  FlaskConical,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 
 interface Partner {
@@ -189,6 +191,128 @@ function AddPartnerDialog() {
   );
 }
 
+function TestLoginDialog({ partner }: { partner: Partner }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("testuser@example.com");
+  const [name, setName] = useState("Test Trader");
+  const [subscriberId, setSubscriberId] = useState(`test-${Date.now()}`);
+  const [skipCheckout, setSkipCheckout] = useState(true);
+  const [generatedUrl, setGeneratedUrl] = useState("");
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/partners/${partner.id}/test-login`, {
+        email, name, subscriberId, skipCheckout,
+      });
+      return res.json();
+    },
+    onSuccess: (data: { loginUrl: string }) => {
+      setGeneratedUrl(data.loginUrl);
+    },
+    onError: () => {
+      toast({ title: "Failed to generate test URL", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => { setOpen(val); if (!val) setGeneratedUrl(""); }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" data-testid={`button-test-login-${partner.slug}`}>
+          <FlaskConical className="w-4 h-4 mr-1" />
+          Test Login
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Test Partner Login</DialogTitle>
+          <DialogDescription>
+            Generate a test login URL that simulates a subscriber arriving from {partner.name}'s website.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1">
+            <Label>Subscriber Email</Label>
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="testuser@example.com"
+              data-testid="input-test-email"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Subscriber Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Test Trader"
+              data-testid="input-test-name"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Subscriber ID</Label>
+            <Input
+              value={subscriberId}
+              onChange={(e) => setSubscriberId(e.target.value)}
+              placeholder="test-subscriber-001"
+              data-testid="input-test-subscriber-id"
+            />
+            <p className="text-xs text-muted-foreground">
+              Unique identifier for this test subscriber. Reusing the same ID will log into an existing account.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="skip-checkout"
+              checked={skipCheckout}
+              onCheckedChange={(val) => setSkipCheckout(val === true)}
+              data-testid="checkbox-skip-checkout"
+            />
+            <Label htmlFor="skip-checkout" className="text-sm cursor-pointer">
+              Skip Stripe checkout (auto-activate subscription for testing)
+            </Label>
+          </div>
+
+          {generatedUrl && (
+            <div className="space-y-2 p-3 rounded-md bg-muted/50">
+              <Label className="text-xs font-medium">Test Login URL (valid for 24 hours)</Label>
+              <div className="flex items-start gap-1">
+                <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono max-h-24 overflow-y-auto" data-testid="text-test-login-url">
+                  {generatedUrl}
+                </code>
+                <CopyButton text={generatedUrl} />
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full"
+                onClick={() => window.open(generatedUrl, "_blank")}
+                data-testid="button-open-test-url"
+              >
+                <ExternalLink className="w-4 h-4 mr-1" />
+                Open in New Tab
+              </Button>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+          <Button
+            onClick={() => generateMutation.mutate()}
+            disabled={!email || !subscriberId || generateMutation.isPending}
+            data-testid="button-generate-test-url"
+          >
+            {generateMutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+            Generate URL
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PartnerCard({ partner }: { partner: Partner }) {
   const { toast } = useToast();
   const [showIntegration, setShowIntegration] = useState(false);
@@ -236,15 +360,18 @@ function PartnerCard({ partner }: { partner: Partner }) {
           <span>Created {new Date(partner.createdAt).toLocaleDateString()}</span>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowIntegration(!showIntegration)}
-          data-testid={`button-integration-${partner.slug}`}
-        >
-          {showIntegration ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
-          {showIntegration ? "Hide" : "Show"} Integration Details
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowIntegration(!showIntegration)}
+            data-testid={`button-integration-${partner.slug}`}
+          >
+            {showIntegration ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+            {showIntegration ? "Hide" : "Show"} Integration Details
+          </Button>
+          <TestLoginDialog partner={partner} />
+        </div>
 
         {showIntegration && (
           <div className="space-y-3 p-3 rounded-md bg-muted/50">

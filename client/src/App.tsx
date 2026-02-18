@@ -52,6 +52,7 @@ import CommandCenter from "@/pages/command-center";
 import DiscoverPage from "@/pages/discover";
 import RiskProfilePage from "@/pages/risk-profile";
 import UniversesPage from "@/pages/universes";
+import TradeAlertsPage from "@/pages/trade-alerts";
 import NotFound from "@/pages/not-found";
 import { Redirect } from "wouter";
 
@@ -87,6 +88,7 @@ function AppRouter() {
       <Route path="/execution">{() => <Redirect to="/automation?view=cockpit" />}</Route>
       <Route path="/opportunities">{() => <Redirect to="/automation?view=outcomes" />}</Route>
       <Route path="/alerts" component={AlertsPage} />
+      <Route path="/trade-alerts" component={TradeAlertsPage} />
       <Route path="/app/automation">{() => <Redirect to="/automation" />}</Route>
       <Route path="/learn/news">{() => <Redirect to="/news" />}</Route>
       <Route path="/strategy-guide">{() => <Redirect to="/help" />}</Route>

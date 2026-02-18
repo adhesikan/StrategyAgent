@@ -65,7 +65,8 @@ import type {
   AgentPolicy, 
   Opportunity, 
   Trade,
-  ScanResult 
+  ScanResult,
+  ExternalAlert,
 } from "@shared/schema";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 
@@ -216,6 +217,68 @@ function StatusCard({
         {label}
       </span>
     </div>
+  );
+}
+
+function ExternalAlertsWidget() {
+  const { data: alerts = [] } = useQuery<ExternalAlert[]>({
+    queryKey: ["/api/external-alerts"],
+    refetchInterval: 15000,
+  });
+
+  const recentAlerts = alerts.slice(0, 3);
+  const pendingCount = alerts.filter(a => a.status === "PENDING" || a.status === "EVALUATING").length;
+  const executedCount = alerts.filter(a => a.status === "EXECUTED").length;
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Radio className="h-5 w-5 text-primary" />
+          <CardTitle>Trade Alerts</CardTitle>
+          {pendingCount > 0 && (
+            <Badge variant="default" className="ml-auto">{pendingCount} pending</Badge>
+          )}
+        </div>
+        <CardDescription>
+          Strategy Fundamentals signals
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {recentAlerts.map((alert) => (
+          <div key={alert.id} className="flex items-center justify-between gap-2 rounded-md border p-2" data-testid={`cc-alert-${alert.id}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono font-medium text-sm">{alert.symbol}</span>
+              <Badge
+                variant="outline"
+                className={alert.direction === "Long" ? "border-green-500 text-green-600" : "border-red-500 text-red-600"}
+              >
+                {alert.direction}
+              </Badge>
+            </div>
+            <Badge
+              variant={alert.status === "EXECUTED" ? "default" : alert.status === "PENDING" || alert.status === "EVALUATING" ? "outline" : "secondary"}
+            >
+              {alert.status === "EXECUTED" ? "Filled" : alert.status === "PENDING" ? "Pending" : alert.status === "EVALUATING" ? "Evaluating" : alert.status === "SKIPPED" ? "Skipped" : alert.status}
+            </Badge>
+          </div>
+        ))}
+        {executedCount > 0 && (
+          <p className="text-xs text-muted-foreground text-center pt-1">
+            {executedCount} alert{executedCount !== 1 ? "s" : ""} executed today
+          </p>
+        )}
+      </CardContent>
+      <CardFooter className="border-t pt-3">
+        <Button variant="outline" size="sm" className="w-full" asChild>
+          <Link href="/trade-alerts" data-testid="link-view-alerts">
+            View All Alerts
+          </Link>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -1740,6 +1803,8 @@ export default function CommandCenter() {
               </Button>
             </CardFooter>
           </Card>
+
+          <ExternalAlertsWidget />
 
         </div>
       </div>

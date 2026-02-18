@@ -1338,3 +1338,81 @@ export const insertFuturesAgentAuditLogSchema = createInsertSchema(futuresAgentA
 });
 export type InsertFuturesAgentAuditLog = z.infer<typeof insertFuturesAgentAuditLogSchema>;
 export type FuturesAgentAuditLog = typeof futuresAgentAuditLog.$inferSelect;
+
+// ─── External Trade Alerts (Strategy Fundamentals) ───────────────
+export const ExternalAlertStatus = {
+  PENDING: "PENDING",
+  EVALUATING: "EVALUATING",
+  EXECUTED: "EXECUTED",
+  SKIPPED: "SKIPPED",
+  EXPIRED: "EXPIRED",
+  ERROR: "ERROR",
+} as const;
+export type ExternalAlertStatusType = typeof ExternalAlertStatus[keyof typeof ExternalAlertStatus];
+
+export const ExternalAlertDirection = {
+  LONG: "Long",
+  SHORT: "Short",
+} as const;
+export type ExternalAlertDirectionType = typeof ExternalAlertDirection[keyof typeof ExternalAlertDirection];
+
+export const externalAlerts = pgTable("external_alerts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  source: text("source").notNull().default("strategy_fundamentals"),
+  symbol: text("symbol").notNull(),
+  direction: text("direction").notNull().default("Long"),
+  strategyName: text("strategy_name").notNull(),
+  strategyGroup: text("strategy_group"),
+  entryPrice: real("entry_price").notNull(),
+  riskPrice: real("risk_price").notNull(),
+  targetPrice: real("target_price").notNull(),
+  alertTimestamp: timestamp("alert_timestamp").notNull(),
+  status: text("status").notNull().default("PENDING"),
+  skipReason: text("skip_reason"),
+  agentDecisionId: varchar("agent_decision_id"),
+  brokerOrderId: text("broker_order_id"),
+  executedPrice: real("executed_price"),
+  executedAt: timestamp("executed_at"),
+  rawPayload: jsonb("raw_payload"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertExternalAlertSchema = createInsertSchema(externalAlerts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertExternalAlert = z.infer<typeof insertExternalAlertSchema>;
+export type ExternalAlert = typeof externalAlerts.$inferSelect;
+
+export const externalAlertWebhookSchema = z.object({
+  symbol: z.string().min(1).max(10),
+  direction: z.enum(["Long", "Short"]).default("Long"),
+  strategy_name: z.string().min(1),
+  strategy_group: z.string().optional(),
+  entry_price: z.number().positive(),
+  risk_price: z.number().positive(),
+  target_price: z.number().positive(),
+  timestamp: z.string().optional(),
+});
+export type ExternalAlertWebhook = z.infer<typeof externalAlertWebhookSchema>;
+
+export const externalAlertApiKeys = pgTable("external_alert_api_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  keyHash: text("key_hash").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  label: text("label").default("Default"),
+  isActive: boolean("is_active").default(true),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertExternalAlertApiKeySchema = createInsertSchema(externalAlertApiKeys).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertExternalAlertApiKey = z.infer<typeof insertExternalAlertApiKeySchema>;
+export type ExternalAlertApiKey = typeof externalAlertApiKeys.$inferSelect;

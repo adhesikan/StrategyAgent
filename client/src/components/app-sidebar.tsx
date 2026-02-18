@@ -56,6 +56,7 @@ const navGroups: NavGroup[] = [
     label: "TRADE",
     items: [
       { title: "Trade Autopilot", description: "Modes & controls", url: "/automation", icon: Bot },
+      { title: "Trade Alerts", description: "External signals", url: "/trade-alerts", icon: Radio },
       { title: "Activity", description: "Alerts & history", url: "/alerts", icon: History },
     ],
   },

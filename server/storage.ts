@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
-import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count } from "drizzle-orm";
+import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count, isNull } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
 import type {
   User,
@@ -71,6 +71,10 @@ import type {
   InsertTickerUniverse,
   TickerUniverseMember,
   InsertTickerUniverseMember,
+  ExternalAlert,
+  InsertExternalAlert,
+  ExternalAlertApiKey,
+  InsertExternalAlertApiKey,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -266,6 +270,20 @@ export interface IStorage {
   // Ticker Universe Members
   getTickerUniverseMembers(universeId: string): Promise<TickerUniverseMember[]>;
   setTickerUniverseMembers(universeId: string, symbols: string[]): Promise<TickerUniverseMember[]>;
+
+  // External Trade Alerts
+  getExternalAlerts(userId: string, limit?: number): Promise<ExternalAlert[]>;
+  getExternalAlert(id: string): Promise<ExternalAlert | null>;
+  getPendingExternalAlerts(userId: string): Promise<ExternalAlert[]>;
+  createExternalAlert(alert: InsertExternalAlert): Promise<ExternalAlert>;
+  updateExternalAlert(id: string, data: Partial<ExternalAlert>): Promise<ExternalAlert | null>;
+
+  // External Alert API Keys
+  getExternalAlertApiKeys(userId: string): Promise<ExternalAlertApiKey[]>;
+  createExternalAlertApiKey(key: InsertExternalAlertApiKey): Promise<ExternalAlertApiKey>;
+  deleteExternalAlertApiKey(id: string): Promise<void>;
+  findExternalAlertApiKeyByHash(keyHash: string): Promise<ExternalAlertApiKey | null>;
+  updateExternalAlertApiKeyLastUsed(id: string): Promise<void>;
 }
 
 export interface OpportunityFilters {
@@ -2393,6 +2411,94 @@ export class MemStorage implements IStorage {
     if (symbols.length === 0) return [];
     const rows = symbols.map((symbol) => ({ universeId, symbol: symbol.toUpperCase() }));
     return db.insert(tickerUniverseMembersTable).values(rows).returning();
+  }
+
+  // External Trade Alerts
+  async getExternalAlerts(userId: string, limit: number = 50): Promise<ExternalAlert[]> {
+    return db
+      .select()
+      .from(externalAlertsTable)
+      .where(eq(externalAlertsTable.userId, userId))
+      .orderBy(desc(externalAlertsTable.createdAt))
+      .limit(limit);
+  }
+
+  async getExternalAlert(id: string): Promise<ExternalAlert | null> {
+    const [result] = await db
+      .select()
+      .from(externalAlertsTable)
+      .where(eq(externalAlertsTable.id, id))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async getPendingExternalAlerts(userId: string): Promise<ExternalAlert[]> {
+    return db
+      .select()
+      .from(externalAlertsTable)
+      .where(and(
+        eq(externalAlertsTable.userId, userId),
+        eq(externalAlertsTable.status, "PENDING"),
+        isNull(externalAlertsTable.agentDecisionId)
+      ))
+      .orderBy(asc(externalAlertsTable.createdAt));
+  }
+
+  async createExternalAlert(alert: InsertExternalAlert): Promise<ExternalAlert> {
+    const [result] = await db
+      .insert(externalAlertsTable)
+      .values(alert)
+      .returning();
+    return result;
+  }
+
+  async updateExternalAlert(id: string, data: Partial<ExternalAlert>): Promise<ExternalAlert | null> {
+    const [result] = await db
+      .update(externalAlertsTable)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(externalAlertsTable.id, id))
+      .returning();
+    return result ?? null;
+  }
+
+  // External Alert API Keys
+  async getExternalAlertApiKeys(userId: string): Promise<ExternalAlertApiKey[]> {
+    return db
+      .select()
+      .from(externalAlertApiKeysTable)
+      .where(eq(externalAlertApiKeysTable.userId, userId))
+      .orderBy(desc(externalAlertApiKeysTable.createdAt));
+  }
+
+  async createExternalAlertApiKey(key: InsertExternalAlertApiKey): Promise<ExternalAlertApiKey> {
+    const [result] = await db
+      .insert(externalAlertApiKeysTable)
+      .values(key)
+      .returning();
+    return result;
+  }
+
+  async deleteExternalAlertApiKey(id: string): Promise<void> {
+    await db.delete(externalAlertApiKeysTable).where(eq(externalAlertApiKeysTable.id, id));
+  }
+
+  async findExternalAlertApiKeyByHash(keyHash: string): Promise<ExternalAlertApiKey | null> {
+    const [result] = await db
+      .select()
+      .from(externalAlertApiKeysTable)
+      .where(and(
+        eq(externalAlertApiKeysTable.keyHash, keyHash),
+        eq(externalAlertApiKeysTable.isActive, true)
+      ))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async updateExternalAlertApiKeyLastUsed(id: string): Promise<void> {
+    await db
+      .update(externalAlertApiKeysTable)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(externalAlertApiKeysTable.id, id));
   }
 }
 

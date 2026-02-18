@@ -484,6 +484,178 @@ async function processOptionsScanResults(userId: string): Promise<void> {
   }
 }
 
+async function processExternalAlerts(userId: string): Promise<void> {
+  const pendingAlerts = await storage.getPendingExternalAlerts(userId);
+  if (pendingAlerts.length === 0) return;
+
+  const policy = await getOrCreatePolicy(userId);
+  if (!policy.enabled) return;
+
+  console.log(`[AgentWorker] Processing ${pendingAlerts.length} external alerts for user ${userId}`);
+
+  for (const alert of pendingAlerts) {
+    try {
+      await storage.updateExternalAlert(alert.id, { status: "EVALUATING" });
+
+      if (alert.direction === "Short") {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: "Short trades not supported by current policy",
+        });
+        continue;
+      }
+
+      if (policy.priceMin != null && alert.entryPrice < policy.priceMin) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: `Entry price $${alert.entryPrice} below minimum $${policy.priceMin}`,
+        });
+        continue;
+      }
+      if (policy.priceMax != null && alert.entryPrice > policy.priceMax) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: `Entry price $${alert.entryPrice} above maximum $${policy.priceMax}`,
+        });
+        continue;
+      }
+
+      const riskPerShare = alert.entryPrice - alert.riskPrice;
+      if (riskPerShare <= 0) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: "Invalid risk level: risk price must be below entry price",
+        });
+        continue;
+      }
+
+      const rewardPerShare = alert.targetPrice - alert.entryPrice;
+      const rewardRisk = rewardPerShare / riskPerShare;
+      if (policy.minRewardRisk != null && rewardRisk < policy.minRewardRisk) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: `R:R ratio ${rewardRisk.toFixed(1)}:1 below minimum ${policy.minRewardRisk}:1`,
+        });
+        continue;
+      }
+
+      const authorization = await authorizeOrder(userId, policy, alert.symbol);
+      if (!authorization.allowed) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: authorization.reasons.join("; "),
+        });
+        const decision: InsertAgentDecision = {
+          userId,
+          policyId: policy.id,
+          symbol: alert.symbol,
+          action: AgentAction.SKIP,
+          reasons: [...authorization.reasons, `Source: ${alert.source} - ${alert.strategyName}`],
+        };
+        await recordDecision(decision);
+        continue;
+      }
+
+      let quantity = 0;
+      if (policy.riskPerTradeUsd && riskPerShare > 0) {
+        quantity = Math.floor(policy.riskPerTradeUsd / riskPerShare);
+      }
+      if (quantity <= 0) quantity = 1;
+
+      const orderPayload = {
+        symbol: alert.symbol,
+        action: "BUY",
+        orderType: "LIMIT",
+        limitPrice: alert.entryPrice,
+        quantity,
+        stopLoss: alert.riskPrice,
+        target: alert.targetPrice,
+        source: "external_alert",
+        externalAlertId: alert.id,
+        strategyName: alert.strategyName,
+      };
+
+      if (policy.mode === AgentMode.SUGGEST) {
+        const decision: InsertAgentDecision = {
+          userId,
+          policyId: policy.id,
+          symbol: alert.symbol,
+          action: AgentAction.SUGGEST,
+          reasons: [
+            `External alert from ${alert.source}: ${alert.strategyName}`,
+            `Entry: $${alert.entryPrice}, Risk: $${alert.riskPrice}, Target: $${alert.targetPrice}`,
+            `R:R ${rewardRisk.toFixed(1)}:1, Qty: ${quantity} shares`,
+          ],
+          orderPayload,
+        };
+        const savedDecision = await recordDecision(decision);
+        await storage.updateExternalAlert(alert.id, {
+          status: "PENDING",
+          agentDecisionId: savedDecision.id,
+        });
+        console.log(`[AgentWorker] SUGGEST external alert: ${alert.symbol} from ${alert.strategyName} for user ${userId}`);
+      } else if (policy.mode === AgentMode.AUTO) {
+        try {
+          const connection = await storage.getBrokerConnection(userId);
+          if (!connection || !connection.isConnected || !connection.preferredAccountId) {
+            throw new Error("No connected broker account found for order execution");
+          }
+
+          const brokerOrder = toBrokerOrderRequest(orderPayload, connection.preferredAccountId);
+          const orderResult = await placeBrokerOrder(userId, brokerOrder);
+
+          if (!isOrderSuccessful(orderResult.status)) {
+            throw new Error(`Broker rejected order: ${orderResult.status} (orderId: ${orderResult.orderId})`);
+          }
+
+          const decision: InsertAgentDecision = {
+            userId,
+            policyId: policy.id,
+            symbol: alert.symbol,
+            action: AgentAction.EXECUTE,
+            reasons: [
+              `Auto-executed external alert from ${alert.source}: ${alert.strategyName}`,
+              `Entry: $${alert.entryPrice}, Risk: $${alert.riskPrice}, Target: $${alert.targetPrice}`,
+              `Broker order ${orderResult.orderId} ${orderResult.status}`,
+            ],
+            orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },
+          };
+          const savedDecision = await recordDecision(decision);
+          await incrementTradesToday(userId);
+          await storage.updateExternalAlert(alert.id, {
+            status: "EXECUTED",
+            agentDecisionId: savedDecision.id,
+            brokerOrderId: orderResult.orderId,
+            executedPrice: alert.entryPrice,
+            executedAt: new Date(),
+          });
+          console.log(`[AgentWorker] EXECUTE external alert: ${alert.symbol} from ${alert.strategyName} -> order ${orderResult.orderId} for user ${userId}`);
+        } catch (error: any) {
+          const decision: InsertAgentDecision = {
+            userId,
+            policyId: policy.id,
+            symbol: alert.symbol,
+            action: AgentAction.ERROR,
+            reasons: [`External alert execution failed: ${error.message}`, `Source: ${alert.source} - ${alert.strategyName}`],
+          };
+          await recordDecision(decision);
+          await storage.updateExternalAlert(alert.id, {
+            status: "ERROR",
+            skipReason: error.message,
+          });
+          console.error(`[AgentWorker] ERROR external alert: ${alert.symbol} - ${error.message}`);
+        }
+      }
+    } catch (error: any) {
+      await storage.updateExternalAlert(alert.id, {
+        status: "ERROR",
+        skipReason: `Processing error: ${error.message}`,
+      });
+      console.error(`[AgentWorker] Error processing external alert ${alert.id}: ${error.message}`);
+    }
+  }
+}
+
 function buildOrderPayload(opportunity: Opportunity, policy: any): object {
   const price = opportunity.lastPrice || opportunity.detectedPrice || 0;
   const stop = opportunity.stopReferencePrice || 0;
@@ -588,6 +760,7 @@ async function runAgentWorker(): Promise<void> {
       try {
         await processUserOpportunities(user.userId);
         await processOptionsScanResults(user.userId);
+        await processExternalAlerts(user.userId);
       } catch (error: any) {
         console.error(`[AgentWorker] Error processing user ${user.userId}:`, error.message);
       }
@@ -678,4 +851,4 @@ export function stopAgentWorker(): void {
   }
 }
 
-export { runAgentWorker, processUserOpportunities };
+export { runAgentWorker, processUserOpportunities, processExternalAlerts };

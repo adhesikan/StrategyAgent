@@ -4925,5 +4925,180 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ─── External Trade Alerts (Strategy Fundamentals) ────────────────────
+
+  // Webhook endpoint - authenticated via API key (not session)
+  app.post("/api/external-alerts/webhook", async (req, res) => {
+    try {
+      const apiKey = req.headers["x-api-key"] as string;
+      if (!apiKey) {
+        return res.status(401).json({ error: "Missing X-API-Key header" });
+      }
+
+      const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
+      const apiKeyRecord = await storage.findExternalAlertApiKeyByHash(keyHash);
+      if (!apiKeyRecord) {
+        return res.status(401).json({ error: "Invalid API key" });
+      }
+
+      await storage.updateExternalAlertApiKeyLastUsed(apiKeyRecord.id);
+
+      const { externalAlertWebhookSchema } = await import("@shared/schema");
+      const parsed = externalAlertWebhookSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid alert payload",
+          details: parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`),
+        });
+      }
+
+      const data = parsed.data;
+      const alert = await storage.createExternalAlert({
+        userId: apiKeyRecord.userId,
+        source: "strategy_fundamentals",
+        symbol: data.symbol.toUpperCase(),
+        direction: data.direction,
+        strategyName: data.strategy_name,
+        strategyGroup: data.strategy_group ?? null,
+        entryPrice: data.entry_price,
+        riskPrice: data.risk_price,
+        targetPrice: data.target_price,
+        alertTimestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+        status: "PENDING",
+        rawPayload: req.body,
+      });
+
+      console.log(`[ExternalAlerts] Received alert: ${data.symbol} ${data.direction} from ${data.strategy_name} for user ${apiKeyRecord.userId}`);
+
+      res.status(201).json({
+        success: true,
+        alertId: alert.id,
+        message: `Alert received for ${data.symbol}`,
+      });
+
+      try {
+        const { processExternalAlerts } = await import("./agent-worker");
+        processExternalAlerts(apiKeyRecord.userId).catch((err: any) =>
+          console.error(`[ExternalAlerts] Background processing error for ${apiKeyRecord.userId}:`, err.message)
+        );
+      } catch (e) {}
+    } catch (error: any) {
+      console.error("[ExternalAlerts] Webhook error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // List external alerts (authenticated)
+  app.get("/api/external-alerts", isAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const limit = parseInt(req.query.limit as string) || 50;
+      const alerts = await storage.getExternalAlerts(userId, limit);
+      res.json(alerts);
+    } catch (error) {
+      console.error("Failed to get external alerts:", error);
+      res.status(500).json({ error: "Failed to get external alerts" });
+    }
+  });
+
+  // Get single external alert
+  app.get("/api/external-alerts/:id", isAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const alert = await storage.getExternalAlert(req.params.id);
+      if (!alert) return res.status(404).json({ error: "Alert not found" });
+      res.json(alert);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get alert" });
+    }
+  });
+
+  // API Key management
+  app.get("/api/external-alerts/api-keys/list", isAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const keys = await storage.getExternalAlertApiKeys(userId);
+      res.json(keys.map(k => ({
+        id: k.id,
+        prefix: k.keyPrefix,
+        label: k.label,
+        isActive: k.isActive,
+        lastUsedAt: k.lastUsedAt,
+        createdAt: k.createdAt,
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get API keys" });
+    }
+  });
+
+  app.post("/api/external-alerts/api-keys", isAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const label = req.body.label || "Default";
+      const rawKey = `sfk_${crypto.randomBytes(32).toString("hex")}`;
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.substring(0, 12) + "...";
+
+      const apiKey = await storage.createExternalAlertApiKey({
+        userId,
+        keyHash,
+        keyPrefix,
+        label,
+        isActive: true,
+      });
+
+      res.status(201).json({
+        id: apiKey.id,
+        key: rawKey,
+        prefix: keyPrefix,
+        label,
+        message: "Save this key - it won't be shown again",
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create API key" });
+    }
+  });
+
+  app.delete("/api/external-alerts/api-keys/:id", isAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      await storage.deleteExternalAlertApiKey(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete API key" });
+    }
+  });
+
+  // Test webhook endpoint (sends a test alert to yourself)
+  app.post("/api/external-alerts/test", isAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const alert = await storage.createExternalAlert({
+        userId,
+        source: "test",
+        symbol: "AAPL",
+        direction: "Long",
+        strategyName: "Quick Range Breakout - Test",
+        strategyGroup: "Test Signals",
+        entryPrice: 185.50,
+        riskPrice: 178.25,
+        targetPrice: 198.00,
+        alertTimestamp: new Date(),
+        status: "PENDING",
+        rawPayload: { test: true },
+      });
+
+      res.json({ success: true, alertId: alert.id, message: "Test alert created" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create test alert" });
+    }
+  });
+
   return httpServer;
 }

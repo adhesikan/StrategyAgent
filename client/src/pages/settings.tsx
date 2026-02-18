@@ -40,6 +40,7 @@ import { InteractiveTutorial } from "@/components/interactive-tutorial";
 import type { BrokerConnection, BrokerProviderType, OpportunityDefaults, SnaptradeConnection } from "@shared/schema";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { useTooltipVisibility } from "@/hooks/use-tooltips";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
 
 interface UserSettingsResponse {
   showTooltips: boolean;
@@ -211,6 +212,8 @@ export default function Settings() {
   const { data: brokerStatus } = useQuery<BrokerConnection | null>({
     queryKey: ["/api/broker/status"],
   });
+
+  const { connectionLost } = useBrokerStatus();
 
   interface SettingsBrokerAccount {
     id: string;
@@ -750,10 +753,10 @@ export default function Settings() {
               <CardContent>
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className={`h-3 w-3 rounded-full ${brokerStatus?.isConnected ? "bg-status-online" : "bg-status-offline"}`} />
+                    <div className={`h-3 w-3 rounded-full ${connectionLost ? "bg-destructive" : brokerStatus?.isConnected ? "bg-status-online" : "bg-status-offline"}`} />
                     <div>
                       <p className="font-medium">
-                        {brokerStatus?.isConnected ? "Connected" : "Not Connected"}
+                        {connectionLost ? "Access Expired" : brokerStatus?.isConnected ? "Connected" : "Not Connected"}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {brokerStatus?.provider
@@ -810,7 +813,9 @@ export default function Settings() {
                               <p className="font-medium text-sm" data-testid={`account-name-${acc.id}`}>{acc.name}</p>
                               <Badge variant="secondary" className="text-[10px]">{acc.type}</Badge>
                               {isSelected && (
-                                <Badge variant="default" className="text-[10px]" data-testid="badge-active-account">Active</Badge>
+                                <Badge variant={connectionLost ? "destructive" : "default"} className="text-[10px]" data-testid="badge-active-account">
+                                  {connectionLost ? "Expired" : "Active"}
+                                </Badge>
                               )}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
@@ -934,10 +939,11 @@ export default function Settings() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {brokerProviders.map((broker) => {
                     const isConnected = brokerStatus?.provider === broker.id && brokerStatus?.isConnected;
+                    const isExpired = isConnected && connectionLost;
                     return (
                       <Card 
                         key={broker.id}
-                        className={`cursor-pointer hover-elevate ${isConnected ? "border-primary" : ""}`}
+                        className={`cursor-pointer hover-elevate ${isConnected ? (isExpired ? "border-destructive" : "border-primary") : ""}`}
                         onClick={() => !isConnected && handleProviderClick(broker.id)}
                         data-testid={`broker-${broker.id}`}
                       >
@@ -950,8 +956,8 @@ export default function Settings() {
                               </p>
                             </div>
                             {isConnected && (
-                              <Badge variant="default" className="text-xs">
-                                Active
+                              <Badge variant={isExpired ? "destructive" : "default"} className="text-xs">
+                                {isExpired ? "Expired" : "Active"}
                               </Badge>
                             )}
                           </div>

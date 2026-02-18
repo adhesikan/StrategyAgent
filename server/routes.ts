@@ -2558,8 +2558,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   app.get("/api/tradier/callback", handleTradierOAuthCallback);
 
   // TradeStation OAuth routes
-  const TRADESTATION_CLIENT_ID = process.env.TRADESTATION_CLIENT_ID;
-  const TRADESTATION_CLIENT_SECRET = process.env.TRADESTATION_CLIENT_SECRET;
+  const TRADESTATION_CLIENT_ID = process.env.TRADESTATION_CLIENT_ID?.trim();
+  const TRADESTATION_CLIENT_SECRET = process.env.TRADESTATION_CLIENT_SECRET?.trim();
   
   function isTradeStationOAuthConfigured(): boolean {
     return !!(TRADESTATION_CLIENT_ID && TRADESTATION_CLIENT_SECRET);

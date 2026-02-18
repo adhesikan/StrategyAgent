@@ -11,6 +11,7 @@ import {
   Radio,
   History,
   BookOpen,
+  Handshake,
 } from "lucide-react";
 import {
   Sidebar,
@@ -157,6 +158,16 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { setOpenMobile, isMobile, state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  const groups = isAdmin
+    ? navGroups.map(g =>
+        g.label === "CONTROL"
+          ? { ...g, items: [...g.items, { title: "Partners", description: "Signal providers", url: "/admin/partners", icon: Handshake }] }
+          : g
+      )
+    : navGroups;
 
   const handleNavClick = () => {
     if (isMobile) {
@@ -212,7 +223,7 @@ export function AppSidebar() {
       <SidebarSeparator />
 
       <SidebarContent className="px-2 group-data-[collapsible=icon]:px-1">
-        {navGroups.map((group, groupIndex) => (
+        {groups.map((group, groupIndex) => (
           <div key={group.label}>
             <SidebarGroup className="py-1">
               <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
@@ -258,7 +269,7 @@ export function AppSidebar() {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-            {groupIndex < navGroups.length - 1 && <SidebarSeparator className="my-1" />}
+            {groupIndex < groups.length - 1 && <SidebarSeparator className="my-1" />}
           </div>
         ))}
       </SidebarContent>

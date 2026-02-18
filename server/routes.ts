@@ -5401,6 +5401,48 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // Admin: list all partners
+  app.get("/api/admin/partners", isAuthenticated as RequestHandler, isAdmin, async (req, res) => {
+    try {
+      const partners = await storage.getAllPartnerConfigs();
+      const result = await Promise.all(partners.map(async (p) => {
+        const users = await storage.getPartnerUsersByPartnerId(p.id);
+        return {
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          isActive: p.isActive,
+          logoUrl: p.logoUrl,
+          primaryColor: p.primaryColor,
+          createdAt: p.createdAt,
+          subscriberCount: users.length,
+        };
+      }));
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to list partners" });
+    }
+  });
+
+  // Admin: update a partner
+  app.patch("/api/admin/partners/:id", isAuthenticated as RequestHandler, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, isActive, logoUrl, primaryColor, sharedSecret } = req.body;
+      const update: Record<string, any> = {};
+      if (name !== undefined) update.name = name;
+      if (isActive !== undefined) update.isActive = isActive;
+      if (logoUrl !== undefined) update.logoUrl = logoUrl;
+      if (primaryColor !== undefined) update.primaryColor = primaryColor;
+      if (sharedSecret !== undefined) update.sharedSecret = sharedSecret;
+      const result = await storage.updatePartnerConfig(id, update);
+      if (!result) return res.status(404).json({ error: "Partner not found" });
+      res.json({ id: result.id, slug: result.slug, name: result.name, isActive: result.isActive });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update partner" });
+    }
+  });
+
   // Admin: register a new partner
   app.post("/api/admin/partners", isAuthenticated as RequestHandler, isAdmin, async (req, res) => {
     try {

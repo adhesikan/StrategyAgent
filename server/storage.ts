@@ -2514,6 +2514,23 @@ export class MemStorage implements IStorage {
       .where(eq(externalAlertApiKeysTable.id, id));
   }
 
+  async getAllPartnerConfigs(): Promise<PartnerConfig[]> {
+    return db.select().from(partnerConfigsTable).orderBy(partnerConfigsTable.createdAt);
+  }
+
+  async updatePartnerConfig(id: string, data: Partial<PartnerConfig>): Promise<PartnerConfig | null> {
+    const [result] = await db
+      .update(partnerConfigsTable)
+      .set(data)
+      .where(eq(partnerConfigsTable.id, id))
+      .returning();
+    return result ?? null;
+  }
+
+  async getPartnerUsersByPartnerId(partnerId: string): Promise<PartnerUser[]> {
+    return db.select().from(partnerUsersTable).where(eq(partnerUsersTable.partnerId, partnerId));
+  }
+
   async getPartnerConfig(slug: string): Promise<PartnerConfig | null> {
     const [result] = await db
       .select()

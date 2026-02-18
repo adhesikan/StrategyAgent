@@ -2578,7 +2578,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     } else {
       baseUrl = "http://localhost:5000";
     }
-    return `${baseUrl}/tradestation-callback`;
+    return `${baseUrl}/api/tradestation/callback`;
   }
 
   app.get("/api/tradestation/oauth/status", (req, res) => {

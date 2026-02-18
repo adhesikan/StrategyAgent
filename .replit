@@ -56,3 +56,4 @@ RITHMIC_SYSTEM_NAME = "Rithmic Test"
 RITHMIC_WS_URL = "wss://rituz00100.rithmic.com:443"
 
 [userenv.production]
+APP_URL = "https://www.vcptrader.com"

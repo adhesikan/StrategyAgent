@@ -86,13 +86,13 @@ export function PullToRefresh({
   const isReady = progress >= 1;
 
   if (!isMobile) {
-    return <div className={cn("flex-1 overflow-auto", className)}>{children}</div>;
+    return <div className={cn("flex-1 overflow-auto flex flex-col", className)}><div className="flex flex-col flex-1">{children}</div></div>;
   }
 
   return (
     <div
       ref={containerRef}
-      className={cn("flex-1 overflow-auto relative", className)}
+      className={cn("flex-1 overflow-auto relative flex flex-col", className)}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -131,9 +131,11 @@ export function PullToRefresh({
         </div>
       </div>
       <div
+        className="flex flex-col flex-1"
         style={{
           transform: `translateY(${pullDistance}px)`,
           transition: isPulling.current ? "none" : "transform 0.2s ease-out",
+          minHeight: "100%",
         }}
       >
         {children}

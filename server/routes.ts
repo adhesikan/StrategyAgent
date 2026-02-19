@@ -5903,6 +5903,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const partners = await storage.getAllPartnerConfigs();
       const result = await Promise.all(partners.map(async (p) => {
         const users = await storage.getPartnerUsersByPartnerId(p.id);
+        const activeSubscribers = users.filter(u => u.isActive && ['active', 'trialing'].includes(u.subscriptionStatus ?? ''));
         return {
           id: p.id,
           slug: p.slug,
@@ -5912,7 +5913,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           primaryColor: p.primaryColor,
           createdAt: p.createdAt,
           partnerApiKey: p.partnerApiKey,
-          subscriberCount: users.length,
+          subscriberCount: activeSubscribers.length,
         };
       }));
       res.json(result);

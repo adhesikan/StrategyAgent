@@ -5568,6 +5568,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const userId = req.session.userId!;
       const parseResult = agentSettingsUpdateSchema.safeParse(req.body);
       if (!parseResult.success) {
+        console.error("[agent-settings] Validation failed:", JSON.stringify(parseResult.error.flatten()));
         return res.status(400).json({
           error: "Invalid settings",
           details: parseResult.error.flatten(),
@@ -5575,6 +5576,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const data = parseResult.data;
+      console.log("[agent-settings] PUT data:", JSON.stringify(data));
       if (data.maxDailyLossUsd !== undefined && data.riskPerTradeUsd !== undefined) {
         if (data.maxDailyLossUsd < data.riskPerTradeUsd) {
           return res.status(400).json({

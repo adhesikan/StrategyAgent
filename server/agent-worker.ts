@@ -591,7 +591,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
 
       const rawOrderType = settings?.entryOrderType?.toUpperCase() || "LIMIT";
       const effectiveOrderType = ["MARKET", "LIMIT"].includes(rawOrderType) ? rawOrderType : "LIMIT";
-      const bracketEnabled = settings?.bracketEnabled ?? true;
+      const bracket = computeBracket(settings, alert.entryPrice, alert.riskPrice, alert.targetPrice);
 
       const orderPayload = {
         symbol: alert.symbol,
@@ -599,8 +599,8 @@ async function processExternalAlerts(userId: string): Promise<void> {
         orderType: effectiveOrderType,
         limitPrice: alert.entryPrice,
         quantity,
-        stopLoss: bracketEnabled ? alert.riskPrice : undefined,
-        target: bracketEnabled ? alert.targetPrice : undefined,
+        stopLoss: bracket.stopLoss,
+        target: bracket.target,
         source: "external_alert",
         externalAlertId: alert.id,
         strategyName: alert.strategyName,
@@ -687,11 +687,72 @@ async function processExternalAlerts(userId: string): Promise<void> {
   }
 }
 
+interface BracketResult {
+  stopLoss: number | undefined;
+  target: number | undefined;
+}
+
+function computeBracket(
+  settings: any,
+  entryPrice: number,
+  signalStop: number | undefined | null,
+  signalTarget: number | undefined | null,
+  side: "buy" | "sell" = "buy"
+): BracketResult {
+  const bracketEnabled = settings?.bracketEnabled ?? true;
+  if (!bracketEnabled) {
+    return { stopLoss: undefined, target: undefined };
+  }
+
+  const stopMethod = settings?.bracketStopMethod || "signal";
+  const stopValue = settings?.bracketStopValue;
+  const targetMethod = settings?.bracketTargetMethod || "signal";
+  const targetValue = settings?.bracketTargetValue;
+
+  const safeSignalStop = (signalStop != null && signalStop > 0) ? signalStop : undefined;
+  const safeSignalTarget = (signalTarget != null && signalTarget > 0) ? signalTarget : undefined;
+
+  let stopLoss: number | undefined = safeSignalStop;
+  let target: number | undefined = safeSignalTarget;
+
+  if (stopMethod === "pct" && stopValue && stopValue > 0 && entryPrice > 0) {
+    stopLoss = side === "buy"
+      ? +(entryPrice * (1 - stopValue / 100)).toFixed(2)
+      : +(entryPrice * (1 + stopValue / 100)).toFixed(2);
+  } else if (stopMethod === "dollar" && stopValue && stopValue > 0 && entryPrice > 0) {
+    stopLoss = side === "buy"
+      ? +(entryPrice - stopValue).toFixed(2)
+      : +(entryPrice + stopValue).toFixed(2);
+  }
+
+  if (targetMethod === "pct" && targetValue && targetValue > 0 && entryPrice > 0) {
+    target = side === "buy"
+      ? +(entryPrice * (1 + targetValue / 100)).toFixed(2)
+      : +(entryPrice * (1 - targetValue / 100)).toFixed(2);
+  } else if (targetMethod === "dollar" && targetValue && targetValue > 0 && entryPrice > 0) {
+    target = side === "buy"
+      ? +(entryPrice + targetValue).toFixed(2)
+      : +(entryPrice - targetValue).toFixed(2);
+  } else if (targetMethod === "rr" && targetValue && targetValue > 0 && stopLoss && entryPrice > 0) {
+    const risk = Math.abs(entryPrice - stopLoss);
+    if (risk > 0) {
+      target = side === "buy"
+        ? +(entryPrice + risk * targetValue).toFixed(2)
+        : +(entryPrice - risk * targetValue).toFixed(2);
+    }
+  }
+
+  if (stopLoss !== undefined && stopLoss <= 0) stopLoss = undefined;
+  if (target !== undefined && target <= 0) target = undefined;
+
+  return { stopLoss, target };
+}
+
 async function buildOrderPayload(opportunity: Opportunity, policy: any, userId: string): Promise<object> {
   const price = opportunity.lastPrice || opportunity.detectedPrice || 0;
-  const stop = opportunity.stopReferencePrice || 0;
-  const target = opportunity.resistancePrice || 0;
-  const riskPerShare = price - stop;
+  const signalStop = opportunity.stopReferencePrice || undefined;
+  const signalTarget = opportunity.resistancePrice || undefined;
+  const riskPerShare = price - (signalStop || 0);
 
   const settings = await storage.getAgentSettings(userId);
   let quantity = 0;
@@ -712,14 +773,16 @@ async function buildOrderPayload(opportunity: Opportunity, policy: any, userId: 
   const effectiveOrderType = settings?.entryOrderType?.toUpperCase() || "LIMIT";
   const validOrderType = ["MARKET", "LIMIT"].includes(effectiveOrderType) ? effectiveOrderType : "LIMIT";
 
+  const bracket = computeBracket(settings, price, signalStop || undefined, signalTarget || undefined);
+
   return {
     symbol: opportunity.symbol,
     action: "BUY",
     orderType: validOrderType,
     limitPrice: price,
     quantity,
-    stopLoss: stop,
-    target,
+    stopLoss: bracket.stopLoss,
+    target: bracket.target,
     strategyId: opportunity.strategyId,
     opportunityId: opportunity.id,
   };
@@ -766,6 +829,9 @@ function toBrokerOrderRequest(payload: any, accountId: string): OrderRequest {
 
   const side: "buy" | "sell" = payload.action?.toUpperCase() === "SELL" ? "sell" : "buy";
   const resolvedStopPrice = payload.stopPrice || payload.stopLoss;
+  const bracketTarget = typeof payload.target === "number" && payload.target > 0 ? payload.target : undefined;
+  const bracketStop = typeof payload.stopLoss === "number" && payload.stopLoss > 0 ? payload.stopLoss : undefined;
+  const hasBracket = bracketTarget != null && bracketStop != null;
   return {
     accountId,
     symbol: payload.symbol,
@@ -775,8 +841,9 @@ function toBrokerOrderRequest(payload: any, accountId: string): OrderRequest {
     price: orderType === "limit" || orderType === "stop_limit" ? payload.limitPrice : undefined,
     stopPrice: orderType === "stop" || orderType === "stop_limit" ? resolvedStopPrice : undefined,
     duration: "day",
-    bracketTarget: payload.target || undefined,
-    bracketStop: payload.stopLoss || undefined,
+    orderClass: hasBracket ? "otoco" : "equity",
+    bracketTarget,
+    bracketStop,
   };
 }
 

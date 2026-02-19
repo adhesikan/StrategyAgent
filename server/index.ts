@@ -382,22 +382,27 @@ async function restoreBrokerConnections() {
 
   // Initialize Stripe schema and sync
   try {
-    const databaseUrl = process.env.DATABASE_URL;
+    const databaseUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
     if (databaseUrl) {
       log("Initializing Stripe schema...", "stripe");
       await runMigrations({ databaseUrl, schema: 'stripe' });
       log("Stripe schema ready", "stripe");
 
-      const stripeSync = await getStripeSync();
-      const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-      const { webhook } = await stripeSync.findOrCreateManagedWebhook(
-        `${webhookBaseUrl}/api/stripe/webhook`
-      );
-      log(`Stripe webhook configured: ${webhook.url}`, "stripe");
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      if (replitDomain) {
+        const stripeSync = await getStripeSync();
+        const webhookBaseUrl = `https://${replitDomain}`;
+        const { webhook } = await stripeSync.findOrCreateManagedWebhook(
+          `${webhookBaseUrl}/api/stripe/webhook`
+        );
+        log(`Stripe webhook configured: ${webhook.url}`, "stripe");
 
-      stripeSync.syncBackfill()
-        .then(() => log("Stripe data synced", "stripe"))
-        .catch((err: any) => log(`Stripe sync error: ${err.message}`, "stripe"));
+        stripeSync.syncBackfill()
+          .then(() => log("Stripe data synced", "stripe"))
+          .catch((err: any) => log(`Stripe sync error: ${err.message}`, "stripe"));
+      } else {
+        log("Skipping Stripe webhook setup (no REPLIT_DOMAINS)", "stripe");
+      }
     }
   } catch (error: any) {
     log(`Stripe init error (non-fatal): ${error.message}`, "stripe");

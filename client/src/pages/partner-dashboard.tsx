@@ -321,8 +321,17 @@ function AgentTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/partner/agent-settings"] });
       toast({ title: "Settings saved successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to save settings", variant: "destructive" });
+    onError: (error: any) => {
+      let msg = "Failed to save settings";
+      try {
+        const raw = error?.message || "";
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart >= 0) {
+          const parsed = JSON.parse(raw.slice(jsonStart));
+          msg = parsed.error || msg;
+        }
+      } catch {}
+      toast({ title: msg, variant: "destructive" });
     },
   });
 

@@ -5635,7 +5635,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       res.json(updated);
     } catch (error: any) {
       console.error("[partner/agent-settings] PUT error:", error?.message || error, error?.stack);
-      res.status(500).json({ error: "Failed to update agent settings" });
+      const detail = error?.message || "Unknown error";
+      res.status(500).json({ error: `Failed to update agent settings: ${detail}` });
     }
   });
 

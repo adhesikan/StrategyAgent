@@ -77,8 +77,8 @@ export function StockTradeTicket({
   useEffect(() => {
     if (open && scanResult) {
       const entry = scanResult.price || scanResult.resistance || 0;
-      setEntryType("limit");
-      setLimitPrice(String(entry.toFixed(2)));
+      setEntryType(entry > 0 ? "limit" : "market");
+      setLimitPrice(entry > 0 ? String(entry.toFixed(2)) : "");
       setQuantity(1);
       setDuration("day");
       setBracketEnabled(false);
@@ -113,7 +113,9 @@ export function StockTradeTicket({
       };
 
       if (entryType === "limit") {
-        payload.price = parseFloat(limitPrice);
+        const parsedPrice = parseFloat(limitPrice);
+        if (!parsedPrice || parsedPrice <= 0) throw new Error("Enter a valid limit price");
+        payload.price = parsedPrice;
       }
 
       if (bracketEnabled && targetPrice && stopPrice) {

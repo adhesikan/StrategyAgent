@@ -1984,7 +1984,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   });
 
   // ─── Stock Trade Ticket (Place Equity with optional OTOCO bracket) ──
-  app.post("/api/trade/place-equity", isAuthenticated, async (req, res) => {
+  app.post("/api/trade/place-equity", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop } = req.body;
 

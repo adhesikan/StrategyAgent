@@ -64,6 +64,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
 
 function FieldTip({ text }: { text: string }) {
   return (
@@ -156,6 +157,15 @@ const brokerProviders = [
   },
 ];
 
+interface BrokerAccount {
+  id: string;
+  name: string;
+  type: string;
+  buyingPower: number;
+  equity: number;
+  currency: string;
+}
+
 function BrokerTab() {
   const { toast } = useToast();
   const { data: broker, isLoading } = useQuery<BrokerStatus>({
@@ -164,8 +174,26 @@ function BrokerTab() {
 
   const [connectingBroker, setConnectingBroker] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
+  const [showTradeTicket, setShowTradeTicket] = useState(false);
+  const [tradeSymbol, setTradeSymbol] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
 
   const isConnected = broker?.isConnected || broker?.connected;
+
+  const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: isConnected === true,
+  });
+
+  useEffect(() => {
+    if (brokerAccounts.length > 0 && !selectedAccount) {
+      if (broker?.preferredAccountId) {
+        const preferred = brokerAccounts.find(a => a.id === broker.preferredAccountId);
+        if (preferred) { setSelectedAccount(preferred); return; }
+      }
+      setSelectedAccount(brokerAccounts[0]);
+    }
+  }, [brokerAccounts, broker?.preferredAccountId]);
 
   const testMutation = useMutation({
     mutationFn: async () => {
@@ -306,6 +334,62 @@ function BrokerTab() {
           You will be redirected to your broker to authorize the connection.
         </p>
       </div>
+
+      {isConnected && (
+        <Card data-testid="card-instatrade">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Zap className="w-5 h-5 text-chart-2" />
+              <h3 className="text-base font-medium">InstaTrade&trade;</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Send trades directly to your brokerage with one click. Enter a stock symbol and configure your order.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Input
+                value={tradeSymbol}
+                onChange={(e) => setTradeSymbol(e.target.value.toUpperCase())}
+                placeholder="Enter symbol (e.g. AAPL)"
+                className="max-w-[200px]"
+                data-testid="input-trade-symbol"
+              />
+              <Button
+                onClick={() => {
+                  if (!tradeSymbol.trim()) {
+                    toast({ title: "Enter a stock symbol", variant: "destructive" });
+                    return;
+                  }
+                  setShowTradeTicket(true);
+                }}
+                disabled={!tradeSymbol.trim()}
+                data-testid="button-instatrade"
+              >
+                <Zap className="w-4 h-4 mr-1" />
+                InstaTrade&trade;
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <StockTradeTicket
+        open={showTradeTicket}
+        onOpenChange={(open) => {
+          setShowTradeTicket(open);
+          if (!open) setTradeSymbol("");
+        }}
+        scanResult={tradeSymbol.trim() ? {
+          ticker: tradeSymbol.trim(),
+          price: 0,
+          resistance: null,
+          stopLoss: null,
+          stage: "MANUAL",
+          patternScore: 0,
+        } : null}
+        brokerAccounts={brokerAccounts}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+      />
     </div>
   );
 }

@@ -1421,6 +1421,7 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
                 <span className="text-4xl font-bold" data-testid="text-subscription-price">$39</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
+              <p className="text-sm font-medium text-primary mt-1" data-testid="text-trial-badge">14-day free trial</p>
               <p className="text-xs text-muted-foreground mt-1">Cancel anytime</p>
             </div>
 
@@ -1447,11 +1448,11 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
               ) : (
                 <CreditCard className="w-4 h-4 mr-2" />
               )}
-              Subscribe Now
+              Start Free Trial
             </Button>
 
-            <p className="text-xs text-center text-muted-foreground">
-              Secure payment powered by Stripe. You can manage or cancel your subscription at any time.
+            <p className="text-xs text-center text-muted-foreground" data-testid="text-trial-disclaimer">
+              Your 14-day free trial begins at signup. After the trial ends, you will be automatically charged $39/month unless you cancel before the trial period ends. This is a recurring monthly subscription. You can cancel anytime from your account settings or Stripe billing portal.
             </p>
           </CardContent>
         </Card>

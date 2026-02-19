@@ -1446,6 +1446,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         isConnected: connection.isConnected,
         lastSync: connection.lastSync,
         preferredAccountId: connection.preferredAccountId || null,
+        autoReconnect: connection.autoReconnect ?? false,
       };
       res.json(sanitizedConnection);
     } catch (error) {
@@ -1614,6 +1615,21 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to disconnect broker" });
+    }
+  });
+
+  app.post("/api/broker/auto-reconnect", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { enabled } = req.body;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled must be a boolean" });
+      }
+      await storage.updateBrokerAutoReconnect(userId, enabled);
+      res.json({ success: true, autoReconnect: enabled });
+    } catch (error) {
+      console.error("Error toggling auto-reconnect:", error);
+      res.status(500).json({ error: "Failed to update auto-reconnect setting" });
     }
   });
 

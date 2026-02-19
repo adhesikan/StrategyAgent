@@ -577,6 +577,15 @@ export default function Settings() {
     },
   });
 
+  const autoReconnectMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      await apiRequest("POST", "/api/broker/auto-reconnect", { enabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+    },
+  });
+
   const testConnectionMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/broker/test", {});
@@ -766,16 +775,28 @@ export default function Settings() {
                       </p>
                     </div>
                   </div>
-                  {brokerStatus?.isConnected && (
+                  {(brokerStatus?.isConnected || connectionLost) && (
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => testConnectionMutation.mutate()}
-                        disabled={testConnectionMutation.isPending}
-                        data-testid="button-test-connection"
-                      >
-                        {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
-                      </Button>
+                      {connectionLost && brokerStatus?.provider && (
+                        <Button
+                          variant="default"
+                          onClick={() => initiateOAuth(brokerStatus.provider)}
+                          disabled={isOAuthPending}
+                          data-testid="button-reconnect-broker"
+                        >
+                          {isOAuthPending ? "Reconnecting..." : "Reconnect"}
+                        </Button>
+                      )}
+                      {brokerStatus?.isConnected && !connectionLost && (
+                        <Button
+                          variant="outline"
+                          onClick={() => testConnectionMutation.mutate()}
+                          disabled={testConnectionMutation.isPending}
+                          data-testid="button-test-connection"
+                        >
+                          {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         onClick={() => disconnectBrokerMutation.mutate()}
@@ -787,6 +808,22 @@ export default function Settings() {
                     </div>
                   )}
                 </div>
+                {(brokerStatus?.isConnected || connectionLost) && (
+                  <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t">
+                    <div>
+                      <p className="text-sm font-medium">Keep Connection Alive</p>
+                      <p className="text-xs text-muted-foreground">
+                        Automatically refresh your access token so you stay connected without re-authorizing
+                      </p>
+                    </div>
+                    <Switch
+                      checked={brokerStatus?.autoReconnect ?? false}
+                      onCheckedChange={(checked) => autoReconnectMutation.mutate(checked)}
+                      disabled={autoReconnectMutation.isPending}
+                      data-testid="switch-auto-reconnect"
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -944,7 +981,13 @@ export default function Settings() {
                       <Card 
                         key={broker.id}
                         className={`cursor-pointer hover-elevate ${isConnected ? (isExpired ? "border-destructive" : "border-primary") : ""}`}
-                        onClick={() => !isConnected && handleProviderClick(broker.id)}
+                        onClick={() => {
+                          if (isExpired) {
+                            initiateOAuth(broker.id);
+                          } else if (!isConnected) {
+                            handleProviderClick(broker.id);
+                          }
+                        }}
                         data-testid={`broker-${broker.id}`}
                       >
                         <CardContent className="p-4">
@@ -957,7 +1000,7 @@ export default function Settings() {
                             </div>
                             {isConnected && (
                               <Badge variant={isExpired ? "destructive" : "default"} className="text-xs">
-                                {isExpired ? "Expired" : "Active"}
+                                {isExpired ? "Tap to Reconnect" : "Active"}
                               </Badge>
                             )}
                           </div>

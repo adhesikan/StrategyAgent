@@ -9,6 +9,7 @@ interface BrokerStatus {
   isConnected: boolean;
   lastSync: string | null;
   preferredAccountId: string | null;
+  autoReconnect: boolean;
 }
 
 interface DataSourceStatus {

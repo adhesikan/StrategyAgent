@@ -483,6 +483,11 @@ async function restoreBrokerConnections() {
   startExitManager();
   log("Exit manager started (TradeGuard)");
 
+  // Start token refresh service for persistent broker connections
+  const { startTokenRefreshService } = await import("./token-refresh-service");
+  startTokenRefreshService();
+  log("Token refresh service started");
+
   // Sync Stripe subscription statuses to partner_users (every 2 minutes)
   cron.schedule("*/2 * * * *", async () => {
     try {

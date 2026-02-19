@@ -127,6 +127,8 @@ export interface IStorage {
   setSandboxToken(userId: string, sandboxAccessToken: string): Promise<void>;
   removeSandboxToken(userId: string): Promise<void>;
   updateBrokerConnectionStatus(userId: string, isConnected: boolean): Promise<void>;
+  updateBrokerAutoReconnect(userId: string, autoReconnect: boolean): Promise<void>;
+  getAutoReconnectConnections(): Promise<BrokerConnection[]>;
   clearBrokerConnection(userId: string): Promise<void>;
 
   getPushSubscriptions(): Promise<PushSubscription[]>;
@@ -982,6 +984,20 @@ export class MemStorage implements IStorage {
         updatedAt: now,
       })
       .where(eq(brokerConnections.userId, userId));
+  }
+
+  async updateBrokerAutoReconnect(userId: string, autoReconnect: boolean): Promise<void> {
+    await db
+      .update(brokerConnections)
+      .set({ autoReconnect, updatedAt: new Date() })
+      .where(eq(brokerConnections.userId, userId));
+  }
+
+  async getAutoReconnectConnections(): Promise<BrokerConnection[]> {
+    return db
+      .select()
+      .from(brokerConnections)
+      .where(eq(brokerConnections.autoReconnect, true));
   }
 
   async clearBrokerConnection(userId: string): Promise<void> {

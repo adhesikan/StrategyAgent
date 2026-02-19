@@ -318,6 +318,7 @@ export const brokerConnections = pgTable("broker_connections", {
   credentialsAuthTag: text("credentials_auth_tag"),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),
   isConnected: boolean("is_connected").default(false),
+  autoReconnect: boolean("auto_reconnect").default(false),
   lastSync: timestamp("last_sync"),
   permissions: jsonb("permissions"),
   preferredAccountId: text("preferred_account_id"),

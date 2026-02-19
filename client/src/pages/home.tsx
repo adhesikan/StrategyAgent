@@ -28,7 +28,8 @@ import {
   LineChart,
   Brain,
   BookOpen,
-  TestTube,
+  Zap,
+  TrendingUp,
 } from "lucide-react";
 import logoUrl from "@assets/ChatGPT_Image_Jan_1,_2026,_01_38_07_PM_1767292703801.png";
 import vcpChartImg from "@assets/VCPChart_1767652266272.png";
@@ -390,7 +391,6 @@ function VCPTraderProSection() {
         "Stop-loss & EMA-21 exit alerts",
         '"Approaching breakout" notifications',
         "Push notifications (mobile PWA)",
-        "Email & in-app alerts",
       ],
     },
     {
@@ -423,18 +423,29 @@ function VCPTraderProSection() {
       ],
     },
     {
-      title: "Broker Connectivity",
-      icon: Link2,
+      title: "Trading",
+      icon: TrendingUp,
       features: [
-        "Tradier / tastytrade market data (optional)",
-        "Live bid/ask breakout confirmation",
+        "Equities",
+        "Options",
+        "Futures (coming soon)",
       ],
     },
     {
-      title: "Backtesting",
-      icon: TestTube,
+      title: "InstaTrade\u2122",
+      icon: Zap,
       features: [
-        "Test how VCP breakouts performed historically",
+        "Create and place a trade in one click",
+        "Instant order execution",
+      ],
+    },
+    {
+      title: "Broker Connectivity",
+      icon: Link2,
+      features: [
+        "Tradier / tastytrade market data",
+        "TradeStation integration",
+        "Live bid/ask breakout confirmation",
       ],
     },
     {

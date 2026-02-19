@@ -39,6 +39,8 @@ import {
   History as HistoryIcon,
   Webhook,
   FlaskConical,
+  RefreshCw,
+  Key,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
@@ -51,6 +53,7 @@ interface Partner {
   logoUrl: string | null;
   primaryColor: string | null;
   createdAt: string;
+  partnerApiKey: string | null;
   subscriberCount: number;
 }
 
@@ -316,6 +319,7 @@ function TestLoginDialog({ partner }: { partner: Partner }) {
 function PartnerCard({ partner }: { partner: Partner }) {
   const { toast } = useToast();
   const [showIntegration, setShowIntegration] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const toggleMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
@@ -328,7 +332,22 @@ function PartnerCard({ partner }: { partner: Partner }) {
     },
   });
 
+  const regenerateKeyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/partners/${partner.id}/regenerate-key`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/partners"] });
+      toast({ title: "API key regenerated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to regenerate key", variant: "destructive" });
+    },
+  });
+
   const loginUrl = `${window.location.origin}/api/partner/login?token=<JWT>&partner=${partner.slug}`;
+  const broadcastUrl = `${window.location.origin}/api/partner/alerts/broadcast`;
 
   return (
     <Card className="overflow-visible" data-testid={`card-partner-${partner.slug}`}>
@@ -374,9 +393,60 @@ function PartnerCard({ partner }: { partner: Partner }) {
         </div>
 
         {showIntegration && (
-          <div className="space-y-3 p-3 rounded-md bg-muted/50">
+          <div className="space-y-4 p-3 rounded-md bg-muted/50">
             <div className="space-y-1">
-              <Label className="text-xs font-medium">Login URL (partner redirects subscribers here)</Label>
+              <Label className="text-xs font-medium flex items-center gap-1">
+                <Key className="w-3 h-3" />
+                Partner Broadcast API Key
+              </Label>
+              {partner.partnerApiKey ? (
+                <div className="flex items-center gap-1">
+                  <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono" data-testid={`text-api-key-${partner.slug}`}>
+                    {showApiKey ? partner.partnerApiKey : `${partner.partnerApiKey.slice(0, 12)}${"*".repeat(32)}`}
+                  </code>
+                  <Button size="icon" variant="ghost" onClick={() => setShowApiKey(!showApiKey)} data-testid={`button-toggle-key-${partner.slug}`}>
+                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                  <CopyButton text={partner.partnerApiKey} />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => regenerateKeyMutation.mutate()}
+                    disabled={regenerateKeyMutation.isPending}
+                    data-testid={`button-regenerate-key-${partner.slug}`}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${regenerateKeyMutation.isPending ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">No API key generated yet</span>
+                  <Button size="sm" variant="outline" onClick={() => regenerateKeyMutation.mutate()} disabled={regenerateKeyMutation.isPending} data-testid={`button-generate-key-${partner.slug}`}>
+                    {regenerateKeyMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Key className="w-3 h-3 mr-1" />}
+                    Generate Key
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium flex items-center gap-1">
+                <Webhook className="w-3 h-3" />
+                Broadcast Webhook URL (sends to ALL active subscribers)
+              </Label>
+              <div className="flex items-center gap-1">
+                <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono" data-testid={`text-broadcast-url-${partner.slug}`}>
+                  {broadcastUrl}
+                </code>
+                <CopyButton text={broadcastUrl} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Partner sends one POST request here with the API key above in the <code className="font-mono bg-muted px-1 rounded">X-API-Key</code> header. The signal is automatically delivered to all active subscribers.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Subscriber Login URL</Label>
               <div className="flex items-center gap-1">
                 <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono" data-testid={`text-login-url-${partner.slug}`}>
                   {loginUrl}
@@ -398,16 +468,32 @@ function PartnerCard({ partner }: { partner: Partner }) {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-medium">Webhook URL (for sending trade signals)</Label>
-              <div className="flex items-center gap-1">
-                <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono">
-                  {window.location.origin}/api/external-alerts/webhook
-                </code>
-                <CopyButton text={`${window.location.origin}/api/external-alerts/webhook`} />
+              <Label className="text-xs font-medium">Signal Payload Examples</Label>
+              <div className="text-xs text-muted-foreground space-y-2">
+                <div>
+                  <p className="font-medium text-foreground mb-1">Raw Text Format (Strategy Fundamentals):</p>
+                  <code className="block bg-muted p-2 rounded font-mono whitespace-pre">{`POST ${broadcastUrl}
+Headers: X-API-Key: <partner_api_key>
+
+{
+  "rawText": "enter sym=PWR lp=534.78 tp=584.9 sl=408.36"
+}`}</code>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground mb-1">Structured JSON Format:</p>
+                  <code className="block bg-muted p-2 rounded font-mono whitespace-pre">{`POST ${broadcastUrl}
+Headers: X-API-Key: <partner_api_key>
+
+{
+  "symbol": "AAPL",
+  "direction": "Long",
+  "strategy_name": "Momentum Breakout",
+  "entry_price": 185.50,
+  "risk_price": 180.00,
+  "target_price": 195.00
+}`}</code>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Each subscriber gets their own API key (auto-provisioned on first login). Send signals with the X-API-Key header.
-              </p>
             </div>
           </div>
         )}
@@ -465,8 +551,9 @@ function SetupGuide() {
             <div className="pl-8 space-y-2 text-sm text-muted-foreground">
               <p>After creating a partner, expand "Integration Details" on their card to get:</p>
               <ul className="list-disc pl-4 space-y-1">
+                <li><span className="font-medium text-foreground">Broadcast API Key</span> — The partner uses this key to send trade signals. One key covers all their subscribers.</li>
+                <li><span className="font-medium text-foreground">Broadcast Webhook URL</span> — The single endpoint where the partner sends trade signals. Each signal is automatically delivered to all active subscribers.</li>
                 <li><span className="font-medium text-foreground">Login URL</span> — The partner embeds this in their newsletter/platform. When a subscriber clicks it, they land on their personal trading dashboard.</li>
-                <li><span className="font-medium text-foreground">Webhook URL</span> — Where the partner sends trade signals (entry/exit alerts).</li>
                 <li><span className="font-medium text-foreground">JWT Format</span> — The partner signs a JWT with the shared secret containing <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">sub</code> (subscriber ID) and <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">email</code>.</li>
               </ul>
             </div>
@@ -529,7 +616,7 @@ function SetupGuide() {
               Webhook Signal Format
             </h4>
             <div className="pl-6 space-y-2 text-sm text-muted-foreground">
-              <p>Signals are sent as plain text via <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">POST</code> to the webhook URL with the subscriber's API key in the <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">X-API-Key</code> header:</p>
+              <p>Signals are sent via <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">POST</code> to the broadcast webhook with the partner's API key in the <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">X-API-Key</code> header:</p>
               <div className="space-y-1">
                 <p className="text-xs font-medium text-foreground">Entry alert:</p>
                 <code className="block text-xs bg-muted p-2 rounded font-mono">enter sym=AAPL lp=185.50 tp=195.00 sl=180.00</code>

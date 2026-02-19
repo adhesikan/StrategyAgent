@@ -5892,6 +5892,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           logoUrl: p.logoUrl,
           primaryColor: p.primaryColor,
           createdAt: p.createdAt,
+          partnerApiKey: p.partnerApiKey,
           subscriberCount: users.length,
         };
       }));
@@ -5927,14 +5928,138 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       if (!slug || !name || !sharedSecret) {
         return res.status(400).json({ error: "slug, name, and sharedSecret are required" });
       }
+      const partnerApiKey = `pk_${slug}_${crypto.randomBytes(24).toString("hex")}`;
       const config = await storage.createPartnerConfig({
         slug, name, sharedSecret, isActive: true,
+        partnerApiKey,
         logoUrl: logoUrl || null,
         primaryColor: primaryColor || null,
       });
-      res.status(201).json({ id: config.id, slug: config.slug, name: config.name });
+      res.status(201).json({ id: config.id, slug: config.slug, name: config.name, partnerApiKey });
     } catch (error) {
       res.status(500).json({ error: "Failed to create partner" });
+    }
+  });
+
+  app.post("/api/admin/partners/:id/regenerate-key", isAuthenticated as RequestHandler, isAdmin, async (req, res) => {
+    try {
+      const partner = await storage.getPartnerConfigById(req.params.id);
+      if (!partner) return res.status(404).json({ error: "Partner not found" });
+      const newKey = `pk_${partner.slug}_${crypto.randomBytes(24).toString("hex")}`;
+      await storage.updatePartnerConfig(partner.id, { partnerApiKey: newKey });
+      res.json({ partnerApiKey: newKey });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to regenerate key" });
+    }
+  });
+
+  app.post("/api/partner/alerts/broadcast", async (req, res) => {
+    try {
+      const apiKey = req.headers["x-api-key"] as string;
+      if (!apiKey) {
+        return res.status(401).json({ error: "Missing X-API-Key header" });
+      }
+
+      const partner = await storage.getPartnerConfigByApiKey(apiKey);
+      if (!partner || !partner.isActive) {
+        return res.status(401).json({ error: "Invalid or inactive partner API key" });
+      }
+
+      const body = req.body;
+      let alertData: {
+        alertType: "entry" | "exit";
+        symbol: string;
+        direction: string;
+        strategyName: string;
+        strategyGroup: string | null;
+        entryPrice: number;
+        riskPrice: number | null;
+        targetPrice: number | null;
+        exitReason: string | null;
+      };
+
+      if (body.rawText) {
+        const parsed = parseSfRawText(body.rawText);
+        if (!parsed) {
+          return res.status(400).json({
+            error: "Could not parse rawText",
+            hint: 'Expected format: "enter sym=PWR lp=534.78 tp=584.9 sl=408.36" or "exit sym=WDC reason=\\"Stop Loss\\" sl=115.4"',
+          });
+        }
+        alertData = {
+          alertType: parsed.alertType,
+          symbol: parsed.symbol,
+          direction: "Long",
+          strategyName: body.strategy_name || partner.name,
+          strategyGroup: body.strategy_group || null,
+          entryPrice: parsed.entryPrice,
+          riskPrice: parsed.riskPrice,
+          targetPrice: parsed.targetPrice,
+          exitReason: parsed.exitReason,
+        };
+      } else {
+        const { externalAlertWebhookSchema } = await import("@shared/schema");
+        const parsed = externalAlertWebhookSchema.safeParse(body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            error: "Invalid alert payload",
+            details: parsed.error.issues.map((i: any) => `${i.path.join(".")}: ${i.message}`),
+          });
+        }
+        const data = parsed.data;
+        alertData = {
+          alertType: data.alert_type,
+          symbol: data.symbol.toUpperCase(),
+          direction: data.direction,
+          strategyName: data.strategy_name,
+          strategyGroup: data.strategy_group ?? null,
+          entryPrice: data.entry_price,
+          riskPrice: data.risk_price ?? null,
+          targetPrice: data.target_price ?? null,
+          exitReason: data.exit_reason ?? null,
+        };
+      }
+
+      const subscribers = await storage.getPartnerUsersByPartnerId(partner.id);
+      const activeSubscribers = subscribers.filter((s) => s.isActive && s.linkedUserId && s.subscriptionStatus === "active");
+
+      let delivered = 0;
+      let failed = 0;
+      for (const sub of activeSubscribers) {
+        try {
+          await storage.createExternalAlert({
+            userId: sub.linkedUserId!,
+            source: partner.slug,
+            alertType: alertData.alertType,
+            symbol: alertData.symbol,
+            direction: alertData.direction,
+            strategyName: alertData.strategyName,
+            strategyGroup: alertData.strategyGroup,
+            entryPrice: alertData.entryPrice,
+            riskPrice: alertData.riskPrice,
+            targetPrice: alertData.targetPrice,
+            exitReason: alertData.exitReason,
+            alertTimestamp: new Date(),
+            status: "pending",
+          });
+          delivered++;
+        } catch {
+          failed++;
+        }
+      }
+
+      console.log(`[PartnerBroadcast] ${partner.slug}: ${alertData.symbol} ${alertData.alertType} delivered to ${delivered}/${activeSubscribers.length} subscribers`);
+      res.json({
+        success: true,
+        symbol: alertData.symbol,
+        alertType: alertData.alertType,
+        totalSubscribers: activeSubscribers.length,
+        delivered,
+        failed,
+      });
+    } catch (error: any) {
+      console.error("[PartnerBroadcast] Error:", error?.message || error);
+      res.status(500).json({ error: "Broadcast failed" });
     }
   });
 

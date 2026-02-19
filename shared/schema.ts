@@ -1392,11 +1392,13 @@ export type ExternalAlert = typeof externalAlerts.$inferSelect;
 export const externalAlertWebhookSchema = z.object({
   symbol: z.string().min(1).max(10),
   direction: z.enum(["Long", "Short"]).default("Long"),
+  alert_type: z.enum(["entry", "exit"]).default("entry"),
   strategy_name: z.string().min(1),
   strategy_group: z.string().optional(),
   entry_price: z.number().positive(),
-  risk_price: z.number().positive(),
-  target_price: z.number().positive(),
+  risk_price: z.number().positive().optional(),
+  target_price: z.number().positive().optional(),
+  exit_reason: z.string().optional(),
   timestamp: z.string().optional(),
 });
 export type ExternalAlertWebhook = z.infer<typeof externalAlertWebhookSchema>;
@@ -1432,6 +1434,7 @@ export const partnerConfigs = pgTable("partner_configs", {
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   sharedSecret: text("shared_secret").notNull(),
+  partnerApiKey: text("partner_api_key"),
   isActive: boolean("is_active").default(true),
   logoUrl: text("logo_url"),
   primaryColor: text("primary_color"),

@@ -306,6 +306,7 @@ export interface IStorage {
   // Partner system
   getPartnerConfig(slug: string): Promise<PartnerConfig | null>;
   getPartnerConfigById(id: string): Promise<PartnerConfig | null>;
+  getPartnerConfigByApiKey(apiKey: string): Promise<PartnerConfig | null>;
   createPartnerConfig(config: InsertPartnerConfig): Promise<PartnerConfig>;
   getPartnerUser(partnerId: string, partnerSubscriberId: string): Promise<PartnerUser | null>;
   getPartnerUserById(id: string): Promise<PartnerUser | null>;
@@ -2600,6 +2601,15 @@ export class MemStorage implements IStorage {
       .select()
       .from(partnerConfigsTable)
       .where(eq(partnerConfigsTable.id, id))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async getPartnerConfigByApiKey(apiKey: string): Promise<PartnerConfig | null> {
+    const [result] = await db
+      .select()
+      .from(partnerConfigsTable)
+      .where(eq(partnerConfigsTable.partnerApiKey, apiKey))
       .limit(1);
     return result ?? null;
   }

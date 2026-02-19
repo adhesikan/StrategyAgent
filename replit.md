@@ -95,5 +95,8 @@ Partner subscriptions are managed via Stripe Checkout and Billing Portal.
 ### Push Notifications
 -   **Web Push API**: Used for real-time alert delivery.
 
+### Partner Broadcast Webhook
+A partner-level broadcast webhook (`POST /api/partner/alerts/broadcast`) enables partners to send a single trade signal that automatically fans out to all their active subscribers. Authentication uses a partner API key (`X-API-Key` header) auto-generated during partner creation. The endpoint supports both raw text format (Strategy Fundamentals style) and structured JSON. See `PARTNER_INTEGRATION_GUIDE.md` for full integration documentation.
+
 ### News & Research
 -   **Stock News API**: Provides compliance-safe news headlines by ticker symbol with caching and rate limiting.

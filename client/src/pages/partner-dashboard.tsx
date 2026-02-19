@@ -1452,7 +1452,7 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
             </Button>
 
             <p className="text-xs text-center text-muted-foreground" data-testid="text-trial-disclaimer">
-              Your 14-day free trial begins at signup. After the trial ends, you will be automatically charged $39/month unless you cancel before the trial period ends. This is a recurring monthly subscription. You can cancel anytime from your account settings or Stripe billing portal.
+              Your 14-day free trial begins at signup. After the trial ends, you will be automatically charged at the standard monthly rate unless you cancel before the trial period ends. This is a recurring monthly subscription. You can cancel anytime from your account settings or Stripe billing portal.
             </p>
           </CardContent>
         </Card>

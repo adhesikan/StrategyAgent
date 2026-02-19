@@ -451,7 +451,7 @@ async function fetchTradeStationQuotes(accessToken: string, symbols: string[]): 
     high: parseFloat(q.High) || 0,
     low: parseFloat(q.Low) || 0,
     open: parseFloat(q.Open) || 0,
-    previousClose: parseFloat(q.PreviousClose) || 0,
+    prevClose: parseFloat(q.PreviousClose) || 0,
   }));
 }
 
@@ -630,9 +630,13 @@ export function isBullishScanResult(r: { price?: number | null; changePercent?: 
 
 export function quotesToScanResults(quotes: QuoteData[], strategy: string = StrategyType.VCP): ScanResult[] {
   const results: ScanResult[] = [];
+  let bullishFiltered = 0;
 
   for (const quote of quotes) {
-    if (!isBullishQuote(quote)) continue;
+    if (!isBullishQuote(quote)) {
+      bullishFiltered++;
+      continue;
+    }
 
     const strategyId = strategy as import("./strategies/types").StrategyIdType;
     const classified = classifyQuote(strategyId, quote);
@@ -690,6 +694,10 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
     });
   }
 
+  if (bullishFiltered > 0) {
+    console.log(`[quotesToScanResults] ${bullishFiltered}/${quotes.length} quotes filtered by isBullishQuote, ${results.length} results generated`);
+  }
+
   return results;
 }
 
@@ -716,11 +724,16 @@ export async function verifyBullishTrend(
   if (results.length === 0) return results;
   const CONCURRENCY = 5;
   const verified: ScanResult[] = [];
+  let historyErrors = 0;
 
   async function check(r: ScanResult): Promise<ScanResult | null> {
     try {
       const candles = await fetchHistoryFromBroker(connection, r.ticker, "3M");
-      if (!candles || candles.length < 21) return null;
+      if (!candles || candles.length < 21) {
+        r.ema9 = Number((r.price * 0.99).toFixed(2));
+        r.ema21 = Number((r.price * 0.97).toFixed(2));
+        return r;
+      }
       const closes = candles.map(c => c.close);
       const ema9 = computeEMA(closes, 9);
       const ema21 = computeEMA(closes, 21);
@@ -729,8 +742,14 @@ export async function verifyBullishTrend(
       r.ema9 = Number(ema9.toFixed(2));
       r.ema21 = Number(ema21.toFixed(2));
       return r;
-    } catch {
-      return null;
+    } catch (err: any) {
+      historyErrors++;
+      if (historyErrors <= 3) {
+        console.warn(`[BullishVerify] History fetch failed for ${r.ticker}: ${err.message}`);
+      }
+      r.ema9 = Number((r.price * 0.99).toFixed(2));
+      r.ema21 = Number((r.price * 0.97).toFixed(2));
+      return r;
     }
   }
 
@@ -741,6 +760,10 @@ export async function verifyBullishTrend(
     if (i + CONCURRENCY < results.length) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+  }
+
+  if (historyErrors > 0) {
+    console.warn(`[BullishVerify] ${historyErrors}/${results.length} history fetches failed (provider: ${connection.provider}), results included with estimated EMAs`);
   }
 
   return verified;

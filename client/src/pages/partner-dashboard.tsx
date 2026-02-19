@@ -60,6 +60,8 @@ import {
   Info,
   AlertTriangle,
   Scale,
+  ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -317,7 +319,7 @@ function AgentTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/partner/agent-settings"] });
-      toast({ title: "Agent settings saved" });
+      toast({ title: "Settings saved successfully" });
     },
     onError: () => {
       toast({ title: "Failed to save settings", variant: "destructive" });
@@ -336,6 +338,7 @@ function AgentTab() {
   const [blocklistText, setBlocklistText] = useState("");
   const [showAutoConfirm, setShowAutoConfirm] = useState(false);
   const [autoConsentChecked, setAutoConsentChecked] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -431,20 +434,22 @@ function AgentTab() {
         </Card>
       )}
 
-      {/* Section 1: Auto Agent Configuration */}
-      <Card data-testid="card-agent-config">
-        <CardHeader className="pb-3">
+      {/* ─── ESSENTIALS: Quick Setup ─── */}
+      <Card data-testid="card-agent-essentials">
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2">
-            <Bot className="w-5 h-5" />
-            Auto Agent Configuration
+            <Zap className="w-5 h-5" />
+            Quick Setup
           </CardTitle>
-          <CardDescription>Configure how the trading agent handles incoming signals</CardDescription>
+          <CardDescription>
+            Just these few settings to get started. Everything else has sensible defaults.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between gap-4 rounded-md border p-4">
             <div>
-              <Label className="font-medium inline-flex items-center">Agent Enabled <FieldTip text="Master switch. When off, the agent ignores all incoming signals." /></Label>
-              <p className="text-xs text-muted-foreground">Turn on/off automated signal processing</p>
+              <Label className="font-medium text-base">Enable Agent</Label>
+              <p className="text-sm text-muted-foreground mt-0.5">Start receiving and processing trade signals</p>
             </div>
             <Switch
               checked={current.enabled ?? false}
@@ -467,82 +472,39 @@ function AgentTab() {
                 <SelectItem value="auto">Auto (Execute automatically)</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {current.mode === "auto"
+                ? "Trades will be placed automatically when signals arrive."
+                : "Signals will appear in your Trades tab for you to review first."}
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="inline-flex items-center">Trading Window Start <FieldTip text="The earliest time the agent will place orders. Uses 24-hour format (e.g. 09:35)." /></Label>
-              <Input
-                type="text"
-                placeholder="09:35"
-                value={current.tradingWindowStart || "09:35:00"}
-                onChange={(e) => updateField("tradingWindowStart", e.target.value)}
-                data-testid="input-window-start"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="inline-flex items-center">Trading Window End <FieldTip text="The latest time the agent will place new orders. Existing orders remain active." /></Label>
-              <Input
-                type="text"
-                placeholder="15:50"
-                value={current.tradingWindowEnd || "15:50:00"}
-                onChange={(e) => updateField("tradingWindowEnd", e.target.value)}
-                data-testid="input-window-end"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="inline-flex items-center">Timezone <FieldTip text="The timezone used for interpreting trading window times." /></Label>
-            <Select
-              value={current.timezone || "America/New_York"}
-              onValueChange={(val) => updateField("timezone", val)}
-            >
-              <SelectTrigger data-testid="select-timezone">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
-                <SelectItem value="America/Chicago">Central (CT)</SelectItem>
-                <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
-                <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Section 2: Risk Limits */}
-      <Card data-testid="card-risk-limits">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5" />
-            Risk Limits
-          </CardTitle>
-          <CardDescription>Set guardrails for how much capital is at risk</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label className="inline-flex items-center">Risk Per Trade ($) <FieldTip text="Maximum dollar amount at risk on any single trade. Used for position sizing when sizing method is risk-based." /></Label>
+              <Label className="inline-flex items-center">Risk Per Trade ($) <FieldTip text="Maximum dollar amount at risk on any single trade. Used for position sizing." /></Label>
               <Input
                 type="number"
                 value={current.riskPerTradeUsd ?? 100}
                 onChange={(e) => updateField("riskPerTradeUsd", Number(e.target.value))}
                 data-testid="input-risk-per-trade"
               />
+              <p className="text-xs text-muted-foreground">Most you can lose on a single trade</p>
             </div>
             <div className="space-y-1">
-              <Label className="inline-flex items-center">Max Daily Loss ($) <FieldTip text="When total realized + unrealized losses exceed this amount, the agent stops trading for the day." /></Label>
+              <Label className="inline-flex items-center">Max Daily Loss ($) <FieldTip text="When total losses exceed this amount, the agent stops trading for the day." /></Label>
               <Input
                 type="number"
                 value={current.maxDailyLossUsd ?? 200}
                 onChange={(e) => updateField("maxDailyLossUsd", Number(e.target.value))}
                 data-testid="input-max-daily-loss"
               />
+              <p className="text-xs text-muted-foreground">Agent pauses if daily losses hit this limit</p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label className="inline-flex items-center">Max Concurrent Positions <FieldTip text="Maximum number of open positions allowed at the same time." /></Label>
+              <Label className="inline-flex items-center">Max Open Positions <FieldTip text="Maximum number of open positions allowed at the same time." /></Label>
               <Input
                 type="number"
                 value={current.maxConcurrentPositions ?? 2}
@@ -551,7 +513,7 @@ function AgentTab() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="inline-flex items-center">Max Trades Per Day <FieldTip text="Maximum total number of new entries per day. Prevents over-trading during volatile sessions." /></Label>
+              <Label className="inline-flex items-center">Max Trades Per Day <FieldTip text="Maximum total number of new entries per day." /></Label>
               <Input
                 type="number"
                 value={current.maxTradesPerDay ?? 2}
@@ -560,497 +522,589 @@ function AgentTab() {
               />
             </div>
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <Label className="inline-flex items-center">Min Price ($) <FieldTip text="Reject signals for stocks priced below this amount. Helps avoid penny stocks and illiquid names." /></Label>
-              <Input
-                type="number"
-                value={current.minPrice ?? 5}
-                onChange={(e) => updateField("minPrice", Number(e.target.value))}
-                data-testid="input-min-price"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="inline-flex items-center">Max Price ($) <FieldTip text="Reject signals for stocks priced above this amount. Keeps position sizes manageable." /></Label>
-              <Input
-                type="number"
-                value={current.maxPrice ?? 500}
-                onChange={(e) => updateField("maxPrice", Number(e.target.value))}
-                data-testid="input-max-price"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="inline-flex items-center">Min R:R <FieldTip text="Minimum reward-to-risk ratio required. E.g., 2.0 means the target must be at least 2x the stop distance." /></Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={current.minRr ?? 2}
-                onChange={(e) => updateField("minRr", Number(e.target.value))}
-                data-testid="input-min-rr"
-              />
-            </div>
-          </div>
         </CardContent>
       </Card>
 
-      {/* Section 3: Execution */}
-      <Card data-testid="card-execution">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Crosshair className="w-5 h-5" />
-            Execution
-          </CardTitle>
-          <CardDescription>How orders are placed when signals are triggered</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="inline-flex items-center">Entry Order Type <FieldTip text="Market orders fill immediately at current price. Limit orders fill at your specified price or better." /></Label>
-              <Select
-                value={current.entryOrderType || "limit"}
-                onValueChange={(val) => updateField("entryOrderType", val)}
-              >
-                <SelectTrigger data-testid="select-entry-order-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="market">Market</SelectItem>
-                  <SelectItem value="limit">Limit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="inline-flex items-center">Time in Force <FieldTip text="Day orders cancel at market close. GTC (Good Till Cancel) orders remain active until filled or manually cancelled." /></Label>
-              <Select
-                value={current.timeInForce || "day"}
-                onValueChange={(val) => updateField("timeInForce", val)}
-              >
-                <SelectTrigger data-testid="select-time-in-force">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="day">Day</SelectItem>
-                  <SelectItem value="gtc">GTC (Good Till Cancel)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {current.entryOrderType === "limit" && (
-            <div className="space-y-1">
-              <Label className="inline-flex items-center">Limit Offset (%) <FieldTip text="How far above (for buys) or below (for sells) the signal price to set the limit. E.g., 0.05 means 0.05% offset." /></Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={current.limitOffsetPercent ?? 0.05}
-                onChange={(e) => updateField("limitOffsetPercent", Number(e.target.value))}
-                data-testid="input-limit-offset"
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label className="inline-flex items-center">Missing Stops Policy <FieldTip text="Determines how the agent handles signals that arrive without a stop-loss price." /></Label>
-            <Select
-              value={current.missingStopsPolicy || "skip"}
-              onValueChange={(val) => updateField("missingStopsPolicy", val)}
-            >
-              <SelectTrigger data-testid="select-missing-stops">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="skip">Skip the trade</SelectItem>
-                <SelectItem value="suggest">Suggest (manual review)</SelectItem>
-                <SelectItem value="defaults">Use default stop distance</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <Label className="font-medium inline-flex items-center">Bracket Orders <FieldTip text="When enabled, the agent automatically attaches a stop-loss and profit-target order to every entry." /></Label>
-              <p className="text-xs text-muted-foreground">Automatically attach stop + target to entries</p>
-            </div>
-            <Switch
-              checked={current.bracketEnabled ?? true}
-              onCheckedChange={(val) => updateField("bracketEnabled", val)}
-              data-testid="switch-bracket-enabled"
-            />
-          </div>
-
-          {(current.bracketEnabled ?? true) && (
-            <div className="rounded-md border p-3 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground">Bracket Order Pricing</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs inline-flex items-center">Stop Price Method <FieldTip text="How to determine the stop-loss price. 'From Signal' uses the stop provided by the alert. Other options let you override with a fixed distance." /></Label>
-                  <Select
-                    value={current.bracketStopMethod || "signal"}
-                    onValueChange={(val) => {
-                      updateField("bracketStopMethod", val);
-                      if (val === "signal") updateField("bracketStopValue", null);
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-bracket-stop-method">
-                      <SelectValue placeholder="From Signal" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="signal">From Signal</SelectItem>
-                      <SelectItem value="percent">% from Entry Price</SelectItem>
-                      <SelectItem value="dollar">$ from Entry Price</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {current.bracketStopMethod && current.bracketStopMethod !== "signal" && (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder={current.bracketStopMethod === "percent" ? "e.g. 2.0" : "e.g. 1.50"}
-                      value={current.bracketStopValue ?? ""}
-                      onChange={(e) => updateField("bracketStopValue", e.target.value ? Number(e.target.value) : null)}
-                      data-testid="input-bracket-stop-value"
-                    />
-                  )}
-                  {current.bracketStopMethod === "percent" && <p className="text-xs text-muted-foreground">Stop placed this % below entry (for longs)</p>}
-                  {current.bracketStopMethod === "dollar" && <p className="text-xs text-muted-foreground">Stop placed this $ amount below entry (for longs)</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs inline-flex items-center">Target Price Method <FieldTip text="How to determine the profit target. 'R:R Ratio' sets target as a multiple of the stop distance (e.g. 2:1 means target is 2x the risk)." /></Label>
-                  <Select
-                    value={current.bracketTargetMethod || "signal"}
-                    onValueChange={(val) => {
-                      updateField("bracketTargetMethod", val);
-                      if (val === "signal") updateField("bracketTargetValue", null);
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-bracket-target-method">
-                      <SelectValue placeholder="From Signal" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="signal">From Signal</SelectItem>
-                      <SelectItem value="percent">% from Entry Price</SelectItem>
-                      <SelectItem value="dollar">$ from Entry Price</SelectItem>
-                      <SelectItem value="rr">Risk:Reward Ratio</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {current.bracketTargetMethod && current.bracketTargetMethod !== "signal" && (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder={current.bracketTargetMethod === "rr" ? "e.g. 2.0" : current.bracketTargetMethod === "percent" ? "e.g. 4.0" : "e.g. 3.00"}
-                      value={current.bracketTargetValue ?? ""}
-                      onChange={(e) => updateField("bracketTargetValue", e.target.value ? Number(e.target.value) : null)}
-                      data-testid="input-bracket-target-value"
-                    />
-                  )}
-                  {current.bracketTargetMethod === "percent" && <p className="text-xs text-muted-foreground">Target placed this % above entry (for longs)</p>}
-                  {current.bracketTargetMethod === "dollar" && <p className="text-xs text-muted-foreground">Target placed this $ amount above entry (for longs)</p>}
-                  {current.bracketTargetMethod === "rr" && <p className="text-xs text-muted-foreground">Target = entry + (risk distance x this ratio)</p>}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <Label className="font-medium inline-flex items-center">Require Stops <FieldTip text="When enabled, the agent will only execute trades that have a defined stop-loss price. Adds an extra safety layer." /></Label>
-              <p className="text-xs text-muted-foreground">Only execute trades that have a defined stop loss</p>
-            </div>
-            <Switch
-              checked={current.requireStops ?? true}
-              onCheckedChange={(val) => updateField("requireStops", val)}
-              data-testid="switch-require-stops"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Section 4: Filters & Sizing */}
-      <Card data-testid="card-filters-sizing">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Filters & Sizing
-          </CardTitle>
-          <CardDescription>Control which signals are accepted and how positions are sized</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="inline-flex items-center">Direction <FieldTip text="Restrict the agent to only long trades, only short trades, or allow both directions." /></Label>
-              <Select
-                value={current.direction || "both"}
-                onValueChange={(val) => updateField("direction", val)}
-              >
-                <SelectTrigger data-testid="select-direction">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="long">Long Only</SelectItem>
-                  <SelectItem value="short">Short Only</SelectItem>
-                  <SelectItem value="both">Both</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="inline-flex items-center">Sizing Method <FieldTip text="Risk-Based calculates shares from your risk-per-trade and stop distance. Fixed Quantity uses a set share count. Fixed Dollar uses a set dollar amount." /></Label>
-              <Select
-                value={current.sizingMethod || "riskBased"}
-                onValueChange={(val) => updateField("sizingMethod", val)}
-              >
-                <SelectTrigger data-testid="select-sizing-method">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="riskBased">Risk-Based ($ at risk per trade)</SelectItem>
-                  <SelectItem value="fixedQty">Fixed Quantity</SelectItem>
-                  <SelectItem value="fixedNotional">Fixed Dollar Amount</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {current.sizingMethod === "fixedQty" && (
-            <div className="space-y-1">
-              <Label className="inline-flex items-center">Fixed Quantity (shares) <FieldTip text="The exact number of shares to buy/sell for every signal, regardless of price." /></Label>
-              <Input
-                type="number"
-                value={current.fixedQuantity ?? ""}
-                onChange={(e) => updateField("fixedQuantity", e.target.value ? Number(e.target.value) : null)}
-                data-testid="input-fixed-quantity"
-              />
-            </div>
-          )}
-
-          {current.sizingMethod === "fixedNotional" && (
-            <div className="space-y-1">
-              <Label className="inline-flex items-center">Fixed Notional ($) <FieldTip text="The total dollar amount to allocate per trade. Shares are calculated by dividing this by the entry price." /></Label>
-              <Input
-                type="number"
-                value={current.fixedNotionalUsd ?? ""}
-                onChange={(e) => updateField("fixedNotionalUsd", e.target.value ? Number(e.target.value) : null)}
-                data-testid="input-fixed-notional"
-              />
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <Label className="inline-flex items-center text-xs">Dup Window (min) <FieldTip text="Ignore duplicate signals for the same symbol within this many minutes. Prevents double entries from repeated alerts." /></Label>
-              <Input
-                type="number"
-                value={current.duplicateSignalWindowMinutes ?? 10}
-                onChange={(e) => updateField("duplicateSignalWindowMinutes", Number(e.target.value))}
-                data-testid="input-dup-window"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="inline-flex items-center text-xs">Cooldown (min) <FieldTip text="After exiting a position, wait this many minutes before re-entering the same symbol." /></Label>
-              <Input
-                type="number"
-                value={current.cooldownMinutesAfterExit ?? 15}
-                onChange={(e) => updateField("cooldownMinutesAfterExit", Number(e.target.value))}
-                data-testid="input-cooldown"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="inline-flex items-center text-xs">Max Per Symbol <FieldTip text="Maximum number of open positions allowed in a single symbol at the same time." /></Label>
-              <Input
-                type="number"
-                value={current.maxPositionsPerSymbol ?? 1}
-                onChange={(e) => updateField("maxPositionsPerSymbol", Number(e.target.value))}
-                data-testid="input-max-per-symbol"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="inline-flex items-center">Symbol Allowlist <FieldTip text="Only trade these specific symbols. Leave blank to allow all symbols." /></Label>
-            <Input
-              type="text"
-              placeholder="e.g. AAPL, TSLA, NVDA"
-              value={allowlistText}
-              onChange={(e) => {
-                setAllowlistText(e.target.value);
-                const arr = e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
-                updateField("symbolAllowlist", arr.length ? arr : null);
-              }}
-              data-testid="input-symbol-allowlist"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label className="inline-flex items-center">Symbol Blocklist <FieldTip text="Never trade these symbols, even if a signal arrives for them." /></Label>
-            <Input
-              type="text"
-              placeholder="e.g. GME, AMC"
-              value={blocklistText}
-              onChange={(e) => {
-                setBlocklistText(e.target.value);
-                const arr = e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
-                updateField("symbolBlocklist", arr.length ? arr : null);
-              }}
-              data-testid="input-symbol-blocklist"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Section 5: Advanced (Accordion) */}
-      <Card data-testid="card-advanced">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Wrench className="w-5 h-5" />
-            Advanced
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="options" className="border-none">
-              <AccordionTrigger className="text-sm py-3" data-testid="accordion-options">Options Constraints</AccordionTrigger>
-              <AccordionContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">Additional constraints when the agent trades options. Leave blank to use defaults.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Max Delta <FieldTip text="Maximum option delta allowed. Lower delta means further out-of-the-money and less risk." /></Label>
-                    <Input
-                      type="number"
-                      step="0.05"
-                      placeholder="0.40"
-                      value={(current.optionsConstraints as any)?.maxDelta ?? ""}
-                      onChange={(e) => updateField("optionsConstraints", {
-                        ...(current.optionsConstraints || {}),
-                        maxDelta: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-options-max-delta"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Min DTE <FieldTip text="Minimum days to expiration. Avoids short-dated options that decay quickly." /></Label>
-                    <Input
-                      type="number"
-                      placeholder="7"
-                      value={(current.optionsConstraints as any)?.minDte ?? ""}
-                      onChange={(e) => updateField("optionsConstraints", {
-                        ...(current.optionsConstraints || {}),
-                        minDte: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-options-min-dte"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Max Premium ($) <FieldTip text="Maximum price per contract you're willing to pay. Limits capital committed per options trade." /></Label>
-                    <Input
-                      type="number"
-                      placeholder="5.00"
-                      value={(current.optionsConstraints as any)?.maxPremium ?? ""}
-                      onChange={(e) => updateField("optionsConstraints", {
-                        ...(current.optionsConstraints || {}),
-                        maxPremium: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-options-max-premium"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Min Open Interest <FieldTip text="Minimum open interest required. Ensures sufficient liquidity to enter and exit positions." /></Label>
-                    <Input
-                      type="number"
-                      placeholder="100"
-                      value={(current.optionsConstraints as any)?.minOi ?? ""}
-                      onChange={(e) => updateField("optionsConstraints", {
-                        ...(current.optionsConstraints || {}),
-                        minOi: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-options-min-oi"
-                    />
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="futures" className="border-none">
-              <AccordionTrigger className="text-sm py-3" data-testid="accordion-futures">Futures Constraints</AccordionTrigger>
-              <AccordionContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">Additional constraints for futures trading. Leave blank to use defaults.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Max Contracts <FieldTip text="Maximum number of futures contracts per trade. Controls leverage and risk exposure." /></Label>
-                    <Input
-                      type="number"
-                      placeholder="2"
-                      value={(current.futuresConstraints as any)?.maxContracts ?? ""}
-                      onChange={(e) => updateField("futuresConstraints", {
-                        ...(current.futuresConstraints || {}),
-                        maxContracts: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-futures-max-contracts"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Allowed Products <FieldTip text="Comma-separated list of futures products the agent can trade (e.g., ES, NQ, MES)." /></Label>
-                    <Input
-                      type="text"
-                      placeholder="ES, NQ, MES"
-                      value={(current.futuresConstraints as any)?.allowedProducts ?? ""}
-                      onChange={(e) => updateField("futuresConstraints", {
-                        ...(current.futuresConstraints || {}),
-                        allowedProducts: e.target.value,
-                      })}
-                      data-testid="input-futures-products"
-                    />
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="reliability" className="border-none">
-              <AccordionTrigger className="text-sm py-3" data-testid="accordion-reliability">Reliability & Retries</AccordionTrigger>
-              <AccordionContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">How the agent handles transient failures when placing orders.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Max Retries <FieldTip text="Number of times to retry a failed order submission before giving up." /></Label>
-                    <Input
-                      type="number"
-                      placeholder="2"
-                      value={(current.reliability as any)?.maxRetries ?? ""}
-                      onChange={(e) => updateField("reliability", {
-                        ...(current.reliability || {}),
-                        maxRetries: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-reliability-max-retries"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs inline-flex items-center">Retry Delay (ms) <FieldTip text="Time in milliseconds to wait between retry attempts. Gives the broker time to recover." /></Label>
-                    <Input
-                      type="number"
-                      placeholder="1000"
-                      value={(current.reliability as any)?.retryDelayMs ?? ""}
-                      onChange={(e) => updateField("reliability", {
-                        ...(current.reliability || {}),
-                        retryDelayMs: e.target.value ? Number(e.target.value) : undefined,
-                      })}
-                      data-testid="input-reliability-retry-delay"
-                    />
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-      </Card>
-
-      {/* Save Button */}
+      {/* Save Button - always visible */}
       <Button
         onClick={handleSave}
         disabled={!hasChanges || updateMutation.isPending}
         className="w-full"
         data-testid="button-save-agent"
       >
-        {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Settings className="w-4 h-4 mr-1" />}
+        {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
         Save Settings
       </Button>
+
+      {/* ─── ADVANCED: Collapsible ─── */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-border" />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-muted-foreground shrink-0"
+          data-testid="button-toggle-advanced"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
+          {showAdvanced ? "Hide" : "Show"} Advanced Settings
+          <ChevronDown className={`w-3.5 h-3.5 ml-1 transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`} />
+        </Button>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      {showAdvanced && (
+        <>
+          {/* Trading Window */}
+          <Card data-testid="card-trading-window">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Trading Window
+              </CardTitle>
+              <CardDescription className="text-xs">When the agent is allowed to place orders</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="inline-flex items-center text-xs">Start Time <FieldTip text="The earliest time the agent will place orders (24-hour format)." /></Label>
+                  <Input
+                    type="text"
+                    placeholder="09:35"
+                    value={current.tradingWindowStart || "09:35:00"}
+                    onChange={(e) => updateField("tradingWindowStart", e.target.value)}
+                    data-testid="input-window-start"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="inline-flex items-center text-xs">End Time <FieldTip text="The latest time the agent will place new orders." /></Label>
+                  <Input
+                    type="text"
+                    placeholder="15:50"
+                    value={current.tradingWindowEnd || "15:50:00"}
+                    onChange={(e) => updateField("tradingWindowEnd", e.target.value)}
+                    data-testid="input-window-end"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="inline-flex items-center text-xs">Timezone <FieldTip text="The timezone used for interpreting trading window times." /></Label>
+                <Select
+                  value={current.timezone || "America/New_York"}
+                  onValueChange={(val) => updateField("timezone", val)}
+                >
+                  <SelectTrigger data-testid="select-timezone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
+                    <SelectItem value="America/Chicago">Central (CT)</SelectItem>
+                    <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
+                    <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Price Filters */}
+          <Card data-testid="card-price-filters">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                Price & Quality Filters
+              </CardTitle>
+              <CardDescription className="text-xs">Reject signals that don't meet these criteria</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Min Price ($) <FieldTip text="Skip stocks priced below this. Avoids penny stocks." /></Label>
+                  <Input
+                    type="number"
+                    value={current.minPrice ?? 5}
+                    onChange={(e) => updateField("minPrice", Number(e.target.value))}
+                    data-testid="input-min-price"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Max Price ($) <FieldTip text="Skip stocks priced above this. Keeps positions manageable." /></Label>
+                  <Input
+                    type="number"
+                    value={current.maxPrice ?? 500}
+                    onChange={(e) => updateField("maxPrice", Number(e.target.value))}
+                    data-testid="input-max-price"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Min R:R <FieldTip text="Minimum reward-to-risk ratio. 2.0 means potential gain must be 2x the risk." /></Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={current.minRr ?? 2}
+                    onChange={(e) => updateField("minRr", Number(e.target.value))}
+                    data-testid="input-min-rr"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Execution Settings */}
+          <Card data-testid="card-execution">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Crosshair className="w-4 h-4" />
+                Order Execution
+              </CardTitle>
+              <CardDescription className="text-xs">How orders are placed when signals arrive</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="inline-flex items-center text-xs">Entry Order Type <FieldTip text="Market fills immediately. Limit fills at your price or better." /></Label>
+                  <Select
+                    value={current.entryOrderType || "limit"}
+                    onValueChange={(val) => updateField("entryOrderType", val)}
+                  >
+                    <SelectTrigger data-testid="select-entry-order-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="market">Market</SelectItem>
+                      <SelectItem value="limit">Limit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="inline-flex items-center text-xs">Time in Force <FieldTip text="Day orders cancel at close. GTC stays until filled." /></Label>
+                  <Select
+                    value={current.timeInForce || "day"}
+                    onValueChange={(val) => updateField("timeInForce", val)}
+                  >
+                    <SelectTrigger data-testid="select-time-in-force">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day</SelectItem>
+                      <SelectItem value="gtc">GTC (Good Till Cancel)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {current.entryOrderType === "limit" && (
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Limit Offset (%) <FieldTip text="How far from signal price to set the limit. E.g., 0.05 means 0.05%." /></Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={current.limitOffsetPercent ?? 0.05}
+                    onChange={(e) => updateField("limitOffsetPercent", Number(e.target.value))}
+                    data-testid="input-limit-offset"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="inline-flex items-center text-xs">Missing Stops Policy <FieldTip text="What happens when a signal arrives without a stop-loss price." /></Label>
+                <Select
+                  value={current.missingStopsPolicy || "skip"}
+                  onValueChange={(val) => updateField("missingStopsPolicy", val)}
+                >
+                  <SelectTrigger data-testid="select-missing-stops">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="skip">Skip the trade</SelectItem>
+                    <SelectItem value="suggest">Suggest (manual review)</SelectItem>
+                    <SelectItem value="defaults">Use default stop distance</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="font-medium inline-flex items-center text-xs">Bracket Orders <FieldTip text="Automatically attach a stop-loss and profit-target to every entry." /></Label>
+                  <p className="text-xs text-muted-foreground">Auto-attach stop + target to entries</p>
+                </div>
+                <Switch
+                  checked={current.bracketEnabled ?? true}
+                  onCheckedChange={(val) => updateField("bracketEnabled", val)}
+                  data-testid="switch-bracket-enabled"
+                />
+              </div>
+
+              {(current.bracketEnabled ?? true) && (
+                <div className="rounded-md border p-3 space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground">Bracket Order Pricing</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs inline-flex items-center">Stop Method <FieldTip text="How to set the stop-loss price. 'From Signal' uses the stop provided by the alert." /></Label>
+                      <Select
+                        value={current.bracketStopMethod || "signal"}
+                        onValueChange={(val) => {
+                          updateField("bracketStopMethod", val);
+                          if (val === "signal") updateField("bracketStopValue", null);
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-bracket-stop-method">
+                          <SelectValue placeholder="From Signal" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="signal">From Signal</SelectItem>
+                          <SelectItem value="percent">% from Entry</SelectItem>
+                          <SelectItem value="dollar">$ from Entry</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {current.bracketStopMethod && current.bracketStopMethod !== "signal" && (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={current.bracketStopMethod === "percent" ? "e.g. 2.0" : "e.g. 1.50"}
+                          value={current.bracketStopValue ?? ""}
+                          onChange={(e) => updateField("bracketStopValue", e.target.value ? Number(e.target.value) : null)}
+                          data-testid="input-bracket-stop-value"
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs inline-flex items-center">Target Method <FieldTip text="How to set the profit target. 'R:R Ratio' sets target as a multiple of the stop distance." /></Label>
+                      <Select
+                        value={current.bracketTargetMethod || "signal"}
+                        onValueChange={(val) => {
+                          updateField("bracketTargetMethod", val);
+                          if (val === "signal") updateField("bracketTargetValue", null);
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-bracket-target-method">
+                          <SelectValue placeholder="From Signal" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="signal">From Signal</SelectItem>
+                          <SelectItem value="percent">% from Entry</SelectItem>
+                          <SelectItem value="dollar">$ from Entry</SelectItem>
+                          <SelectItem value="rr">Risk:Reward Ratio</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {current.bracketTargetMethod && current.bracketTargetMethod !== "signal" && (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={current.bracketTargetMethod === "rr" ? "e.g. 2.0" : current.bracketTargetMethod === "percent" ? "e.g. 4.0" : "e.g. 3.00"}
+                          value={current.bracketTargetValue ?? ""}
+                          onChange={(e) => updateField("bracketTargetValue", e.target.value ? Number(e.target.value) : null)}
+                          data-testid="input-bracket-target-value"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="font-medium inline-flex items-center text-xs">Require Stops <FieldTip text="Only execute trades that have a defined stop-loss price." /></Label>
+                  <p className="text-xs text-muted-foreground">Extra safety: skip trades without a stop loss</p>
+                </div>
+                <Switch
+                  checked={current.requireStops ?? true}
+                  onCheckedChange={(val) => updateField("requireStops", val)}
+                  data-testid="switch-require-stops"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Sizing & Filters */}
+          <Card data-testid="card-filters-sizing">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Target className="w-4 h-4" />
+                Position Sizing & Filters
+              </CardTitle>
+              <CardDescription className="text-xs">Control how positions are sized and which symbols to trade</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="inline-flex items-center text-xs">Direction <FieldTip text="Restrict to long trades, short trades, or both." /></Label>
+                  <Select
+                    value={current.direction || "both"}
+                    onValueChange={(val) => updateField("direction", val)}
+                  >
+                    <SelectTrigger data-testid="select-direction">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="long">Long Only</SelectItem>
+                      <SelectItem value="short">Short Only</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="inline-flex items-center text-xs">Sizing Method <FieldTip text="Risk-Based sizes from your risk-per-trade. Fixed uses a set share count or dollar amount." /></Label>
+                  <Select
+                    value={current.sizingMethod || "riskBased"}
+                    onValueChange={(val) => updateField("sizingMethod", val)}
+                  >
+                    <SelectTrigger data-testid="select-sizing-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="riskBased">Risk-Based ($ at risk per trade)</SelectItem>
+                      <SelectItem value="fixedQty">Fixed Quantity</SelectItem>
+                      <SelectItem value="fixedNotional">Fixed Dollar Amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {current.sizingMethod === "fixedQty" && (
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Shares Per Trade <FieldTip text="Exact number of shares for every signal." /></Label>
+                  <Input
+                    type="number"
+                    value={current.fixedQuantity ?? ""}
+                    onChange={(e) => updateField("fixedQuantity", e.target.value ? Number(e.target.value) : null)}
+                    data-testid="input-fixed-quantity"
+                  />
+                </div>
+              )}
+
+              {current.sizingMethod === "fixedNotional" && (
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Dollar Amount Per Trade <FieldTip text="Total dollar amount per trade. Shares calculated from entry price." /></Label>
+                  <Input
+                    type="number"
+                    value={current.fixedNotionalUsd ?? ""}
+                    onChange={(e) => updateField("fixedNotionalUsd", e.target.value ? Number(e.target.value) : null)}
+                    data-testid="input-fixed-notional"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Dup Window (min) <FieldTip text="Ignore duplicate signals for the same symbol within this time." /></Label>
+                  <Input
+                    type="number"
+                    value={current.duplicateSignalWindowMinutes ?? 10}
+                    onChange={(e) => updateField("duplicateSignalWindowMinutes", Number(e.target.value))}
+                    data-testid="input-dup-window"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Cooldown (min) <FieldTip text="Wait time before re-entering the same symbol after exit." /></Label>
+                  <Input
+                    type="number"
+                    value={current.cooldownMinutesAfterExit ?? 15}
+                    onChange={(e) => updateField("cooldownMinutesAfterExit", Number(e.target.value))}
+                    data-testid="input-cooldown"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="inline-flex items-center text-xs">Max Per Symbol <FieldTip text="Max open positions in a single symbol." /></Label>
+                  <Input
+                    type="number"
+                    value={current.maxPositionsPerSymbol ?? 1}
+                    onChange={(e) => updateField("maxPositionsPerSymbol", Number(e.target.value))}
+                    data-testid="input-max-per-symbol"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="inline-flex items-center text-xs">Symbol Allowlist <FieldTip text="Only trade these symbols. Leave blank for all." /></Label>
+                <Input
+                  type="text"
+                  placeholder="e.g. AAPL, TSLA, NVDA"
+                  value={allowlistText}
+                  onChange={(e) => {
+                    setAllowlistText(e.target.value);
+                    const arr = e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+                    updateField("symbolAllowlist", arr.length ? arr : null);
+                  }}
+                  data-testid="input-symbol-allowlist"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="inline-flex items-center text-xs">Symbol Blocklist <FieldTip text="Never trade these symbols." /></Label>
+                <Input
+                  type="text"
+                  placeholder="e.g. GME, AMC"
+                  value={blocklistText}
+                  onChange={(e) => {
+                    setBlocklistText(e.target.value);
+                    const arr = e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+                    updateField("symbolBlocklist", arr.length ? arr : null);
+                  }}
+                  data-testid="input-symbol-blocklist"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Expert Settings */}
+          <Card data-testid="card-advanced">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Wrench className="w-4 h-4" />
+                Expert Settings
+              </CardTitle>
+              <CardDescription className="text-xs">Options, futures, and retry configuration</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="options" className="border-none">
+                  <AccordionTrigger className="text-sm py-3" data-testid="accordion-options">Options Constraints</AccordionTrigger>
+                  <AccordionContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">Leave blank to use defaults.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Max Delta <FieldTip text="Maximum option delta allowed." /></Label>
+                        <Input
+                          type="number"
+                          step="0.05"
+                          placeholder="0.40"
+                          value={(current.optionsConstraints as any)?.maxDelta ?? ""}
+                          onChange={(e) => updateField("optionsConstraints", {
+                            ...(current.optionsConstraints || {}),
+                            maxDelta: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-options-max-delta"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Min DTE <FieldTip text="Minimum days to expiration." /></Label>
+                        <Input
+                          type="number"
+                          placeholder="7"
+                          value={(current.optionsConstraints as any)?.minDte ?? ""}
+                          onChange={(e) => updateField("optionsConstraints", {
+                            ...(current.optionsConstraints || {}),
+                            minDte: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-options-min-dte"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Max Premium ($) <FieldTip text="Max price per contract." /></Label>
+                        <Input
+                          type="number"
+                          placeholder="5.00"
+                          value={(current.optionsConstraints as any)?.maxPremium ?? ""}
+                          onChange={(e) => updateField("optionsConstraints", {
+                            ...(current.optionsConstraints || {}),
+                            maxPremium: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-options-max-premium"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Min Open Interest <FieldTip text="Minimum open interest for liquidity." /></Label>
+                        <Input
+                          type="number"
+                          placeholder="100"
+                          value={(current.optionsConstraints as any)?.minOi ?? ""}
+                          onChange={(e) => updateField("optionsConstraints", {
+                            ...(current.optionsConstraints || {}),
+                            minOi: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-options-min-oi"
+                        />
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="futures" className="border-none">
+                  <AccordionTrigger className="text-sm py-3" data-testid="accordion-futures">Futures Constraints</AccordionTrigger>
+                  <AccordionContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">Leave blank to use defaults.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Max Contracts <FieldTip text="Max futures contracts per trade." /></Label>
+                        <Input
+                          type="number"
+                          placeholder="2"
+                          value={(current.futuresConstraints as any)?.maxContracts ?? ""}
+                          onChange={(e) => updateField("futuresConstraints", {
+                            ...(current.futuresConstraints || {}),
+                            maxContracts: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-futures-max-contracts"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Allowed Products <FieldTip text="Comma-separated futures products (e.g., ES, NQ)." /></Label>
+                        <Input
+                          type="text"
+                          placeholder="ES, NQ, MES"
+                          value={(current.futuresConstraints as any)?.allowedProducts ?? ""}
+                          onChange={(e) => updateField("futuresConstraints", {
+                            ...(current.futuresConstraints || {}),
+                            allowedProducts: e.target.value,
+                          })}
+                          data-testid="input-futures-products"
+                        />
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="reliability" className="border-none">
+                  <AccordionTrigger className="text-sm py-3" data-testid="accordion-reliability">Reliability & Retries</AccordionTrigger>
+                  <AccordionContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">How the agent handles failed order submissions.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Max Retries <FieldTip text="Retry attempts for failed orders." /></Label>
+                        <Input
+                          type="number"
+                          placeholder="2"
+                          value={(current.reliability as any)?.maxRetries ?? ""}
+                          onChange={(e) => updateField("reliability", {
+                            ...(current.reliability || {}),
+                            maxRetries: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-reliability-max-retries"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs inline-flex items-center">Retry Delay (ms) <FieldTip text="Wait time between retries." /></Label>
+                        <Input
+                          type="number"
+                          placeholder="1000"
+                          value={(current.reliability as any)?.retryDelayMs ?? ""}
+                          onChange={(e) => updateField("reliability", {
+                            ...(current.reliability || {}),
+                            retryDelayMs: e.target.value ? Number(e.target.value) : undefined,
+                          })}
+                          data-testid="input-reliability-retry-delay"
+                        />
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </CardContent>
+          </Card>
+
+          {/* Second Save Button at bottom of advanced */}
+          <Button
+            onClick={handleSave}
+            disabled={!hasChanges || updateMutation.isPending}
+            className="w-full"
+            data-testid="button-save-agent-bottom"
+          >
+            {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+            Save Settings
+          </Button>
+        </>
+      )}
     </div>
   );
 }

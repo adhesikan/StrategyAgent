@@ -243,7 +243,7 @@ function ExternalAlertsWidget() {
           )}
         </div>
         <CardDescription>
-          Strategy Fundamentals signals
+          External webhook signals
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">

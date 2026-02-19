@@ -247,7 +247,7 @@ function ApiKeysSection() {
             Webhook API Keys
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Generate API keys for Strategy Fundamentals to send alerts to your account
+            Generate API keys to authenticate incoming webhook alerts to your account
           </p>
         </div>
         <Dialog open={showDialog} onOpenChange={(open) => {
@@ -267,7 +267,7 @@ function ApiKeysSection() {
             <DialogHeader>
               <DialogTitle>Create API Key</DialogTitle>
               <DialogDescription>
-                This key will be used by Strategy Fundamentals to authenticate webhook requests.
+                This key authenticates incoming webhook requests from external alert sources.
               </DialogDescription>
             </DialogHeader>
             {generatedKey ? (
@@ -306,7 +306,7 @@ function ApiKeysSection() {
                     id="key-label"
                     value={newKeyLabel}
                     onChange={(e) => setNewKeyLabel(e.target.value)}
-                    placeholder="e.g. Strategy Fundamentals"
+                    placeholder="e.g. TradingView Alerts"
                     data-testid="input-key-label"
                   />
                 </div>
@@ -380,16 +380,19 @@ function ApiKeysSection() {
               <code className="ml-1 bg-muted px-1 py-0.5 rounded">X-API-Key: your_api_key</code>
             </div>
             <div>
-              <span className="font-medium">Strategy Fundamentals Format:</span>
+              <span className="font-medium">Entry Signal (JSON body):</span>
               <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify({
-                rawText: 'enter sym=PWR lp=534.78 tp=584.9 sl=408.36',
+                rawText: 'enter sym=AAPL lp=195.50 tp=210.00 sl=188.00',
               }, null, 2)}</pre>
             </div>
             <div className="pt-1">
-              <span className="font-medium">Exit Signal:</span>
+              <span className="font-medium">Exit Signal (JSON body):</span>
               <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify({
-                rawText: 'exit sym=WDC reason="Profit Target1" tp=307.96',
+                rawText: 'exit sym=AAPL reason="Profit Target" tp=210.00',
               }, null, 2)}</pre>
+            </div>
+            <div className="pt-1 text-muted-foreground/80">
+              Send your TradingView alerts or any external signal source via this webhook to execute trades automatically through the Auto Agent with your connected brokerage.
             </div>
           </div>
         </div>
@@ -429,7 +432,7 @@ export default function TradeAlertsPage() {
             Trade Alerts
           </h1>
           <p className="text-sm text-muted-foreground">
-            Incoming signals from Strategy Fundamentals for autonomous execution
+            Incoming webhook signals for autonomous trade execution via Auto Agent
           </p>
         </div>
         <Button
@@ -460,7 +463,7 @@ export default function TradeAlertsPage() {
               <Radio className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
               <p className="text-muted-foreground">No alerts received yet</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Set up your API key above and configure Strategy Fundamentals to send webhooks here.
+                Set up your API key above and configure your alert source (e.g. TradingView) to send webhooks here.
               </p>
             </CardContent>
           </Card>

@@ -383,9 +383,11 @@ export function AutoAgentPanel() {
                 })}
               </div>
               {agentTrades.length > 5 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  +{agentTrades.length - 5} more trades today
-                </p>
+                <Link href="/automation?view=activity">
+                  <p className="text-xs text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors" data-testid="link-see-more-trades">
+                    See {agentTrades.length - 5} more trades <ArrowRight className="h-3 w-3 inline" />
+                  </p>
+                </Link>
               )}
             </div>
           );

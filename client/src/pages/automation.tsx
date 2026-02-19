@@ -92,6 +92,14 @@ export default function AutomationPage() {
   });
 
 
+  useEffect(() => {
+    if (viewParam === "activity") {
+      setTimeout(() => {
+        document.getElementById("trade-activity")?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+    }
+  }, [viewParam]);
+
   const { isConnected, providerName, status: brokerStatus } = useBrokerStatus();
 
   const currentMode: AutomationMode = settings?.automationMode || "ALERTS";
@@ -167,7 +175,9 @@ export default function AutomationPage() {
           settings={settings}
         />
 
-        <TradeActivityPanel />
+        <div id="trade-activity">
+          <TradeActivityPanel />
+        </div>
 
         <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
           {DISCLAIMER_TEXT}

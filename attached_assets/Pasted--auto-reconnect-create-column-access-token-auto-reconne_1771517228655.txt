@@ -1,0 +1,67 @@
+❯ + auto_reconnect                 create column
+  ~ access_token › auto_reconnect  rename column
+      requestId: 'req_r33a5954FSIiG9'
+4:00:14 PM [migrations] Startup migrations completed successfully
+4:00:14 PM [stripe] Initializing Stripe schema...
+    },
+    rawType: 'invalid_request_error',
+4:00:14 PM [stripe] Stripe schema ready
+{ autoExpandLists: undefined, stripeApiVersion: undefined } StripeSync initialized
+{
+  error: StripeInvalidRequestError: No such webhook endpoint: 'we_1T2ZTbDCGEaap7wcbyeJc35B'
+      at generateV1Error (file:///app/node_modules/stripe/esm/Error.js:8:20)
+      at res.toJSON.then.StripeAPIError.message (file:///app/node_modules/stripe/esm/RequestSender.js:111:31)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
+    type: 'StripeInvalidRequestError',
+    raw: {
+      code: 'resource_missing',
+      doc_url: 'https://stripe.com/docs/error-codes/resource-missing',
+      message: "No such webhook endpoint: 'we_1T2ZTbDCGEaap7wcbyeJc35B'",
+      param: 'webhook_endpoint',
+      request_log_url: 'https://dashboard.stripe.com/acct_1QCFIFDCGEaap7wc/workbench/logs?object=req_r33a5954FSIiG9',
+      type: 'invalid_request_error',
+      headers: [Object],
+      statusCode: 404,
+    code: 'resource_missing',
+    doc_url: 'https://stripe.com/docs/error-codes/resource-missing',
+    param: 'webhook_endpoint',
+    detail: undefined,
+    headers: {
+      server: 'nginx',
+      date: 'Thu, 19 Feb 2026 16:00:15 GMT',
+      'content-type': 'application/json',
+      'content-length': '385',
+      connection: 'keep-alive',
+      'access-control-allow-credentials': 'true',
+      'access-control-allow-methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
+      'access-control-allow-origin': '*',
+      'access-control-expose-headers': 'Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required',
+      'access-control-max-age': '300',
+      'cache-control': 'no-cache, no-store',
+      'content-security-policy': "base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=GulXwB04dNGxUbF8eLm34CSFIMCxjUlZrS6y7KWmiSwjV-CHH8Wk9-5xyjIddD_OHyBjm3aAgYvKDlj0",
+      'request-id': 'req_r33a5954FSIiG9',
+      'stripe-version': '2025-11-17.clover',
+      vary: 'Origin',
+      'x-stripe-priority-routing-enabled': 'true',
+      'x-stripe-routing-context-priority-tier': 'livemode',
+      'x-wc': 'ABGHIJ',
+      'strict-transport-security': 'max-age=63072000; includeSubDomains; preload'
+    },
+    requestId: 'req_r33a5954FSIiG9',
+    statusCode: 404,
+    userMessage: undefined,
+    charge: undefined,
+    decline_code: undefined,
+    payment_intent: undefined,
+    payment_method: undefined,
+    payment_method_type: undefined,
+    setup_intent: undefined,
+    source: undefined
+  },
+  webhookId: 'we_1T2ZTbDCGEaap7wcbyeJc35B'
+} Webhook not found in Stripe (404), removing from database
+{
+  webhookId: 'we_1T2Zc0DCGEaap7wcPQpXIUjm',
+  url: 'https://05f8391b-a330-4f11-bdce-597a3b4a0450-00-1bkxo1gu3e3o8.spock.replit.dev/api/stripe/webhook'
+} Found orphaned managed webhook in Stripe, deleting
+4:00:15 PM [stripe] Stripe init error (non-fatal): Cannot 

@@ -225,6 +225,20 @@ async function runStartupMigrations() {
       END $$;
     `);
 
+    // Add auto_reconnect column to broker_connections
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'broker_connections' AND column_name = 'auto_reconnect'
+        ) THEN
+          ALTER TABLE broker_connections ADD COLUMN auto_reconnect BOOLEAN DEFAULT false;
+          RAISE NOTICE 'Added auto_reconnect column to broker_connections';
+        END IF;
+      END $$;
+    `);
+
     // Add Stripe subscription columns to partner_users
     await db.execute(sql`
       DO $$

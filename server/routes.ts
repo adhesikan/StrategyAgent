@@ -5324,11 +5324,22 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         });
       }
 
-      req.session.partnerUserId = partnerUser.id;
-      req.session.partnerSlug = partner;
-      req.session.userId = partnerUser.linkedUserId || undefined;
-
-      res.redirect("/partner/dashboard");
+      req.session.regenerate((err) => {
+        if (err) {
+          console.error("Session regenerate error:", err);
+          return res.status(500).json({ error: "Login failed" });
+        }
+        req.session.partnerUserId = partnerUser!.id;
+        req.session.partnerSlug = partner;
+        req.session.userId = partnerUser!.linkedUserId || undefined;
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("Session save error:", saveErr);
+            return res.status(500).json({ error: "Login failed" });
+          }
+          res.redirect("/partner/dashboard");
+        });
+      });
     } catch (error) {
       console.error("Partner login error:", error);
       res.status(500).json({ error: "Login failed" });

@@ -1,8 +1,18 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Bot, Zap, AlertCircle, ArrowUpDown } from "lucide-react";
+import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ExecutedTrade {
   id: string;
@@ -24,6 +34,11 @@ interface ExecutedTrade {
   reasons: string[] | null;
   createdAt: string;
 }
+
+type SortField = "date" | "symbol" | "status" | "quantity";
+type SortDir = "asc" | "desc";
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 function TradeCard({ trade }: { trade: ExecutedTrade }) {
   return (
@@ -116,6 +131,80 @@ export function TradeActivityPanel() {
     queryKey: ["/api/all-trades"],
   });
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const statusOptions = useMemo(() => {
+    if (!allTrades) return [];
+    const unique = Array.from(new Set(allTrades.map((t) => t.status)));
+    return unique.sort();
+  }, [allTrades]);
+
+  const filtered = useMemo(() => {
+    if (!allTrades) return [];
+    let results = [...allTrades];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toUpperCase();
+      results = results.filter(
+        (t) =>
+          t.symbol.toUpperCase().includes(q) ||
+          t.brokerOrderId?.toUpperCase().includes(q)
+      );
+    }
+
+    if (statusFilter !== "all") {
+      results = results.filter((t) => t.status === statusFilter);
+    }
+
+    if (sourceFilter !== "all") {
+      results = results.filter((t) => t.source === sourceFilter);
+    }
+
+    results.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "date":
+          cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case "symbol":
+          cmp = a.symbol.localeCompare(b.symbol);
+          break;
+        case "status":
+          cmp = a.status.localeCompare(b.status);
+          break;
+        case "quantity":
+          cmp = a.quantity - b.quantity;
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return results;
+  }, [allTrades, searchQuery, statusFilter, sourceFilter, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const hasActiveFilters = searchQuery.trim() !== "" || statusFilter !== "all" || sourceFilter !== "all";
+
+  function clearFilters() {
+    setSearchQuery("");
+    setStatusFilter("all");
+    setSourceFilter("all");
+    setPage(1);
+  }
+
+  function handlePageChange(newPage: number) {
+    setPage(Math.max(1, Math.min(newPage, totalPages)));
+  }
+
   return (
     <Card data-testid="section-trade-activity">
       <CardHeader>
@@ -127,16 +216,94 @@ export function TradeActivityPanel() {
           Executed and skipped trades from Auto Agent and InstaTrade&trade;
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search symbol or order ID..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+              className="pl-9"
+              data-testid="input-trade-search"
+            />
+          </div>
+
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-[140px]" data-testid="select-trade-status-filter">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              {statusOptions.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-[150px]" data-testid="select-trade-source-filter">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sources</SelectItem>
+              <SelectItem value="auto_agent">Auto Agent</SelectItem>
+              <SelectItem value="instatrade">InstaTrade</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={`${sortField}_${sortDir}`}
+            onValueChange={(v) => {
+              const [field, dir] = v.split("_") as [SortField, SortDir];
+              setSortField(field);
+              setSortDir(dir);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-[170px]" data-testid="select-trade-sort">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Newest First</SelectItem>
+              <SelectItem value="date_asc">Oldest First</SelectItem>
+              <SelectItem value="symbol_asc">Symbol A-Z</SelectItem>
+              <SelectItem value="symbol_desc">Symbol Z-A</SelectItem>
+              <SelectItem value="status_asc">Status A-Z</SelectItem>
+              <SelectItem value="status_desc">Status Z-A</SelectItem>
+              <SelectItem value="quantity_desc">Qty High-Low</SelectItem>
+              <SelectItem value="quantity_asc">Qty Low-High</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
+
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
           </div>
-        ) : allTrades && allTrades.length > 0 ? (
+        ) : paginated.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {allTrades.map((trade) => (
+            {paginated.map((trade) => (
               <TradeCard key={trade.id} trade={trade} />
             ))}
+          </div>
+        ) : allTrades && allTrades.length > 0 && hasActiveFilters ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Search className="h-10 w-10 text-muted-foreground/50 mb-3" />
+            <p className="text-sm font-medium">No matching trades</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Try adjusting your search or filters
+            </p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={clearFilters} data-testid="button-clear-filters-empty">
+              Clear Filters
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -145,6 +312,53 @@ export function TradeActivityPanel() {
             <p className="text-xs text-muted-foreground mt-1">
               Executed and skipped trades from Auto Agent and InstaTrade&trade; will appear here
             </p>
+          </div>
+        )}
+
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span data-testid="text-trade-count">
+                {filtered.length} trade{filtered.length !== 1 ? "s" : ""}
+                {hasActiveFilters && allTrades ? ` of ${allTrades.length}` : ""}
+              </span>
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                <SelectTrigger className="h-7 w-[70px] text-xs" data-testid="select-page-size">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}/pg</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={safePage <= 1}
+                  onClick={() => handlePageChange(safePage - 1)}
+                  data-testid="button-prev-page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground px-2" data-testid="text-page-info">
+                  {safePage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={safePage >= totalPages}
+                  onClick={() => handlePageChange(safePage + 1)}
+                  data-testid="button-next-page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

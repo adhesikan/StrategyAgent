@@ -11,6 +11,7 @@ declare module "express-session" {
     tradierOAuthUserId?: string;
     tradestationOAuthState?: string;
     tradestationOAuthUserId?: string;
+    tradestationOAuthFromPartner?: boolean;
   }
 }
 

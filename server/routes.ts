@@ -1774,6 +1774,24 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         } else {
           testResult = { success: false, message: `API error: ${response.status}` };
         }
+      } else if (connection.provider === "tradestation") {
+        const response = await fetch("https://api.tradestation.com/v3/brokerage/accounts", {
+          headers: {
+            "Authorization": `Bearer ${connection.accessToken}`,
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const accounts = data.Accounts || data.accounts || [];
+          testResult = {
+            success: true,
+            message: "Connection successful",
+            data: { accounts: accounts.length, provider: "tradestation" },
+          };
+        } else {
+          testResult = { success: false, message: `API error: ${response.status}` };
+        }
       } else if (connection.provider === "ibkr") {
         testResult = { 
           success: false, 
@@ -2609,6 +2627,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       
       req.session.tradestationOAuthState = state;
       req.session.tradestationOAuthUserId = userId;
+      req.session.tradestationOAuthFromPartner = !!req.session.partnerUserId;
       
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
@@ -2638,30 +2657,33 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   // TradeStation OAuth callback handler
   async function handleTradeStationOAuthCallback(req: any, res: any) {
+    const isFromPartner = !!req.session?.tradestationOAuthFromPartner || !!req.session?.partnerUserId;
+    const redirectBase = isFromPartner ? "/partner/dashboard?tab=broker" : "/settings";
+    const buildRedirect = (params: string) => `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}${params}`;
     try {
       const { code, state } = req.query;
-      
+
       if (!code || typeof code !== "string") {
-        return res.redirect("/settings?tradestation_error=missing_code");
+        return res.redirect(buildRedirect("tradestation_error=missing_code"));
       }
       
       if (!state || typeof state !== "string") {
-        return res.redirect("/settings?tradestation_error=missing_state");
+        return res.redirect(buildRedirect("tradestation_error=missing_state"));
       }
 
       if (state !== req.session.tradestationOAuthState) {
         console.error("TradeStation OAuth state mismatch");
-        return res.redirect("/settings?tradestation_error=state_mismatch");
+        return res.redirect(buildRedirect("tradestation_error=state_mismatch"));
       }
 
       const userId = req.session.tradestationOAuthUserId;
       if (!userId) {
         console.error("No user ID found in session for TradeStation OAuth callback");
-        return res.redirect("/settings?tradestation_error=session_expired");
+        return res.redirect(buildRedirect("tradestation_error=session_expired"));
       }
-
       delete req.session.tradestationOAuthState;
       delete req.session.tradestationOAuthUserId;
+      delete req.session.tradestationOAuthFromPartner;
 
       const callbackUrl = getTradeStationCallbackUrl(req);
       
@@ -2709,10 +2731,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       console.log(`[TradeStation OAuth] User ${userId} successfully connected to TradeStation`);
       
-      res.redirect("/settings?tradestation_success=true");
+      res.redirect(buildRedirect("tradestation_success=true"));
     } catch (error: any) {
       console.error("TradeStation OAuth callback error:", error);
-      res.redirect("/settings?tradestation_error=unknown");
+      res.redirect(buildRedirect("tradestation_error=unknown"));
     }
   }
 

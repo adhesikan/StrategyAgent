@@ -163,8 +163,28 @@ function BrokerTab() {
   });
 
   const [connectingBroker, setConnectingBroker] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
 
   const isConnected = broker?.isConnected || broker?.connected;
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/broker/test");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setTestResult(data);
+      if (data.success) {
+        toast({ title: "Connection test passed" });
+      } else {
+        toast({ title: data.message || "Connection test failed", variant: "destructive" });
+      }
+    },
+    onError: (error: any) => {
+      setTestResult({ success: false, message: error?.message || "Test failed" });
+      toast({ title: "Connection test failed", variant: "destructive" });
+    },
+  });
 
   async function handleBrokerConnect(providerId: string) {
     try {
@@ -192,15 +212,39 @@ function BrokerTab() {
       {isConnected && (
         <Card data-testid="card-broker-status">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <span className="font-medium">Connected</span>
-              <Badge variant="outline">{broker?.provider}</Badge>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2" data-testid="text-broker-status">
+                <CheckCircle className="w-5 h-5 text-green-500" />
+                <span className="font-medium">Connected</span>
+                <Badge variant="outline">{broker?.provider}</Badge>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => { setTestResult(null); testMutation.mutate(); }}
+                disabled={testMutation.isPending}
+                data-testid="button-test-connection"
+              >
+                {testMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <Zap className="w-4 h-4 mr-1" />
+                )}
+                Test Connection
+              </Button>
             </div>
             {broker?.preferredAccountId && (
-              <p className="text-sm text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mt-2" data-testid="text-broker-account">
                 Account: {broker.preferredAccountId}
               </p>
+            )}
+            {testResult && (
+              <div className={`mt-3 flex items-center gap-2 text-sm ${testResult.success ? "text-green-500" : "text-destructive"}`} data-testid="text-test-result">
+                {testResult.success ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                <span>{testResult.message}</span>
+                {testResult.data?.accounts != null && (
+                  <span className="text-muted-foreground">({testResult.data.accounts} account{testResult.data.accounts !== 1 ? "s" : ""} found)</span>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

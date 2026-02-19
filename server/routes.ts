@@ -5620,6 +5620,51 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const before = await getOrCreateAgentSettings(userId);
       const updated = await storage.upsertAgentSettings(userId, data);
 
+      if (data.mode !== undefined || data.enabled !== undefined || data.riskPerTradeUsd !== undefined ||
+          data.maxDailyLossUsd !== undefined || data.maxTradesPerDay !== undefined ||
+          data.maxConcurrentPositions !== undefined || data.minPrice !== undefined ||
+          data.maxPrice !== undefined || data.minRr !== undefined) {
+        const policySyncData: Record<string, any> = {};
+        if (data.mode !== undefined) policySyncData.mode = data.mode.toUpperCase();
+        if (data.enabled !== undefined) policySyncData.enabled = data.enabled;
+        if (data.riskPerTradeUsd !== undefined) policySyncData.riskPerTradeUsd = data.riskPerTradeUsd;
+        if (data.maxDailyLossUsd !== undefined) policySyncData.maxDailyLossUsd = data.maxDailyLossUsd;
+        if (data.maxTradesPerDay !== undefined) policySyncData.maxTradesPerDay = data.maxTradesPerDay;
+        if (data.maxConcurrentPositions !== undefined) policySyncData.maxConcurrentPositions = data.maxConcurrentPositions;
+        if (data.minPrice !== undefined) policySyncData.priceMin = data.minPrice;
+        if (data.maxPrice !== undefined) policySyncData.priceMax = data.maxPrice;
+        if (data.minRr !== undefined) policySyncData.minRewardRisk = data.minRr;
+
+        let existingPolicy = await storage.getAgentPolicy(userId);
+        if (existingPolicy) {
+          await storage.updateAgentPolicy(existingPolicy.id, policySyncData);
+        } else {
+          await storage.createAgentPolicy({
+            userId,
+            mode: (data.mode || "suggest").toUpperCase(),
+            enabled: data.enabled ?? true,
+            riskPerTradeUsd: data.riskPerTradeUsd ?? 500,
+            maxDailyLossUsd: data.maxDailyLossUsd ?? 1000,
+            maxConcurrentPositions: data.maxConcurrentPositions ?? 3,
+            maxTradesPerDay: data.maxTradesPerDay ?? 2,
+            priceMin: data.minPrice ?? 5,
+            priceMax: data.maxPrice ?? 500,
+            minRewardRisk: data.minRr ?? 2,
+            ...policySyncData,
+          });
+        }
+
+        if (data.enabled !== undefined) {
+          const agentState = await storage.getAgentState(userId);
+          if (agentState) {
+            await storage.updateAgentState(userId, { enabled: data.enabled });
+          } else {
+            await storage.createAgentState(userId);
+            await storage.updateAgentState(userId, { enabled: data.enabled });
+          }
+        }
+      }
+
       await storage.createAgentSettingsAudit({
         userId,
         changedBy: userId,
@@ -5692,6 +5737,51 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       const before = await getOrCreateAgentSettings(userId);
       const updated = await storage.upsertAgentSettings(userId, data);
+
+      if (data.mode !== undefined || data.enabled !== undefined || data.riskPerTradeUsd !== undefined ||
+          data.maxDailyLossUsd !== undefined || data.maxTradesPerDay !== undefined ||
+          data.maxConcurrentPositions !== undefined || data.minPrice !== undefined ||
+          data.maxPrice !== undefined || data.minRr !== undefined) {
+        const policySyncData: Record<string, any> = {};
+        if (data.mode !== undefined) policySyncData.mode = data.mode.toUpperCase();
+        if (data.enabled !== undefined) policySyncData.enabled = data.enabled;
+        if (data.riskPerTradeUsd !== undefined) policySyncData.riskPerTradeUsd = data.riskPerTradeUsd;
+        if (data.maxDailyLossUsd !== undefined) policySyncData.maxDailyLossUsd = data.maxDailyLossUsd;
+        if (data.maxTradesPerDay !== undefined) policySyncData.maxTradesPerDay = data.maxTradesPerDay;
+        if (data.maxConcurrentPositions !== undefined) policySyncData.maxConcurrentPositions = data.maxConcurrentPositions;
+        if (data.minPrice !== undefined) policySyncData.priceMin = data.minPrice;
+        if (data.maxPrice !== undefined) policySyncData.priceMax = data.maxPrice;
+        if (data.minRr !== undefined) policySyncData.minRewardRisk = data.minRr;
+
+        let existingPolicy = await storage.getAgentPolicy(userId);
+        if (existingPolicy) {
+          await storage.updateAgentPolicy(existingPolicy.id, policySyncData);
+        } else {
+          await storage.createAgentPolicy({
+            userId,
+            mode: (data.mode || "suggest").toUpperCase(),
+            enabled: data.enabled ?? true,
+            riskPerTradeUsd: data.riskPerTradeUsd ?? 500,
+            maxDailyLossUsd: data.maxDailyLossUsd ?? 1000,
+            maxConcurrentPositions: data.maxConcurrentPositions ?? 3,
+            maxTradesPerDay: data.maxTradesPerDay ?? 2,
+            priceMin: data.minPrice ?? 5,
+            priceMax: data.maxPrice ?? 500,
+            minRewardRisk: data.minRr ?? 2,
+            ...policySyncData,
+          });
+        }
+
+        if (data.enabled !== undefined) {
+          const agentState = await storage.getAgentState(userId);
+          if (agentState) {
+            await storage.updateAgentState(userId, { enabled: data.enabled });
+          } else {
+            const newState = await storage.createAgentState(userId);
+            await storage.updateAgentState(userId, { enabled: data.enabled });
+          }
+        }
+      }
 
       await storage.createAgentSettingsAudit({
         userId,

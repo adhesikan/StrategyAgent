@@ -170,14 +170,17 @@ export async function authorizeOrder(
   }
   
   if (!agentState?.enabled) {
-    reasons.push("Agent is not enabled");
-    return { allowed: false, reasons };
+    const agentSettings = await storage.getAgentSettings(userId);
+    if (!agentSettings?.enabled) {
+      reasons.push("Agent is not enabled");
+      return { allowed: false, reasons };
+    }
   }
   
   const today = new Date().toISOString().split("T")[0];
-  let tradesToday = agentState.tradesTodayCount || 0;
+  let tradesToday = agentState?.tradesTodayCount || 0;
   
-  if (agentState.lastTradeDate !== today) {
+  if (agentState?.lastTradeDate !== today) {
     tradesToday = 0;
   }
   
@@ -198,7 +201,7 @@ export async function authorizeOrder(
     return { allowed: false, reasons };
   }
   
-  if (policy.maxDailyLossUsd && agentState.dailyPnlEstimate) {
+  if (policy.maxDailyLossUsd && agentState?.dailyPnlEstimate) {
     if (agentState.dailyPnlEstimate <= -policy.maxDailyLossUsd) {
       reasons.push(`Max daily loss ($${policy.maxDailyLossUsd}) reached`);
       return { allowed: false, reasons };

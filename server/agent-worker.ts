@@ -489,9 +489,14 @@ async function processExternalAlerts(userId: string): Promise<void> {
   if (pendingAlerts.length === 0) return;
 
   const policy = await getOrCreatePolicy(userId);
-  if (!policy.enabled) return;
+  const settings = await storage.getAgentSettings(userId);
 
-  console.log(`[AgentWorker] Processing ${pendingAlerts.length} external alerts for user ${userId}`);
+  const isEnabled = settings?.enabled || policy.enabled;
+  if (!isEnabled) return;
+
+  const effectiveMode = settings?.mode ? settings.mode.toUpperCase() : policy.mode;
+
+  console.log(`[AgentWorker] Processing ${pendingAlerts.length} external alerts for user ${userId} (mode: ${effectiveMode})`);
 
   for (const alert of pendingAlerts) {
     try {
@@ -573,25 +578,35 @@ async function processExternalAlerts(userId: string): Promise<void> {
       }
 
       let quantity = 0;
-      if (policy.riskPerTradeUsd && riskPerShare > 0) {
-        quantity = Math.floor(policy.riskPerTradeUsd / riskPerShare);
+      const effectiveRiskPerTrade = settings?.riskPerTradeUsd ?? policy.riskPerTradeUsd;
+
+      if (settings?.sizingMethod === "fixedQty" && settings.fixedQuantity) {
+        quantity = settings.fixedQuantity;
+      } else if (settings?.sizingMethod === "fixedNotional" && settings.fixedNotionalUsd) {
+        quantity = Math.floor(settings.fixedNotionalUsd / alert.entryPrice);
+      } else if (effectiveRiskPerTrade && riskPerShare > 0) {
+        quantity = Math.floor(effectiveRiskPerTrade / riskPerShare);
       }
       if (quantity <= 0) quantity = 1;
+
+      const rawOrderType = settings?.entryOrderType?.toUpperCase() || "LIMIT";
+      const effectiveOrderType = ["MARKET", "LIMIT"].includes(rawOrderType) ? rawOrderType : "LIMIT";
+      const bracketEnabled = settings?.bracketEnabled ?? true;
 
       const orderPayload = {
         symbol: alert.symbol,
         action: "BUY",
-        orderType: "LIMIT",
+        orderType: effectiveOrderType,
         limitPrice: alert.entryPrice,
         quantity,
-        stopLoss: alert.riskPrice,
-        target: alert.targetPrice,
+        stopLoss: bracketEnabled ? alert.riskPrice : undefined,
+        target: bracketEnabled ? alert.targetPrice : undefined,
         source: "external_alert",
         externalAlertId: alert.id,
         strategyName: alert.strategyName,
       };
 
-      if (policy.mode === AgentMode.SUGGEST) {
+      if (effectiveMode === AgentMode.SUGGEST) {
         const decision: InsertAgentDecision = {
           userId,
           policyId: policy.id,
@@ -610,7 +625,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
           agentDecisionId: savedDecision.id,
         });
         console.log(`[AgentWorker] SUGGEST external alert: ${alert.symbol} from ${alert.strategyName} for user ${userId}`);
-      } else if (policy.mode === AgentMode.AUTO) {
+      } else if (effectiveMode === AgentMode.AUTO) {
         try {
           const connection = await storage.getBrokerConnection(userId);
           if (!connection || !connection.isConnected || !connection.preferredAccountId) {
@@ -794,7 +809,7 @@ interface EnabledAgentUser {
 
 async function getEnabledAgentUsers(): Promise<EnabledAgentUser[]> {
   const { db } = await import("./db");
-  const { agentState, agentPolicies } = await import("@shared/schema");
+  const { agentState, agentPolicies, agentSettings } = await import("@shared/schema");
   const { eq, and } = await import("drizzle-orm");
   
   const states = await db
@@ -811,6 +826,7 @@ async function getEnabledAgentUsers(): Promise<EnabledAgentUser[]> {
       )
     );
   
+  const userIdSet = new Set(states.map(s => s.userId));
   const results: EnabledAgentUser[] = [];
   
   for (const state of states) {
@@ -822,13 +838,45 @@ async function getEnabledAgentUsers(): Promise<EnabledAgentUser[]> {
     
     const scanInterval = policy.length > 0 && policy[0].scanIntervalMinutes
       ? policy[0].scanIntervalMinutes
-      : 5; // default 5 minutes
+      : 5;
     
     results.push({
       userId: state.userId,
       scanIntervalMinutes: scanInterval,
       lastRunAt: state.lastRunAt,
     });
+  }
+
+  const settingsUsers = await db
+    .select({ userId: agentSettings.userId })
+    .from(agentSettings)
+    .where(eq(agentSettings.enabled, true));
+
+  for (const su of settingsUsers) {
+    if (!userIdSet.has(su.userId)) {
+      const existingState = await db
+        .select({ paused: agentState.paused, emergencyStop: agentState.emergencyStop, lastRunAt: agentState.lastRunAt })
+        .from(agentState)
+        .where(eq(agentState.userId, su.userId))
+        .limit(1);
+
+      if (existingState.length > 0 && (existingState[0].paused || existingState[0].emergencyStop)) {
+        continue;
+      }
+
+      const policy = await db
+        .select({ scanIntervalMinutes: agentPolicies.scanIntervalMinutes })
+        .from(agentPolicies)
+        .where(eq(agentPolicies.userId, su.userId))
+        .limit(1);
+
+      results.push({
+        userId: su.userId,
+        scanIntervalMinutes: policy.length > 0 && policy[0].scanIntervalMinutes ? policy[0].scanIntervalMinutes : 5,
+        lastRunAt: existingState.length > 0 ? existingState[0].lastRunAt : null,
+      });
+      userIdSet.add(su.userId);
+    }
   }
   
   return results;

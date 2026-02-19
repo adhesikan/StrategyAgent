@@ -5,8 +5,8 @@ export const PROMO_CODE = "EARLYBIRD50";
 export const TRIAL_DAYS = 14;
 
 export const PROMO_CONFIG = {
-  standardPrice: 129,
-  promoPrice: 59,
+  standardPrice: 99,
+  promoPrice: 49,
   discountPercent: 50,
   planName: "VCP Trader Pro",
   endDateDisplay: "Jan 30, 2026",

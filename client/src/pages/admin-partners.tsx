@@ -348,6 +348,9 @@ function PartnerCard({ partner }: { partner: Partner }) {
 
   const loginUrl = `${window.location.origin}/api/partner/login?token=<JWT>&partner=${partner.slug}`;
   const broadcastUrl = `${window.location.origin}/api/partner/alerts/broadcast`;
+  const broadcastUrlWithToken = partner.partnerApiKey
+    ? `${window.location.origin}/api/partner/alerts/broadcast?token=${partner.partnerApiKey}`
+    : null;
 
   return (
     <Card className="overflow-visible" data-testid={`card-partner-${partner.slug}`}>
@@ -432,16 +435,20 @@ function PartnerCard({ partner }: { partner: Partner }) {
             <div className="space-y-1">
               <Label className="text-xs font-medium flex items-center gap-1">
                 <Webhook className="w-3 h-3" />
-                Broadcast Webhook URL (sends to ALL active subscribers)
+                Webhook URL for Relay Target (paste into Strategy Fundamentals)
               </Label>
-              <div className="flex items-center gap-1">
-                <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono" data-testid={`text-broadcast-url-${partner.slug}`}>
-                  {broadcastUrl}
-                </code>
-                <CopyButton text={broadcastUrl} />
-              </div>
+              {broadcastUrlWithToken ? (
+                <div className="flex items-center gap-1">
+                  <code className="text-xs bg-muted p-2 rounded flex-1 break-all font-mono" data-testid={`text-broadcast-url-${partner.slug}`}>
+                    {showApiKey ? broadcastUrlWithToken : `${broadcastUrl}?token=${partner.partnerApiKey!.slice(0, 12)}${"*".repeat(20)}`}
+                  </code>
+                  <CopyButton text={broadcastUrlWithToken} />
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Generate an API key first to get the webhook URL.</p>
+              )}
               <p className="text-xs text-muted-foreground">
-                Partner sends one POST request here with the API key above in the <code className="font-mono bg-muted px-1 rounded">X-API-Key</code> header. The signal is automatically delivered to all active subscribers.
+                Copy this full URL and paste it as a new Relay Target webhook URL in Strategy Fundamentals. The token is embedded in the URL. All signals sent to this URL are automatically delivered to every active subscriber.
               </p>
             </div>
 
@@ -468,30 +475,20 @@ function PartnerCard({ partner }: { partner: Partner }) {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-medium">Signal Payload Examples</Label>
+              <Label className="text-xs font-medium">How It Works</Label>
               <div className="text-xs text-muted-foreground space-y-2">
-                <div>
-                  <p className="font-medium text-foreground mb-1">Raw Text Format (Strategy Fundamentals):</p>
-                  <code className="block bg-muted p-2 rounded font-mono whitespace-pre">{`POST ${broadcastUrl}
-Headers: X-API-Key: <partner_api_key>
-
-{
-  "rawText": "enter sym=PWR lp=534.78 tp=584.9 sl=408.36"
-}`}</code>
+                <p>Strategy Fundamentals sends signals as raw text in the body. The webhook URL above has the token embedded so no custom headers are needed. SF supports these message types:</p>
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Entry signal:</p>
+                  <code className="block bg-muted p-2 rounded font-mono text-xs">{`{ "rawText": "enter sym=PWR lp=534.78 tp=584.9 sl=408.36" }`}</code>
                 </div>
-                <div>
-                  <p className="font-medium text-foreground mb-1">Structured JSON Format:</p>
-                  <code className="block bg-muted p-2 rounded font-mono whitespace-pre">{`POST ${broadcastUrl}
-Headers: X-API-Key: <partner_api_key>
-
-{
-  "symbol": "AAPL",
-  "direction": "Long",
-  "strategy_name": "Momentum Breakout",
-  "entry_price": 185.50,
-  "risk_price": 180.00,
-  "target_price": 195.00
-}`}</code>
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Exit signal (Target Level):</p>
+                  <code className="block bg-muted p-2 rounded font-mono text-xs">{`{ "rawText": "exit sym=PWR reason=\\"Target Level\\" tp=584.9" }`}</code>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Exit signal (Risk Level):</p>
+                  <code className="block bg-muted p-2 rounded font-mono text-xs">{`{ "rawText": "exit sym=PWR reason=\\"Stop Loss\\" sl=408.36" }`}</code>
                 </div>
               </div>
             </div>

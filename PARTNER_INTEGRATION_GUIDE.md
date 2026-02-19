@@ -83,8 +83,19 @@ POST /api/partner/alerts/broadcast
 
 ### Authentication
 
-Include the partner's broadcast API key in the `X-API-Key` header:
+Two methods are supported:
 
+**Method 1: Token in URL (recommended for relay targets like Strategy Fundamentals)**
+
+Embed the API key as a `token` query parameter:
+```
+POST /api/partner/alerts/broadcast?token=pk_strategy-fundamentals_abc123...
+```
+This is the full URL you paste into Strategy Fundamentals' "Webhook URL" field when adding a relay target. No custom headers needed.
+
+**Method 2: X-API-Key header**
+
+Include the partner's broadcast API key in the `X-API-Key` header:
 ```
 X-API-Key: pk_strategy-fundamentals_abc123...
 ```

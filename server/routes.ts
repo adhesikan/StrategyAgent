@@ -5754,22 +5754,41 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         await storage.updatePartnerUser(partnerUser.id, { stripeCustomerId: customerId });
       }
 
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
-      const priceResult = await db.execute(
-        sql`SELECT pr.id FROM stripe.prices pr
-            JOIN stripe.products p ON pr.product = p.id
-            WHERE p.metadata->>'type' = 'partner_subscription'
-            AND pr.active = true
-            AND pr.recurring IS NOT NULL
-            LIMIT 1`
-      );
+      let priceId: string | null = null;
 
-      if (!priceResult.rows[0]) {
-        return res.status(500).json({ error: "Subscription product not configured. Contact support." });
+      try {
+        const { db } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        const priceResult = await db.execute(
+          sql`SELECT pr.id FROM stripe.prices pr
+              JOIN stripe.products p ON pr.product = p.id
+              WHERE p.metadata->>'type' = 'partner_subscription'
+              AND pr.active = true
+              AND pr.recurring IS NOT NULL
+              LIMIT 1`
+        );
+        if (priceResult.rows[0]) {
+          priceId = priceResult.rows[0].id as string;
+        }
+      } catch (dbErr) {
+        console.log("[checkout] Local stripe tables query failed, falling back to API");
       }
 
-      const priceId = priceResult.rows[0].id as string;
+      if (!priceId) {
+        const products = await stripe.products.list({ active: true, limit: 100 });
+        const partnerProduct = products.data.find(p => p.metadata?.type === 'partner_subscription');
+        if (partnerProduct) {
+          const prices = await stripe.prices.list({ product: partnerProduct.id, active: true, limit: 10 });
+          const recurringPrice = prices.data.find(p => p.recurring);
+          if (recurringPrice) {
+            priceId = recurringPrice.id;
+          }
+        }
+      }
+
+      if (!priceId) {
+        return res.status(500).json({ error: "Subscription product not configured. Contact support." });
+      }
       const baseUrl = `${req.protocol}://${req.get("host")}`;
 
       const session = await stripe.checkout.sessions.create({

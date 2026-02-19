@@ -31,8 +31,30 @@ interface ExecutedTrade {
     strike: number;
     expiration: string;
   } | null;
+  strategy: string | null;
   reasons: string[] | null;
   createdAt: string;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  sent_to_broker: "Sent to Broker",
+  filled: "Filled",
+  pending: "Pending",
+  skipped: "Skipped",
+  cancelled: "Cancelled",
+  rejected: "Rejected",
+  error: "Error",
+};
+
+function formatStatus(status: string): string {
+  return STATUS_LABELS[status] || status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatStrategy(strategy: string | null): string | null {
+  if (!strategy) return null;
+  return strategy
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 type SortField = "date" | "symbol" | "status" | "quantity";
@@ -67,6 +89,11 @@ function TradeCard({ trade }: { trade: ExecutedTrade }) {
                     {trade.side}
                   </Badge>
                 )}
+                {formatStrategy(trade.strategy) && (
+                  <Badge variant="secondary" className="text-xs" data-testid={`badge-trade-strategy-${trade.id}`}>
+                    {formatStrategy(trade.strategy)}
+                  </Badge>
+                )}
                 {trade.isOptions && trade.optionDetails && (
                   <span className="text-xs text-muted-foreground">
                     {trade.optionDetails.optionType?.toUpperCase()} ${trade.optionDetails.strike} exp {trade.optionDetails.expiration}
@@ -98,14 +125,14 @@ function TradeCard({ trade }: { trade: ExecutedTrade }) {
           <div className="flex flex-col items-end gap-1 shrink-0">
             <Badge
               variant={
-                trade.status === "filled" || trade.status === "executed" ? "default" :
+                trade.status === "filled" || trade.status === "sent_to_broker" ? "default" :
                 trade.status === "pending" ? "outline" :
-                trade.status === "skipped" || trade.status === "cancelled" ? "destructive" : "secondary"
+                trade.status === "skipped" || trade.status === "cancelled" || trade.status === "error" || trade.status === "rejected" ? "destructive" : "secondary"
               }
               className="text-xs"
               data-testid={`badge-trade-status-${trade.id}`}
             >
-              {trade.status}
+              {formatStatus(trade.status)}
             </Badge>
             <div className="flex flex-col items-end gap-0.5" data-testid={`text-trade-time-${trade.id}`}>
               {trade.createdAt && (
@@ -230,13 +257,13 @@ export function TradeActivityPanel() {
           </div>
 
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-[140px]" data-testid="select-trade-status-filter">
+            <SelectTrigger className="w-[160px]" data-testid="select-trade-status-filter">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               {statusOptions.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
+                <SelectItem key={s} value={s}>{formatStatus(s)}</SelectItem>
               ))}
             </SelectContent>
           </Select>

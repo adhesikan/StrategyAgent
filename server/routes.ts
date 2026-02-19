@@ -1096,6 +1096,62 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  function normalizeTradeStatus(raw: string): string {
+    const lower = raw.toLowerCase();
+    if (lower === "ok" || lower === "executed") return "sent_to_broker";
+    return lower;
+  }
+
+  function mapAgentDecisionToTrade(d: any) {
+    const payload = d.orderPayload as any;
+    const metrics = d.metricsSnapshot as any;
+    const rawStatus = d.action === "SKIP" ? "skipped" : (payload?.brokerStatus || "executed");
+    return {
+      id: d.id,
+      symbol: d.symbol,
+      source: "auto_agent" as const,
+      action: d.action,
+      side: payload?.action === "SELL" ? "sell" : "buy",
+      quantity: payload?.quantity || 0,
+      orderType: (payload?.orderType || "LIMIT").toLowerCase(),
+      price: payload?.limitPrice || null,
+      status: normalizeTradeStatus(rawStatus),
+      brokerOrderId: payload?.brokerOrderId || d.brokerOrderId || null,
+      isOptions: !!payload?.isOptionsOrder,
+      optionDetails: payload?.isOptionsOrder ? {
+        optionType: payload?.optionType,
+        strike: payload?.strike,
+        expiration: payload?.expiration,
+      } : null,
+      strategy: payload?.strategyName || payload?.strategyId || metrics?.strategyId || null,
+      reasons: d.reasons,
+      createdAt: d.createdAt,
+    };
+  }
+
+  function mapInstaTradeToTrade(o: any) {
+    return {
+      id: o.id,
+      symbol: o.symbol,
+      source: "instatrade" as const,
+      side: o.side,
+      quantity: o.quantity,
+      orderType: o.orderType,
+      price: o.limitPrice || o.fillPrice || null,
+      status: normalizeTradeStatus(o.status),
+      brokerOrderId: o.brokerOrderId || null,
+      isOptions: !!o.optionSymbol,
+      optionDetails: o.optionSymbol ? {
+        optionType: o.optionType,
+        strike: o.strike,
+        expiration: o.expiration,
+      } : null,
+      strategy: o.strategyKey || null,
+      reasons: null,
+      createdAt: o.createdAt,
+    };
+  }
+
   app.get("/api/today-trades", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -1137,45 +1193,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .limit(50);
 
       const combined = [
-        ...agentTrades.map((d: any) => ({
-          id: d.id,
-          symbol: d.symbol,
-          source: "auto_agent" as const,
-          action: d.action,
-          side: (d.orderPayload as any)?.action === "SELL" ? "sell" : "buy",
-          quantity: (d.orderPayload as any)?.quantity || 0,
-          orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
-          price: (d.orderPayload as any)?.limitPrice || null,
-          status: d.action === "SKIP" ? "skipped" : ((d.orderPayload as any)?.brokerStatus || "executed"),
-          brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
-          isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
-          optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {
-            optionType: (d.orderPayload as any)?.optionType,
-            strike: (d.orderPayload as any)?.strike,
-            expiration: (d.orderPayload as any)?.expiration,
-          } : null,
-          reasons: d.reasons,
-          createdAt: d.createdAt,
-        })),
-        ...instaTradeOrders.map((o: any) => ({
-          id: o.id,
-          symbol: o.symbol,
-          source: "instatrade" as const,
-          side: o.side,
-          quantity: o.quantity,
-          orderType: o.orderType,
-          price: o.limitPrice || o.fillPrice || null,
-          status: o.status,
-          brokerOrderId: o.brokerOrderId || null,
-          isOptions: !!o.optionSymbol,
-          optionDetails: o.optionSymbol ? {
-            optionType: o.optionType,
-            strike: o.strike,
-            expiration: o.expiration,
-          } : null,
-          reasons: null,
-          createdAt: o.createdAt,
-        })),
+        ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
+        ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
       ].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -1217,45 +1236,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .limit(limit);
 
       const combined = [
-        ...agentTrades.map((d: any) => ({
-          id: d.id,
-          symbol: d.symbol,
-          source: "auto_agent" as const,
-          action: d.action,
-          side: (d.orderPayload as any)?.action === "SELL" ? "sell" : "buy",
-          quantity: (d.orderPayload as any)?.quantity || 0,
-          orderType: ((d.orderPayload as any)?.orderType || "LIMIT").toLowerCase(),
-          price: (d.orderPayload as any)?.limitPrice || null,
-          status: d.action === "SKIP" ? "skipped" : ((d.orderPayload as any)?.brokerStatus || "executed"),
-          brokerOrderId: (d.orderPayload as any)?.brokerOrderId || d.brokerOrderId || null,
-          isOptions: !!(d.orderPayload as any)?.isOptionsOrder,
-          optionDetails: (d.orderPayload as any)?.isOptionsOrder ? {
-            optionType: (d.orderPayload as any)?.optionType,
-            strike: (d.orderPayload as any)?.strike,
-            expiration: (d.orderPayload as any)?.expiration,
-          } : null,
-          reasons: d.reasons,
-          createdAt: d.createdAt,
-        })),
-        ...instaTradeOrders.map((o: any) => ({
-          id: o.id,
-          symbol: o.symbol,
-          source: "instatrade" as const,
-          side: o.side,
-          quantity: o.quantity,
-          orderType: o.orderType,
-          price: o.limitPrice || o.fillPrice || null,
-          status: o.status,
-          brokerOrderId: o.brokerOrderId || null,
-          isOptions: !!o.optionSymbol,
-          optionDetails: o.optionSymbol ? {
-            optionType: o.optionType,
-            strike: o.strike,
-            expiration: o.expiration,
-          } : null,
-          reasons: null,
-          createdAt: o.createdAt,
-        })),
+        ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
+        ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
       ].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

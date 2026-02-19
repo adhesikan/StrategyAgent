@@ -103,9 +103,18 @@ export function AutoAgentPanel() {
     mutationFn: async (updates: Partial<AgentSettings>) => {
       return apiRequest("PUT", "/api/agent-settings", updates);
     },
+    onMutate: async (updates) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/agent-settings"] });
+      const prev = queryClient.getQueryData<AgentSettings>(["/api/agent-settings"]);
+      queryClient.setQueryData(["/api/agent-settings"], (old: any) => ({ ...old, ...updates }));
+      return { prev };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agent-settings"] });
-      toast({ title: "Bracket settings updated" });
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) queryClient.setQueryData(["/api/agent-settings"], context.prev);
+      toast({ title: "Failed to update settings", variant: "destructive" });
     },
   });
 

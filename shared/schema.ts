@@ -1508,6 +1508,11 @@ export const agentSettings = pgTable("agent_settings", {
   bracketStopValue: real("bracket_stop_value"),
   bracketTargetMethod: text("bracket_target_method").default("signal"),
   bracketTargetValue: real("bracket_target_value"),
+  optionsBracketEnabled: boolean("options_bracket_enabled").default(false),
+  optionsBracketStopMethod: text("options_bracket_stop_method").default("pct"),
+  optionsBracketStopValue: real("options_bracket_stop_value").default(50),
+  optionsBracketTargetMethod: text("options_bracket_target_method").default("pct"),
+  optionsBracketTargetValue: real("options_bracket_target_value").default(100),
   requireStops: boolean("require_stops").default(true),
 
   // Filters & sizing

@@ -88,6 +88,11 @@ export function AutoAgentPanel() {
     bracketStopValue?: number | null;
     bracketTargetMethod?: string;
     bracketTargetValue?: number | null;
+    optionsBracketEnabled?: boolean;
+    optionsBracketStopMethod?: string;
+    optionsBracketStopValue?: number | null;
+    optionsBracketTargetMethod?: string;
+    optionsBracketTargetValue?: number | null;
   }
 
   const { data: agentSettings } = useQuery<AgentSettings>({
@@ -1107,6 +1112,117 @@ export function AutoAgentPanel() {
                     onChange={(e) => updatePolicy.mutate({ optionsMaxRiskUsd: parseFloat(e.target.value) || 500 })}
                     data-testid="input-options-max-risk"
                   />
+                </div>
+
+                <div className="border-t pt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <Label>Options Exit Brackets</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>Automatically set stop-loss and take-profit levels on options positions. TradeGuard monitors these levels and closes the position when triggered.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Auto-close options at stop or target levels via TradeGuard
+                      </p>
+                    </div>
+                    <Switch
+                      checked={agentSettings?.optionsBracketEnabled ?? false}
+                      onCheckedChange={(checked) => updateAgentSettings.mutate({ optionsBracketEnabled: checked })}
+                      data-testid="switch-options-bracket-enabled"
+                    />
+                  </div>
+
+                  {agentSettings?.optionsBracketEnabled && (
+                    <div className="space-y-4 pl-1">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1">
+                            <Label>Stop-Loss Method</Label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p><strong>% of Premium:</strong> Close if option loses this % of its entry premium (e.g. 50% = close at half your entry price).</p>
+                                <p className="mt-1"><strong>$ per Contract:</strong> Close if the option drops by this dollar amount per contract.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <Select
+                            value={agentSettings?.optionsBracketStopMethod || "pct"}
+                            onValueChange={(val) => updateAgentSettings.mutate({ optionsBracketStopMethod: val })}
+                          >
+                            <SelectTrigger data-testid="select-options-bracket-stop-method">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pct">% of Premium</SelectItem>
+                              <SelectItem value="dollar">$ per Contract</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{(agentSettings?.optionsBracketStopMethod || "pct") === "pct" ? "Stop Loss (%)" : "Stop Loss ($)"}</Label>
+                          <Input
+                            type="number"
+                            step="1"
+                            min="1"
+                            placeholder={(agentSettings?.optionsBracketStopMethod || "pct") === "pct" ? "e.g. 50" : "e.g. 0.50"}
+                            value={agentSettings?.optionsBracketStopValue ?? ""}
+                            onChange={(e) => updateAgentSettings.mutate({ optionsBracketStopValue: e.target.value ? Number(e.target.value) : null })}
+                            data-testid="input-options-bracket-stop-value"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1">
+                            <Label>Take-Profit Method</Label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p><strong>% of Premium:</strong> Close when option gains this % above entry premium (e.g. 100% = double your money).</p>
+                                <p className="mt-1"><strong>$ per Contract:</strong> Close when the option gains by this dollar amount.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <Select
+                            value={agentSettings?.optionsBracketTargetMethod || "pct"}
+                            onValueChange={(val) => updateAgentSettings.mutate({ optionsBracketTargetMethod: val })}
+                          >
+                            <SelectTrigger data-testid="select-options-bracket-target-method">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pct">% of Premium</SelectItem>
+                              <SelectItem value="dollar">$ per Contract</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{(agentSettings?.optionsBracketTargetMethod || "pct") === "pct" ? "Take Profit (%)" : "Take Profit ($)"}</Label>
+                          <Input
+                            type="number"
+                            step="1"
+                            min="1"
+                            placeholder={(agentSettings?.optionsBracketTargetMethod || "pct") === "pct" ? "e.g. 100" : "e.g. 1.00"}
+                            value={agentSettings?.optionsBracketTargetValue ?? ""}
+                            onChange={(e) => updateAgentSettings.mutate({ optionsBracketTargetValue: e.target.value ? Number(e.target.value) : null })}
+                            data-testid="input-options-bracket-target-value"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

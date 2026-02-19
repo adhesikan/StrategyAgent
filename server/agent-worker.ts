@@ -143,7 +143,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
         action: AgentAction.SUGGEST,
         reasons,
         metricsSnapshot: item.eligibility.metrics,
-        orderPayload: optionsCandidate ? buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate) : undefined,
+        orderPayload: optionsCandidate ? await buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate, userId) : undefined,
       };
       await recordDecision(decision);
       console.log(`[AgentWorker] SUGGEST: ${item.opportunity.symbol}${optionsCandidate ? ` (options: ${optionsCandidate.optionType} $${optionsCandidate.strike})` : ""} for user ${userId}`);
@@ -157,7 +157,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
         }
 
         if (optionsCandidate) {
-          orderPayload = buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate);
+          orderPayload = await buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate, userId);
         } else {
           orderPayload = await buildOrderPayload(item.opportunity, policy, userId);
         }
@@ -292,14 +292,41 @@ async function evaluateOptionsForOpportunity(
   }
 }
 
-function buildOptionsOrderPayload(
+async function buildOptionsOrderPayload(
   opportunity: Opportunity,
   policy: AgentPolicy,
   candidate: OptionCandidate,
-): object {
+  userId: string,
+): Promise<object> {
   const maxRisk = policy.optionsMaxRiskUsd ?? 500;
   const contractCost = candidate.mid * 100;
   const quantity = contractCost > 0 ? Math.max(1, Math.floor(maxRisk / contractCost)) : 1;
+
+  const settings = await storage.getAgentSettings(userId);
+  let optionsStopPrice: number | undefined;
+  let optionsTargetPrice: number | undefined;
+
+  if (settings?.optionsBracketEnabled && candidate.mid > 0) {
+    const stopMethod = settings.optionsBracketStopMethod || "pct";
+    const stopValue = settings.optionsBracketStopValue ?? 50;
+    const targetMethod = settings.optionsBracketTargetMethod || "pct";
+    const targetValue = settings.optionsBracketTargetValue ?? 100;
+
+    if (stopMethod === "pct" && stopValue > 0) {
+      optionsStopPrice = +(candidate.mid * (1 - stopValue / 100)).toFixed(2);
+    } else if (stopMethod === "dollar" && stopValue > 0) {
+      optionsStopPrice = +(candidate.mid - stopValue).toFixed(2);
+    }
+
+    if (targetMethod === "pct" && targetValue > 0) {
+      optionsTargetPrice = +(candidate.mid * (1 + targetValue / 100)).toFixed(2);
+    } else if (targetMethod === "dollar" && targetValue > 0) {
+      optionsTargetPrice = +(candidate.mid + targetValue).toFixed(2);
+    }
+
+    if (optionsStopPrice !== undefined && optionsStopPrice <= 0) optionsStopPrice = undefined;
+    if (optionsTargetPrice !== undefined && optionsTargetPrice <= 0) optionsTargetPrice = undefined;
+  }
 
   return {
     symbol: candidate.symbol,
@@ -320,6 +347,8 @@ function buildOptionsOrderPayload(
     legs: candidate.legs,
     opportunityId: opportunity.id,
     isOptionsOrder: true,
+    optionsStopPrice,
+    optionsTargetPrice,
   };
 }
 

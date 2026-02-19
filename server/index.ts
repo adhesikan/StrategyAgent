@@ -488,6 +488,11 @@ async function restoreBrokerConnections() {
   startTokenRefreshService();
   log("Token refresh service started");
 
+  // Start auto agent worker (evaluates opportunities during market hours)
+  const { startAgentWorker } = await import("./agent-worker");
+  startAgentWorker();
+  log("Auto agent worker started");
+
   // Sync Stripe subscription statuses to partner_users (every 2 minutes)
   cron.schedule("*/2 * * * *", async () => {
     try {

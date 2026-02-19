@@ -1,0 +1,82 @@
+8:33:47 PM [express] GET /api/broker/ping 403 in 12ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:47 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533222997}
+8:33:48 PM [express] GET /api/broker/ping 403 in 10ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:49 PM [express] GET /api/broker/ping 200 in 49ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533229002}
+[AlertEngine] Processing 2 global rule(s) against 0 scan results
+[AlertEngine] Rule 19e903c9-1a7e-4fb3-92fa-ad64d28d52db: Looking for stage=BREAKOUT, previouslyTriggered=SMCI,AMD,HON,MDB,MRNA,MU,AVGO,CSGP,LRCX,META,NVDA,IBM,AMAT,GILD,INTC,GFS,KDP,GOOGL,ORLY,TTD,ARM,CPRT,CSX,DDOG,FAST,ILMN,MCHP,ODFL,PYPL,TEAM,TSLA,SBUX,CHTR,CMCSA,ADI,AMGN,BKR,CTSH,GEHC,MAR,MRVL,ON,PCAR,TXN,VRTX,PG,FTNT,KHC,MSFT,NFLX,PANW,AAPL,ANET,APH,GLW,SYY,UPS,GM,PFE,AKAM,ARE,KMX,RTX,STX,UNH,ELV,FFIV,WDC,T,PPG,TT,DOW,HBAN,NOW,ORCL,VTRS,EL,LUV,LYB,MTCH,TER,TSCO,WMT,APTV,CL,DOV,AME,CE,EMN,FITB,LULU,WST,CCL,CSCO,DAL,DVA,ETN,FDX,FSLR,GL,HAS,HPE,IR,JBHT,KEY,LVS,MRK,PLTR,RF,TFC,TGT,UAL,USB,VRSN,WAT,ZBRA,AES,HPQ,BLDR,CAG,CTRA,D,IP,ITW,PEP,VZ,BALL,HWM,WTW,OKE,SWK,WY,BG,FCX,ENPH,FTV,TECH,SW,ADBE,AMT,AVY,BAX,CLX,COO,CZR,DVN,EMR,FIS,IEX,INTU,J,JCI,JKHY,KMB,LW,MGM,NKE,PAYC,PNR,RMD,ROP,STZ,SWKS,TYL,UDR,VICI,OTIS,HSY,COR,BSX,CMS,PTC,CPAY,ALGN,EFX,ALL,UBER,BMY,CAH,CI,ICE,TPR,TXT,UHS,VTR,CME,GEN,ACN,AMCR,AVB,BIIB,BX,BXP,CCI,CDNS,CEG,CMG,CRL,CRWD,DECK,DLR,EPAM,EQR,ESS,EXPE,FMC,HII,HSIC,INCY,IQV,ISRG,IT,IVZ,JPM,MAS,MMM,NEM,POOL,PRU,RJF,ROK,SLB,SNPS,STE,TEL,TFX,TRMB,TROW,VMC,VST,WELL,XYL,AXON,RVTY,WBD,KR,TTWO,CARR,CBOE,LYV,MKTX,NWS,NXPI,SCHW,VLTO,BK,CF,JBL,KEYS,MOS,SBAC,TRGP,CTAS,AON,BDX,DGX,OMC,PNW,ZBH,SOLV,ALB,BWA,GNRC,HAL,WMB,TMUS,EW,DD,KO,WRB,KVUE,AIG,TAP,VRSK,APA,COP,EIX,EOG,F,FANG,MO,OXY,PCG,PGR,WAB,CNC,DLTR,EQT,MKC,MPC,NRG,PSX,STLD,VLO,XOM,AEE,LH,CBRE,IRM,O,EXC,ZTS,MCD,JNJ,CRM,HRL,CHRW,GPN,SJM,MCO,BR,LDOS,SYK,ADP,BIO,HST
+[AlertEngine] Rule 19e903c9-1a7e-4fb3-92fa-ad64d28d52db: Found 0 matching results
+[AlertEngine] Rule 57eebe16-fca2-4de9-8c45-1841c8f261de: Looking for stage=BREAKOUT, previouslyTriggered=SMCI,CSGP,LRCX,MU,HON,IBM,AMAT,AVGO,GILD,MDB,MRNA,INTC,GFS,KDP,GOOGL,NVDA,TTD,ARM,CPRT,CSX,DDOG,FAST,ILMN,MCHP,ODFL,PYPL,TEAM,TSLA,SBUX,CHTR,CMCSA,ADI,AMGN,BKR,CTSH,GEHC,MAR,MRVL,ON,PCAR,TXN,VRTX,ORLY,PG,FTNT,KHC,MSFT,NFLX,PANW,AAPL,ANET,APH,GLW,SYY,UPS,GM,PFE,AKAM,ARE,KMX,RTX,STX,UNH,ELV,FFIV,WDC,T,PPG,TT,DOW,HBAN,NOW,ORCL,VTRS,EL,LUV,LYB,MTCH,TER,TSCO,WMT,APTV,CL,DOV,AME,CE,EMN,FITB,LULU,WST,CCL,CSCO,DAL,DVA,ETN,FDX,FSLR,GL,HAS,HPE,IR,JBHT,KEY,LVS,MRK,PLTR,RF,TFC,TGT,UAL,USB,VRSN,WAT,ZBRA,AES,HPQ,BLDR,CAG,CTRA,D,IP,ITW,PEP,VZ,BALL,HWM,WTW,OKE,SWK,WY,BG,FCX,ENPH,FTV,TECH,SW,ADBE,AMT,AVY,BAX,CLX,COO,CZR,DVN,EMR,FIS,IEX,INTU,J,JCI,JKHY,KMB,LW,MGM,NKE,PAYC,PNR,RMD,ROP,STZ,SWKS,TYL,UDR,VICI,OTIS,HSY,COR,BSX,CMS,PTC,CPAY,ALGN,EFX,ALL,UBER,BMY,CAH,CI,ICE,TPR,TXT,UHS,VTR,CME,GEN,ACN,AMCR,AVB,BIIB,BX,BXP,CCI,CDNS,CEG,CMG,CRL,CRWD,DECK,DLR,EPAM,EQR,ESS,EXPE,FMC,HII,HSIC,INCY,IQV,ISRG,IT,IVZ,JPM,MAS,MMM,NEM,POOL,PRU,RJF,ROK,SLB,SNPS,STE,TEL,TFX,TRMB,TROW,VMC,VST,WELL,XYL,AXON,RVTY,WBD,KR,TTWO,CARR,CBOE,LYV,MKTX,NWS,NXPI,SCHW,VLTO,AMD,BK,CF,JBL,KEYS,MOS,SBAC,TRGP,CTAS,AON,BDX,DGX,OMC,PNW,ZBH,SOLV,ALB,BWA,GNRC,HAL,WMB,TMUS,EW,DD,KO,WRB,KVUE,AIG,TAP,VRSK,APA,COP,EIX,EOG,F,FANG,MO,OXY,PCG,PGR,WAB,CNC,DLTR,EQT,MKC,MPC,NRG,PSX,STLD,VLO,XOM,AEE,LH,CBRE,IRM,O,EXC,ZTS,MCD,JNJ,CRM,HRL,CHRW,GPN,SJM,MCO,BR,LDOS,SYK,ADP,BIO,HST
+[AlertEngine] Rule 57eebe16-fca2-4de9-8c45-1841c8f261de: Found 0 matching results
+[AlertEngine] Processing 1 watchlist rule(s) against 0 scan results
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Looking for stage=BREAKOUT in watchlist MyTechWatch (1 symbols)
+[AlertEngine] Watchlist rule 49b2e398-4774-4983-835d-71d580ec7857: Found 0 matching results
+8:33:49 PM [express] GET /api/broker/ping 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+[AgentWorker] Processing 1 users
+8:33:49 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533229002}
+8:33:50 PM [express] GET /api/broker/ping 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:50 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533229002}
+8:33:51 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:51 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533229002}
+8:33:52 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:52 PM [express] GET /api/broker/ping 304 in 16ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533229002}
+8:33:53 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:53 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533229002}
+8:33:54 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:55 PM [express] GET /api/broker/ping 200 in 43ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533234997}
+8:33:55 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:55 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533234997}
+8:33:56 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:56 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533234997}
+8:33:57 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:57 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533234997}
+8:33:58 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:58 PM [express] GET /api/broker/ping 304 in 11ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533234997}
+8:33:59 PM [express] GET /api/broker/ping 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:33:59 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533234997}
+8:34:00 PM [express] GET /api/broker/ping 403 in 10ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:01 PM [express] GET /api/broker/ping 200 in 48ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533240999}
+8:34:01 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:02 PM [express] GET /api/alert-events 304 in 10ms :: []
+8:34:02 PM [express] GET /api/data-source/status 304 in 12ms :: {"activeSource":"brokerage","activeProvider":"tradestation","isLive":true,"hasBrokerConnection":true,"brokerProvider":"tradestation"}
+8:34:02 PM [express] GET /api/broker/ping 304 in 11ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533240999}
+8:34:03 PM [express] GET /api/broker/ping 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:03 PM [express] GET /api/broker/status 403 in 11ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:03 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533240999}
+8:34:04 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:04 PM [express] GET /api/broker/ping 304 in 13ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533240999}
+8:34:05 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:05 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533240999}
+8:34:06 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:07 PM [express] GET /api/broker/ping 200 in 48ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533247000}
+8:34:07 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:07 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533247000}
+8:34:08 PM [express] GET /api/broker/ping 403 in 10ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:08 PM [express] GET /api/broker/ping 304 in 13ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533247000}
+8:34:09 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:09 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533247000}
+8:34:10 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:10 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533247000}
+8:34:11 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:11 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533247000}
+8:34:12 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:13 PM [express] GET /api/broker/ping 200 in 46ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533252997}
+8:34:13 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:13 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533252997}
+8:34:14 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:14 PM [express] GET /api/broker/ping 304 in 11ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533252997}
+8:34:15 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:15 PM [express] GET /api/today-trades 403 in 14ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:15 PM [express] GET /api/alert-events 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:15 PM [express] GET /api/broker/ping 304 in 12ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533252997}
+8:34:16 PM [express] GET /api/data-source/status 304 in 100ms :: {"activeSource":"brokerage","activeProvider":"tradier","isLive":true,"hasBrokerConnection":true,"brokerProvider":"tradier"}
+8:34:16 PM [express] GET /api/broker/ping 403 in 6ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:16 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:16 PM [express] GET /api/broker/ping 304 in 9ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533252997}
+8:34:17 PM [express] GET /api/broker/ping 403 in 8ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:17 PM [express] GET /api/broker/ping 304 in 10ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533252997}
+8:34:18 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:19 PM [express] GET /api/broker/ping 200 in 53ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533259000}
+8:34:19 PM [express] GET /api/broker/ping 403 in 7ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:20 PM [express] GET /api/broker/ping 403 in 11ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}
+8:34:20 PM [express] GET /api/broker/ping 304 in 13ms :: {"ok":true,"provider":"tradestation","checkedAt":1771533259000}
+8:34:21 PM [express] GET /api/broker/ping 403 in 9ms :: {"message":"Partner accounts cannot access the full platform. Use /api/partner/* endpoints."}

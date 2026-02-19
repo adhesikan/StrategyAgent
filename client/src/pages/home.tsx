@@ -556,7 +556,7 @@ function VCPTraderProSection() {
         </p>
         <p className="text-center mt-3 text-xs text-muted-foreground max-w-2xl mx-auto" data-testid="text-tradier-credit">
           New Tradier brokerage accounts may be eligible for a $200 account credit. Subject to Tradier's terms and conditions. Visit{" "}
-          <a href="https://www.tradier.com" target="_blank" rel="noopener noreferrer" className="underline">tradier.com</a>{" "}
+          <a href="https://join.tradier.com/partner?platform=261" target="_blank" rel="noopener noreferrer" className="underline">tradier.com</a>{" "}
           for details.
         </p>
       </div>

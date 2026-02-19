@@ -2057,6 +2057,26 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.get("/api/broker/quote/:symbol", isAuthenticatedOrPartner, async (req, res) => {
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      if (!connection || !connection.isConnected || !connection.accessToken) {
+        return res.status(400).json({ error: "No active broker connection" });
+      }
+      const quotes = await fetchQuotesFromBroker(connection, [symbol]);
+      const q = quotes.find((qt: any) => qt.symbol === symbol);
+      if (!q) {
+        return res.status(404).json({ error: "Quote not found" });
+      }
+      res.json({ symbol: q.symbol, last: q.last, volume: q.volume, change: q.change, changePercent: q.changePercent });
+    } catch (error: any) {
+      console.error("[Quote] error:", error.message);
+      res.status(500).json({ error: "Failed to fetch quote" });
+    }
+  });
+
   // ─── Trade Ticket API (Preview & Place) ──────────────────────────────
   const { tradeOrders, managedExits } = await import("@shared/schema");
 

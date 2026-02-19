@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -73,6 +73,21 @@ export function StockTradeTicket({
   const [targetPrice, setTargetPrice] = useState<string>("");
   const [stopPrice, setStopPrice] = useState<string>("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [livePrice, setLivePrice] = useState<number>(0);
+
+  const needsQuote = open && scanResult && !scanResult.price;
+  const { data: quoteData } = useQuery<{ last: number; symbol: string }>({
+    queryKey: ["/api/broker/quote", scanResult?.ticker],
+    enabled: !!needsQuote && !!scanResult?.ticker,
+  });
+
+  useEffect(() => {
+    if (quoteData?.last && quoteData.last > 0) {
+      setLivePrice(quoteData.last);
+    }
+  }, [quoteData]);
+
+  const displayPrice = scanResult?.price || livePrice;
 
   useEffect(() => {
     if (open && scanResult) {
@@ -83,6 +98,7 @@ export function StockTradeTicket({
       setDuration("day");
       setBracketEnabled(false);
       setAdvancedOpen(false);
+      setLivePrice(0);
 
       if (scanResult.resistance && scanResult.stopLoss) {
         const risk = scanResult.resistance - scanResult.stopLoss;
@@ -98,6 +114,13 @@ export function StockTradeTicket({
       }
     }
   }, [open, scanResult?.ticker]);
+
+  useEffect(() => {
+    if (livePrice > 0 && entryType === "market" && !limitPrice) {
+      setEntryType("limit");
+      setLimitPrice(String(livePrice.toFixed(2)));
+    }
+  }, [livePrice]);
 
   const placeMutation = useMutation({
     mutationFn: async () => {
@@ -158,7 +181,7 @@ export function StockTradeTicket({
 
   if (!scanResult) return null;
 
-  const entryPrice = entryType === "limit" && limitPrice ? parseFloat(limitPrice) : scanResult.price;
+  const entryPrice = entryType === "limit" && limitPrice ? parseFloat(limitPrice) : displayPrice;
   const totalCost = entryPrice * quantity;
   const riskPerShare = scanResult.resistance && scanResult.stopLoss
     ? (scanResult.resistance - scanResult.stopLoss)
@@ -202,10 +225,12 @@ export function StockTradeTicket({
                     <span className="font-mono font-medium text-chart-2">${scanResult.resistance.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Current:</span>
-                  <span className="font-mono font-medium">${scanResult.price.toFixed(2)}</span>
-                </div>
+                {displayPrice > 0 && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">Current:</span>
+                    <span className="font-mono font-medium">${displayPrice.toFixed(2)}</span>
+                  </div>
+                )}
                 {scanResult.stopLoss && (
                   <div className="flex items-center gap-1">
                     <span className="text-muted-foreground">Stop:</span>
@@ -299,7 +324,8 @@ export function StockTradeTicket({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setLimitPrice(String(scanResult.price.toFixed(2)))}
+                    onClick={() => displayPrice > 0 && setLimitPrice(String(displayPrice.toFixed(2)))}
+                    disabled={!displayPrice}
                     data-testid="button-price-current"
                   >
                     Current
@@ -318,9 +344,10 @@ export function StockTradeTicket({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const adjusted = (scanResult.price - 0.05);
-                      setLimitPrice(String(adjusted.toFixed(2)));
+                      const adjusted = (displayPrice - 0.05);
+                      if (adjusted > 0) setLimitPrice(String(adjusted.toFixed(2)));
                     }}
+                    disabled={!displayPrice}
                     data-testid="button-price-minus5c"
                   >
                     -$0.05
@@ -329,9 +356,10 @@ export function StockTradeTicket({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const adjusted = (scanResult.price + 0.05);
+                      const adjusted = (displayPrice + 0.05);
                       setLimitPrice(String(adjusted.toFixed(2)));
                     }}
+                    disabled={!displayPrice}
                     data-testid="button-price-plus5c"
                   >
                     +$0.05

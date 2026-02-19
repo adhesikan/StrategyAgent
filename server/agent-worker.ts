@@ -159,7 +159,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
         if (optionsCandidate) {
           orderPayload = buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate);
         } else {
-          orderPayload = buildOrderPayload(item.opportunity, policy);
+          orderPayload = await buildOrderPayload(item.opportunity, policy, userId);
         }
 
         const connection = await storage.getBrokerConnection(userId);
@@ -687,22 +687,35 @@ async function processExternalAlerts(userId: string): Promise<void> {
   }
 }
 
-function buildOrderPayload(opportunity: Opportunity, policy: any): object {
+async function buildOrderPayload(opportunity: Opportunity, policy: any, userId: string): Promise<object> {
   const price = opportunity.lastPrice || opportunity.detectedPrice || 0;
   const stop = opportunity.stopReferencePrice || 0;
   const target = opportunity.resistancePrice || 0;
-  
   const riskPerShare = price - stop;
+
+  const settings = await storage.getAgentSettings(userId);
   let quantity = 0;
-  
-  if (riskPerShare > 0 && policy.riskPerTradeUsd) {
-    quantity = Math.floor(policy.riskPerTradeUsd / riskPerShare);
+
+  if (settings?.sizingMethod === "fixedQty" && settings.fixedQuantity) {
+    quantity = settings.fixedQuantity;
+  } else if (settings?.sizingMethod === "fixedNotional" && settings.fixedNotionalUsd && price > 0) {
+    quantity = Math.floor(settings.fixedNotionalUsd / price);
+  } else {
+    const effectiveRisk = settings?.riskPerTradeUsd ?? policy.riskPerTradeUsd;
+    if (riskPerShare > 0 && effectiveRisk) {
+      quantity = Math.floor(effectiveRisk / riskPerShare);
+    }
   }
-  
+
+  if (quantity <= 0) quantity = 1;
+
+  const effectiveOrderType = settings?.entryOrderType?.toUpperCase() || "LIMIT";
+  const validOrderType = ["MARKET", "LIMIT"].includes(effectiveOrderType) ? effectiveOrderType : "LIMIT";
+
   return {
     symbol: opportunity.symbol,
     action: "BUY",
-    orderType: "LIMIT",
+    orderType: validOrderType,
     limitPrice: price,
     quantity,
     stopLoss: stop,

@@ -1607,7 +1607,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/broker/disconnect", isAuthenticated, async (req, res) => {
+  app.post("/api/broker/disconnect", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const userId = req.session.userId!;
       await storage.clearBrokerConnection(userId);
@@ -1671,7 +1671,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/broker/test", isAuthenticated, async (req, res) => {
+  app.post("/api/broker/test", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const connection = await storage.getBrokerConnectionWithToken(userId);
@@ -1792,7 +1792,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // ─── Centralized Broker Service API ───────────────────────────────────
   const brokerService = await import("./broker/index");
 
-  app.get("/api/broker/accounts", isAuthenticated, async (req, res) => {
+  app.get("/api/broker/accounts", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const accounts = await brokerService.getBrokerAccounts(req.session.userId!);
       res.json(accounts);
@@ -1802,7 +1802,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.patch("/api/broker/preferred-account", isAuthenticated, async (req, res) => {
+  app.patch("/api/broker/preferred-account", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const { accountId } = req.body;
       if (!accountId || typeof accountId !== "string") {

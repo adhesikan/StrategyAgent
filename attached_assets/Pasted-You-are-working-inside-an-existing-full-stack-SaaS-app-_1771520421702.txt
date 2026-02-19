@@ -1,0 +1,76 @@
+You are working inside an existing full-stack SaaS app “VCP Trader” (React + Tailwind UI + Node/Express + Postgres). 
+
+GOAL
+Remove the standalone “Activity” page from the left nav and redistribute its tabs into:
+1) Trade Autopilot page: show “Trades” history (executed + skipped by Trade Autopilot)
+2) Trade Alerts page: keep “Rules” and “History” (alert history + routing events)
+Result: users see automation outcomes in Autopilot, and signal lifecycle in Trade Alerts. No DB changes.
+
+NON-NEGOTIABLES
+- Do NOT change database schema.
+- Keep existing API endpoints and data fetching logic as-is (only move/compose UI).
+- Preserve existing filtering/pagination/sorting behavior and any query params already supported.
+- Preserve existing “Skipped” reason rendering and badges.
+- Preserve existing “Send Test Alert” button and “Webhook API Keys” section.
+- Keep routes backward-compatible: if a user visits /activity (or the old activity route), redirect to the most relevant destination without breaking bookmarks.
+
+SCOPE
+A) NAVIGATION
+1. Remove the “Activity (Alerts & history)” item from the left sidebar nav.
+2. Add a new sub-section under Trade Autopilot called “Autopilot Activity” or “Trade Activity”.
+3. Ensure Trade Alerts nav remains: “Trade Alerts (External signals)” and continues to contain its current content.
+
+B) ROUTES
+1. If the old Activity route exists (e.g., /activity or /trade/activity), keep the route but turn it into a redirect:
+   - Default redirect: /trade-autopilot/activity (new route)
+   - If the old URL had a tab query (e.g., ?tab=history or ?tab=trades), map appropriately:
+     - Activity “Trades” tab -> /trade-autopilot/activity?tab=trades
+     - Activity “History” tab -> /trade-alerts?tab=history (or internal state)
+     - Activity “Rules” tab -> /trade-alerts?tab=rules
+
+C) TRADE AUTOPILOT PAGE UPDATES
+1. On the Trade Autopilot page, add a new section below “Automation Mode” and above the checklist OR as a new tab group inside Trade Autopilot:
+   - Title: “Autopilot Activity”
+   - Tabs: 
+     - “Trades” (default)
+     - OPTIONAL: “Skipped Only” filter toggle (if already existed on Activity)
+2. The “Trades” tab must show the exact same table/card UI previously shown under Activity -> Trades:
+   - executed trades + skipped trades (or keep the same sub-tabs if they already existed)
+   - same columns (symbol, strategy, time, entry, risk, target, status, R:R, reason)
+   - same empty states and loading skeletons
+3. Show the same “Max concurrent positions reached” warning if it existed on Activity.
+4. Keep the same “Live scan active” indicator behavior.
+
+D) TRADE ALERTS PAGE UPDATES
+1. Move (or ensure) Activity’s “Rules” and “History” live under Trade Alerts page.
+2. Implement tabs at the top of Trade Alerts page:
+   - “Rules”
+   - “History”
+   (and any other existing tab that already lives there—do not delete functionality.)
+3. If Trade Alerts already has tabs, integrate without duplicating UI.
+
+E) CODE REUSE / REFACTORING
+- Do not copy/paste large components. Extract reusable components from Activity into:
+  - components/activity/TradesHistoryPanel.tsx (or similar)
+  - components/activity/AlertsHistoryPanel.tsx
+  - components/activity/RulesPanel.tsx
+Then compose them inside the new destinations.
+- Keep hooks/services in place; only adjust imports.
+
+F) ACCEPTANCE TESTS (LIGHTWEIGHT)
+Add/adjust minimal tests (or runtime checks) so we don’t break navigation:
+1. Navigating to Trade Autopilot shows the new “Autopilot Activity” section and the Trades panel loads.
+2. Navigating to Trade Alerts shows Rules + History tabs and both render.
+3. Visiting /activity redirects to /trade-autopilot/activity (or correct mapping).
+4. No console errors on these pages.
+
+IMPLEMENTATION NOTES
+- Search the codebase for the Activity page route and component (likely Activity.tsx/ActivityPage.tsx).
+- Identify which subcomponents are used for its tabs. Extract and re-mount.
+- Update the left nav config (likely navItems array) to remove Activity item.
+- Add new route under Trade Autopilot (e.g., /trade-autopilot/activity) OR implement it as a section within existing /trade-autopilot route using internal tabs.
+- Keep UI styling consistent with the existing dark theme and Tailwind tokens used elsewhere.
+
+DELIVERABLE
+- Provide the PR-style change: list of files changed with short rationale.
+- Then implement the code changes in the repo.

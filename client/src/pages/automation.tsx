@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { AutoAgentPanel } from "@/components/auto-agent-panel";
+import { TradeActivityPanel } from "@/components/trade-activity-panel";
 import { cn } from "@/lib/utils";
 import { Switch as SwitchInput } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -165,6 +166,8 @@ export default function AutomationPage() {
           agentState={agentState}
           settings={settings}
         />
+
+        <TradeActivityPanel />
 
         <div className="text-xs text-muted-foreground text-center py-4 border-t" data-testid="text-disclaimer">
           {DISCLAIMER_TEXT}

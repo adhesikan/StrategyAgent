@@ -1,0 +1,116 @@
+[WebhookRelay] Enqueueing deliveries for event 2dab791f-2df0-438d-aa93-30d32ebed66d (type: Enter) to 1/1 targets
+[PushService] Sent 1/1 notifications for signal 099840ad-ad8b-4916-bc48-823c3df74f98
+[Subscriptions] Found 1 local DB subscriptions for userId: d6338016-a770-4933-b462-26bdfd4708f3
+[Subscriptions] Local subs: [
+  {
+    id: '1ff0616c-2994-4cde-b006-c005c1f57fb1',
+    packageId: 'bundle',
+    status: 'active',
+    type: 'manual'
+  }
+]
+[Subscriptions] Querying for userId: d6338016-a770-4933-b462-26bdfd4708f3 found user: dhesi@sunfishtrading.com stripeCustomerId: cus_Th926edm4435ME
+[Webhook external_request] Received from "Quick Range Breakout" - IP: 52.32.178.7
+[Subscriptions] Querying Stripe for customer: cus_Th926edm4435ME
+[Subscriptions] Found 8 local DB subscriptions for userId: ec1c863f-55ae-4528-ba68-a5e46c3e3372
+[Subscriptions] Local subs: [
+  {
+    id: '77468926-41c3-47de-be09-498dc24ca7d6',
+    packageId: 'breakout-fab-tech',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: 'edc549f9-54f7-45b6-abb4-cd11ea2d7417',
+    packageId: 'breakout-fab-commodities',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '4bd22bc7-98fe-4b80-bf7a-e189c077525c',
+    packageId: 'breakout-fab-semiconductors',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '82388d30-f696-485d-929d-928bb6e719b8',
+    packageId: 'breakout-fab-software',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '1c7d032f-ee16-4d26-a4b6-05ba2b04909f',
+    packageId: 'breakout-fab-hardware',
+[Subscriptions] Querying for userId: ec1c863f-55ae-4528-ba68-a5e46c3e3372 found user: kumar.niteen@gmail.com stripeCustomerId: cus_TnRFvMNnteJjA3
+    status: 'active',
+[Subscriptions] Querying Stripe for customer: cus_TnRFvMNnteJjA3
+    type: 'paid'
+[Subscriptions] Found 8 local DB subscriptions for userId: f42646e4-1ae8-4915-ac1d-664ee7cff202
+[Subscriptions] Local subs: [
+  },
+  {
+  {
+  },
+    id: '3ce7b34d-40b3-4251-a57b-686502de7a45',
+  {
+    packageId: 'breakout-fab-energy',
+    id: '8108b1a3-b33b-4f58-961a-3fa220a692b1',
+    status: 'active',
+    packageId: 'breakout-fab-bonus',
+    type: 'paid'
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '04950410-48df-428c-b187-ba3979ccfec4',
+    packageId: 'breakout-fab-sectors',
+    status: 'active',
+    type: 'paid'
+  }
+]
+    id: '6f409e02-a8c8-4a84-b75a-7c44d5bbdac5',
+    packageId: 'breakout-fab-tech',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '947d5103-3be8-4df0-967a-14a84089c6c3',
+    packageId: 'breakout-fab-commodities',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '562df971-c3e3-433f-939d-f4ff2a169f36',
+    packageId: 'breakout-fab-semiconductors',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '339b4c79-1a05-41b2-a29a-d9fe6c194af2',
+    packageId: 'breakout-fab-software',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '3c0fb4a8-e251-42eb-8569-5f002eb3d929',
+    packageId: 'breakout-fab-hardware',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: 'db5a82da-cb39-44cc-9c2c-aef521913dc9',
+    packageId: 'breakout-fab-energy',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: '1503deb4-9dd8-47f7-b801-9d775e35d3b2',
+    packageId: 'breakout-fab-bonus',
+    status: 'active',
+    type: 'paid'
+  },
+  {
+    id: 'd14b470d-442b-42dc-a592-2a69cf0f15de',
+    packageId: 'breakout-fab-sectors',
+    status: 'active',
+    type: 'paid'

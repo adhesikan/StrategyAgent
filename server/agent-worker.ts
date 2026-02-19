@@ -246,12 +246,14 @@ async function evaluateOptionsForOpportunity(
   const strategyKey = mapPolicyToStrategyKey(policy.optionsStrategy);
 
   try {
+    const optionsProvider = (brokerConnection.provider === "tradestation" ? "tradestation" : "tradier") as import("./engines/options-scanner/index").OptionsProvider;
     const result = await runOptionsScan(
       {
         universeId: "agent",
         strategyKey,
         symbols: [opportunity.symbol],
         scanPreferences: scanPrefs,
+        provider: optionsProvider,
       },
       brokerConnection.accessToken,
     );

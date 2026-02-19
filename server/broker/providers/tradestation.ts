@@ -45,6 +45,190 @@ function mapTradeAction(side: "buy" | "sell", optionSide?: string): string {
   return side === "buy" ? "Buy" : "Sell";
 }
 
+import type { StockQuote, OptionChainContract } from "./tradier";
+
+export async function tsGetBatchQuotes(accessToken: string, symbols: string[]): Promise<Map<string, StockQuote>> {
+  const results = new Map<string, StockQuote>();
+  const batchSize = 50;
+  for (let i = 0; i < symbols.length; i += batchSize) {
+    const batch = symbols.slice(i, i + batchSize);
+    try {
+      const symbolList = batch.join(",");
+      const data = await tsFetch(
+        `${BASE_URL}/marketdata/quotes/${symbolList}`,
+        accessToken,
+      );
+      const quotes = data?.Quotes || [];
+      for (const q of quotes) {
+        const last = parseFloat(q.Last ?? "0");
+        if (q.Symbol && last > 0) {
+          results.set(q.Symbol, {
+            symbol: q.Symbol,
+            last,
+            bid: parseFloat(q.Bid ?? "0") || last,
+            ask: parseFloat(q.Ask ?? "0") || last,
+            change: parseFloat(q.NetChange ?? "0"),
+            volume: parseInt(q.Volume ?? "0", 10),
+          });
+        }
+      }
+    } catch (e) {
+      console.error(`[TradeStation] Batch quote error for ${batch.length} symbols:`, (e as Error).message);
+    }
+  }
+  return results;
+}
+
+export async function tsGetOptionExpirations(accessToken: string, symbol: string): Promise<string[]> {
+  try {
+    const data = await tsFetch(
+      `${BASE_URL}/marketdata/options/expirations/${encodeURIComponent(symbol)}`,
+      accessToken,
+    );
+    const expirations = data?.Expirations || data || [];
+    if (!Array.isArray(expirations)) return [];
+    return expirations.map((e: any) => {
+      const date = e.Date || e;
+      if (typeof date === "string") {
+        return date.includes("T") ? date.split("T")[0] : date;
+      }
+      return String(date);
+    }).filter((d: string) => d && d.length >= 10);
+  } catch (e) {
+    console.error(`[TradeStation] Expirations error for ${symbol}:`, (e as Error).message);
+    return [];
+  }
+}
+
+function parseStreamedJson(text: string): any[] {
+  const results: any[] = [];
+  const lines = text.split(/\r?\n/);
+  let buffer = "";
+  let parseErrors = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("END") || trimmed.startsWith("ERROR")) continue;
+    if (/^[0-9a-fA-F]+$/.test(trimmed)) continue;
+    buffer += trimmed;
+    try {
+      const obj = JSON.parse(buffer);
+      buffer = "";
+      if (obj && typeof obj === "object") results.push(obj);
+    } catch {
+      parseErrors++;
+      if (parseErrors > 500) break;
+    }
+  }
+  return results;
+}
+
+async function consumeStream(response: Response, timeoutMs: number = 12000): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return await response.text();
+
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  const deadline = Date.now() + timeoutMs;
+
+  try {
+    while (Date.now() < deadline) {
+      const { done, value } = await Promise.race([
+        reader.read(),
+        new Promise<{ done: true; value: undefined }>((resolve) =>
+          setTimeout(() => resolve({ done: true, value: undefined }), Math.max(0, deadline - Date.now()))
+        ),
+      ]);
+      if (done) break;
+      if (value) {
+        const text = decoder.decode(value, { stream: true });
+        chunks.push(text);
+        if (text.includes("END") || text.includes("ERROR")) break;
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  return chunks.join("");
+}
+
+export async function tsGetOptionChain(accessToken: string, symbol: string, expiration: string): Promise<OptionChainContract[]> {
+  try {
+    const url = `${BASE_URL}/marketdata/stream/options/chains/${encodeURIComponent(symbol)}?expiration=${expiration}&strikeCount=20&spreadType=Single`;
+    const response = await fetch(url, {
+      headers: {
+        ...tsHeaders(accessToken),
+        Accept: "application/vnd.tradestation.streams.v2+json",
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`TradeStation option chain API error ${response.status}: ${text.substring(0, 200)}`);
+    }
+
+    const body = await consumeStream(response);
+    const items = parseStreamedJson(body);
+
+    if (items.length === 0) {
+      console.warn(`[TradeStation] Option chain stream returned 0 parseable items for ${symbol} ${expiration} (body length=${body.length})`);
+      return [];
+    }
+
+    const contracts: OptionChainContract[] = [];
+
+    for (const o of items) {
+      if (o.Heartbeat || o.Error || o.Status) continue;
+
+      const side = (o.Side || "").toLowerCase();
+      const optionType: "call" | "put" = side.includes("put") ? "put" : "call";
+
+      const strikes = o.Strikes || [];
+      const strike = strikes.length > 0 ? parseFloat(strikes[0]) : 0;
+      if (strike <= 0) continue;
+
+      const legs = o.Legs || [];
+      const legSymbol = legs.length > 0 ? legs[0].Symbol : "";
+      const contractSymbol = o.Symbol || legSymbol || `${symbol} ${expiration}${optionType === "call" ? "C" : "P"}${strike}`;
+
+      const bid = parseFloat(o.Bid ?? "0");
+      const ask = parseFloat(o.Ask ?? "0");
+      const last = parseFloat(o.Last ?? "0");
+      const volume = parseInt(o.Volume ?? "0", 10);
+      const openInterest = parseInt(o.DailyOpenInterest ?? "0", 10);
+      const delta = parseFloat(o.Delta ?? "0");
+      const gamma = parseFloat(o.Gamma ?? "0");
+      const theta = parseFloat(o.Theta ?? "0");
+      const vega = parseFloat(o.Vega ?? "0");
+      const iv = parseFloat(o.ImpliedVolatility ?? "0");
+
+      contracts.push({
+        symbol: contractSymbol,
+        strike,
+        optionType,
+        expiration,
+        bid,
+        ask,
+        last,
+        volume,
+        openInterest,
+        greeks: (delta !== 0 || gamma !== 0 || theta !== 0) ? {
+          delta,
+          gamma,
+          theta,
+          vega,
+          mid_iv: iv,
+        } : undefined,
+      });
+    }
+
+    console.log(`[TradeStation] Option chain for ${symbol} ${expiration}: ${contracts.length} contracts parsed from ${items.length} stream items`);
+    return contracts;
+  } catch (e) {
+    console.error(`[TradeStation] Option chain error for ${symbol} ${expiration}:`, (e as Error).message);
+    return [];
+  }
+}
+
 export const tradestationProvider: BrokerProvider = {
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const accounts = await tsFetch(`${BASE_URL}/brokerage/accounts`, accessToken);

@@ -2368,10 +2368,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       let brokerToken: string | undefined;
+      let brokerProvider: string = "tradier";
       try {
         const connection = await storage.getBrokerConnectionWithToken(userId);
         if (connection?.accessToken) {
           brokerToken = connection.accessToken;
+          brokerProvider = connection.provider || "tradier";
         } else {
           return res.status(409).json({ error: "Broker not connected" });
         }
@@ -2391,8 +2393,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         guardrails: (riskProfile.guardrailsJson as Record<string, unknown>) ?? {},
       };
 
+      const optionsProvider = (brokerProvider === "tradestation" ? "tradestation" : "tradier") as import("./engines/options-scanner/index").OptionsProvider;
+
       const result = await runOptionsScan(
-        { universeId, strategyKey, symbols, riskSettings, scanPreferences: scanPreferences as any },
+        { universeId, strategyKey, symbols, riskSettings, scanPreferences: scanPreferences as any, provider: optionsProvider },
         brokerToken,
       );
 

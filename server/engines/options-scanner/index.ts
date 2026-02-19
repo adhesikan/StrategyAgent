@@ -5,6 +5,37 @@ import {
   type StockQuote,
   type OptionChainContract,
 } from "../../broker/providers/tradier";
+import {
+  tsGetBatchQuotes,
+  tsGetOptionExpirations,
+  tsGetOptionChain,
+} from "../../broker/providers/tradestation";
+
+export type OptionsProvider = "tradier" | "tradestation";
+
+interface ProviderFunctions {
+  getBatchQuotes: (token: string, symbols: string[]) => Promise<Map<string, StockQuote>>;
+  getOptionExpirations: (token: string, symbol: string) => Promise<string[]>;
+  getOptionChain: (token: string, symbol: string, expiration: string) => Promise<OptionChainContract[]>;
+}
+
+function getProviderFunctions(provider: OptionsProvider): ProviderFunctions {
+  switch (provider) {
+    case "tradestation":
+      return {
+        getBatchQuotes: tsGetBatchQuotes,
+        getOptionExpirations: tsGetOptionExpirations,
+        getOptionChain: tsGetOptionChain,
+      };
+    case "tradier":
+    default:
+      return {
+        getBatchQuotes: tradierGetBatchQuotes,
+        getOptionExpirations: tradierGetOptionExpirations,
+        getOptionChain: tradierGetOptionChain,
+      };
+  }
+}
 
 export interface ScanPreferences {
   dteMin: number;
@@ -20,6 +51,7 @@ export interface OptionsScanRequest {
   symbols: string[];
   riskSettings?: RiskSettings;
   scanPreferences?: ScanPreferences;
+  provider?: OptionsProvider;
 }
 
 export interface RiskSettings {
@@ -118,8 +150,11 @@ export async function runOptionsScan(
     return emptyResult;
   }
 
-  console.log(`[OptionsScanner] Fetching quotes for ${symbols.length} symbols...`);
-  const quotes = await tradierGetBatchQuotes(brokerAccessToken, symbols);
+  const providerName = request.provider || "tradier";
+  const fns = getProviderFunctions(providerName);
+
+  console.log(`[OptionsScanner] Fetching quotes for ${symbols.length} symbols via ${providerName}...`);
+  const quotes = await fns.getBatchQuotes(brokerAccessToken, symbols);
   console.log(`[OptionsScanner] Got ${quotes.size} quotes`);
 
   const validSymbols = symbols.filter(s => {
@@ -135,12 +170,12 @@ export async function runOptionsScan(
   const maxSymbols = Math.min(validSymbols.length, 30);
   const selectedSymbols = validSymbols.slice(0, maxSymbols);
 
-  console.log(`[OptionsScanner] Fetching option chains for ${selectedSymbols.length} symbols...`);
+  console.log(`[OptionsScanner] Fetching option chains for ${selectedSymbols.length} symbols via ${providerName}...`);
   const chainData = new Map<string, { expirations: string[]; chains: Map<string, OptionChainContract[]> }>();
 
   const chainPromises = selectedSymbols.map(async (symbol) => {
     try {
-      const allExps = await tradierGetOptionExpirations(brokerAccessToken, symbol);
+      const allExps = await fns.getOptionExpirations(brokerAccessToken, symbol);
       if (allExps.length === 0) return;
 
       const now = Date.now();
@@ -156,7 +191,7 @@ export async function runOptionsScan(
         : [filteredExps[0], filteredExps[Math.floor(filteredExps.length / 2)], filteredExps[filteredExps.length - 1]];
 
       for (const exp of expsToFetch) {
-        const chain = await tradierGetOptionChain(brokerAccessToken, symbol, exp);
+        const chain = await fns.getOptionChain(brokerAccessToken, symbol, exp);
         if (chain.length > 0) {
           chains.set(exp, chain);
         }

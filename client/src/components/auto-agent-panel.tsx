@@ -81,6 +81,28 @@ export function AutoAgentPanel() {
     queryKey: ["/api/user/settings"],
   });
 
+  interface AgentSettings {
+    bracketEnabled?: boolean;
+    bracketStopMethod?: string;
+    bracketStopValue?: number | null;
+    bracketTargetMethod?: string;
+    bracketTargetValue?: number | null;
+  }
+
+  const { data: agentSettings } = useQuery<AgentSettings>({
+    queryKey: ["/api/agent-settings"],
+  });
+
+  const updateAgentSettings = useMutation({
+    mutationFn: async (updates: Partial<AgentSettings>) => {
+      return apiRequest("PUT", "/api/agent-settings", updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-settings"] });
+      toast({ title: "Bracket settings updated" });
+    },
+  });
+
   const updatePolicy = useMutation({
     mutationFn: async (updates: Partial<AgentPolicy>) => {
       return apiRequest("PUT", "/api/agent/policy", updates);
@@ -569,6 +591,137 @@ export function AutoAgentPanel() {
                 data-testid="input-max-daily-loss"
               />
             </div>
+          </div>
+
+          <div className="border-t pt-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1">
+                  <Label>Bracket Orders (OCO)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Automatically attach a stop-loss and profit-target to every entry order as an OCO (One-Cancels-Other) bracket. When one exit leg fills, the other is cancelled.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Protect every trade with automatic stop-loss and take-profit exits
+                </p>
+              </div>
+              <Switch
+                checked={agentSettings?.bracketEnabled ?? true}
+                onCheckedChange={(checked) => updateAgentSettings.mutate({ bracketEnabled: checked })}
+                data-testid="switch-bracket-enabled"
+              />
+            </div>
+
+            {(agentSettings?.bracketEnabled ?? true) && (
+              <div className="space-y-4 pl-1">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <Label>Stop-Loss Method</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p><strong>From Signal:</strong> Uses the stop price from the scan/alert data.</p>
+                          <p className="mt-1"><strong>% from Entry:</strong> Sets stop as a percentage below your entry price.</p>
+                          <p className="mt-1"><strong>$ from Entry:</strong> Sets stop a fixed dollar amount below entry.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Select
+                      value={agentSettings?.bracketStopMethod || "signal"}
+                      onValueChange={(val) => {
+                        const updates: Partial<AgentSettings> = { bracketStopMethod: val };
+                        if (val === "signal") updates.bracketStopValue = null;
+                        updateAgentSettings.mutate(updates);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-bracket-stop-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="signal">From Signal</SelectItem>
+                        <SelectItem value="pct">% from Entry</SelectItem>
+                        <SelectItem value="dollar">$ from Entry</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {agentSettings?.bracketStopMethod && agentSettings.bracketStopMethod !== "signal" && (
+                    <div className="space-y-2">
+                      <Label>{agentSettings.bracketStopMethod === "pct" ? "Stop Distance (%)" : "Stop Distance ($)"}</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder={agentSettings.bracketStopMethod === "pct" ? "e.g. 2.0" : "e.g. 1.50"}
+                        value={agentSettings?.bracketStopValue ?? ""}
+                        onChange={(e) => updateAgentSettings.mutate({ bracketStopValue: e.target.value ? Number(e.target.value) : null })}
+                        data-testid="input-bracket-stop-value"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <Label>Take-Profit Method</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p><strong>From Signal:</strong> Uses the target price from the scan/alert data.</p>
+                          <p className="mt-1"><strong>% from Entry:</strong> Sets target as a percentage above your entry price.</p>
+                          <p className="mt-1"><strong>$ from Entry:</strong> Sets target a fixed dollar amount above entry.</p>
+                          <p className="mt-1"><strong>R:R Ratio:</strong> Sets target as a multiple of the stop distance. E.g. 2.0 means target is 2x the risk.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Select
+                      value={agentSettings?.bracketTargetMethod || "signal"}
+                      onValueChange={(val) => {
+                        const updates: Partial<AgentSettings> = { bracketTargetMethod: val };
+                        if (val === "signal") updates.bracketTargetValue = null;
+                        updateAgentSettings.mutate(updates);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-bracket-target-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="signal">From Signal</SelectItem>
+                        <SelectItem value="pct">% from Entry</SelectItem>
+                        <SelectItem value="dollar">$ from Entry</SelectItem>
+                        <SelectItem value="rr">R:R Ratio</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {agentSettings?.bracketTargetMethod && agentSettings.bracketTargetMethod !== "signal" && (
+                    <div className="space-y-2">
+                      <Label>
+                        {agentSettings.bracketTargetMethod === "pct" ? "Target Distance (%)" : agentSettings.bracketTargetMethod === "rr" ? "Risk:Reward Ratio" : "Target Distance ($)"}
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder={agentSettings.bracketTargetMethod === "rr" ? "e.g. 2.0" : agentSettings.bracketTargetMethod === "pct" ? "e.g. 4.0" : "e.g. 3.00"}
+                        value={agentSettings?.bracketTargetValue ?? ""}
+                        onChange={(e) => updateAgentSettings.mutate({ bracketTargetValue: e.target.value ? Number(e.target.value) : null })}
+                        data-testid="input-bracket-target-value"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t pt-4 space-y-4">

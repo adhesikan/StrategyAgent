@@ -5845,12 +5845,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
       const baseUrl = `${req.protocol}://${req.get("host")}`;
 
+      const { TRIAL_DAYS } = await import("@shared/promo");
+
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         payment_method_types: ['card'],
         line_items: [{ price: priceId, quantity: 1 }],
         mode: 'subscription',
         allow_promotion_codes: true,
+        subscription_data: {
+          trial_period_days: TRIAL_DAYS,
+        },
         success_url: `${baseUrl}/api/partner/checkout-complete?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/partner/dashboard?checkout=cancel`,
         metadata: { partnerUserId: partnerUser.id },

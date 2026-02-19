@@ -5819,6 +5819,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         payment_method_types: ['card'],
         line_items: [{ price: priceId, quantity: 1 }],
         mode: 'subscription',
+        allow_promotion_codes: true,
         success_url: `${baseUrl}/api/partner/checkout-complete?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/partner/dashboard?checkout=cancel`,
         metadata: { partnerUserId: partnerUser.id },

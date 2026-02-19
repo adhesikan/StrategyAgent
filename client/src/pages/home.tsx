@@ -440,12 +440,13 @@ function VCPTraderProSection() {
       ],
     },
     {
-      title: "Broker Connectivity",
+      title: "Brokerage Connection",
       icon: Link2,
       features: [
-        "Tradier / tastytrade market data",
-        "TradeStation integration",
-        "Live bid/ask breakout confirmation",
+        "Tradier",
+        "TradeStation",
+        "Tastytrade",
+        "Use your own brokerage connection for live market data feed",
       ],
     },
     {
@@ -552,6 +553,11 @@ function VCPTraderProSection() {
 
         <p className="text-center mt-8 text-xs text-muted-foreground max-w-2xl mx-auto" data-testid="text-compliance">
           All data, alerts, and model outputs are provided for informational purposes only. VCP Trader does not provide investment advice.
+        </p>
+        <p className="text-center mt-3 text-xs text-muted-foreground max-w-2xl mx-auto" data-testid="text-tradier-credit">
+          New Tradier brokerage accounts may be eligible for a $200 account credit. Subject to Tradier's terms and conditions. Visit{" "}
+          <a href="https://www.tradier.com" target="_blank" rel="noopener noreferrer" className="underline">tradier.com</a>{" "}
+          for details.
         </p>
       </div>
     </section>

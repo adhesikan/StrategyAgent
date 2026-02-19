@@ -57,3 +57,4 @@ RITHMIC_WS_URL = "wss://rituz00100.rithmic.com:443"
 
 [userenv.production]
 APP_URL = "https://www.vcptrader.com"
+PRODUCTION_DATABASE_URL = "postgresql://postgres:xNlpqzhoLbwlPZkMWFkjqrKsGbwPpMqq@nozomi.proxy.rlwy.net:57037/railway"

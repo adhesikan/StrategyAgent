@@ -186,6 +186,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
             : [`Auto-executed by agent`, `Broker order ${orderResult.orderId} ${orderResult.status}`],
           metricsSnapshot: item.eligibility.metrics,
           orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },
+          brokerOrderId: orderResult.orderId,
         };
         await recordDecision(decision);
         await incrementTradesToday(userId);
@@ -497,6 +498,7 @@ async function processOptionsScanResults(userId: string): Promise<void> {
             `Broker order ${orderResult.orderId} ${orderResult.status}`,
           ],
           orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },
+          brokerOrderId: orderResult.orderId,
         };
         await recordDecision(decision);
         await incrementTradesToday(userId);
@@ -703,6 +705,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
               `Broker order ${orderResult.orderId} ${orderResult.status}`,
             ],
             orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },
+            brokerOrderId: orderResult.orderId,
           };
           const savedDecision = await recordDecision(decision);
           await incrementTradesToday(userId);

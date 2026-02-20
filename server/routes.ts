@@ -1169,6 +1169,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const { agentDecisions, tradeOrders } = await import("@shared/schema");
       const { gte, eq, and, sql } = await import("drizzle-orm");
 
+      await syncOrderStatuses(userId);
+
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
@@ -1260,10 +1262,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           and(
             eq(agentDecisions.userId, userId),
             eq(agentDecisions.action, "EXECUTE"),
-            isNotNull(agentDecisions.brokerOrderId)
+            sql`(${agentDecisions.brokerOrderId} IS NOT NULL OR ${agentDecisions.orderPayload}->>'brokerOrderId' IS NOT NULL)`
           )
         )
         .limit(200);
+
+      console.log(`[OrderSync] Found ${pendingAgentTrades.length} agent EXECUTE trades with broker order IDs`);
 
       for (const trade of pendingAgentTrades) {
         const orderId = trade.brokerOrderId || (trade.orderPayload as any)?.brokerOrderId;
@@ -1413,9 +1417,23 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .orderBy(sql`${tradeOrders.createdAt} DESC`)
         .limit(limit);
 
+      const mappedAgent = agentTrades.map((d: any) => mapAgentDecisionToTrade(d));
+      const mappedInsta = instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o));
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayAgentExecutes = mappedAgent.filter(t => 
+        t.action === "EXECUTE" && t.createdAt && new Date(t.createdAt) >= todayStart
+      );
+      if (todayAgentExecutes.length > 0) {
+        console.log(`[AllTrades] Today's EXECUTE trades: ${todayAgentExecutes.length}`, 
+          todayAgentExecutes.map(t => `${t.symbol}:${t.status}:${t.brokerOrderId || 'no-broker-id'}`).join(', ')
+        );
+      }
+
       const combined = [
-        ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
-        ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
+        ...mappedAgent,
+        ...mappedInsta,
       ].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

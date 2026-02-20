@@ -1208,17 +1208,31 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       todayStart.setHours(0, 0, 0, 0);
 
       const includeRejected = req.query.includeRejected === "true";
-      const actionFilter = includeRejected
-        ? sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP', 'SUGGEST', 'ERROR')`
-        : sql`${agentDecisions.action} IN ('EXECUTE', 'SUGGEST')`;
 
-      const agentTrades = await db
+      const executedTrades = await db
         .select()
         .from(agentDecisions)
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            actionFilter,
+            sql`${agentDecisions.action} IN ('EXECUTE', 'ERROR')`,
+            gte(agentDecisions.createdAt, todayStart)
+          )
+        )
+        .orderBy(sql`${agentDecisions.createdAt} DESC`)
+        .limit(200);
+
+      const suggestSkipFilter = includeRejected
+        ? sql`${agentDecisions.action} IN ('SKIP', 'SUGGEST')`
+        : sql`${agentDecisions.action} = 'SUGGEST'`;
+
+      const skippedTrades = await db
+        .select()
+        .from(agentDecisions)
+        .where(
+          and(
+            eq(agentDecisions.userId, userId),
+            suggestSkipFilter,
             gte(agentDecisions.createdAt, todayStart)
           )
         )
@@ -1251,7 +1265,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .limit(50);
 
       const combined = [
-        ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
+        ...executedTrades.map((d: any) => mapAgentDecisionToTrade(d)),
+        ...skippedTrades.map((d: any) => mapAgentDecisionToTrade(d)),
         ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
         ...externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a)),
       ].sort((a, b) => {
@@ -1445,17 +1460,29 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         await syncOrderStatuses(userId);
       }
 
-      const agentTrades = await db
+      const executedTrades = await db
         .select()
         .from(agentDecisions)
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP', 'SUGGEST', 'ERROR')`
+            sql`${agentDecisions.action} IN ('EXECUTE', 'ERROR')`
           )
         )
         .orderBy(sql`${agentDecisions.createdAt} DESC`)
         .limit(limit);
+
+      const skippedTrades = await db
+        .select()
+        .from(agentDecisions)
+        .where(
+          and(
+            eq(agentDecisions.userId, userId),
+            sql`${agentDecisions.action} IN ('SKIP', 'SUGGEST')`
+          )
+        )
+        .orderBy(sql`${agentDecisions.createdAt} DESC`)
+        .limit(100);
 
       const instaTradeOrders = await db
         .select()
@@ -1476,12 +1503,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .orderBy(sql`${externalAlerts.createdAt} DESC`)
         .limit(limit);
 
-      const mappedAgent = agentTrades.map((d: any) => mapAgentDecisionToTrade(d));
+      const mappedExecuted = executedTrades.map((d: any) => mapAgentDecisionToTrade(d));
+      const mappedSkipped = skippedTrades.map((d: any) => mapAgentDecisionToTrade(d));
       const mappedInsta = instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o));
       const mappedExternal = externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a));
 
       const combined = [
-        ...mappedAgent,
+        ...mappedExecuted,
+        ...mappedSkipped,
         ...mappedInsta,
         ...mappedExternal,
       ].sort((a, b) => {

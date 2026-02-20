@@ -1732,7 +1732,7 @@ export default function CommandCenter() {
                   ))}
                   {todaysTrades.length > 5 && (
                     <Button variant="ghost" size="sm" className="w-full" asChild>
-                      <Link href="/alerts?tab=trades" data-testid="link-see-more-trades">
+                      <Link href="/automation?view=activity" data-testid="link-see-more-trades">
                         See {todaysTrades.length - 5} more trades
                         <ChevronRight className="h-4 w-4 ml-1" />
                       </Link>

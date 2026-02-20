@@ -827,8 +827,8 @@ export default function CommandCenter() {
             icon={Activity}
           />
           <StatusCard 
-            status={brokerConnected && tokenHealth?.status === "expired" ? "offline" : brokerConnected && tokenHealth?.status === "expiring" ? "warning" : brokerConnected ? "online" : "offline"} 
-            label={brokerConnected && tokenHealth?.status === "expired" ? "Token Expired" : brokerConnected && tokenHealth?.status === "expiring" ? "Token Expiring" : brokerConnected ? `${brokerStatus?.provider}` : "No Broker"} 
+            status={brokerConnected && tokenHealth?.status === "expired" ? "offline" : brokerConnected && tokenHealth?.status === "expiring" && !brokerStatus?.autoReconnect ? "warning" : brokerConnected ? "online" : "offline"} 
+            label={brokerConnected && tokenHealth?.status === "expired" ? "Token Expired" : brokerConnected && tokenHealth?.status === "expiring" && !brokerStatus?.autoReconnect ? "Token Expiring" : brokerConnected ? `${brokerStatus?.provider}` : "No Broker"} 
             icon={brokerConnected && tokenHealth?.status === "expired" ? WifiOff : Wifi}
           />
           <StatusCard 
@@ -839,26 +839,50 @@ export default function CommandCenter() {
         </div>
       </div>
 
-      {brokerConnected && (tokenHealth?.status === "expired" || tokenHealth?.status === "expiring") && (
-        <div className={cn(
-          "flex items-center gap-3 p-3 rounded-lg border",
-          tokenHealth.status === "expired"
-            ? "bg-destructive/10 border-destructive/30 text-destructive"
-            : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400"
-        )} data-testid="banner-token-health">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <div className="flex-1 text-sm">
-            {tokenHealth.status === "expired" ? (
-              <span>Your {tokenHealth.provider} access token has expired. Reconnect in Settings to restore live data.</span>
-            ) : (
-              <span>Your {tokenHealth.provider} access token expires soon{tokenHealth.expiresAt ? ` (${new Date(tokenHealth.expiresAt).toLocaleTimeString()})` : ""}. Reconnect in Settings to avoid disruption.</span>
-            )}
+      {brokerConnected && (tokenHealth?.status === "expired" || tokenHealth?.status === "expiring") && (() => {
+        const hasAutoReconnect = brokerStatus?.autoReconnect ?? false;
+        if (hasAutoReconnect && tokenHealth.status === "expiring") return null;
+        return (
+          <div className={cn(
+            "flex items-center gap-3 p-3 rounded-lg border",
+            tokenHealth.status === "expired"
+              ? "bg-destructive/10 border-destructive/30 text-destructive"
+              : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400"
+          )} data-testid="banner-token-health">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <div className="flex-1 text-sm">
+              {tokenHealth.status === "expired" ? (
+                hasAutoReconnect
+                  ? <span>Your {tokenHealth.provider} token could not be refreshed automatically. Please reconnect manually.</span>
+                  : <span>Your {tokenHealth.provider} access token has expired. Enable persistent connection or reconnect manually.</span>
+              ) : (
+                <span>Your {tokenHealth.provider} access token expires soon{tokenHealth.expiresAt ? ` (${new Date(tokenHealth.expiresAt).toLocaleTimeString()})` : ""}. Enable persistent connection to auto-refresh.</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {!hasAutoReconnect && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  data-testid="btn-enable-auto-reconnect"
+                  onClick={async () => {
+                    try {
+                      await apiRequest("POST", "/api/broker/auto-reconnect", { enabled: true });
+                      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/broker/token-health"] });
+                    } catch {}
+                  }}
+                >
+                  Keep Connected
+                </Button>
+              )}
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings" data-testid="link-reconnect-broker">Reconnect</Link>
+              </Button>
+            </div>
           </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/settings" data-testid="link-reconnect-broker">Reconnect</Link>
-          </Button>
-        </div>
-      )}
+        );
+      })()}
 
       {(() => {
         const modeLabel = automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : "Autonomous";

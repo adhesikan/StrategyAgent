@@ -36,6 +36,8 @@ interface ScanResultData {
   stage: string;
   patternScore: number;
   rvol?: number;
+  prefillTarget?: number | null;
+  prefillQuantity?: number;
 }
 
 interface BrokerAccount {
@@ -100,13 +102,21 @@ export function StockTradeTicket({
       setAdvancedOpen(false);
       setLivePrice(0);
 
-      if (scanResult.resistance && scanResult.stopLoss) {
+      if (scanResult.prefillTarget && scanResult.stopLoss) {
+        setBracketEnabled(true);
+        setStopPrice(String(scanResult.stopLoss.toFixed(2)));
+        setTargetPrice(String(scanResult.prefillTarget.toFixed(2)));
+      } else if (scanResult.resistance && scanResult.stopLoss) {
         const risk = scanResult.resistance - scanResult.stopLoss;
         setStopPrice(String(scanResult.stopLoss.toFixed(2)));
         setTargetPrice(String((scanResult.resistance + risk).toFixed(2)));
       } else {
         setTargetPrice("");
         setStopPrice("");
+      }
+
+      if (scanResult.prefillQuantity && scanResult.prefillQuantity > 0) {
+        setQuantity(scanResult.prefillQuantity);
       }
 
       if (!selectedAccount && brokerAccounts.length > 0) {

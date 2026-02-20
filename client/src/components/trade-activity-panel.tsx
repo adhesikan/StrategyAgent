@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -13,6 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
+
+interface BrokerAccount {
+  id: string;
+  name: string;
+  type: string;
+  buyingPower: number;
+  equity: number;
+  currency: string;
+}
 
 interface ExecutedTrade {
   id: string;
@@ -34,6 +44,8 @@ interface ExecutedTrade {
   strategy: string | null;
   reasons: string[] | null;
   createdAt: string;
+  stopLoss: number | null;
+  target: number | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -62,7 +74,7 @@ type SortDir = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
-function TradeCard({ trade }: { trade: ExecutedTrade }) {
+function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade?: (trade: ExecutedTrade) => void }) {
   return (
     <Card key={trade.id} data-testid={`trade-card-${trade.id}`}>
       <CardContent className="p-4">
@@ -74,7 +86,7 @@ function TradeCard({ trade }: { trade: ExecutedTrade }) {
               data-testid={`badge-trade-source-${trade.id}`}
             >
               {trade.source === "auto_agent" ? (
-                <><Bot className="h-3 w-3 mr-1" />{trade.status === "skipped" ? "Skipped" : trade.status === "error" ? "Error" : trade.status === "pending" ? "Pending" : "Auto Agent"}</>
+                <><Bot className="h-3 w-3 mr-1" />{trade.status === "skipped" ? "Skipped" : trade.status === "error" ? "Error" : trade.status === "pending" ? "Suggested" : "Auto Agent"}</>
               ) : (
                 <><Zap className="h-3 w-3 mr-1" />InstaTrade&trade;</>
               )}
@@ -134,6 +146,18 @@ function TradeCard({ trade }: { trade: ExecutedTrade }) {
             >
               {formatStatus(trade.status)}
             </Badge>
+            {trade.status === "pending" && onInstaTrade && (
+              <Button
+                size="sm"
+                variant="default"
+                className="text-xs gap-1"
+                onClick={() => onInstaTrade(trade)}
+                data-testid={`button-instatrade-${trade.id}`}
+              >
+                <Zap className="h-3 w-3" />
+                InstaTrade&trade;
+              </Button>
+            )}
             <div className="flex flex-col items-end gap-0.5" data-testid={`text-trade-time-${trade.id}`}>
               {trade.createdAt && (
                 <>
@@ -157,6 +181,26 @@ export function TradeActivityPanel() {
   const { data: allTrades, isLoading } = useQuery<ExecutedTrade[]>({
     queryKey: ["/api/all-trades"],
   });
+
+  const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+  });
+
+  const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
+
+  useEffect(() => {
+    if (!selectedBrokerAccount && brokerAccounts.length > 0) {
+      setSelectedBrokerAccount(brokerAccounts[0]);
+    }
+  }, [brokerAccounts]);
+
+  const [showTradeTicket, setShowTradeTicket] = useState(false);
+  const [selectedTrade, setSelectedTrade] = useState<ExecutedTrade | null>(null);
+
+  function handleInstaTrade(trade: ExecutedTrade) {
+    setSelectedTrade(trade);
+    setShowTradeTicket(true);
+  }
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -322,7 +366,7 @@ export function TradeActivityPanel() {
         ) : paginated.length > 0 ? (
           <div className="flex flex-col gap-3">
             {paginated.map((trade) => (
-              <TradeCard key={trade.id} trade={trade} />
+              <TradeCard key={trade.id} trade={trade} onInstaTrade={handleInstaTrade} />
             ))}
           </div>
         ) : allTrades && allTrades.length > 0 && hasActiveFilters ? (
@@ -393,6 +437,27 @@ export function TradeActivityPanel() {
           </div>
         )}
       </CardContent>
+
+      <StockTradeTicket
+        open={showTradeTicket}
+        onOpenChange={(open) => {
+          setShowTradeTicket(open);
+          if (!open) setSelectedTrade(null);
+        }}
+        scanResult={selectedTrade ? {
+          ticker: selectedTrade.symbol,
+          price: selectedTrade.price ?? 0,
+          resistance: selectedTrade.price ?? null,
+          stopLoss: selectedTrade.stopLoss ?? null,
+          stage: "",
+          patternScore: 0,
+          prefillTarget: selectedTrade.target ?? null,
+          prefillQuantity: selectedTrade.quantity > 0 ? selectedTrade.quantity : undefined,
+        } : null}
+        brokerAccounts={brokerAccounts}
+        selectedAccount={selectedBrokerAccount}
+        onAccountChange={setSelectedBrokerAccount}
+      />
     </Card>
   );
 }

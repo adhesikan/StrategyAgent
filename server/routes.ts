@@ -1134,6 +1134,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       strategy: payload?.strategyName || payload?.strategyId || metrics?.strategyId || null,
       reasons: d.reasons,
       createdAt: d.createdAt,
+      stopLoss: payload?.stopLoss || null,
+      target: payload?.target || null,
     };
   }
 

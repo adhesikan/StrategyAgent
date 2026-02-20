@@ -1162,12 +1162,45 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     };
   }
 
+  function mapExternalAlertToTrade(a: any) {
+    const statusMap: Record<string, string> = {
+      EXECUTED: "sent_to_broker",
+      FILLED: "filled",
+      CANCELLED: "cancelled",
+      REJECTED: "rejected",
+      PENDING: "pending",
+      EVALUATING: "pending",
+      SKIPPED: "skipped",
+      ERROR: "error",
+    };
+    const rawStatus = statusMap[a.status] || a.status?.toLowerCase() || "pending";
+    return {
+      id: a.id,
+      symbol: a.symbol,
+      source: "auto_agent" as const,
+      action: a.status === "SKIPPED" || a.status === "ERROR" ? a.status : a.brokerOrderId ? "EXECUTE" : "SUGGEST",
+      side: a.direction?.toLowerCase() === "short" ? "sell" : "buy",
+      quantity: 0,
+      orderType: "limit",
+      price: a.executedPrice || a.entryPrice || null,
+      status: rawStatus,
+      brokerOrderId: a.brokerOrderId || null,
+      isOptions: false,
+      optionDetails: null,
+      strategy: a.strategyName || null,
+      reasons: a.skipReason ? [a.skipReason] : a.source ? [`External alert from ${a.source}: ${a.strategyName}`] : null,
+      createdAt: a.createdAt,
+      stopLoss: a.riskPrice || null,
+      target: a.targetPrice || null,
+    };
+  }
+
   app.get("/api/today-trades", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const { db } = await import("./db");
-      const { agentDecisions, tradeOrders } = await import("@shared/schema");
-      const { gte, eq, and, sql } = await import("drizzle-orm");
+      const { agentDecisions, tradeOrders, externalAlerts } = await import("@shared/schema");
+      const { gte, eq, and, sql, isNull } = await import("drizzle-orm");
 
       await syncOrderStatuses(userId);
 
@@ -1204,9 +1237,23 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .orderBy(sql`${tradeOrders.createdAt} DESC`)
         .limit(50);
 
+      const externalAlertTrades = await db
+        .select()
+        .from(externalAlerts)
+        .where(
+          and(
+            eq(externalAlerts.userId, userId),
+            gte(externalAlerts.createdAt, todayStart),
+            isNull(externalAlerts.agentDecisionId)
+          )
+        )
+        .orderBy(sql`${externalAlerts.createdAt} DESC`)
+        .limit(50);
+
       const combined = [
         ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
         ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
+        ...externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a)),
       ].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -1391,8 +1438,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const limit = parseInt(req.query.limit as string) || 500;
       const sync = req.query.sync !== "false";
       const { db } = await import("./db");
-      const { agentDecisions, tradeOrders } = await import("@shared/schema");
-      const { eq, and, sql } = await import("drizzle-orm");
+      const { agentDecisions, tradeOrders, externalAlerts } = await import("@shared/schema");
+      const { eq, and, sql, isNull } = await import("drizzle-orm");
 
       if (sync) {
         await syncOrderStatuses(userId);
@@ -1417,23 +1464,26 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .orderBy(sql`${tradeOrders.createdAt} DESC`)
         .limit(limit);
 
+      const externalAlertTrades = await db
+        .select()
+        .from(externalAlerts)
+        .where(
+          and(
+            eq(externalAlerts.userId, userId),
+            isNull(externalAlerts.agentDecisionId)
+          )
+        )
+        .orderBy(sql`${externalAlerts.createdAt} DESC`)
+        .limit(limit);
+
       const mappedAgent = agentTrades.map((d: any) => mapAgentDecisionToTrade(d));
       const mappedInsta = instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o));
-
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayAgentExecutes = mappedAgent.filter(t => 
-        t.action === "EXECUTE" && t.createdAt && new Date(t.createdAt) >= todayStart
-      );
-      if (todayAgentExecutes.length > 0) {
-        console.log(`[AllTrades] Today's EXECUTE trades: ${todayAgentExecutes.length}`, 
-          todayAgentExecutes.map(t => `${t.symbol}:${t.status}:${t.brokerOrderId || 'no-broker-id'}`).join(', ')
-        );
-      }
+      const mappedExternal = externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a));
 
       const combined = [
         ...mappedAgent,
         ...mappedInsta,
+        ...mappedExternal,
       ].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

@@ -167,7 +167,13 @@ function formatProviderName(provider: string): string {
   return names[provider.toLowerCase()] || provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
-function isMarketOpen(): boolean {
+type MarketSessionInfo = {
+  isActive: boolean;
+  label: string;
+  status: "online" | "offline" | "warning";
+};
+
+function getMarketSessionInfo(): MarketSessionInfo {
   const now = new Date();
   const etParts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -179,9 +185,18 @@ function isMarketOpen(): boolean {
   const hour = parseInt(etParts.find((p) => p.type === "hour")?.value || "0");
   const minute = parseInt(etParts.find((p) => p.type === "minute")?.value || "0");
   const weekday = etParts.find((p) => p.type === "weekday")?.value || "";
-  if (weekday === "Sat" || weekday === "Sun") return false;
-  const timeInMinutes = hour * 60 + minute;
-  return timeInMinutes >= 480 && timeInMinutes <= 990;
+  if (weekday === "Sat" || weekday === "Sun") {
+    return { isActive: false, label: "Market Closed", status: "offline" };
+  }
+  const t = hour * 60 + minute;
+  if (t >= 240 && t < 570) {
+    return { isActive: true, label: "Pre-Market", status: "warning" };
+  } else if (t >= 570 && t < 960) {
+    return { isActive: true, label: "Market Open", status: "online" };
+  } else if (t >= 960 && t < 1200) {
+    return { isActive: true, label: "After-Hours", status: "warning" };
+  }
+  return { isActive: false, label: "Market Closed", status: "offline" };
 }
 
 function StatusCard({ 
@@ -759,7 +774,8 @@ export default function CommandCenter() {
     return deduplicatedResults.find(r => r.ticker === ticker) || null;
   }, [tradeTicker, selectedTicker, deduplicatedResults]);
 
-  const marketOpen = isMarketOpen();
+  const marketSession = getMarketSessionInfo();
+  const marketOpen = marketSession.isActive;
   const brokerConnected = brokerStatus?.isConnected ?? false;
   const agentEnabled = agentState?.enabled ?? false;
   const agentPaused = agentState?.paused ?? false;
@@ -806,8 +822,8 @@ export default function CommandCenter() {
 
         <div className="flex flex-wrap items-center gap-2">
           <StatusCard 
-            status={marketOpen ? "online" : "offline"} 
-            label={marketOpen ? "Market Open" : "Market Closed"} 
+            status={marketSession.status} 
+            label={marketSession.label} 
             icon={Activity}
           />
           <StatusCard 

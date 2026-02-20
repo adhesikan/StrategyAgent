@@ -6219,7 +6219,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             targetPrice: alertData.targetPrice,
             exitReason: alertData.exitReason,
             alertTimestamp: new Date(),
-            status: "pending",
+            status: "PENDING",
           });
           delivered++;
         } catch {
@@ -6236,6 +6236,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         delivered,
         failed,
       });
+
+      if (delivered > 0) {
+        const { processExternalAlerts } = await import("./agent-worker");
+        for (const sub of activeSubscribers) {
+          if (sub.linkedUserId) {
+            processExternalAlerts(sub.linkedUserId).catch((err: any) =>
+              console.error(`[PartnerBroadcast] Immediate processing failed for ${sub.linkedUserId}:`, err?.message)
+            );
+          }
+        }
+      }
     } catch (error: any) {
       console.error("[PartnerBroadcast] Error:", error?.message || error);
       res.status(500).json({ error: "Broadcast failed" });

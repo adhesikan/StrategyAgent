@@ -152,7 +152,7 @@ const DEFAULT_FILTERS: CCFilterConfig = {
 function getBrokerageDashboardUrl(provider: string): string {
   const urls: Record<string, string> = {
     tradier: "https://dash.tradier.com",
-    tradestation: "https://www.tradestation.com/login/",
+    tradestation: "https://my.tradestation.com/dashboard",
     snaptrade: "https://app.snaptrade.com",
   };
   return urls[provider.toLowerCase()] || "https://www.google.com/search?q=" + encodeURIComponent(provider + " brokerage login");
@@ -1661,7 +1661,7 @@ export default function CommandCenter() {
                     Skipped
                   </Button>
                   <Button variant="ghost" size="sm" asChild>
-                    <Link href="/alerts?tab=trades" data-testid="link-view-all-trades">
+                    <Link href="/automation?view=activity" data-testid="link-view-all-trades">
                       View all
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Link>

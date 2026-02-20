@@ -1252,6 +1252,33 @@ function TradesTab() {
     refetchInterval: 15000,
   });
 
+  const { data: agentSettings } = useQuery<AgentSettingsData>({
+    queryKey: ["/api/partner/agent-settings"],
+  });
+
+  const isSuggestMode = agentSettings?.mode === "suggest";
+
+  const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: isSuggestMode,
+  });
+
+  const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
+
+  useEffect(() => {
+    if (!selectedAccount && brokerAccounts.length > 0) {
+      setSelectedAccount(brokerAccounts[0]);
+    }
+  }, [brokerAccounts]);
+
+  const [ticketTrade, setTicketTrade] = useState<TradeAlert | null>(null);
+  const [showTicket, setShowTicket] = useState(false);
+
+  function handleInstaTrade(trade: TradeAlert) {
+    setTicketTrade(trade);
+    setShowTicket(true);
+  }
+
   if (isLoading) {
     return <div className="space-y-3"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></div>;
   }
@@ -1270,6 +1297,7 @@ function TradesTab() {
 
   const executedCount = trades.filter(t => t.status === "EXECUTED").length;
   const skippedCount = trades.filter(t => t.status === "SKIPPED").length;
+  const pendingCount = trades.filter(t => t.status === "PENDING").length;
 
   return (
     <div className="space-y-4">
@@ -1294,13 +1322,22 @@ function TradesTab() {
         </Card>
       </div>
 
+      {isSuggestMode && pendingCount > 0 && (
+        <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/20">
+          <Clock className="w-4 h-4 text-yellow-500 shrink-0" />
+          <span className="text-xs text-yellow-600 dark:text-yellow-400">
+            {pendingCount} signal{pendingCount !== 1 ? "s" : ""} awaiting your review — click InstaTrade to execute
+          </span>
+        </div>
+      )}
+
       <div className="space-y-2">
         {trades.map((trade) => {
           const isExit = trade.alertType === "exit";
-          const statusColor = trade.status === "EXECUTED" ? "text-green-500" : trade.status === "SKIPPED" ? "text-muted-foreground" : trade.status === "PENDING" ? "text-yellow-500" : "";
+          const isPending = trade.status === "PENDING";
 
           return (
-            <Card key={trade.id} className="overflow-visible" data-testid={`card-trade-${trade.id}`}>
+            <Card key={trade.id} className={`overflow-visible ${isSuggestMode && isPending ? "border-yellow-500/40" : ""}`} data-testid={`card-trade-${trade.id}`}>
               <CardContent className="p-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1314,9 +1351,11 @@ function TradesTab() {
                       {isExit ? "EXIT" : trade.direction}
                     </Badge>
                   </div>
-                  <Badge variant={trade.status === "EXECUTED" ? "default" : "outline"} className={trade.status === "EXECUTED" ? "bg-green-600 border-green-700" : ""}>
-                    {trade.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={trade.status === "EXECUTED" ? "default" : "outline"} className={trade.status === "EXECUTED" ? "bg-green-600 border-green-700" : isPending ? "border-yellow-500 text-yellow-600" : ""}>
+                      {trade.status}
+                    </Badge>
+                  </div>
                 </div>
 
                 <div className="text-xs text-muted-foreground mb-2">{trade.strategyName}</div>
@@ -1347,15 +1386,49 @@ function TradesTab() {
                   </div>
                 )}
 
-                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatDate(trade.alertTimestamp)}
+                <div className="flex items-center justify-between mt-2">
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {formatDate(trade.alertTimestamp)}
+                  </div>
+                  {isSuggestMode && isPending && !isExit && brokerAccounts.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="text-xs gap-1"
+                      onClick={() => handleInstaTrade(trade)}
+                      data-testid={`button-instatrade-trade-${trade.id}`}
+                    >
+                      <Zap className="h-3 w-3" />
+                      InstaTrade&trade;
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      <StockTradeTicket
+        open={showTicket}
+        onOpenChange={(open) => {
+          setShowTicket(open);
+          if (!open) setTicketTrade(null);
+        }}
+        scanResult={ticketTrade ? {
+          ticker: ticketTrade.symbol,
+          price: ticketTrade.entryPrice,
+          resistance: ticketTrade.entryPrice,
+          stopLoss: ticketTrade.riskPrice,
+          stage: "",
+          patternScore: 0,
+          prefillTarget: ticketTrade.targetPrice,
+        } : null}
+        brokerAccounts={brokerAccounts}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+      />
     </div>
   );
 }

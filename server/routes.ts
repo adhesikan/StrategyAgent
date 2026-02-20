@@ -1222,16 +1222,23 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   const syncThrottleMap = new Map<string, number>();
   const SYNC_THROTTLE_MS = 30_000;
 
-  async function syncOrderStatuses(userId: string): Promise<void> {
+  async function syncOrderStatuses(userId: string): Promise<{ synced: number; brokerOrderCount: number }> {
     const now = Date.now();
     const lastSync = syncThrottleMap.get(userId) || 0;
-    if (now - lastSync < SYNC_THROTTLE_MS) return;
+    if (now - lastSync < SYNC_THROTTLE_MS) return { synced: 0, brokerOrderCount: 0 };
     syncThrottleMap.set(userId, now);
+
+    let synced = 0;
+    let brokerOrderCount = 0;
 
     try {
       const brokerService = await import("./broker/index");
       const brokerOrders = await brokerService.getBrokerOrders(userId);
-      if (!brokerOrders || brokerOrders.length === 0) return;
+      brokerOrderCount = brokerOrders?.length || 0;
+      if (!brokerOrders || brokerOrders.length === 0) {
+        console.log(`[OrderSync] No broker orders returned for user ${userId.substring(0, 8)}...`);
+        return { synced: 0, brokerOrderCount: 0 };
+      }
 
       const brokerOrderMap = new Map<string, string>();
       for (const bo of brokerOrders) {
@@ -1239,7 +1246,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           brokerOrderMap.set(bo.id, bo.status);
         }
       }
-      if (brokerOrderMap.size === 0) return;
+      console.log(`[OrderSync] Fetched ${brokerOrderMap.size} broker orders for matching`);
+      if (brokerOrderMap.size === 0) return { synced: 0, brokerOrderCount };
 
       const { db } = await import("./db");
       const { agentDecisions, tradeOrders } = await import("@shared/schema");
@@ -1271,10 +1279,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         if (normalizedCurrent === normalizedNew) continue;
         if (TERMINAL_STATUSES.has(normalizedCurrent)) continue;
 
+        console.log(`[OrderSync] Agent trade ${trade.id}: ${normalizedCurrent} -> ${normalizedNew} (broker: ${brokerStatus})`);
         const updatedPayload = { ...(trade.orderPayload as any), brokerStatus: brokerStatus };
         await db.update(agentDecisions)
           .set({ orderPayload: updatedPayload, brokerOrderId: orderId })
           .where(eq(agentDecisions.id, trade.id));
+        synced++;
       }
 
       const pendingInstaTrades = await db
@@ -1289,11 +1299,16 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         )
         .limit(200);
 
+      console.log(`[OrderSync] Found ${pendingInstaTrades.length} pending InstaTrade orders to check`);
+
       for (const order of pendingInstaTrades) {
         if (!order.brokerOrderId) continue;
 
         const brokerStatus = brokerOrderMap.get(order.brokerOrderId);
-        if (!brokerStatus) continue;
+        if (!brokerStatus) {
+          console.log(`[OrderSync] InstaTrade #${order.brokerOrderId}: no match in broker orders`);
+          continue;
+        }
 
         const normalizedNew = normalizeTradeStatus(brokerStatus);
         const normalizedCurrent = normalizeTradeStatus(order.status);
@@ -1301,6 +1316,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         if (normalizedCurrent === normalizedNew) continue;
         if (TERMINAL_STATUSES.has(normalizedCurrent)) continue;
 
+        console.log(`[OrderSync] InstaTrade #${order.brokerOrderId}: ${normalizedCurrent} -> ${normalizedNew} (broker: ${brokerStatus})`);
         const updates: any = { status: normalizedNew };
         if (normalizedNew === "filled") {
           updates.filledAt = new Date();
@@ -1308,6 +1324,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         await db.update(tradeOrders)
           .set(updates)
           .where(eq(tradeOrders.id, order.id));
+        synced++;
       }
 
       const { externalAlerts } = await import("@shared/schema");
@@ -1334,16 +1351,35 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           await db.update(externalAlerts)
             .set({ status: "FILLED", updatedAt: new Date() })
             .where(eq(externalAlerts.id, alert.id));
+          synced++;
         } else if (normalizedNew === "cancelled" || normalizedNew === "rejected") {
           await db.update(externalAlerts)
             .set({ status: normalizedNew === "cancelled" ? "CANCELLED" : "REJECTED", updatedAt: new Date() })
             .where(eq(externalAlerts.id, alert.id));
+          synced++;
         }
       }
+
+      if (synced > 0) {
+        console.log(`[OrderSync] Updated ${synced} order statuses for user ${userId.substring(0, 8)}...`);
+      }
     } catch (error: any) {
-      console.error("Order status sync error:", error.message);
+      console.error("[OrderSync] Error:", error.message);
     }
+    return { synced, brokerOrderCount };
   }
+
+  app.post("/api/trades/sync-statuses", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      syncThrottleMap.delete(userId);
+      const result = await syncOrderStatuses(userId);
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("[OrderSync] Manual sync error:", error.message);
+      res.status(500).json({ error: "Failed to sync order statuses" });
+    }
+  });
 
   app.get("/api/all-trades", isAuthenticated, async (req, res) => {
     try {

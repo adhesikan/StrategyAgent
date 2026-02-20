@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -178,12 +180,33 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
 }
 
 export function TradeActivityPanel() {
+  const { toast } = useToast();
   const { data: allTrades, isLoading } = useQuery<ExecutedTrade[]>({
     queryKey: ["/api/all-trades"],
   });
 
   const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
     queryKey: ["/api/broker/accounts"],
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trades/sync-statuses");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/all-trades"] });
+      if (data.synced > 0) {
+        toast({ title: `Updated ${data.synced} order status${data.synced > 1 ? "es" : ""}` });
+      } else if (data.brokerOrderCount === 0) {
+        toast({ title: "No broker orders found", description: "Make sure your broker is connected." });
+      } else {
+        toast({ title: "All statuses are up to date" });
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to sync statuses", variant: "destructive" });
+    },
   });
 
   const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
@@ -279,13 +302,28 @@ export function TradeActivityPanel() {
   return (
     <Card data-testid="section-trade-activity">
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <ArrowUpDown className="h-5 w-5" />
-          Trade Activity
-        </CardTitle>
-        <CardDescription>
-          Executed and skipped trades from Auto Agent and InstaTrade&trade;
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ArrowUpDown className="h-5 w-5" />
+              Trade Activity
+            </CardTitle>
+            <CardDescription>
+              Executed and skipped trades from Auto Agent and InstaTrade&trade;
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-sync-statuses"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "Syncing..." : "Sync Statuses"}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

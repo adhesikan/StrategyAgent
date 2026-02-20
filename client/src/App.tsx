@@ -81,7 +81,7 @@ function AppRouter() {
       <Route path="/open-source" component={OpenSourcePage} />
       <Route path="/snaptrade/callback" component={SnaptradeCallback} />
 
-      <Route path="/">{() => <Redirect to="/discover" />}</Route>
+      <Route path="/">{() => <Redirect to="/command-center" />}</Route>
       <Route path="/scanner">{() => <Redirect to="/discover?tab=stocks" />}</Route>
       <Route path="/signals">{() => <Redirect to="/discover?tab=stocks" />}</Route>
       <Route path="/watchlists">{() => <Redirect to="/discover?tab=stocks" />}</Route>

@@ -1105,7 +1105,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   function mapAgentDecisionToTrade(d: any) {
     const payload = d.orderPayload as any;
     const metrics = d.metricsSnapshot as any;
-    const rawStatus = d.action === "SKIP" ? "skipped" : (payload?.brokerStatus || "executed");
+    let rawStatus: string;
+    if (d.action === "SKIP") rawStatus = "skipped";
+    else if (d.action === "SUGGEST") rawStatus = "pending";
+    else if (d.action === "ERROR") rawStatus = "error";
+    else rawStatus = payload?.brokerStatus || "executed";
     return {
       id: d.id,
       symbol: d.symbol,
@@ -1164,8 +1168,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       const includeRejected = req.query.includeRejected === "true";
       const actionFilter = includeRejected
-        ? sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP')`
-        : eq(agentDecisions.action, "EXECUTE");
+        ? sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP', 'SUGGEST', 'ERROR')`
+        : sql`${agentDecisions.action} IN ('EXECUTE', 'SUGGEST')`;
 
       const agentTrades = await db
         .select()
@@ -1211,7 +1215,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   app.get("/api/all-trades", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const limit = parseInt(req.query.limit as string) || 200;
+      const limit = parseInt(req.query.limit as string) || 500;
       const { db } = await import("./db");
       const { agentDecisions, tradeOrders } = await import("@shared/schema");
       const { eq, and, sql } = await import("drizzle-orm");
@@ -1222,7 +1226,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP')`
+            sql`${agentDecisions.action} IN ('EXECUTE', 'SKIP', 'SUGGEST', 'ERROR')`
           )
         )
         .orderBy(sql`${agentDecisions.createdAt} DESC`)

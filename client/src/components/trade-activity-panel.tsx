@@ -69,12 +69,12 @@ function TradeCard({ trade }: { trade: ExecutedTrade }) {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Badge
-              variant={trade.status === "skipped" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
+              variant={trade.status === "skipped" || trade.status === "error" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
               className="text-xs shrink-0"
               data-testid={`badge-trade-source-${trade.id}`}
             >
               {trade.source === "auto_agent" ? (
-                <><Bot className="h-3 w-3 mr-1" />{trade.status === "skipped" ? "Skipped" : "Auto Agent"}</>
+                <><Bot className="h-3 w-3 mr-1" />{trade.status === "skipped" ? "Skipped" : trade.status === "error" ? "Error" : trade.status === "pending" ? "Pending" : "Auto Agent"}</>
               ) : (
                 <><Zap className="h-3 w-3 mr-1" />InstaTrade&trade;</>
               )}

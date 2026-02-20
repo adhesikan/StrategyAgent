@@ -302,15 +302,16 @@ export const tradestationProvider: BrokerProvider = {
     }
     if (!accountId) return [];
 
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const data = await tsFetch(
-      `${BASE_URL}/brokerage/accounts/${accountId}/orders`,
+      `${BASE_URL}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`,
       accessToken,
     );
 
     const orders = data?.Orders || data || [];
     if (!Array.isArray(orders)) return [];
 
-    return orders.slice(0, 50).map((o: any) => {
+    return orders.slice(0, 500).map((o: any) => {
       const action = (o.TradeAction || "").toLowerCase();
       const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
       return {

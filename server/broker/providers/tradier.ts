@@ -285,7 +285,7 @@ export const tradierProvider: BrokerProvider = {
 
     const orderArray = Array.isArray(orders) ? orders : [orders];
 
-    return orderArray.slice(0, 50).map((o: any) => ({
+    return orderArray.slice(0, 500).map((o: any) => ({
       id: String(o.id),
       symbol: o.symbol || (o.leg?.[0]?.symbol) || "UNKNOWN",
       side: (o.side === "sell" || o.side === "sell_short") ? "sell" as const : "buy" as const,

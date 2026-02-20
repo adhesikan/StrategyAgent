@@ -1098,7 +1098,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   function normalizeTradeStatus(raw: string): string {
     const lower = raw.toLowerCase();
-    if (lower === "ok" || lower === "executed") return "sent_to_broker";
+    if (lower === "ok" || lower === "executed" || lower === "ack" || lower === "opn" || lower === "open" || lower === "received" || lower === "queued" || lower === "sent") return "sent_to_broker";
+    if (lower === "fll" || lower === "filled") return "filled";
+    if (lower === "can" || lower === "canceled" || lower === "cancelled" || lower === "expired" || lower === "exp") return "cancelled";
+    if (lower === "rej" || lower === "rejected" || lower === "ur" || lower === "uract") return "rejected";
+    if (lower === "failed" || lower === "broken" || lower === "bro") return "error";
     return lower;
   }
 

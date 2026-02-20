@@ -262,9 +262,13 @@ export function TradeActivityPanel() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              {statusOptions.map((s) => (
-                <SelectItem key={s} value={s}>{formatStatus(s)}</SelectItem>
-              ))}
+              <SelectItem value="sent_to_broker">Sent to Broker</SelectItem>
+              <SelectItem value="filled">Filled</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="skipped">Skipped</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="error">Error</SelectItem>
             </SelectContent>
           </Select>
 

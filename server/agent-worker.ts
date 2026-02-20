@@ -22,6 +22,7 @@ import {
 } from "./engines/options-scanner/index";
 import { placeBrokerOrder } from "./broker/index";
 import type { OrderRequest } from "./broker/types";
+import { fetchQuotesFromBroker } from "./broker-service";
 
 let agentWorkerInterval: NodeJS.Timeout | null = null;
 const WORKER_INTERVAL_MS = 60 * 1000; // Check every 1 minute for users whose scan interval has elapsed
@@ -549,21 +550,6 @@ async function processExternalAlerts(userId: string): Promise<void> {
         continue;
       }
 
-      if (policy.priceMin != null && alert.entryPrice < policy.priceMin) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: `Entry price $${alert.entryPrice} below minimum $${policy.priceMin}`,
-        });
-        continue;
-      }
-      if (policy.priceMax != null && alert.entryPrice > policy.priceMax) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: `Entry price $${alert.entryPrice} above maximum $${policy.priceMax}`,
-        });
-        continue;
-      }
-
       if (!alert.riskPrice || !alert.targetPrice) {
         await storage.updateExternalAlert(alert.id, {
           status: "SKIPPED",
@@ -572,7 +558,43 @@ async function processExternalAlerts(userId: string): Promise<void> {
         continue;
       }
 
-      const riskPerShare = alert.entryPrice - alert.riskPrice;
+      let effectiveEntry = alert.entryPrice;
+      let effectiveTarget = alert.targetPrice;
+      if (effectiveEntry >= effectiveTarget && alert.direction !== "Short") {
+        try {
+          const connWithToken = await storage.getBrokerConnectionWithToken(userId);
+          if (connWithToken) {
+            const quotes = await fetchQuotesFromBroker(connWithToken, [alert.symbol]);
+            const quote = quotes[0];
+            if (quote && quote.last > 0 && quote.last < effectiveEntry) {
+              console.log(`[AgentWorker] Correcting entry for ${alert.symbol}: webhook sent entry=$${effectiveEntry}, using live quote=$${quote.last}, target=$${effectiveTarget}`);
+              effectiveTarget = effectiveEntry;
+              effectiveEntry = quote.last;
+            } else if (effectiveEntry === effectiveTarget) {
+              console.log(`[AgentWorker] Entry equals target for ${alert.symbol} ($${effectiveEntry}), cannot determine correct entry`);
+            }
+          }
+        } catch (err: any) {
+          console.log(`[AgentWorker] Could not fetch live quote for ${alert.symbol} to correct entry: ${err?.message}`);
+        }
+      }
+
+      if (policy.priceMin != null && effectiveEntry < policy.priceMin) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: `Entry price $${effectiveEntry.toFixed(2)} below minimum $${policy.priceMin}`,
+        });
+        continue;
+      }
+      if (policy.priceMax != null && effectiveEntry > policy.priceMax) {
+        await storage.updateExternalAlert(alert.id, {
+          status: "SKIPPED",
+          skipReason: `Entry price $${effectiveEntry.toFixed(2)} above maximum $${policy.priceMax}`,
+        });
+        continue;
+      }
+
+      const riskPerShare = effectiveEntry - alert.riskPrice;
       if (riskPerShare <= 0) {
         await storage.updateExternalAlert(alert.id, {
           status: "SKIPPED",
@@ -581,7 +603,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
         continue;
       }
 
-      const rewardPerShare = alert.targetPrice - alert.entryPrice;
+      const rewardPerShare = effectiveTarget - effectiveEntry;
       const rewardRisk = rewardPerShare / riskPerShare;
       if (policy.minRewardRisk != null && rewardRisk < policy.minRewardRisk) {
         await storage.updateExternalAlert(alert.id, {
@@ -614,7 +636,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
       if (settings?.sizingMethod === "fixedQty" && settings.fixedQuantity) {
         quantity = settings.fixedQuantity;
       } else if (settings?.sizingMethod === "fixedNotional" && settings.fixedNotionalUsd) {
-        quantity = Math.floor(settings.fixedNotionalUsd / alert.entryPrice);
+        quantity = Math.floor(settings.fixedNotionalUsd / effectiveEntry);
       } else if (effectiveRiskPerTrade && riskPerShare > 0) {
         quantity = Math.floor(effectiveRiskPerTrade / riskPerShare);
       }
@@ -622,13 +644,13 @@ async function processExternalAlerts(userId: string): Promise<void> {
 
       const rawOrderType = settings?.entryOrderType?.toUpperCase() || "LIMIT";
       const effectiveOrderType = ["MARKET", "LIMIT"].includes(rawOrderType) ? rawOrderType : "LIMIT";
-      const bracket = computeBracket(settings, alert.entryPrice, alert.riskPrice, alert.targetPrice);
+      const bracket = computeBracket(settings, effectiveEntry, alert.riskPrice, effectiveTarget);
 
       const orderPayload = {
         symbol: alert.symbol,
         action: "BUY",
         orderType: effectiveOrderType,
-        limitPrice: alert.entryPrice,
+        limitPrice: effectiveEntry,
         quantity,
         stopLoss: bracket.stopLoss,
         target: bracket.target,
@@ -645,7 +667,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
           action: AgentAction.SUGGEST,
           reasons: [
             `External alert from ${alert.source}: ${alert.strategyName}`,
-            `Entry: $${alert.entryPrice}, Risk: $${alert.riskPrice}, Target: $${alert.targetPrice}`,
+            `Entry: $${effectiveEntry.toFixed(2)}, Risk: $${alert.riskPrice}, Target: $${effectiveTarget.toFixed(2)}`,
             `R:R ${rewardRisk.toFixed(1)}:1, Qty: ${quantity} shares`,
           ],
           orderPayload,
@@ -677,7 +699,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
             action: AgentAction.EXECUTE,
             reasons: [
               `Auto-executed external alert from ${alert.source}: ${alert.strategyName}`,
-              `Entry: $${alert.entryPrice}, Risk: $${alert.riskPrice}, Target: $${alert.targetPrice}`,
+              `Entry: $${effectiveEntry.toFixed(2)}, Risk: $${alert.riskPrice}, Target: $${effectiveTarget.toFixed(2)}`,
               `Broker order ${orderResult.orderId} ${orderResult.status}`,
             ],
             orderPayload: { ...orderPayload, brokerOrderId: orderResult.orderId, brokerStatus: orderResult.status },

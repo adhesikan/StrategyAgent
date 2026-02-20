@@ -1170,7 +1170,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       REJECTED: "rejected",
       PENDING: "pending",
       EVALUATING: "pending",
-      SKIPPED: "skipped",
+      SKIPPED: "cancelled",
       ERROR: "error",
     };
     const rawStatus = statusMap[a.status] || a.status?.toLowerCase() || "pending";
@@ -1207,37 +1207,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const includeRejected = req.query.includeRejected === "true";
-
-      const executedTrades = await db
+      const agentTrades = await db
         .select()
         .from(agentDecisions)
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            sql`${agentDecisions.action} IN ('EXECUTE', 'ERROR')`,
+            sql`${agentDecisions.action} IN ('EXECUTE', 'ERROR', 'SUGGEST')`,
             gte(agentDecisions.createdAt, todayStart)
           )
         )
         .orderBy(sql`${agentDecisions.createdAt} DESC`)
         .limit(200);
-
-      const suggestSkipFilter = includeRejected
-        ? sql`${agentDecisions.action} IN ('SKIP', 'SUGGEST')`
-        : sql`${agentDecisions.action} = 'SUGGEST'`;
-
-      const skippedTrades = await db
-        .select()
-        .from(agentDecisions)
-        .where(
-          and(
-            eq(agentDecisions.userId, userId),
-            suggestSkipFilter,
-            gte(agentDecisions.createdAt, todayStart)
-          )
-        )
-        .orderBy(sql`${agentDecisions.createdAt} DESC`)
-        .limit(50);
 
       const instaTradeOrders = await db
         .select()
@@ -1265,8 +1246,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .limit(50);
 
       const combined = [
-        ...executedTrades.map((d: any) => mapAgentDecisionToTrade(d)),
-        ...skippedTrades.map((d: any) => mapAgentDecisionToTrade(d)),
+        ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
         ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
         ...externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a)),
       ].sort((a, b) => {
@@ -1460,29 +1440,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         await syncOrderStatuses(userId);
       }
 
-      const executedTrades = await db
+      const agentTrades = await db
         .select()
         .from(agentDecisions)
         .where(
           and(
             eq(agentDecisions.userId, userId),
-            sql`${agentDecisions.action} IN ('EXECUTE', 'ERROR')`
+            sql`${agentDecisions.action} IN ('EXECUTE', 'ERROR', 'SUGGEST')`
           )
         )
         .orderBy(sql`${agentDecisions.createdAt} DESC`)
         .limit(limit);
-
-      const skippedTrades = await db
-        .select()
-        .from(agentDecisions)
-        .where(
-          and(
-            eq(agentDecisions.userId, userId),
-            sql`${agentDecisions.action} IN ('SKIP', 'SUGGEST')`
-          )
-        )
-        .orderBy(sql`${agentDecisions.createdAt} DESC`)
-        .limit(100);
 
       const instaTradeOrders = await db
         .select()
@@ -1503,16 +1471,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .orderBy(sql`${externalAlerts.createdAt} DESC`)
         .limit(limit);
 
-      const mappedExecuted = executedTrades.map((d: any) => mapAgentDecisionToTrade(d));
-      const mappedSkipped = skippedTrades.map((d: any) => mapAgentDecisionToTrade(d));
-      const mappedInsta = instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o));
-      const mappedExternal = externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a));
-
       const combined = [
-        ...mappedExecuted,
-        ...mappedSkipped,
-        ...mappedInsta,
-        ...mappedExternal,
+        ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
+        ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
+        ...externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a)),
       ].sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

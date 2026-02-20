@@ -91,17 +91,8 @@ async function processUserOpportunities(userId: string): Promise<void> {
   }));
   
   const ineligible = evaluated.filter(e => !e.eligibility.pass);
-  for (const item of ineligible) {
-    const decision: InsertAgentDecision = {
-      userId,
-      policyId: policy.id,
-      opportunityId: item.opportunity.id,
-      symbol: item.opportunity.symbol,
-      action: AgentAction.SKIP,
-      reasons: item.eligibility.reasons,
-      metricsSnapshot: item.eligibility.metrics,
-    };
-    await recordDecision(decision);
+  if (ineligible.length > 0) {
+    console.log(`[AgentWorker] Skipped ${ineligible.length} ineligible: ${ineligible.map(i => i.opportunity.symbol).join(", ")}`);
   }
   
   const ranked = rankOpportunities(evaluated);
@@ -112,16 +103,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
     const authorization = await authorizeOrder(userId, policy, item.opportunity.symbol);
     
     if (!authorization.allowed) {
-      const decision: InsertAgentDecision = {
-        userId,
-        policyId: policy.id,
-        opportunityId: item.opportunity.id,
-        symbol: item.opportunity.symbol,
-        action: AgentAction.SKIP,
-        reasons: authorization.reasons,
-        metricsSnapshot: item.eligibility.metrics,
-      };
-      await recordDecision(decision);
+      console.log(`[AgentWorker] Skipped ${item.opportunity.symbol}: ${authorization.reasons.join(", ")}`);
       continue;
     }
     
@@ -445,14 +427,7 @@ async function processOptionsScanResults(userId: string): Promise<void> {
   for (const candidate of topCandidates) {
     const authorization = await authorizeOrder(userId, policy, candidate.underlying);
     if (!authorization.allowed) {
-      const decision: InsertAgentDecision = {
-        userId,
-        policyId: policy.id,
-        symbol: candidate.underlying,
-        action: AgentAction.SKIP,
-        reasons: [...authorization.reasons, `Options: ${candidate.optionType.toUpperCase()} $${candidate.strike} exp ${candidate.expiration}`],
-      };
-      await recordDecision(decision);
+      console.log(`[AgentWorker] Skipped options ${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike}: ${authorization.reasons.join(", ")}`);
       continue;
     }
 
@@ -621,14 +596,7 @@ async function processExternalAlerts(userId: string): Promise<void> {
           status: "SKIPPED",
           skipReason: authorization.reasons.join("; "),
         });
-        const decision: InsertAgentDecision = {
-          userId,
-          policyId: policy.id,
-          symbol: alert.symbol,
-          action: AgentAction.SKIP,
-          reasons: [...authorization.reasons, `Source: ${alert.source} - ${alert.strategyName}`],
-        };
-        await recordDecision(decision);
+        console.log(`[AgentWorker] Skipped external alert ${alert.symbol}: ${authorization.reasons.join(", ")}`);
         continue;
       }
 

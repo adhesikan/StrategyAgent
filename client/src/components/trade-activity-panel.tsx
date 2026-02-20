@@ -54,7 +54,6 @@ const STATUS_LABELS: Record<string, string> = {
   sent_to_broker: "Sent to Broker",
   filled: "Filled",
   pending: "Pending",
-  skipped: "Skipped",
   cancelled: "Cancelled",
   rejected: "Rejected",
   error: "Error",
@@ -83,12 +82,12 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Badge
-              variant={trade.status === "skipped" || trade.status === "error" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
+              variant={trade.status === "error" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
               className="text-xs shrink-0"
               data-testid={`badge-trade-source-${trade.id}`}
             >
               {trade.source === "auto_agent" ? (
-                <><Bot className="h-3 w-3 mr-1" />{trade.status === "skipped" ? "Skipped" : trade.status === "error" ? "Error" : trade.status === "pending" ? "Suggested" : "Auto Agent"}</>
+                <><Bot className="h-3 w-3 mr-1" />{trade.status === "error" ? "Error" : trade.status === "pending" ? "Suggested" : "Auto Agent"}</>
               ) : (
                 <><Zap className="h-3 w-3 mr-1" />InstaTrade&trade;</>
               )}
@@ -98,11 +97,9 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
                 <span className="font-mono font-bold text-sm" data-testid={`text-trade-sym-${trade.id}`}>
                   {trade.symbol}
                 </span>
-                {trade.status !== "skipped" && (
-                  <Badge variant="outline" className="text-xs uppercase">
-                    {trade.side}
-                  </Badge>
-                )}
+                <Badge variant="outline" className="text-xs uppercase">
+                  {trade.side}
+                </Badge>
                 {formatStrategy(trade.strategy) && (
                   <Badge variant="secondary" className="text-xs" data-testid={`badge-trade-strategy-${trade.id}`}>
                     {formatStrategy(trade.strategy)}
@@ -114,21 +111,18 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
                   </span>
                 )}
               </div>
-              {trade.status !== "skipped" && (
-                <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
-                  <span>Qty: {trade.quantity}</span>
-                  {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
-                  <span>{trade.orderType}</span>
-                  {trade.brokerOrderId && (
-                    <span className="font-mono">#{trade.brokerOrderId}</span>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
+                <span>Qty: {trade.quantity}</span>
+                {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
+                <span>{trade.orderType}</span>
+                {trade.brokerOrderId && (
+                  <span className="font-mono">#{trade.brokerOrderId}</span>
+                )}
+              </div>
               {trade.reasons && trade.reasons.length > 0 && (
                 <div className="mt-1 space-y-0.5">
                   {(trade.reasons as string[]).map((reason, i) => (
-                    <p key={i} className={`text-xs ${trade.status === "skipped" ? "text-destructive/80" : "text-muted-foreground"}`}>
-                      {trade.status === "skipped" && <AlertCircle className="h-3 w-3 inline mr-1 -mt-0.5" />}
+                    <p key={i} className="text-xs text-muted-foreground">
                       {reason}
                     </p>
                   ))}
@@ -141,7 +135,7 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
               variant={
                 trade.status === "filled" || trade.status === "sent_to_broker" ? "default" :
                 trade.status === "pending" ? "outline" :
-                trade.status === "skipped" || trade.status === "cancelled" || trade.status === "error" || trade.status === "rejected" ? "destructive" : "secondary"
+                trade.status === "cancelled" || trade.status === "error" || trade.status === "rejected" ? "destructive" : "secondary"
               }
               className="text-xs"
               data-testid={`badge-trade-status-${trade.id}`}
@@ -309,7 +303,7 @@ export function TradeActivityPanel() {
               Trade Activity
             </CardTitle>
             <CardDescription>
-              Executed and skipped trades from Auto Agent and InstaTrade&trade;
+              Executed trades from Auto Agent and InstaTrade&trade;
             </CardDescription>
           </div>
           <Button
@@ -347,7 +341,6 @@ export function TradeActivityPanel() {
               <SelectItem value="sent_to_broker">Sent to Broker</SelectItem>
               <SelectItem value="filled">Filled</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="skipped">Skipped</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
               <SelectItem value="error">Error</SelectItem>
@@ -423,7 +416,7 @@ export function TradeActivityPanel() {
             <ArrowUpDown className="h-10 w-10 text-muted-foreground/50 mb-3" />
             <p className="text-sm font-medium">No trade activity yet</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Executed and skipped trades from Auto Agent and InstaTrade&trade; will appear here
+              Executed trades from Auto Agent and InstaTrade&trade; will appear here
             </p>
           </div>
         )}

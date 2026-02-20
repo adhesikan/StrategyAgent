@@ -264,6 +264,11 @@ async function runStartupMigrations() {
       END $$;
     `);
     
+    const skipCleanup = await db.execute(sql`
+      DELETE FROM agent_decisions WHERE action = 'SKIP'
+    `);
+    log(`Cleaned up ${skipCleanup.rowCount ?? 0} SKIP records from agent_decisions`, "migrations");
+
     log("Startup migrations completed successfully", "migrations");
   } catch (error) {
     log(`Startup migrations error (non-fatal): ${error}`, "migrations");

@@ -1218,13 +1218,145 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  const TERMINAL_STATUSES = new Set(["filled", "cancelled", "rejected", "error"]);
+  const syncThrottleMap = new Map<string, number>();
+  const SYNC_THROTTLE_MS = 30_000;
+
+  async function syncOrderStatuses(userId: string): Promise<void> {
+    const now = Date.now();
+    const lastSync = syncThrottleMap.get(userId) || 0;
+    if (now - lastSync < SYNC_THROTTLE_MS) return;
+    syncThrottleMap.set(userId, now);
+
+    try {
+      const brokerService = await import("./broker/index");
+      const brokerOrders = await brokerService.getBrokerOrders(userId);
+      if (!brokerOrders || brokerOrders.length === 0) return;
+
+      const brokerOrderMap = new Map<string, string>();
+      for (const bo of brokerOrders) {
+        if (bo.id) {
+          brokerOrderMap.set(bo.id, bo.status);
+        }
+      }
+      if (brokerOrderMap.size === 0) return;
+
+      const { db } = await import("./db");
+      const { agentDecisions, tradeOrders } = await import("@shared/schema");
+      const { eq, and, sql, isNotNull } = await import("drizzle-orm");
+
+      const pendingAgentTrades = await db
+        .select()
+        .from(agentDecisions)
+        .where(
+          and(
+            eq(agentDecisions.userId, userId),
+            eq(agentDecisions.action, "EXECUTE"),
+            isNotNull(agentDecisions.brokerOrderId)
+          )
+        )
+        .limit(200);
+
+      for (const trade of pendingAgentTrades) {
+        const orderId = trade.brokerOrderId || (trade.orderPayload as any)?.brokerOrderId;
+        if (!orderId) continue;
+
+        const brokerStatus = brokerOrderMap.get(orderId);
+        if (!brokerStatus) continue;
+
+        const currentStatus = (trade.orderPayload as any)?.brokerStatus || "";
+        const normalizedCurrent = normalizeTradeStatus(currentStatus);
+        const normalizedNew = normalizeTradeStatus(brokerStatus);
+
+        if (normalizedCurrent === normalizedNew) continue;
+        if (TERMINAL_STATUSES.has(normalizedCurrent)) continue;
+
+        const updatedPayload = { ...(trade.orderPayload as any), brokerStatus: brokerStatus };
+        await db.update(agentDecisions)
+          .set({ orderPayload: updatedPayload, brokerOrderId: orderId })
+          .where(eq(agentDecisions.id, trade.id));
+      }
+
+      const pendingInstaTrades = await db
+        .select()
+        .from(tradeOrders)
+        .where(
+          and(
+            eq(tradeOrders.userId, userId),
+            isNotNull(tradeOrders.brokerOrderId),
+            sql`${tradeOrders.status} NOT IN ('filled', 'cancelled', 'rejected', 'error')`
+          )
+        )
+        .limit(200);
+
+      for (const order of pendingInstaTrades) {
+        if (!order.brokerOrderId) continue;
+
+        const brokerStatus = brokerOrderMap.get(order.brokerOrderId);
+        if (!brokerStatus) continue;
+
+        const normalizedNew = normalizeTradeStatus(brokerStatus);
+        const normalizedCurrent = normalizeTradeStatus(order.status);
+
+        if (normalizedCurrent === normalizedNew) continue;
+        if (TERMINAL_STATUSES.has(normalizedCurrent)) continue;
+
+        const updates: any = { status: normalizedNew };
+        if (normalizedNew === "filled") {
+          updates.filledAt = new Date();
+        }
+        await db.update(tradeOrders)
+          .set(updates)
+          .where(eq(tradeOrders.id, order.id));
+      }
+
+      const { externalAlerts } = await import("@shared/schema");
+      const pendingExternalAlerts = await db
+        .select()
+        .from(externalAlerts)
+        .where(
+          and(
+            eq(externalAlerts.userId, userId),
+            isNotNull(externalAlerts.brokerOrderId),
+            sql`${externalAlerts.status} IN ('EXECUTED', 'PENDING')`
+          )
+        )
+        .limit(200);
+
+      for (const alert of pendingExternalAlerts) {
+        if (!alert.brokerOrderId) continue;
+
+        const brokerStatus = brokerOrderMap.get(alert.brokerOrderId);
+        if (!brokerStatus) continue;
+
+        const normalizedNew = normalizeTradeStatus(brokerStatus);
+        if (normalizedNew === "filled") {
+          await db.update(externalAlerts)
+            .set({ status: "FILLED", updatedAt: new Date() })
+            .where(eq(externalAlerts.id, alert.id));
+        } else if (normalizedNew === "cancelled" || normalizedNew === "rejected") {
+          await db.update(externalAlerts)
+            .set({ status: normalizedNew === "cancelled" ? "CANCELLED" : "REJECTED", updatedAt: new Date() })
+            .where(eq(externalAlerts.id, alert.id));
+        }
+      }
+    } catch (error: any) {
+      console.error("Order status sync error:", error.message);
+    }
+  }
+
   app.get("/api/all-trades", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const limit = parseInt(req.query.limit as string) || 500;
+      const sync = req.query.sync !== "false";
       const { db } = await import("./db");
       const { agentDecisions, tradeOrders } = await import("@shared/schema");
       const { eq, and, sql } = await import("drizzle-orm");
+
+      if (sync) {
+        await syncOrderStatuses(userId);
+      }
 
       const agentTrades = await db
         .select()
@@ -5839,6 +5971,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     try {
       const userId = req.session.userId;
       if (!userId) return res.status(400).json({ error: "No linked account" });
+      await syncOrderStatuses(userId);
       const alerts = await storage.getExternalAlerts(userId, 100);
       res.json(alerts);
     } catch (error) {

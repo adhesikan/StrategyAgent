@@ -34,6 +34,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import rithmicLogoWhite from "@assets/market_data_by_rithmic-white_1771689702166.png";
+import rithmicLogoSlate from "@assets/market_data_by_rithmic-slategrey_1771689702167.png";
 
 interface FuturesSymbolInfo {
   symbol: string;
@@ -692,7 +694,7 @@ export default function FuturesScanner() {
     <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4" data-testid="futures-scanner-container">
       {feedType === "rithmic" ? (
         <div
-          className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-2 space-y-1"
+          className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-2 space-y-2"
           data-testid="banner-futures-feed-live"
         >
           <div className="flex items-center justify-center gap-2">
@@ -701,6 +703,20 @@ export default function FuturesScanner() {
               Futures Feed: Rithmic Connected{rithmicMode ? ` (${rithmicMode === "protocol" ? "Protocol Server" : "Plant"} mode)` : ""}
               {feedDetail ? ` - ${feedDetail}` : ""}
             </span>
+          </div>
+          <div className="flex justify-center">
+            <img
+              src={rithmicLogoWhite}
+              alt="Market Data by Rithmic"
+              className="h-5 hidden dark:block"
+              data-testid="img-rithmic-logo-dark"
+            />
+            <img
+              src={rithmicLogoSlate}
+              alt="Market Data by Rithmic"
+              className="h-5 dark:hidden"
+              data-testid="img-rithmic-logo-light"
+            />
           </div>
         </div>
       ) : (

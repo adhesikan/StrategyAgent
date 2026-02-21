@@ -1233,6 +1233,31 @@ export default function FuturesScanner() {
           </CardContent>
         )}
       </Card>
+
+      {feedType === "rithmic" && (
+        <div
+          className="border-t border-border/40 pt-3 pb-2 px-2 space-y-1 text-center"
+          data-testid="rithmic-copyright-notice"
+        >
+          <div className="flex justify-center">
+            <img
+              src={rithmicLogoWhite}
+              alt="Market Data by Rithmic"
+              className="h-4 hidden dark:block"
+            />
+            <img
+              src={rithmicLogoSlate}
+              alt="Market Data by Rithmic"
+              className="h-4 dark:hidden"
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground/70 leading-snug max-w-2xl mx-auto">
+            Market Data provided by Rithmic. &copy; {new Date().getFullYear()} Rithmic, LLC. All rights reserved.
+            Rithmic and the Rithmic logo are trademarks of Rithmic, LLC.
+            Futures trading involves substantial risk of loss and is not suitable for all investors.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

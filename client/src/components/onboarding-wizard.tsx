@@ -174,7 +174,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
   const [sizingValue, setSizingValue] = useState("1000");
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const { isConnected } = useBrokerStatus();
+  const { isConnected, providerName } = useBrokerStatus();
 
   useEffect(() => {
     if (open && isEditing && savedSettings) {
@@ -343,10 +343,15 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                     <div className="h-9 w-9 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-green-700 dark:text-green-400">Broker Connected</p>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                        {providerName || "Broker"} Connected
+                      </p>
                       <p className="text-xs text-muted-foreground">Live market data is active</p>
                     </div>
+                    <Badge variant="secondary" className="text-[10px] bg-green-500/10 text-green-700 dark:text-green-400 no-default-hover-elevate no-default-active-elevate">
+                      Active
+                    </Badge>
                   </CardContent>
                 </Card>
               ) : (
@@ -380,7 +385,9 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                 </div>
               )}
               <p className="text-xs text-muted-foreground text-center">
-                You can connect a broker later from Settings.
+                {isConnected
+                  ? "You can manage your broker connection in Settings."
+                  : "You can connect a broker later from Settings."}
               </p>
             </div>
           )}

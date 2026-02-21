@@ -289,65 +289,34 @@ export async function getBrokerOrders(userId: string): Promise<NormalizedOrder[]
   }
 
   const provider = getProvider(connection.provider);
+  const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
 
   try {
-    const allOrders: NormalizedOrder[] = [];
+    const primaryOrders = await provider.getOrders(token, realAccountId);
+    console.log(`[BrokerService] getBrokerOrders: ${connection.provider} account ${realAccountId ?? 'default'} returned ${primaryOrders.length} orders`);
 
-    if (connection.preferredAccountId) {
-      const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId);
-      const orders = await provider.getOrders(token, realAccountId);
-      allOrders.push(...orders);
-      console.log(`[BrokerService] getBrokerOrders: ${connection.provider} preferred account ${connection.preferredAccountId} returned ${orders.length} orders`);
-    } else {
-      const accounts = await provider.getAccounts(connection.accessToken!);
-      console.log(`[BrokerService] getBrokerOrders: ${connection.provider} has ${accounts.length} accounts, no preferred set — querying all`);
-      for (const account of accounts) {
-        try {
-          const { token, realAccountId } = resolveAccountToken(connection, account.id);
-          const orders = await provider.getOrders(token, realAccountId);
-          console.log(`[BrokerService] getBrokerOrders: account ${account.id} (${account.name}) returned ${orders.length} orders`);
-          allOrders.push(...orders);
-        } catch (acctErr: any) {
-          console.log(`[BrokerService] getBrokerOrders: error for account ${account.id}: ${acctErr.message}`);
-        }
-      }
-    }
+    const allOrders: NormalizedOrder[] = [...primaryOrders];
 
     if (connection.provider === "tradier" && connection.sandboxAccessToken) {
       try {
         registerSandboxToken(connection.sandboxAccessToken);
-        const tp = provider as any;
-        let sandboxAccountIds: string[] = [];
-        if (tp.getSandboxAccounts) {
-          const sandboxAccounts = await tp.getSandboxAccounts(connection.sandboxAccessToken);
-          sandboxAccountIds = sandboxAccounts.map((a: any) => a.id);
-        }
-        if (sandboxAccountIds.length > 0) {
-          for (const saId of sandboxAccountIds) {
-            try {
-              const sandboxOrders = await provider.getOrders(connection.sandboxAccessToken, saId);
-              console.log(`[BrokerService] getBrokerOrders: tradier sandbox account ${saId} returned ${sandboxOrders.length} orders`);
-              allOrders.push(...sandboxOrders);
-            } catch (saErr: any) {
-              console.log(`[BrokerService] getBrokerOrders: tradier sandbox account ${saId} error: ${saErr.message}`);
-            }
-          }
-        } else {
-          const sandboxOrders = await provider.getOrders(connection.sandboxAccessToken);
-          console.log(`[BrokerService] getBrokerOrders: tradier sandbox returned ${sandboxOrders.length} orders`);
-          allOrders.push(...sandboxOrders);
-        }
+        const sandboxOrders = await provider.getOrders(connection.sandboxAccessToken);
+        console.log(`[BrokerService] getBrokerOrders: tradier sandbox returned ${sandboxOrders.length} orders`);
+        allOrders.push(...sandboxOrders);
       } catch (sandboxErr: any) {
-        console.log(`[BrokerService] getBrokerOrders: tradier sandbox error: ${sandboxErr.message}`);
+        console.log(`[BrokerService] getBrokerOrders: tradier sandbox error (non-fatal): ${sandboxErr.message}`);
       }
     }
 
-    const deduped = Array.from(new Map(allOrders.map(o => [o.id, o])).values());
+    const deduped = allOrders.length > primaryOrders.length
+      ? Array.from(new Map(allOrders.map(o => [o.id, o])).values())
+      : allOrders;
+
     console.log(`[BrokerService] getBrokerOrders: ${connection.provider} total ${deduped.length} unique orders for user ${userId}`);
     setCache(cacheKey, deduped, CACHE_TTL.ORDERS);
     return deduped;
   } catch (error: any) {
-    console.error(`[BrokerService] getBrokerOrders error (${connection.provider}):`, error.message);
+    console.error(`[BrokerService] getBrokerOrders error (${connection.provider}, account ${realAccountId ?? 'default'}): ${error.message}`);
     return [];
   }
 }

@@ -210,38 +210,6 @@ export const tradierProvider: BrokerProvider = {
     return results;
   },
 
-  async getSandboxAccounts(sandboxToken: string): Promise<NormalizedAccount[]> {
-    const data = await tradierFetch(`${SANDBOX_URL}/user/profile`, sandboxToken);
-    const accounts = data?.profile?.account;
-    if (!accounts) return [];
-
-    const accountArray = Array.isArray(accounts) ? accounts : [accounts];
-
-    const results: NormalizedAccount[] = [];
-    for (const acct of accountArray) {
-      let balances: any = null;
-      try {
-        const balData = await tradierFetch(
-          `${SANDBOX_URL}/accounts/${acct.account_number}/balances`,
-          sandboxToken,
-        );
-        balances = balData?.balances;
-      } catch {
-      }
-
-      results.push({
-        id: acct.account_number ?? acct.id ?? "",
-        name: acct.name || acct.account_number || "Paper Account",
-        type: "paper",
-        buyingPower: balances?.margin?.option_buying_power ?? balances?.cash?.cash_available ?? balances?.buying_power ?? 0,
-        equity: balances?.total_equity ?? balances?.equity ?? 0,
-        currency: "USD",
-      });
-    }
-
-    return results;
-  },
-
   async getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]> {
     if (!accountId) {
       const status = await this.getStatus(accessToken);

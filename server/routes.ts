@@ -1491,9 +1491,6 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         const brokerService = await import("./broker/index");
         const connection = await storage.getBrokerConnectionWithToken(userId);
         const providerName = connection?.provider || "broker";
-        if (sync) {
-          brokerService.invalidateBrokerCache(userId);
-        }
         const brokerOrders = await brokerService.getBrokerOrders(userId);
         console.log(`[AllTrades] Broker orders from ${providerName}: ${brokerOrders?.length ?? 0} total, ${knownBrokerOrderIds.size} already in local DB`);
         if (brokerOrders && brokerOrders.length > 0) {

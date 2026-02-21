@@ -29,7 +29,7 @@ interface BrokerAccount {
 interface ExecutedTrade {
   id: string;
   symbol: string;
-  source: "auto_agent" | "instatrade";
+  source: "auto_agent" | "instatrade" | "broker";
   action?: string;
   side: string;
   quantity: number;
@@ -82,12 +82,14 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Badge
-              variant={trade.status === "error" ? "destructive" : trade.source === "auto_agent" ? "default" : "secondary"}
+              variant={trade.status === "error" ? "destructive" : trade.source === "auto_agent" ? "default" : trade.source === "broker" ? "outline" : "secondary"}
               className="text-xs shrink-0"
               data-testid={`badge-trade-source-${trade.id}`}
             >
               {trade.source === "auto_agent" ? (
                 <><Bot className="h-3 w-3 mr-1" />{trade.status === "error" ? "Error" : trade.status === "pending" ? "Suggested" : "Auto Agent"}</>
+              ) : trade.source === "broker" ? (
+                <><ArrowUpDown className="h-3 w-3 mr-1" />Broker</>
               ) : (
                 <><Zap className="h-3 w-3 mr-1" />InstaTrade&trade;</>
               )}
@@ -355,6 +357,7 @@ export function TradeActivityPanel() {
               <SelectItem value="all">All Sources</SelectItem>
               <SelectItem value="auto_agent">Auto Agent</SelectItem>
               <SelectItem value="instatrade">InstaTrade</SelectItem>
+              <SelectItem value="broker">Broker</SelectItem>
             </SelectContent>
           </Select>
 

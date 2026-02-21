@@ -1480,7 +1480,47 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         ...agentTrades.map((d: any) => mapAgentDecisionToTrade(d)),
         ...instaTradeOrders.map((o: any) => mapInstaTradeToTrade(o)),
         ...externalAlertTrades.map((a: any) => mapExternalAlertToTrade(a)),
-      ].sort((a, b) => {
+      ];
+
+      const knownBrokerOrderIds = new Set<string>();
+      for (const t of combined) {
+        if (t.brokerOrderId) knownBrokerOrderIds.add(String(t.brokerOrderId));
+      }
+
+      try {
+        const brokerService = await import("./broker/index");
+        const brokerOrders = await brokerService.getBrokerOrders(userId);
+        if (brokerOrders && brokerOrders.length > 0) {
+          const connection = await storage.getBrokerConnectionWithToken(userId);
+          const providerName = connection?.provider || "broker";
+          for (const bo of brokerOrders) {
+            if (!bo.id || knownBrokerOrderIds.has(String(bo.id))) continue;
+            combined.push({
+              id: `broker-${bo.id}`,
+              symbol: bo.symbol || "UNKNOWN",
+              source: "broker" as any,
+              action: undefined,
+              side: bo.side || "buy",
+              quantity: bo.qty || 0,
+              orderType: "market",
+              price: null,
+              status: normalizeTradeStatus(bo.status || "unknown"),
+              brokerOrderId: String(bo.id),
+              isOptions: false,
+              optionDetails: null,
+              strategy: null,
+              reasons: [`Order from ${providerName.charAt(0).toUpperCase() + providerName.slice(1)}`],
+              createdAt: bo.createdAt || new Date().toISOString(),
+              stopLoss: null,
+              target: null,
+            });
+          }
+        }
+      } catch (brokerError: any) {
+        console.log(`[AllTrades] Could not fetch broker orders: ${brokerError.message}`);
+      }
+
+      combined.sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return tB - tA;
@@ -6073,6 +6113,57 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       if (!userId) return res.status(400).json({ error: "No linked account" });
       await syncOrderStatuses(userId);
       const alerts = await storage.getExternalAlerts(userId, 100);
+
+      try {
+        const brokerService = await import("./broker/index");
+        const brokerOrders = await brokerService.getBrokerOrders(userId);
+        if (brokerOrders && brokerOrders.length > 0) {
+          const knownBrokerOrderIds = new Set(alerts.filter(a => a.brokerOrderId).map(a => String(a.brokerOrderId)));
+          const connection = await storage.getBrokerConnectionWithToken(userId);
+          const providerName = connection?.provider || "broker";
+          const brokerTrades = brokerOrders
+            .filter(bo => bo.id && !knownBrokerOrderIds.has(String(bo.id)))
+            .map(bo => {
+              const normalizedStatus = normalizeTradeStatus(bo.status || "unknown");
+              const statusUpper = normalizedStatus === "sent_to_broker" ? "EXECUTED" :
+                normalizedStatus === "filled" ? "FILLED" :
+                normalizedStatus === "rejected" ? "REJECTED" :
+                normalizedStatus === "cancelled" ? "CANCELLED" :
+                normalizedStatus === "error" ? "ERROR" : "PENDING";
+              return {
+                id: `broker-${bo.id}`,
+                symbol: bo.symbol || "UNKNOWN",
+                source: providerName,
+                direction: bo.side === "sell" ? "SHORT" : "LONG",
+                alertType: "entry",
+                strategyName: `${providerName.charAt(0).toUpperCase() + providerName.slice(1)} Order`,
+                entryPrice: 0,
+                riskPrice: null,
+                targetPrice: null,
+                status: statusUpper,
+                skipReason: statusUpper === "REJECTED" ? `Rejected by ${providerName}` : null,
+                exitReason: null,
+                executedPrice: null,
+                executedAt: bo.createdAt || null,
+                alertTimestamp: bo.createdAt || new Date().toISOString(),
+                brokerOrderId: String(bo.id),
+                createdAt: bo.createdAt ? new Date(bo.createdAt) : new Date(),
+                updatedAt: new Date(),
+                userId,
+                agentDecisionId: null,
+              };
+            });
+          res.json([...alerts, ...brokerTrades].sort((a: any, b: any) => {
+            const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return tB - tA;
+          }));
+          return;
+        }
+      } catch (brokerError: any) {
+        console.log(`[PartnerTrades] Could not fetch broker orders: ${brokerError.message}`);
+      }
+
       res.json(alerts);
     } catch (error) {
       res.status(500).json({ error: "Failed to get trade history" });

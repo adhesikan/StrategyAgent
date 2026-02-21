@@ -1098,9 +1098,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   function normalizeTradeStatus(raw: string): string {
     const lower = raw.toLowerCase();
-    if (lower === "ok" || lower === "executed" || lower === "ack" || lower === "opn" || lower === "open" || lower === "received" || lower === "queued" || lower === "sent") return "sent_to_broker";
+    if (lower === "ok" || lower === "executed" || lower === "ack" || lower === "opn" || lower === "open" || lower === "received" || lower === "queued" || lower === "sent" || lower === "snd") return "sent_to_broker";
     if (lower === "fll" || lower === "filled") return "filled";
-    if (lower === "can" || lower === "canceled" || lower === "cancelled" || lower === "expired" || lower === "exp") return "cancelled";
+    if (lower === "flp" || lower === "partially_filled" || lower === "partial_fill") return "filled";
+    if (lower === "can" || lower === "canceled" || lower === "cancelled" || lower === "expired" || lower === "exp" || lower === "tsc") return "cancelled";
     if (lower === "rej" || lower === "rejected" || lower === "ur" || lower === "uract") return "rejected";
     if (lower === "failed" || lower === "broken" || lower === "bro") return "error";
     return lower;
@@ -1277,6 +1278,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
     try {
       const brokerService = await import("./broker/index");
+      brokerService.invalidateBrokerCache(userId);
       const brokerOrders = await brokerService.getBrokerOrders(userId);
       brokerOrderCount = brokerOrders?.length || 0;
       if (!brokerOrders || brokerOrders.length === 0) {
@@ -1287,10 +1289,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const brokerOrderMap = new Map<string, string>();
       for (const bo of brokerOrders) {
         if (bo.id) {
-          brokerOrderMap.set(bo.id, bo.status);
+          brokerOrderMap.set(String(bo.id), bo.status);
         }
       }
-      console.log(`[OrderSync] Fetched ${brokerOrderMap.size} broker orders for matching`);
+      console.log(`[OrderSync] Fetched ${brokerOrderMap.size} broker orders for matching (sample: ${Array.from(brokerOrderMap.entries()).slice(0, 3).map(([id, s]) => `${id}=${s}`).join(", ")})`);
       if (brokerOrderMap.size === 0) return { synced: 0, brokerOrderCount };
 
       const { db } = await import("./db");
@@ -1312,11 +1314,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       console.log(`[OrderSync] Found ${pendingAgentTrades.length} agent EXECUTE trades with broker order IDs`);
 
       for (const trade of pendingAgentTrades) {
-        const orderId = trade.brokerOrderId || (trade.orderPayload as any)?.brokerOrderId;
+        const orderId = String(trade.brokerOrderId || (trade.orderPayload as any)?.brokerOrderId || "");
         if (!orderId) continue;
 
         const brokerStatus = brokerOrderMap.get(orderId);
-        if (!brokerStatus) continue;
+        if (!brokerStatus) {
+          console.log(`[OrderSync] Agent trade ${trade.id} (${trade.symbol}): broker order ${orderId} not found in broker response`);
+          continue;
+        }
 
         const currentStatus = (trade.orderPayload as any)?.brokerStatus || "";
         const normalizedCurrent = normalizeTradeStatus(currentStatus);
@@ -1350,7 +1355,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       for (const order of pendingInstaTrades) {
         if (!order.brokerOrderId) continue;
 
-        const brokerStatus = brokerOrderMap.get(order.brokerOrderId);
+        const brokerStatus = brokerOrderMap.get(String(order.brokerOrderId));
         if (!brokerStatus) {
           console.log(`[OrderSync] InstaTrade #${order.brokerOrderId}: no match in broker orders`);
           continue;
@@ -1389,7 +1394,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       for (const alert of pendingExternalAlerts) {
         if (!alert.brokerOrderId) continue;
 
-        const brokerStatus = brokerOrderMap.get(alert.brokerOrderId);
+        const brokerStatus = brokerOrderMap.get(String(alert.brokerOrderId));
         if (!brokerStatus) continue;
 
         const normalizedNew = normalizeTradeStatus(brokerStatus);

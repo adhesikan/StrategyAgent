@@ -1489,10 +1489,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       try {
         const brokerService = await import("./broker/index");
+        const connection = await storage.getBrokerConnectionWithToken(userId);
+        const providerName = connection?.provider || "broker";
+        if (sync) {
+          brokerService.invalidateBrokerCache(userId);
+        }
         const brokerOrders = await brokerService.getBrokerOrders(userId);
+        console.log(`[AllTrades] Broker orders from ${providerName}: ${brokerOrders?.length ?? 0} total, ${knownBrokerOrderIds.size} already in local DB`);
         if (brokerOrders && brokerOrders.length > 0) {
-          const connection = await storage.getBrokerConnectionWithToken(userId);
-          const providerName = connection?.provider || "broker";
           for (const bo of brokerOrders) {
             if (!bo.id || knownBrokerOrderIds.has(String(bo.id))) continue;
             combined.push({
@@ -1503,7 +1507,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
               side: bo.side || "buy",
               quantity: bo.qty || 0,
               orderType: "market",
-              price: null,
+              price: bo.price || null,
               status: normalizeTradeStatus(bo.status || "unknown"),
               brokerOrderId: String(bo.id),
               isOptions: false,

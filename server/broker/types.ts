@@ -20,6 +20,8 @@ export interface NormalizedOrder {
   symbol: string;
   side: "buy" | "sell";
   qty: number;
+  filledQty?: number;
+  price?: number | null;
   status: string;
   createdAt: string;
 }

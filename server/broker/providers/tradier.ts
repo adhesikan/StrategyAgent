@@ -276,20 +276,26 @@ export const tradierProvider: BrokerProvider = {
     if (!accountId) return [];
 
     const data = await tradierFetch(
-      `${getBaseUrlForToken(accessToken)}/accounts/${accountId}/orders`,
+      `${getBaseUrlForToken(accessToken)}/accounts/${accountId}/orders?includeTags=true`,
       accessToken,
     );
 
     const orders = data?.orders?.order;
-    if (!orders) return [];
+    if (!orders) {
+      console.log(`[Tradier] getOrders: no orders returned for account ${accountId}`);
+      return [];
+    }
 
     const orderArray = Array.isArray(orders) ? orders : [orders];
+    console.log(`[Tradier] getOrders: found ${orderArray.length} orders for account ${accountId}`);
 
     return orderArray.slice(0, 500).map((o: any) => ({
       id: String(o.id),
       symbol: o.symbol || (o.leg?.[0]?.symbol) || "UNKNOWN",
       side: (o.side === "sell" || o.side === "sell_short") ? "sell" as const : "buy" as const,
       qty: o.quantity ?? 0,
+      filledQty: o.exec_quantity ?? o.last_fill_quantity ?? 0,
+      price: o.price ?? o.avg_fill_price ?? null,
       status: o.status ?? "unknown",
       createdAt: o.create_date ?? o.transaction_date ?? "",
     }));

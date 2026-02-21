@@ -309,7 +309,12 @@ export const tradestationProvider: BrokerProvider = {
     );
 
     const orders = data?.Orders || data || [];
-    if (!Array.isArray(orders)) return [];
+    if (!Array.isArray(orders)) {
+      console.log(`[TradeStation] getOrders: response is not an array for account ${accountId}`);
+      return [];
+    }
+
+    console.log(`[TradeStation] getOrders: found ${orders.length} orders for account ${accountId}`);
 
     return orders.slice(0, 500).map((o: any) => {
       const action = (o.TradeAction || "").toLowerCase();
@@ -319,6 +324,8 @@ export const tradestationProvider: BrokerProvider = {
         symbol: o.Legs?.[0]?.Symbol || o.Symbol || "UNKNOWN",
         side: isSell ? "sell" as const : "buy" as const,
         qty: parseInt(o.Legs?.[0]?.QuantityOrdered || o.Quantity || "0", 10),
+        filledQty: parseInt(o.Legs?.[0]?.ExecQuantity || o.FilledQuantity || "0", 10),
+        price: parseFloat(o.FilledPrice || o.LimitPrice || "0") || null,
         status: o.Status || o.StatusDescription || "unknown",
         createdAt: o.OpenedDateTime || o.ClosedDateTime || "",
       };

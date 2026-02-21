@@ -593,11 +593,20 @@ export default function Settings() {
     },
     onSuccess: (data) => {
       if (data.success) {
+        let description = data.message || "Connection successful";
+        if (data.data) {
+          const label = data.data.symbol || "Quote";
+          const price = data.data.last || data.data.close;
+          if (price != null) {
+            const priceStr = typeof price === "string" ? price : `$${price}`;
+            description = `${label}: ${priceStr}`;
+          } else {
+            description = label;
+          }
+        }
         toast({
           title: "Connection Test Passed",
-          description: data.data 
-            ? `${data.data.symbol}: $${data.data.last || data.data.close || 'N/A'}` 
-            : data.message,
+          description,
         });
       } else {
         toast({

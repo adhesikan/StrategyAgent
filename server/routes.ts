@@ -2065,13 +2065,44 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         if (response.ok) {
           const data = await response.json();
           const accounts = data.Accounts || data.accounts || [];
+          const firstAccount = accounts[0];
+          const accountName = firstAccount?.Name || firstAccount?.name || firstAccount?.DisplayName || firstAccount?.displayName || firstAccount?.AccountID || firstAccount?.accountId || `${accounts.length} account(s)`;
+          
+          let balanceInfo: string | null = null;
+          if (firstAccount) {
+            const acctId = firstAccount.AccountID || firstAccount.accountId;
+            if (acctId) {
+              try {
+                const balResponse = await fetch(`https://api.tradestation.com/v3/brokerage/accounts/${acctId}/balances`, {
+                  headers: { "Authorization": `Bearer ${connection.accessToken}` },
+                });
+                if (balResponse.ok) {
+                  const balData = await balResponse.json();
+                  const bal = balData.Balances?.[0] || balData.balances?.[0] || balData;
+                  const equity = bal?.Equity || bal?.equity || bal?.CashBalance || bal?.cashBalance || bal?.MarketValue || bal?.marketValue;
+                  if (equity != null) {
+                    balanceInfo = Number(equity).toLocaleString("en-US", { style: "currency", currency: "USD" });
+                  }
+                }
+              } catch (e) {
+                console.log(`[TradeStation Test] Balance fetch failed (non-fatal):`, (e as Error).message);
+              }
+            }
+          }
+
           testResult = {
             success: true,
             message: "Connection successful",
-            data: { accounts: accounts.length, provider: "tradestation" },
+            data: { 
+              symbol: `TradeStation (${accountName})`,
+              last: balanceInfo,
+              accounts: accounts.length, 
+              provider: "tradestation",
+            },
           };
         } else {
-          testResult = { success: false, message: `API error: ${response.status}` };
+          const errorText = await response.text().catch(() => "");
+          testResult = { success: false, message: `API error: ${response.status} ${errorText.substring(0, 200)}` };
         }
       } else if (connection.provider === "ibkr") {
         testResult = { 

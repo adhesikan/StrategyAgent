@@ -1577,3 +1577,91 @@ export const insertAutoModeConsentSchema = createInsertSchema(autoModeConsents).
 });
 export type InsertAutoModeConsent = z.infer<typeof insertAutoModeConsentSchema>;
 export type AutoModeConsent = typeof autoModeConsents.$inferSelect;
+
+// Enum-like constants for user system profiles and acceptance types
+export const TradingStyle = { DAY: "DAY", SWING: "SWING", AUTO: "AUTO" } as const;
+export const MarketScope = { STOCKS: "STOCKS", OPTIONS: "OPTIONS", BOTH: "BOTH" } as const;
+export const PersonaGoal = { CONSISTENCY: "CONSISTENCY", SAVE_TIME: "SAVE_TIME", OPPORTUNITIES: "OPPORTUNITIES", REDUCE_EMOTION: "REDUCE_EMOTION" } as const;
+export const PersonaRisk = { CONSERVATIVE: "CONSERVATIVE", BALANCED: "BALANCED", AGGRESSIVE: "AGGRESSIVE" } as const;
+export const AcceptanceType = { WIZARD_AUTOPILOT_ENABLE: "WIZARD_AUTOPILOT_ENABLE", DASHBOARD_RECONFIRM: "DASHBOARD_RECONFIRM", TERMS_UPDATE: "TERMS_UPDATE", OTHER: "OTHER" } as const;
+
+// User System Profiles - stores trading style, market scope, and persona information
+export const userSystemProfiles = pgTable("user_system_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  version: integer("version").notNull().default(1),
+  tradingStyle: text("trading_style").notNull().default("AUTO"),
+  marketScope: text("market_scope").notNull().default("STOCKS"),
+  personaGoal: text("persona_goal"),
+  personaRisk: text("persona_risk"),
+  personaLabel: text("persona_label"),
+  riskPerTradeUsd: integer("risk_per_trade_usd").default(500),
+  maxTradesPerDay: integer("max_trades_per_day").default(2),
+  minConfidenceThreshold: integer("min_confidence_threshold").default(90),
+  strategyBundleId: text("strategy_bundle_id"),
+  automationEnabled: boolean("automation_enabled").default(false),
+  simpleMode: boolean("simple_mode").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserSystemProfileSchema = createInsertSchema(userSystemProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserSystemProfile = z.infer<typeof insertUserSystemProfileSchema>;
+export type UserSystemProfile = typeof userSystemProfiles.$inferSelect;
+
+// User Advanced Configs - stores strategy parameters, filters, and overrides as JSON
+export const userAdvancedConfigs = pgTable("user_advanced_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  strategyParamsJson: jsonb("strategy_params_json"),
+  filtersJson: jsonb("filters_json"),
+  overridesJson: jsonb("overrides_json"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserAdvancedConfigSchema = createInsertSchema(userAdvancedConfigs).omit({
+  id: true,
+  updatedAt: true,
+});
+export type InsertUserAdvancedConfig = z.infer<typeof insertUserAdvancedConfigSchema>;
+export type UserAdvancedConfig = typeof userAdvancedConfigs.$inferSelect;
+
+// User Onboarding States - tracks user onboarding progress
+export const userOnboardingStates = pgTable("user_onboarding_states", {
+  userId: varchar("user_id").primaryKey(),
+  wizardCompletedAt: timestamp("wizard_completed_at"),
+  firstTradeExecutedAt: timestamp("first_trade_executed_at"),
+  firstTradeCelebrationSeen: boolean("first_trade_celebration_seen").default(false),
+  lastWizardVersionSeen: integer("last_wizard_version_seen").default(0),
+});
+
+export const insertUserOnboardingStateSchema = createInsertSchema(userOnboardingStates);
+export type InsertUserOnboardingState = z.infer<typeof insertUserOnboardingStateSchema>;
+export type UserOnboardingState = typeof userOnboardingStates.$inferSelect;
+
+// Disclaimer Acceptance Logs - audit trail for disclaimer acceptances
+export const disclaimerAcceptanceLogs = pgTable("disclaimer_acceptance_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  userEmail: text("user_email"),
+  userName: text("user_name"),
+  acceptanceType: text("acceptance_type").notNull(),
+  disclaimerVersion: text("disclaimer_version").notNull(),
+  disclaimerHash: text("disclaimer_hash").notNull(),
+  accepted: boolean("accepted").notNull().default(true),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+  metadataJson: jsonb("metadata_json"),
+});
+
+export const insertDisclaimerAcceptanceLogSchema = createInsertSchema(disclaimerAcceptanceLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDisclaimerAcceptanceLog = z.infer<typeof insertDisclaimerAcceptanceLogSchema>;
+export type DisclaimerAcceptanceLog = typeof disclaimerAcceptanceLogs.$inferSelect;

@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count, isNull } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -85,6 +85,14 @@ import type {
   InsertAgentSettingsAudit,
   AutoModeConsent,
   InsertAutoModeConsent,
+  UserSystemProfile,
+  InsertUserSystemProfile,
+  UserAdvancedConfig,
+  InsertUserAdvancedConfig,
+  UserOnboardingState,
+  InsertUserOnboardingState,
+  DisclaimerAcceptanceLog,
+  InsertDisclaimerAcceptanceLog,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -312,6 +320,20 @@ export interface IStorage {
   createPartnerUser(user: InsertPartnerUser): Promise<PartnerUser>;
   updatePartnerUser(id: string, data: Partial<PartnerUser>): Promise<PartnerUser | null>;
   getPartnerUserByStripeCustomerId(customerId: string): Promise<PartnerUser | null>;
+
+  // Trading System Setup
+  getSystemProfile(userId: string): Promise<UserSystemProfile | null>;
+  getLatestSystemProfile(userId: string): Promise<UserSystemProfile | null>;
+  createSystemProfile(profile: InsertUserSystemProfile): Promise<UserSystemProfile>;
+  
+  getAdvancedConfig(userId: string): Promise<UserAdvancedConfig | null>;
+  upsertAdvancedConfig(userId: string, data: Partial<InsertUserAdvancedConfig>): Promise<UserAdvancedConfig>;
+  
+  getOnboardingState(userId: string): Promise<UserOnboardingState | null>;
+  upsertOnboardingState(userId: string, data: Partial<InsertUserOnboardingState>): Promise<UserOnboardingState>;
+  
+  createDisclaimerAcceptance(log: InsertDisclaimerAcceptanceLog): Promise<DisclaimerAcceptanceLog>;
+  getDisclaimerAcceptanceLogs(filters: { query?: string; acceptanceType?: string; version?: string; startDate?: Date; endDate?: Date; page?: number; pageSize?: number }): Promise<{ logs: DisclaimerAcceptanceLog[]; total: number }>;
 }
 
 export interface OpportunityFilters {
@@ -2674,6 +2696,131 @@ export class MemStorage implements IStorage {
       .where(eq(partnerUsersTable.stripeCustomerId, customerId))
       .limit(1);
     return result ?? null;
+  }
+
+  async getSystemProfile(userId: string): Promise<UserSystemProfile | null> {
+    const [profile] = await db
+      .select()
+      .from(userSystemProfilesTable)
+      .where(eq(userSystemProfilesTable.userId, userId))
+      .orderBy(desc(userSystemProfilesTable.version))
+      .limit(1);
+    return profile ?? null;
+  }
+
+  async getLatestSystemProfile(userId: string): Promise<UserSystemProfile | null> {
+    return this.getSystemProfile(userId);
+  }
+
+  async createSystemProfile(profile: InsertUserSystemProfile): Promise<UserSystemProfile> {
+    const [created] = await db.insert(userSystemProfilesTable).values(profile).returning();
+    return created;
+  }
+
+  async getAdvancedConfig(userId: string): Promise<UserAdvancedConfig | null> {
+    const [config] = await db
+      .select()
+      .from(userAdvancedConfigsTable)
+      .where(eq(userAdvancedConfigsTable.userId, userId))
+      .limit(1);
+    return config ?? null;
+  }
+
+  async upsertAdvancedConfig(userId: string, data: Partial<InsertUserAdvancedConfig>): Promise<UserAdvancedConfig> {
+    const existing = await this.getAdvancedConfig(userId);
+    if (existing) {
+      const [updated] = await db
+        .update(userAdvancedConfigsTable)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(userAdvancedConfigsTable.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(userAdvancedConfigsTable)
+        .values({ ...data, userId })
+        .returning();
+      return created;
+    }
+  }
+
+  async getOnboardingState(userId: string): Promise<UserOnboardingState | null> {
+    const [state] = await db
+      .select()
+      .from(userOnboardingStatesTable)
+      .where(eq(userOnboardingStatesTable.userId, userId))
+      .limit(1);
+    return state ?? null;
+  }
+
+  async upsertOnboardingState(userId: string, data: Partial<InsertUserOnboardingState>): Promise<UserOnboardingState> {
+    const existing = await this.getOnboardingState(userId);
+    if (existing) {
+      const [updated] = await db
+        .update(userOnboardingStatesTable)
+        .set(data)
+        .where(eq(userOnboardingStatesTable.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(userOnboardingStatesTable)
+        .values({ ...data, userId })
+        .returning();
+      return created;
+    }
+  }
+
+  async createDisclaimerAcceptance(log: InsertDisclaimerAcceptanceLog): Promise<DisclaimerAcceptanceLog> {
+    const [created] = await db.insert(disclaimerAcceptanceLogsTable).values(log).returning();
+    return created;
+  }
+
+  async getDisclaimerAcceptanceLogs(filters: { query?: string; acceptanceType?: string; version?: string; startDate?: Date; endDate?: Date; page?: number; pageSize?: number }): Promise<{ logs: DisclaimerAcceptanceLog[]; total: number }> {
+    const conditions: any[] = [];
+
+    if (filters.acceptanceType) {
+      conditions.push(eq(disclaimerAcceptanceLogsTable.acceptanceType, filters.acceptanceType));
+    }
+    if (filters.version) {
+      conditions.push(eq(disclaimerAcceptanceLogsTable.disclaimerVersion, filters.version));
+    }
+    if (filters.startDate) {
+      conditions.push(gte(disclaimerAcceptanceLogsTable.createdAt, filters.startDate));
+    }
+    if (filters.endDate) {
+      conditions.push(lte(disclaimerAcceptanceLogsTable.createdAt, filters.endDate));
+    }
+    if (filters.query) {
+      const searchPattern = `%${filters.query}%`;
+      conditions.push(
+        or(
+          sql`${disclaimerAcceptanceLogsTable.userName} ILIKE ${searchPattern}`,
+          sql`${disclaimerAcceptanceLogsTable.userEmail} ILIKE ${searchPattern}`
+        )
+      );
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 50;
+    const offset = (page - 1) * pageSize;
+
+    const [totalResult] = await db
+      .select({ count: count() })
+      .from(disclaimerAcceptanceLogsTable)
+      .where(whereClause);
+
+    const logs = await db
+      .select()
+      .from(disclaimerAcceptanceLogsTable)
+      .where(whereClause)
+      .orderBy(desc(disclaimerAcceptanceLogsTable.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    return { logs, total: totalResult?.count ?? 0 };
   }
 }
 

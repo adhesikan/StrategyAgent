@@ -23,6 +23,9 @@ The project is modularized into `client/` for the React frontend, `server/` for 
 ### Key Design Patterns
 A Storage Interface Pattern abstracts data access. Path aliases streamline imports, and type sharing between frontend and backend is achieved via `@shared/schema`. Client-server communication is handled through a `fetch` wrapper integrated with React Query.
 
+### Trading System Setup (Persona-Based Onboarding)
+A persona-driven onboarding wizard (`trading-readiness-wizard.tsx`) guides users through a 7-step setup: Welcome, Trading Style, Goal, Risk Tolerance, Persona Preview, Automation Level, and Review. The persona engine (`shared/persona-engine.ts`) computes a trader persona (label, strategy bundle, risk defaults) from user inputs. System profiles are versioned and stored in `user_system_profiles`. The agent-worker integrates profile settings (minConfidenceThreshold, maxTradesPerDay) as effective policy overrides. Admin disclaimer logs at `/admin/disclaimer-logs` provide compliance audit trail. API endpoints: `/api/system-profile`, `/api/system-profile/preview`, `/api/system-profile/apply`, `/api/onboarding-state`, `/api/advanced-config`, `/api/system-insights`, `/api/disclaimer/accept`.
+
 ### Centralized Strategy Scoring
 All pattern score calculations are centralized in strategy modules, with `classifyQuote()` serving as the single entry point for scoring various strategies (VCP, VCP_MULTIDAY, CLASSIC_PULLBACK) and plugin types (ORB, GAP_AND_GO, VWAP_RECLAIM, HIGH_RVOL).
 

@@ -6496,5 +6496,246 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // ===== Trading System Setup API =====
+  
+  app.get("/api/system-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await storage.getLatestSystemProfile(userId);
+      const onboardingState = await storage.getOnboardingState(userId);
+      res.json({ profile, onboardingState });
+    } catch (error: any) {
+      console.error("[SystemProfile] Error:", error.message);
+      res.status(500).json({ error: "Failed to get system profile" });
+    }
+  });
+
+  app.post("/api/system-profile/preview", isAuthenticated, async (req, res) => {
+    try {
+      const { computePersona } = await import("@shared/persona-engine");
+      const { tradingStyle, marketScope, personaGoal, personaRisk } = req.body;
+      const result = computePersona({ tradingStyle, marketScope, personaGoal, personaRisk });
+      res.json(result);
+    } catch (error: any) {
+      console.error("[SystemProfile] Preview error:", error.message);
+      res.status(500).json({ error: "Failed to preview profile" });
+    }
+  });
+
+  app.post("/api/system-profile/apply", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { computePersona } = await import("@shared/persona-engine");
+      const { 
+        tradingStyle, marketScope, personaGoal, personaRisk,
+        riskPerTradeUsd, maxTradesPerDay, minConfidenceThreshold,
+        automationEnabled, strategyBundleId: overrideBundleId
+      } = req.body;
+
+      const persona = computePersona({ tradingStyle, marketScope, personaGoal, personaRisk });
+
+      const existing = await storage.getLatestSystemProfile(userId);
+      const nextVersion = (existing?.version || 0) + 1;
+
+      const profile = await storage.createSystemProfile({
+        userId,
+        version: nextVersion,
+        tradingStyle: tradingStyle || "AUTO",
+        marketScope: marketScope || "STOCKS",
+        personaGoal: personaGoal || null,
+        personaRisk: personaRisk || null,
+        personaLabel: persona.personaLabel,
+        riskPerTradeUsd: riskPerTradeUsd ?? persona.riskPerTradeUsd,
+        maxTradesPerDay: maxTradesPerDay ?? persona.maxTradesPerDay,
+        minConfidenceThreshold: minConfidenceThreshold ?? persona.minConfidenceThreshold,
+        strategyBundleId: overrideBundleId || persona.strategyBundleId,
+        automationEnabled: automationEnabled ?? false,
+        simpleMode: existing?.simpleMode ?? true,
+      });
+
+      await storage.upsertOnboardingState(userId, {
+        wizardCompletedAt: new Date(),
+        lastWizardVersionSeen: nextVersion,
+      });
+
+      const user = await authStorage.getUser(userId);
+      await storage.setUserSettings(userId, {
+        setupCompleted: true,
+        setupCompletedAt: new Date(),
+      });
+
+      res.json({ profile, persona });
+    } catch (error: any) {
+      console.error("[SystemProfile] Apply error:", error.message);
+      res.status(500).json({ error: "Failed to apply profile" });
+    }
+  });
+
+  app.get("/api/onboarding-state", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const state = await storage.getOnboardingState(userId);
+      res.json(state || { userId, wizardCompletedAt: null, firstTradeExecutedAt: null, firstTradeCelebrationSeen: false, lastWizardVersionSeen: 0 });
+    } catch (error: any) {
+      console.error("[OnboardingState] Error:", error.message);
+      res.status(500).json({ error: "Failed to get onboarding state" });
+    }
+  });
+
+  app.put("/api/onboarding-state", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const state = await storage.upsertOnboardingState(userId, req.body);
+      res.json(state);
+    } catch (error: any) {
+      console.error("[OnboardingState] Update error:", error.message);
+      res.status(500).json({ error: "Failed to update onboarding state" });
+    }
+  });
+
+  app.put("/api/advanced-config", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const config = await storage.upsertAdvancedConfig(userId, req.body);
+      res.json(config);
+    } catch (error: any) {
+      console.error("[AdvancedConfig] Error:", error.message);
+      res.status(500).json({ error: "Failed to update advanced config" });
+    }
+  });
+
+  app.get("/api/advanced-config", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const config = await storage.getAdvancedConfig(userId);
+      res.json(config || { userId, strategyParamsJson: null, filtersJson: null, overridesJson: null });
+    } catch (error: any) {
+      console.error("[AdvancedConfig] Get error:", error.message);
+      res.status(500).json({ error: "Failed to get advanced config" });
+    }
+  });
+
+  app.get("/api/system-insights", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await storage.getLatestSystemProfile(userId);
+      const { computePersona, STRATEGY_BUNDLES } = await import("@shared/persona-engine");
+
+      const insights: Array<{ type: string; title: string; description: string }> = [];
+
+      if (profile) {
+        const bundle = STRATEGY_BUNDLES[profile.strategyBundleId || "AUTO_BALANCED"];
+        insights.push({
+          type: "info",
+          title: "Active Strategies",
+          description: `Running ${bundle?.strategies.length || 0} strategies from the ${bundle?.label || "Auto"} bundle.`,
+        });
+
+        if (profile.minConfidenceThreshold && profile.minConfidenceThreshold >= 85) {
+          insights.push({
+            type: "tip",
+            title: "High Confidence Filter",
+            description: "Your confidence threshold is set high. You'll see fewer but higher-quality signals.",
+          });
+        }
+
+        if (!profile.automationEnabled) {
+          insights.push({
+            type: "action",
+            title: "Automation Off",
+            description: "Enable autopilot to let the system execute trades that meet your criteria automatically.",
+          });
+        }
+      } else {
+        insights.push({
+          type: "action",
+          title: "Set Up Your System",
+          description: "Complete the Trading System Setup to configure your strategies and risk preferences.",
+        });
+      }
+
+      res.json({ insights });
+    } catch (error: any) {
+      console.error("[SystemInsights] Error:", error.message);
+      res.status(500).json({ error: "Failed to get insights" });
+    }
+  });
+
+  app.post("/api/disclaimer/accept", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await authStorage.getUser(userId);
+      const { DISCLAIMER_VERSION, DISCLAIMER_FULL_TEXT, computeDisclaimerHash } = await import("@shared/persona-engine");
+      const { acceptanceType, metadata } = req.body;
+
+      const log = await storage.createDisclaimerAcceptance({
+        userId,
+        userEmail: user?.email || "",
+        userName: user?.firstName || user?.email || "",
+        acceptanceType: acceptanceType || "WIZARD_AUTOPILOT_ENABLE",
+        disclaimerVersion: DISCLAIMER_VERSION,
+        disclaimerHash: computeDisclaimerHash(DISCLAIMER_FULL_TEXT),
+        accepted: true,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadataJson: metadata || null,
+      });
+
+      res.json({ success: true, id: log.id });
+    } catch (error: any) {
+      console.error("[Disclaimer] Accept error:", error.message);
+      res.status(500).json({ error: "Failed to record disclaimer acceptance" });
+    }
+  });
+
+  app.get("/api/admin/disclaimer-logs", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { q, acceptanceType, version, startDate, endDate, page, pageSize } = req.query;
+      const result = await storage.getDisclaimerAcceptanceLogs({
+        query: q as string,
+        acceptanceType: acceptanceType as string,
+        version: version as string,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        page: page ? parseInt(page as string) : 1,
+        pageSize: pageSize ? parseInt(pageSize as string) : 25,
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Admin] Disclaimer logs error:", error.message);
+      res.status(500).json({ error: "Failed to get disclaimer logs" });
+    }
+  });
+
+  app.put("/api/system-profile/simple-mode", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { simpleMode } = req.body;
+      const existing = await storage.getLatestSystemProfile(userId);
+      if (!existing) {
+        return res.status(404).json({ error: "No system profile found. Complete setup first." });
+      }
+      const profile = await storage.createSystemProfile({
+        userId: existing.userId,
+        version: (existing.version || 0) + 1,
+        tradingStyle: existing.tradingStyle,
+        marketScope: existing.marketScope,
+        personaGoal: existing.personaGoal,
+        personaRisk: existing.personaRisk,
+        personaLabel: existing.personaLabel,
+        riskPerTradeUsd: existing.riskPerTradeUsd,
+        maxTradesPerDay: existing.maxTradesPerDay,
+        minConfidenceThreshold: existing.minConfidenceThreshold,
+        strategyBundleId: existing.strategyBundleId,
+        automationEnabled: existing.automationEnabled,
+        simpleMode: simpleMode ?? true,
+      });
+      res.json(profile);
+    } catch (error: any) {
+      console.error("[SystemProfile] Simple mode error:", error.message);
+      res.status(500).json({ error: "Failed to update mode" });
+    }
+  });
+
   return httpServer;
 }

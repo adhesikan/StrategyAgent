@@ -1,0 +1,264 @@
+You are working in the existing VCP Trader codebase. Implement a value-based onboarding + reconfiguration system (“Trading System Setup”) and dashboard UX updates described below. Do NOT remove existing functionality; refactor safely. Keep changes incremental and behind flags when needed.
+
+IMPORTANT COMPLIANCE NOTE
+- This is a software tool only. Do not imply guarantees, “high probability winning,” or performance promises.
+- Add clear disclaimers at key points (wizard + dashboard footer) and require explicit acceptance before enabling automation.
+- Record disclaimer acceptance in an audit log. Provide an admin UI to search/view acceptance logs.
+
+GOALS
+1) Upgrade the current onboarding wizard to a “3-minute path to first automated trade” flow:
+   - Step 1: Trading Style (Day / Swing / Auto Select recommended)
+   - Step 2: Market Selection (NEW): Stocks / Options / Both
+   - Step 3: Risk Setup ($ per trade, max trades/day; advanced collapsed)
+   - Step 4: Trading Personality (goal + comfort level) + auto-select strategies
+   - Step 5: “Building your trading system…” animated step (3–5 seconds)
+   - Step 6: Confidence Threshold (NEW): user can set a minimum confidence score required for automation
+       * Default minimum confidence = 90
+       * Allow range 50–99
+       * UX copy must clarify: confidence score is an internal ranking metric, not a guarantee
+   - Step 7: Broker Connection step (“Enable Autopilot” button) + OAuth connect
+   - Step 8: Disclaimer Acceptance (NEW, must accept to proceed):
+       * Checkbox + short summary + link to full disclaimer
+       * Require acceptance before enabling automation
+   - Step 9: System Ready summary + Start Autopilot
+   Wizard must prefill when re-run.
+
+2) Add ability for existing users to:
+   - Run wizard again (“Reconfigure Trading System”) from Dashboard and Settings
+   - Edit settings manually in Advanced Settings (power-user mode)
+   - Present a choice modal: Guided Setup (wizard) vs Manual Settings
+   - Show a “Changes summary” screen before applying wizard updates.
+
+3) Dashboard info hierarchy changes:
+   - Add a top hero card “Autopilot Status” with:
+     Automation: ACTIVE/PAUSED/ARMED/OFF
+     Strategies Running count
+     Trades Executed Today
+     Broker Connected status
+     Market Status
+     Market selection: Stocks/Options/Both
+     Min confidence threshold
+   - Rename page title/subtitle:
+     From “Trading Command Center” -> “Your Trading System”
+     Subtitle: “Rule-based autopilot scanning and executing based on your settings.”
+   - Add “System Insights” widget (AI-style explanations, not real AI required initially).
+   - Add “First trade executed” celebration toast/banner.
+   - Add subtle value banner: “Your system is scanning X symbols…” (use current universe count if available).
+   - Ensure disclaimers appear in dashboard footer (compact) with link to full text.
+
+4) “Trading Personality Engine” (Big Opportunity):
+   - During wizard Persona step ask:
+     (a) Primary goal: “Consistency”, “Save time”, “More opportunities”, “Reduce emotional trading”
+     (b) Comfort level: Conservative / Balanced / Aggressive
+   - Use answers + market selection (stocks/options/both) to recommend:
+     - Strategy bundle
+     - Default risk settings (safe defaults)
+     - Default min confidence = 90
+   - Generate a “System Persona” label shown in UI (e.g., “Steady Swing Trader”, “Fast Momentum Trader”, etc.).
+   - On dashboard, show a small card “Your Persona” + one actionable tip (static rules-based tips).
+   - Keep language compliant: educational/automation tool, user controls risk.
+
+5) Progressive complexity:
+   - New users should see “Simple Mode” by default for first 7 days (or until they toggle).
+   - Simple mode hides advanced filters/strategy params; shows CTA: “Want more control? Customize strategies →”
+   - Allow toggling Simple/Advanced mode in Settings anytime.
+
+TECH REQUIREMENTS
+- Add/extend DB schema for:
+  A) user_system_profile (wizard-owned)
+  B) user_advanced_config (manual settings)
+  C) user_onboarding_state (simple_mode, completed_at, first_trade_seen boolean)
+  D) disclaimer_acceptance_log (NEW audit table)
+- Store wizard settings as a versioned profile: increment version each time wizard applied.
+- The wizard must NOT overwrite advanced strategy params unless the user explicitly confirms.
+- Add audit-friendly “last_updated” timestamps and “updated_by” (wizard/manual/admin).
+
+DATA MODEL (implement in Prisma or Drizzle, match existing ORM)
+
+1) user_system_profile
+  - id (uuid)
+  - user_id (fk)
+  - version (int)
+  - trading_style (enum: DAY, SWING, AUTO)
+  - market_scope (enum: STOCKS, OPTIONS, BOTH)   // NEW
+  - persona_goal (enum: CONSISTENCY, SAVE_TIME, OPPORTUNITIES, REDUCE_EMOTION)
+  - persona_risk (enum: CONSERVATIVE, BALANCED, AGGRESSIVE)
+  - persona_label (string)
+  - risk_per_trade_usd (numeric)
+  - max_trades_per_day (int)
+  - min_confidence_threshold (int default 90)    // NEW
+  - strategy_bundle_id (string)                  // e.g., “DAY_CORE”, “SWING_VCP”, etc
+  - automation_enabled (boolean)
+  - simple_mode (boolean default true)
+  - created_at, updated_at
+
+2) user_advanced_config
+  - id (uuid)
+  - user_id (fk)
+  - strategy_params_json (json)
+  - filters_json (json)
+  - overrides_json (json)
+  - updated_at
+
+3) user_onboarding_state
+  - user_id (pk/fk)
+  - wizard_completed_at (timestamp nullable)
+  - first_trade_executed_at (timestamp nullable)
+  - first_trade_celebration_seen (boolean default false)
+  - last_wizard_version_seen (int default 0)
+
+4) disclaimer_acceptance_log (NEW)
+  - id (uuid)
+  - user_id (fk nullable if needed for pre-user sessions; prefer user_id once account exists)
+  - user_email (string, denormalized for search)
+  - user_name (string, denormalized for search)
+  - acceptance_type (enum: WIZARD_AUTOPILOT_ENABLE, DASHBOARD_RECONFIRM, TERMS_UPDATE, OTHER) // NEW
+  - disclaimer_version (string) // e.g., “v1.0.0” or date-based “2026-02-21”
+  - disclaimer_hash (string)    // hash of disclaimer text served at time of acceptance
+  - accepted (boolean)          // should be true for accept events; allow false for declines if you want
+  - ip_address (string nullable)
+  - user_agent (string nullable)
+  - created_at (timestamp)
+  - metadata_json (json nullable) // e.g., selected trading_style, market_scope, min_confidence at acceptance
+
+STRATEGY BUNDLES (create constants in code; incorporate market_scope)
+- DAY_CORE_STOCKS: ORB + High RVOL Breakout + VWAP Reclaim (stocks)
+- DAY_CORE_OPTIONS: options-compatible equivalent strategies (if supported) else restrict in UI
+- SWING_VCP_STOCKS: VCP Classic + Pullback + Multi-day contraction (stocks)
+- SWING_OPTIONS: options-focused scans/strategies (if supported)
+- AUTO_BALANCED: choose mix based on market hours and market_scope
+If options strategies are not yet implemented, allow “Options” selection but disable automation and show “coming soon” OR block selection—match current capabilities.
+
+CONFIDENCE SCORE INTEGRATION
+- Ensure each opportunity already has a confidence/score. If current “Score” exists, map it or create “confidence_score” (0–100).
+- Automation should only execute when opportunity.confidence_score >= min_confidence_threshold.
+- Default threshold set to 90 during wizard.
+- Copy must say: “Confidence score is a ranking metric, not a prediction or guarantee.”
+
+DISCLAIMER CONTENT + ACCEPTANCE REQUIREMENTS (COMPLIANCE)
+- Add a compact disclaimer summary (<= 6 bullet points) in the wizard acceptance step:
+  * “VCP Trader is software that helps you scan and automate order placement based on rules you choose.”
+  * “It does not provide investment advice and does not guarantee outcomes.”
+  * “You are solely responsible for all trading decisions, settings, and risk.”
+  * “Trading involves risk, including loss of principal.”
+  * “Past performance and backtests (if shown) are not indicative of future results.”
+  * “By enabling autopilot you agree you will not hold Sunfish Technologies/VCP Trader liable for gains/losses.”
+- Provide link to full disclaimer/terms page.
+- Require checkbox: “I understand and agree” before enabling autopilot.
+- Record acceptance to disclaimer_acceptance_log with type=WIZARD_AUTOPILOT_ENABLE and disclaimer_version/hash and metadata.
+
+ADMIN LOG VIEWER (NEW)
+Implement an Admin-only page for acceptance logs:
+- Route: /admin/disclaimers (or similar)
+- Access control: admin role only (use existing RBAC; if none, implement minimal admin flag on user model and secure server-side)
+- Table view with:
+  - timestamp
+  - user name
+  - user email
+  - acceptance_type
+  - disclaimer_version
+  - ip_address
+  - user_agent (truncate, tooltip full)
+  - metadata preview (expand drawer)
+- Search/filter:
+  - by user name (partial)
+  - email (partial)
+  - acceptance_type
+  - date range
+  - disclaimer_version
+- Server-side pagination and sorting by created_at desc.
+- Export CSV button (optional; if quick to implement).
+
+API ENDPOINTS
+Implement or update endpoints (auth required):
+- GET /api/system-profile (returns latest user_system_profile + onboarding state)
+- POST /api/system-profile/preview
+   Input: wizard fields including market_scope + min_confidence_threshold
+   Output: computed persona_label, recommended bundle, risk defaults, and change summary
+- POST /api/system-profile/apply
+   Applies wizard changes: creates new version row; updates onboarding state; DOES NOT overwrite advanced config unless user confirmed
+- PUT /api/advanced-config (manual update)
+- GET /api/system-insights (rules-based insights; can be stubbed initially)
+- GET /api/onboarding-state
+- POST /api/disclaimer/accept (NEW)
+   Records disclaimer acceptance log entry; include acceptance_type, version/hash, ip/user_agent, metadata
+- GET /api/admin/disclaimer-logs (NEW, admin only)
+   Query params: q (name/email), acceptance_type, version, start_date, end_date, page, pageSize
+   Returns paginated results.
+
+FRONTEND UX (React)
+1) Wizard routes:
+   - /setup (first-time)
+   - /settings/setup (re-run)
+   Steps in order (with prefill):
+   Step 1 Trading Style
+   Step 2 Market Scope (Stocks/Options/Both)
+   Step 3 Risk Setup (2 required fields + advanced accordion)
+   Step 4 Persona (goal + comfort) + recommended bundle (editable)
+   Step 5 Building animation
+   Step 6 Min Confidence Threshold (default 90; slider or stepper)
+   Step 7 Broker Connect (Enable Autopilot button)
+   Step 8 Disclaimer Acceptance (must accept)
+   Step 9 System Ready + Start Autopilot / Apply Changes
+
+2) Reconfigure entry points:
+   - Dashboard button near Autopilot Status card
+   - Settings landing CTA
+   - Modal choice: Guided Setup vs Manual Settings
+
+3) Dashboard updates:
+   - Autopilot Status hero card includes market_scope + min_confidence_threshold.
+   - System Insights widget in right column.
+   - Persona card + tip.
+   - Value banner: “Scanning {universeCount} symbols…”
+   - First trade celebration toast (mark as seen).
+   - Dashboard footer includes compact disclaimer line with link.
+
+4) Simple mode gating:
+   - Hide advanced filters/controls when simple_mode true.
+   - CTA to switch.
+
+ADMIN UI
+- Add left-nav entry in admin section (if exists) or protected route link: “Disclaimer Logs”
+- Implement searchable table + filters.
+- Ensure PII is handled appropriately: show what’s needed, avoid exposing tokens/secrets.
+
+IMPLEMENTATION STEPS
+1) Scan repo for existing onboarding wizard components/routes and adapt to new step order + added fields (market_scope + min_confidence_threshold + disclaimer acceptance).
+2) Add DB migrations for new/updated tables.
+3) Implement strategy bundles + persona mapping + preview/apply logic. Ensure options selection aligns with actual supported features.
+4) Implement disclaimer content page + acceptance step + logging endpoint.
+5) Implement admin log viewer page + server-side search/pagination.
+6) Add dashboard cards and adjust layout without breaking existing components.
+7) Implement re-run wizard + manual settings choice modal.
+8) Implement confidence threshold gating in automation logic.
+9) Add tests:
+   - persona mapping and bundle selection
+   - profile apply versioning
+   - disclaimer log creation
+   - admin endpoint auth
+10) Update README:
+   - migrations
+   - where to update disclaimer version/text and how hash is computed
+   - strategy bundle/persona rules location
+   - env vars
+
+DISCLAIMER VERSIONING + HASHING
+- Store disclaimer text in a single source file or DB row.
+- Compute hash (e.g., SHA-256) of the exact text served to user at acceptance.
+- Set disclaimer_version constant and bump when text changes.
+- Record both version + hash in log.
+
+DO NOT
+- Remove existing scan/trade features
+- Break current routes
+- Change broker OAuth logic except for button labels/copy
+- Claim trading outcomes or promises
+
+Start now by scanning the repo for:
+- onboarding wizard components
+- settings pages
+- admin/RBAC patterns
+- dashboard layout components
+- existing opportunity “Score” or confidence metric
+Then implement in the order above.

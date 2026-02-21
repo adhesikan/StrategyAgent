@@ -78,6 +78,20 @@ async function processUserOpportunities(userId: string): Promise<void> {
   if (!policy.enabled) {
     return; // Policy disabled - already updated lastRunAt
   }
+
+  const systemProfile = await storage.getLatestSystemProfile(userId);
+  const effectivePolicy = { ...policy };
+  if (systemProfile?.minConfidenceThreshold) {
+    const profileThreshold = systemProfile.minConfidenceThreshold;
+    if (!effectivePolicy.minConfidencePct || profileThreshold > effectivePolicy.minConfidencePct) {
+      effectivePolicy.minConfidencePct = profileThreshold;
+    }
+  }
+  if (systemProfile?.maxTradesPerDay) {
+    if (!effectivePolicy.maxTradesPerDay || systemProfile.maxTradesPerDay < effectivePolicy.maxTradesPerDay) {
+      effectivePolicy.maxTradesPerDay = systemProfile.maxTradesPerDay;
+    }
+  }
   
   const opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
   
@@ -87,7 +101,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
   
   const evaluated = opportunities.map(opportunity => ({
     opportunity,
-    eligibility: isEligible(opportunity, policy),
+    eligibility: isEligible(opportunity, effectivePolicy),
   }));
   
   const ineligible = evaluated.filter(e => !e.eligibility.pass);

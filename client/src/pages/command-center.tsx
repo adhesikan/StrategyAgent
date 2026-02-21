@@ -353,6 +353,14 @@ export default function CommandCenter() {
   const [showTradeTicket, setShowTradeTicket] = useState(false);
   const [tradeTicker, setTradeTicker] = useState<string | null>(null);
 
+  const { data: systemProfile } = useQuery<{ profile: any; onboardingState: any }>({
+    queryKey: ["/api/system-profile"],
+  });
+
+  const { data: systemInsights } = useQuery<{ insights: Array<{ type: string; title: string; description: string }> }>({
+    queryKey: ["/api/system-insights"],
+  });
+
   const { data: agentState } = useQuery<AgentState | null>({
     queryKey: ["/api/agent/state"],
   });
@@ -1634,6 +1642,60 @@ export default function CommandCenter() {
         </div>
 
         <div className="space-y-6">
+          {systemProfile?.profile && (
+            <Card data-testid="card-persona-summary">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-primary/10">
+                      <Zap className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm" data-testid="text-persona-name">{systemProfile.profile.personaLabel}</CardTitle>
+                      <CardDescription className="text-xs">Your trading profile</CardDescription>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setShowWizard(true)} data-testid="button-edit-profile">
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded-md bg-muted/50">
+                    <div className="text-xs text-muted-foreground">Risk</div>
+                    <div className="text-sm font-semibold" data-testid="text-profile-risk">${systemProfile.profile.riskPerTradeUsd}</div>
+                  </div>
+                  <div className="p-2 rounded-md bg-muted/50">
+                    <div className="text-xs text-muted-foreground">Max/Day</div>
+                    <div className="text-sm font-semibold" data-testid="text-profile-max-trades">{systemProfile.profile.maxTradesPerDay}</div>
+                  </div>
+                  <div className="p-2 rounded-md bg-muted/50">
+                    <div className="text-xs text-muted-foreground">Min Score</div>
+                    <div className="text-sm font-semibold" data-testid="text-profile-confidence">{systemProfile.profile.minConfidenceThreshold}%</div>
+                  </div>
+                </div>
+                {systemInsights?.insights && systemInsights.insights.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    {systemInsights.insights.slice(0, 2).map((insight, i) => (
+                      <div key={i} className={cn(
+                        "flex items-start gap-2 p-2 rounded-md text-xs",
+                        insight.type === "tip" && "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                        insight.type === "action" && "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+                        insight.type === "info" && "bg-muted/50 text-muted-foreground",
+                      )} data-testid={`insight-${i}`}>
+                        {insight.type === "tip" && <Target className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                        {insight.type === "action" && <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                        {insight.type === "info" && <Activity className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                        <span>{insight.description}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card data-testid="card-todays-trades">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between flex-wrap gap-2">

@@ -296,32 +296,32 @@ function AppLayout() {
             </SidebarInset>
           </div>
         </SidebarProvider>
+        <LegalAcceptanceModal
+          open={showLegalModal}
+          onAccepted={() => setShowLegalModal(false)}
+        />
+        <OnboardingWizard
+          open={showOnboarding}
+          onComplete={() => {
+            setShowOnboarding(false);
+            setOnboardingDismissed(true);
+            setIsEditingSetup(false);
+          }}
+          onClose={() => {
+            setShowOnboarding(false);
+            setOnboardingDismissed(true);
+            setIsEditingSetup(false);
+          }}
+          isEditing={isEditingSetup}
+          savedSettings={isEditingSetup ? {
+            traderType: userSettings?.traderType,
+            automationMode: userSettings?.automationMode,
+            safetyLimits: userSettings?.safetyLimits,
+            positionSizingMethod: userSettings?.positionSizingMethod,
+            positionSizingValue: userSettings?.positionSizingValue,
+          } : undefined}
+        />
       </BrokerStatusProvider>
-      <LegalAcceptanceModal
-        open={showLegalModal}
-        onAccepted={() => setShowLegalModal(false)}
-      />
-      <OnboardingWizard
-        open={showOnboarding}
-        onComplete={() => {
-          setShowOnboarding(false);
-          setOnboardingDismissed(true);
-          setIsEditingSetup(false);
-        }}
-        onClose={() => {
-          setShowOnboarding(false);
-          setOnboardingDismissed(true);
-          setIsEditingSetup(false);
-        }}
-        isEditing={isEditingSetup}
-        savedSettings={isEditingSetup ? {
-          traderType: userSettings?.traderType,
-          automationMode: userSettings?.automationMode,
-          safetyLimits: userSettings?.safetyLimits,
-          positionSizingMethod: userSettings?.positionSizingMethod,
-          positionSizingValue: userSettings?.positionSizingValue,
-        } : undefined}
-      />
     </>
   );
 }

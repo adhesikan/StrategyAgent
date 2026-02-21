@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -27,10 +27,23 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+interface SavedSettings {
+  traderType?: string;
+  automationMode?: string;
+  safetyLimits?: {
+    maxTradesPerDay?: number;
+    maxPositions?: number;
+    riskPerTradeUsd?: number;
+    maxDailyLossUsd?: number;
+  };
+}
+
 interface OnboardingWizardProps {
   open: boolean;
   onComplete: () => void;
   onClose: () => void;
+  isEditing?: boolean;
+  savedSettings?: SavedSettings;
 }
 
 const TRADER_TYPES = [
@@ -102,7 +115,22 @@ const RISK_PRESETS = [
 
 const TOTAL_STEPS = 5;
 
-export function OnboardingWizard({ open, onComplete, onClose }: OnboardingWizardProps) {
+function matchRiskPreset(limits?: SavedSettings["safetyLimits"]): string {
+  if (!limits) return "balanced";
+  for (const preset of RISK_PRESETS) {
+    if (
+      preset.limits.maxTradesPerDay === limits.maxTradesPerDay &&
+      preset.limits.maxPositions === limits.maxPositions &&
+      preset.limits.riskPerTradeUsd === limits.riskPerTradeUsd &&
+      preset.limits.maxDailyLossUsd === limits.maxDailyLossUsd
+    ) {
+      return preset.id;
+    }
+  }
+  return "balanced";
+}
+
+export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSettings }: OnboardingWizardProps) {
   const [step, setStep] = useState(0);
   const [traderType, setTraderType] = useState("swing");
   const [automationMode, setAutomationMode] = useState("ALERTS");
@@ -110,6 +138,20 @@ export function OnboardingWizard({ open, onComplete, onClose }: OnboardingWizard
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const { isConnected } = useBrokerStatus();
+
+  useEffect(() => {
+    if (open && isEditing && savedSettings) {
+      setTraderType(savedSettings.traderType || "swing");
+      setAutomationMode(savedSettings.automationMode || "ALERTS");
+      setRiskPreset(matchRiskPreset(savedSettings.safetyLimits));
+    }
+    if (!open) {
+      setStep(0);
+      setTraderType("swing");
+      setAutomationMode("ALERTS");
+      setRiskPreset("balanced");
+    }
+  }, [open, isEditing, savedSettings]);
 
   const selectedLimits = RISK_PRESETS.find(p => p.id === riskPreset)?.limits ?? RISK_PRESETS[1].limits;
 
@@ -150,7 +192,9 @@ export function OnboardingWizard({ open, onComplete, onClose }: OnboardingWizard
 
   const handleFinish = () => {
     onComplete();
-    navigate("/discover");
+    if (!isEditing) {
+      navigate("/discover");
+    }
   };
 
   return (
@@ -158,12 +202,14 @@ export function OnboardingWizard({ open, onComplete, onClose }: OnboardingWizard
       <DialogContent className="max-w-lg" data-testid="dialog-onboarding-wizard">
         <DialogHeader>
           <DialogTitle data-testid="text-wizard-title">
-            {step === TOTAL_STEPS - 1 ? "You're All Set" : "Welcome to VCP Trader"}
+            {step === TOTAL_STEPS - 1
+              ? (isEditing ? "Configuration Updated" : "You're All Set")
+              : (isEditing ? "Edit Configuration" : "Welcome to VCP Trader")}
           </DialogTitle>
           <DialogDescription data-testid="text-wizard-description">
             {step === TOTAL_STEPS - 1
-              ? "Your workspace is configured and ready to go."
-              : `Step ${step + 1} of ${TOTAL_STEPS - 1} — Let's personalize your experience`}
+              ? (isEditing ? "Your updated preferences have been saved." : "Your workspace is configured and ready to go.")
+              : `Step ${step + 1} of ${TOTAL_STEPS - 1} — ${isEditing ? "Update your preferences" : "Let's personalize your experience"}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -344,14 +390,16 @@ export function OnboardingWizard({ open, onComplete, onClose }: OnboardingWizard
                 <Rocket className="h-7 w-7 text-green-500" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold">Setup Complete</h3>
+                <h3 className="text-lg font-semibold">{isEditing ? "Configuration Updated" : "Setup Complete"}</h3>
                 <p className="text-sm text-muted-foreground">
-                  Your workspace is personalized and ready. Start exploring opportunities now.
+                  {isEditing
+                    ? "Your preferences have been updated. Changes take effect immediately."
+                    : "Your workspace is personalized and ready. Start exploring opportunities now."}
                 </p>
               </div>
               <Button onClick={handleFinish} className="gap-2" data-testid="button-start-exploring">
                 <Rocket className="h-4 w-4" />
-                Start Exploring
+                {isEditing ? "Done" : "Start Exploring"}
               </Button>
             </div>
           )}
@@ -373,7 +421,7 @@ export function OnboardingWizard({ open, onComplete, onClose }: OnboardingWizard
               data-testid={step === TOTAL_STEPS - 2 ? "button-complete-setup" : "button-next"}
             >
               {step === TOTAL_STEPS - 2 ? (
-                saveMutation.isPending ? "Saving..." : "Complete Setup"
+                saveMutation.isPending ? "Saving..." : (isEditing ? "Save Changes" : "Complete Setup")
               ) : (
                 <>
                   Next

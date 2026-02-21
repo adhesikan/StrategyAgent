@@ -687,7 +687,21 @@ export default function Settings() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <Card
+          className="hover-elevate cursor-pointer"
+          onClick={() => window.dispatchEvent(new Event("open-setup-wizard"))}
+          data-testid="card-reconfigure-setup"
+        >
+          <CardContent className="p-4 flex items-center gap-3">
+            <RotateCcw className="h-5 w-5 text-primary" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm">Edit Setup</p>
+              <p className="text-xs text-muted-foreground">Reconfigure onboarding</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
         <Link href="/settings/risk-profile">
           <Card className="hover-elevate cursor-pointer">
             <CardContent className="p-4 flex items-center gap-3">

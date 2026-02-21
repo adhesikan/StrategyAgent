@@ -215,6 +215,7 @@ function AppLayout() {
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [isEditingSetup, setIsEditingSetup] = useState(false);
   const { user } = useAuth();
   
   const { data: legalStatus, isLoading: legalLoading } = useReactQuery<LegalStatus>({
@@ -222,10 +223,31 @@ function AppLayout() {
     enabled: !!user,
   });
 
-  const { data: userSettings } = useReactQuery<{ setupCompleted: boolean }>({
+  const { data: userSettings } = useReactQuery<{
+    setupCompleted: boolean;
+    traderType?: string;
+    automationMode?: string;
+    safetyLimits?: {
+      maxTradesPerDay?: number;
+      maxPositions?: number;
+      riskPerTradeUsd?: number;
+      maxDailyLossUsd?: number;
+    };
+  }>({
     queryKey: ["/api/user/settings"],
     enabled: !!user,
   });
+
+  useEffect(() => {
+    const handler = () => {
+      if (userSettings) {
+        setIsEditingSetup(true);
+        setShowOnboarding(true);
+      }
+    };
+    window.addEventListener("open-setup-wizard", handler);
+    return () => window.removeEventListener("open-setup-wizard", handler);
+  }, [userSettings]);
 
   useEffect(() => {
     if (legalStatus && !legalStatus.accepted) {
@@ -282,11 +304,19 @@ function AppLayout() {
         onComplete={() => {
           setShowOnboarding(false);
           setOnboardingDismissed(true);
+          setIsEditingSetup(false);
         }}
         onClose={() => {
           setShowOnboarding(false);
           setOnboardingDismissed(true);
+          setIsEditingSetup(false);
         }}
+        isEditing={isEditingSetup}
+        savedSettings={isEditingSetup ? {
+          traderType: userSettings?.traderType,
+          automationMode: userSettings?.automationMode,
+          safetyLimits: userSettings?.safetyLimits,
+        } : undefined}
       />
     </>
   );

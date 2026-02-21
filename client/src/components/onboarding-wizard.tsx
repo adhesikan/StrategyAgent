@@ -13,6 +13,12 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
+import {
   TrendingUp,
   BarChart3,
   ScanLine,
@@ -30,6 +36,7 @@ import {
   DollarSign,
   Hash,
   Percent,
+  HelpCircle,
 } from "lucide-react";
 
 interface SavedSettings {
@@ -53,30 +60,47 @@ interface OnboardingWizardProps {
   savedSettings?: SavedSettings;
 }
 
+function InfoTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help shrink-0" />
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[240px] text-xs">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 const TRADER_TYPES = [
   {
     id: "day",
     label: "Day Trader",
     description: "Fast-paced intraday trades with quick entries and exits",
     icon: TrendingUp,
+    tooltip: "All positions opened and closed within the same trading day. Best for active traders who can watch the market in real time.",
   },
   {
     id: "swing",
     label: "Swing Trader",
     description: "Multi-day positions capturing intermediate price moves",
     icon: BarChart3,
+    tooltip: "Hold positions for days to weeks, aiming to capture short-to-medium term price trends. Less screen time needed than day trading.",
   },
   {
     id: "options",
     label: "Options Trader",
     description: "Strategy-driven options plays with defined risk",
     icon: ScanLine,
+    tooltip: "Trade options contracts using strategies like calls, puts, spreads, and wheels. Risk is defined up front by the strategy.",
   },
   {
     id: "futures",
     label: "Futures Trader",
     description: "Leverage-based futures contracts across markets",
     icon: Activity,
+    tooltip: "Trade futures contracts on indices, commodities, or currencies using leverage. Requires a futures-enabled brokerage account.",
   },
 ];
 
@@ -87,18 +111,21 @@ const AUTOMATION_MODES = [
     description: "Receive notifications when opportunities match your criteria. You review and act manually.",
     icon: Bell,
     recommended: true,
+    tooltip: "You stay in full control. The platform identifies setups and sends you push notifications — you decide whether to act on each one.",
   },
   {
     id: "ASSISTED",
     label: "Assisted",
     description: "Opportunities are prepared with pre-filled order details. Review and approve each trade.",
     icon: Handshake,
+    tooltip: "The platform prepares trade orders for you with calculated size, stop, and target. You review and approve each trade with one click.",
   },
   {
     id: "AUTONOMOUS",
     label: "Autonomous",
     description: "User-configured automation executes trades within your defined limits and rules.",
     icon: Bot,
+    tooltip: "The agent automatically places trades when setups match your criteria. All trades are bound by your risk limits, daily loss cap, and position sizing rules.",
   },
 ];
 
@@ -129,6 +156,7 @@ const POSITION_SIZING_METHODS = [
     placeholder: "1000",
     suffix: "USD per trade",
     recommended: true,
+    tooltip: "Each trade uses this exact dollar amount. For example, $1,000 means you'd buy ~10 shares of a $100 stock. Simple and predictable.",
   },
   {
     id: "fixed_shares",
@@ -137,6 +165,7 @@ const POSITION_SIZING_METHODS = [
     icon: Hash,
     placeholder: "100",
     suffix: "shares per trade",
+    tooltip: "Always buy the same number of shares regardless of price. Easy to track, but dollar exposure varies with share price.",
   },
   {
     id: "percent_account",
@@ -145,6 +174,7 @@ const POSITION_SIZING_METHODS = [
     icon: Percent,
     placeholder: "5",
     suffix: "% of account",
+    tooltip: "Each trade uses a percentage of your total account value from your connected broker. As your account grows or shrinks, trade size adjusts automatically.",
   },
 ];
 
@@ -243,6 +273,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-lg" data-testid="dialog-onboarding-wizard">
+      <TooltipProvider delayDuration={200}>
         <DialogHeader>
           <DialogTitle data-testid="text-wizard-title">
             {step === TOTAL_STEPS - 1
@@ -261,9 +292,12 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
         <div className="py-2">
           {step === 0 && (
             <div className="space-y-3" data-testid="step-trader-type">
-              <p className="text-sm font-medium">Choose your trading style</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">Choose your trading style</p>
+                <InfoTip text="This sets the default strategies and scanning behavior. You can change it anytime from Settings." />
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                {TRADER_TYPES.map(({ id, label, description, icon: Icon }) => (
+                {TRADER_TYPES.map(({ id, label, description, icon: Icon, tooltip }) => (
                   <Card
                     key={id}
                     className={cn(
@@ -279,6 +313,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                       <div className="flex items-center gap-2">
                         <Icon className="h-4 w-4" />
                         <CardTitle className="text-sm">{label}</CardTitle>
+                        <InfoTip text={tooltip} />
                       </div>
                     </CardHeader>
                     <CardContent className="p-3 pt-0">
@@ -292,9 +327,12 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
 
           {step === 1 && (
             <div className="space-y-3" data-testid="step-automation-mode">
-              <p className="text-sm font-medium">How should the platform act on opportunities?</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">How should the platform act on opportunities?</p>
+                <InfoTip text="Controls what happens when a trade setup is detected. You can always change this later from Automation settings." />
+              </div>
               <div className="space-y-2">
-                {AUTOMATION_MODES.map(({ id, label, description, icon: Icon, recommended }) => (
+                {AUTOMATION_MODES.map(({ id, label, description, icon: Icon, recommended, tooltip }) => (
                   <Card
                     key={id}
                     className={cn(
@@ -316,6 +354,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{label}</span>
+                          <InfoTip text={tooltip} />
                           {recommended && (
                             <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
                               Recommended
@@ -336,7 +375,10 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
 
           {step === 2 && (
             <div className="space-y-3" data-testid="step-market-data">
-              <p className="text-sm font-medium">Connect your market data source</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">Connect your market data source</p>
+                <InfoTip text="A connected broker provides live price data for scanning and enables direct trade execution. You can skip this and use demo data for now." />
+              </div>
               {isConnected ? (
                 <Card className="border-green-500/50 bg-green-500/5">
                   <CardContent className="p-4 flex items-center gap-3">
@@ -394,7 +436,10 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
 
           {step === 3 && (
             <div className="space-y-3" data-testid="step-risk-preset">
-              <p className="text-sm font-medium">Choose your risk profile</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">Choose your risk profile</p>
+                <InfoTip text="These limits control how many trades the agent can make and how much capital is at risk. They act as safety guardrails for both assisted and autonomous modes." />
+              </div>
               <div className="space-y-2">
                 {RISK_PRESETS.map(({ id, label, limits }) => (
                   <Card
@@ -418,10 +463,22 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-medium">{label}</span>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1">
-                          <span className="text-xs text-muted-foreground">{limits.maxTradesPerDay} trades/day</span>
-                          <span className="text-xs text-muted-foreground">{limits.maxPositions} positions</span>
-                          <span className="text-xs text-muted-foreground">${limits.riskPerTradeUsd} risk/trade</span>
-                          <span className="text-xs text-muted-foreground">${limits.maxDailyLossUsd} max loss/day</span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            {limits.maxTradesPerDay} trades/day
+                            <InfoTip text="Maximum number of new trades the agent can open in a single trading day." />
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            {limits.maxPositions} positions
+                            <InfoTip text="Maximum number of open positions you can hold at the same time." />
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            ${limits.riskPerTradeUsd} risk/trade
+                            <InfoTip text="The maximum dollar amount you're willing to lose on any single trade (distance from entry to stop-loss)." />
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            ${limits.maxDailyLossUsd} max loss/day
+                            <InfoTip text="If total losses for the day reach this amount, the agent stops trading for the rest of the day." />
+                          </span>
                         </div>
                       </div>
                       {riskPreset === id && (
@@ -436,9 +493,12 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
 
           {step === 4 && (
             <div className="space-y-3" data-testid="step-position-sizing">
-              <p className="text-sm font-medium">How do you want to size your trades?</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">How do you want to size your trades?</p>
+                <InfoTip text="Position sizing determines how much capital goes into each trade. This is separate from your risk limit, which controls how much you can lose." />
+              </div>
               <div className="space-y-2">
-                {POSITION_SIZING_METHODS.map(({ id, label, description, icon: Icon, recommended }) => (
+                {POSITION_SIZING_METHODS.map(({ id, label, description, icon: Icon, recommended, tooltip }) => (
                   <Card
                     key={id}
                     className={cn(
@@ -460,6 +520,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{label}</span>
+                          <InfoTip text={tooltip} />
                           {recommended && (
                             <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
                               Default
@@ -476,9 +537,20 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                 ))}
               </div>
               <div className="pt-2 space-y-2">
-                <Label htmlFor="sizing-value" className="text-sm font-medium">
-                  Default {POSITION_SIZING_METHODS.find(m => m.id === sizingMethod)?.suffix || "value"}
-                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="sizing-value" className="text-sm font-medium">
+                    Default {POSITION_SIZING_METHODS.find(m => m.id === sizingMethod)?.suffix || "value"}
+                  </Label>
+                  {sizingMethod === "percent_account" && (
+                    <InfoTip text="This percentage is applied to your total account balance from your connected broker. For example, 5% of a $50,000 account = $2,500 per trade. The amount updates as your balance changes." />
+                  )}
+                  {sizingMethod === "fixed_dollar" && (
+                    <InfoTip text="The exact dollar amount to invest in each trade. The number of shares purchased will vary based on the stock price." />
+                  )}
+                  {sizingMethod === "fixed_shares" && (
+                    <InfoTip text="The same number of shares (or contracts) will be used for every trade, regardless of price." />
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   {sizingMethod === "fixed_dollar" && (
                     <span className="text-sm text-muted-foreground">$</span>
@@ -551,6 +623,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
             </Button>
           </div>
         )}
+      </TooltipProvider>
       </DialogContent>
     </Dialog>
   );

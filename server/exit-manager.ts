@@ -3,12 +3,14 @@ import { managedExits, tradeOrders } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import * as brokerService from "./broker/index";
 import { storage } from "./storage";
+import { getTraderTypeConfig } from "./position-sizing";
 
 const CHECK_INTERVAL_MS = 30_000;
 const MARKET_OPEN_HOUR = 9;
 const MARKET_OPEN_MINUTE = 30;
 const MARKET_CLOSE_HOUR = 16;
 const MARKET_CLOSE_MINUTE = 0;
+const EOD_CLOSE_MINUTES_BEFORE = 5;
 
 function isMarketHours(): boolean {
   const now = new Date();
@@ -172,14 +174,106 @@ async function processExit(exit: typeof managedExits.$inferSelect): Promise<void
   }
 }
 
+function isNearMarketClose(): boolean {
+  const now = new Date();
+  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const hour = et.getHours();
+  const minute = et.getMinutes();
+  const day = et.getDay();
+
+  if (day === 0 || day === 6) return false;
+
+  const currentMinutes = hour * 60 + minute;
+  const closeMinutes = MARKET_CLOSE_HOUR * 60 + MARKET_CLOSE_MINUTE;
+  const eodThreshold = closeMinutes - EOD_CLOSE_MINUTES_BEFORE;
+
+  return currentMinutes >= eodThreshold && currentMinutes < closeMinutes;
+}
+
+const eodClosedToday = new Set<string>();
+
+function resetEodTracker(): void {
+  const now = new Date();
+  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const hour = et.getHours();
+  if (hour < 8) {
+    eodClosedToday.clear();
+  }
+}
+
+async function checkDayTraderEODClose(): Promise<void> {
+  if (!isNearMarketClose()) return;
+
+  resetEodTracker();
+
+  try {
+    const { userSettings } = await import("@shared/schema");
+    const allSettings = await db.select().from(userSettings);
+
+    for (const settings of allSettings) {
+      const traderConfig = getTraderTypeConfig(settings.traderType);
+      if (!traderConfig.autoCloseEOD) continue;
+
+      const userId = settings.userId;
+      if (eodClosedToday.has(userId)) continue;
+
+      try {
+        const connection = await storage.getBrokerConnection(userId);
+        if (!connection || !connection.isConnected || !connection.preferredAccountId) continue;
+
+        const positions = await brokerService.getBrokerPositions(userId);
+        if (positions.length === 0) {
+          eodClosedToday.add(userId);
+          continue;
+        }
+
+        console.log(`[ExitManager] Day trader EOD close: ${positions.length} positions for user ${userId}`);
+
+        for (const position of positions) {
+          if (position.qty === 0) continue;
+
+          try {
+            const side: "buy" | "sell" = position.qty > 0 ? "sell" : "buy";
+            const orderRequest = {
+              accountId: connection.preferredAccountId,
+              symbol: position.symbol,
+              side,
+              quantity: Math.abs(position.qty),
+              orderType: "market" as const,
+              duration: "day" as const,
+              orderClass: "equity" as const,
+            };
+
+            const result = await brokerService.placeBrokerOrder(userId, orderRequest);
+            console.log(`[ExitManager] EOD close order for ${position.symbol}: ${result.orderId} (side: ${side}, qty: ${Math.abs(position.qty)})`);
+          } catch (err) {
+            console.error(`[ExitManager] EOD close failed for ${position.symbol} (user ${userId}):`, (err as Error).message);
+          }
+        }
+
+        eodClosedToday.add(userId);
+      } catch (err) {
+        console.error(`[ExitManager] EOD close error for user ${userId}:`, (err as Error).message);
+      }
+    }
+  } catch (err) {
+    console.error("[ExitManager] EOD close check error:", (err as Error).message);
+  }
+}
+
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
+
+async function runExitChecks(): Promise<void> {
+  await checkManagedExits();
+  await checkDayTraderEODClose();
+}
 
 export function startExitManager(): void {
   if (intervalHandle) return;
 
   console.log(`[ExitManager] Starting exit manager (${CHECK_INTERVAL_MS / 1000}s interval)`);
-  intervalHandle = setInterval(checkManagedExits, CHECK_INTERVAL_MS);
-  checkManagedExits();
+  intervalHandle = setInterval(runExitChecks, CHECK_INTERVAL_MS);
+  runExitChecks();
 }
 
 export function stopExitManager(): void {

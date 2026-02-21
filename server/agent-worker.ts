@@ -23,6 +23,7 @@ import {
 import { placeBrokerOrder } from "./broker/index";
 import type { OrderRequest } from "./broker/types";
 import { fetchQuotesFromBroker } from "./broker-service";
+import { resolvePositionSize, getTraderTypeConfig } from "./position-sizing";
 
 let agentWorkerInterval: NodeJS.Timeout | null = null;
 const WORKER_INTERVAL_MS = 60 * 1000; // Check every 1 minute for users whose scan interval has elapsed
@@ -62,25 +63,61 @@ async function processUserOpportunities(userId: string): Promise<void> {
   const agentState = await getOrCreateAgentState(userId);
   
   if (!agentState.enabled) {
-    return; // Agent disabled - already updated lastRunAt
+    return;
   }
   
   if (agentState.paused) {
-    return; // Agent paused - already updated lastRunAt
+    return;
   }
   
   if (agentState.emergencyStop) {
-    return; // Emergency stop - already updated lastRunAt
+    return;
   }
   
   const policy = await getOrCreatePolicy(userId);
   
   if (!policy.enabled) {
-    return; // Policy disabled - already updated lastRunAt
+    return;
   }
+
+  const userSettings = await storage.getUserSettings(userId);
+  const traderConfig = getTraderTypeConfig(userSettings?.traderType);
+
+  if (!traderConfig.allowEquities) {
+    console.log(`[AgentWorker] Skipping equity opportunities for ${traderConfig.label} (user ${userId})`);
+    return;
+  }
+
+  const safetyLimits = userSettings?.safetyLimits as any;
 
   const systemProfile = await storage.getLatestSystemProfile(userId);
   const effectivePolicy = { ...policy };
+
+  if (safetyLimits?.maxTradesPerDay) {
+    const wizardMaxTrades = safetyLimits.maxTradesPerDay;
+    if (!effectivePolicy.maxTradesPerDay || wizardMaxTrades < effectivePolicy.maxTradesPerDay) {
+      effectivePolicy.maxTradesPerDay = wizardMaxTrades;
+    }
+  }
+  if (safetyLimits?.maxDailyLossUsd) {
+    const wizardMaxLoss = safetyLimits.maxDailyLossUsd;
+    if (!effectivePolicy.maxDailyLossUsd || wizardMaxLoss < effectivePolicy.maxDailyLossUsd) {
+      effectivePolicy.maxDailyLossUsd = wizardMaxLoss;
+    }
+  }
+  if (safetyLimits?.riskPerTradeUsd) {
+    const wizardRisk = safetyLimits.riskPerTradeUsd;
+    if (!effectivePolicy.riskPerTradeUsd || wizardRisk < effectivePolicy.riskPerTradeUsd) {
+      effectivePolicy.riskPerTradeUsd = wizardRisk;
+    }
+  }
+  if (safetyLimits?.maxPositions) {
+    const wizardMaxPos = safetyLimits.maxPositions;
+    if (!effectivePolicy.maxConcurrentPositions || wizardMaxPos < effectivePolicy.maxConcurrentPositions) {
+      effectivePolicy.maxConcurrentPositions = wizardMaxPos;
+    }
+  }
+
   if (systemProfile?.minConfidenceThreshold) {
     const profileThreshold = systemProfile.minConfidenceThreshold;
     if (!effectivePolicy.minConfidencePct || profileThreshold > effectivePolicy.minConfidencePct) {
@@ -92,11 +129,16 @@ async function processUserOpportunities(userId: string): Promise<void> {
       effectivePolicy.maxTradesPerDay = systemProfile.maxTradesPerDay;
     }
   }
+
+  const automationMode = userSettings?.automationMode || "ALERTS";
+  if (automationMode === "ALERTS" && effectivePolicy.mode === AgentMode.AUTO) {
+    effectivePolicy.mode = AgentMode.SUGGEST;
+  }
   
   const opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
   
   if (opportunities.length === 0) {
-    return; // No opportunities - already updated lastRunAt
+    return;
   }
   
   const evaluated = opportunities.map(opportunity => ({
@@ -114,7 +156,7 @@ async function processUserOpportunities(userId: string): Promise<void> {
   console.log(`[AgentWorker] User ${userId}: ${ineligible.length} skipped, ${ranked.length} eligible`);
   
   for (const item of ranked) {
-    const authorization = await authorizeOrder(userId, policy, item.opportunity.symbol);
+    const authorization = await authorizeOrder(userId, effectivePolicy, item.opportunity.symbol);
     
     if (!authorization.allowed) {
       console.log(`[AgentWorker] Skipped ${item.opportunity.symbol}: ${authorization.reasons.join(", ")}`);
@@ -408,8 +450,10 @@ function buildOptionsScanOrderPayload(candidate: OptionCandidate, policy: AgentP
 
 async function processOptionsScanResults(userId: string): Promise<void> {
   const policy = await getOrCreatePolicy(userId);
+  const userSettings = await storage.getUserSettings(userId);
+  const traderConfig = getTraderTypeConfig(userSettings?.traderType);
 
-  if (!policy.optionsEnabled) return;
+  if (!traderConfig.allowOptions && !policy.optionsEnabled) return;
 
   const latestScan = await storage.getLatestOptionsScan(userId);
   if (!latestScan) return;
@@ -517,7 +561,25 @@ async function processExternalAlerts(userId: string): Promise<void> {
   const isEnabled = settings?.enabled || policy.enabled;
   if (!isEnabled) return;
 
-  const effectiveMode = settings?.mode ? settings.mode.toUpperCase() : policy.mode;
+  const userSettings = await storage.getUserSettings(userId);
+  const traderConfig = getTraderTypeConfig(userSettings?.traderType);
+
+  if (!traderConfig.allowEquities) {
+    console.log(`[AgentWorker] Skipping external equity alerts for ${traderConfig.label} (user ${userId})`);
+    for (const alert of pendingAlerts) {
+      await storage.updateExternalAlert(alert.id, {
+        status: "SKIPPED",
+        skipReason: `Trader type "${traderConfig.label}" does not trade equities`,
+      });
+    }
+    return;
+  }
+
+  let effectiveMode = settings?.mode ? settings.mode.toUpperCase() : policy.mode;
+  const automationMode = userSettings?.automationMode || "ALERTS";
+  if (automationMode === "ALERTS" && effectiveMode === AgentMode.AUTO) {
+    effectiveMode = AgentMode.SUGGEST;
+  }
 
   console.log(`[AgentWorker] Processing ${pendingAlerts.length} external alerts for user ${userId} (mode: ${effectiveMode})`);
 
@@ -614,15 +676,13 @@ async function processExternalAlerts(userId: string): Promise<void> {
         continue;
       }
 
-      let quantity = 0;
-      const effectiveRiskPerTrade = settings?.riskPerTradeUsd ?? policy.riskPerTradeUsd;
+      const sizing = await resolvePositionSize(userId, effectiveEntry, riskPerShare > 0 ? riskPerShare : undefined);
+      let quantity = sizing.quantity;
 
       if (settings?.sizingMethod === "fixedQty" && settings.fixedQuantity) {
         quantity = settings.fixedQuantity;
       } else if (settings?.sizingMethod === "fixedNotional" && settings.fixedNotionalUsd) {
         quantity = Math.floor(settings.fixedNotionalUsd / effectiveEntry);
-      } else if (effectiveRiskPerTrade && riskPerShare > 0) {
-        quantity = Math.floor(effectiveRiskPerTrade / riskPerShare);
       }
       if (quantity <= 0) quantity = 1;
 
@@ -793,17 +853,14 @@ async function buildOrderPayload(opportunity: Opportunity, policy: any, userId: 
   const riskPerShare = price - (signalStop || 0);
 
   const settings = await storage.getAgentSettings(userId);
-  let quantity = 0;
+
+  const sizing = await resolvePositionSize(userId, price, riskPerShare > 0 ? riskPerShare : undefined);
+  let quantity = sizing.quantity;
 
   if (settings?.sizingMethod === "fixedQty" && settings.fixedQuantity) {
     quantity = settings.fixedQuantity;
   } else if (settings?.sizingMethod === "fixedNotional" && settings.fixedNotionalUsd && price > 0) {
     quantity = Math.floor(settings.fixedNotionalUsd / price);
-  } else {
-    const effectiveRisk = settings?.riskPerTradeUsd ?? policy.riskPerTradeUsd;
-    if (riskPerShare > 0 && effectiveRisk) {
-      quantity = Math.floor(effectiveRisk / riskPerShare);
-    }
   }
 
   if (quantity <= 0) quantity = 1;
@@ -823,6 +880,8 @@ async function buildOrderPayload(opportunity: Opportunity, policy: any, userId: 
     target: bracket.target,
     strategyId: opportunity.strategyId,
     opportunityId: opportunity.id,
+    sizingMethod: sizing.method,
+    sizingDetails: sizing.details,
   };
 }
 

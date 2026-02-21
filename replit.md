@@ -26,6 +26,14 @@ A Storage Interface Pattern abstracts data access. Path aliases streamline impor
 ### Trading System Setup (Persona-Based Onboarding)
 A persona-driven onboarding wizard (`trading-readiness-wizard.tsx`) guides users through a 7-step setup: Welcome, Trading Style, Goal, Risk Tolerance, Persona Preview, Automation Level, and Review. The persona engine (`shared/persona-engine.ts`) computes a trader persona (label, strategy bundle, risk defaults) from user inputs. System profiles are versioned and stored in `user_system_profiles`. The agent-worker integrates profile settings (minConfidenceThreshold, maxTradesPerDay) as effective policy overrides. Admin disclaimer logs at `/admin/disclaimer-logs` provide compliance audit trail. API endpoints: `/api/system-profile`, `/api/system-profile/preview`, `/api/system-profile/apply`, `/api/onboarding-state`, `/api/advanced-config`, `/api/system-insights`, `/api/disclaimer/accept`.
 
+### Wizard Settings Backend Enforcement
+The onboarding wizard selections (traderType, positionSizing, safetyLimits, automationMode) are fully wired into the backend:
+- **Trader Type Enforcement** (`server/position-sizing.ts` → `getTraderTypeConfig()`): Controls which asset classes are traded. Day Trader = equities only + EOD auto-close. Options Trader = options only. Futures Trader = futures only. Swing Trader = equities only, multi-day holds.
+- **Position Sizing** (`server/position-sizing.ts` → `resolvePositionSize()`): Centralized resolver that reads user settings (fixed_dollar, fixed_shares, percent_account) and calculates trade quantity. For percent_account, it fetches the account balance from the connected broker via `getBrokerAccounts()`.
+- **Safety Limits**: The wizard's safetyLimits (maxTradesPerDay, maxPositions, riskPerTradeUsd, maxDailyLossUsd) are merged into the effective agent policy as the most restrictive value. They enforce maximum concurrent positions, daily trade caps, per-trade risk limits, and daily loss circuit breakers.
+- **Automation Mode**: The wizard's automationMode (ALERTS/ASSISTED/AUTONOMOUS) overrides the agent policy mode — ALERTS forces suggestions-only even if policy is set to AUTO.
+- **Day Trader EOD Close** (`server/exit-manager.ts`): At 3:55 PM ET, all open equity positions are auto-closed via market orders for users with traderType=day. Tracked per-user daily to prevent duplicate close attempts.
+
 ### Centralized Strategy Scoring
 All pattern score calculations are centralized in strategy modules, with `classifyQuote()` serving as the single entry point for scoring various strategies (VCP, VCP_MULTIDAY, CLASSIC_PULLBACK) and plugin types (ORB, GAP_AND_GO, VWAP_RECLAIM, HIGH_RVOL).
 

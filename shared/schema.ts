@@ -681,6 +681,8 @@ export const userSettings = pgTable("user_settings", {
   ccFilterPresets: jsonb("cc_filter_presets").default(null),
   traderType: text("trader_type").default("swing"),
   onboardingStep: integer("onboarding_step").default(0),
+  positionSizingMethod: text("position_sizing_method").default("fixed_dollar"),
+  positionSizingValue: integer("position_sizing_value").default(1000),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -725,7 +727,9 @@ export const userSettingsUpdateSchema = z.object({
   automationStatus: z.enum(["ARMED", "PAUSED", "DISABLED"]).optional(),
   ccFilterPresets: z.any().nullable().optional(),
   traderType: z.enum(["day", "swing", "options", "futures"]).optional(),
-  onboardingStep: z.number().min(0).max(5).optional(),
+  onboardingStep: z.number().min(0).max(6).optional(),
+  positionSizingMethod: z.enum(["fixed_dollar", "fixed_shares", "percent_account"]).optional(),
+  positionSizingValue: z.number().min(1).optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;

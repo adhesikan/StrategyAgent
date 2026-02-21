@@ -233,6 +233,8 @@ function AppLayout() {
       riskPerTradeUsd?: number;
       maxDailyLossUsd?: number;
     };
+    positionSizingMethod?: string;
+    positionSizingValue?: number;
   }>({
     queryKey: ["/api/user/settings"],
     enabled: !!user,
@@ -316,6 +318,8 @@ function AppLayout() {
           traderType: userSettings?.traderType,
           automationMode: userSettings?.automationMode,
           safetyLimits: userSettings?.safetyLimits,
+          positionSizingMethod: userSettings?.positionSizingMethod,
+          positionSizingValue: userSettings?.positionSizingValue,
         } : undefined}
       />
     </>

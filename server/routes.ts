@@ -4253,6 +4253,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           automationStatus: "DISABLED",
           traderType: "swing",
           onboardingStep: 0,
+          positionSizingMethod: "fixed_dollar",
+          positionSizingValue: 1000,
         });
       }
       
@@ -4286,6 +4288,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         automationStatus: settings.automationStatus || "DISABLED",
         traderType: settings.traderType || "swing",
         onboardingStep: settings.onboardingStep ?? 0,
+        positionSizingMethod: settings.positionSizingMethod || "fixed_dollar",
+        positionSizingValue: settings.positionSizingValue ?? 1000,
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -4334,6 +4338,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         automationStatus: settings.automationStatus || "DISABLED",
         traderType: settings.traderType || "swing",
         onboardingStep: settings.onboardingStep ?? 0,
+        positionSizingMethod: settings.positionSizingMethod || "fixed_dollar",
+        positionSizingValue: settings.positionSizingValue ?? 1000,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

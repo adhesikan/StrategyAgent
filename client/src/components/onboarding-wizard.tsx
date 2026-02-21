@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   TrendingUp,
   BarChart3,
@@ -25,6 +27,9 @@ import {
   ChevronRight,
   Check,
   CheckCircle2,
+  DollarSign,
+  Hash,
+  Percent,
 } from "lucide-react";
 
 interface SavedSettings {
@@ -36,6 +41,8 @@ interface SavedSettings {
     riskPerTradeUsd?: number;
     maxDailyLossUsd?: number;
   };
+  positionSizingMethod?: string;
+  positionSizingValue?: number;
 }
 
 interface OnboardingWizardProps {
@@ -113,7 +120,35 @@ const RISK_PRESETS = [
   },
 ];
 
-const TOTAL_STEPS = 5;
+const POSITION_SIZING_METHODS = [
+  {
+    id: "fixed_dollar",
+    label: "Fixed Dollar Amount",
+    description: "Trade a specific dollar amount per position (e.g. $1,000)",
+    icon: DollarSign,
+    placeholder: "1000",
+    suffix: "USD per trade",
+    recommended: true,
+  },
+  {
+    id: "fixed_shares",
+    label: "Fixed Number of Shares",
+    description: "Trade a set number of shares or contracts each time",
+    icon: Hash,
+    placeholder: "100",
+    suffix: "shares per trade",
+  },
+  {
+    id: "percent_account",
+    label: "Percentage of Account",
+    description: "Allocate a percentage of your account balance per trade",
+    icon: Percent,
+    placeholder: "5",
+    suffix: "% of account",
+  },
+];
+
+const TOTAL_STEPS = 6;
 
 function matchRiskPreset(limits?: SavedSettings["safetyLimits"]): string {
   if (!limits) return "balanced";
@@ -135,6 +170,8 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
   const [traderType, setTraderType] = useState("swing");
   const [automationMode, setAutomationMode] = useState("ALERTS");
   const [riskPreset, setRiskPreset] = useState("balanced");
+  const [sizingMethod, setSizingMethod] = useState("fixed_dollar");
+  const [sizingValue, setSizingValue] = useState("1000");
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const { isConnected } = useBrokerStatus();
@@ -144,12 +181,16 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
       setTraderType(savedSettings.traderType || "swing");
       setAutomationMode(savedSettings.automationMode || "ALERTS");
       setRiskPreset(matchRiskPreset(savedSettings.safetyLimits));
+      setSizingMethod(savedSettings.positionSizingMethod || "fixed_dollar");
+      setSizingValue(String(savedSettings.positionSizingValue ?? 1000));
     }
     if (!open) {
       setStep(0);
       setTraderType("swing");
       setAutomationMode("ALERTS");
       setRiskPreset("balanced");
+      setSizingMethod("fixed_dollar");
+      setSizingValue("1000");
     }
   }, [open, isEditing, savedSettings]);
 
@@ -161,6 +202,8 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
         traderType,
         automationMode,
         safetyLimits: selectedLimits,
+        positionSizingMethod: sizingMethod,
+        positionSizingValue: parseInt(sizingValue, 10) || 1000,
         setupCompleted: true,
         onboardingStep: TOTAL_STEPS - 1,
       });
@@ -385,6 +428,76 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
           )}
 
           {step === 4 && (
+            <div className="space-y-3" data-testid="step-position-sizing">
+              <p className="text-sm font-medium">How do you want to size your trades?</p>
+              <div className="space-y-2">
+                {POSITION_SIZING_METHODS.map(({ id, label, description, icon: Icon, recommended }) => (
+                  <Card
+                    key={id}
+                    className={cn(
+                      "cursor-pointer",
+                      sizingMethod === id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover-elevate"
+                    )}
+                    onClick={() => setSizingMethod(id)}
+                    data-testid={`card-sizing-${id}`}
+                  >
+                    <CardContent className="p-3 flex items-start gap-3">
+                      <div className={cn(
+                        "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                        sizingMethod === id ? "bg-primary text-primary-foreground" : "bg-muted"
+                      )}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">{label}</span>
+                          {recommended && (
+                            <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+                              Default
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+                      </div>
+                      {sizingMethod === id && (
+                        <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <div className="pt-2 space-y-2">
+                <Label htmlFor="sizing-value" className="text-sm font-medium">
+                  Default {POSITION_SIZING_METHODS.find(m => m.id === sizingMethod)?.suffix || "value"}
+                </Label>
+                <div className="flex items-center gap-2">
+                  {sizingMethod === "fixed_dollar" && (
+                    <span className="text-sm text-muted-foreground">$</span>
+                  )}
+                  <Input
+                    id="sizing-value"
+                    type="number"
+                    min="1"
+                    value={sizingValue}
+                    onChange={(e) => setSizingValue(e.target.value)}
+                    placeholder={POSITION_SIZING_METHODS.find(m => m.id === sizingMethod)?.placeholder}
+                    className="max-w-[200px]"
+                    data-testid="input-sizing-value"
+                  />
+                  {sizingMethod === "percent_account" && (
+                    <span className="text-sm text-muted-foreground">%</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  You can adjust this anytime from Settings.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
             <div className="flex flex-col items-center text-center py-6 space-y-4" data-testid="step-complete">
               <div className="h-14 w-14 rounded-full bg-green-500/10 flex items-center justify-center">
                 <Rocket className="h-7 w-7 text-green-500" />

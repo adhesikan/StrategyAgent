@@ -994,6 +994,7 @@ interface SkippedTrade {
   source: string;
   price: number | null;
   strategyId: string | null;
+  assetType: string | null;
   createdAt: string | null;
 }
 
@@ -1081,6 +1082,11 @@ function SkippedTradesPanel() {
                   <span className="font-semibold text-sm" data-testid={`text-skipped-symbol-${trade.id}`}>
                     {trade.symbol}
                   </span>
+                  {trade.assetType && trade.assetType !== "equity" && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-asset-type-${trade.id}`}>
+                      {trade.assetType === "option" ? "Option" : trade.assetType === "future" ? "Future" : trade.assetType}
+                    </Badge>
+                  )}
                   {trade.price != null && (
                     <span className="text-xs text-muted-foreground">
                       ${trade.price.toFixed(2)}

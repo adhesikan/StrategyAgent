@@ -1678,6 +1678,7 @@ export const agentSkippedTrades = pgTable("agent_skipped_trades", {
   source: text("source").notNull(),
   price: real("price"),
   strategyId: text("strategy_id"),
+  assetType: text("asset_type").default("equity"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -518,6 +518,21 @@ async function processOptionsScanResults(userId: string): Promise<void> {
   const candidates: OptionCandidate[] = result.candidates;
   const filtered = candidates.filter((c) => filterCandidateByPolicy(c, policy));
 
+  const rejectedByFilter = candidates.filter((c) => !filterCandidateByPolicy(c, policy));
+  for (const rej of rejectedByFilter.slice(0, 5)) {
+    try {
+      await storage.createSkippedTrade({
+        userId,
+        symbol: `${rej.underlying} ${rej.optionType.toUpperCase()} $${rej.strike}`,
+        skipReason: "Did not pass options policy filters (delta, DTE, premium, OI, volume, or risk limits)",
+        source: "eligibility",
+        price: rej.mid,
+        strategyId: rej.strategy || null,
+        assetType: "option",
+      });
+    } catch (e) {}
+  }
+
   if (filtered.length === 0) {
     console.log(`[AgentWorker] Options scan: ${candidates.length} candidates, 0 passed policy filters for user ${userId}`);
     return;
@@ -535,11 +550,12 @@ async function processOptionsScanResults(userId: string): Promise<void> {
       try {
         await storage.createSkippedTrade({
           userId,
-          symbol: candidate.underlying,
-          skipReason: `Options ${candidate.optionType.toUpperCase()} $${candidate.strike}: ${authorization.reasons.join("; ")}`,
+          symbol: `${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike}`,
+          skipReason: authorization.reasons.join("; "),
           source: "options_authorization",
           price: candidate.mid,
           strategyId: candidate.strategy || null,
+          assetType: "option",
         });
       } catch (e) {}
       continue;

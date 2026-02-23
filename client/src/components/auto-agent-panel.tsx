@@ -71,6 +71,7 @@ export function AutoAgentPanel() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAckModal, setShowAckModal] = useState(false);
   const [todayTradesOpen, setTodayTradesOpen] = useState(false);
+  const [showOptionsAdvanced, setShowOptionsAdvanced] = useState(false);
 
   const { data: policy, isLoading: policyLoading } = useQuery<AgentPolicy>({
     queryKey: ["/api/agent/policy"],
@@ -643,6 +644,28 @@ export function AutoAgentPanel() {
 
             {policy?.optionsEnabled && (
               <div className="space-y-4 pl-1">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="optionsMaxRisk">Max Risk per Options Trade ($)</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        Maximum dollar amount at risk per options trade. For buying options, this is the total premium paid. For credit spreads, this is the max loss on the spread.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="optionsMaxRisk"
+                    type="number"
+                    min="0"
+                    value={policy?.optionsMaxRiskUsd ?? 500}
+                    onChange={(e) => updatePolicy.mutate({ optionsMaxRiskUsd: parseFloat(e.target.value) || 500 })}
+                    data-testid="input-options-max-risk"
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
@@ -672,177 +695,6 @@ export function AutoAgentPanel() {
                         <SelectItem value="both">Both</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label>Strategy</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p><strong>Long Calls/Puts:</strong> Buy options for directional moves.</p>
-                          <p className="mt-1"><strong>Covered Calls:</strong> Sell calls against owned shares.</p>
-                          <p className="mt-1"><strong>Credit Spreads:</strong> Sell spreads to collect premium.</p>
-                          <p className="mt-1"><strong>Cash-Secured Puts:</strong> Sell puts to buy at lower prices.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Select
-                      value={policy?.optionsStrategy ?? "long_calls"}
-                      onValueChange={(value) => updatePolicy.mutate({ optionsStrategy: value })}
-                      data-testid="select-options-strategy"
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="long_calls">Long Calls</SelectItem>
-                        <SelectItem value="long_puts">Long Puts</SelectItem>
-                        <SelectItem value="covered_calls">Covered Calls</SelectItem>
-                        <SelectItem value="credit_spreads">Credit Spreads</SelectItem>
-                        <SelectItem value="cash_secured_puts">Cash-Secured Puts</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label htmlFor="optionsDeltaMin">Min Delta</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          Minimum delta (sensitivity to price). Lower delta = cheaper, more speculative. Typical range: 0.20 - 0.50.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="optionsDeltaMin"
-                      type="number"
-                      step="0.05"
-                      min="0.05"
-                      max="0.95"
-                      value={policy?.optionsDeltaMin ?? 0.30}
-                      onChange={(e) => updatePolicy.mutate({ optionsDeltaMin: parseFloat(e.target.value) || 0.30 })}
-                      data-testid="input-options-delta-min"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label htmlFor="optionsDeltaMax">Max Delta</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          Maximum delta. Higher delta = more expensive, moves more with stock. Typical range: 0.50 - 0.80.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="optionsDeltaMax"
-                      type="number"
-                      step="0.05"
-                      min="0.05"
-                      max="0.95"
-                      value={policy?.optionsDeltaMax ?? 0.70}
-                      onChange={(e) => updatePolicy.mutate({ optionsDeltaMax: parseFloat(e.target.value) || 0.70 })}
-                      data-testid="input-options-delta-max"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label htmlFor="optionsDteMin">Min DTE</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          Minimum days to expiration. Short DTE = faster decay, higher risk. Typical minimum: 7-14 days.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="optionsDteMin"
-                      type="number"
-                      min="1"
-                      value={policy?.optionsDteMin ?? 14}
-                      onChange={(e) => updatePolicy.mutate({ optionsDteMin: parseInt(e.target.value) || 14 })}
-                      data-testid="input-options-dte-min"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label htmlFor="optionsDteMax">Max DTE</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          Maximum days to expiration. Longer DTE = more expensive, less time decay risk. Typical max: 45-60 days.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="optionsDteMax"
-                      type="number"
-                      min="1"
-                      value={policy?.optionsDteMax ?? 45}
-                      onChange={(e) => updatePolicy.mutate({ optionsDteMax: parseInt(e.target.value) || 45 })}
-                      data-testid="input-options-dte-max"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label htmlFor="optionsMinOI">Min Open Interest</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          Minimum open interest for liquidity. Higher values mean tighter spreads and easier fills.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="optionsMinOI"
-                      type="number"
-                      min="0"
-                      value={policy?.optionsMinOpenInterest ?? 100}
-                      onChange={(e) => updatePolicy.mutate({ optionsMinOpenInterest: parseInt(e.target.value) || 100 })}
-                      data-testid="input-options-min-oi"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label htmlFor="optionsMinVol">Min Volume</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          Minimum daily trading volume. Ensures the contract is actively traded for better fills.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="optionsMinVol"
-                      type="number"
-                      min="0"
-                      value={policy?.optionsMinVolume ?? 10}
-                      onChange={(e) => updatePolicy.mutate({ optionsMinVolume: parseInt(e.target.value) || 10 })}
-                      data-testid="input-options-min-volume"
-                    />
                   </div>
                 </div>
 
@@ -895,27 +747,159 @@ export function AutoAgentPanel() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1">
-                    <Label htmlFor="optionsMaxRisk">Max Risk per Options Trade ($)</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        Maximum dollar amount at risk per options trade. For buying options, this is the total premium paid. For credit spreads, this is the max loss on the spread.
-                      </TooltipContent>
-                    </Tooltip>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowOptionsAdvanced(!showOptionsAdvanced)}
+                  className="w-full"
+                  data-testid="button-toggle-options-advanced"
+                >
+                  <Settings2 className="h-4 w-4 mr-2" />
+                  {showOptionsAdvanced ? "Hide" : "Show"} Options Advanced
+                </Button>
+
+                {showOptionsAdvanced && (
+                  <div className="space-y-4 pt-2 border-t">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="optionsDeltaMin">Min Delta</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Minimum delta (sensitivity to price). Lower delta = cheaper, more speculative. Typical range: 0.20 - 0.50.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          id="optionsDeltaMin"
+                          type="number"
+                          step="0.05"
+                          min="0.05"
+                          max="0.95"
+                          value={policy?.optionsDeltaMin ?? 0.30}
+                          onChange={(e) => updatePolicy.mutate({ optionsDeltaMin: parseFloat(e.target.value) || 0.30 })}
+                          data-testid="input-options-delta-min"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="optionsDeltaMax">Max Delta</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Maximum delta. Higher delta = more expensive, moves more with stock. Typical range: 0.50 - 0.80.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          id="optionsDeltaMax"
+                          type="number"
+                          step="0.05"
+                          min="0.05"
+                          max="0.95"
+                          value={policy?.optionsDeltaMax ?? 0.70}
+                          onChange={(e) => updatePolicy.mutate({ optionsDeltaMax: parseFloat(e.target.value) || 0.70 })}
+                          data-testid="input-options-delta-max"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="optionsDteMin">Min DTE</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Minimum days to expiration. Short DTE = faster decay, higher risk. Typical minimum: 7-14 days.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          id="optionsDteMin"
+                          type="number"
+                          min="1"
+                          value={policy?.optionsDteMin ?? 14}
+                          onChange={(e) => updatePolicy.mutate({ optionsDteMin: parseInt(e.target.value) || 14 })}
+                          data-testid="input-options-dte-min"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="optionsDteMax">Max DTE</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Maximum days to expiration. Longer DTE = more expensive, less time decay risk. Typical max: 45-60 days.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          id="optionsDteMax"
+                          type="number"
+                          min="1"
+                          value={policy?.optionsDteMax ?? 45}
+                          onChange={(e) => updatePolicy.mutate({ optionsDteMax: parseInt(e.target.value) || 45 })}
+                          data-testid="input-options-dte-max"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="optionsMinOI">Min Open Interest</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Minimum open interest for liquidity. Higher values mean tighter spreads and easier fills.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          id="optionsMinOI"
+                          type="number"
+                          min="0"
+                          value={policy?.optionsMinOpenInterest ?? 100}
+                          onChange={(e) => updatePolicy.mutate({ optionsMinOpenInterest: parseInt(e.target.value) || 100 })}
+                          data-testid="input-options-min-oi"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="optionsMinVol">Min Volume</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Minimum daily trading volume. Ensures the contract is actively traded for better fills.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          id="optionsMinVol"
+                          type="number"
+                          min="0"
+                          value={policy?.optionsMinVolume ?? 10}
+                          onChange={(e) => updatePolicy.mutate({ optionsMinVolume: parseInt(e.target.value) || 10 })}
+                          data-testid="input-options-min-volume"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <Input
-                    id="optionsMaxRisk"
-                    type="number"
-                    min="0"
-                    value={policy?.optionsMaxRiskUsd ?? 500}
-                    onChange={(e) => updatePolicy.mutate({ optionsMaxRiskUsd: parseFloat(e.target.value) || 500 })}
-                    data-testid="input-options-max-risk"
-                  />
-                </div>
+                )}
 
                 <div className="border-t pt-4 space-y-4">
                   <div className="flex items-center justify-between">

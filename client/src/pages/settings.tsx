@@ -97,6 +97,67 @@ const brokerProviders = [
   },
 ];
 
+function TradeStationSimModeCard() {
+  const { toast } = useToast();
+  const { data: simStatus } = useQuery<{ simMode: boolean; provider: string | null; available: boolean }>({
+    queryKey: ["/api/broker/sim-mode"],
+  });
+
+  const toggleSimMode = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      await apiRequest("POST", "/api/broker/sim-mode", { enabled });
+    },
+    onSuccess: (_, enabled) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/sim-mode"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/accounts"] });
+      toast({
+        title: enabled ? "Sim Mode Enabled" : "Sim Mode Disabled",
+        description: enabled
+          ? "Trading will use the TradeStation simulation environment"
+          : "Trading will use the TradeStation live environment",
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update sim mode", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base font-medium">Simulated Trading</CardTitle>
+        <CardDescription>
+          Switch between live and simulated trading environments on TradeStation
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className={`h-2.5 w-2.5 rounded-full ${simStatus?.simMode ? "bg-amber-500" : "bg-green-500"}`} />
+              <span className="text-sm font-medium" data-testid="text-sim-mode-status">
+                {simStatus?.simMode ? "Simulation Mode" : "Live Mode"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {simStatus?.simMode
+                ? "Orders go to sim-api.tradestation.com (no real money)"
+                : "Orders go to the live TradeStation API"}
+            </p>
+          </div>
+          <Switch
+            checked={simStatus?.simMode ?? false}
+            onCheckedChange={(checked) => toggleSimMode.mutate(checked)}
+            disabled={toggleSimMode.isPending}
+            data-testid="switch-sim-mode"
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -899,6 +960,10 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {brokerStatus?.isConnected && brokerStatus?.provider === "tradestation" && (
+              <TradeStationSimModeCard />
             )}
 
             {brokerStatus?.isConnected && brokerStatus?.provider === "tradier" && (

@@ -44,7 +44,7 @@ A centralized system computes the actionability of scan results, categorizing th
 A provider adapter pattern normalizes brokerage data across different providers, including an in-memory cache for rate limit management. It offers endpoints for accounts, positions, and orders.
 
 ### Paper Trading
-Tradier paper trading is supported using a separate sandbox API token for simulated trades.
+Tradier paper trading is supported using a separate sandbox API token for simulated trades. TradeStation supports a sim environment toggle that routes all API calls to `sim-api.tradestation.com/v3` for simulated trading. The sim mode flag is stored in the encrypted broker credentials and toggled via `/api/broker/sim-mode` endpoints. The `getTradeStationBaseUrl(simMode)` utility in `server/broker/providers/tradestation.ts` resolves the correct API base URL throughout the codebase.
 
 ### Authentication & Authorization
 The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions, supporting `user` and `admin` roles with role-based access control.

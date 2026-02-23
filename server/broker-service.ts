@@ -1,11 +1,13 @@
 import { BrokerConnection, ScanResult, PatternStage, StrategyType } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { classifyQuote, StrategyId, PullbackStage } from "./strategies";
+import { getTradeStationBaseUrl } from "./broker/providers/tradestation";
 
 // Extended type for broker connection with decrypted credentials
 export interface DecryptedBrokerConnection extends BrokerConnection {
   accessToken?: string;
   refreshToken?: string | null;
+  simMode?: boolean;
 }
 
 // Cache for extended hours prices with 60-second TTL
@@ -422,15 +424,16 @@ async function fetchTastyTradeQuotes(accessToken: string, symbols: string[]): Pr
   return quotes;
 }
 
-async function fetchTradeStationQuotes(accessToken: string, symbols: string[]): Promise<QuoteData[]> {
+async function fetchTradeStationQuotes(accessToken: string, symbols: string[], simMode?: boolean): Promise<QuoteData[]> {
   const headers = {
     "Authorization": `Bearer ${accessToken}`,
     "Content-Type": "application/json",
   };
 
+  const tsBase = getTradeStationBaseUrl(simMode);
   const symbolList = symbols.join(",");
   const response = await fetch(
-    `https://api.tradestation.com/v3/marketdata/quotes/${symbolList}`,
+    `${tsBase}/marketdata/quotes/${symbolList}`,
     { headers }
   );
 
@@ -477,7 +480,7 @@ export async function fetchQuotesFromBroker(
     case "tastytrade":
       return fetchTastyTradeQuotes(connection.accessToken, symbols);
     case "tradestation":
-      return fetchTradeStationQuotes(connection.accessToken, symbols);
+      return fetchTradeStationQuotes(connection.accessToken, symbols, connection.simMode);
     default:
       throw new Error(`Provider ${connection.provider} not supported for market data`);
   }
@@ -1129,7 +1132,8 @@ export async function fetchTradeStationHistory(
   accessToken: string,
   secretKey: string | null,
   symbol: string,
-  timeframe: string
+  timeframe: string,
+  simMode?: boolean
 ): Promise<CandleData[]> {
   const { start, end, isIntraday } = getDateRange(timeframe);
   
@@ -1149,9 +1153,10 @@ export async function fetchTradeStationHistory(
     "Content-Type": "application/json",
   };
 
+  const tsBase = getTradeStationBaseUrl(simMode);
   const unit = isIntraday ? "Minute" : "Daily";
   const response = await fetch(
-    `https://api.tradestation.com/v3/marketdata/barcharts/${symbol}?interval=${interval}&unit=${unit}&startDate=${start}&endDate=${end}`,
+    `${tsBase}/marketdata/barcharts/${symbol}?interval=${interval}&unit=${unit}&startDate=${start}&endDate=${end}`,
     { headers }
   );
 
@@ -1191,7 +1196,7 @@ export async function fetchHistoryFromBroker(
     case "tastytrade":
       return fetchTastyTradeHistory(connection.accessToken, connection.refreshToken ?? null, symbol, timeframe);
     case "tradestation":
-      return fetchTradeStationHistory(connection.accessToken, connection.refreshToken ?? null, symbol, timeframe);
+      return fetchTradeStationHistory(connection.accessToken, connection.refreshToken ?? null, symbol, timeframe, connection.simMode);
     default:
       throw new Error(`Provider ${connection.provider} not supported for historical data`);
   }
@@ -1224,7 +1229,7 @@ export async function fetchHistoryWithDateRange(
         candles = await fetchTastyTradeHistoryWithDates(connection.accessToken, connection.refreshToken ?? null, symbol, startDate, endDate);
         break;
       case "tradestation":
-        candles = await fetchTradeStationHistoryWithDates(connection.accessToken, connection.refreshToken ?? null, symbol, startDate, endDate);
+        candles = await fetchTradeStationHistoryWithDates(connection.accessToken, connection.refreshToken ?? null, symbol, startDate, endDate, connection.simMode);
         break;
       default:
         try {
@@ -1397,15 +1402,17 @@ async function fetchTradeStationHistoryWithDates(
   secretKey: string | null,
   symbol: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  simMode?: boolean
 ): Promise<CandleData[]> {
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${accessToken}`,
     "Content-Type": "application/json",
   };
 
+  const tsBase = getTradeStationBaseUrl(simMode);
   const response = await fetch(
-    `https://api.tradestation.com/v3/marketdata/barcharts/${symbol}?interval=1&unit=Daily&startDate=${startDate}&endDate=${endDate}`,
+    `${tsBase}/marketdata/barcharts/${symbol}?interval=1&unit=Daily&startDate=${startDate}&endDate=${endDate}`,
     { headers }
   );
 

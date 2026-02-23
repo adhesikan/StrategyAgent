@@ -130,12 +130,13 @@ export interface IStorage {
   removeSymbolFromWatchlist(watchlistId: string, userId: string, symbol: string): Promise<Watchlist | undefined>;
 
   getBrokerConnection(userId: string): Promise<BrokerConnection | null>;
-  getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string; sandboxAccessToken?: string }) | null>;
+  getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string; sandboxAccessToken?: string; simMode?: boolean }) | null>;
   getAnyActiveBrokerConnection(): Promise<BrokerConnection | null>;
   setBrokerConnection(userId: string, connection: Omit<InsertBrokerConnection, 'userId'>): Promise<BrokerConnection>;
   setBrokerConnectionWithTokens(userId: string, provider: string, accessToken: string, refreshToken?: string, expiresAt?: Date): Promise<BrokerConnection>;
   setSandboxToken(userId: string, sandboxAccessToken: string): Promise<void>;
   removeSandboxToken(userId: string): Promise<void>;
+  setSimMode(userId: string, simMode: boolean): Promise<void>;
   updateBrokerConnectionStatus(userId: string, isConnected: boolean): Promise<void>;
   updateBrokerAutoReconnect(userId: string, autoReconnect: boolean): Promise<void>;
   getAutoReconnectConnections(): Promise<BrokerConnection[]>;
@@ -857,7 +858,7 @@ export class MemStorage implements IStorage {
     return connection || null;
   }
 
-  async getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string; sandboxAccessToken?: string }) | null> {
+  async getBrokerConnectionWithToken(userId: string): Promise<(BrokerConnection & { accessToken?: string; refreshToken?: string; sandboxAccessToken?: string; simMode?: boolean }) | null> {
     const connection = await this.getBrokerConnection(userId);
     if (!connection) return null;
     
@@ -873,6 +874,7 @@ export class MemStorage implements IStorage {
           accessToken: credentials.accessToken,
           refreshToken: credentials.refreshToken,
           sandboxAccessToken: credentials.sandboxAccessToken,
+          simMode: credentials.simMode === true,
         };
       } catch (error) {
         console.error("Failed to decrypt broker credentials:", error);
@@ -940,10 +942,13 @@ export class MemStorage implements IStorage {
       throw new Error("Encryption key not configured. Cannot store broker credentials securely.");
     }
 
+    const existing = await this.getBrokerConnectionWithToken(userId);
     const encrypted = encryptCredentials({
       accessToken,
       refreshToken,
       expiresAt: expiresAt?.toISOString(),
+      simMode: existing?.simMode,
+      sandboxAccessToken: existing?.sandboxAccessToken,
     });
 
     return this.setBrokerConnection(userId, {
@@ -970,6 +975,7 @@ export class MemStorage implements IStorage {
       accessToken: connection.accessToken,
       refreshToken: connection.refreshToken,
       sandboxAccessToken,
+      simMode: connection.simMode,
     });
 
     await db
@@ -991,6 +997,34 @@ export class MemStorage implements IStorage {
     const encrypted = encryptCredentials({
       accessToken: connection.accessToken,
       refreshToken: connection.refreshToken,
+      simMode: connection.simMode,
+    });
+
+    await db
+      .update(brokerConnections)
+      .set({
+        encryptedCredentials: encrypted.ciphertext,
+        credentialsIv: encrypted.iv,
+        credentialsAuthTag: encrypted.authTag,
+        updatedAt: new Date(),
+      })
+      .where(eq(brokerConnections.userId, userId));
+  }
+
+  async setSimMode(userId: string, simMode: boolean): Promise<void> {
+    const connection = await this.getBrokerConnectionWithToken(userId);
+    if (!connection || !connection.accessToken) {
+      throw new Error("No active broker connection found");
+    }
+    if (!hasEncryptionKey()) {
+      throw new Error("Encryption key not configured");
+    }
+
+    const encrypted = encryptCredentials({
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+      sandboxAccessToken: connection.sandboxAccessToken,
+      simMode,
     });
 
     await db

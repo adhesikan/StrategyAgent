@@ -1,6 +1,6 @@
 import type { BrokerProvider, BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse } from "./types";
 import { tradierProvider, registerSandboxToken } from "./providers/tradier";
-import { tradestationProvider } from "./providers/tradestation";
+import { tradestationProvider, getTradeStationBaseUrl } from "./providers/tradestation";
 import { storage } from "../storage";
 
 const providers: Record<string, BrokerProvider> = {
@@ -14,6 +14,132 @@ function getProvider(providerName: string): BrokerProvider {
     throw new Error(`Unsupported broker provider: ${providerName}`);
   }
   return provider;
+}
+
+function getProviderForConnection(connection: { provider: string; simMode?: boolean }): BrokerProvider {
+  if (connection.provider === "tradestation" && connection.simMode) {
+    const simBaseUrl = getTradeStationBaseUrl(true);
+
+    return {
+      async getStatus(accessToken: string) {
+        const response = await fetch(`${simBaseUrl}/brokerage/accounts`, {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error(`TradeStation SIM API error ${response.status}`);
+        const accounts = await response.json();
+        const accountList = accounts?.Accounts || accounts || [];
+        const first = Array.isArray(accountList) ? accountList[0] : null;
+        return { connected: true, provider: "tradestation" as const, accountId: first?.AccountID ?? undefined };
+      },
+      async getAccounts(accessToken: string) {
+        const data = await fetch(`${simBaseUrl}/brokerage/accounts`, {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+        }).then(r => { if (!r.ok) throw new Error(`TradeStation SIM error ${r.status}`); return r.json(); });
+        const accountList = data?.Accounts || data || [];
+        if (!Array.isArray(accountList)) return [];
+        const results: NormalizedAccount[] = [];
+        for (const acct of accountList) {
+          let balances: any = null;
+          try {
+            const balData = await fetch(`${simBaseUrl}/brokerage/accounts/${acct.AccountID}/balances`, {
+              headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+            }).then(r => r.ok ? r.json() : null);
+            balances = balData?.Balances?.[0] || balData;
+          } catch {}
+          results.push({
+            id: acct.AccountID ?? "",
+            name: `${acct.DisplayName || acct.Alias || acct.AccountID || "TradeStation"} (SIM)`,
+            type: acct.AccountType || "unknown",
+            buyingPower: parseFloat(balances?.BuyingPower ?? balances?.OptionBuyingPower ?? "0") || 0,
+            equity: parseFloat(balances?.Equity ?? balances?.AccountBalance ?? "0") || 0,
+            currency: balances?.Currency || "USD",
+          });
+        }
+        return results;
+      },
+      async getPositions(accessToken: string, accountId?: string) {
+        if (!accountId) { const s = await this.getStatus(accessToken); accountId = s.accountId; }
+        if (!accountId) return [];
+        const data = await fetch(`${simBaseUrl}/brokerage/accounts/${accountId}/positions`, {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+        }).then(r => { if (!r.ok) throw new Error(`TradeStation SIM error ${r.status}`); return r.json(); });
+        const positions = data?.Positions || data || [];
+        if (!Array.isArray(positions)) return [];
+        return positions.map((p: any) => ({
+          symbol: p.Symbol || "", qty: parseFloat(p.Quantity ?? "0"),
+          avgPrice: parseFloat(p.AveragePrice ?? "0"), marketPrice: parseFloat(p.Last ?? p.MarketValue ?? "0"),
+          unrealizedPnl: parseFloat(p.UnrealizedProfitLoss ?? "0"),
+        }));
+      },
+      async getOrders(accessToken: string, accountId?: string) {
+        if (!accountId) { const s = await this.getStatus(accessToken); accountId = s.accountId; }
+        if (!accountId) return [];
+        const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const data = await fetch(`${simBaseUrl}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`, {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+        }).then(r => { if (!r.ok) throw new Error(`TradeStation SIM error ${r.status}`); return r.json(); });
+        const orders = data?.Orders || data || [];
+        if (!Array.isArray(orders)) return [];
+        return orders.slice(0, 500).map((o: any) => {
+          const action = (o.TradeAction || "").toLowerCase();
+          const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
+          return {
+            id: String(o.OrderID || ""), symbol: o.Legs?.[0]?.Symbol || o.Symbol || "UNKNOWN",
+            side: isSell ? "sell" as const : "buy" as const,
+            qty: parseInt(o.Legs?.[0]?.QuantityOrdered || o.Quantity || "0", 10),
+            filledQty: parseInt(o.Legs?.[0]?.ExecQuantity || o.FilledQuantity || "0", 10),
+            price: parseFloat(o.FilledPrice || o.LimitPrice || "0") || null,
+            status: o.Status || o.StatusDescription || "unknown",
+            createdAt: o.OpenedDateTime || o.ClosedDateTime || "",
+          };
+        });
+      },
+      async getOptionQuote(accessToken: string, optionSymbol: string) {
+        try {
+          const data = await fetch(`${simBaseUrl}/marketdata/quotes/${encodeURIComponent(optionSymbol)}`, {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+          }).then(r => { if (!r.ok) throw new Error(`TradeStation SIM error ${r.status}`); return r.json(); });
+          const quotes = data?.Quotes || data || [];
+          const quote = Array.isArray(quotes) ? quotes[0] : quotes;
+          if (!quote) return null;
+          const bid = parseFloat(quote.Bid ?? "0"), ask = parseFloat(quote.Ask ?? "0");
+          return { symbol: optionSymbol, bid, ask, mid: parseFloat(((bid + ask) / 2).toFixed(2)),
+            last: parseFloat(quote.Last ?? "0"), volume: parseInt(quote.Volume ?? "0", 10),
+            openInterest: parseInt(quote.OpenInterest ?? "0", 10) };
+        } catch { return null; }
+      },
+      async placeOrder(accessToken: string, order: OrderRequest) {
+        const isOption = order.orderClass === "option" && order.optionSymbol;
+        const body: any = {
+          AccountID: order.accountId,
+          Symbol: isOption ? order.optionSymbol : order.symbol,
+          Quantity: String(order.quantity),
+          OrderType: order.orderType === "market" ? "Market" : order.orderType === "stop" ? "StopMarket" : order.orderType === "stop_limit" ? "StopLimit" : "Limit",
+          TradeAction: order.side === "buy" ? (isOption ? "BuyToOpen" : "Buy") : (isOption ? "SellToClose" : "Sell"),
+          TimeInForce: { Duration: order.duration === "gtc" ? "GTC" : "DAY" },
+        };
+        if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) body.LimitPrice = String(order.price);
+        if (order.stopPrice !== undefined && (order.orderType === "stop" || order.orderType === "stop_limit")) body.StopPrice = String(order.stopPrice);
+        console.log(`[TradeStation SIM] Placing order:`, JSON.stringify(body).substring(0, 500));
+        const response = await fetch(`${simBaseUrl}/orderexecution/orders`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) { const text = await response.text().catch(() => ""); throw new Error(`TradeStation SIM order error ${response.status}: ${text.substring(0, 300)}`); }
+        const data = await response.json();
+        if (data?.Errors?.length > 0) throw new Error(`TradeStation SIM order rejected: ${data.Errors.map((e: any) => e.Message || e).join("; ")}`);
+        const orders = data?.Orders || [];
+        const firstOrder = orders[0] || {};
+        return {
+          orderId: String(firstOrder.OrderID || data?.OrderID || "pending"),
+          symbol: isOption ? (order.optionSymbol || order.symbol) : order.symbol,
+          side: order.side, quantity: order.quantity, status: firstOrder.Status || "pending",
+        };
+      },
+    };
+  }
+  return getProvider(connection.provider);
 }
 
 interface CacheEntry<T> {
@@ -208,7 +334,7 @@ export async function getBrokerStatus(userId: string): Promise<BrokerStatus> {
   }
 
   try {
-    const provider = getProvider(connection.provider);
+    const provider = getProviderForConnection(connection);
     const status = await provider.getStatus(connection.accessToken!);
     setCache(cacheKey, status, CACHE_TTL.STATUS);
     return status;
@@ -230,7 +356,7 @@ export async function getBrokerAccounts(userId: string): Promise<NormalizedAccou
   const connection = await getConnectionForUser(userId);
   if (!connection || !isSupportedProvider(connection.provider)) return [];
 
-  const provider = getProvider(connection.provider);
+  const provider = getProviderForConnection(connection);
   const accounts = await provider.getAccounts(connection.accessToken!);
 
   if (connection.provider === "tradier" && connection.sandboxAccessToken) {
@@ -270,7 +396,7 @@ export async function getBrokerPositions(userId: string): Promise<NormalizedPosi
   const connection = await getConnectionForUser(userId);
   if (!connection || !isSupportedProvider(connection.provider)) return [];
 
-  const provider = getProvider(connection.provider);
+  const provider = getProviderForConnection(connection);
   const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
   const positions = await provider.getPositions(token, realAccountId);
   setCache(cacheKey, positions, CACHE_TTL.POSITIONS);
@@ -288,7 +414,7 @@ export async function getBrokerOrders(userId: string): Promise<NormalizedOrder[]
     return [];
   }
 
-  const provider = getProvider(connection.provider);
+  const provider = getProviderForConnection(connection);
   const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
 
   try {
@@ -332,7 +458,7 @@ export async function placeBrokerOrder(userId: string, order: OrderRequest): Pro
     order = { ...order, accountId: order.accountId.replace("sandbox:", "") };
   }
 
-  const provider = getProvider(connection.provider);
+  const provider = getProviderForConnection(connection);
   const orderDesc = order.orderClass === "option"
     ? `${order.optionSide || "buy_to_open"} ${order.quantity} ${order.optionSymbol} (${order.symbol}) @ ${order.price ?? "market"}`
     : `${order.side} ${order.quantity} ${order.symbol} @ ${order.price ?? "market"}`;
@@ -347,7 +473,7 @@ export async function getOptionQuote(userId: string, optionSymbol: string) {
   if (!connection || !isSupportedProvider(connection.provider)) {
     return null;
   }
-  const provider = getProvider(connection.provider);
+  const provider = getProviderForConnection(connection);
   if (!provider.getOptionQuote) return null;
   const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
   return provider.getOptionQuote(token, optionSymbol);

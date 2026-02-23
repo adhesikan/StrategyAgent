@@ -1,6 +1,11 @@
 import type { BrokerProvider, NormalizedAccount, NormalizedPosition, NormalizedOrder, BrokerStatus, OrderRequest, OrderResponse, OptionQuote } from "../types";
 
-const BASE_URL = "https://api.tradestation.com/v3";
+const LIVE_BASE_URL = "https://api.tradestation.com/v3";
+const SIM_BASE_URL = "https://sim-api.tradestation.com/v3";
+
+export function getTradeStationBaseUrl(simMode?: boolean): string {
+  return simMode ? SIM_BASE_URL : LIVE_BASE_URL;
+}
 
 function tsHeaders(accessToken: string): Record<string, string> {
   return {
@@ -55,7 +60,7 @@ export async function tsGetBatchQuotes(accessToken: string, symbols: string[]): 
     try {
       const symbolList = batch.join(",");
       const data = await tsFetch(
-        `${BASE_URL}/marketdata/quotes/${symbolList}`,
+        `${LIVE_BASE_URL}/marketdata/quotes/${symbolList}`,
         accessToken,
       );
       const quotes = data?.Quotes || [];
@@ -89,7 +94,7 @@ export async function tsGetBatchQuotes(accessToken: string, symbols: string[]): 
 export async function tsGetOptionExpirations(accessToken: string, symbol: string): Promise<string[]> {
   try {
     const data = await tsFetch(
-      `${BASE_URL}/marketdata/options/expirations/${encodeURIComponent(symbol)}`,
+      `${LIVE_BASE_URL}/marketdata/options/expirations/${encodeURIComponent(symbol)}`,
       accessToken,
     );
     const expirations = data?.Expirations || data || [];
@@ -160,7 +165,7 @@ async function consumeStream(response: Response, timeoutMs: number = 12000): Pro
 
 export async function tsGetOptionChain(accessToken: string, symbol: string, expiration: string): Promise<OptionChainContract[]> {
   try {
-    const url = `${BASE_URL}/marketdata/stream/options/chains/${encodeURIComponent(symbol)}?expiration=${expiration}&strikeCount=20&spreadType=Single`;
+    const url = `${LIVE_BASE_URL}/marketdata/stream/options/chains/${encodeURIComponent(symbol)}?expiration=${expiration}&strikeCount=20&spreadType=Single`;
     const response = await fetch(url, {
       headers: {
         ...tsHeaders(accessToken),
@@ -238,7 +243,7 @@ export async function tsGetOptionChain(accessToken: string, symbol: string, expi
 
 export const tradestationProvider: BrokerProvider = {
   async getStatus(accessToken: string): Promise<BrokerStatus> {
-    const accounts = await tsFetch(`${BASE_URL}/brokerage/accounts`, accessToken);
+    const accounts = await tsFetch(`${LIVE_BASE_URL}/brokerage/accounts`, accessToken);
     const accountList = accounts?.Accounts || accounts || [];
     const first = Array.isArray(accountList) ? accountList[0] : null;
     return {
@@ -249,7 +254,7 @@ export const tradestationProvider: BrokerProvider = {
   },
 
   async getAccounts(accessToken: string): Promise<NormalizedAccount[]> {
-    const data = await tsFetch(`${BASE_URL}/brokerage/accounts`, accessToken);
+    const data = await tsFetch(`${LIVE_BASE_URL}/brokerage/accounts`, accessToken);
     const accountList = data?.Accounts || data || [];
     if (!Array.isArray(accountList)) return [];
 
@@ -258,7 +263,7 @@ export const tradestationProvider: BrokerProvider = {
       let balances: any = null;
       try {
         const balData = await tsFetch(
-          `${BASE_URL}/brokerage/accounts/${acct.AccountID}/balances`,
+          `${LIVE_BASE_URL}/brokerage/accounts/${acct.AccountID}/balances`,
           accessToken,
         );
         balances = balData?.Balances?.[0] || balData;
@@ -286,7 +291,7 @@ export const tradestationProvider: BrokerProvider = {
     if (!accountId) return [];
 
     const data = await tsFetch(
-      `${BASE_URL}/brokerage/accounts/${accountId}/positions`,
+      `${LIVE_BASE_URL}/brokerage/accounts/${accountId}/positions`,
       accessToken,
     );
 
@@ -311,7 +316,7 @@ export const tradestationProvider: BrokerProvider = {
 
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const data = await tsFetch(
-      `${BASE_URL}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`,
+      `${LIVE_BASE_URL}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`,
       accessToken,
     );
 
@@ -342,7 +347,7 @@ export const tradestationProvider: BrokerProvider = {
   async getOptionQuote(accessToken: string, optionSymbol: string): Promise<OptionQuote | null> {
     try {
       const data = await tsFetch(
-        `${BASE_URL}/marketdata/quotes/${encodeURIComponent(optionSymbol)}`,
+        `${LIVE_BASE_URL}/marketdata/quotes/${encodeURIComponent(optionSymbol)}`,
         accessToken,
       );
       const quotes = data?.Quotes || data || [];
@@ -390,7 +395,7 @@ export const tradestationProvider: BrokerProvider = {
 
     console.log(`[TradeStation] Placing order:`, JSON.stringify(body).substring(0, 500));
 
-    const response = await fetch(`${BASE_URL}/orderexecution/orders`, {
+    const response = await fetch(`${LIVE_BASE_URL}/orderexecution/orders`, {
       method: "POST",
       headers: {
         ...tsHeaders(accessToken),

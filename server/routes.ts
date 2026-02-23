@@ -27,6 +27,7 @@ import {
   getUniverseSymbols,
   LARGE_CAP_UNIVERSE
 } from "./broker-service";
+import { getTradeStationBaseUrl } from "./broker/providers/tradestation";
 import { isPromoActive, PROMO_CONFIG, PROMO_CODE } from "@shared/promo";
 import { 
   ingestOpportunitiesFromScan, 
@@ -1774,7 +1775,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           });
           liveOk = liveRes.ok;
         } else if (connection.provider === "tradestation" && connection.accessToken) {
-          const liveRes = await fetch("https://api.tradestation.com/v3/brokerage/accounts", {
+          const tsBase = getTradeStationBaseUrl(connection.simMode);
+          const liveRes = await fetch(`${tsBase}/brokerage/accounts`, {
             headers: { "Authorization": `Bearer ${connection.accessToken}` },
           });
           liveOk = liveRes.ok;
@@ -2068,7 +2070,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           testResult = { success: false, message: `API error: ${response.status}` };
         }
       } else if (connection.provider === "tradestation") {
-        const response = await fetch("https://api.tradestation.com/v3/brokerage/accounts", {
+        const tsBase = getTradeStationBaseUrl(connection.simMode);
+        const response = await fetch(`${tsBase}/brokerage/accounts`, {
           headers: {
             "Authorization": `Bearer ${connection.accessToken}`,
           },
@@ -2085,7 +2088,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             const acctId = firstAccount.AccountID || firstAccount.accountId;
             if (acctId) {
               try {
-                const balResponse = await fetch(`https://api.tradestation.com/v3/brokerage/accounts/${acctId}/balances`, {
+                const balResponse = await fetch(`${tsBase}/brokerage/accounts/${acctId}/balances`, {
                   headers: { "Authorization": `Bearer ${connection.accessToken}` },
                 });
                 if (balResponse.ok) {
@@ -2219,6 +2222,41 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       res.json({ hasSandboxToken: hasSandbox });
     } catch (error: any) {
       res.json({ hasSandboxToken: false });
+    }
+  });
+
+  app.post("/api/broker/sim-mode", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { enabled } = req.body;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled must be a boolean" });
+      }
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      if (!connection || connection.provider !== "tradestation") {
+        return res.status(400).json({ error: "Sim mode is only available for TradeStation connections" });
+      }
+      await storage.setSimMode(userId, enabled);
+      brokerService.invalidateBrokerCache(userId);
+      console.log(`[BrokerService] Sim mode ${enabled ? "enabled" : "disabled"} for user ${userId}`);
+      res.json({ success: true, simMode: enabled });
+    } catch (error: any) {
+      console.error("[BrokerService] sim mode error:", error.message);
+      res.status(500).json({ error: "Failed to update sim mode" });
+    }
+  });
+
+  app.get("/api/broker/sim-mode", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      res.json({ 
+        simMode: connection?.simMode === true,
+        provider: connection?.provider || null,
+        available: connection?.provider === "tradestation"
+      });
+    } catch (error: any) {
+      res.json({ simMode: false, provider: null, available: false });
     }
   });
 

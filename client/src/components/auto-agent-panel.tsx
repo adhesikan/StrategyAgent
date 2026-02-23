@@ -129,6 +129,7 @@ export function AutoAgentPanel() {
     price: number | null;
     status: string;
     strategy: string | null;
+    reasons: string[] | null;
     createdAt: string;
   }
 
@@ -360,33 +361,40 @@ export function AutoAgentPanel() {
                   return (
                     <div
                       key={trade.id}
-                      className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-muted/50 text-sm"
+                      className="px-3 py-2 rounded-md bg-muted/50 text-sm"
                       data-testid={`trade-row-${trade.id}`}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        {trade.side === "buy" ? (
-                          <TrendingUp className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                        ) : (
-                          <TrendingDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                        )}
-                        <span className="font-medium">{trade.symbol}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {trade.quantity} @ ${trade.price?.toFixed(2) ?? "MKT"}
-                        </span>
-                        {trade.strategy && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                            {trade.strategy}
-                          </Badge>
-                        )}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {trade.side === "buy" ? (
+                            <TrendingUp className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                          ) : (
+                            <TrendingDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          )}
+                          <span className="font-medium">{trade.symbol}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {trade.quantity} @ ${trade.price?.toFixed(2) ?? "MKT"}
+                          </span>
+                          {trade.strategy && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              {trade.strategy}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-xs font-medium ${statusColor}`}>
+                            {trade.status === "sent_to_broker" ? "Sent" : trade.status}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`text-xs font-medium ${statusColor}`}>
-                          {trade.status === "sent_to_broker" ? "Sent" : trade.status}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
+                      {(trade.status === "rejected" || trade.status === "error") && trade.reasons && trade.reasons.length > 0 && (
+                        <p className="text-[11px] text-red-400 mt-1 ml-5.5 leading-snug" data-testid={`text-rejection-reason-${trade.id}`}>
+                          {trade.reasons.join("; ")}
+                        </p>
+                      )}
                     </div>
                   );
                 })}

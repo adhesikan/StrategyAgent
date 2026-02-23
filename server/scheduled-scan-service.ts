@@ -3,10 +3,30 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { ingestOpportunitiesFromScan } from "./opportunity-service";
 import { fetchQuotesFromBroker, isBullishQuote, verifyBullishTrend } from "./broker-service";
-import { StrategyType } from "@shared/schema";
+import { StrategyType, agentState as agentStateTable, agentSettings as agentSettingsTable } from "@shared/schema";
 import type { ScanResult } from "@shared/schema";
 import { classifyQuote } from "./strategies";
 import type { StrategyIdType } from "./strategies/types";
+import { eq } from "drizzle-orm";
+import { db } from "./db";
+
+async function getAgentEnabledUserIds(): Promise<string[]> {
+  const stateUsers = await db
+    .select({ userId: agentStateTable.userId })
+    .from(agentStateTable)
+    .where(eq(agentStateTable.enabled, true));
+
+  const settingsUsers = await db
+    .select({ userId: agentSettingsTable.userId })
+    .from(agentSettingsTable)
+    .where(eq(agentSettingsTable.enabled, true));
+
+  const userIds = new Set([
+    ...stateUsers.map(u => u.userId),
+    ...settingsUsers.map(u => u.userId),
+  ]);
+  return Array.from(userIds);
+}
 
 const DEFAULT_SCAN_UNIVERSE = [
   "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "CRM",
@@ -131,6 +151,9 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
     
     console.log(`[ScheduledScan] Fetched ${allQuotes.length} quotes from ${DEFAULT_SCAN_UNIVERSE.length} symbols`);
     
+    const agentUserIds = await getAgentEnabledUserIds();
+    const allIngestUserIds = Array.from(new Set([connection.userId, ...agentUserIds]));
+
     for (const strategy of strategies) {
       const rawResults = quotesToScanResults(allQuotes, strategy);
       const results = await verifyBullishTrend(connectionWithToken, rawResults);
@@ -138,18 +161,20 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
       if (results.length > 0) {
         console.log(`[ScheduledScan] Strategy ${strategy}: ${rawResults.length} raw -> ${results.length} bullish-verified opportunities`);
         
-        try {
-          const ingested = await ingestOpportunitiesFromScan(connection.userId, results, strategy, "1d");
-          totalIngested += ingested;
-        } catch (error: any) {
-          console.error(`[ScheduledScan] Failed to ingest for strategy ${strategy}:`, error.message);
+        for (const uid of allIngestUserIds) {
+          try {
+            const ingested = await ingestOpportunitiesFromScan(uid, results, strategy, "1d");
+            totalIngested += ingested;
+          } catch (error: any) {
+            console.error(`[ScheduledScan] Failed to ingest for user ${uid}, strategy ${strategy}:`, error.message);
+          }
         }
       } else {
         console.log(`[ScheduledScan] Strategy ${strategy}: 0 qualifying opportunities`);
       }
     }
     
-    console.log(`[ScheduledScan] ${scanName} completed: ingested ${totalIngested} opportunities`);
+    console.log(`[ScheduledScan] ${scanName} completed: ingested ${totalIngested} opportunities for ${allIngestUserIds.length} user(s)`);
   } catch (error: any) {
     console.error(`[ScheduledScan] Error running ${scanName}:`, error.message);
   }

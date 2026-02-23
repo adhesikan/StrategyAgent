@@ -138,8 +138,29 @@ async function processUserOpportunities(userId: string): Promise<void> {
 
   console.log(`[AgentWorker] User ${userId}: effectiveMode=${effectivePolicy.mode}, policyMode=${policy.mode}, automationMode=${automationMode}, traderType=${traderConfig.label}`);
   
-  const opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
+  let opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
   
+  if (opportunities.length === 0) {
+    const scanResults = await storage.getScanResults();
+    if (scanResults.length > 0) {
+      const { ingestOpportunitiesFromScan } = await import("./opportunity-service");
+      const byStrategy = new Map<string, typeof scanResults>();
+      for (const r of scanResults) {
+        const strat = (r as any).strategy || "VCP";
+        if (!byStrategy.has(strat)) byStrategy.set(strat, []);
+        byStrategy.get(strat)!.push(r);
+      }
+      let totalIngested = 0;
+      for (const [strat, results] of Array.from(byStrategy.entries())) {
+        totalIngested += await ingestOpportunitiesFromScan(userId, results, strat, "1d");
+      }
+      if (totalIngested > 0) {
+        console.log(`[AgentWorker] Auto-ingested ${totalIngested} opportunities from scan results for user ${userId}`);
+        opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
+      }
+    }
+  }
+
   if (opportunities.length === 0) {
     return;
   }

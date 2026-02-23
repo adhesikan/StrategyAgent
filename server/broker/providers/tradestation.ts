@@ -62,13 +62,20 @@ export async function tsGetBatchQuotes(accessToken: string, symbols: string[]): 
       for (const q of quotes) {
         const last = parseFloat(q.Last ?? "0");
         if (q.Symbol && last > 0) {
+          const prevClose = parseFloat(q.PreviousClose ?? "0") || last;
           results.set(q.Symbol, {
             symbol: q.Symbol,
             last,
             bid: parseFloat(q.Bid ?? "0") || last,
             ask: parseFloat(q.Ask ?? "0") || last,
             change: parseFloat(q.NetChange ?? "0"),
+            changePercent: parseFloat(q.NetChangePct ?? "0") || (prevClose > 0 ? ((last - prevClose) / prevClose) * 100 : 0),
             volume: parseInt(q.Volume ?? "0", 10),
+            open: parseFloat(q.Open ?? "0") || last,
+            high: parseFloat(q.High ?? "0") || last,
+            low: parseFloat(q.Low ?? "0") || last,
+            prevClose,
+            avgVolume: parseInt(q.AverageVolume ?? "0", 10),
           });
         }
       }

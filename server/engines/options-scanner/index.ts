@@ -130,6 +130,35 @@ const DEFAULT_SCAN_PREFS: ScanPreferences = {
   minPremiumPct: 0.5,
 };
 
+function screenStockScore(q: StockQuote): number {
+  let score = 0;
+
+  if (q.changePercent > 0) score += Math.min(q.changePercent * 3, 15);
+  if (q.changePercent < -3) score -= 10;
+
+  if (q.avgVolume > 0 && q.volume > 0) {
+    const rvol = q.volume / q.avgVolume;
+    if (rvol >= 1.5) score += 15;
+    else if (rvol >= 1.0) score += 8;
+    else if (rvol < 0.5) score -= 5;
+  }
+
+  if (q.avgVolume >= 500000) score += 10;
+  else if (q.avgVolume >= 100000) score += 5;
+
+  if (q.high > 0 && q.prevClose > 0) {
+    const rangeFromHigh = ((q.high - q.last) / q.high) * 100;
+    if (rangeFromHigh < 2) score += 10;
+    else if (rangeFromHigh < 5) score += 5;
+  }
+
+  if (q.last > q.open && q.open > 0) score += 5;
+
+  if (q.prevClose > 0 && q.last > q.prevClose) score += 5;
+
+  return score;
+}
+
 export async function runOptionsScan(
   request: OptionsScanRequest,
   brokerAccessToken?: string,
@@ -172,12 +201,13 @@ export async function runOptionsScan(
   if (validSymbols.length <= maxSymbols) {
     selectedSymbols = validSymbols;
   } else {
-    const shuffled = [...validSymbols];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    selectedSymbols = shuffled.slice(0, maxSymbols);
+    const scored = validSymbols.map(s => {
+      const q = quotes.get(s)!;
+      return { symbol: s, score: screenStockScore(q) };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    selectedSymbols = scored.slice(0, maxSymbols).map(s => s.symbol);
+    console.log(`[OptionsScanner] Pre-screened top ${maxSymbols} stocks from ${validSymbols.length} (top: ${selectedSymbols.slice(0, 5).join(", ")})`);
   }
 
   console.log(`[OptionsScanner] Fetching option chains for ${selectedSymbols.length} symbols via ${providerName}...`);

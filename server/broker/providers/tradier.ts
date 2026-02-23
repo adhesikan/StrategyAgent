@@ -57,7 +57,13 @@ export interface StockQuote {
   bid: number;
   ask: number;
   change: number;
+  changePercent: number;
   volume: number;
+  open: number;
+  high: number;
+  low: number;
+  prevClose: number;
+  avgVolume: number;
 }
 
 export interface OptionChainContract {
@@ -94,13 +100,20 @@ export async function tradierGetBatchQuotes(accessToken: string, symbols: string
       const arr = Array.isArray(quotes) ? quotes : [quotes];
       for (const q of arr) {
         if (q.symbol && typeof q.last === "number") {
+          const prevClose = q.prevclose ?? q.close ?? q.last;
           results.set(q.symbol, {
             symbol: q.symbol,
             last: q.last,
             bid: q.bid ?? q.last,
             ask: q.ask ?? q.last,
             change: q.change ?? 0,
+            changePercent: q.change_percentage ?? (prevClose > 0 ? ((q.last - prevClose) / prevClose) * 100 : 0),
             volume: q.volume ?? 0,
+            open: q.open ?? q.last,
+            high: q.high ?? q.last,
+            low: q.low ?? q.last,
+            prevClose,
+            avgVolume: q.average_volume ?? 0,
           });
         }
       }

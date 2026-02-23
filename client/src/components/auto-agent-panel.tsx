@@ -619,46 +619,6 @@ export function AutoAgentPanel() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-1">
-                <Label htmlFor="maxTrades">Max Trades/Day</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Maximum number of trades the agent can execute in a single day. Helps control overtrading and risk exposure.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="maxTrades"
-                type="number"
-                value={policy?.maxTradesPerDay ?? 2}
-                onChange={(e) => updatePolicy.mutate({ maxTradesPerDay: parseInt(e.target.value) || 2 })}
-                data-testid="input-max-trades"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="maxPositions">Max Positions</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Maximum number of open positions allowed at the same time. Prevents over-concentration and manages portfolio risk.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="maxPositions"
-                type="number"
-                value={policy?.maxConcurrentPositions ?? 3}
-                onChange={(e) => updatePolicy.mutate({ maxConcurrentPositions: parseInt(e.target.value) || 3 })}
-                data-testid="input-max-positions"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
                 <Label htmlFor="riskPerTrade">Risk/Trade ($)</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -695,6 +655,46 @@ export function AutoAgentPanel() {
                 value={policy?.maxDailyLossUsd ?? 1000}
                 onChange={(e) => updatePolicy.mutate({ maxDailyLossUsd: parseFloat(e.target.value) || 1000 })}
                 data-testid="input-max-daily-loss"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxTrades">Max Trades/Day</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum number of trades the agent can execute in a single day. Helps control overtrading and risk exposure.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxTrades"
+                type="number"
+                value={policy?.maxTradesPerDay ?? 2}
+                onChange={(e) => updatePolicy.mutate({ maxTradesPerDay: parseInt(e.target.value) || 2 })}
+                data-testid="input-max-trades"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxPositions">Max Positions</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum number of open positions allowed at the same time. Prevents over-concentration and manages portfolio risk.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxPositions"
+                type="number"
+                value={policy?.maxConcurrentPositions ?? 3}
+                onChange={(e) => updatePolicy.mutate({ maxConcurrentPositions: parseInt(e.target.value) || 3 })}
+                data-testid="input-max-positions"
               />
             </div>
           </div>

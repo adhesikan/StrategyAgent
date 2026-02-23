@@ -999,6 +999,7 @@ interface SkippedTrade {
 }
 
 function SkippedTradesPanel() {
+  const [isOpen, setIsOpen] = useState(true);
   const { data: skippedTrades, isLoading } = useQuery<SkippedTrade[]>({
     queryKey: ["/api/agent/skipped-trades"],
     refetchInterval: 60000,
@@ -1076,62 +1077,67 @@ function SkippedTradesPanel() {
 
   return (
     <Card data-testid="section-skipped-trades">
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Filter className="h-5 w-5" />
-          Recently Skipped Trades
+      <CardHeader className="cursor-pointer" onClick={() => setIsOpen(!isOpen)} data-testid="button-toggle-skipped-trades">
+        <CardTitle className="text-lg flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Recently Skipped Trades ({skippedTrades.length})
+          </span>
+          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
         </CardTitle>
         <CardDescription>
-          Last {skippedTrades.length} trade{skippedTrades.length !== 1 ? "s" : ""} filtered out by your rules (last 24h).
+          Trades filtered out by your rules (last 24h).
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {skippedTrades.map((trade) => (
-            <div
-              key={trade.id}
-              className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30"
-              data-testid={`skipped-trade-${trade.id}`}
-            >
-              <div className="mt-0.5">
-                <XCircle className="h-4 w-4 text-destructive" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-sm" data-testid={`text-skipped-symbol-${trade.id}`}>
-                    {trade.symbol}
-                  </span>
-                  {trade.assetType && trade.assetType !== "equity" && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-asset-type-${trade.id}`}>
-                      {trade.assetType === "option" ? "Option" : trade.assetType === "future" ? "Future" : trade.assetType}
-                    </Badge>
-                  )}
-                  {trade.price != null && (
-                    <span className="text-xs text-muted-foreground">
-                      ${trade.price.toFixed(2)}
-                    </span>
-                  )}
-                  {trade.strategyId && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-strategy-${trade.id}`}>
-                      {formatStrategy(trade.strategyId)}
-                    </Badge>
-                  )}
-                  <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-                    {sourceLabel(trade.source)}
-                  </Badge>
+      {isOpen && (
+        <CardContent>
+          <div className="space-y-3">
+            {skippedTrades.map((trade) => (
+              <div
+                key={trade.id}
+                className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30"
+                data-testid={`skipped-trade-${trade.id}`}
+              >
+                <div className="mt-0.5">
+                  <XCircle className="h-4 w-4 text-destructive" />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed" data-testid={`text-skipped-reason-${trade.id}`}>
-                  {trade.skipReason}
-                </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm" data-testid={`text-skipped-symbol-${trade.id}`}>
+                      {trade.symbol}
+                    </span>
+                    {trade.assetType && trade.assetType !== "equity" && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-asset-type-${trade.id}`}>
+                        {trade.assetType === "option" ? "Option" : trade.assetType === "future" ? "Future" : trade.assetType}
+                      </Badge>
+                    )}
+                    {trade.price != null && (
+                      <span className="text-xs text-muted-foreground">
+                        ${trade.price.toFixed(2)}
+                      </span>
+                    )}
+                    {trade.strategyId && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-strategy-${trade.id}`}>
+                        {formatStrategy(trade.strategyId)}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+                      {sourceLabel(trade.source)}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed" data-testid={`text-skipped-reason-${trade.id}`}>
+                    {trade.skipReason}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+                  <Clock className="h-3 w-3" />
+                  {trade.createdAt ? new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                </div>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-                <Clock className="h-3 w-3" />
-                {trade.createdAt ? new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
+            ))}
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
 }

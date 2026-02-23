@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Power, Pause, Play, AlertTriangle, Shield, Settings2, Activity, Info, Check, ArrowRight, TrendingUp, TrendingDown } from "lucide-react";
+import { Bot, Power, Pause, Play, AlertTriangle, Shield, Settings2, Activity, Info, Check, ArrowRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AutoAgentAcknowledgementModal } from "./auto-agent-acknowledgement-modal";
@@ -70,6 +70,7 @@ export function AutoAgentPanel() {
   const { toast } = useToast();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAckModal, setShowAckModal] = useState(false);
+  const [todayTradesOpen, setTodayTradesOpen] = useState(true);
 
   const { data: policy, isLoading: policyLoading } = useQuery<AgentPolicy>({
     queryKey: ["/api/agent/policy"],
@@ -341,71 +342,67 @@ export function AutoAgentPanel() {
         {(() => {
           const agentTrades = (todayTrades || []).filter(t => t.source === "auto_agent");
           if (agentTrades.length === 0) return null;
-          const shown = agentTrades.slice(0, 5);
           return (
             <div className="space-y-2" data-testid="section-today-agent-trades">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Today's Trades</p>
-                <Link href="/automation">
-                  <Button variant="ghost" size="sm" className="gap-1 text-xs" data-testid="link-view-all-trades">
-                    View All <ArrowRight className="h-3 w-3" />
-                  </Button>
-                </Link>
-              </div>
-              <div className="space-y-1.5">
-                {shown.map((trade) => {
-                  const statusColor = trade.status === "sent_to_broker" || trade.status === "filled"
-                    ? "text-green-500"
-                    : trade.status === "rejected" || trade.status === "error"
-                      ? "text-red-500"
-                      : "text-muted-foreground";
-                  return (
-                    <div
-                      key={trade.id}
-                      className="px-3 py-2 rounded-md bg-muted/50 text-sm"
-                      data-testid={`trade-row-${trade.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {trade.side === "buy" ? (
-                            <TrendingUp className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                          ) : (
-                            <TrendingDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                          )}
-                          <span className="font-medium">{trade.symbol}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {trade.quantity} @ ${trade.price?.toFixed(2) ?? "MKT"}
-                          </span>
-                          {trade.strategy && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {getStrategyDisplayName(trade.strategy)}
-                            </Badge>
+              <button
+                className="flex items-center justify-between w-full text-left"
+                onClick={() => setTodayTradesOpen(!todayTradesOpen)}
+                data-testid="button-toggle-today-trades"
+              >
+                <p className="text-sm font-medium">Today's Trades ({agentTrades.length})</p>
+                {todayTradesOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {todayTradesOpen && (
+                <>
+                  <div className="space-y-1.5">
+                    {agentTrades.map((trade) => {
+                      const statusColor = trade.status === "sent_to_broker" || trade.status === "filled"
+                        ? "text-green-500"
+                        : trade.status === "rejected" || trade.status === "error"
+                          ? "text-red-500"
+                          : "text-muted-foreground";
+                      return (
+                        <div
+                          key={trade.id}
+                          className="px-3 py-2 rounded-md bg-muted/50 text-sm"
+                          data-testid={`trade-row-${trade.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {trade.side === "buy" ? (
+                                <TrendingUp className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                              ) : (
+                                <TrendingDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                              )}
+                              <span className="font-medium">{trade.symbol}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {trade.quantity} @ ${trade.price?.toFixed(2) ?? "MKT"}
+                              </span>
+                              {trade.strategy && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  {getStrategyDisplayName(trade.strategy)}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`text-xs font-medium ${statusColor}`}>
+                                {trade.status === "sent_to_broker" ? "Sent" : trade.status}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                          </div>
+                          {(trade.status === "rejected" || trade.status === "error") && trade.reasons && trade.reasons.length > 0 && (
+                            <p className="text-[11px] text-red-400 mt-1 ml-5.5 leading-snug" data-testid={`text-rejection-reason-${trade.id}`}>
+                              {trade.reasons.join("; ")}
+                            </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-xs font-medium ${statusColor}`}>
-                            {trade.status === "sent_to_broker" ? "Sent" : trade.status}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                      </div>
-                      {(trade.status === "rejected" || trade.status === "error") && trade.reasons && trade.reasons.length > 0 && (
-                        <p className="text-[11px] text-red-400 mt-1 ml-5.5 leading-snug" data-testid={`text-rejection-reason-${trade.id}`}>
-                          {trade.reasons.join("; ")}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {agentTrades.length > 5 && (
-                <Link href="/automation?view=activity">
-                  <p className="text-xs text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors" data-testid="link-see-more-trades">
-                    See {agentTrades.length - 5} more trades <ArrowRight className="h-3 w-3 inline" />
-                  </p>
-                </Link>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           );

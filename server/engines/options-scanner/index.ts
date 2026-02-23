@@ -264,6 +264,15 @@ export async function runOptionsScan(
   }
 
   candidates.sort((a, b) => b.score - a.score);
+
+  const bestPerStock = new Map<string, OptionCandidate>();
+  for (const c of candidates) {
+    if (!bestPerStock.has(c.underlying)) {
+      bestPerStock.set(c.underlying, c);
+    }
+  }
+  candidates = Array.from(bestPerStock.values());
+
   candidates.forEach((c, i) => (c.rank = i + 1));
 
   return {

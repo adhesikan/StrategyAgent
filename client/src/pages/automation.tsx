@@ -999,7 +999,7 @@ interface SkippedTrade {
 }
 
 function SkippedTradesPanel() {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const { data: skippedTrades, isLoading } = useQuery<SkippedTrade[]>({
     queryKey: ["/api/agent/skipped-trades"],
     refetchInterval: 60000,

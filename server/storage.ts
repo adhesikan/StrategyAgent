@@ -277,6 +277,7 @@ export interface IStorage {
   getRecentSkippedTrades(userId: string, limit?: number): Promise<AgentSkippedTrade[]>;
   createSkippedTrade(data: InsertAgentSkippedTrade): Promise<AgentSkippedTrade>;
   cleanupOldSkippedTrades(): Promise<number>;
+  cleanupOldTradeData(): Promise<number>;
 
   // Audit Events
   createAuditEvent(event: InsertAuditEvent): Promise<AuditEvent>;
@@ -2450,6 +2451,14 @@ export class MemStorage implements IStorage {
       .delete(agentSkippedTradesTable)
       .where(lt(agentSkippedTradesTable.createdAt, oneDayAgo));
     return result.rowCount ?? 0;
+  }
+
+  async cleanupOldTradeData(): Promise<number> {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const r1 = await db
+      .delete(agentDecisionsTable)
+      .where(lt(agentDecisionsTable.createdAt, twoDaysAgo));
+    return r1.rowCount ?? 0;
   }
 
   // Audit Events

@@ -1154,6 +1154,10 @@ export function startAgentWorker(): void {
       if (cleaned > 0) {
         console.log(`[AgentWorker] Cleaned up ${cleaned} expired skipped trade records`);
       }
+      const tradeCleaned = await storage.cleanupOldTradeData();
+      if (tradeCleaned > 0) {
+        console.log(`[AgentWorker] Cleaned up ${tradeCleaned} old trade decision records`);
+      }
     } catch (e) {}
   }, 60 * 60 * 1000);
 }

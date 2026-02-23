@@ -70,7 +70,7 @@ export function AutoAgentPanel() {
   const { toast } = useToast();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAckModal, setShowAckModal] = useState(false);
-  const [todayTradesOpen, setTodayTradesOpen] = useState(true);
+  const [todayTradesOpen, setTodayTradesOpen] = useState(false);
 
   const { data: policy, isLoading: policyLoading } = useQuery<AgentPolicy>({
     queryKey: ["/api/agent/policy"],

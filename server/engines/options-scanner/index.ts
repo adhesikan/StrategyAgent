@@ -321,6 +321,7 @@ function buildLongOptionCandidates(
       const bestCall = otmCalls.sort((a: OptionChainContract, b: OptionChainContract) => Math.abs(Math.abs(a.greeks!.delta) - 0.3) - Math.abs(Math.abs(b.greeks!.delta) - 0.3))[0];
       const bestPut = otmPuts.sort((a: OptionChainContract, b: OptionChainContract) => Math.abs(Math.abs(a.greeks!.delta) - 0.3) - Math.abs(Math.abs(b.greeks!.delta) - 0.3))[0];
 
+      const contenders: { contract: OptionChainContract; score: number; candidate: OptionCandidate }[] = [];
       for (const contract of [bestCall, bestPut].filter(Boolean) as OptionChainContract[]) {
         const isCall = contract.optionType === "call";
         const mid = r2((contract.bid + contract.ask) / 2);
@@ -355,7 +356,18 @@ function buildLongOptionCandidates(
         const ivPct = Math.round(iv * 100);
         const rationale = `${symbol} at $${stockPrice.toFixed(2)} — ${ivPct}% IV. ${isCall ? "Bullish" : "Bearish"} setup with ${dte}-day expiry. Defined risk at $${mid.toFixed(2)} per contract.`;
 
-        candidates.push({
+        const s = scoreCandidate({
+          premiumPct,
+          pop,
+          volume: contract.volume,
+          openInterest: contract.openInterest,
+          iv,
+          absDelta: Math.abs(delta),
+          deltaMin: prefs.deltaMin,
+          deltaMax: prefs.deltaMax,
+        });
+
+        contenders.push({ contract, score: s, candidate: {
           rank: 0,
           symbol: contract.symbol,
           underlying: symbol,
@@ -372,16 +384,7 @@ function buildLongOptionCandidates(
           theta: r2(theta),
           openInterest: contract.openInterest,
           volume: contract.volume,
-          score: scoreCandidate({
-            premiumPct,
-            pop,
-            volume: contract.volume,
-            openInterest: contract.openInterest,
-            iv,
-            absDelta: Math.abs(delta),
-            deltaMin: prefs.deltaMin,
-            deltaMax: prefs.deltaMax,
-          }),
+          score: s,
           rationale,
           dte,
           premiumPct,
@@ -391,7 +394,12 @@ function buildLongOptionCandidates(
           legs: [leg],
           pop,
           stockPrice: r2(stockPrice),
-        });
+        }});
+      }
+
+      if (contenders.length > 0) {
+        contenders.sort((a, b) => b.score - a.score);
+        candidates.push(contenders[0].candidate);
       }
     }
   }

@@ -300,6 +300,9 @@ function scoreCandidate(opts: {
   absDelta: number;
   deltaMin: number;
   deltaMax: number;
+  isCall: boolean;
+  stockChangePct: number;
+  stockNearHigh: boolean;
 }): number {
   let score = 50;
   score += Math.min(opts.premiumPct * 5, 20);
@@ -308,7 +311,18 @@ function scoreCandidate(opts: {
   if (opts.openInterest > 500) score += 5;
   if (opts.iv > 0.3 && opts.iv < 0.8) score += 5;
   if (opts.absDelta >= opts.deltaMin && opts.absDelta <= opts.deltaMax) score += 5;
-  return r2(Math.min(score, 100));
+
+  const bullish = opts.stockChangePct > 0;
+  const directionAligned = (opts.isCall && bullish) || (!opts.isCall && !bullish);
+  if (directionAligned) {
+    score += 10;
+  } else {
+    score -= 15;
+  }
+  if (opts.isCall && opts.stockNearHigh) score += 5;
+  if (!opts.isCall && opts.stockChangePct < -1) score += 5;
+
+  return r2(Math.max(0, Math.min(score, 100)));
 }
 
 function buildLongOptionCandidates(
@@ -386,6 +400,7 @@ function buildLongOptionCandidates(
         const ivPct = Math.round(iv * 100);
         const rationale = `${symbol} at $${stockPrice.toFixed(2)} — ${ivPct}% IV. ${isCall ? "Bullish" : "Bearish"} setup with ${dte}-day expiry. Defined risk at $${mid.toFixed(2)} per contract.`;
 
+        const stockNearHigh = quote.high > 0 && ((quote.high - quote.last) / quote.high) * 100 < 3;
         const s = scoreCandidate({
           premiumPct,
           pop,
@@ -395,6 +410,9 @@ function buildLongOptionCandidates(
           absDelta: Math.abs(delta),
           deltaMin: prefs.deltaMin,
           deltaMax: prefs.deltaMax,
+          isCall,
+          stockChangePct: quote.changePercent,
+          stockNearHigh,
         });
 
         contenders.push({ contract, score: s, candidate: {
@@ -504,7 +522,7 @@ function buildWheelCandidates(
             bid: bestPut.bid, ask: bestPut.ask, mid,
             impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
             openInterest: bestPut.openInterest, volume: bestPut.volume,
-            score: scoreCandidate({ premiumPct, pop, volume: bestPut.volume, openInterest: bestPut.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+            score: scoreCandidate({ premiumPct, pop, volume: bestPut.volume, openInterest: bestPut.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax, isCall: false, stockChangePct: quote.changePercent, stockNearHigh: quote.high > 0 && ((quote.high - quote.last) / quote.high) * 100 < 3 }),
             rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${bestPut.strike}P cash-secured put for $${mid.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE.`,
             dte, premiumPct, maxProfit, maxLoss, breakeven, legs: [leg], pop, stockPrice: r2(stockPrice),
           });
@@ -538,7 +556,7 @@ function buildWheelCandidates(
             bid: bestCall.bid, ask: bestCall.ask, mid,
             impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
             openInterest: bestCall.openInterest, volume: bestCall.volume,
-            score: scoreCandidate({ premiumPct, pop, volume: bestCall.volume, openInterest: bestCall.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+            score: scoreCandidate({ premiumPct, pop, volume: bestCall.volume, openInterest: bestCall.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax, isCall: true, stockChangePct: quote.changePercent, stockNearHigh: quote.high > 0 && ((quote.high - quote.last) / quote.high) * 100 < 3 }),
             rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${bestCall.strike}C covered call for $${mid.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE.`,
             dte, premiumPct, maxProfit, maxLoss, breakeven, legs: [leg], pop, stockPrice: r2(stockPrice),
           });
@@ -618,7 +636,7 @@ function buildCreditSpreadCandidates(
                 impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
                 openInterest: shortPut.openInterest + longPut.openInterest,
                 volume: shortPut.volume + longPut.volume,
-                score: scoreCandidate({ premiumPct, pop, volume: shortPut.volume + longPut.volume, openInterest: shortPut.openInterest + longPut.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+                score: scoreCandidate({ premiumPct, pop, volume: shortPut.volume + longPut.volume, openInterest: shortPut.openInterest + longPut.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax, isCall: true, stockChangePct: quote.changePercent, stockNearHigh: quote.high > 0 && ((quote.high - quote.last) / quote.high) * 100 < 3 }),
                 rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${shortPut.strike}/${longPut.strike} bull put spread for $${credit.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE. Max profit $${maxProfit}, max loss $${maxLoss}.`,
                 dte, premiumPct, maxProfit, maxLoss, breakeven,
                 legs: [shortLeg, longLegEntry], pop, stockPrice: r2(stockPrice),
@@ -669,7 +687,7 @@ function buildCreditSpreadCandidates(
                 impliedVol: r2(iv * 100), delta: r2(delta), theta: r2(theta),
                 openInterest: shortCall.openInterest + longCall.openInterest,
                 volume: shortCall.volume + longCall.volume,
-                score: scoreCandidate({ premiumPct, pop, volume: shortCall.volume + longCall.volume, openInterest: shortCall.openInterest + longCall.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax }),
+                score: scoreCandidate({ premiumPct, pop, volume: shortCall.volume + longCall.volume, openInterest: shortCall.openInterest + longCall.openInterest, iv, absDelta: Math.abs(delta), deltaMin: prefs.deltaMin, deltaMax: prefs.deltaMax, isCall: false, stockChangePct: quote.changePercent, stockNearHigh: quote.high > 0 && ((quote.high - quote.last) / quote.high) * 100 < 3 }),
                 rationale: `${symbol} at $${stockPrice.toFixed(2)} — sell ${shortCall.strike}/${longCall.strike} bear call spread for $${credit.toFixed(2)} credit. ${Math.round(iv * 100)}% IV, ${dte} DTE. Max profit $${maxProfit}, max loss $${maxLoss}.`,
                 dte, premiumPct, maxProfit, maxLoss, breakeven,
                 legs: [shortLeg, longLegEntry], pop, stockPrice: r2(stockPrice),

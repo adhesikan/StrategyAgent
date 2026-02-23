@@ -133,7 +133,10 @@ async function processUserOpportunities(userId: string): Promise<void> {
   const automationMode = userSettings?.automationMode || "ALERTS";
   if (automationMode === "ALERTS" && effectivePolicy.mode === AgentMode.AUTO) {
     effectivePolicy.mode = AgentMode.SUGGEST;
+    console.log(`[AgentWorker] User ${userId}: automationMode=ALERTS overrides policy to SUGGEST`);
   }
+
+  console.log(`[AgentWorker] User ${userId}: effectiveMode=${effectivePolicy.mode}, policyMode=${policy.mode}, automationMode=${automationMode}, traderType=${traderConfig.label}`);
   
   const opportunities = await storage.getOpportunities(userId, { status: "ACTIVE" });
   
@@ -163,12 +166,12 @@ async function processUserOpportunities(userId: string): Promise<void> {
       continue;
     }
     
-    if (policy.mode === AgentMode.SUGGEST) {
+    if (effectivePolicy.mode === AgentMode.SUGGEST) {
       const reasons = ["Opportunity passed all policy criteria"];
 
       let optionsCandidate: OptionCandidate | null = null;
-      if (policy.optionsEnabled) {
-        optionsCandidate = await evaluateOptionsForOpportunity(userId, policy, item.opportunity);
+      if (effectivePolicy.optionsEnabled) {
+        optionsCandidate = await evaluateOptionsForOpportunity(userId, effectivePolicy, item.opportunity);
         if (optionsCandidate) {
           reasons.push(`Options match: ${optionsCandidate.optionType.toUpperCase()} $${optionsCandidate.strike} exp ${optionsCandidate.expiration} (delta ${optionsCandidate.delta.toFixed(2)}, score ${optionsCandidate.score})`);
         }
@@ -182,23 +185,23 @@ async function processUserOpportunities(userId: string): Promise<void> {
         action: AgentAction.SUGGEST,
         reasons,
         metricsSnapshot: item.eligibility.metrics,
-        orderPayload: optionsCandidate ? await buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate, userId) : undefined,
+        orderPayload: optionsCandidate ? await buildOptionsOrderPayload(item.opportunity, effectivePolicy, optionsCandidate, userId) : undefined,
       };
       await recordDecision(decision);
       console.log(`[AgentWorker] SUGGEST: ${item.opportunity.symbol}${optionsCandidate ? ` (options: ${optionsCandidate.optionType} $${optionsCandidate.strike})` : ""} for user ${userId}`);
-    } else if (policy.mode === AgentMode.AUTO) {
+    } else if (effectivePolicy.mode === AgentMode.AUTO) {
       try {
         let orderPayload: object;
         let optionsCandidate: OptionCandidate | null = null;
 
-        if (policy.optionsEnabled) {
-          optionsCandidate = await evaluateOptionsForOpportunity(userId, policy, item.opportunity);
+        if (effectivePolicy.optionsEnabled) {
+          optionsCandidate = await evaluateOptionsForOpportunity(userId, effectivePolicy, item.opportunity);
         }
 
         if (optionsCandidate) {
-          orderPayload = await buildOptionsOrderPayload(item.opportunity, policy, optionsCandidate, userId);
+          orderPayload = await buildOptionsOrderPayload(item.opportunity, effectivePolicy, optionsCandidate, userId);
         } else {
-          orderPayload = await buildOrderPayload(item.opportunity, policy, userId);
+          orderPayload = await buildOrderPayload(item.opportunity, effectivePolicy, userId);
         }
 
         const connection = await storage.getBrokerConnection(userId);

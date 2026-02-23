@@ -1141,6 +1141,9 @@ function splitTopPicks(candidates: OptionCandidate[]): { topPicks: OptionCandida
   const MIN_TOP_PICKS = 3;
   const MAX_TOP_PICKS = 12;
 
+  const compositeScore = (c: OptionCandidate) =>
+    c.score * 0.4 + c.pop * 0.3 + c.premiumPct * 20 * 0.3;
+
   const topPicks = candidates.filter(
     (c) => c.score >= TOP_SCORE_THRESHOLD && c.pop >= MIN_POP_THRESHOLD
   );
@@ -1148,22 +1151,18 @@ function splitTopPicks(candidates: OptionCandidate[]): { topPicks: OptionCandida
   if (topPicks.length >= MIN_TOP_PICKS && topPicks.length <= MAX_TOP_PICKS) {
     const topSet = new Set(topPicks.map(c => `${c.symbol}-${c.strike}-${c.expiration}`));
     return {
-      topPicks,
+      topPicks: topPicks.sort((a, b) => compositeScore(b) - compositeScore(a)),
       others: candidates.filter(c => !topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
     };
   }
 
-  const sorted = [...candidates].sort((a, b) => {
-    const scoreA = a.score * 0.4 + a.pop * 0.3 + a.premiumPct * 20 * 0.3;
-    const scoreB = b.score * 0.4 + b.pop * 0.3 + b.premiumPct * 20 * 0.3;
-    return scoreB - scoreA;
-  });
+  const sorted = [...candidates].sort((a, b) => compositeScore(b) - compositeScore(a));
 
   const count = Math.min(MAX_TOP_PICKS, Math.max(MIN_TOP_PICKS, Math.ceil(candidates.length * 0.05)));
   const topSet = new Set(sorted.slice(0, count).map(c => `${c.symbol}-${c.strike}-${c.expiration}`));
 
   return {
-    topPicks: candidates.filter(c => topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
+    topPicks: sorted.filter(c => topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
     others: candidates.filter(c => !topSet.has(`${c.symbol}-${c.strike}-${c.expiration}`)),
   };
 }

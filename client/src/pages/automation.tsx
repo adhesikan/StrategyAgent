@@ -1056,9 +1056,22 @@ function SkippedTradesPanel() {
   };
 
   const formatStrategy = (strategyId: string) => {
-    return strategyId
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const STRATEGY_DISPLAY_NAMES: Record<string, string> = {
+      VCP: "Momentum Breakout",
+      VCP_MULTIDAY: "Power Breakout",
+      CLASSIC_PULLBACK: "Trend Pilot",
+      VWAP_RECLAIM: "Institutional Reclaim",
+      ORB5: "Open Drive (5m)",
+      ORB15: "Open Drive (15m)",
+      HIGH_RVOL: "Volume Surge",
+      GAP_AND_GO: "Gap Force",
+      TREND_CONTINUATION: "Trend Continuation",
+      VOLATILITY_SQUEEZE: "Volatility Squeeze",
+      "long-options": "Long Options",
+      "wheel-strategy": "Wheel Strategy",
+      "credit-spreads": "Credit Spreads",
+    };
+    return STRATEGY_DISPLAY_NAMES[strategyId] || strategyId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   return (

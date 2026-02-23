@@ -15,6 +15,7 @@ import { Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AutoAgentAcknowledgementModal } from "./auto-agent-acknowledgement-modal";
 import type { UserSettings } from "@shared/schema";
+import { getStrategyDisplayName } from "@shared/strategies";
 
 interface AgentPolicy {
   id: string;
@@ -377,7 +378,7 @@ export function AutoAgentPanel() {
                           </span>
                           {trade.strategy && (
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {trade.strategy}
+                              {getStrategyDisplayName(trade.strategy)}
                             </Badge>
                           )}
                         </div>

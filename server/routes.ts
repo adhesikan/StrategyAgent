@@ -1096,6 +1096,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.get("/api/agent/skipped-trades", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = parseInt(req.query.limit as string) || 5;
+      const skipped = await storage.getRecentSkippedTrades(userId, limit);
+      res.json(skipped);
+    } catch (error: any) {
+      console.error("Error getting skipped trades:", error);
+      res.status(500).json({ error: "Failed to get skipped trades" });
+    }
+  });
+
   function normalizeTradeStatus(raw: string): string {
     const lower = raw.toLowerCase();
     if (lower === "ok" || lower === "executed" || lower === "ack" || lower === "opn" || lower === "open" || lower === "received" || lower === "queued" || lower === "sent" || lower === "snd") return "sent_to_broker";

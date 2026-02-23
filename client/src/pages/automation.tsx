@@ -31,6 +31,7 @@ import {
   Power, Pause, Play, AlertTriangle,
   ArrowRight, Info, Zap, Volume2,
   ChevronDown, Scan, Filter, BarChart3, Crosshair,
+  XCircle, Clock,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { UserSettings } from "@shared/schema";
@@ -174,6 +175,8 @@ export default function AutomationPage() {
           agentState={agentState}
           settings={settings}
         />
+
+        <SkippedTradesPanel />
 
         <div id="trade-activity">
           <TradeActivityPanel />
@@ -980,5 +983,125 @@ function AcknowledgementGateModal({ open, onClose, onConfirm }: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface SkippedTrade {
+  id: string;
+  userId: string;
+  symbol: string;
+  skipReason: string;
+  source: string;
+  price: number | null;
+  strategyId: string | null;
+  createdAt: string | null;
+}
+
+function SkippedTradesPanel() {
+  const { data: skippedTrades, isLoading } = useQuery<SkippedTrade[]>({
+    queryKey: ["/api/agent/skipped-trades"],
+    refetchInterval: 60000,
+  });
+
+  if (isLoading) {
+    return (
+      <Card data-testid="section-skipped-trades">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Recently Skipped Trades
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-12 bg-muted rounded" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!skippedTrades || skippedTrades.length === 0) {
+    return (
+      <Card data-testid="section-skipped-trades">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Recently Skipped Trades
+          </CardTitle>
+          <CardDescription>
+            Trades filtered out by your rules in the last 24 hours.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground text-center py-6" data-testid="text-no-skipped-trades">
+            No trades have been skipped in the last 24 hours.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const sourceLabel = (source: string) => {
+    switch (source) {
+      case "eligibility": return "Policy Filter";
+      case "authorization": return "Safety Limit";
+      case "options_authorization": return "Options Limit";
+      case "external_alert": return "Alert Filter";
+      default: return source;
+    }
+  };
+
+  return (
+    <Card data-testid="section-skipped-trades">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Filter className="h-5 w-5" />
+          Recently Skipped Trades
+        </CardTitle>
+        <CardDescription>
+          Last {skippedTrades.length} trade{skippedTrades.length !== 1 ? "s" : ""} filtered out by your rules (last 24h).
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {skippedTrades.map((trade) => (
+            <div
+              key={trade.id}
+              className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30"
+              data-testid={`skipped-trade-${trade.id}`}
+            >
+              <div className="mt-0.5">
+                <XCircle className="h-4 w-4 text-destructive" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm" data-testid={`text-skipped-symbol-${trade.id}`}>
+                    {trade.symbol}
+                  </span>
+                  {trade.price != null && (
+                    <span className="text-xs text-muted-foreground">
+                      ${trade.price.toFixed(2)}
+                    </span>
+                  )}
+                  <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+                    {sourceLabel(trade.source)}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed" data-testid={`text-skipped-reason-${trade.id}`}>
+                  {trade.skipReason}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+                <Clock className="h-3 w-3" />
+                {trade.createdAt ? new Date(trade.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

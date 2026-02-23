@@ -1669,3 +1669,21 @@ export const insertDisclaimerAcceptanceLogSchema = createInsertSchema(disclaimer
 });
 export type InsertDisclaimerAcceptanceLog = z.infer<typeof insertDisclaimerAcceptanceLogSchema>;
 export type DisclaimerAcceptanceLog = typeof disclaimerAcceptanceLogs.$inferSelect;
+
+export const agentSkippedTrades = pgTable("agent_skipped_trades", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  skipReason: text("skip_reason").notNull(),
+  source: text("source").notNull(),
+  price: real("price"),
+  strategyId: text("strategy_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentSkippedTradeSchema = createInsertSchema(agentSkippedTrades).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAgentSkippedTrade = z.infer<typeof insertAgentSkippedTradeSchema>;
+export type AgentSkippedTrade = typeof agentSkippedTrades.$inferSelect;

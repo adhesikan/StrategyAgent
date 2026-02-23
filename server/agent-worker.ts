@@ -173,6 +173,18 @@ async function processUserOpportunities(userId: string): Promise<void> {
   const ineligible = evaluated.filter(e => !e.eligibility.pass);
   if (ineligible.length > 0) {
     console.log(`[AgentWorker] Skipped ${ineligible.length} ineligible: ${ineligible.map(i => i.opportunity.symbol).join(", ")}`);
+    for (const item of ineligible) {
+      try {
+        await storage.createSkippedTrade({
+          userId,
+          symbol: item.opportunity.symbol,
+          skipReason: item.eligibility.reasons.join("; "),
+          source: "eligibility",
+          price: item.opportunity.detectedPrice || item.opportunity.lastPrice || null,
+          strategyId: item.opportunity.strategyId || null,
+        });
+      } catch (e) {}
+    }
   }
   
   const ranked = rankOpportunities(evaluated);
@@ -184,6 +196,16 @@ async function processUserOpportunities(userId: string): Promise<void> {
     
     if (!authorization.allowed) {
       console.log(`[AgentWorker] Skipped ${item.opportunity.symbol}: ${authorization.reasons.join(", ")}`);
+      try {
+        await storage.createSkippedTrade({
+          userId,
+          symbol: item.opportunity.symbol,
+          skipReason: authorization.reasons.join("; "),
+          source: "authorization",
+          price: item.opportunity.detectedPrice || item.opportunity.lastPrice || null,
+          strategyId: item.opportunity.strategyId || null,
+        });
+      } catch (e) {}
       continue;
     }
     
@@ -510,6 +532,16 @@ async function processOptionsScanResults(userId: string): Promise<void> {
     const authorization = await authorizeOrder(userId, policy, candidate.underlying);
     if (!authorization.allowed) {
       console.log(`[AgentWorker] Skipped options ${candidate.underlying} ${candidate.optionType.toUpperCase()} $${candidate.strike}: ${authorization.reasons.join(", ")}`);
+      try {
+        await storage.createSkippedTrade({
+          userId,
+          symbol: candidate.underlying,
+          skipReason: `Options ${candidate.optionType.toUpperCase()} $${candidate.strike}: ${authorization.reasons.join("; ")}`,
+          source: "options_authorization",
+          price: candidate.mid,
+          strategyId: candidate.strategy || null,
+        });
+      } catch (e) {}
       continue;
     }
 
@@ -620,18 +652,16 @@ async function processExternalAlerts(userId: string): Promise<void> {
       }
 
       if (alert.direction === "Short") {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: "Short trades not supported by current policy",
-        });
+        const reason = "Short trades not supported by current policy";
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: alert.entryPrice, strategyId: null }); } catch (e) {}
         continue;
       }
 
       if (!alert.riskPrice || !alert.targetPrice) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: "Missing risk or target price levels for entry evaluation",
-        });
+        const reason = "Missing risk or target price levels for entry evaluation";
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: alert.entryPrice, strategyId: null }); } catch (e) {}
         continue;
       }
 
@@ -657,45 +687,40 @@ async function processExternalAlerts(userId: string): Promise<void> {
       }
 
       if (policy.priceMin != null && effectiveEntry < policy.priceMin) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: `Entry price $${effectiveEntry.toFixed(2)} below minimum $${policy.priceMin}`,
-        });
+        const reason = `Entry price $${effectiveEntry.toFixed(2)} below minimum $${policy.priceMin}`;
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: effectiveEntry, strategyId: null }); } catch (e) {}
         continue;
       }
       if (policy.priceMax != null && effectiveEntry > policy.priceMax) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: `Entry price $${effectiveEntry.toFixed(2)} above maximum $${policy.priceMax}`,
-        });
+        const reason = `Entry price $${effectiveEntry.toFixed(2)} above maximum $${policy.priceMax}`;
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: effectiveEntry, strategyId: null }); } catch (e) {}
         continue;
       }
 
       const riskPerShare = effectiveEntry - alert.riskPrice;
       if (riskPerShare <= 0) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: "Invalid risk level: risk price must be below entry price",
-        });
+        const reason = "Invalid risk level: risk price must be below entry price";
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: effectiveEntry, strategyId: null }); } catch (e) {}
         continue;
       }
 
       const rewardPerShare = effectiveTarget - effectiveEntry;
       const rewardRisk = rewardPerShare / riskPerShare;
       if (policy.minRewardRisk != null && rewardRisk < policy.minRewardRisk) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: `R:R ratio ${rewardRisk.toFixed(1)}:1 below minimum ${policy.minRewardRisk}:1`,
-        });
+        const reason = `R:R ratio ${rewardRisk.toFixed(1)}:1 below minimum ${policy.minRewardRisk}:1`;
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: effectiveEntry, strategyId: null }); } catch (e) {}
         continue;
       }
 
       const authorization = await authorizeOrder(userId, policy, alert.symbol);
       if (!authorization.allowed) {
-        await storage.updateExternalAlert(alert.id, {
-          status: "SKIPPED",
-          skipReason: authorization.reasons.join("; "),
-        });
+        const reason = authorization.reasons.join("; ");
+        await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+        try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: effectiveEntry, strategyId: null }); } catch (e) {}
         console.log(`[AgentWorker] Skipped external alert ${alert.symbol}: ${authorization.reasons.join(", ")}`);
         continue;
       }
@@ -1106,6 +1131,15 @@ export function startAgentWorker(): void {
   agentWorkerInterval = setInterval(runAgentWorker, WORKER_INTERVAL_MS);
   
   setTimeout(runAgentWorker, 10000);
+
+  setInterval(async () => {
+    try {
+      const cleaned = await storage.cleanupOldSkippedTrades();
+      if (cleaned > 0) {
+        console.log(`[AgentWorker] Cleaned up ${cleaned} expired skipped trade records`);
+      }
+    } catch (e) {}
+  }, 60 * 60 * 1000);
 }
 
 export function stopAgentWorker(): void {

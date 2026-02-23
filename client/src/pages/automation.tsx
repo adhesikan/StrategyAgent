@@ -1055,6 +1055,12 @@ function SkippedTradesPanel() {
     }
   };
 
+  const formatStrategy = (strategyId: string) => {
+    return strategyId
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
   return (
     <Card data-testid="section-skipped-trades">
       <CardHeader>
@@ -1091,6 +1097,11 @@ function SkippedTradesPanel() {
                     <span className="text-xs text-muted-foreground">
                       ${trade.price.toFixed(2)}
                     </span>
+                  )}
+                  {trade.strategyId && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-strategy-${trade.id}`}>
+                      {formatStrategy(trade.strategyId)}
+                    </Badge>
                   )}
                   <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
                     {sourceLabel(trade.source)}

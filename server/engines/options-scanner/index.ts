@@ -168,7 +168,17 @@ export async function runOptionsScan(
   }
 
   const maxSymbols = Math.min(validSymbols.length, 30);
-  const selectedSymbols = validSymbols.slice(0, maxSymbols);
+  let selectedSymbols: string[];
+  if (validSymbols.length <= maxSymbols) {
+    selectedSymbols = validSymbols;
+  } else {
+    const shuffled = [...validSymbols];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    selectedSymbols = shuffled.slice(0, maxSymbols);
+  }
 
   console.log(`[OptionsScanner] Fetching option chains for ${selectedSymbols.length} symbols via ${providerName}...`);
   const chainData = new Map<string, { expirations: string[]; chains: Map<string, OptionChainContract[]> }>();

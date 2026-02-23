@@ -442,180 +442,6 @@ export function AutoAgentPanel() {
             </Select>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1">
-                <Label>Scan Frequency</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>How often the agent scans for new opportunities during market hours.</p>
-                    <p className="mt-1">Shorter intervals catch opportunities faster but use more resources.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                How often to check for new opportunities
-              </p>
-            </div>
-            <Select
-              value={String(policy?.scanIntervalMinutes ?? 5)}
-              onValueChange={(value) => updatePolicy.mutate({ scanIntervalMinutes: parseInt(value) })}
-              data-testid="select-scan-interval"
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Every 1 min</SelectItem>
-                <SelectItem value="2">Every 2 mins</SelectItem>
-                <SelectItem value="5">Every 5 mins</SelectItem>
-                <SelectItem value="10">Every 10 mins</SelectItem>
-                <SelectItem value="15">Every 15 mins</SelectItem>
-                <SelectItem value="30">Every 30 mins</SelectItem>
-                <SelectItem value="60">Every hour</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-1">
-              <Label>Trade Only These Stages</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p><strong>Forming:</strong> Pattern is still developing, higher risk.</p>
-                  <p className="mt-1"><strong>Ready:</strong> Near breakout level, watching for confirmation.</p>
-                  <p className="mt-1"><strong>Breakout:</strong> Actively breaking resistance, most common for entries.</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <p className="text-xs text-muted-foreground mb-2">
-              Agent will only act on opportunities in selected stages
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {STAGE_OPTIONS.map((stage) => {
-                const currentStages = policy?.allowedStages || ["BREAKOUT"];
-                const isChecked = currentStages.includes(stage.value);
-                
-                return (
-                  <label
-                    key={stage.value}
-                    className="flex items-center gap-2 cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={isChecked}
-                      onCheckedChange={(checked) => {
-                        let newStages: string[];
-                        if (checked) {
-                          newStages = [...currentStages, stage.value];
-                        } else {
-                          newStages = currentStages.filter(s => s !== stage.value);
-                          if (newStages.length === 0) {
-                            newStages = ["BREAKOUT"];
-                          }
-                        }
-                        updatePolicy.mutate({ allowedStages: newStages });
-                      }}
-                      data-testid={`checkbox-stage-${stage.value.toLowerCase()}`}
-                    />
-                    <span className="text-sm">{stage.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="minConfidence">Min Confidence %</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Minimum pattern quality score required. Higher values filter for stronger setups but may reduce opportunities.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="minConfidence"
-                type="number"
-                value={policy?.minConfidencePct ?? 85}
-                onChange={(e) => updatePolicy.mutate({ minConfidencePct: parseInt(e.target.value) || 85 })}
-                data-testid="input-min-confidence"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="minUpside">Min Upside %</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Minimum expected profit percentage from entry to target. Filters out setups with limited profit potential.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="minUpside"
-                type="number"
-                step="0.5"
-                value={policy?.minUpsidePct ?? 5}
-                onChange={(e) => updatePolicy.mutate({ minUpsidePct: parseFloat(e.target.value) || 5 })}
-                data-testid="input-min-upside"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="minRvol">Min RVOL</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Relative Volume - compares current volume to average. 1.5 means 50% more volume than usual. Higher values indicate stronger institutional interest.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="minRvol"
-                type="number"
-                step="0.1"
-                value={policy?.minRvol ?? 1.5}
-                onChange={(e) => updatePolicy.mutate({ minRvol: parseFloat(e.target.value) || 1.5 })}
-                data-testid="input-min-rvol"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="minRR">Min Reward:Risk</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Minimum reward-to-risk ratio. 2:1 means potential profit is twice the potential loss. Higher ratios mean better risk-adjusted opportunities.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="minRR"
-                type="number"
-                step="0.1"
-                value={policy?.minRewardRisk ?? 1}
-                onChange={(e) => updatePolicy.mutate({ minRewardRisk: parseFloat(e.target.value) || 1 })}
-                data-testid="input-min-rr"
-              />
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-1">
@@ -655,46 +481,6 @@ export function AutoAgentPanel() {
                 value={policy?.maxDailyLossUsd ?? 1000}
                 onChange={(e) => updatePolicy.mutate({ maxDailyLossUsd: parseFloat(e.target.value) || 1000 })}
                 data-testid="input-max-daily-loss"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="maxTrades">Max Trades/Day</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Maximum number of trades the agent can execute in a single day. Helps control overtrading and risk exposure.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="maxTrades"
-                type="number"
-                value={policy?.maxTradesPerDay ?? 2}
-                onChange={(e) => updatePolicy.mutate({ maxTradesPerDay: parseInt(e.target.value) || 2 })}
-                data-testid="input-max-trades"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="maxPositions">Max Positions</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    Maximum number of open positions allowed at the same time. Prevents over-concentration and manages portfolio risk.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="maxPositions"
-                type="number"
-                value={policy?.maxConcurrentPositions ?? 3}
-                onChange={(e) => updatePolicy.mutate({ maxConcurrentPositions: parseInt(e.target.value) || 3 })}
-                data-testid="input-max-positions"
               />
             </div>
           </div>
@@ -1257,7 +1043,223 @@ export function AutoAgentPanel() {
           </Button>
 
           {showAdvanced && (
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+            <div className="space-y-4 pt-2 border-t">
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1">
+                <Label>Scan Frequency</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>How often the agent scans for new opportunities during market hours.</p>
+                    <p className="mt-1">Shorter intervals catch opportunities faster but use more resources.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                How often to check for new opportunities
+              </p>
+            </div>
+            <Select
+              value={String(policy?.scanIntervalMinutes ?? 5)}
+              onValueChange={(value) => updatePolicy.mutate({ scanIntervalMinutes: parseInt(value) })}
+              data-testid="select-scan-interval"
+            >
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Every 1 min</SelectItem>
+                <SelectItem value="2">Every 2 mins</SelectItem>
+                <SelectItem value="5">Every 5 mins</SelectItem>
+                <SelectItem value="10">Every 10 mins</SelectItem>
+                <SelectItem value="15">Every 15 mins</SelectItem>
+                <SelectItem value="30">Every 30 mins</SelectItem>
+                <SelectItem value="60">Every hour</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label>Trade Only These Stages</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p><strong>Forming:</strong> Pattern is still developing, higher risk.</p>
+                  <p className="mt-1"><strong>Ready:</strong> Near breakout level, watching for confirmation.</p>
+                  <p className="mt-1"><strong>Breakout:</strong> Actively breaking resistance, most common for entries.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">
+              Agent will only act on opportunities in selected stages
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {STAGE_OPTIONS.map((stage) => {
+                const currentStages = policy?.allowedStages || ["BREAKOUT"];
+                const isChecked = currentStages.includes(stage.value);
+                
+                return (
+                  <label
+                    key={stage.value}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        let newStages: string[];
+                        if (checked) {
+                          newStages = [...currentStages, stage.value];
+                        } else {
+                          newStages = currentStages.filter(s => s !== stage.value);
+                          if (newStages.length === 0) {
+                            newStages = ["BREAKOUT"];
+                          }
+                        }
+                        updatePolicy.mutate({ allowedStages: newStages });
+                      }}
+                      data-testid={`checkbox-stage-${stage.value.toLowerCase()}`}
+                    />
+                    <span className="text-sm">{stage.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minConfidence">Min Confidence %</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Minimum pattern quality score required. Higher values filter for stronger setups but may reduce opportunities.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="minConfidence"
+                type="number"
+                value={policy?.minConfidencePct ?? 85}
+                onChange={(e) => updatePolicy.mutate({ minConfidencePct: parseInt(e.target.value) || 85 })}
+                data-testid="input-min-confidence"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minUpside">Min Upside %</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Minimum expected profit percentage from entry to target. Filters out setups with limited profit potential.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="minUpside"
+                type="number"
+                step="0.5"
+                value={policy?.minUpsidePct ?? 5}
+                onChange={(e) => updatePolicy.mutate({ minUpsidePct: parseFloat(e.target.value) || 5 })}
+                data-testid="input-min-upside"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minRvol">Min RVOL</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Relative Volume - compares current volume to average. 1.5 means 50% more volume than usual. Higher values indicate stronger institutional interest.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="minRvol"
+                type="number"
+                step="0.1"
+                value={policy?.minRvol ?? 1.5}
+                onChange={(e) => updatePolicy.mutate({ minRvol: parseFloat(e.target.value) || 1.5 })}
+                data-testid="input-min-rvol"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="minRR">Min Reward:Risk</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Minimum reward-to-risk ratio. 2:1 means potential profit is twice the potential loss. Higher ratios mean better risk-adjusted opportunities.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="minRR"
+                type="number"
+                step="0.1"
+                value={policy?.minRewardRisk ?? 1}
+                onChange={(e) => updatePolicy.mutate({ minRewardRisk: parseFloat(e.target.value) || 1 })}
+                data-testid="input-min-rr"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxTrades">Max Trades/Day</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum number of trades the agent can execute in a single day. Helps control overtrading and risk exposure.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxTrades"
+                type="number"
+                value={policy?.maxTradesPerDay ?? 2}
+                onChange={(e) => updatePolicy.mutate({ maxTradesPerDay: parseInt(e.target.value) || 2 })}
+                data-testid="input-max-trades"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxPositions">Max Positions</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Maximum number of open positions allowed at the same time. Prevents over-concentration and manages portfolio risk.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxPositions"
+                type="number"
+                value={policy?.maxConcurrentPositions ?? 3}
+                onChange={(e) => updatePolicy.mutate({ maxConcurrentPositions: parseInt(e.target.value) || 3 })}
+                data-testid="input-max-positions"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
                   <Label htmlFor="priceMin">Min Price ($)</Label>
@@ -1343,6 +1345,7 @@ export function AutoAgentPanel() {
                 />
               </div>
             </div>
+          </div>
           )}
         </div>
       </CardContent>

@@ -272,6 +272,7 @@ export interface IStorage {
 
   getOpenTradesCount(userId: string): Promise<number>;
   hasOpenTradeForSymbol(userId: string, symbol: string): Promise<boolean>;
+  getSuccessfulTradesTodayCount(userId: string): Promise<number>;
 
   getRecentSkippedTrades(userId: string, limit?: number): Promise<AgentSkippedTrade[]>;
   createSkippedTrade(data: InsertAgentSkippedTrade): Promise<AgentSkippedTrade>;
@@ -2404,6 +2405,23 @@ export class MemStorage implements IStorage {
         )
       );
     return Number(result?.count ?? 0) > 0;
+  }
+
+  async getSuccessfulTradesTodayCount(userId: string): Promise<number> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const [result] = await db
+      .select({ count: count() })
+      .from(agentDecisionsTable)
+      .where(
+        and(
+          eq(agentDecisionsTable.userId, userId),
+          eq(agentDecisionsTable.action, "EXECUTE"),
+          gte(agentDecisionsTable.createdAt, todayStart),
+          sql`(${agentDecisionsTable.orderPayload}->>'brokerStatus' IS NULL OR ${agentDecisionsTable.orderPayload}->>'brokerStatus' NOT IN ('rejected', 'error'))`
+        )
+      );
+    return Number(result?.count ?? 0);
   }
 
   async getRecentSkippedTrades(userId: string, limit: number = 5): Promise<AgentSkippedTrade[]> {

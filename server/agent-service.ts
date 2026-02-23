@@ -177,16 +177,12 @@ export async function authorizeOrder(
     }
   }
   
-  const today = new Date().toISOString().split("T")[0];
-  let tradesToday = agentState?.tradesTodayCount || 0;
-  
-  if (agentState?.lastTradeDate !== today) {
-    tradesToday = 0;
-  }
-  
-  if (policy.maxTradesPerDay && tradesToday >= policy.maxTradesPerDay) {
-    reasons.push(`Max trades/day (${policy.maxTradesPerDay}) reached`);
-    return { allowed: false, reasons };
+  if (policy.maxTradesPerDay) {
+    const successfulTradesToday = await storage.getSuccessfulTradesTodayCount(userId);
+    if (successfulTradesToday >= policy.maxTradesPerDay) {
+      reasons.push(`Max trades/day (${policy.maxTradesPerDay}) reached`);
+      return { allowed: false, reasons };
+    }
   }
   
   const openPositions = await storage.getOpenTradesCount(userId);

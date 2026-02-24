@@ -24,12 +24,11 @@ import { cn } from "@/lib/utils";
 import { Switch as SwitchInput } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Slider } from "@/components/ui/slider";
 import {
-  Bell, Handshake, Bot, Shield, Settings,
+  Bot, Shield, Settings,
   RefreshCw, CheckCircle2, Link2,
   Power, Pause, Play, AlertTriangle,
-  ArrowRight, Info, Zap, Volume2,
+  Info,
   ChevronDown, Scan, Filter, BarChart3, Crosshair,
   XCircle, Clock,
 } from "lucide-react";
@@ -48,34 +47,6 @@ interface AgentState {
 
 const DISCLAIMER_TEXT = "All metrics, scores, levels, and calculated values shown are for informational purposes only and do not constitute investment advice. Always rely on and act according to your own trading plan.";
 
-type AutomationMode = "ALERTS" | "ASSISTED" | "AUTONOMOUS";
-
-const MODE_CARDS: { mode: AutomationMode; title: string; subtitle: string; description: string; icon: typeof Bell; recommended?: string }[] = [
-  {
-    mode: "ALERTS",
-    title: "Alerts Only",
-    subtitle: "Get notified. You decide.",
-    description: "Receive real-time notifications when opportunities match your criteria. You review and act on each one manually.",
-    icon: Bell,
-    recommended: "Recommended for new users",
-  },
-  {
-    mode: "ASSISTED",
-    title: "Assisted Execution",
-    subtitle: "One-click execution with your approval.",
-    description: "Setups are prepared for you with pre-filled order details. Review, adjust, and approve each trade with a single click.",
-    icon: Handshake,
-    recommended: "Recommended for most users",
-  },
-  {
-    mode: "AUTONOMOUS",
-    title: "Autonomous Trading",
-    subtitle: "User-configured automation executes within your limits.",
-    description: "Automation evaluates and executes trades based on rules you define. You set the criteria, risk limits, and can pause or stop at any time.",
-    icon: Bot,
-    recommended: "Advanced",
-  },
-];
 
 export default function AutomationPage() {
   const { toast } = useToast();
@@ -103,22 +74,6 @@ export default function AutomationPage() {
 
   const { isConnected, providerName, status: brokerStatus } = useBrokerStatus();
 
-  const currentMode: AutomationMode = settings?.automationMode || "ALERTS";
-  const currentStatus: string = settings?.automationStatus || "DISABLED";
-
-  const updateSettings = useMutation({
-    mutationFn: async (updates: Record<string, any>) => {
-      return apiRequest("PUT", "/api/user/settings", updates);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/user/settings"] });
-    },
-  });
-
-  const handleModeChange = (mode: AutomationMode) => {
-    updateSettings.mutate({ automationMode: mode });
-    toast({ title: `Mode set to ${MODE_CARDS.find(m => m.mode === mode)?.title}` });
-  };
 
   if (settingsLoading) {
     return (
@@ -143,26 +98,11 @@ export default function AutomationPage() {
             Trade Autopilot
           </h1>
           <p className="text-sm text-muted-foreground">
-            Configure how VCP Trader acts on opportunities. Choose your mode, connect your broker, and set your limits.
+            Configure how VCP Trader acts on opportunities. Connect your broker and set your limits.
           </p>
         </div>
 
-        <ModeSelector
-          currentMode={currentMode}
-          onSelect={handleModeChange}
-          isPending={updateSettings.isPending}
-        />
-
-        <ModeGuidance
-          currentMode={currentMode}
-          isConnected={isConnected}
-          agentState={agentState}
-          settings={settings}
-        />
-
-        {currentMode === "AUTONOMOUS" && (
-          <AutoAgentConfig />
-        )}
+        <AutoAgentConfig />
 
         <BrokerConnectionSection
           isConnected={isConnected}
@@ -175,7 +115,6 @@ export default function AutomationPage() {
         <HowScanningWorksInfo />
 
         <SafetyControlsSection
-          currentMode={currentMode}
           agentState={agentState}
           settings={settings}
         />
@@ -194,346 +133,6 @@ export default function AutomationPage() {
   );
 }
 
-function ModeSelector({ currentMode, onSelect, isPending }: {
-  currentMode: AutomationMode;
-  onSelect: (mode: AutomationMode) => void;
-  isPending: boolean;
-}) {
-  return (
-    <Card data-testid="section-mode-selector">
-      <CardHeader>
-        <CardTitle className="text-lg">1. Automation Mode</CardTitle>
-        <CardDescription>
-          Choose how VCP Trader responds when it finds opportunities that match your criteria.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {MODE_CARDS.map(({ mode, title, subtitle, description, icon: Icon, recommended }) => {
-            const isSelected = currentMode === mode;
-            return (
-              <div
-                key={mode}
-                role="button"
-                tabIndex={0}
-                onClick={() => !isPending && onSelect(mode)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); !isPending && onSelect(mode); }}}
-                className={cn(
-                  "relative flex flex-col items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors cursor-pointer",
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover-elevate",
-                  isPending && "opacity-50 pointer-events-none",
-                )}
-                data-testid={`button-mode-${mode.toLowerCase()}`}
-              >
-                {recommended && (
-                  <Badge
-                    variant={isSelected ? "default" : "secondary"}
-                    className="text-[10px] absolute top-2 right-2 no-default-hover-elevate no-default-active-elevate"
-                  >
-                    {recommended}
-                  </Badge>
-                )}
-                <div className={cn(
-                  "h-10 w-10 rounded-lg flex items-center justify-center",
-                  isSelected ? "bg-primary text-primary-foreground" : "bg-muted"
-                )}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="font-semibold text-sm">{title}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
-                {isSelected && (
-                  <div className="flex items-center gap-1 text-xs text-primary font-medium">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Active
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ModeGuidance({ currentMode, isConnected, agentState, settings }: {
-  currentMode: AutomationMode;
-  isConnected: boolean;
-  agentState?: AgentState;
-  settings?: any;
-}) {
-  if (currentMode === "ALERTS") {
-    return <AlertsConfigSection isConnected={isConnected} settings={settings} />;
-  }
-  if (currentMode === "ASSISTED") {
-    return <AssistedGuidance isConnected={isConnected} />;
-  }
-  if (currentMode === "AUTONOMOUS") {
-    return <AutonomousGuidance isConnected={isConnected} agentState={agentState} />;
-  }
-  return null;
-}
-
-function AlertsConfigSection({ isConnected, settings }: { isConnected: boolean; settings?: any }) {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-
-  const pushEnabled = settings?.pushNotificationsEnabled === "true" || settings?.pushNotificationsEnabled === true;
-  const breakoutEnabled = settings?.breakoutAlertsEnabled !== "false";
-  const stopEnabled = settings?.stopAlertsEnabled !== "false";
-  const emaEnabled = settings?.emaAlertsEnabled !== "false";
-  const approachingEnabled = settings?.approachingAlertsEnabled !== "false";
-  const confidenceMin = settings?.scanConfidenceMin ?? 75;
-
-  const updateSetting = useMutation({
-    mutationFn: async (updates: Record<string, any>) => {
-      return apiRequest("PUT", "/api/user/settings", updates);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/user/settings"] });
-    },
-  });
-
-  const handleToggle = (key: string, value: boolean) => {
-    updateSetting.mutate({ [key]: value });
-  };
-
-  const handleEnablePush = async () => {
-    try {
-      if (!("Notification" in window)) {
-        toast({ title: "Not Supported", description: "Push notifications are not supported in this browser.", variant: "destructive" });
-        return;
-      }
-      const perm = await Notification.requestPermission();
-      if (perm === "granted") {
-        updateSetting.mutate({ pushNotificationsEnabled: true });
-        toast({ title: "Push notifications enabled" });
-      } else {
-        toast({ title: "Permission Denied", description: "Please allow notifications in your browser settings.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Error", description: "Could not enable push notifications.", variant: "destructive" });
-    }
-  };
-
-  return (
-    <Card data-testid="section-alerts-config">
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Volume2 className="h-5 w-5" />
-          2. Alert Preferences
-        </CardTitle>
-        <CardDescription>
-          Choose which alerts you want to receive and how they're delivered.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="p-4 rounded-lg border space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <Bell className="h-4 w-4 text-muted-foreground" />
-              <Label className="font-medium text-sm">Push Notifications</Label>
-            </div>
-            {pushEnabled ? (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="border-green-500/40 text-green-600 no-default-hover-elevate no-default-active-elevate" data-testid="badge-push-enabled">
-                  <CheckCircle2 className="h-3 w-3 mr-1" /> Enabled
-                </Badge>
-                <Button variant="ghost" size="sm" onClick={() => handleToggle("pushNotificationsEnabled", false)} disabled={updateSetting.isPending} data-testid="button-disable-push">
-                  Disable
-                </Button>
-              </div>
-            ) : (
-              <Button size="sm" onClick={handleEnablePush} disabled={updateSetting.isPending} data-testid="button-enable-push">
-                Enable
-              </Button>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {pushEnabled
-              ? "You'll receive browser notifications when opportunities are detected."
-              : "Enable push notifications to get instant alerts when patterns are detected."}
-          </p>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-3">
-          <p className="text-sm font-medium">Alert Types</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { key: "breakoutAlertsEnabled", label: "Breakout Alerts", desc: "Price breaks above resistance", enabled: breakoutEnabled },
-              { key: "approachingAlertsEnabled", label: "Approaching Entry", desc: "Price nearing entry zone", enabled: approachingEnabled },
-              { key: "stopAlertsEnabled", label: "Stop Level Alerts", desc: "Price near stop loss level", enabled: stopEnabled },
-              { key: "emaAlertsEnabled", label: "EMA Alerts", desc: "EMA crossover signals", enabled: emaEnabled },
-            ].map(({ key, label, desc, enabled }) => (
-              <div key={key} className="flex items-center justify-between gap-2 p-3 rounded-lg border">
-                <div>
-                  <Label className="text-sm">{label}</Label>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
-                </div>
-                <SwitchInput
-                  checked={enabled}
-                  onCheckedChange={(v) => handleToggle(key, v)}
-                  disabled={updateSetting.isPending}
-                  data-testid={`switch-${key}`}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <p className="text-sm font-medium">Minimum Confidence</p>
-              <p className="text-xs text-muted-foreground">Only alert when pattern score meets this threshold</p>
-            </div>
-            <Badge variant="secondary" className="font-mono" data-testid="badge-confidence-value">{confidenceMin}%</Badge>
-          </div>
-          <Slider
-            value={[confidenceMin]}
-            min={50}
-            max={95}
-            step={5}
-            onValueCommit={([v]) => updateSetting.mutate({ scanConfidenceMin: v })}
-            data-testid="slider-confidence"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>More alerts (50%)</span>
-            <span>Higher quality (95%)</span>
-          </div>
-        </div>
-
-        {!isConnected && (
-          <>
-            <Separator />
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">No broker connected</p>
-                <p className="text-xs text-muted-foreground">Connect a brokerage for live price data and faster alerts.</p>
-              </div>
-              <Button variant="outline" size="sm" asChild data-testid="button-connect-broker-alerts">
-                <Link href="/settings">Connect</Link>
-              </Button>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AssistedGuidance({ isConnected }: { isConnected: boolean }) {
-  return (
-    <Card data-testid="section-assisted-guidance">
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Zap className="h-5 w-5" />
-          2. How Assisted Execution Works
-        </CardTitle>
-        <CardDescription>
-          Setups are prepared for you. Review and execute with InstaTrade™.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3">
-          {[
-            { step: "1", label: "Scans detect opportunities matching your criteria", done: true },
-            { step: "2", label: "Connect brokerage for live data and order execution", done: isConnected },
-            { step: "3", label: "Review each opportunity on the Scanner page", done: true },
-            { step: "4", label: "Execute with one click via InstaTrade™", done: true },
-          ].map(({ step, label, done }) => (
-            <div key={step} className="flex items-center gap-3 text-sm">
-              <div className={cn(
-                "h-6 w-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0",
-                done ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"
-              )}>
-                {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : step}
-              </div>
-              <span className={cn(!done && "text-muted-foreground")}>{label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-2">
-          {!isConnected && (
-            <Button size="sm" asChild data-testid="button-connect-broker-assisted">
-              <Link href="/settings">
-                <Link2 className="h-4 w-4 mr-1" />
-                Connect Brokerage
-              </Link>
-            </Button>
-          )}
-          <Button variant={isConnected ? "default" : "outline"} size="sm" asChild data-testid="button-goto-scanner">
-            <Link href="/scanner">
-              <ArrowRight className="h-4 w-4 mr-1" />
-              Go to Scanner
-            </Link>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AutonomousGuidance({ isConnected, agentState }: { isConnected: boolean; agentState?: AgentState }) {
-  return (
-    <Card data-testid="section-autonomous-guidance">
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Bot className="h-5 w-5" />
-          2. Autonomous Setup Checklist
-        </CardTitle>
-        <CardDescription>
-          Complete these steps to enable fully automated execution.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {[
-            { label: "Connect your brokerage for execution", done: isConnected, action: !isConnected ? { label: "Connect", href: "/settings" } : undefined },
-            { label: "Configure the Auto Agent (entry criteria, sizing, timing)", done: true, note: "See section below" },
-            { label: "Set safety limits (daily loss, max positions)", done: true, note: "See Safety & Controls below" },
-            { label: "Arm the Auto Agent to begin automated trading", done: !!agentState?.enabled, note: !agentState?.enabled ? "Use the Arm button in Safety & Controls" : undefined },
-          ].map((step, i) => (
-            <div key={i} className="flex items-center gap-3 text-sm">
-              {step.done ? (
-                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-              ) : (
-                <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
-              )}
-              <span className={cn("flex-1", step.done && "text-muted-foreground")}>{step.label}</span>
-              {step.action && !step.done && (
-                <Button variant="ghost" size="sm" className="h-6 text-xs" asChild>
-                  <Link href={step.action.href}>
-                    {step.action.label}
-                    <ArrowRight className="h-3 w-3 ml-1" />
-                  </Link>
-                </Button>
-              )}
-              {step.note && !step.done && (
-                <span className="text-xs text-muted-foreground hidden sm:inline">{step.note}</span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <Separator className="my-4" />
-
-        <HowAutonomousTradingWorks />
-      </CardContent>
-    </Card>
-  );
-}
 
 function HowAutonomousTradingWorks() {
   const [isOpen, setIsOpen] = useState(false);
@@ -1026,8 +625,7 @@ function BrokerConnectionSection({ isConnected, providerName, isPaper }: {
   );
 }
 
-function SafetyControlsSection({ currentMode, agentState, settings }: {
-  currentMode: AutomationMode;
+function SafetyControlsSection({ agentState, settings }: {
   agentState: AgentState | undefined;
   settings: any;
 }) {
@@ -1084,12 +682,7 @@ function SafetyControlsSection({ currentMode, agentState, settings }: {
     },
   });
 
-  const isAutonomous = currentMode === "AUTONOMOUS";
-
   const getStatusBadge = () => {
-    if (!isAutonomous) {
-      return <Badge variant="secondary" data-testid="badge-safety-status">N/A</Badge>;
-    }
     if (agentState?.emergencyStop) {
       return <Badge variant="destructive" data-testid="badge-safety-status">EMERGENCY STOP</Badge>;
     }
@@ -1118,17 +711,13 @@ function SafetyControlsSection({ currentMode, agentState, settings }: {
             <div>
               <CardTitle className="text-lg">Safety & Controls</CardTitle>
               <CardDescription>
-                {isAutonomous
-                  ? "Manage your automation state and safety limits."
-                  : "Safety controls are available in Autonomous mode."}
+                Manage your automation state and safety limits.
               </CardDescription>
             </div>
             {getStatusBadge()}
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {isAutonomous ? (
-            <>
               <div className="flex flex-wrap items-center gap-2 p-4 bg-muted/50 rounded-lg">
                 <span className="text-sm font-medium mr-auto">Automation Status</span>
                 {agentState?.emergencyStop ? (
@@ -1185,20 +774,6 @@ function SafetyControlsSection({ currentMode, agentState, settings }: {
                 <Info className="h-3.5 w-3.5 flex-shrink-0" />
                 <span>Configure entry criteria, trade sizing, and position limits in the Auto Agent Setup section above.</span>
               </div>
-            </>
-          ) : (
-            <div className="text-center py-8 space-y-3">
-              <div className="h-12 w-12 rounded-full bg-muted mx-auto flex items-center justify-center">
-                <Shield className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Safety controls are not applicable in <span className="font-medium">{currentMode === "ALERTS" ? "Alerts" : "Assisted"}</span> mode.
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Switch to Autonomous mode to configure automated execution and safety limits.
-              </p>
-            </div>
-          )}
         </CardContent>
       </Card>
 

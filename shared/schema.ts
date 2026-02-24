@@ -1530,6 +1530,9 @@ export const agentSettings = pgTable("agent_settings", {
   cooldownMinutesAfterExit: integer("cooldown_minutes_after_exit").default(15),
   maxPositionsPerSymbol: integer("max_positions_per_symbol").default(1),
 
+  // Scan schedule preferences (JSONB: { windows: { premarket: { enabled, strategies }, vcp: {...}, ... } })
+  scanSchedule: jsonb("scan_schedule").default({}),
+
   // Advanced (JSONB to avoid schema bloat)
   optionsConstraints: jsonb("options_constraints").default({}),
   futuresConstraints: jsonb("futures_constraints").default({}),

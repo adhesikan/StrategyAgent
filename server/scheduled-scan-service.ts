@@ -48,19 +48,45 @@ const US_MARKET_HOLIDAYS_2025_2026 = [
   "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
 ];
 
-// Strategy groups for different scan times
-const STRATEGY_GROUPS = {
-  // 8:00 AM - Premarket scan (gap analysis, overnight setups)
-  PREMARKET_STRATEGIES: [StrategyType.GAP_AND_GO, StrategyType.VCP, StrategyType.VCP_MULTIDAY],
-  // 9:45 AM - VCP patterns (swing/position strategies)
-  VCP_STRATEGIES: [StrategyType.VCP, StrategyType.VCP_MULTIDAY],
-  // 10:00 AM - Early morning momentum plays
-  EARLY_MOMENTUM_STRATEGIES: [StrategyType.ORB5, StrategyType.ORB15, StrategyType.GAP_AND_GO],
-  // 11:00 AM - Mid-morning setups
-  MID_MORNING_STRATEGIES: [StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
-  // 4:15 PM - Extended hours scan (post-close review)
-  EXTENDED_HOURS_STRATEGIES: [StrategyType.VCP, StrategyType.VCP_MULTIDAY, StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
+// Default strategy groups for each scan window (used when user has no preferences)
+const DEFAULT_WINDOW_STRATEGIES: Record<string, string[]> = {
+  premarket: [StrategyType.GAP_AND_GO, StrategyType.VCP, StrategyType.VCP_MULTIDAY],
+  vcp: [StrategyType.VCP, StrategyType.VCP_MULTIDAY],
+  early_momentum: [StrategyType.ORB5, StrategyType.ORB15, StrategyType.GAP_AND_GO],
+  mid_morning: [StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
+  extended_hours: [StrategyType.VCP, StrategyType.VCP_MULTIDAY, StrategyType.VWAP_RECLAIM, StrategyType.HIGH_RVOL],
 };
+
+// Strategy groups kept for backward compatibility with manual scan
+const STRATEGY_GROUPS = {
+  PREMARKET_STRATEGIES: DEFAULT_WINDOW_STRATEGIES.premarket,
+  VCP_STRATEGIES: DEFAULT_WINDOW_STRATEGIES.vcp,
+  EARLY_MOMENTUM_STRATEGIES: DEFAULT_WINDOW_STRATEGIES.early_momentum,
+  MID_MORNING_STRATEGIES: DEFAULT_WINDOW_STRATEGIES.mid_morning,
+  EXTENDED_HOURS_STRATEGIES: DEFAULT_WINDOW_STRATEGIES.extended_hours,
+};
+
+interface ScanWindowConfig {
+  enabled: boolean;
+  strategies: string[];
+}
+
+function getUserStrategiesForWindow(scanSchedule: any, windowId: string): string[] | null {
+  if (!scanSchedule || !scanSchedule.windows) {
+    return DEFAULT_WINDOW_STRATEGIES[windowId] || null;
+  }
+  const windowConfig: ScanWindowConfig | undefined = scanSchedule.windows[windowId];
+  if (!windowConfig) {
+    return DEFAULT_WINDOW_STRATEGIES[windowId] || null;
+  }
+  if (!windowConfig.enabled) {
+    return null;
+  }
+  if (!windowConfig.strategies || windowConfig.strategies.length === 0) {
+    return DEFAULT_WINDOW_STRATEGIES[windowId] || null;
+  }
+  return windowConfig.strategies;
+}
 
 
 function isTradingDay(date: Date = new Date()): boolean {
@@ -109,7 +135,7 @@ function quotesToScanResults(quotes: any[], strategy: string): ScanResult[] {
   return results;
 }
 
-async function runScheduledScan(strategies: string[], scanName: string): Promise<number> {
+async function runScheduledScan(defaultStrategies: string[], scanName: string, windowId?: string): Promise<number> {
   const now = new Date();
   console.log(`[ScheduledScan] Running ${scanName} scan at ${now.toISOString()}`);
   
@@ -154,14 +180,53 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
     const agentUserIds = await getAgentEnabledUserIds();
     const allIngestUserIds = Array.from(new Set([connection.userId, ...agentUserIds]));
 
-    for (const strategy of strategies) {
+    const allUserSettings = await Promise.all(
+      allIngestUserIds.map(async (uid) => {
+        const settings = await storage.getAgentSettings(uid);
+        return { userId: uid, scanSchedule: settings?.scanSchedule || null };
+      })
+    );
+
+    const allStrategiesNeeded = new Set<string>();
+    const userStrategyMap = new Map<string, string[]>();
+
+    for (const { userId, scanSchedule } of allUserSettings) {
+      let strategies: string[] | null;
+      if (windowId) {
+        strategies = getUserStrategiesForWindow(scanSchedule, windowId);
+      } else {
+        strategies = defaultStrategies;
+      }
+      if (strategies && strategies.length > 0) {
+        userStrategyMap.set(userId, strategies);
+        strategies.forEach(s => allStrategiesNeeded.add(s));
+      } else {
+        console.log(`[ScheduledScan] User ${userId} has window '${windowId}' disabled, skipping`);
+      }
+    }
+
+    if (allStrategiesNeeded.size === 0) {
+      console.log(`[ScheduledScan] No users have enabled strategies for ${scanName}, skipping`);
+      return 0;
+    }
+
+    const strategyResults = new Map<string, ScanResult[]>();
+    for (const strategy of Array.from(allStrategiesNeeded)) {
       const rawResults = quotesToScanResults(allQuotes, strategy);
       const results = await verifyBullishTrend(connectionWithToken, rawResults);
+      strategyResults.set(strategy, results);
       
       if (results.length > 0) {
-        console.log(`[ScheduledScan] Strategy ${strategy}: ${rawResults.length} raw -> ${results.length} bullish-verified opportunities`);
-        
-        for (const uid of allIngestUserIds) {
+        console.log(`[ScheduledScan] Strategy ${strategy}: ${rawResults.length} raw -> ${results.length} bullish-verified`);
+      } else {
+        console.log(`[ScheduledScan] Strategy ${strategy}: 0 qualifying setups`);
+      }
+    }
+
+    for (const [uid, strategies] of Array.from(userStrategyMap.entries())) {
+      for (const strategy of strategies) {
+        const results = strategyResults.get(strategy);
+        if (results && results.length > 0) {
           try {
             const ingested = await ingestOpportunitiesFromScan(uid, results, strategy, "1d");
             totalIngested += ingested;
@@ -169,12 +234,10 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
             console.error(`[ScheduledScan] Failed to ingest for user ${uid}, strategy ${strategy}:`, error.message);
           }
         }
-      } else {
-        console.log(`[ScheduledScan] Strategy ${strategy}: 0 qualifying opportunities`);
       }
     }
     
-    console.log(`[ScheduledScan] ${scanName} completed: ingested ${totalIngested} opportunities for ${allIngestUserIds.length} user(s)`);
+    console.log(`[ScheduledScan] ${scanName} completed: ingested ${totalIngested} setups for ${userStrategyMap.size} user(s)`);
   } catch (error: any) {
     console.error(`[ScheduledScan] Error running ${scanName}:`, error.message);
   }
@@ -183,42 +246,37 @@ async function runScheduledScan(strategies: string[], scanName: string): Promise
 }
 
 export function startScheduledScanService(): void {
-  // 8:00 AM ET - Premarket scan (gap analysis, overnight setups)
   cron.schedule("0 8 * * 1-5", async () => {
     console.log("[ScheduledScan] 8:00 AM ET - Premarket scan triggered");
-    await runScheduledScan(STRATEGY_GROUPS.PREMARKET_STRATEGIES, "Premarket (8:00 AM)");
+    await runScheduledScan(STRATEGY_GROUPS.PREMARKET_STRATEGIES, "Premarket (8:00 AM)", "premarket");
   }, {
     timezone: "America/New_York"
   });
 
-  // 9:45 AM ET - VCP strategies (swing/position plays)
   cron.schedule("45 9 * * 1-5", async () => {
     console.log("[ScheduledScan] 9:45 AM ET - VCP strategies scan triggered");
-    await runScheduledScan(STRATEGY_GROUPS.VCP_STRATEGIES, "VCP Strategies (9:45 AM)");
+    await runScheduledScan(STRATEGY_GROUPS.VCP_STRATEGIES, "VCP Strategies (9:45 AM)", "vcp");
   }, {
     timezone: "America/New_York"
   });
   
-  // 10:00 AM ET - Early momentum strategies (ORB, Gap & Go)
   cron.schedule("0 10 * * 1-5", async () => {
     console.log("[ScheduledScan] 10:00 AM ET - Early momentum strategies scan triggered");
-    await runScheduledScan(STRATEGY_GROUPS.EARLY_MOMENTUM_STRATEGIES, "Early Momentum (10:00 AM)");
+    await runScheduledScan(STRATEGY_GROUPS.EARLY_MOMENTUM_STRATEGIES, "Early Momentum (10:00 AM)", "early_momentum");
   }, {
     timezone: "America/New_York"
   });
   
-  // 11:00 AM ET - Mid-morning strategies (VWAP, Red to Green)
   cron.schedule("0 11 * * 1-5", async () => {
     console.log("[ScheduledScan] 11:00 AM ET - Mid-morning strategies scan triggered");
-    await runScheduledScan(STRATEGY_GROUPS.MID_MORNING_STRATEGIES, "Mid-Morning (11:00 AM)");
+    await runScheduledScan(STRATEGY_GROUPS.MID_MORNING_STRATEGIES, "Mid-Morning (11:00 AM)", "mid_morning");
   }, {
     timezone: "America/New_York"
   });
 
-  // 4:15 PM ET - Extended hours scan (post-close review for next day)
   cron.schedule("15 16 * * 1-5", async () => {
     console.log("[ScheduledScan] 4:15 PM ET - Extended hours scan triggered");
-    await runScheduledScan(STRATEGY_GROUPS.EXTENDED_HOURS_STRATEGIES, "Extended Hours (4:15 PM)");
+    await runScheduledScan(STRATEGY_GROUPS.EXTENDED_HOURS_STRATEGIES, "Extended Hours (4:15 PM)", "extended_hours");
   }, {
     timezone: "America/New_York"
   });
@@ -233,7 +291,6 @@ export function startScheduledScanService(): void {
 
 export async function runManualScheduledScan(): Promise<{ success: boolean; message: string; ingestedCount?: number }> {
   try {
-    // Run all strategy groups when manually triggered
     const allStrategies = [
       ...STRATEGY_GROUPS.VCP_STRATEGIES,
       ...STRATEGY_GROUPS.EARLY_MOMENTUM_STRATEGIES,
@@ -243,7 +300,7 @@ export async function runManualScheduledScan(): Promise<{ success: boolean; mess
     const totalIngested = await runScheduledScan(allStrategies, "Manual Full Scan");
     return { 
       success: true, 
-      message: `Scheduled scan completed successfully. Ingested ${totalIngested} opportunities across all strategies.`,
+      message: `Scheduled scan completed successfully. Ingested ${totalIngested} setups across all strategies.`,
       ingestedCount: totalIngested 
     };
   } catch (error: any) {

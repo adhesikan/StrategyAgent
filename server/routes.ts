@@ -5962,6 +5962,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     duplicateSignalWindowMinutes: z.number().int().min(0).max(1440).optional(),
     cooldownMinutesAfterExit: z.number().int().min(0).max(1440).optional(),
     maxPositionsPerSymbol: z.number().int().min(1).max(50).optional(),
+    scanSchedule: z.record(z.any()).optional(),
     optionsConstraints: z.record(z.any()).optional(),
     futuresConstraints: z.record(z.any()).optional(),
     reliability: z.record(z.any()).optional(),

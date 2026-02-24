@@ -170,6 +170,10 @@ export default function AutomationPage() {
           isPaper={brokerStatus?.preferredAccountId?.startsWith("sandbox:") ?? false}
         />
 
+        <ScanScheduleSection />
+
+        <HowScanningWorksInfo />
+
         <SafetyControlsSection
           currentMode={currentMode}
           agentState={agentState}
@@ -594,6 +598,338 @@ function HowAutonomousTradingWorks() {
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+const SCAN_WINDOWS = [
+  {
+    id: "premarket",
+    label: "Premarket",
+    time: "8:00 AM ET",
+    description: "Gap analysis, overnight setups",
+    defaultStrategies: ["GAP_AND_GO", "VCP", "VCP_MULTIDAY"],
+  },
+  {
+    id: "vcp",
+    label: "VCP Patterns",
+    time: "9:45 AM ET",
+    description: "Swing and position strategies",
+    defaultStrategies: ["VCP", "VCP_MULTIDAY"],
+  },
+  {
+    id: "early_momentum",
+    label: "Early Momentum",
+    time: "10:00 AM ET",
+    description: "Opening range breakouts, gap plays",
+    defaultStrategies: ["ORB5", "ORB15", "GAP_AND_GO"],
+  },
+  {
+    id: "mid_morning",
+    label: "Mid-Morning",
+    time: "11:00 AM ET",
+    description: "VWAP reclaims, volume surges",
+    defaultStrategies: ["VWAP_RECLAIM", "HIGH_RVOL"],
+  },
+  {
+    id: "extended_hours",
+    label: "Extended Hours",
+    time: "4:15 PM ET",
+    description: "Post-close review for next day",
+    defaultStrategies: ["VCP", "VCP_MULTIDAY", "VWAP_RECLAIM", "HIGH_RVOL"],
+  },
+];
+
+const ALL_STRATEGIES: { id: string; label: string }[] = [
+  { id: "VCP", label: "Momentum Breakout" },
+  { id: "VCP_MULTIDAY", label: "Power Breakout" },
+  { id: "CLASSIC_PULLBACK", label: "Trend Pilot" },
+  { id: "VWAP_RECLAIM", label: "Institutional Reclaim" },
+  { id: "ORB5", label: "Open Drive (5m)" },
+  { id: "ORB15", label: "Open Drive (15m)" },
+  { id: "HIGH_RVOL", label: "Volume Surge" },
+  { id: "GAP_AND_GO", label: "Gap Force" },
+  { id: "TREND_CONTINUATION", label: "Trend Continuation" },
+  { id: "VOLATILITY_SQUEEZE", label: "Volatility Squeeze" },
+];
+
+interface ScanWindowConfig {
+  enabled: boolean;
+  strategies: string[];
+}
+
+type ScanScheduleData = Record<string, ScanWindowConfig>;
+
+function getDefaultSchedule(): ScanScheduleData {
+  const schedule: ScanScheduleData = {};
+  for (const win of SCAN_WINDOWS) {
+    schedule[win.id] = { enabled: true, strategies: [...win.defaultStrategies] };
+  }
+  return schedule;
+}
+
+function buildScheduleFromServer(serverData: any): ScanScheduleData {
+  const saved: ScanScheduleData = serverData?.scanSchedule?.windows || {};
+  const schedule: ScanScheduleData = {};
+  for (const win of SCAN_WINDOWS) {
+    schedule[win.id] = saved[win.id] || { enabled: true, strategies: [...win.defaultStrategies] };
+  }
+  return schedule;
+}
+
+function ScanScheduleSection() {
+  const { toast } = useToast();
+  const [isOpen, setIsOpen] = useState(false);
+  const [localSchedule, setLocalSchedule] = useState<ScanScheduleData | null>(null);
+
+  const { data: agentSettings, isLoading } = useQuery<any>({
+    queryKey: ["/api/agent-settings"],
+  });
+
+  useEffect(() => {
+    if (agentSettings && !localSchedule) {
+      setLocalSchedule(buildScheduleFromServer(agentSettings));
+    }
+  }, [agentSettings]);
+
+  const schedule = localSchedule || buildScheduleFromServer(agentSettings);
+
+  const updateSchedule = useMutation({
+    mutationFn: async (newSchedule: ScanScheduleData) => {
+      return apiRequest("PUT", "/api/agent-settings", {
+        scanSchedule: { windows: newSchedule },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-settings"] });
+    },
+    onError: (_, failedSchedule) => {
+      setLocalSchedule(buildScheduleFromServer(agentSettings));
+      toast({ title: "Failed to save scan schedule", variant: "destructive" });
+    },
+  });
+
+  const applyUpdate = (newSchedule: ScanScheduleData) => {
+    setLocalSchedule(newSchedule);
+    updateSchedule.mutate(newSchedule);
+  };
+
+  const toggleWindow = (windowId: string) => {
+    const updated = { ...schedule };
+    updated[windowId] = { ...updated[windowId], enabled: !updated[windowId].enabled };
+    applyUpdate(updated);
+  };
+
+  const toggleStrategy = (windowId: string, strategyId: string) => {
+    const updated = { ...schedule };
+    const win = { ...updated[windowId] };
+    if (win.strategies.includes(strategyId)) {
+      if (win.strategies.length <= 1) return;
+      win.strategies = win.strategies.filter(s => s !== strategyId);
+    } else {
+      win.strategies = [...win.strategies, strategyId];
+    }
+    updated[windowId] = win;
+    applyUpdate(updated);
+  };
+
+  const resetToDefaults = () => {
+    const defaults = getDefaultSchedule();
+    applyUpdate(defaults);
+  };
+
+  const enabledCount = Object.values(schedule).filter(w => w.enabled).length;
+
+  return (
+    <Card data-testid="section-scan-schedule">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="cursor-pointer" onClick={() => setIsOpen(!isOpen)} data-testid="button-toggle-scan-schedule">
+          <CardTitle className="text-lg flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Scan Schedule
+            </span>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" data-testid="badge-scan-windows-count">
+                {enabledCount}/{SCAN_WINDOWS.length} active
+              </Badge>
+              <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
+            </div>
+          </CardTitle>
+          <CardDescription>
+            Choose when the autopilot scans for setups and which strategies to use at each time.
+          </CardDescription>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-4">
+            {isLoading ? (
+              <div className="animate-pulse space-y-3">
+                {[1,2,3].map(i => <div key={i} className="h-16 bg-muted rounded" />)}
+              </div>
+            ) : (
+              <>
+                {SCAN_WINDOWS.map(win => {
+                  const config = schedule[win.id];
+                  return (
+                    <div
+                      key={win.id}
+                      className={cn(
+                        "border rounded-lg p-4 transition-colors",
+                        config.enabled ? "bg-card" : "bg-muted/30 opacity-60"
+                      )}
+                      data-testid={`scan-window-${win.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <Switch
+                            checked={config.enabled}
+                            onCheckedChange={() => toggleWindow(win.id)}
+                            disabled={updateSchedule.isPending}
+                            data-testid={`switch-window-${win.id}`}
+                          />
+                          <div>
+                            <div className="font-medium text-sm flex items-center gap-2">
+                              {win.label}
+                              <Badge variant="outline" className="text-xs font-normal" data-testid={`badge-time-${win.id}`}>
+                                {win.time}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{win.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                      {config.enabled && (
+                        <div className="ml-12 mt-2 flex flex-wrap gap-2" data-testid={`strategies-${win.id}`}>
+                          {ALL_STRATEGIES.map(strat => {
+                            const isActive = config.strategies.includes(strat.id);
+                            const isOnly = isActive && config.strategies.length === 1;
+                            return (
+                              <button
+                                key={strat.id}
+                                onClick={() => toggleStrategy(win.id, strat.id)}
+                                disabled={updateSchedule.isPending || isOnly}
+                                className={cn(
+                                  "px-2.5 py-1 text-xs rounded-full border transition-colors",
+                                  isActive
+                                    ? "bg-primary/10 border-primary/30 text-primary"
+                                    : "bg-muted/50 border-transparent text-muted-foreground hover:border-muted-foreground/30"
+                                )}
+                                title={isOnly ? "At least one strategy required" : undefined}
+                                data-testid={`strategy-chip-${win.id}-${strat.id}`}
+                              >
+                                {strat.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetToDefaults}
+                    disabled={updateSchedule.isPending}
+                    data-testid="button-reset-schedule"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    Reset to Defaults
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+function HowScanningWorksInfo() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Card data-testid="section-how-scanning-works">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="cursor-pointer" onClick={() => setIsOpen(!isOpen)} data-testid="button-toggle-scanning-info">
+          <CardTitle className="text-lg flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              How Autopilot Scanning Works
+            </span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
+          </CardTitle>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-4">
+            <div className="space-y-4 text-sm">
+              <div className="flex gap-3">
+                <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <Clock className="h-4 w-4 text-blue-500" />
+                </div>
+                <div>
+                  <p className="font-medium">Scheduled scans run throughout the trading day</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Five scan windows cover the full session: premarket gap analysis (8 AM), swing pattern detection (9:45 AM),
+                    opening range breakouts (10 AM), mid-morning momentum (11 AM), and post-close review (4:15 PM). Each window
+                    targets strategies best suited for that time of day.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="h-8 w-8 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+                  <Scan className="h-4 w-4 text-purple-500" />
+                </div>
+                <div>
+                  <p className="font-medium">Uses the same Scanner engine as the manual Scanner page</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The autopilot runs the exact same pattern detection code as when you manually scan. Results go through
+                    the same bullish trend verification. The only difference is it runs automatically on a timer instead of
+                    you clicking "Scan Now."
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
+                  <Settings className="h-4 w-4 text-green-500" />
+                </div>
+                <div>
+                  <p className="font-medium">You control which scans run and which strategies are used</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use the Scan Schedule section above to enable or disable specific time windows and pick exactly which
+                    strategies should be active during each window. Disabled windows are skipped entirely.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <Filter className="h-4 w-4 text-amber-500" />
+                </div>
+                <div>
+                  <p className="font-medium">Results feed into your policy filters before any action</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Scan results are checked against your Auto Agent rules (price range, risk/reward, position limits).
+                    In Alerts mode you get notified. In Assisted mode you review and approve. In Autonomous mode,
+                    qualifying setups are executed automatically.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground flex gap-2">
+              <Shield className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+              <div>
+                Scans only run on trading days (Mon-Fri, excluding market holidays) and require an active broker connection for live market data.
+              </div>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }
 

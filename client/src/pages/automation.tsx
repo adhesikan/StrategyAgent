@@ -695,16 +695,18 @@ function ScanScheduleSection() {
 
   const updateSchedule = useMutation({
     mutationFn: async (newSchedule: ScanScheduleData) => {
-      return apiRequest("PUT", "/api/agent-settings", {
+      const res = await apiRequest("PUT", "/api/agent-settings", {
         scanSchedule: { windows: newSchedule },
       });
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agent-settings"] });
     },
-    onError: (_, failedSchedule) => {
+    onError: (error: any) => {
+      console.error("[ScanSchedule] Save error:", error?.message || error);
       setLocalSchedule(buildScheduleFromServer(agentSettings));
-      toast({ title: "Failed to save scan schedule", variant: "destructive" });
+      toast({ title: "Failed to save scan schedule", description: error?.message || "Unknown error", variant: "destructive" });
     },
   });
 

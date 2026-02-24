@@ -6094,18 +6094,20 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         }
       }
 
-      await storage.createAgentSettingsAudit({
+      storage.createAgentSettingsAudit({
         userId,
         changedBy: userId,
         before: before as any,
         after: updated as any,
         source: "ui",
+      }).catch(auditErr => {
+        console.error("[agent-settings] Audit log failed (non-fatal):", auditErr?.message);
       });
 
       res.json(updated);
     } catch (error: any) {
       console.error("[agent-settings] PUT error:", error?.message || error, error?.stack);
-      res.status(500).json({ error: "Failed to update agent settings" });
+      res.status(500).json({ error: "Failed to update agent settings", detail: error?.message });
     }
   });
 

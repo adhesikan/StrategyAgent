@@ -449,7 +449,7 @@ function AssistedGuidance({ isConnected }: { isConnected: boolean }) {
           {[
             { step: "1", label: "Scans detect opportunities matching your criteria", done: true },
             { step: "2", label: "Connect brokerage for live data and order execution", done: isConnected },
-            { step: "3", label: "Review each opportunity on the Discover page", done: true },
+            { step: "3", label: "Review each opportunity on the Scanner page", done: true },
             { step: "4", label: "Execute with one click via InstaTrade™", done: true },
           ].map(({ step, label, done }) => (
             <div key={step} className="flex items-center gap-3 text-sm">
@@ -473,10 +473,10 @@ function AssistedGuidance({ isConnected }: { isConnected: boolean }) {
               </Link>
             </Button>
           )}
-          <Button variant={isConnected ? "default" : "outline"} size="sm" asChild data-testid="button-goto-discover">
-            <Link href="/discover">
+          <Button variant={isConnected ? "default" : "outline"} size="sm" asChild data-testid="button-goto-scanner">
+            <Link href="/scanner">
               <ArrowRight className="h-4 w-4 mr-1" />
-              Go to Discover
+              Go to Scanner
             </Link>
           </Button>
         </div>
@@ -542,7 +542,7 @@ function HowAutonomousTradingWorks() {
     {
       icon: Scan,
       title: "Setups are discovered",
-      description: "The scanner runs at scheduled times throughout the trading day, detecting patterns across multiple strategies (VCP, pullbacks, momentum, etc.). Options scans from the Discover page are also picked up automatically.",
+      description: "The scanner runs at scheduled times throughout the trading day, detecting patterns across multiple strategies (VCP, pullbacks, momentum, etc.). Options scans from the Scanner page are also picked up automatically.",
     },
     {
       icon: Filter,

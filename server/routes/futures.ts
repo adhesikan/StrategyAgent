@@ -148,6 +148,7 @@ export function registerFuturesRoutes(app: Express): void {
       const symbol = (req.query.symbol as string) ?? "MES";
       const limit = Math.min(parseInt((req.query.limit as string) ?? "300", 10), 900);
       const bars = getRecentBars(symbol, limit);
+      bars.sort((a, b) => a.time - b.time);
       const tick = getLastTick(symbol);
 
       res.json({ bars, lastTick: tick });

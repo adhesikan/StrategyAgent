@@ -422,13 +422,20 @@ export default function FuturesScanner() {
   const populateChart = useCallback((bars: FuturesBar[], periods: number[]) => {
     if (!seriesRef.current || !chartApiRef.current || bars.length === 0) return;
 
-    const chartBars = bars.map((b) => ({
-      time: b.time as any,
-      open: b.open,
-      high: b.high,
-      low: b.low,
-      close: b.close,
-    }));
+    const seen = new Set<number>();
+    const chartBars = bars
+      .filter((b) => {
+        if (seen.has(b.time)) return false;
+        seen.add(b.time);
+        return true;
+      })
+      .map((b) => ({
+        time: b.time as any,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+      }));
     seriesRef.current.setData(chartBars);
 
     const closes = bars.map((b) => b.close);

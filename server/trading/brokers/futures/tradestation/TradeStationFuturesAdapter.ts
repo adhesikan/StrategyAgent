@@ -148,13 +148,32 @@ export class TradeStationFuturesAdapter extends EventEmitter implements IFutures
 
       for (const b of bars) {
         if (b.IsEndOfHistory) continue;
+
+        let timeSeconds: number;
+        if (b.TimeStamp) {
+          timeSeconds = Math.floor(new Date(b.TimeStamp).getTime() / 1000);
+        } else if (b.Epoch) {
+          const epoch = typeof b.Epoch === "string" ? parseInt(b.Epoch, 10) : b.Epoch;
+          timeSeconds = epoch > 1e12 ? Math.floor(epoch / 1000) : epoch;
+        } else {
+          continue;
+        }
+
+        if (isNaN(timeSeconds) || timeSeconds <= 0) continue;
+
+        const open = parseFloat(b.Open ?? "0");
+        const high = parseFloat(b.High ?? "0");
+        const low = parseFloat(b.Low ?? "0");
+        const close = parseFloat(b.Close ?? "0");
+        if (open === 0 && high === 0 && low === 0 && close === 0) continue;
+
         const bar: FuturesBar = {
           symbol,
-          time: Math.floor(new Date(b.TimeStamp || b.Epoch).getTime() / 1000),
-          open: parseFloat(b.Open ?? "0"),
-          high: parseFloat(b.High ?? "0"),
-          low: parseFloat(b.Low ?? "0"),
-          close: parseFloat(b.Close ?? "0"),
+          time: timeSeconds,
+          open,
+          high,
+          low,
+          close,
           volume: parseInt(b.TotalVolume ?? b.Volume ?? "0", 10),
         };
         this.emit("bar", bar);

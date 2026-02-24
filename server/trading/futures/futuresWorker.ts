@@ -12,7 +12,7 @@ import {
 import { MockFuturesAdapter } from "../brokers/futures/mock/MockFuturesAdapter";
 import type { IFuturesBrokerAdapter, FuturesOrderUpdate } from "../brokers/futures/types";
 import { FUTURES_SYMBOLS } from "../brokers/futures/types";
-import { upsertTick, upsertBar, getLastTick, getRecentBars } from "./marketState";
+import { upsertTick, upsertBar, getLastTick, getRecentBars, clearSymbol, getAllSubscribedSymbols as getMarketStateSymbols } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
 import { createFuturesAdapter, createTradeStationFuturesAdapter, type FuturesFeedType, type AdapterResult, type TradeStationFuturesConfig } from "./adapterFactory";
@@ -180,6 +180,12 @@ export async function switchToTradeStationFeed(config: TradeStationFuturesConfig
     agentTimer = null;
     running = false;
   }
+
+  const existingSymbols = getMarketStateSymbols();
+  for (const sym of existingSymbols) {
+    clearSymbol(sym);
+  }
+  console.log(`[FuturesWorker] Cleared market state for ${existingSymbols.length} symbols before feed switch`);
 
   const result = await createTradeStationFuturesAdapter(config);
   applyAdapterResult(result);

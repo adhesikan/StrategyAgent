@@ -75,12 +75,23 @@ function getProviderForConnection(connection: { provider: string; simMode?: bool
         if (!accountId) { const s = await this.getStatus(accessToken); accountId = s.accountId; }
         if (!accountId) return [];
         const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-        const data = await fetch(`${simBaseUrl}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`, {
-          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-        }).then(r => { if (!r.ok) throw new Error(`TradeStation SIM error ${r.status}`); return r.json(); });
-        const orders = data?.Orders || data || [];
-        if (!Array.isArray(orders)) return [];
-        return orders.slice(0, 500).map((o: any) => {
+        const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
+        const allOrders: any[] = [];
+
+        try {
+          const activeData = await fetch(`${simBaseUrl}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`, { headers }).then(r => { if (!r.ok) throw new Error(`SIM error ${r.status}`); return r.json(); });
+          const active = activeData?.Orders || activeData || [];
+          if (Array.isArray(active)) allOrders.push(...active);
+        } catch {}
+
+        try {
+          const histData = await fetch(`${simBaseUrl}/brokerage/accounts/${accountId}/historicalorders?since=${encodeURIComponent(since)}`, { headers }).then(r => { if (!r.ok) throw new Error(`SIM error ${r.status}`); return r.json(); });
+          const hist = histData?.Orders || histData || [];
+          if (Array.isArray(hist)) allOrders.push(...hist);
+        } catch {}
+
+        const deduped = Array.from(new Map(allOrders.map((o: any) => [String(o.OrderID || ""), o])).values());
+        return deduped.slice(0, 500).map((o: any) => {
           const action = (o.TradeAction || "").toLowerCase();
           const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
           return {

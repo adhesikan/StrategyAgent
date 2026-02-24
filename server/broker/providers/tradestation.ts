@@ -315,20 +315,48 @@ export const tradestationProvider: BrokerProvider = {
     if (!accountId) return [];
 
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-    const data = await tsFetch(
-      `${LIVE_BASE_URL}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`,
-      accessToken,
-    );
+    const allOrders: any[] = [];
 
-    const orders = data?.Orders || data || [];
-    if (!Array.isArray(orders)) {
-      console.log(`[TradeStation] getOrders: response is not an array for account ${accountId}`);
+    try {
+      const activeData = await tsFetch(
+        `${LIVE_BASE_URL}/brokerage/accounts/${accountId}/orders?since=${encodeURIComponent(since)}`,
+        accessToken,
+      );
+      const activeOrders = activeData?.Orders || activeData || [];
+      if (Array.isArray(activeOrders)) {
+        allOrders.push(...activeOrders);
+        console.log(`[TradeStation] getOrders: ${activeOrders.length} active orders for account ${accountId}`);
+      }
+    } catch (err: any) {
+      console.log(`[TradeStation] getOrders active error: ${err.message}`);
+    }
+
+    try {
+      const histData = await tsFetch(
+        `${LIVE_BASE_URL}/brokerage/accounts/${accountId}/historicalorders?since=${encodeURIComponent(since)}`,
+        accessToken,
+      );
+      const histOrders = histData?.Orders || histData || [];
+      if (Array.isArray(histOrders)) {
+        allOrders.push(...histOrders);
+        console.log(`[TradeStation] getOrders: ${histOrders.length} historical orders for account ${accountId}`);
+      }
+    } catch (err: any) {
+      console.log(`[TradeStation] getOrders historical error: ${err.message}`);
+    }
+
+    if (allOrders.length === 0) {
+      console.log(`[TradeStation] getOrders: no orders found for account ${accountId}`);
       return [];
     }
 
-    console.log(`[TradeStation] getOrders: found ${orders.length} orders for account ${accountId}`);
+    const deduped = Array.from(
+      new Map(allOrders.map((o: any) => [String(o.OrderID || ""), o])).values()
+    );
 
-    return orders.slice(0, 500).map((o: any) => {
+    console.log(`[TradeStation] getOrders: ${deduped.length} total unique orders for account ${accountId}`);
+
+    return deduped.slice(0, 500).map((o: any) => {
       const action = (o.TradeAction || "").toLowerCase();
       const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
       return {

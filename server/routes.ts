@@ -5464,9 +5464,9 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // Accepts either structured JSON or rawText from Strategy Fundamentals
   app.post("/api/external-alerts/webhook", async (req, res) => {
     try {
-      const apiKey = req.headers["x-api-key"] as string;
+      const apiKey = (req.headers["x-api-key"] as string) || (req.query.token as string);
       if (!apiKey) {
-        return res.status(401).json({ error: "Missing X-API-Key header" });
+        return res.status(401).json({ error: "Missing API key. Provide via X-API-Key header or ?token= query parameter" });
       }
 
       const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");

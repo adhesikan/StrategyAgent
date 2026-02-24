@@ -22,7 +22,6 @@ import {
   Plus,
   Trash2,
   Copy,
-  Key,
   Clock,
   CheckCircle,
   AlertCircle,
@@ -238,16 +237,18 @@ function ApiKeysSection() {
     toast({ title: "Copied to clipboard" });
   };
 
+  const baseWebhookUrl = `${window.location.origin}/api/external-alerts/webhook`;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <Key className="w-4 h-4" />
-            Webhook API Keys
+            <Webhook className="w-4 h-4" />
+            Webhook URLs
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Generate API keys to authenticate incoming webhook alerts to your account
+            Generate a webhook URL to receive trade alerts from TradingView or any external source
           </p>
         </div>
         <Dialog open={showDialog} onOpenChange={(open) => {
@@ -260,39 +261,30 @@ function ApiKeysSection() {
           <DialogTrigger asChild>
             <Button size="sm" data-testid="button-create-api-key">
               <Plus className="w-4 h-4 mr-1" />
-              New Key
+              New Webhook URL
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create API Key</DialogTitle>
+              <DialogTitle>Create Webhook URL</DialogTitle>
               <DialogDescription>
-                This key authenticates incoming webhook requests from external alert sources.
+                Generate a unique webhook URL for receiving trade alerts. Paste it directly into TradingView or any alert source.
               </DialogDescription>
             </DialogHeader>
             {generatedKey ? (
               <div className="space-y-3">
                 <div className="rounded-md border bg-muted p-3">
-                  <Label className="text-xs text-muted-foreground">Webhook URL</Label>
+                  <Label className="text-xs text-muted-foreground">Your Webhook URL</Label>
                   <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs break-all flex-1" data-testid="text-webhook-full-url">https://www.vcptrader.com/api/external-alerts/webhook</code>
-                    <Button size="icon" variant="ghost" onClick={() => copyKey("https://www.vcptrader.com/api/external-alerts/webhook")} data-testid="button-copy-url">
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="rounded-md border bg-muted p-3">
-                  <Label className="text-xs text-muted-foreground">API Key (X-API-Key header)</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs break-all flex-1" data-testid="text-generated-key">{generatedKey}</code>
-                    <Button size="icon" variant="ghost" onClick={() => copyKey(generatedKey)} data-testid="button-copy-key">
+                    <code className="text-xs break-all flex-1" data-testid="text-webhook-full-url">{`${baseWebhookUrl}?token=${generatedKey}`}</code>
+                    <Button size="icon" variant="ghost" onClick={() => copyKey(`${baseWebhookUrl}?token=${generatedKey}`)} data-testid="button-copy-url">
                       <Copy className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
-                  Save both values now. The API key will not be shown again.
+                  Copy this URL now. It will not be shown again. Paste it into your TradingView alert webhook URL field.
                 </p>
                 <Button onClick={() => { setShowDialog(false); setGeneratedKey(null); }} className="w-full" data-testid="button-done-key">
                   Done
@@ -316,8 +308,8 @@ function ApiKeysSection() {
                   className="w-full"
                   data-testid="button-generate-key"
                 >
-                  {createKeyMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Key className="w-4 h-4 mr-1" />}
-                  Generate Key
+                  {createKeyMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Webhook className="w-4 h-4 mr-1" />}
+                  Generate Webhook URL
                 </Button>
               </div>
             )}
@@ -332,7 +324,7 @@ function ApiKeysSection() {
           </div>
         ) : keys.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No API keys yet. Create one to start receiving alerts.
+            No webhook URLs yet. Create one to start receiving alerts.
           </p>
         ) : (
           <div className="space-y-2">
@@ -340,7 +332,7 @@ function ApiKeysSection() {
               <div key={key.id} className="flex items-center justify-between gap-2 rounded-md border p-3" data-testid={`row-api-key-${key.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm">{key.prefix}</span>
+                    <code className="font-mono text-xs text-muted-foreground">{baseWebhookUrl}?token={key.prefix}...</code>
                     <Badge variant="outline">{key.label}</Badge>
                   </div>
                   {key.lastUsedAt && (
@@ -366,33 +358,29 @@ function ApiKeysSection() {
         <div className="mt-4 rounded-md border bg-muted/50 p-3">
           <h4 className="text-sm font-medium mb-2 flex items-center gap-1">
             <Webhook className="w-4 h-4" />
-            Webhook Integration
+            How to Use
           </h4>
           <div className="space-y-2 text-xs text-muted-foreground">
             <div>
-              <span className="font-medium">Endpoint:</span>
-              <code className="ml-1 bg-muted px-1 py-0.5 rounded" data-testid="text-webhook-url">
-                POST https://www.vcptrader.com/api/external-alerts/webhook
-              </code>
+              <span className="font-medium">1. Copy your webhook URL</span> above and paste it into TradingView's alert webhook URL field or any external alert source.
             </div>
             <div>
-              <span className="font-medium">Headers:</span>
-              <code className="ml-1 bg-muted px-1 py-0.5 rounded">X-API-Key: your_api_key</code>
+              <span className="font-medium">2. Set the alert message</span> (JSON body) using one of these formats:
             </div>
             <div>
-              <span className="font-medium">Entry Signal (JSON body):</span>
+              <span className="font-medium">Entry Signal:</span>
               <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify({
                 rawText: 'enter sym=AAPL lp=195.50 tp=210.00 sl=188.00',
               }, null, 2)}</pre>
             </div>
             <div className="pt-1">
-              <span className="font-medium">Exit Signal (JSON body):</span>
+              <span className="font-medium">Exit Signal:</span>
               <pre className="mt-1 bg-muted p-2 rounded text-xs overflow-x-auto">{JSON.stringify({
                 rawText: 'exit sym=AAPL reason="Profit Target" tp=210.00',
               }, null, 2)}</pre>
             </div>
             <div className="pt-1 text-muted-foreground/80">
-              Send your TradingView alerts or any external signal source via this webhook to execute trades automatically through the Auto Agent with your connected brokerage.
+              Alerts sent to your webhook URL are processed automatically through the Auto Agent with your connected brokerage.
             </div>
           </div>
         </div>

@@ -53,12 +53,16 @@ interface FuturesStatus {
   workerRunning: boolean;
   subscribedSymbols: string[];
   availableSymbols: FuturesSymbolInfo[];
-  feedType?: "mock" | "rithmic";
+  feedType?: "mock" | "rithmic" | "tradestation";
   feedDetail?: string;
-  adapterActive?: "mock" | "rithmic";
+  adapterActive?: "mock" | "rithmic" | "tradestation";
   rithmicModeDetected?: "protocol" | "plant" | null;
   missingEnvVars?: string[];
   lastInitError?: string | null;
+  brokerProvider?: string | null;
+  brokerConnected?: boolean;
+  brokerSupportsFutures?: boolean;
+  brokerSimMode?: boolean;
   agent: {
     enabled: boolean;
     symbol: string;
@@ -227,6 +231,20 @@ export default function FuturesScanner() {
       return res.json();
     },
     enabled: agentOpen,
+  });
+
+  const activateTSMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/futures/activate-tradestation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/futures/status"] });
+      toast({ title: "TradeStation Futures Activated", description: "Futures data feed switched to TradeStation" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Activation Failed", description: error.message, variant: "destructive" });
+    },
   });
 
   const subscribeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -665,34 +683,59 @@ export default function FuturesScanner() {
   const missingVars = status.missingEnvVars ?? [];
   const lastInitError = status.lastInitError;
   const tradingEnabled = status.tradingEnabled ?? false;
+  const brokerSupportsFutures = status.brokerSupportsFutures ?? false;
+  const brokerProvider = status.brokerProvider;
+  const brokerSimMode = status.brokerSimMode ?? false;
 
   const buildMockBannerMessage = (): string => {
+    if (brokerSupportsFutures && feedType === "mock") {
+      return "TradeStation connected. Click 'Activate TradeStation Futures' to use live futures data.";
+    }
     if (missingVars.length > 0) {
-      return "Rithmic credentials incomplete. Falling back to simulated data.";
+      return "Data feed credentials incomplete. Falling back to simulated data.";
     }
     if (lastInitError) {
-      return "Rithmic connection failed. Falling back to simulated data.";
+      return "Data feed connection failed. Falling back to simulated data.";
     }
     if (feedDetail && feedDetail !== "default" && feedDetail !== "FUTURES_FEED not set to rithmic") {
       return feedDetail;
     }
-    return "Running with simulated data. To connect to Rithmic, set FUTURES_FEED=rithmic and provide credentials.";
+    return "Running with simulated data. Connect a brokerage that supports futures to enable live data.";
   };
 
   const buildMissingVarsHint = (): string | null => {
     if (missingVars.length === 0) return null;
+    if (brokerSupportsFutures) return null;
     if (rithmicMode === "protocol") {
       return `Protocol mode requires: RITHMIC_WS_URL, RITHMIC_SYSTEM_NAME, RITHMIC_USER_ID, RITHMIC_PASSWORD. Missing: ${missingVars.join(", ")}`;
     }
     if (rithmicMode === "plant") {
       return `Plant mode requires: RITHMIC_TICKER_PLANT_URI, RITHMIC_ORDER_PLANT_URI, RITHMIC_SYSTEM_NAME, RITHMIC_USER_ID, RITHMIC_PASSWORD. Missing: ${missingVars.join(", ")}`;
     }
-    return `Set either (A) RITHMIC_WS_URL for Protocol mode, or (B) both RITHMIC_TICKER_PLANT_URI + RITHMIC_ORDER_PLANT_URI for Plant mode. Also required: RITHMIC_USER_ID, RITHMIC_PASSWORD. Missing: ${missingVars.join(", ")}`;
+    return null;
   };
 
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4" data-testid="futures-scanner-container">
-      {feedType === "rithmic" ? (
+      {feedType === "tradestation" ? (
+        <div
+          className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-2 space-y-2"
+          data-testid="banner-futures-feed-live"
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Wifi className="h-3.5 w-3.5 text-green-500" />
+            <span className="text-xs text-green-600 dark:text-green-400">
+              Futures Feed: TradeStation{brokerSimMode ? " (Simulation)" : ""} Connected
+              {feedDetail ? ` - ${feedDetail}` : ""}
+            </span>
+          </div>
+          <div className="flex justify-center">
+            <span className="text-xs font-semibold text-green-600 dark:text-green-400" data-testid="text-tradestation-futures-label">
+              Powered by TradeStation
+            </span>
+          </div>
+        </div>
+      ) : feedType === "rithmic" ? (
         <div
           className="bg-green-500/10 border border-green-500/20 rounded-md px-4 py-2 space-y-2"
           data-testid="banner-futures-feed-live"
@@ -727,18 +770,33 @@ export default function FuturesScanner() {
           <div className="flex items-center justify-center gap-2">
             <WifiOff className="h-3.5 w-3.5 text-yellow-500" />
             <span className="text-xs text-yellow-600 dark:text-yellow-400">
-              Futures Feed: Mock Data
+              Futures Feed: {brokerSupportsFutures ? "TradeStation Available" : "Mock Data"}
             </span>
           </div>
           <p className="text-[10px] text-center text-yellow-600/70 dark:text-yellow-400/70" data-testid="text-mock-reason">
             {buildMockBannerMessage()}
           </p>
-          {missingVars.length > 0 && (
+          {brokerSupportsFutures && (
+            <div className="flex justify-center pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => activateTSMutation.mutate()}
+                disabled={activateTSMutation.isPending}
+                data-testid="button-activate-ts-futures"
+              >
+                {activateTSMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                Activate TradeStation Futures
+              </Button>
+            </div>
+          )}
+          {missingVars.length > 0 && buildMissingVarsHint() && (
             <p className="text-[10px] text-center text-yellow-600/60 dark:text-yellow-400/60" data-testid="text-missing-vars">
               {buildMissingVarsHint()}
             </p>
           )}
-          {lastInitError && (
+          {lastInitError && !brokerSupportsFutures && (
             <p className="text-[10px] text-center text-red-500/80" data-testid="text-init-error">
               Init error: {lastInitError}
             </p>
@@ -1234,6 +1292,20 @@ export default function FuturesScanner() {
         )}
       </Card>
 
+      {feedType === "tradestation" && (
+        <div
+          className="border-t border-border/40 pt-3 pb-2 px-2 space-y-1 text-center"
+          data-testid="tradestation-futures-notice"
+        >
+          <p className="text-xs font-semibold text-muted-foreground" data-testid="text-tradestation-footer-label">
+            Powered by TradeStation
+          </p>
+          <p className="text-[10px] text-muted-foreground/70 leading-snug max-w-2xl mx-auto">
+            Market Data and Order Execution provided by TradeStation.
+            Futures trading involves substantial risk of loss and is not suitable for all investors.
+          </p>
+        </div>
+      )}
       {feedType === "rithmic" && (
         <div
           className="border-t border-border/40 pt-3 pb-2 px-2 space-y-1 text-center"

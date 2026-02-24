@@ -15,7 +15,7 @@ import { FUTURES_SYMBOLS } from "../brokers/futures/types";
 import { upsertTick, upsertBar, getLastTick, getRecentBars } from "./marketState";
 import { scanFuturesOpportunities, type FuturesOpportunity } from "./mockScanner";
 import type { FuturesCommandPayload } from "./commands";
-import { createFuturesAdapter, type FuturesFeedType, type AdapterResult } from "./adapterFactory";
+import { createFuturesAdapter, createTradeStationFuturesAdapter, type FuturesFeedType, type AdapterResult, type TradeStationFuturesConfig } from "./adapterFactory";
 import type { RithmicMode } from "../brokers/rithmic/config";
 
 const POLL_INTERVAL_MS = 750;
@@ -161,6 +161,90 @@ export async function startFuturesWorker(): Promise<void> {
   console.log("[FuturesWorker] Started successfully");
 }
 
+let tsTokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let tsUserId: string | null = null;
+
+export async function switchToTradeStationFeed(config: TradeStationFuturesConfig & { userId?: string }): Promise<boolean> {
+  console.log("[FuturesWorker] Switching to TradeStation futures feed...");
+  tsUserId = config.userId ?? null;
+
+  if (running) {
+    if (adapter) {
+      await adapter.disconnect();
+    }
+    if (pollTimer) clearInterval(pollTimer);
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    if (agentTimer) clearInterval(agentTimer);
+    pollTimer = null;
+    heartbeatTimer = null;
+    agentTimer = null;
+    running = false;
+  }
+
+  const result = await createTradeStationFuturesAdapter(config);
+  applyAdapterResult(result);
+
+  if (result.feedType !== "tradestation") {
+    console.warn("[FuturesWorker] Failed to create TradeStation adapter, falling back to default");
+    return false;
+  }
+
+  try {
+    await adapter!.connect();
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[FuturesWorker] TradeStation futures connect failed: ${errMsg}`);
+    const mockAdapter = new MockFuturesAdapter();
+    adapter = mockAdapter;
+    currentFeedType = "mock";
+    currentFeedDetail = `TradeStation connect failed: ${errMsg}`;
+    currentLastInitError = errMsg;
+    await adapter.connect();
+    return false;
+  }
+
+  adapter!.on("tick", (tick) => upsertTick(tick));
+  adapter!.on("bar", (bar) => upsertBar(bar));
+  adapter!.on("orderUpdate", (update) => handleOrderUpdate(update));
+
+  running = true;
+
+  const rows = await db.select().from(futuresWorkerStatus).limit(1);
+  if (rows.length > 0) {
+    workerStatusId = rows[0].id;
+    await db
+      .update(futuresWorkerStatus)
+      .set({ status: "running", lastHeartbeatAt: new Date(), details: {} })
+      .where(eq(futuresWorkerStatus.id, workerStatusId));
+  }
+
+  pollTimer = setInterval(() => pollCommands(), POLL_INTERVAL_MS);
+  heartbeatTimer = setInterval(() => sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
+  agentTimer = setInterval(() => runAgentLoop(), 5000);
+
+  if (tsTokenRefreshTimer) clearInterval(tsTokenRefreshTimer);
+  if (tsUserId) {
+    tsTokenRefreshTimer = setInterval(async () => {
+      if (!tsUserId || currentFeedType !== "tradestation") {
+        if (tsTokenRefreshTimer) clearInterval(tsTokenRefreshTimer);
+        return;
+      }
+      try {
+        const { storage } = await import("../../storage");
+        const connection = await storage.getBrokerConnectionWithToken(tsUserId);
+        if (connection?.accessToken && adapter && "updateAccessToken" in adapter) {
+          (adapter as any).updateAccessToken(connection.accessToken);
+        }
+      } catch (err) {
+        console.warn("[FuturesWorker] Token refresh for TS futures failed:", (err as Error).message);
+      }
+    }, 15 * 60 * 1000);
+  }
+
+  console.log("[FuturesWorker] Switched to TradeStation futures feed successfully");
+  return true;
+}
+
 export async function stopFuturesWorker(): Promise<void> {
   if (!running) return;
   running = false;
@@ -168,9 +252,12 @@ export async function stopFuturesWorker(): Promise<void> {
   if (pollTimer) clearInterval(pollTimer);
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (agentTimer) clearInterval(agentTimer);
+  if (tsTokenRefreshTimer) clearInterval(tsTokenRefreshTimer);
   pollTimer = null;
   heartbeatTimer = null;
   agentTimer = null;
+  tsTokenRefreshTimer = null;
+  tsUserId = null;
 
   if (adapter) {
     await adapter.disconnect();

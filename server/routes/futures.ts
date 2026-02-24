@@ -7,13 +7,15 @@ import { futuresOrders, futuresPositions, futuresCommands, futuresWorkerStatus, 
 import { futuresCommandSchema } from "../trading/futures/commands";
 import { getRecentBars, getLastTick, getAllSubscribedSymbols } from "../trading/futures/marketState";
 import { scanFuturesOpportunities } from "../trading/futures/mockScanner";
-import { getAdapter, getAgentConfig, isWorkerRunning, getFeedInfo } from "../trading/futures/futuresWorker";
+import { getAdapter, getAgentConfig, isWorkerRunning, getFeedInfo, switchToTradeStationFeed } from "../trading/futures/futuresWorker";
 import { FUTURES_SYMBOLS } from "../trading/brokers/futures/types";
+import { storage } from "../storage";
 
 export function registerFuturesRoutes(app: Express): void {
 
-  app.get("/api/futures/status", isAuthenticated, async (_req: Request, res: Response) => {
+  app.get("/api/futures/status", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = req.session.userId!;
       const rows = await db.select().from(futuresWorkerStatus).limit(1);
       const workerRow = rows[0] ?? null;
       const subscribedSymbols = getAdapter()?.getSubscribedSymbols() ?? [];
@@ -23,6 +25,20 @@ export function registerFuturesRoutes(app: Express): void {
       const tradingEnabledEnv = process.env.FUTURES_TRADING_ENABLED === "true";
       const userFuturesAccess = true;
       const dataMode = !userFuturesAccess || !tradingEnabledEnv;
+
+      let brokerProvider: string | null = null;
+      let brokerConnected = false;
+      let brokerSupportsFutures = false;
+      let brokerSimMode = false;
+      try {
+        const connection = await storage.getBrokerConnectionWithToken(userId);
+        if (connection && connection.isConnected) {
+          brokerProvider = connection.provider;
+          brokerConnected = true;
+          brokerSupportsFutures = connection.provider === "tradestation";
+          brokerSimMode = connection.simMode === true;
+        }
+      } catch {}
 
       res.json({
         enabled: true,
@@ -42,10 +58,45 @@ export function registerFuturesRoutes(app: Express): void {
         rithmicModeDetected: feedInfo.rithmicModeDetected,
         missingEnvVars: feedInfo.missingEnvVars,
         lastInitError: feedInfo.lastInitError,
+        brokerProvider,
+        brokerConnected,
+        brokerSupportsFutures,
+        brokerSimMode,
       });
     } catch (error) {
       console.error("Error fetching futures status:", error);
       res.status(500).json({ message: "Failed to fetch futures status" });
+    }
+  });
+
+  app.post("/api/futures/activate-tradestation", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+
+      if (!connection || !connection.isConnected || connection.provider !== "tradestation") {
+        return res.status(400).json({ message: "TradeStation broker not connected" });
+      }
+
+      if (!connection.accessToken) {
+        return res.status(400).json({ message: "TradeStation access token not available" });
+      }
+
+      const success = await switchToTradeStationFeed({
+        accessToken: connection.accessToken,
+        simMode: connection.simMode === true,
+        accountId: undefined,
+        userId,
+      });
+
+      if (success) {
+        res.json({ success: true, message: "Switched to TradeStation futures feed" });
+      } else {
+        res.status(500).json({ success: false, message: "Failed to activate TradeStation futures feed" });
+      }
+    } catch (error: any) {
+      console.error("Error activating TradeStation futures:", error);
+      res.status(500).json({ message: error.message ?? "Failed to activate TradeStation futures" });
     }
   });
 

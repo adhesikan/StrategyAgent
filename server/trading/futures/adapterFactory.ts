@@ -2,7 +2,7 @@ import type { IFuturesBrokerAdapter } from "../brokers/futures/types";
 import { MockFuturesAdapter } from "../brokers/futures/mock/MockFuturesAdapter";
 import { resolveRithmicConfig, type RithmicMode } from "../brokers/rithmic/config";
 
-export type FuturesFeedType = "mock" | "rithmic";
+export type FuturesFeedType = "mock" | "rithmic" | "tradestation";
 
 export interface AdapterResult {
   adapter: IFuturesBrokerAdapter;
@@ -11,6 +11,12 @@ export interface AdapterResult {
   rithmicModeDetected: RithmicMode | null;
   missingEnvVars: string[];
   lastInitError: string | null;
+}
+
+export interface TradeStationFuturesConfig {
+  accessToken: string;
+  simMode?: boolean;
+  accountId?: string;
 }
 
 function mockResult(opts: {
@@ -27,6 +33,42 @@ function mockResult(opts: {
     missingEnvVars: opts.missingEnvVars ?? [],
     lastInitError: opts.lastInitError ?? null,
   };
+}
+
+export async function createTradeStationFuturesAdapter(
+  config: TradeStationFuturesConfig
+): Promise<AdapterResult> {
+  try {
+    const { TradeStationFuturesAdapter } = await import(
+      "../brokers/futures/tradestation/TradeStationFuturesAdapter"
+    );
+
+    const adapter = new TradeStationFuturesAdapter({
+      accessToken: config.accessToken,
+      simMode: config.simMode,
+      accountId: config.accountId,
+    });
+
+    const modeLabel = config.simMode ? "Simulation" : "Live";
+    const detail = `TradeStation Futures (${modeLabel})`;
+    console.log(`[AdapterFactory] TradeStation futures adapter created (${modeLabel})`);
+
+    return {
+      adapter,
+      feedType: "tradestation",
+      feedDetail: detail,
+      rithmicModeDetected: null,
+      missingEnvVars: [],
+      lastInitError: null,
+    };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[AdapterFactory] TradeStation futures adapter creation failed:", errMsg);
+    return mockResult({
+      reason: `TradeStation futures init error: ${errMsg}`,
+      lastInitError: errMsg,
+    });
+  }
 }
 
 export async function createFuturesAdapter(): Promise<AdapterResult> {

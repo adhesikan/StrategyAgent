@@ -270,10 +270,12 @@ export function TradeActivityPanel() {
   const { isConnected, providerName } = useBrokerStatus();
   const { data: allTrades, isLoading } = useQuery<ExecutedTrade[]>({
     queryKey: ["/api/all-trades"],
+    refetchInterval: 10000,
   });
 
   const { data: brokerAccounts = [] } = useQuery<BrokerAccount[]>({
     queryKey: ["/api/broker/accounts"],
+    refetchInterval: 30000,
   });
 
   const syncMutation = useMutation({

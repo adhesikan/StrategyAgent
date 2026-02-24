@@ -1111,6 +1111,30 @@ export default function Settings() {
                       </Card>
                     );
                   })}
+                  {[
+                    { id: "schwab", name: "Charles Schwab", description: "Full-service brokerage and wealth management" },
+                    { id: "ibkr", name: "Interactive Brokers", description: "Global electronic brokerage for active traders" },
+                  ].map((broker) => (
+                    <Card
+                      key={broker.id}
+                      className="opacity-60 cursor-default"
+                      data-testid={`broker-${broker.id}`}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="font-medium">{broker.name}</h3>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {broker.description}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            Coming Soon
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
 
                 <Dialog open={showAccountPickerDialog} onOpenChange={setShowAccountPickerDialog}>

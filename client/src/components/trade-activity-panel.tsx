@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink, Ban, Shield, Target } from "lucide-react";
+import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink, Ban, Shield, Target, TrendingUp, TrendingDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,14 @@ interface BrokerAccount {
   buyingPower: number;
   equity: number;
   currency: string;
+}
+
+interface BrokerPosition {
+  symbol: string;
+  qty: number;
+  avgPrice: number;
+  marketPrice: number;
+  unrealizedPnl: number;
 }
 
 interface ExecutedTrade {
@@ -110,13 +118,15 @@ function isCancellable(trade: ExecutedTrade): boolean {
   return CANCELLABLE_STATUSES.has(trade.status);
 }
 
-function TradeCard({ trade, onInstaTrade, onCancel, isCancelling }: {
+function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
   trade: ExecutedTrade;
   onInstaTrade?: (trade: ExecutedTrade) => void;
   onCancel?: (trade: ExecutedTrade) => void;
   isCancelling?: boolean;
+  position?: BrokerPosition | null;
 }) {
   const cancellable = isCancellable(trade);
+  const showPnl = trade.status === "filled" && position && trade.side === "buy" && !trade.strategy;
 
   return (
     <Card key={trade.id} data-testid={`trade-card-${trade.id}`}>
@@ -194,6 +204,28 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling }: {
             >
               {formatStatus(trade.status)}
             </Badge>
+            {showPnl && position && (
+              <div className="flex items-center gap-1" data-testid={`text-trade-pnl-${trade.id}`}>
+                {position.unrealizedPnl >= 0 ? (
+                  <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                )}
+                <span className={`text-sm font-semibold ${position.unrealizedPnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  {position.unrealizedPnl >= 0 ? "+" : ""}${position.unrealizedPnl.toFixed(2)}
+                </span>
+                {position.avgPrice > 0 && position.marketPrice > 0 && (
+                  <span className={`text-xs ${position.unrealizedPnl >= 0 ? "text-green-500/70" : "text-red-500/70"}`}>
+                    ({(((position.marketPrice - position.avgPrice) / position.avgPrice) * 100).toFixed(1)}%)
+                  </span>
+                )}
+              </div>
+            )}
+            {showPnl && position && (
+              <div className="text-[11px] text-muted-foreground" data-testid={`text-trade-prices-${trade.id}`}>
+                Avg ${position.avgPrice.toFixed(2)} → Mkt ${position.marketPrice.toFixed(2)}
+              </div>
+            )}
             <div className="flex items-center gap-1">
               {trade.status === "pending" && onInstaTrade && (
                 <Button
@@ -277,6 +309,20 @@ export function TradeActivityPanel() {
     queryKey: ["/api/broker/accounts"],
     refetchInterval: 30000,
   });
+
+  const { data: brokerPositions = [] } = useQuery<BrokerPosition[]>({
+    queryKey: ["/api/broker/positions"],
+    refetchInterval: 15000,
+    enabled: isConnected,
+  });
+
+  const positionMap = useMemo(() => {
+    const map = new Map<string, BrokerPosition>();
+    for (const pos of brokerPositions) {
+      map.set(pos.symbol.toUpperCase(), pos);
+    }
+    return map;
+  }, [brokerPositions]);
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -542,6 +588,7 @@ export function TradeActivityPanel() {
                 onInstaTrade={handleInstaTrade}
                 onCancel={handleCancelOrder}
                 isCancelling={cancellingOrderId === (trade.brokerOrderId || trade.id.replace("broker-", ""))}
+                position={positionMap.get(trade.symbol.toUpperCase()) || null}
               />
             ))}
           </div>

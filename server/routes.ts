@@ -1553,6 +1553,23 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         if (brokerOrders && brokerOrders.length > 0) {
           for (const bo of brokerOrders) {
             if (!bo.id || knownBrokerOrderIds.has(String(bo.id))) continue;
+
+            const orderTypeLabel = bo.orderType || "market";
+            const legLabel = bo.legType === "stop_loss" ? "Stop Loss"
+              : bo.legType === "profit_target" ? "Profit Target"
+              : bo.legType === "exit" ? "Exit"
+              : null;
+
+            const reasons: string[] = [];
+            if (legLabel) {
+              reasons.push(`${legLabel} order`);
+              if (bo.groupOrderId) reasons.push(`Bracket group #${bo.groupOrderId}`);
+            } else {
+              reasons.push(`Order from ${providerName.charAt(0).toUpperCase() + providerName.slice(1)}`);
+            }
+            if (bo.stopPrice) reasons.push(`Stop: $${bo.stopPrice.toFixed(2)}`);
+            if (bo.limitPrice && orderTypeLabel !== "market") reasons.push(`Limit: $${bo.limitPrice.toFixed(2)}`);
+
             combined.push({
               id: `broker-${bo.id}`,
               symbol: bo.symbol || "UNKNOWN",
@@ -1560,17 +1577,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
               action: undefined,
               side: bo.side || "buy",
               quantity: bo.qty || 0,
-              orderType: "market",
+              orderType: orderTypeLabel,
               price: bo.price || null,
               status: normalizeTradeStatus(bo.status || "unknown"),
               brokerOrderId: String(bo.id),
               isOptions: false,
               optionDetails: null,
-              strategy: null,
-              reasons: [`Order from ${providerName.charAt(0).toUpperCase() + providerName.slice(1)}`],
+              strategy: legLabel || null,
+              reasons,
               createdAt: bo.createdAt || new Date().toISOString(),
-              stopLoss: null,
-              target: null,
+              stopLoss: bo.stopPrice || null,
+              target: bo.limitPrice || null,
             });
           }
         }

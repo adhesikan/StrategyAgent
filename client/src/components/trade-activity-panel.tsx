@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink, Ban } from "lucide-react";
+import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink, Ban, Shield, Target } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -87,6 +87,17 @@ function formatStrategy(strategy: string | null): string | null {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const ORDER_TYPE_LABELS: Record<string, string> = {
+  market: "Market",
+  limit: "Limit",
+  stop: "Stop",
+  stop_limit: "Stop Limit",
+};
+
+function formatOrderType(orderType: string): string {
+  return ORDER_TYPE_LABELS[orderType] || orderType.charAt(0).toUpperCase() + orderType.slice(1);
+}
+
 type SortField = "date" | "symbol" | "status" | "quantity";
 type SortDir = "asc" | "desc";
 
@@ -120,7 +131,15 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling }: {
               {trade.source === "auto_agent" ? (
                 <><Bot className="h-3 w-3 mr-1" />{trade.status === "error" ? "Error" : trade.status === "pending" ? "Suggested" : "Auto Agent"}</>
               ) : trade.source === "broker" ? (
-                <><ArrowUpDown className="h-3 w-3 mr-1" />Broker</>
+                trade.strategy === "Stop Loss" ? (
+                  <><Shield className="h-3 w-3 mr-1" />Stop Loss</>
+                ) : trade.strategy === "Profit Target" ? (
+                  <><Target className="h-3 w-3 mr-1" />Take Profit</>
+                ) : trade.strategy === "Exit" ? (
+                  <><Shield className="h-3 w-3 mr-1" />Exit</>
+                ) : (
+                  <><ArrowUpDown className="h-3 w-3 mr-1" />Broker</>
+                )
               ) : (
                 <><Zap className="h-3 w-3 mr-1" />InstaTrade&trade;</>
               )}
@@ -147,7 +166,7 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling }: {
               <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
                 <span>Qty: {trade.quantity}</span>
                 {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
-                <span>{trade.orderType}</span>
+                <span>{formatOrderType(trade.orderType)}</span>
                 {trade.brokerOrderId && (
                   <span className="font-mono">#{trade.brokerOrderId}</span>
                 )}

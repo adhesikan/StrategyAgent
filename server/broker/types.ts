@@ -22,8 +22,15 @@ export interface NormalizedOrder {
   qty: number;
   filledQty?: number;
   price?: number | null;
+  stopPrice?: number | null;
+  limitPrice?: number | null;
   status: string;
   createdAt: string;
+  orderType?: "market" | "limit" | "stop" | "stop_limit" | string;
+  groupOrderId?: string;
+  groupOrderType?: string;
+  legType?: "entry" | "stop_loss" | "profit_target" | "exit" | string;
+  duration?: string;
 }
 
 export interface BrokerStatus {

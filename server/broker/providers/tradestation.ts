@@ -357,17 +357,48 @@ export const tradestationProvider: BrokerProvider = {
     console.log(`[TradeStation] getOrders: ${deduped.length} total unique orders for account ${accountId}`);
 
     return deduped.slice(0, 500).map((o: any) => {
-      const action = (o.TradeAction || "").toLowerCase();
+      const action = (o.TradeAction || o.Legs?.[0]?.BuyOrSell || "").toLowerCase();
       const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
+      const rawType = (o.OrderType || "").toLowerCase();
+      let orderType: string = "market";
+      if (rawType.includes("stoplimit")) orderType = "stop_limit";
+      else if (rawType.includes("stop")) orderType = "stop";
+      else if (rawType.includes("limit")) orderType = "limit";
+      else if (rawType.includes("market")) orderType = "market";
+
+      const stopPrice = parseFloat(o.StopPrice || "0") || null;
+      const limitPrice = parseFloat(o.LimitPrice || "0") || null;
+      const filledPrice = parseFloat(o.FilledPrice || "0") || null;
+
+      let legType: string | undefined;
+      const groupType = (o.GroupName || o.OrderType || "").toLowerCase();
+      if (groupType.includes("oco") || groupType.includes("bracket")) {
+        if (orderType === "stop" || orderType === "stop_limit") {
+          legType = "stop_loss";
+        } else if (orderType === "limit") {
+          legType = "profit_target";
+        }
+      }
+      if (orderType === "stop" && !legType) {
+        legType = "stop_loss";
+      }
+
       return {
         id: String(o.OrderID || ""),
         symbol: o.Legs?.[0]?.Symbol || o.Symbol || "UNKNOWN",
         side: isSell ? "sell" as const : "buy" as const,
         qty: parseInt(o.Legs?.[0]?.QuantityOrdered || o.Quantity || "0", 10),
         filledQty: parseInt(o.Legs?.[0]?.ExecQuantity || o.FilledQuantity || "0", 10),
-        price: parseFloat(o.FilledPrice || o.LimitPrice || "0") || null,
+        price: filledPrice || limitPrice || stopPrice,
+        stopPrice,
+        limitPrice,
         status: o.Status || o.StatusDescription || "unknown",
         createdAt: o.OpenedDateTime || o.ClosedDateTime || "",
+        orderType,
+        groupOrderId: o.GroupName || undefined,
+        groupOrderType: groupType || undefined,
+        legType,
+        duration: o.Duration || o.TimeInForce || undefined,
       };
     });
   },

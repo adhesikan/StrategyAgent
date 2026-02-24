@@ -270,16 +270,78 @@ export const tradierProvider: BrokerProvider = {
     const orderArray = Array.isArray(orders) ? orders : [orders];
     console.log(`[Tradier] getOrders: found ${orderArray.length} orders for account ${accountId}`);
 
-    return orderArray.slice(0, 500).map((o: any) => ({
-      id: String(o.id),
-      symbol: o.symbol || (o.leg?.[0]?.symbol) || "UNKNOWN",
-      side: (o.side === "sell" || o.side === "sell_short") ? "sell" as const : "buy" as const,
-      qty: o.quantity ?? 0,
-      filledQty: o.exec_quantity ?? o.last_fill_quantity ?? 0,
-      price: o.price ?? o.avg_fill_price ?? null,
-      status: o.status ?? "unknown",
-      createdAt: o.create_date ?? o.transaction_date ?? "",
-    }));
+    const flatOrders: NormalizedOrder[] = [];
+    for (const o of orderArray.slice(0, 500)) {
+      const rawClass = (o.class || "").toLowerCase();
+      const rawType = (o.type || "").toLowerCase();
+      let orderType: string = "market";
+      if (rawType === "stop_limit") orderType = "stop_limit";
+      else if (rawType === "stop") orderType = "stop";
+      else if (rawType === "limit") orderType = "limit";
+      else if (rawType === "market") orderType = "market";
+
+      if (rawClass === "oco" || rawClass === "otoco") {
+        const legs = o.leg ? (Array.isArray(o.leg) ? o.leg : [o.leg]) : [];
+        if (legs.length > 0) {
+          for (const leg of legs) {
+            const legType_ = (leg.type || "").toLowerCase();
+            let legOrderType: string = "market";
+            if (legType_ === "stop_limit") legOrderType = "stop_limit";
+            else if (legType_ === "stop") legOrderType = "stop";
+            else if (legType_ === "limit") legOrderType = "limit";
+            else if (legType_ === "market") legOrderType = "market";
+
+            let legRole: string | undefined;
+            if (legOrderType === "stop" || legOrderType === "stop_limit") {
+              legRole = "stop_loss";
+            } else if (legOrderType === "limit") {
+              legRole = "profit_target";
+            }
+
+            flatOrders.push({
+              id: String(leg.id || o.id),
+              symbol: leg.symbol || o.symbol || "UNKNOWN",
+              side: (leg.side === "sell" || leg.side === "sell_short") ? "sell" as const : "buy" as const,
+              qty: leg.quantity ?? o.quantity ?? 0,
+              filledQty: leg.exec_quantity ?? leg.last_fill_quantity ?? 0,
+              price: leg.avg_fill_price ?? leg.price ?? null,
+              stopPrice: leg.stop_price ?? null,
+              limitPrice: leg.price ?? null,
+              status: leg.status ?? o.status ?? "unknown",
+              createdAt: o.create_date ?? o.transaction_date ?? "",
+              orderType: legOrderType,
+              groupOrderId: String(o.id),
+              groupOrderType: rawClass,
+              legType: legRole,
+              duration: o.duration ?? undefined,
+            });
+          }
+          continue;
+        }
+      }
+
+      let legType: string | undefined;
+      if (orderType === "stop" || orderType === "stop_limit") {
+        legType = "stop_loss";
+      }
+
+      flatOrders.push({
+        id: String(o.id),
+        symbol: o.symbol || (o.leg?.[0]?.symbol) || "UNKNOWN",
+        side: (o.side === "sell" || o.side === "sell_short") ? "sell" as const : "buy" as const,
+        qty: o.quantity ?? 0,
+        filledQty: o.exec_quantity ?? o.last_fill_quantity ?? 0,
+        price: o.avg_fill_price ?? o.price ?? null,
+        stopPrice: o.stop_price ?? null,
+        limitPrice: o.price ?? null,
+        status: o.status ?? "unknown",
+        createdAt: o.create_date ?? o.transaction_date ?? "",
+        orderType,
+        legType,
+        duration: o.duration ?? undefined,
+      });
+    }
+    return flatOrders;
   },
 
   async getOptionQuote(accessToken: string, optionSymbol: string): Promise<OptionQuote | null> {

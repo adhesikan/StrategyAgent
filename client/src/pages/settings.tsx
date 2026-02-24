@@ -1529,9 +1529,9 @@ function OpportunityDefaultsSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Opportunity Engine Defaults</CardTitle>
+        <CardTitle className="text-base font-medium">Scanner Defaults</CardTitle>
         <CardDescription>
-          Your saved default scan settings. Set defaults from the Opportunity Engine page using "Save as Default".
+          Your saved default scan settings. Set defaults from the Scanner page using "Save as Default".
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -1609,7 +1609,7 @@ function OpportunityDefaultsSettings() {
           <div className="text-center py-6">
             <p className="text-muted-foreground mb-4">No defaults saved yet</p>
             <p className="text-sm text-muted-foreground">
-              Go to the Opportunity Engine and click "Save as Default" to save your preferred scan settings.
+              Go to the Scanner and click "Save as Default" to save your preferred scan settings.
             </p>
           </div>
         )}

@@ -116,7 +116,7 @@ const AUTOMATION_MODES = [
   {
     id: "ASSISTED",
     label: "Assisted",
-    description: "Opportunities are prepared with pre-filled order details. Review and approve each trade.",
+    description: "Setups are prepared with pre-filled order details. Review and approve each trade.",
     icon: Handshake,
     tooltip: "The platform prepares trade orders for you with calculated size, stop, and target. You review and approve each trade with one click.",
   },

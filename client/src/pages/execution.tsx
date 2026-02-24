@@ -440,7 +440,7 @@ export default function ExecutionCockpit() {
                 <div className="flex items-start gap-3">
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-medium text-primary">1</div>
                   <div>
-                    <div className="font-medium">Scan for Opportunities</div>
+                    <div className="font-medium">Scan for Setups</div>
                     <div className="text-muted-foreground">VCP Trader identifies breakout setups</div>
                   </div>
                 </div>

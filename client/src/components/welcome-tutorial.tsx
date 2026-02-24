@@ -22,7 +22,7 @@ interface WelcomeStep {
 const WELCOME_STEPS: WelcomeStep[] = [
   {
     id: "find",
-    title: "Find Trading Opportunities",
+    title: "Find Trading Setups",
     description: "Our 9 scanning strategies identify high-probability setups across VCP patterns, breakouts, and intraday signals.",
     icon: Search,
     color: "text-blue-500",

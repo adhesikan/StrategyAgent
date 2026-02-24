@@ -296,8 +296,8 @@ export default function OpportunitiesPage() {
       <div className="sticky top-0 z-10 bg-background border-b px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold" data-testid="text-page-title">Trade Outcomes</h1>
-            <p className="text-sm text-muted-foreground">Summaries of detected opportunities and system activity</p>
+            <h1 className="text-xl font-semibold" data-testid="text-page-title">Scanner Results</h1>
+            <p className="text-sm text-muted-foreground">Summaries of detected setups and scanner activity</p>
           </div>
           <Button variant="outline" size="sm" onClick={handleExportCSV} data-testid="button-export-csv">
             <Download className="h-4 w-4 mr-2" />
@@ -314,7 +314,7 @@ export default function OpportunitiesPage() {
                 <CardTitle className="text-base flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <Info className="h-4 w-4" />
-                    How Trade Outcomes Work
+                    How Scanner Results Work
                   </span>
                   <ChevronDown className="h-4 w-4 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
                 </CardTitle>
@@ -327,8 +327,8 @@ export default function OpportunitiesPage() {
                     <div>
                       <h4 className="font-medium mb-1">Status: Active vs Resolved</h4>
                       <ul className="space-y-1 text-muted-foreground">
-                        <li><strong className="text-foreground">Active</strong> - Opportunity is still being tracked, waiting for an outcome</li>
-                        <li><strong className="text-foreground">Resolved</strong> - Opportunity has concluded with one of the outcomes below</li>
+                        <li><strong className="text-foreground">Active</strong> - Setup is still being tracked, waiting for an outcome</li>
+                        <li><strong className="text-foreground">Resolved</strong> - Setup has concluded with one of the outcomes below</li>
                       </ul>
                     </div>
                     <div>
@@ -376,7 +376,7 @@ export default function OpportunitiesPage() {
                     <div>
                       <h4 className="font-medium mb-1">Days to Resolution</h4>
                       <p className="text-muted-foreground">
-                        Shows how long from detection until the opportunity resolved. 
+                        Shows how long from detection until the setup resolved. 
                         "{'<'} 1" means it resolved the same day it was detected.
                       </p>
                     </div>
@@ -501,7 +501,7 @@ export default function OpportunitiesPage() {
               <div className="text-2xl font-bold" data-testid="text-total-opportunities">
                 {loadingSummary ? <Skeleton className="h-8 w-16" /> : summary?.total ?? 0}
               </div>
-              <p className="text-xs text-muted-foreground">Total Opportunities</p>
+              <p className="text-xs text-muted-foreground">Total Scans</p>
             </CardContent>
           </Card>
           <Card>
@@ -552,7 +552,7 @@ export default function OpportunitiesPage() {
         <Card>
           <CardHeader className="pb-3 flex flex-row items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-base">Opportunities</CardTitle>
+              <CardTitle className="text-base">Scan Results</CardTitle>
               <CardDescription>
                 Click on a row to view details. Click column headers to sort.
               </CardDescription>

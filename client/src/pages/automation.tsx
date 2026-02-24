@@ -63,7 +63,7 @@ const MODE_CARDS: { mode: AutomationMode; title: string; subtitle: string; descr
     mode: "ASSISTED",
     title: "Assisted Execution",
     subtitle: "One-click execution with your approval.",
-    description: "Opportunities are prepared for you with pre-filled order details. Review, adjust, and approve each trade with a single click.",
+    description: "Setups are prepared for you with pre-filled order details. Review, adjust, and approve each trade with a single click.",
     icon: Handshake,
     recommended: "Recommended for most users",
   },
@@ -437,7 +437,7 @@ function AssistedGuidance({ isConnected }: { isConnected: boolean }) {
           2. How Assisted Execution Works
         </CardTitle>
         <CardDescription>
-          Opportunities are prepared for you. Review and execute with InstaTrade™.
+          Setups are prepared for you. Review and execute with InstaTrade™.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -537,7 +537,7 @@ function HowAutonomousTradingWorks() {
   const steps = [
     {
       icon: Scan,
-      title: "Opportunities are discovered",
+      title: "Setups are discovered",
       description: "The scanner runs at scheduled times throughout the trading day, detecting patterns across multiple strategies (VCP, pullbacks, momentum, etc.). Options scans from the Discover page are also picked up automatically.",
     },
     {

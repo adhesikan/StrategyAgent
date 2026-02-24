@@ -932,7 +932,7 @@ export default function StrategyGuide() {
           <Card>
             <CardHeader>
               <CardTitle>Quick Start</CardTitle>
-              <CardDescription>Get started with the Opportunity Engine in 4 simple steps</CardDescription>
+              <CardDescription>Get started with the Scanner in 4 simple steps</CardDescription>
             </CardHeader>
             <CardContent>
               <ol className="space-y-4">

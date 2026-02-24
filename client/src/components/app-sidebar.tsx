@@ -49,7 +49,7 @@ const navGroups: NavGroup[] = [
     label: "DISCOVER",
     items: [
       { title: "Dashboard", description: "Overview & positions", url: "/command-center", icon: Target },
-      { title: "Opportunities", description: "Scan & explore", url: "/discover", icon: Search },
+      { title: "Scanner", description: "Scan & explore", url: "/discover", icon: Search },
     ],
   },
   {

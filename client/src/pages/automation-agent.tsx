@@ -446,7 +446,7 @@ export default function AutomationAgentPage() {
                   <div>
                     <p className="font-medium">Find Setups</p>
                     <p className="text-sm text-muted-foreground">
-                      Use Opportunity Engine to discover trading setups
+                      Use the Scanner to discover trading setups
                     </p>
                   </div>
                 </div>
@@ -511,7 +511,7 @@ export default function AutomationAgentPage() {
                   <p className="text-sm mt-1">
                     Use InstaTrade™ from the{" "}
                     <Link href="/" className="text-primary underline">
-                      Opportunity Engine
+                      Scanner
                     </Link>
                     {" "}to enter positions
                   </p>
@@ -659,8 +659,8 @@ export default function AutomationAgentPage() {
                   <p>No execution requests yet</p>
                   <p className="text-sm">
                     Send a setup from the{" "}
-                    <Link href="/" className="text-primary underline" data-testid="link-opportunity-engine">
-                      Opportunity Engine
+                    <Link href="/" className="text-primary underline" data-testid="link-scanner">
+                      Scanner
                     </Link>
                     {" "}to get started
                   </p>

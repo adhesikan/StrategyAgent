@@ -975,7 +975,7 @@ export default function Scanner() {
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
                 <Target className="h-6 w-6" />
-                Opportunity Engine
+                Scanner
               </h1>
               {(() => {
                 const marketSession = getMarketSession();

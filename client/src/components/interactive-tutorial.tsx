@@ -98,7 +98,7 @@ const VCP_TUTORIAL: Tutorial = {
 
 const SCANNER_TUTORIAL: Tutorial = {
   id: "scanner",
-  title: "Using the Opportunity Engine",
+  title: "Using the Scanner",
   description: "Master the scanner to find the best trading setups",
   icon: Search,
   settingsKey: "hasSeenScannerTutorial",

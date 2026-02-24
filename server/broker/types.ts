@@ -72,5 +72,6 @@ export interface BrokerProvider {
   getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]>;
   getOrders(accessToken: string, accountId?: string): Promise<NormalizedOrder[]>;
   placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse>;
+  cancelOrder(accessToken: string, orderId: string, accountId?: string): Promise<{ success: boolean; message: string }>;
   getOptionQuote?(accessToken: string, optionSymbol: string): Promise<OptionQuote | null>;
 }

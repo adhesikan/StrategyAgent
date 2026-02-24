@@ -1466,6 +1466,29 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.post("/api/orders/:orderId/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { orderId } = req.params;
+      if (!orderId) {
+        return res.status(400).json({ error: "Order ID is required" });
+      }
+
+      const brokerService = await import("./broker/index");
+      const result = await brokerService.cancelBrokerOrder(userId, orderId);
+
+      if (result.success) {
+        brokerService.invalidateBrokerCache(userId);
+        res.json({ success: true, message: result.message });
+      } else {
+        res.status(400).json({ success: false, error: result.message });
+      }
+    } catch (error: any) {
+      console.error("[CancelOrder] Error:", error.message);
+      res.status(500).json({ success: false, error: "Failed to cancel order" });
+    }
+  });
+
   app.get("/api/all-trades", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;

@@ -148,6 +148,17 @@ function getProviderForConnection(connection: { provider: string; simMode?: bool
           side: order.side, quantity: order.quantity, status: firstOrder.Status || "pending",
         };
       },
+      async cancelOrder(accessToken: string, orderId: string) {
+        const response = await fetch(`${simBaseUrl}/orderexecution/orders/${orderId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          return { success: false, message: `TradeStation SIM cancel error ${response.status}: ${text.substring(0, 200)}` };
+        }
+        return { success: true, message: `Order ${orderId} cancelled` };
+      },
     };
   }
   return getProvider(connection.provider);
@@ -488,6 +499,25 @@ export async function getOptionQuote(userId: string, optionSymbol: string) {
   if (!provider.getOptionQuote) return null;
   const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
   return provider.getOptionQuote(token, optionSymbol);
+}
+
+export async function cancelBrokerOrder(userId: string, orderId: string): Promise<{ success: boolean; message: string }> {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) {
+    return { success: false, message: "No connected broker found" };
+  }
+
+  const provider = getProviderForConnection(connection);
+  const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+
+  console.log(`[BrokerService] cancelBrokerOrder: ${connection.provider} order ${orderId} for user ${userId.substring(0, 8)}...`);
+  const result = await provider.cancelOrder(token, orderId, realAccountId);
+
+  if (result.success) {
+    invalidateBrokerCache(userId);
+  }
+
+  return result;
 }
 
 export async function getConnectionProviderForUser(userId: string) {

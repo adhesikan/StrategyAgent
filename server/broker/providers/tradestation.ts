@@ -456,4 +456,19 @@ export const tradestationProvider: BrokerProvider = {
       status: firstOrder.Status || "pending",
     };
   },
+
+  async cancelOrder(accessToken: string, orderId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${LIVE_BASE_URL}/orderexecution/orders/${orderId}`, {
+      method: "DELETE",
+      headers: tsHeaders(accessToken),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return { success: false, message: `TradeStation cancel error ${response.status}: ${text.substring(0, 200)}` };
+    }
+
+    console.log(`[TradeStation] Cancel order ${orderId}: success`);
+    return { success: true, message: `Order ${orderId} cancelled` };
+  },
 };

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink } from "lucide-react";
+import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink, Ban } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 
@@ -81,7 +92,21 @@ type SortDir = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
-function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade?: (trade: ExecutedTrade) => void }) {
+const CANCELLABLE_STATUSES = new Set(["sent_to_broker", "open", "queued", "received", "ack"]);
+
+function isCancellable(trade: ExecutedTrade): boolean {
+  if (!trade.brokerOrderId) return false;
+  return CANCELLABLE_STATUSES.has(trade.status);
+}
+
+function TradeCard({ trade, onInstaTrade, onCancel, isCancelling }: {
+  trade: ExecutedTrade;
+  onInstaTrade?: (trade: ExecutedTrade) => void;
+  onCancel?: (trade: ExecutedTrade) => void;
+  isCancelling?: boolean;
+}) {
+  const cancellable = isCancellable(trade);
+
   return (
     <Card key={trade.id} data-testid={`trade-card-${trade.id}`}>
       <CardContent className="p-4">
@@ -150,18 +175,58 @@ function TradeCard({ trade, onInstaTrade }: { trade: ExecutedTrade; onInstaTrade
             >
               {formatStatus(trade.status)}
             </Badge>
-            {trade.status === "pending" && onInstaTrade && (
-              <Button
-                size="sm"
-                variant="default"
-                className="text-xs gap-1"
-                onClick={() => onInstaTrade(trade)}
-                data-testid={`button-instatrade-${trade.id}`}
-              >
-                <Zap className="h-3 w-3" />
-                InstaTrade&trade;
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {trade.status === "pending" && onInstaTrade && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="text-xs gap-1"
+                  onClick={() => onInstaTrade(trade)}
+                  data-testid={`button-instatrade-${trade.id}`}
+                >
+                  <Zap className="h-3 w-3" />
+                  InstaTrade&trade;
+                </Button>
+              )}
+              {cancellable && onCancel && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-xs gap-1"
+                      disabled={isCancelling}
+                      data-testid={`button-cancel-order-${trade.id}`}
+                    >
+                      <Ban className="h-3 w-3" />
+                      {isCancelling ? "Cancelling..." : "Cancel"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancel Order</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to cancel the {trade.side.toUpperCase()} order for{" "}
+                        <span className="font-mono font-bold">{trade.symbol}</span>{" "}
+                        (Qty: {trade.quantity})?
+                        {trade.brokerOrderId && (
+                          <span className="block mt-1 text-xs font-mono">Order #{trade.brokerOrderId}</span>
+                        )}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid="button-cancel-dialog-dismiss">Keep Order</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => onCancel(trade)}
+                        data-testid="button-cancel-dialog-confirm"
+                      >
+                        Yes, Cancel Order
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
             <div className="flex flex-col items-end gap-0.5" data-testid={`text-trade-time-${trade.id}`}>
               {trade.createdAt && (
                 <>
@@ -211,6 +276,34 @@ export function TradeActivityPanel() {
       toast({ title: "Failed to sync statuses", variant: "destructive" });
     },
   });
+
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+
+  const cancelMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      setCancellingOrderId(orderId);
+      const res = await apiRequest("POST", `/api/orders/${orderId}/cancel`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Cancel failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/all-trades"] });
+      toast({ title: data.message || "Order cancelled successfully" });
+      setCancellingOrderId(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to cancel order", description: error.message || "Please try again", variant: "destructive" });
+      setCancellingOrderId(null);
+    },
+  });
+
+  function handleCancelOrder(trade: ExecutedTrade) {
+    const orderId = trade.brokerOrderId || trade.id.replace("broker-", "");
+    cancelMutation.mutate(orderId);
+  }
 
   const [selectedBrokerAccount, setSelectedBrokerAccount] = useState<BrokerAccount | null>(null);
 
@@ -422,7 +515,13 @@ export function TradeActivityPanel() {
         ) : paginated.length > 0 ? (
           <div className="flex flex-col gap-3">
             {paginated.map((trade) => (
-              <TradeCard key={trade.id} trade={trade} onInstaTrade={handleInstaTrade} />
+              <TradeCard
+                key={trade.id}
+                trade={trade}
+                onInstaTrade={handleInstaTrade}
+                onCancel={handleCancelOrder}
+                isCancelling={cancellingOrderId === (trade.brokerOrderId || trade.id.replace("broker-", ""))}
+              />
             ))}
           </div>
         ) : allTrades && allTrades.length > 0 && hasActiveFilters ? (

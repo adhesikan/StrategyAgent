@@ -401,4 +401,37 @@ export const tradierProvider: BrokerProvider = {
       status: orderStatus,
     };
   },
+
+  async cancelOrder(accessToken: string, orderId: string, accountId?: string): Promise<{ success: boolean; message: string }> {
+    if (!accountId) {
+      const accounts = await tradierProvider.getAccounts(accessToken);
+      accountId = accounts[0]?.id;
+    }
+    if (!accountId) {
+      return { success: false, message: "No account found" };
+    }
+
+    const baseUrl = getBaseUrlForToken(accessToken);
+    const response = await fetch(
+      `${baseUrl}/accounts/${accountId}/orders/${orderId}`,
+      {
+        method: "DELETE",
+        headers: tradierHeaders(accessToken),
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return { success: false, message: `Tradier cancel error ${response.status}: ${text.substring(0, 200)}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tradier] Cancel order ${orderId} response:`, JSON.stringify(data).substring(0, 300));
+
+    if (data?.order?.status === "ok" || response.ok) {
+      return { success: true, message: `Order ${orderId} cancelled` };
+    }
+
+    return { success: false, message: data?.errors?.error || "Unknown error cancelling order" };
+  },
 };

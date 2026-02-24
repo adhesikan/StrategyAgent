@@ -58,6 +58,7 @@ interface ExecutedTrade {
   action?: string;
   side: string;
   quantity: number;
+  filledQty?: number;
   orderType: string;
   price: number | null;
   status: string;
@@ -78,6 +79,7 @@ interface ExecutedTrade {
 const STATUS_LABELS: Record<string, string> = {
   sent_to_broker: "Sent to Broker",
   filled: "Filled",
+  partial_fill: "Partial Fill",
   pending: "Pending",
   cancelled: "Cancelled",
   rejected: "Rejected",
@@ -111,7 +113,7 @@ type SortDir = "asc" | "desc";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
-const CANCELLABLE_STATUSES = new Set(["sent_to_broker", "open", "queued", "received", "ack"]);
+const CANCELLABLE_STATUSES = new Set(["sent_to_broker", "open", "queued", "received", "ack", "partial_fill"]);
 
 function isCancellable(trade: ExecutedTrade): boolean {
   if (!trade.brokerOrderId) return false;
@@ -174,7 +176,7 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-muted-foreground">
-                <span>Qty: {trade.quantity}</span>
+                <span>Qty: {trade.filledQty !== undefined && trade.filledQty > 0 && trade.filledQty !== trade.quantity ? `${trade.filledQty}/${trade.quantity}` : trade.quantity}</span>
                 {trade.price && <span>@ ${trade.price.toFixed(2)}</span>}
                 <span>{formatOrderType(trade.orderType)}</span>
                 {trade.brokerOrderId && (
@@ -196,13 +198,17 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
             <Badge
               variant={
                 trade.status === "filled" || trade.status === "sent_to_broker" ? "default" :
+                trade.status === "partial_fill" ? "secondary" :
                 trade.status === "pending" ? "outline" :
                 trade.status === "cancelled" || trade.status === "error" || trade.status === "rejected" ? "destructive" : "secondary"
               }
-              className="text-xs"
+              className={`text-xs ${trade.status === "partial_fill" ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" : ""}`}
               data-testid={`badge-trade-status-${trade.id}`}
             >
               {formatStatus(trade.status)}
+              {trade.status === "partial_fill" && trade.filledQty !== undefined && (
+                <span className="ml-1">({trade.filledQty}/{trade.quantity})</span>
+              )}
             </Badge>
             {showPnl && position && (
               <div className="flex items-center gap-1" data-testid={`text-trade-pnl-${trade.id}`}>

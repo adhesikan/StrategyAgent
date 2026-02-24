@@ -1134,7 +1134,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     const lower = raw.toLowerCase();
     if (lower === "ok" || lower === "executed" || lower === "ack" || lower === "opn" || lower === "open" || lower === "received" || lower === "queued" || lower === "sent" || lower === "snd") return "sent_to_broker";
     if (lower === "fll" || lower === "filled") return "filled";
-    if (lower === "flp" || lower === "partially_filled" || lower === "partial_fill") return "filled";
+    if (lower === "flp" || lower === "partially_filled" || lower === "partial_fill") return "partial_fill";
     if (lower === "can" || lower === "canceled" || lower === "cancelled" || lower === "expired" || lower === "exp" || lower === "tsc") return "cancelled";
     if (lower === "rej" || lower === "rejected" || lower === "ur" || lower === "uract") return "rejected";
     if (lower === "failed" || lower === "broken" || lower === "bro") return "error";
@@ -1156,6 +1156,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       action: d.action,
       side: payload?.action === "SELL" ? "sell" : "buy",
       quantity: payload?.quantity || 0,
+      filledQty: 0,
       orderType: (payload?.orderType || "LIMIT").toLowerCase(),
       price: payload?.limitPrice || null,
       status: normalizeTradeStatus(rawStatus),
@@ -1181,6 +1182,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       source: "instatrade" as const,
       side: o.side,
       quantity: o.quantity,
+      filledQty: 0,
       orderType: o.orderType,
       price: o.limitPrice || o.fillPrice || null,
       status: normalizeTradeStatus(o.status),
@@ -1216,6 +1218,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       action: a.status === "SKIPPED" || a.status === "ERROR" ? a.status : a.brokerOrderId ? "EXECUTE" : "SUGGEST",
       side: a.direction?.toLowerCase() === "short" ? "sell" : "buy",
       quantity: 0,
+      filledQty: 0,
       orderType: "limit",
       price: a.executedPrice || a.entryPrice || null,
       status: rawStatus,
@@ -1577,6 +1580,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
               action: undefined,
               side: bo.side || "buy",
               quantity: bo.qty || 0,
+              filledQty: bo.filledQty || 0,
               orderType: orderTypeLabel,
               price: bo.price || null,
               status: normalizeTradeStatus(bo.status || "unknown"),

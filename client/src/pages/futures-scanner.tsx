@@ -761,6 +761,21 @@ export default function FuturesScanner() {
               data-testid="img-rithmic-logo-light"
             />
           </div>
+          {brokerSupportsFutures && (
+            <div className="flex justify-center pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/10"
+                onClick={() => activateTSMutation.mutate()}
+                disabled={activateTSMutation.isPending}
+                data-testid="button-switch-ts-futures"
+              >
+                {activateTSMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                Switch to TradeStation Futures
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div

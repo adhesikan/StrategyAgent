@@ -42,7 +42,7 @@ import { runManualScheduledScan } from "./scheduled-scan-service";
 import { fetchNews, checkRateLimit, isNewsConfigured } from "./news-service";
 import { registerPlatformRoutes } from "./routes/platform";
 import { registerFuturesRoutes } from "./routes/futures";
-import { startFuturesWorker } from "./trading/futures/futuresWorker";
+import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
   if (!req.session.userId) {
@@ -141,7 +141,28 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerPlatformRoutes(app);
   registerFuturesRoutes(app);
 
-  startFuturesWorker().catch((err) => {
+  startFuturesWorker().then(async () => {
+    try {
+      const feedInfo = getFeedInfo();
+      if (feedInfo.feedType === "tradestation") return;
+
+      const activeConn = await storage.getAnyActiveBrokerConnection();
+      if (activeConn && activeConn.provider === "tradestation" && activeConn.isConnected) {
+        const connWithToken = await storage.getBrokerConnectionWithToken(activeConn.userId);
+        if (connWithToken?.accessToken) {
+          console.log("[FuturesWorker] TradeStation broker detected at startup, auto-switching futures feed...");
+          await switchToTradeStationFeed({
+            accessToken: connWithToken.accessToken,
+            simMode: (connWithToken as any).simMode === true,
+            accountId: undefined,
+            userId: activeConn.userId,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[FuturesWorker] Startup auto-detect TradeStation failed (non-fatal):", err);
+    }
+  }).catch((err) => {
     console.error("[FuturesWorker] Failed to start:", err);
   });
 

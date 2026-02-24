@@ -37,8 +37,26 @@ export function registerFuturesRoutes(app: Express): void {
           brokerConnected = true;
           brokerSupportsFutures = connection.provider === "tradestation";
           brokerSimMode = connection.simMode === true;
+
+          if (brokerSupportsFutures && feedInfo.feedType !== "tradestation" && connection.accessToken) {
+            try {
+              const switched = await switchToTradeStationFeed({
+                accessToken: connection.accessToken,
+                simMode: connection.simMode === true,
+                accountId: undefined,
+                userId,
+              });
+              if (switched) {
+                console.log("[FuturesStatus] Auto-switched to TradeStation futures feed for user", userId);
+              }
+            } catch (switchErr) {
+              console.warn("[FuturesStatus] Auto-switch to TradeStation failed:", (switchErr as Error).message);
+            }
+          }
         }
       } catch {}
+
+      const updatedFeedInfo = getFeedInfo();
 
       res.json({
         enabled: true,
@@ -52,12 +70,12 @@ export function registerFuturesRoutes(app: Express): void {
         subscribedSymbols,
         availableSymbols: FUTURES_SYMBOLS.map((s) => ({ symbol: s.symbol, name: s.name, tickSize: s.tickSize, pointValue: s.pointValue })),
         agent: agentCfg,
-        feedType: feedInfo.feedType,
-        feedDetail: feedInfo.feedDetail,
-        adapterActive: feedInfo.feedType,
-        rithmicModeDetected: feedInfo.rithmicModeDetected,
-        missingEnvVars: feedInfo.missingEnvVars,
-        lastInitError: feedInfo.lastInitError,
+        feedType: updatedFeedInfo.feedType,
+        feedDetail: updatedFeedInfo.feedDetail,
+        adapterActive: updatedFeedInfo.feedType,
+        rithmicModeDetected: updatedFeedInfo.rithmicModeDetected,
+        missingEnvVars: updatedFeedInfo.missingEnvVars,
+        lastInitError: updatedFeedInfo.lastInitError,
         brokerProvider,
         brokerConnected,
         brokerSupportsFutures,

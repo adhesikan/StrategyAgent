@@ -540,7 +540,7 @@ function AutoAgentConfig() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Bot className="h-5 w-5" />
-          2. Auto Agent Setup
+          Auto Agent Setup
         </CardTitle>
         <CardDescription>
           Configure your Auto Agent's trading rules, entry criteria, and position sizing.

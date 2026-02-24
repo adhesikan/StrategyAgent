@@ -90,18 +90,66 @@ function getProviderForConnection(connection: { provider: string; simMode?: bool
           if (Array.isArray(hist)) allOrders.push(...hist);
         } catch {}
 
-        const deduped = Array.from(new Map(allOrders.map((o: any) => [String(o.OrderID || ""), o])).values());
+        for (const o of allOrders) {
+          console.log(`[TradeStation SIM] Raw order #${o.OrderID}: Type=${o.OrderType} Status=${o.Status} GroupName=${o.GroupName || 'none'} ConditionalOrders=${(o.ConditionalOrders || []).length}`);
+        }
+
+        const flatOrders: any[] = [];
+        for (const o of allOrders) {
+          flatOrders.push(o);
+          if (o.ConditionalOrders && Array.isArray(o.ConditionalOrders)) {
+            for (const child of o.ConditionalOrders) {
+              if (child.OrderID && !allOrders.some((existing: any) => String(existing.OrderID) === String(child.OrderID))) {
+                child._parentOrderId = String(o.OrderID);
+                child._isConditionalChild = true;
+                if (!child.Legs && o.Legs) child.Legs = o.Legs;
+                flatOrders.push(child);
+              }
+            }
+          }
+        }
+
+        const deduped = Array.from(new Map(flatOrders.map((o: any) => [String(o.OrderID || ""), o])).values());
+        console.log(`[TradeStation SIM] getOrders: ${deduped.length} orders (${allOrders.length} raw + flattened conditionals)`);
         return deduped.slice(0, 500).map((o: any) => {
-          const action = (o.TradeAction || "").toLowerCase();
+          const action = (o.TradeAction || o.Legs?.[0]?.BuyOrSell || "").toLowerCase();
           const isSell = action.includes("sell") || action === "sellshort" || action === "selltoclose" || action === "selltoopen";
+          const rawType = (o.OrderType || "").toLowerCase();
+          let orderType: string = "market";
+          if (rawType.includes("stoplimit")) orderType = "stop_limit";
+          else if (rawType.includes("stop")) orderType = "stop";
+          else if (rawType.includes("limit")) orderType = "limit";
+          else if (rawType.includes("market")) orderType = "market";
+
+          const stopPrice = parseFloat(o.StopPrice || "0") || null;
+          const limitPrice = parseFloat(o.LimitPrice || "0") || null;
+          const filledPrice = parseFloat(o.FilledPrice || "0") || null;
+
+          let legType: string | undefined;
+          const groupName = (o.GroupName || "").toLowerCase();
+          const relationship = (o.Relationship || "").toLowerCase();
+          const isChild = o._isConditionalChild === true;
+          if (groupName.includes("oco") || groupName.includes("bracket") || isChild || relationship === "oco") {
+            if (orderType === "stop" || orderType === "stop_limit") legType = "stop_loss";
+            else if (orderType === "limit") legType = "profit_target";
+            else legType = "exit";
+          }
+          if (orderType === "stop" && !legType) legType = "stop_loss";
+
           return {
             id: String(o.OrderID || ""), symbol: o.Legs?.[0]?.Symbol || o.Symbol || "UNKNOWN",
             side: isSell ? "sell" as const : "buy" as const,
             qty: parseInt(o.Legs?.[0]?.QuantityOrdered || o.Quantity || "0", 10),
             filledQty: parseInt(o.Legs?.[0]?.ExecQuantity || o.FilledQuantity || "0", 10),
-            price: parseFloat(o.FilledPrice || o.LimitPrice || "0") || null,
+            price: filledPrice || limitPrice || stopPrice,
+            stopPrice, limitPrice,
             status: o.Status || o.StatusDescription || "unknown",
             createdAt: o.OpenedDateTime || o.ClosedDateTime || "",
+            orderType,
+            groupOrderId: o.GroupName || o._parentOrderId || undefined,
+            groupOrderType: groupName || relationship || undefined,
+            legType,
+            duration: o.Duration || o.TimeInForce || undefined,
           };
         });
       },
@@ -131,7 +179,17 @@ function getProviderForConnection(connection: { provider: string; simMode?: bool
         };
         if (order.price !== undefined && (order.orderType === "limit" || order.orderType === "stop_limit")) body.LimitPrice = String(order.price);
         if (order.stopPrice !== undefined && (order.orderType === "stop" || order.orderType === "stop_limit")) body.StopPrice = String(order.stopPrice);
-        console.log(`[TradeStation SIM] Placing order:`, JSON.stringify(body).substring(0, 500));
+        if (order.bracketTarget && order.bracketStop) {
+          const exitSide = order.side === "buy" ? (isOption ? "SellToClose" : "Sell") : (isOption ? "BuyToClose" : "BuyToCover");
+          body.OSOs = [{
+            Type: "BRK",
+            Orders: [
+              { AccountID: order.accountId, Symbol: isOption ? order.optionSymbol : order.symbol, Quantity: String(order.quantity), OrderType: "Limit", TradeAction: exitSide, LimitPrice: String(order.bracketTarget), TimeInForce: { Duration: "GTC" } },
+              { AccountID: order.accountId, Symbol: isOption ? order.optionSymbol : order.symbol, Quantity: String(order.quantity), OrderType: "StopMarket", TradeAction: exitSide, StopPrice: String(order.bracketStop), TimeInForce: { Duration: "GTC" } },
+            ],
+          }];
+        }
+        console.log(`[TradeStation SIM] Placing order:`, JSON.stringify(body).substring(0, 800));
         const response = await fetch(`${simBaseUrl}/orderexecution/orders`, {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },

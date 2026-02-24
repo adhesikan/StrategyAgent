@@ -350,11 +350,32 @@ export const tradestationProvider: BrokerProvider = {
       return [];
     }
 
+    for (const o of allOrders) {
+      console.log(`[TradeStation] Raw order #${o.OrderID}: Type=${o.OrderType} Status=${o.Status} GroupName=${o.GroupName || 'none'} Legs=${JSON.stringify((o.Legs || []).map((l: any) => ({ Symbol: l.Symbol, BuyOrSell: l.BuyOrSell, OrderType: l.OrderType, OpenOrClose: l.OpenOrClose, QuantityOrdered: l.QuantityOrdered })))} ConditionalOrders=${JSON.stringify((o.ConditionalOrders || []).map((c: any) => ({ OrderID: c.OrderID, OrderType: c.OrderType, Relationship: c.Relationship })))}`);
+    }
+
+    const flatOrders: any[] = [];
+    for (const o of allOrders) {
+      flatOrders.push(o);
+      if (o.ConditionalOrders && Array.isArray(o.ConditionalOrders)) {
+        for (const child of o.ConditionalOrders) {
+          if (child.OrderID && !allOrders.some((existing: any) => String(existing.OrderID) === String(child.OrderID))) {
+            child._parentOrderId = String(o.OrderID);
+            child._isConditionalChild = true;
+            if (!child.Legs && o.Legs) {
+              child.Legs = o.Legs;
+            }
+            flatOrders.push(child);
+          }
+        }
+      }
+    }
+
     const deduped = Array.from(
-      new Map(allOrders.map((o: any) => [String(o.OrderID || ""), o])).values()
+      new Map(flatOrders.map((o: any) => [String(o.OrderID || ""), o])).values()
     );
 
-    console.log(`[TradeStation] getOrders: ${deduped.length} total unique orders for account ${accountId}`);
+    console.log(`[TradeStation] getOrders: ${deduped.length} total unique orders (${allOrders.length} raw + flattened conditionals) for account ${accountId}`);
 
     return deduped.slice(0, 500).map((o: any) => {
       const action = (o.TradeAction || o.Legs?.[0]?.BuyOrSell || "").toLowerCase();
@@ -371,12 +392,17 @@ export const tradestationProvider: BrokerProvider = {
       const filledPrice = parseFloat(o.FilledPrice || "0") || null;
 
       let legType: string | undefined;
-      const groupType = (o.GroupName || o.OrderType || "").toLowerCase();
-      if (groupType.includes("oco") || groupType.includes("bracket")) {
+      const groupName = (o.GroupName || "").toLowerCase();
+      const relationship = (o.Relationship || "").toLowerCase();
+      const isConditionalChild = o._isConditionalChild === true;
+
+      if (groupName.includes("oco") || groupName.includes("bracket") || isConditionalChild || relationship === "oco") {
         if (orderType === "stop" || orderType === "stop_limit") {
           legType = "stop_loss";
         } else if (orderType === "limit") {
           legType = "profit_target";
+        } else {
+          legType = "exit";
         }
       }
       if (orderType === "stop" && !legType) {
@@ -395,8 +421,8 @@ export const tradestationProvider: BrokerProvider = {
         status: o.Status || o.StatusDescription || "unknown",
         createdAt: o.OpenedDateTime || o.ClosedDateTime || "",
         orderType,
-        groupOrderId: o.GroupName || undefined,
-        groupOrderType: groupType || undefined,
+        groupOrderId: o.GroupName || o._parentOrderId || undefined,
+        groupOrderType: groupName || relationship || undefined,
         legType,
         duration: o.Duration || o.TimeInForce || undefined,
       };
@@ -452,7 +478,38 @@ export const tradestationProvider: BrokerProvider = {
       body.StopPrice = String(order.stopPrice);
     }
 
-    console.log(`[TradeStation] Placing order:`, JSON.stringify(body).substring(0, 500));
+    if (order.bracketTarget && order.bracketStop) {
+      const exitAction = isOption
+        ? (order.side === "buy" ? "SellToClose" : "BuyToClose")
+        : (order.side === "buy" ? "Sell" : "BuyToCover");
+      body.OSOs = [
+        {
+          Type: "BRK",
+          Orders: [
+            {
+              AccountID: order.accountId,
+              Symbol: isOption ? order.optionSymbol : order.symbol,
+              Quantity: String(order.quantity),
+              OrderType: "Limit",
+              TradeAction: exitAction,
+              LimitPrice: String(order.bracketTarget),
+              TimeInForce: { Duration: "GTC" },
+            },
+            {
+              AccountID: order.accountId,
+              Symbol: isOption ? order.optionSymbol : order.symbol,
+              Quantity: String(order.quantity),
+              OrderType: "StopMarket",
+              TradeAction: exitAction,
+              StopPrice: String(order.bracketStop),
+              TimeInForce: { Duration: "GTC" },
+            },
+          ],
+        },
+      ];
+    }
+
+    console.log(`[TradeStation] Placing order:`, JSON.stringify(body).substring(0, 800));
 
     const response = await fetch(`${LIVE_BASE_URL}/orderexecution/orders`, {
       method: "POST",

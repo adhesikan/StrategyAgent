@@ -3015,6 +3015,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       // Mark connection as active
       await storage.updateBrokerConnectionStatus(userId, true);
 
+      if (req.session.partnerUserId) {
+        await storage.updateBrokerAutoReconnect(userId, true);
+        console.log(`[Tradier OAuth] Auto-enabled persistent connection for partner user ${userId}`);
+      }
+
       console.log(`[Tradier OAuth] User ${userId} successfully connected to Tradier`);
       
       const redirectBase = req.session.partnerUserId ? "/partner/dashboard?tab=broker" : "/settings";
@@ -3179,6 +3184,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       );
 
       await storage.updateBrokerConnectionStatus(userId, true);
+
+      if (isFromPartner) {
+        await storage.updateBrokerAutoReconnect(userId, true);
+        console.log(`[TradeStation OAuth] Auto-enabled persistent connection for partner user ${userId}`);
+      }
 
       console.log(`[TradeStation OAuth] User ${userId} successfully connected to TradeStation`);
       

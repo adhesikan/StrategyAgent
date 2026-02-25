@@ -2901,6 +2901,15 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     res.json({ configured: isTradierOAuthConfigured() });
   });
 
+  const oauthStateStore = new Map<string, { userId: string; provider: string; isPartner: boolean; createdAt: number }>();
+
+  setInterval(() => {
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    for (const [key, val] of oauthStateStore) {
+      if (val.createdAt < fiveMinutesAgo) oauthStateStore.delete(key);
+    }
+  }, 60 * 1000);
+
   // Initiate Tradier OAuth flow
   app.get("/api/tradier/oauth", isAuthenticatedOrPartner, async (req, res) => {
     try {
@@ -2909,14 +2918,13 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const userId = req.session.userId!;
-      // Generate a random state to prevent CSRF attacks
       const state = crypto.randomBytes(16).toString("hex");
       
-      // Store state in session for verification on callback
       req.session.tradierOAuthState = state;
       req.session.tradierOAuthUserId = userId;
+
+      oauthStateStore.set(state, { userId, provider: "tradier", isPartner: !!req.session.partnerUserId, createdAt: Date.now() });
       
-      // Save session before redirecting to ensure state is persisted
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
           if (err) reject(err);
@@ -2927,7 +2935,6 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const callbackUrl = getTradierCallbackUrl(req);
       console.log(`[Tradier OAuth] Using callback URL: ${callbackUrl}`);
 
-      // Redirect user to Tradier authorization page
       const authUrl = new URL("https://api.tradier.com/v1/oauth/authorize");
       authUrl.searchParams.set("client_id", TRADIER_CLIENT_ID!);
       authUrl.searchParams.set("scope", "read,write,market,trade");
@@ -2954,21 +2961,32 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.redirect("/settings?tradier_error=missing_state");
       }
 
-      // Verify state matches what we stored in session
-      if (state !== req.session.tradierOAuthState) {
-        console.error("Tradier OAuth state mismatch");
-        return res.redirect("/settings?tradier_error=state_mismatch");
+      let userId: string | undefined;
+      let isPartnerFlow = false;
+
+      if (state === req.session.tradierOAuthState) {
+        userId = req.session.tradierOAuthUserId;
+        isPartnerFlow = !!req.session.partnerUserId;
+        delete req.session.tradierOAuthState;
+        delete req.session.tradierOAuthUserId;
+        oauthStateStore.delete(state);
+      } else {
+        const stored = oauthStateStore.get(state);
+        if (stored && stored.provider === "tradier") {
+          console.log(`[Tradier OAuth] Session state lost, using server-side state store for user ${stored.userId}`);
+          userId = stored.userId;
+          isPartnerFlow = stored.isPartner;
+          oauthStateStore.delete(state);
+        } else {
+          console.error(`[Tradier OAuth] State mismatch - no matching state in session or server store`);
+          return res.redirect("/settings?tradier_error=state_mismatch");
+        }
       }
 
-      const userId = req.session.tradierOAuthUserId;
       if (!userId) {
-        console.error("No user ID found in session for Tradier OAuth callback");
+        console.error("No user ID found for Tradier OAuth callback");
         return res.redirect("/settings?tradier_error=session_expired");
       }
-
-      // Clear OAuth state from session
-      delete req.session.tradierOAuthState;
-      delete req.session.tradierOAuthUserId;
 
       // Exchange authorization code for access token
       const basicAuth = Buffer.from(`${TRADIER_CLIENT_ID}:${TRADIER_CLIENT_SECRET}`).toString("base64");
@@ -3015,14 +3033,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       // Mark connection as active
       await storage.updateBrokerConnectionStatus(userId, true);
 
-      if (req.session.partnerUserId) {
+      if (isPartnerFlow || req.session.partnerUserId) {
         await storage.updateBrokerAutoReconnect(userId, true);
         console.log(`[Tradier OAuth] Auto-enabled persistent connection for partner user ${userId}`);
       }
 
       console.log(`[Tradier OAuth] User ${userId} successfully connected to Tradier`);
       
-      const redirectBase = req.session.partnerUserId ? "/partner/dashboard?tab=broker" : "/settings";
+      const redirectBase = (isPartnerFlow || req.session.partnerUserId) ? "/partner/dashboard?tab=broker" : "/settings";
       res.redirect(`${redirectBase}${redirectBase.includes("?") ? "&" : "?"}tradier_success=true`);
     } catch (error: any) {
       console.error("Tradier OAuth callback error:", error);
@@ -3084,7 +3102,9 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       req.session.tradestationOAuthState = state;
       req.session.tradestationOAuthUserId = userId;
       req.session.tradestationOAuthFromPartner = !!req.session.partnerUserId;
-      
+
+      oauthStateStore.set(state, { userId, provider: "tradestation", isPartner: !!req.session.partnerUserId, createdAt: Date.now() });
+
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
           if (err) reject(err);
@@ -3113,9 +3133,9 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   // TradeStation OAuth callback handler
   async function handleTradeStationOAuthCallback(req: any, res: any) {
-    const isFromPartner = !!req.session?.tradestationOAuthFromPartner || !!req.session?.partnerUserId;
-    const redirectBase = isFromPartner ? "/partner/dashboard?tab=broker" : "/settings";
-    const buildRedirect = (params: string) => `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}${params}`;
+    let isFromPartner = !!req.session?.tradestationOAuthFromPartner || !!req.session?.partnerUserId;
+    let redirectBase = isFromPartner ? "/partner/dashboard?tab=broker" : "/settings";
+    let buildRedirect = (params: string) => `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}${params}`;
     try {
       const { code, state } = req.query;
 
@@ -3127,19 +3147,33 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.redirect(buildRedirect("tradestation_error=missing_state"));
       }
 
-      if (state !== req.session.tradestationOAuthState) {
-        console.error("TradeStation OAuth state mismatch");
-        return res.redirect(buildRedirect("tradestation_error=state_mismatch"));
+      let userId: string | undefined;
+
+      if (state === req.session.tradestationOAuthState) {
+        userId = req.session.tradestationOAuthUserId;
+        delete req.session.tradestationOAuthState;
+        delete req.session.tradestationOAuthUserId;
+        delete req.session.tradestationOAuthFromPartner;
+        oauthStateStore.delete(state);
+      } else {
+        const stored = oauthStateStore.get(state);
+        if (stored && stored.provider === "tradestation") {
+          console.log(`[TradeStation OAuth] Session state lost, using server-side state store for user ${stored.userId}`);
+          userId = stored.userId;
+          isFromPartner = stored.isPartner;
+          redirectBase = isFromPartner ? "/partner/dashboard?tab=broker" : "/settings";
+          buildRedirect = (params: string) => `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}${params}`;
+          oauthStateStore.delete(state);
+        } else {
+          console.error("TradeStation OAuth state mismatch - no matching state in session or server store");
+          return res.redirect(buildRedirect("tradestation_error=state_mismatch"));
+        }
       }
 
-      const userId = req.session.tradestationOAuthUserId;
       if (!userId) {
-        console.error("No user ID found in session for TradeStation OAuth callback");
+        console.error("No user ID found for TradeStation OAuth callback");
         return res.redirect(buildRedirect("tradestation_error=session_expired"));
       }
-      delete req.session.tradestationOAuthState;
-      delete req.session.tradestationOAuthUserId;
-      delete req.session.tradestationOAuthFromPartner;
 
       const callbackUrl = getTradeStationCallbackUrl(req);
       

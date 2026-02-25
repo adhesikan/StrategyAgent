@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle, User, KeyRound, UserX, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -832,6 +832,10 @@ export default function Settings() {
             <FileText className="h-4 w-4" />
             Legal
           </TabsTrigger>
+          <TabsTrigger value="account" className="gap-2" data-testid="tab-account">
+            <User className="h-4 w-4" />
+            Account
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="broker">
@@ -1434,6 +1438,10 @@ export default function Settings() {
         <TabsContent value="legal">
           <LegalSettings />
         </TabsContent>
+
+        <TabsContent value="account">
+          <AccountSettings />
+        </TabsContent>
       </Tabs>
       
       <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
@@ -1623,6 +1631,293 @@ interface LegalStatus {
   currentVersion: string;
   acceptedVersion: string | null;
   acceptedAt: string | null;
+}
+
+function AccountSettings() {
+  const { toast } = useToast();
+  const { data: user, isLoading: userLoading } = useQuery<{ id: string; email: string; firstName?: string | null; lastName?: string | null; createdAt?: string | null }>({
+    queryKey: ["/api/auth/user"],
+  });
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setFirstName(user.firstName || "");
+      setLastName(user.lastName || "");
+      setEmail(user.email || "");
+    }
+  }, [user]);
+
+  const profileMutation = useMutation({
+    mutationFn: async (data: { firstName?: string; lastName?: string; email?: string }) => {
+      const res = await apiRequest("PATCH", "/api/auth/profile", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Profile updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update profile", description: error?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
+  const passwordMutation = useMutation({
+    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
+      const res = await apiRequest("POST", "/api/auth/change-password", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast({ title: "Password changed successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to change password", description: error?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async (password: string) => {
+      const res = await apiRequest("DELETE", "/api/auth/account", { password });
+      return res.json();
+    },
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to delete account", description: error?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
+  function handleProfileSave() {
+    const updates: { firstName?: string; lastName?: string; email?: string } = {};
+    if (firstName !== (user?.firstName || "")) updates.firstName = firstName;
+    if (lastName !== (user?.lastName || "")) updates.lastName = lastName;
+    if (email !== (user?.email || "")) updates.email = email;
+
+    if (Object.keys(updates).length === 0) {
+      toast({ title: "No changes to save" });
+      return;
+    }
+    profileMutation.mutate(updates);
+  }
+
+  function handlePasswordChange() {
+    if (!currentPassword || !newPassword) {
+      toast({ title: "Please fill in all password fields", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "New passwords do not match", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast({ title: "New password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    passwordMutation.mutate({ currentPassword, newPassword });
+  }
+
+  function handleDeleteAccount() {
+    if (!deletePassword) {
+      toast({ title: "Please enter your password to confirm", variant: "destructive" });
+      return;
+    }
+    deleteAccountMutation.mutate(deletePassword);
+  }
+
+  if (userLoading) {
+    return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Profile Information
+          </CardTitle>
+          <CardDescription>Update your name and email address</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="firstName">First Name</Label>
+              <Input
+                id="firstName"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+                data-testid="input-first-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lastName">Last Name</Label>
+              <Input
+                id="lastName"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
+                data-testid="input-last-name"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email Address</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              data-testid="input-email"
+            />
+          </div>
+          {user?.createdAt && (
+            <p className="text-xs text-muted-foreground">
+              Account created: {new Date(user.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+            </p>
+          )}
+          <Button
+            onClick={handleProfileSave}
+            disabled={profileMutation.isPending}
+            data-testid="button-save-profile"
+          >
+            {profileMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Saving...</> : <><Save className="h-4 w-4 mr-2" /> Save Profile</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5" />
+            Change Password
+          </CardTitle>
+          <CardDescription>Update your account password</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="currentPassword">Current Password</Label>
+            <Input
+              id="currentPassword"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter current password"
+              data-testid="input-current-password"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">New Password</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password (min 6 characters)"
+              data-testid="input-new-password"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm New Password</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              data-testid="input-confirm-password"
+            />
+          </div>
+          <Button
+            onClick={handlePasswordChange}
+            disabled={passwordMutation.isPending}
+            data-testid="button-change-password"
+          >
+            {passwordMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Changing...</> : <><KeyRound className="h-4 w-4 mr-2" /> Change Password</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-red-500/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-red-500">
+            <UserX className="h-5 w-5" />
+            Delete Account
+          </CardTitle>
+          <CardDescription>
+            Permanently delete your account and all associated data. This action cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!showDeleteConfirm ? (
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteConfirm(true)}
+              data-testid="button-show-delete-account"
+            >
+              <Trash2 className="h-4 w-4 mr-2" /> Delete My Account
+            </Button>
+          ) : (
+            <div className="space-y-4 p-4 border border-red-500/30 rounded-lg bg-red-500/5">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-red-500">This will permanently delete:</p>
+                  <ul className="mt-1 text-muted-foreground list-disc list-inside space-y-1">
+                    <li>Your account and profile information</li>
+                    <li>All saved settings and preferences</li>
+                    <li>Broker connections and trade history</li>
+                    <li>Scan results and watchlists</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deletePassword">Enter your password to confirm</Label>
+                <Input
+                  id="deletePassword"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your password"
+                  data-testid="input-delete-password"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteAccount}
+                  disabled={deleteAccountMutation.isPending}
+                  data-testid="button-confirm-delete-account"
+                >
+                  {deleteAccountMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Deleting...</> : "Yes, Delete My Account"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowDeleteConfirm(false); setDeletePassword(""); }}
+                  data-testid="button-cancel-delete"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function LegalSettings() {

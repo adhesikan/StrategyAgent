@@ -47,7 +47,10 @@ A provider adapter pattern normalizes brokerage data across different providers,
 Tradier paper trading is supported using a separate sandbox API token for simulated trades. TradeStation supports a sim environment toggle that routes all API calls to `sim-api.tradestation.com/v3` for simulated trading. The sim mode flag is stored in the encrypted broker credentials and toggled via `/api/broker/sim-mode` endpoints. The `getTradeStationBaseUrl(simMode)` utility in `server/broker/providers/tradestation.ts` resolves the correct API base URL throughout the codebase.
 
 ### Authentication & Authorization
-The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions, supporting `user` and `admin` roles with role-based access control.
+The system uses email/password authentication with bcrypt hashing and PostgreSQL-backed sessions, supporting `user` and `admin` roles with role-based access control. The Settings page includes an **Account** tab (`/settings` → Account) with:
+- **Profile Management**: Update first name, last name, and email address (`PATCH /api/auth/profile`).
+- **Password Change**: Change password with current password verification (`POST /api/auth/change-password`).
+- **Account Deletion**: Permanently delete account and all associated data with password confirmation (`DELETE /api/auth/account`). Cascades deletion across all tables with `user_id` columns.
 
 ### Options Scanner
 A modular options scanning engine provides strategy-based candidate discovery for Long Options, Wheel Strategy, and Credit Spreads, with persisted results and configurable preferences.

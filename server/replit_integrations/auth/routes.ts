@@ -2,8 +2,10 @@ import type { Express, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./sessionAuth";
-import { loginSchema, registerSchema } from "@shared/models/auth";
+import { loginSchema, registerSchema, users } from "@shared/models/auth";
 import { z } from "zod";
+import { eq, sql } from "drizzle-orm";
+import { db } from "../../db";
 import { storage } from "../../storage";
 import { seedDefaultUniverse } from "../../models/ticker-universes";
 import { getDefaultRiskProfile } from "../../models/risk-profiles";
@@ -47,6 +49,17 @@ export const verifyJwt: RequestHandler = (req, _res, next) => {
   }
   next();
 };
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+});
+
+const updateProfileSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().email("Invalid email address").optional(),
+});
 
 const LEGAL_VERSION = process.env.LEGAL_VERSION || "2026-01-01";
 
@@ -226,6 +239,105 @@ export function registerAuthRoutes(app: Express): void {
     } catch (error) {
       console.error("[Auth] Token generation failed:", (error as Error).message);
       res.status(500).json({ message: "Failed to generate token" });
+    }
+  });
+
+  app.post("/api/auth/change-password", isAuthenticated, async (req, res) => {
+    try {
+      const data = changePasswordSchema.parse(req.body);
+      const user = await authStorage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isValid = await authStorage.validatePassword(data.currentPassword, user.password);
+      if (!isValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      if (data.currentPassword === data.newPassword) {
+        return res.status(400).json({ message: "New password must be different from current password" });
+      }
+
+      await authStorage.updateUser(user.id, { password: data.newPassword });
+      console.log(`[Auth] Password changed for user ${user.id}`);
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Change password error:", error);
+      res.status(500).json({ message: "Failed to change password" });
+    }
+  });
+
+  app.patch("/api/auth/profile", isAuthenticated, async (req, res) => {
+    try {
+      const data = updateProfileSchema.parse(req.body);
+
+      if (data.email) {
+        data.email = data.email.toLowerCase();
+        const existing = await authStorage.getUserByEmail(data.email);
+        if (existing && existing.id !== req.session.userId) {
+          return res.status(400).json({ message: "Email already in use" });
+        }
+      }
+
+      const user = await authStorage.updateUser(req.session.userId!, data);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { password: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Update profile error:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  app.delete("/api/auth/account", isAuthenticated, async (req, res) => {
+    try {
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({ message: "Password is required to delete account" });
+      }
+
+      const user = await authStorage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isValid = await authStorage.validatePassword(password, user.password);
+      if (!isValid) {
+        return res.status(400).json({ message: "Incorrect password" });
+      }
+
+      const userId = user.id;
+      const tablesResult = await db.execute(sql`
+        SELECT table_name FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND column_name = 'user_id'
+          AND table_name != 'users'
+      `);
+      for (const row of tablesResult.rows) {
+        const tableName = (row as any).table_name;
+        await db.execute(sql.raw(`DELETE FROM "${tableName}" WHERE user_id = '${userId.replace(/'/g, "''")}'`));
+      }
+      await db.delete(users).where(eq(users.id, userId));
+      console.log(`[Auth] Account deleted for user ${userId} (${user.email}) with all associated data`);
+
+      req.session.destroy((err) => {
+        if (err) console.error("Session destroy error after account deletion:", err);
+        res.clearCookie("connect.sid");
+        res.json({ message: "Account deleted successfully" });
+      });
+    } catch (error) {
+      console.error("Delete account error:", error);
+      res.status(500).json({ message: "Failed to delete account" });
     }
   });
 

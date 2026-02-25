@@ -6690,7 +6690,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const subscribers = await storage.getPartnerUsersByPartnerId(partner.id);
-      const activeSubscribers = subscribers.filter((s) => s.isActive && s.linkedUserId && s.subscriptionStatus === "active");
+      const activeSubscribers = subscribers.filter((s) => s.isActive && s.linkedUserId && (s.subscriptionStatus === "active" || s.subscriptionStatus === "trialing"));
 
       let delivered = 0;
       let failed = 0;

@@ -786,7 +786,8 @@ export default function CommandCenter() {
   const agentPaused = agentState?.paused ?? false;
   const emergencyStop = agentState?.emergencyStop ?? false;
   const actionMode = userSettings?.actionMode || "ALERTS_ONLY";
-  const automationMode = (userSettings as any)?.automationMode || "ALERTS";
+  const agentPolicyMode = agentPolicy?.mode || "SUGGEST";
+  const automationMode = !agentEnabled ? "ALERTS" : agentPolicyMode === "AUTO" ? "AUTONOMOUS" : "ASSISTED";
   const automationEngine = (userSettings as any)?.automationEngine || "BUILT_IN";
   const setupComplete = userSettings?.setupCompleted ?? false;
 
@@ -838,7 +839,7 @@ export default function CommandCenter() {
           />
           <StatusCard 
             status={automationMode === "AUTONOMOUS" ? (agentStatus.status) : "offline"} 
-            label={automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : `Auto: ${agentStatus.label}`}
+            label={automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Suggest" : `Auto: ${agentStatus.label}`}
             icon={automationMode === "AUTONOMOUS" ? Bot : Bell}
           />
         </div>
@@ -890,7 +891,7 @@ export default function CommandCenter() {
       })()}
 
       {(() => {
-        const modeLabel = automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Assisted" : "Autonomous";
+        const modeLabel = automationMode === "ALERTS" ? "Alerts" : automationMode === "ASSISTED" ? "Suggest" : "Auto";
         const needsBroker = automationMode !== "ALERTS";
         const needsAutoCfg = automationMode === "AUTONOMOUS";
         const checklistItems = [

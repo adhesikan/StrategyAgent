@@ -62,6 +62,8 @@ import {
   Scale,
   ChevronDown,
   SlidersHorizontal,
+  Ban,
+  X,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
@@ -117,6 +119,7 @@ interface TradeAlert {
   executedAt: string | null;
   alertTimestamp: string;
   createdAt: string;
+  brokerOrderId?: string | null;
 }
 
 function formatPrice(price: number): string {
@@ -1247,6 +1250,7 @@ function AgentTab() {
 }
 
 function TradesTab() {
+  const { toast } = useToast();
   const { data: trades = [], isLoading } = useQuery<TradeAlert[]>({
     queryKey: ["/api/partner/trades"],
     refetchInterval: 15000,
@@ -1278,6 +1282,34 @@ function TradesTab() {
     setTicketTrade(trade);
     setShowTicket(true);
   }
+
+  const dismissMutation = useMutation({
+    mutationFn: async (alertId: string) => {
+      const res = await apiRequest("POST", `/api/partner/trades/${alertId}/dismiss`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/trades"] });
+      toast({ title: "Signal dismissed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to dismiss signal", variant: "destructive" });
+    },
+  });
+
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const res = await apiRequest("POST", `/api/partner/orders/${orderId}/cancel`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/trades"] });
+      toast({ title: data.message || "Order cancelled" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to cancel order", description: error?.message || "Please try again", variant: "destructive" });
+    },
+  });
 
   if (isLoading) {
     return <div className="space-y-3"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></div>;
@@ -1391,18 +1423,46 @@ function TradesTab() {
                     <Clock className="w-3 h-3" />
                     {formatDate(trade.alertTimestamp)}
                   </div>
-                  {isSuggestMode && isPending && !isExit && brokerAccounts.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="default"
-                      className="text-xs gap-1"
-                      onClick={() => handleInstaTrade(trade)}
-                      data-testid={`button-instatrade-trade-${trade.id}`}
-                    >
-                      <Zap className="h-3 w-3" />
-                      InstaTrade&trade;
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isPending && !trade.id.startsWith("broker-") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs gap-1"
+                        onClick={() => dismissMutation.mutate(trade.id)}
+                        disabled={dismissMutation.isPending}
+                        data-testid={`button-dismiss-trade-${trade.id}`}
+                      >
+                        <X className="h-3 w-3" />
+                        Dismiss
+                      </Button>
+                    )}
+                    {isSuggestMode && isPending && !isExit && brokerAccounts.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="text-xs gap-1"
+                        onClick={() => handleInstaTrade(trade)}
+                        data-testid={`button-instatrade-trade-${trade.id}`}
+                      >
+                        <Zap className="h-3 w-3" />
+                        InstaTrade&trade;
+                      </Button>
+                    )}
+                    {trade.brokerOrderId && (trade.status === "EXECUTED" || trade.status === "PENDING") && trade.id.startsWith("broker-") && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="text-xs gap-1"
+                        onClick={() => cancelOrderMutation.mutate(trade.brokerOrderId!)}
+                        disabled={cancelOrderMutation.isPending}
+                        data-testid={`button-cancel-order-${trade.id}`}
+                      >
+                        <Ban className="h-3 w-3" />
+                        {cancelOrderMutation.isPending ? "Cancelling..." : "Cancel Order"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

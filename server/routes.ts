@@ -6370,6 +6370,34 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.post("/api/partner/trades/:id/dismiss", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const alertId = req.params.id;
+      const alert = await storage.updateExternalAlert(alertId, { status: "SKIPPED", skipReason: "Dismissed by user" });
+      if (!alert) return res.status(404).json({ error: "Alert not found" });
+      if (alert.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to dismiss trade" });
+    }
+  });
+
+  app.post("/api/partner/orders/:orderId/cancel", isPartnerAuthenticated as RequestHandler, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(400).json({ error: "No linked account" });
+      const { orderId } = req.params;
+      const brokerService = await import("./broker/index");
+      const result = await brokerService.cancelBrokerOrder(userId, orderId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[PartnerCancel] Error:", error?.message);
+      res.status(500).json({ success: false, error: error?.message || "Failed to cancel order" });
+    }
+  });
+
   // Partner API key management
   app.get("/api/partner/api-keys", isPartnerAuthenticated as RequestHandler, async (req, res) => {
     try {

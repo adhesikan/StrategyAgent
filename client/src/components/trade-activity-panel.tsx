@@ -162,7 +162,19 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
                   {trade.symbol}
                 </span>
                 <Badge variant="outline" className="text-xs uppercase">
-                  {trade.side}
+                  {trade.action === "sell_short" || trade.action === "sellshort"
+                    ? "Short"
+                    : trade.action === "buy_to_cover" || trade.action === "buytocover"
+                    ? "Cover"
+                    : trade.action === "buy_to_open"
+                    ? "Buy Open"
+                    : trade.action === "buy_to_close"
+                    ? "Buy Close"
+                    : trade.action === "sell_to_open"
+                    ? "Sell Open"
+                    : trade.action === "sell_to_close"
+                    ? "Sell Close"
+                    : trade.side}
                 </Badge>
                 {formatStrategy(trade.strategy) && (
                   <Badge variant="secondary" className="text-xs" data-testid={`badge-trade-strategy-${trade.id}`}>

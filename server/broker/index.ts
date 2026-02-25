@@ -139,6 +139,7 @@ function getProviderForConnection(connection: { provider: string; simMode?: bool
           return {
             id: String(o.OrderID || ""), symbol: o.Legs?.[0]?.Symbol || o.Symbol || "UNKNOWN",
             side: isSell ? "sell" as const : "buy" as const,
+            action: action || undefined,
             qty: parseInt(o.Legs?.[0]?.QuantityOrdered || o.Quantity || "0", 10),
             filledQty: parseInt(o.Legs?.[0]?.ExecQuantity || o.FilledQuantity || "0", 10),
             price: filledPrice || limitPrice || stopPrice,

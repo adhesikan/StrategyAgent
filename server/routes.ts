@@ -1577,7 +1577,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
               id: `broker-${bo.id}`,
               symbol: bo.symbol || "UNKNOWN",
               source: "broker" as any,
-              action: undefined,
+              action: bo.action || undefined,
               side: bo.side || "buy",
               quantity: bo.qty || 0,
               filledQty: bo.filledQty || 0,

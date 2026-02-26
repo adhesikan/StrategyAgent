@@ -1731,6 +1731,20 @@ export default function PartnerDashboard() {
       </header>
 
       <main className="max-w-4xl mx-auto p-4">
+        <div
+          className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground border border-border/50 rounded-md px-3 py-1.5 mb-4"
+          role="status"
+          aria-label="Responsibility disclosure"
+          data-testid="banner-responsibility"
+        >
+          <Shield className="w-3 h-3 shrink-0 opacity-60" />
+          <span>Signals: <span className="font-medium text-foreground/80">{profile.partnerName}</span></span>
+          <span className="opacity-40">•</span>
+          <span>Automation: <span className="font-medium text-foreground/80">AlgoPilotX</span></span>
+          <span className="opacity-40">•</span>
+          <span>Execution controlled by your settings</span>
+        </div>
+
         <Tabs defaultValue="broker" className="space-y-4">
           <TabsList className="grid w-full grid-cols-3" data-testid="tabs-partner-dashboard">
             <TabsTrigger value="broker" className="gap-1" data-testid="tab-broker">

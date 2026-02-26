@@ -1,0 +1,71 @@
+You are working in my existing codebase on Replit. I need a UX + compliance update on the VCP Trader partner-user dashboard (the partner/newsletter scoped “Auto Agent” dashboard where users connect a broker, configure rules, and enable automation).
+
+GOAL
+Add a small, always-visible “Responsibility Banner” near the top of the partner user dashboard (above broker connection / automation controls) to reduce confusion and reinforce compliant separation of roles.
+
+The banner should clearly state:
+- Signals provider (partner newsletter name)
+- Automation engine (AlgoPilotX)
+- Execution is controlled by the user’s settings
+
+Desired banner text (dynamic):
+“Signals: {PartnerDisplayName} • Automation: AlgoPilotX • Execution controlled by your settings”
+
+If partner name cannot be resolved:
+“Signals: Newsletter Partner • Automation: AlgoPilotX • Execution controlled by your settings”
+
+IMPORTANT CONSTRAINTS
+- Do NOT remove the existing full “Important Disclosures & Legal Disclaimer” block at the bottom. Keep it as-is.
+- Do NOT change any trading logic, broker connection logic, or settings behavior.
+- Do NOT break existing layout, theme (dark UI), or navigation.
+- The banner must be present on the partner dashboard and (if applicable) the Automation Settings page where users enable/disable automation.
+- Keep this change scoped to the partner/newsletter auto agent area only (not the VCP Trader scanner product).
+
+IMPLEMENTATION REQUIREMENTS
+1) Determine how partner context is currently available on this dashboard:
+   - If the UI already shows partner name in the header (e.g., “Strategy Fundamentals”), reuse that same source.
+   - Else resolve partner via existing session/JWT/tenant logic or by calling an existing endpoint.
+   - If you already have a partner-context endpoint (e.g., /api/partner/context), reuse it.
+   - Avoid duplicating partner resolution logic; centralize it.
+
+2) Create a reusable UI component:
+   - Component name: ResponsibilityBanner (or similar)
+   - Props: partnerDisplayName?: string
+   - Style:
+     - Compact, subtle, premium.
+     - Full-width container aligned with existing content width.
+     - Looks like an “info bar” or “badge strip” (small text, low-contrast border).
+     - Do not introduce new colors that clash; match existing theme.
+   - Accessibility:
+     - Ensure sufficient contrast and readable font size.
+     - Provide aria-label if needed.
+
+3) Insert the banner in the correct place(s):
+   - Partner dashboard page: place just below the page title/header and above “Brokerage Connection” / agent controls.
+   - Automation Settings page (if separate): place at the top above enable/disable automation toggles.
+
+4) Make the banner dynamic:
+   - Use partnerDisplayName from the partner context.
+   - If missing, use fallback “Newsletter Partner”.
+
+5) Verification:
+   - Banner renders for partner users and shows correct partner name.
+   - If partner missing, fallback text shows.
+   - Existing broker connection state (“Connected”, test connection button) still works.
+   - InstaTrade™ area unchanged.
+   - Full legal disclaimer block remains unchanged.
+
+DELIVERABLES
+- List of files changed and what was changed.
+- New component created and where it is used.
+- Confirm partner name is dynamic and pulled from the existing partner context.
+
+SEARCH HINTS (for you to find the right files fast)
+Search for these strings to locate the dashboard component:
+- “Brokerage Connection”
+- “InstaTrade”
+- “Test Connection”
+- “Connected”
+- “Important Disclosures”
+- “VCP Trader Autonomous Agent” (if still present)
+- Partner name like “Strategy Fundamentals” shown in header

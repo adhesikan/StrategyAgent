@@ -636,16 +636,63 @@ function AgentTab({ partnerName = "Newsletter" }: { partnerName?: string }) {
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label className="inline-flex items-center">Sizing Method <FieldTip text="Risk-Based sizes from your risk-per-trade. Fixed Quantity uses a set share count. Fixed Dollar uses a set dollar amount per trade." /></Label>
+            <Select
+              value={current.sizingMethod || "riskBased"}
+              onValueChange={(val) => updateField("sizingMethod", val)}
+            >
+              <SelectTrigger data-testid="select-sizing-method">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="riskBased">Risk-Based ($ at risk per trade)</SelectItem>
+                <SelectItem value="fixedQty">Fixed Quantity (shares per trade)</SelectItem>
+                <SelectItem value="fixedNotional">Fixed Dollar Amount ($ per trade)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label className="inline-flex items-center">Risk Per Trade ($) <FieldTip text="Maximum dollar amount at risk on any single trade. Used for position sizing." /></Label>
-              <Input
-                type="number"
-                value={current.riskPerTradeUsd ?? 100}
-                onChange={(e) => updateField("riskPerTradeUsd", Number(e.target.value))}
-                data-testid="input-risk-per-trade"
-              />
-              <p className="text-xs text-muted-foreground">Most you can lose on a single trade</p>
+              {(!current.sizingMethod || current.sizingMethod === "riskBased") && (
+                <>
+                  <Label className="inline-flex items-center">Risk Per Trade ($) <FieldTip text="Maximum dollar amount at risk on any single trade. Used for position sizing." /></Label>
+                  <Input
+                    type="number"
+                    value={current.riskPerTradeUsd ?? 100}
+                    onChange={(e) => updateField("riskPerTradeUsd", Number(e.target.value))}
+                    data-testid="input-risk-per-trade"
+                  />
+                  <p className="text-xs text-muted-foreground">Most you can lose on a single trade</p>
+                </>
+              )}
+              {current.sizingMethod === "fixedQty" && (
+                <>
+                  <Label className="inline-flex items-center">Shares Per Trade <FieldTip text="Exact number of shares for every signal." /></Label>
+                  <Input
+                    type="number"
+                    value={current.fixedQuantity ?? ""}
+                    onChange={(e) => updateField("fixedQuantity", e.target.value ? Number(e.target.value) : null)}
+                    placeholder="100"
+                    data-testid="input-fixed-quantity"
+                  />
+                  <p className="text-xs text-muted-foreground">Same share count on every trade</p>
+                </>
+              )}
+              {current.sizingMethod === "fixedNotional" && (
+                <>
+                  <Label className="inline-flex items-center">Dollar Amount Per Trade ($) <FieldTip text="Total dollar amount per trade. Shares calculated from entry price." /></Label>
+                  <Input
+                    type="number"
+                    value={current.fixedNotionalUsd ?? ""}
+                    onChange={(e) => updateField("fixedNotionalUsd", e.target.value ? Number(e.target.value) : null)}
+                    placeholder="1000"
+                    data-testid="input-fixed-notional"
+                  />
+                  <p className="text-xs text-muted-foreground">Same dollar amount on every trade</p>
+                </>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="inline-flex items-center">Max Daily Loss ($) <FieldTip text="When total losses exceed this amount, the agent stops trading for the day." /></Label>
@@ -978,69 +1025,27 @@ function AgentTab({ partnerName = "Newsletter" }: { partnerName?: string }) {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Target className="w-4 h-4" />
-                Position Sizing & Filters
+                Filters & Constraints
               </CardTitle>
-              <CardDescription className="text-xs">Control how positions are sized and which symbols to trade</CardDescription>
+              <CardDescription className="text-xs">Control trade direction and which symbols to trade</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="inline-flex items-center text-xs">Direction <FieldTip text="Restrict to long trades, short trades, or both." /></Label>
-                  <Select
-                    value={current.direction || "both"}
-                    onValueChange={(val) => updateField("direction", val)}
-                  >
-                    <SelectTrigger data-testid="select-direction">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="long">Long Only</SelectItem>
-                      <SelectItem value="short">Short Only</SelectItem>
-                      <SelectItem value="both">Both</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="inline-flex items-center text-xs">Sizing Method <FieldTip text="Risk-Based sizes from your risk-per-trade. Fixed uses a set share count or dollar amount." /></Label>
-                  <Select
-                    value={current.sizingMethod || "riskBased"}
-                    onValueChange={(val) => updateField("sizingMethod", val)}
-                  >
-                    <SelectTrigger data-testid="select-sizing-method">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="riskBased">Risk-Based ($ at risk per trade)</SelectItem>
-                      <SelectItem value="fixedQty">Fixed Quantity</SelectItem>
-                      <SelectItem value="fixedNotional">Fixed Dollar Amount</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label className="inline-flex items-center text-xs">Direction <FieldTip text="Restrict to long trades, short trades, or both." /></Label>
+                <Select
+                  value={current.direction || "both"}
+                  onValueChange={(val) => updateField("direction", val)}
+                >
+                  <SelectTrigger data-testid="select-direction">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="long">Long Only</SelectItem>
+                    <SelectItem value="short">Short Only</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-
-              {current.sizingMethod === "fixedQty" && (
-                <div className="space-y-1">
-                  <Label className="inline-flex items-center text-xs">Shares Per Trade <FieldTip text="Exact number of shares for every signal." /></Label>
-                  <Input
-                    type="number"
-                    value={current.fixedQuantity ?? ""}
-                    onChange={(e) => updateField("fixedQuantity", e.target.value ? Number(e.target.value) : null)}
-                    data-testid="input-fixed-quantity"
-                  />
-                </div>
-              )}
-
-              {current.sizingMethod === "fixedNotional" && (
-                <div className="space-y-1">
-                  <Label className="inline-flex items-center text-xs">Dollar Amount Per Trade <FieldTip text="Total dollar amount per trade. Shares calculated from entry price." /></Label>
-                  <Input
-                    type="number"
-                    value={current.fixedNotionalUsd ?? ""}
-                    onChange={(e) => updateField("fixedNotionalUsd", e.target.value ? Number(e.target.value) : null)}
-                    data-testid="input-fixed-notional"
-                  />
-                </div>
-              )}
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">

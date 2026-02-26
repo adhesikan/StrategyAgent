@@ -159,13 +159,6 @@ const brokerProviders = [
     supportsOAuth: true,
     signupUrl: "https://getstarted2.tradestation.com/intro?offer=ALGOAGRB",
   },
-  {
-    id: "alpaca",
-    name: "Alpaca",
-    description: "API-first stock trading",
-    supportsOAuth: false,
-    signupUrl: "https://app.alpaca.markets/signup",
-  },
 ];
 
 interface BrokerAccount {

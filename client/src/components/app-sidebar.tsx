@@ -11,6 +11,8 @@ import {
   Radio,
   BookOpen,
   Handshake,
+  Users,
+  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -162,7 +164,11 @@ export function AppSidebar() {
   const groups = isAdmin
     ? navGroups.map(g =>
         g.label === "CONTROL"
-          ? { ...g, items: [...g.items, { title: "Partners", description: "Signal providers", url: "/admin/partners", icon: Handshake }] }
+          ? { ...g, items: [...g.items,
+              { title: "Users", description: "User administration", url: "/admin/users", icon: Users },
+              { title: "Partners", description: "Signal providers", url: "/admin/partners", icon: Handshake },
+              { title: "Compliance", description: "Acceptance logs", url: "/admin/disclaimer-logs", icon: Shield },
+            ] }
           : g
       )
     : navGroups;

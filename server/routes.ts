@@ -6299,6 +6299,20 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         consentText,
       });
 
+      const { computeDisclaimerHash } = await import("@shared/persona-engine");
+      await storage.createDisclaimerAcceptance({
+        userId,
+        userEmail: partnerUser.email,
+        userName: partnerUser.email,
+        acceptanceType: "PARTNER_AUTO_MODE",
+        disclaimerVersion: "auto-mode-v1",
+        disclaimerHash: computeDisclaimerHash(consentText),
+        accepted: true,
+        ipAddress: clientIp,
+        userAgent: req.headers["user-agent"] || null,
+        metadataJson: { source: "partner_dashboard", consentId: consent.id },
+      });
+
       res.json(consent);
     } catch (error) {
       console.error("Error recording auto mode consent:", error);
@@ -7053,6 +7067,180 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     } catch (error: any) {
       console.error("[SystemProfile] Simple mode error:", error.message);
       res.status(500).json({ error: "Failed to update mode" });
+    }
+  });
+
+  app.get("/api/admin/users", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql, eq, and, desc } = await import("drizzle-orm");
+      const { users } = await import("@shared/models/auth");
+
+      const { q, role, page, pageSize, sort } = req.query;
+      const pg = page ? parseInt(page as string) : 1;
+      const ps = pageSize ? parseInt(pageSize as string) : 25;
+      const offset = (pg - 1) * ps;
+
+      const conditions: any[] = [];
+      if (q) {
+        const search = `%${(q as string).toLowerCase()}%`;
+        conditions.push(
+          sql`(LOWER(${users.email}) LIKE ${search} OR LOWER(${users.firstName}) LIKE ${search} OR LOWER(${users.lastName}) LIKE ${search} OR ${users.id} = ${q as string})`
+        );
+      }
+      if (role && role !== "all") {
+        conditions.push(eq(users.role, role as string));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(users).where(whereClause);
+      const total = Number(countResult.count);
+
+      const orderBy = sort === "email" ? users.email : sort === "role" ? users.role : users.createdAt;
+      const userList = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          subscriptionStatus: users.subscriptionStatus,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+        })
+        .from(users)
+        .where(whereClause)
+        .orderBy(desc(orderBy))
+        .limit(ps)
+        .offset(offset);
+
+      res.json({ users: userList, total, page: pg, pageSize: ps });
+    } catch (error: any) {
+      console.error("[Admin] List users error:", error.message);
+      res.status(500).json({ error: "Failed to list users" });
+    }
+  });
+
+  app.get("/api/admin/users/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+
+      const userId = req.params.id;
+      const user = await authStorage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const { password: _, ...safeUser } = user;
+
+      const brokerConnection = await storage.getBrokerConnection(userId);
+      const agentSettings = await storage.getAgentSettings(userId);
+
+      const [tradeCountResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(sql`external_alerts`)
+        .where(sql`user_id = ${userId}`);
+
+      const [consentCountResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(sql`disclaimer_acceptance_logs`)
+        .where(sql`user_id = ${userId}`);
+
+      res.json({
+        user: safeUser,
+        broker: brokerConnection ? {
+          provider: brokerConnection.provider,
+          isConnected: brokerConnection.isConnected,
+          preferredAccountId: brokerConnection.preferredAccountId,
+        } : null,
+        agentSettings: agentSettings ? {
+          mode: agentSettings.mode,
+          riskPerTradeUsd: agentSettings.riskPerTradeUsd,
+          maxDailyLossUsd: agentSettings.maxDailyLossUsd,
+          maxTradesPerDay: agentSettings.maxTradesPerDay,
+        } : null,
+        tradeCount: Number(tradeCountResult?.count || 0),
+        consentCount: Number(consentCountResult?.count || 0),
+      });
+    } catch (error: any) {
+      console.error("[Admin] Get user error:", error.message);
+      res.status(500).json({ error: "Failed to get user details" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const { role } = req.body;
+
+      if (role && !["user", "admin"].includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+      }
+
+      const updated = await authStorage.updateUser(userId, { role });
+      if (!updated) return res.status(404).json({ error: "User not found" });
+
+      const { password: _, ...safeUser } = updated;
+      console.log(`[Admin] User ${userId} role changed to ${role} by admin ${req.session.userId}`);
+      res.json(safeUser);
+    } catch (error: any) {
+      console.error("[Admin] Update user error:", error.message);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  app.get("/api/admin/stats", isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql, eq } = await import("drizzle-orm");
+      const { users } = await import("@shared/models/auth");
+
+      const [totalResult] = await db.select({ count: sql<number>`count(*)` }).from(users);
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const [newWeekResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(sql`${users.createdAt} >= ${sevenDaysAgo}`);
+
+      const [newMonthResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(sql`${users.createdAt} >= ${thirtyDaysAgo}`);
+
+      const [brokerResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(sql`broker_connections`)
+        .where(sql`is_connected = true`);
+
+      const [autoAgentResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(sql`agent_settings`)
+        .where(sql`mode = 'auto'`);
+
+      const [adminResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(eq(users.role, "admin"));
+
+      const [complianceResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(sql`disclaimer_acceptance_logs`);
+
+      res.json({
+        totalUsers: Number(totalResult.count),
+        newUsersThisWeek: Number(newWeekResult.count),
+        newUsersThisMonth: Number(newMonthResult.count),
+        activeBrokerConnections: Number(brokerResult.count),
+        autoAgentUsers: Number(autoAgentResult.count),
+        adminUsers: Number(adminResult.count),
+        totalComplianceRecords: Number(complianceResult.count),
+      });
+    } catch (error: any) {
+      console.error("[Admin] Stats error:", error.message);
+      res.status(500).json({ error: "Failed to get stats" });
     }
   });
 

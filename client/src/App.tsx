@@ -56,6 +56,7 @@ import TradeAlertsPage from "@/pages/trade-alerts";
 import PartnerDashboard from "@/pages/partner-dashboard";
 import AdminPartnersPage from "@/pages/admin-partners";
 import AdminDisclaimerLogs from "@/pages/admin-disclaimer-logs";
+import AdminUsersPage from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
 import { Redirect } from "wouter";
 
@@ -94,6 +95,7 @@ function AppRouter() {
       <Route path="/trade-alerts" component={TradeAlertsPage} />
       <Route path="/admin/partners" component={AdminPartnersPage} />
       <Route path="/admin/disclaimer-logs" component={AdminDisclaimerLogs} />
+      <Route path="/admin/users" component={AdminUsersPage} />
       <Route path="/app/automation">{() => <Redirect to="/automation" />}</Route>
       <Route path="/learn/news">{() => <Redirect to="/news" />}</Route>
       <Route path="/strategy-guide">{() => <Redirect to="/help" />}</Route>

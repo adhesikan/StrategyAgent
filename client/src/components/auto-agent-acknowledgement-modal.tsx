@@ -25,6 +25,8 @@ export function AutoAgentAcknowledgementModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const ACK_CONSENT_TEXT = "I understand that automated actions follow rules I configured and approved. The system will execute trades based on my defined criteria without requiring additional confirmation. I understand that I can pause or disable automation at any time using the Emergency Stop button, and I am responsible for monitoring automated activity.";
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PUT", "/api/user/settings", {
@@ -36,6 +38,11 @@ export function AutoAgentAcknowledgementModal({
       await apiRequest("POST", "/api/audit-events", {
         eventType: "AUTO_AGENT_ARMED",
         metadata: { acknowledgedAt: new Date().toISOString(), version: "v1" },
+      });
+
+      await apiRequest("POST", "/api/disclaimer/accept", {
+        acceptanceType: "AUTO_AGENT_ENABLE",
+        metadata: { version: "v1", source: "auto_agent_panel" },
       });
     },
     onSuccess: () => {

@@ -101,8 +101,11 @@ export default function AdminDisclaimerLogs() {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="WIZARD_AUTOPILOT_ENABLE">Wizard Autopilot</SelectItem>
+                  <SelectItem value="AUTO_AGENT_ENABLE">Auto Agent Enable</SelectItem>
                   <SelectItem value="AUTO_MODE_CONSENT">Auto Mode Consent</SelectItem>
                   <SelectItem value="PARTNER_AUTO_MODE">Partner Auto Mode</SelectItem>
+                  <SelectItem value="LEGAL_TERMS">Legal Terms</SelectItem>
+                  <SelectItem value="TERMS_UPDATE">Terms Update</SelectItem>
                 </SelectContent>
               </Select>
             </div>

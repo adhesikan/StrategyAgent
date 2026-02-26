@@ -1590,7 +1590,7 @@ export const TradingStyle = { DAY: "DAY", SWING: "SWING", AUTO: "AUTO" } as cons
 export const MarketScope = { STOCKS: "STOCKS", OPTIONS: "OPTIONS", BOTH: "BOTH" } as const;
 export const PersonaGoal = { CONSISTENCY: "CONSISTENCY", SAVE_TIME: "SAVE_TIME", OPPORTUNITIES: "OPPORTUNITIES", REDUCE_EMOTION: "REDUCE_EMOTION" } as const;
 export const PersonaRisk = { CONSERVATIVE: "CONSERVATIVE", BALANCED: "BALANCED", AGGRESSIVE: "AGGRESSIVE" } as const;
-export const AcceptanceType = { WIZARD_AUTOPILOT_ENABLE: "WIZARD_AUTOPILOT_ENABLE", DASHBOARD_RECONFIRM: "DASHBOARD_RECONFIRM", TERMS_UPDATE: "TERMS_UPDATE", OTHER: "OTHER" } as const;
+export const AcceptanceType = { WIZARD_AUTOPILOT_ENABLE: "WIZARD_AUTOPILOT_ENABLE", DASHBOARD_RECONFIRM: "DASHBOARD_RECONFIRM", TERMS_UPDATE: "TERMS_UPDATE", AUTO_AGENT_ENABLE: "AUTO_AGENT_ENABLE", AUTO_MODE_CONSENT: "AUTO_MODE_CONSENT", PARTNER_AUTO_MODE: "PARTNER_AUTO_MODE", LEGAL_TERMS: "LEGAL_TERMS", OTHER: "OTHER" } as const;
 
 // User System Profiles - stores trading style, market scope, and persona information
 export const userSystemProfiles = pgTable("user_system_profiles", {

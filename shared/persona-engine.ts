@@ -114,7 +114,7 @@ export function computePersona(input: PersonaInput): PersonaOutput {
   };
 }
 
-export const DISCLAIMER_VERSION = "v1.0.0";
+export const DISCLAIMER_VERSION = "v1.1.0";
 
 export const DISCLAIMER_BULLETS = [
   "VCP Trader is software that helps you scan and automate order placement based on rules you choose.",

@@ -1,0 +1,251 @@
+You are working in my existing codebase on Replit for the newsletter-scoped auto trading experience currently labeled “VCP Trader Autonomous Agent” (used by subscribers of partner newsletters).
+
+GOAL
+Rebrand the newsletter automation experience so the UI displays the newsletter partner name dynamically and clearly shows it is powered by AlgoPilotX. 
+
+ALSO REQUIRED:
+- Update ALL relevant disclaimers, legal language, terms, and compliance text anywhere impacted by this change.
+- Ensure pricing/subscription pages for users coming from partner newsletters are updated and legally consistent with the new positioning.
+
+This is NOT just a UI rename — this is a branding + compliance alignment update.
+
+----------------------------------------------------
+CURRENT STATE
+----------------------------------------------------
+Static header currently shows:
+“VCP Trader Autonomous Agent | Strategy Fundamentals”
+
+We want dynamic partner branding:
+
+Primary header:
+  “{PartnerDisplayName} Auto Agent”
+
+Secondary label:
+  “Powered by AlgoPilotX”
+
+Small clarification line:
+  “Signals: {PartnerDisplayName}”
+  “Automation & Execution: AlgoPilotX”
+
+----------------------------------------------------
+CORE POSITIONING (IMPORTANT FOR LEGAL + COPY)
+----------------------------------------------------
+- Partner newsletter = SIGNAL / CONTENT provider.
+- AlgoPilotX = SOFTWARE AUTOMATION TOOL.
+- Users control execution rules and broker accounts.
+- Platform is NOT an investment advisor.
+- Automation executes based on user configuration.
+
+This separation MUST be reflected consistently across UI, pricing, onboarding, and legal text.
+
+----------------------------------------------------
+CONSTRAINTS
+----------------------------------------------------
+- Do NOT rename the overall app globally; only update newsletter-agent flows.
+- Do NOT break broker connections (Tradier, TradeStation, Alpaca).
+- Do NOT modify trading logic.
+- Do NOT change Stripe product IDs unless required.
+- Avoid database schema changes unless necessary.
+- Partner name must always be dynamic.
+- Fallback if no partner:
+  “Newsletter Auto Agent”
+  “Powered by AlgoPilotX”.
+
+----------------------------------------------------
+PART 1 — PARTNER CONTEXT (DYNAMIC BRANDING)
+----------------------------------------------------
+1) Identify source of partner context:
+   - user.partnerId
+   - JWT claims
+   - issuer / tenant mapping
+   - partner route parameter (if applicable)
+
+2) Create or reuse centralized resolver:
+   resolvePartnerContext(req)
+
+3) Add endpoint:
+   GET /api/partner/context
+
+Returns:
+{
+  partnerId,
+  partnerDisplayName,
+  logoUrl,
+  agentTitle,
+  poweredBy,
+  signalsLabel,
+  executionLabel,
+  offerContext: "newsletter_agent"
+}
+
+Must support:
+- authenticated users
+- pre-auth pricing visits (partner identifiable via URL/token)
+
+Fallback safely if unresolved.
+
+----------------------------------------------------
+PART 2 — NEWSLETTER AGENT UI UPDATE
+----------------------------------------------------
+Replace static header:
+
+OLD:
+“VCP Trader Autonomous Agent | Strategy Fundamentals”
+
+NEW:
+Title: partner.agentTitle
+Subtitle: “Powered by AlgoPilotX”
+
+Add small compliance clarity lines:
+Signals: {PartnerDisplayName}
+Automation & Execution: AlgoPilotX
+
+Apply ONLY inside newsletter-agent layout.
+
+Do NOT alter VCP Trader scanner branding.
+
+----------------------------------------------------
+PART 3 — PRICING / SUBSCRIPTION FLOW UPDATE
+----------------------------------------------------
+For users entering via partner newsletters:
+
+Pricing page must show:
+
+Title:
+  “{PartnerDisplayName} Auto Agent”
+
+Subtitle:
+  “Powered by AlgoPilotX”
+
+Description (example):
+  “Automate execution of {PartnerDisplayName} trade alerts using your connected broker and your own rules.”
+
+CTA examples:
+  “Start Automating {PartnerDisplayName} Alerts”
+
+IMPORTANT:
+- Clearly differentiate newsletter signals vs automation tool.
+- Avoid implying newsletter subscription if this is only automation access.
+- Prevent confusion with VCP Trader scanner pricing.
+
+If plan names are displayed:
+- Update labels to newsletter automation context ONLY.
+- Keep Stripe IDs unchanged.
+
+Include partnerId + offerContext in checkout metadata if available.
+
+----------------------------------------------------
+PART 4 — LEGAL / DISCLAIMERS / TERMS UPDATE (CRITICAL)
+----------------------------------------------------
+Search entire codebase for ALL legal or disclaimer text containing:
+- VCP Trader Autonomous Agent
+- newsletter automation references
+- investment advice wording
+- auto trading language
+- pricing/legal footers
+- onboarding agreements
+- terms acceptance checkboxes
+- risk disclosures
+- email/legal templates
+
+Update wording to reflect new structure:
+
+Required clarity everywhere:
+
+1) Signal Source vs Automation Separation:
+   - Signals provided by {PartnerDisplayName}.
+   - AlgoPilotX provides automation software only.
+
+2) Non-Advisory Language:
+   - AlgoPilotX is NOT an investment advisor, broker, or fiduciary.
+   - Software executes based on user settings.
+
+3) User Control:
+   - User is responsible for enabling automation, setting risk rules, and approving broker connections.
+
+4) Performance Disclaimer:
+   - Past performance does not guarantee future results.
+   - Trades may result in losses.
+
+5) Liability Separation:
+   - Partner newsletter responsible for signal content.
+   - AlgoPilotX responsible only for software functionality.
+
+6) Automation Risk Disclosure:
+   - Automated trading involves risk.
+   - Users should monitor accounts and configurations.
+
+7) Branding Consistency:
+   Replace references like:
+   “VCP Trader Autonomous Agent”
+   with:
+   “{PartnerDisplayName} Auto Agent powered by AlgoPilotX”
+   where legally appropriate.
+
+8) Terms & Acceptance Logging:
+   - Ensure acceptance logs still capture:
+     userId
+     partnerId
+     timestamp
+     termsVersion
+   - If wording changes, increment terms version.
+
+----------------------------------------------------
+PART 5 — ONBOARDING + SETTINGS + FOOTERS
+----------------------------------------------------
+Update any of the following if present:
+- onboarding wizard disclaimers
+- broker connection warnings
+- automation enable confirmations
+- settings pages
+- billing/legal footer text
+- email templates triggered during signup
+
+Ensure wording is consistent everywhere.
+
+----------------------------------------------------
+PART 6 — TESTING / VERIFICATION
+----------------------------------------------------
+Verify:
+
+1) Strategy Fundamentals user:
+   - Header shows:
+     “Strategy Fundamentals Auto Agent”
+     “Powered by AlgoPilotX”
+   - Pricing page matches branding.
+   - Disclaimers reference correct separation.
+
+2) Another partner:
+   - Automatically updates without code changes.
+
+3) Missing partner:
+   - Fallback:
+     “Newsletter Auto Agent”
+     “Powered by AlgoPilotX”.
+
+4) Broker connections still function.
+
+5) InstaTrade™ unchanged.
+
+6) Terms acceptance logs still recorded.
+
+7) Stripe checkout still works with existing products.
+
+----------------------------------------------------
+DELIVERABLES
+----------------------------------------------------
+- List of files changed with short explanation.
+- Partner context resolver added or reused.
+- Header + pricing updated.
+- ALL impacted legal/disclaimer text updated.
+- Terms version increment if applicable.
+- No breaking changes.
+
+----------------------------------------------------
+IMPLEMENTATION NOTES
+----------------------------------------------------
+- Minimize code changes.
+- Centralize partner lookup logic.
+- Use TypeScript types for partner context.
+- Never hardcode partner names.
+- Keep legal wording consistent across UI, pricing, and onboarding.

@@ -81,7 +81,9 @@ function FieldTip({ text }: { text: string }) {
   );
 }
 
-const AUTO_MODE_CONSENT_TEXT = "I understand that enabling Auto mode will allow the trading agent to automatically execute trades in my brokerage account without manual review. I accept full responsibility for all trades placed by the agent and acknowledge that automated trading involves significant risk, including the potential for substantial financial losses. I have reviewed and configured the risk limits, and I agree that VCP Trader and its partners are not liable for any trading losses incurred while Auto mode is active.";
+function getAutoModeConsentText(partnerName: string) {
+  return `I understand that enabling Auto mode will allow the AlgoPilotX automation engine to automatically execute trades in my brokerage account based on signals from ${partnerName}, without manual review. I accept full responsibility for all trades placed by the agent and acknowledge that automated trading involves significant risk, including the potential for substantial financial losses. I have reviewed and configured the risk limits. I understand that ${partnerName} provides trade signals only, and AlgoPilotX provides the automation software only. Neither ${partnerName} nor AlgoPilotX acts as an investment advisor, broker-dealer, or fiduciary. I agree that AlgoPilotX (Sunfish Technologies LLC), ${partnerName}, and their affiliates are not liable for any trading losses incurred while Auto mode is active.`;
+}
 
 interface PartnerProfile {
   id: string;
@@ -93,6 +95,12 @@ interface PartnerProfile {
   linkedUserId: string;
   subscriptionActive?: boolean;
   subscriptionStatus?: string | null;
+  partnerId?: string;
+  agentTitle?: string;
+  poweredBy?: string;
+  signalsLabel?: string;
+  executionLabel?: string;
+  offerContext?: string;
 }
 
 interface BrokerStatus {
@@ -437,7 +445,7 @@ interface AgentSettingsData {
   reliability?: Record<string, any>;
 }
 
-function AgentTab() {
+function AgentTab({ partnerName = "Newsletter" }: { partnerName?: string }) {
   const { toast } = useToast();
   const { data: settings, isLoading } = useQuery<AgentSettingsData>({
     queryKey: ["/api/partner/agent-settings"],
@@ -505,7 +513,7 @@ function AgentTab() {
 
   const confirmAutoMode = async () => {
     try {
-      await consentMutation.mutateAsync(AUTO_MODE_CONSENT_TEXT);
+      await consentMutation.mutateAsync(getAutoModeConsentText(partnerName));
       const saveData = { ...formData, mode: "auto" };
       await updateMutation.mutateAsync(saveData);
       setFormData({});
@@ -537,7 +545,7 @@ function AgentTab() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-md bg-destructive/10 p-3 text-sm" data-testid="text-auto-consent">
-              {AUTO_MODE_CONSENT_TEXT}
+              {getAutoModeConsentText(partnerName)}
             </div>
             <div className="flex items-start gap-2">
               <input
@@ -1518,14 +1526,17 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
     { icon: BarChart3, text: "Real-time trade history and tracking" },
   ];
 
+  const agentTitle = profile.agentTitle || `${profile.partnerName} Auto Agent`;
+  const poweredBy = profile.poweredBy || "AlgoPilotX";
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between gap-4 px-4 h-14 max-w-4xl mx-auto">
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-sm" data-testid="text-partner-branding">VCP Trader Autonomous Agent</span>
-            <span className="text-xs text-muted-foreground hidden sm:inline">| {profile.partnerName}</span>
+            <span className="font-semibold text-sm" data-testid="text-partner-branding">{agentTitle}</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">Powered by {poweredBy}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground hidden sm:inline" data-testid="text-partner-email">{profile.email}</span>
@@ -1543,9 +1554,10 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
             <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
               <CreditCard className="w-6 h-6 text-primary" />
             </div>
-            <CardTitle className="text-xl">Activate Auto Trading</CardTitle>
-            <CardDescription>
-              Subscribe to start receiving and executing trade signals automatically from {profile.partnerName}.
+            <CardTitle className="text-xl" data-testid="text-paywall-title">{agentTitle}</CardTitle>
+            <p className="text-sm text-muted-foreground" data-testid="text-paywall-powered-by">Powered by {poweredBy}</p>
+            <CardDescription className="mt-2">
+              Automate execution of {profile.partnerName} trade alerts using your connected broker and your own rules.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -1581,12 +1593,17 @@ function SubscriptionPaywall({ profile, onLogout }: { profile: PartnerProfile; o
               ) : (
                 <CreditCard className="w-4 h-4 mr-2" />
               )}
-              Start Free Trial
+              Start Automating {profile.partnerName} Alerts
             </Button>
 
-            <p className="text-xs text-center text-muted-foreground" data-testid="text-trial-disclaimer">
-              Your 14-day free trial begins at signup. After the trial ends, you will be automatically charged at the standard monthly rate unless you cancel before the trial period ends. This is a recurring monthly subscription. You can cancel anytime from your account settings or Stripe billing portal.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-center text-muted-foreground" data-testid="text-trial-disclaimer">
+                Your 14-day free trial begins at signup. After the trial ends, you will be automatically charged at the standard monthly rate unless you cancel before the trial period ends. This is a recurring monthly subscription. You can cancel anytime from your account settings or Stripe billing portal.
+              </p>
+              <p className="text-[10px] text-center text-muted-foreground/70">
+                {profile.partnerName} provides trade signals. AlgoPilotX provides automation software only. AlgoPilotX is not an investment advisor, broker-dealer, or fiduciary.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </main>
@@ -1666,14 +1683,17 @@ export default function PartnerDashboard() {
     return <SubscriptionPaywall profile={profile} onLogout={() => logoutMutation.mutate()} />;
   }
 
+  const agentTitle = profile.agentTitle || `${profile.partnerName} Auto Agent`;
+  const poweredBy = profile.poweredBy || "AlgoPilotX";
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between gap-4 px-4 h-14 max-w-4xl mx-auto">
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-sm" data-testid="text-partner-branding">VCP Trader Autonomous Agent</span>
-            <span className="text-xs text-muted-foreground hidden sm:inline">| {profile.partnerName}</span>
+            <span className="font-semibold text-sm" data-testid="text-partner-branding">{agentTitle}</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">Powered by {poweredBy}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground hidden sm:inline" data-testid="text-partner-email">{profile.email}</span>
@@ -1723,7 +1743,7 @@ export default function PartnerDashboard() {
           </TabsContent>
 
           <TabsContent value="agent">
-            <AgentTab />
+            <AgentTab partnerName={profile.partnerName} />
           </TabsContent>
 
           <TabsContent value="trades">
@@ -1737,10 +1757,16 @@ export default function PartnerDashboard() {
             <div className="space-y-2 text-xs text-muted-foreground">
               <p className="font-semibold text-sm">Important Disclosures & Legal Disclaimer</p>
               <p>
-                VCP Trader provides automated trade execution software as a technology service only.
-                VCP Trader is not a registered broker-dealer, investment adviser, or financial planner.
-                Nothing on this platform constitutes investment advice, a recommendation, or a solicitation
-                to buy or sell any security.
+                <span className="font-medium">Signal Source & Automation Separation:</span> Trade signals
+                displayed on this platform are provided by {profile.partnerName}. AlgoPilotX (operated by
+                Sunfish Technologies LLC) provides the automation software only. {profile.partnerName} is
+                responsible for signal content. AlgoPilotX is responsible only for software functionality.
+              </p>
+              <p>
+                <span className="font-medium">Non-Advisory Disclosure:</span> AlgoPilotX is not a
+                registered broker-dealer, investment adviser, or fiduciary. Nothing on this platform
+                constitutes investment advice, a recommendation, or a solicitation to buy or sell any
+                security. The software executes trades based on user-defined settings and configurations.
               </p>
               <p>
                 <span className="font-medium">Risk Warning:</span> Trading stocks, options, and futures
@@ -1748,7 +1774,7 @@ export default function PartnerDashboard() {
                 more than your initial investment. Past performance of any trading strategy or signal
                 provider does not guarantee future results. Automated trading systems carry additional
                 risks, including but not limited to software errors, connectivity failures, and execution
-                delays.
+                delays. Users should monitor their accounts and configurations regularly.
               </p>
               <p>
                 <span className="font-medium">No Guarantee of Profits:</span> There is no guarantee
@@ -1759,14 +1785,19 @@ export default function PartnerDashboard() {
               <p>
                 <span className="font-medium">Your Responsibility:</span> By using this platform, you
                 acknowledge that you understand the risks of automated trading and accept full
-                responsibility for all trades placed through your connected brokerage account. VCP Trader,
-                its affiliates, and partner signal providers shall not be held liable for any trading
-                losses, damages, or other costs resulting from the use of this service.
+                responsibility for all trades placed through your connected brokerage account.
+                You are responsible for enabling automation, setting risk rules, and approving broker
+                connections. AlgoPilotX (Sunfish Technologies LLC), {profile.partnerName}, and their
+                affiliates shall not be held liable for any trading losses, damages, or other costs
+                resulting from the use of this service.
               </p>
               <p>
                 <span className="font-medium">Regulatory Notice:</span> This platform does not provide
                 tax, legal, or accounting advice. Consult a qualified professional regarding your
                 individual financial situation before making trading decisions.
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 mt-3">
+                {profile.signalsLabel || `Signals: ${profile.partnerName}`} · {profile.executionLabel || "Automation & Execution: AlgoPilotX"}
               </p>
             </div>
           </div>

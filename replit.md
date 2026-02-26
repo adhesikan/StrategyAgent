@@ -82,8 +82,15 @@ The application connects to multiple brokerage providers, storing encrypted conn
 ### Push Notifications
 - **Web Push API**: Used for real-time alert delivery.
 
-### Partner Dashboard
-A standalone partner dashboard allows newsletter subscribers to automate trade execution from external signals.
+### Partner Dashboard (AlgoPilotX Branding)
+A standalone partner dashboard allows newsletter subscribers to automate trade execution from external signals. The UI dynamically displays the partner name (e.g., "Strategy Fundamentals Auto Agent") with "Powered by AlgoPilotX" branding. Key branding separation:
+- **Signal Provider**: Partner newsletter provides trade signals (content).
+- **Automation Provider**: AlgoPilotX (Sunfish Technologies LLC) provides the automation software only.
+- The `/api/partner/me` endpoint returns dynamic branding fields: `agentTitle`, `poweredBy`, `signalsLabel`, `executionLabel`.
+- The `/api/partner/context` endpoint provides pre-auth partner branding resolution (supports `?partner=slug` query parameter).
+- All disclaimers, consent text, and legal copy on the partner dashboard reflect the signal-source vs. automation-tool separation.
+- Fallback when no partner: "Newsletter Auto Agent — Powered by AlgoPilotX".
+- Disclaimer version bumped to `v1.1.0` for partner consent text changes.
 
 ### Partner Subscription
 - **Stripe**: Manages partner subscriptions via Checkout and Billing Portal, syncing subscription statuses from Stripe to `partner_users`.

@@ -5878,19 +5878,67 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const partnerConfig = await storage.getPartnerConfigById(partnerUser.partnerId);
 
       const isSubscribed = partnerUser.subscriptionStatus === 'active' || partnerUser.subscriptionStatus === 'trialing';
+      const displayName = partnerConfig?.name || "Newsletter";
       res.json({
         id: partnerUser.id,
         email: partnerUser.email,
         name: partnerUser.name,
-        partnerName: partnerConfig?.name || "Partner",
+        partnerName: displayName,
         partnerLogo: partnerConfig?.logoUrl || null,
         partnerColor: partnerConfig?.primaryColor || null,
         linkedUserId: partnerUser.linkedUserId,
         subscriptionActive: isSubscribed,
         subscriptionStatus: partnerUser.subscriptionStatus,
+        partnerId: partnerUser.partnerId,
+        agentTitle: `${displayName} Auto Agent`,
+        poweredBy: "AlgoPilotX",
+        signalsLabel: `Signals: ${displayName}`,
+        executionLabel: "Automation & Execution: AlgoPilotX",
+        offerContext: "newsletter_agent",
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch profile" });
+    }
+  });
+
+  app.get("/api/partner/context", async (req, res) => {
+    try {
+      let partnerConfig = null;
+
+      if (req.session.partnerUserId) {
+        const partnerUser = await storage.getPartnerUserById(req.session.partnerUserId);
+        if (partnerUser) {
+          partnerConfig = await storage.getPartnerConfigById(partnerUser.partnerId);
+        }
+      }
+
+      if (!partnerConfig && req.query.partner) {
+        partnerConfig = await storage.getPartnerConfig(req.query.partner as string);
+      }
+
+      const displayName = partnerConfig?.name || "Newsletter";
+      res.json({
+        partnerId: partnerConfig?.id || null,
+        partnerDisplayName: displayName,
+        logoUrl: partnerConfig?.logoUrl || null,
+        agentTitle: `${displayName} Auto Agent`,
+        poweredBy: "AlgoPilotX",
+        signalsLabel: `Signals: ${displayName}`,
+        executionLabel: "Automation & Execution: AlgoPilotX",
+        offerContext: "newsletter_agent",
+      });
+    } catch (error) {
+      const displayName = "Newsletter";
+      res.json({
+        partnerId: null,
+        partnerDisplayName: displayName,
+        logoUrl: null,
+        agentTitle: `${displayName} Auto Agent`,
+        poweredBy: "AlgoPilotX",
+        signalsLabel: `Signals: ${displayName}`,
+        executionLabel: "Automation & Execution: AlgoPilotX",
+        offerContext: "newsletter_agent",
+      });
     }
   });
 

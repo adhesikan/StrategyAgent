@@ -290,7 +290,7 @@ function BrokerTab() {
         <p className="text-sm text-muted-foreground mb-4">
           Select a brokerage to connect for automated trading
         </p>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-2">
           {brokerProviders.map((bp) => {
             const isBrokerConnected = broker?.provider === bp.id && isConnected;
             const isConnecting = connectingBroker === bp.id;

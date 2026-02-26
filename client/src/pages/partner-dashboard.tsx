@@ -270,11 +270,27 @@ function BrokerTab() {
               </p>
             )}
             {testResult && (
-              <div className={`mt-3 flex items-center gap-2 text-sm ${testResult.success ? "text-green-500" : "text-destructive"}`} data-testid="text-test-result">
-                {testResult.success ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                <span>{testResult.message}</span>
+              <div className={`mt-3 text-sm ${testResult.success ? "text-green-500" : "text-destructive"}`} data-testid="text-test-result">
+                <div className="flex items-center gap-2">
+                  {testResult.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                  <span>{testResult.message}</span>
+                </div>
+                {testResult.success && testResult.data && (
+                  <div className="mt-2 ml-6 flex items-center gap-3 text-muted-foreground" data-testid="text-test-quote">
+                    <span className="font-medium text-foreground">{testResult.data.symbol}</span>
+                    {testResult.data.last != null && <span>${Number(testResult.data.last).toFixed(2)}</span>}
+                    {testResult.data.change != null && (
+                      <span className={Number(testResult.data.change) >= 0 ? "text-green-500" : "text-red-500"}>
+                        {Number(testResult.data.change) >= 0 ? "+" : ""}{Number(testResult.data.change).toFixed(2)}
+                      </span>
+                    )}
+                    {testResult.data.volume != null && <span>Vol: {Number(testResult.data.volume).toLocaleString()}</span>}
+                  </div>
+                )}
                 {testResult.data?.accounts != null && (
-                  <span className="text-muted-foreground">({testResult.data.accounts} account{testResult.data.accounts !== 1 ? "s" : ""} found)</span>
+                  <div className="mt-1 ml-6 text-muted-foreground">
+                    {testResult.data.accounts} account{testResult.data.accounts !== 1 ? "s" : ""} found
+                  </div>
                 )}
               </div>
             )}

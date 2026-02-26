@@ -64,6 +64,7 @@ import {
   SlidersHorizontal,
   Ban,
   X,
+  Search,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
@@ -1300,6 +1301,13 @@ function TradesTab() {
   const [ticketTrade, setTicketTrade] = useState<TradeAlert | null>(null);
   const [showTicket, setShowTicket] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortField, setSortField] = useState<"date" | "symbol">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
   function handleInstaTrade(trade: TradeAlert) {
     setTicketTrade(trade);
     setShowTicket(true);
@@ -1353,6 +1361,42 @@ function TradesTab() {
   const skippedCount = trades.filter(t => t.status === "SKIPPED").length;
   const pendingCount = trades.filter(t => t.status === "PENDING").length;
 
+  const filtered = trades.filter((t) => {
+    if (statusFilter !== "all" && t.status !== statusFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (
+        t.symbol?.toLowerCase().includes(q) ||
+        t.strategyName?.toLowerCase().includes(q) ||
+        t.direction?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortField === "symbol") {
+      const cmp = (a.symbol || "").localeCompare(b.symbol || "");
+      return sortDir === "asc" ? cmp : -cmp;
+    }
+    const aTime = new Date(a.alertTimestamp || 0).getTime();
+    const bTime = new Date(b.alertTimestamp || 0).getTime();
+    return sortDir === "asc" ? aTime - bTime : bTime - aTime;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginated = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const handleSortToggle = (field: "date" | "symbol") => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "date" ? "desc" : "asc");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
@@ -1385,112 +1429,195 @@ function TradesTab() {
         </div>
       )}
 
-      <div className="space-y-2">
-        {trades.map((trade) => {
-          const isExit = trade.alertType === "exit";
-          const isPending = trade.status === "PENDING";
-
-          return (
-            <Card key={trade.id} className={`overflow-visible ${isSuggestMode && isPending ? "border-yellow-500/40" : ""}`} data-testid={`card-trade-${trade.id}`}>
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {isExit ? (
-                      <TrendingDown className="w-4 h-4 text-orange-500" />
-                    ) : (
-                      <ArrowUpRight className="w-4 h-4 text-green-500" />
-                    )}
-                    <span className="font-mono font-bold">{trade.symbol}</span>
-                    <Badge variant={isExit ? "secondary" : "outline"} className={isExit ? "" : "border-green-500 text-green-600"}>
-                      {isExit ? "EXIT" : trade.direction}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={trade.status === "EXECUTED" ? "default" : "outline"} className={trade.status === "EXECUTED" ? "bg-green-600 border-green-700" : isPending ? "border-yellow-500 text-yellow-600" : ""}>
-                      {trade.status}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="text-xs text-muted-foreground mb-2">{trade.strategyName}</div>
-
-                {!isExit && (
-                  <div className="flex items-center gap-3 text-xs">
-                    <span>Entry: {formatPrice(trade.entryPrice)}</span>
-                    {trade.riskPrice != null && <span className="text-red-500">Risk: {formatPrice(trade.riskPrice)}</span>}
-                    {trade.targetPrice != null && <span className="text-green-500">Target: {formatPrice(trade.targetPrice)}</span>}
-                  </div>
-                )}
-
-                {trade.exitReason && (
-                  <div className="text-xs text-orange-500 mt-1">{trade.exitReason}</div>
-                )}
-
-                {trade.executedPrice && (
-                  <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" />
-                    Filled at {formatPrice(trade.executedPrice)}
-                  </div>
-                )}
-
-                {trade.skipReason && (
-                  <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {trade.skipReason}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between mt-2">
-                  <div className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {formatDate(trade.alertTimestamp)}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isPending && !trade.id.startsWith("broker-") && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs gap-1"
-                        onClick={() => dismissMutation.mutate(trade.id)}
-                        disabled={dismissMutation.isPending}
-                        data-testid={`button-dismiss-trade-${trade.id}`}
-                      >
-                        <X className="h-3 w-3" />
-                        Dismiss
-                      </Button>
-                    )}
-                    {isSuggestMode && isPending && !isExit && brokerAccounts.length > 0 && (
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="text-xs gap-1"
-                        onClick={() => handleInstaTrade(trade)}
-                        data-testid={`button-instatrade-trade-${trade.id}`}
-                      >
-                        <Zap className="h-3 w-3" />
-                        InstaTrade&trade;
-                      </Button>
-                    )}
-                    {trade.brokerOrderId && (trade.status === "EXECUTED" || trade.status === "PENDING") && trade.id.startsWith("broker-") && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="text-xs gap-1"
-                        onClick={() => cancelOrderMutation.mutate(trade.brokerOrderId!)}
-                        disabled={cancelOrderMutation.isPending}
-                        data-testid={`button-cancel-order-${trade.id}`}
-                      >
-                        <Ban className="h-3 w-3" />
-                        {cancelOrderMutation.isPending ? "Cancelling..." : "Cancel Order"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[140px]">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search symbol or strategy..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+            className="pl-8 h-9 text-sm"
+            data-testid="input-search-trades"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1); }}>
+          <SelectTrigger className="w-[130px] h-9 text-sm" data-testid="select-status-filter">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="PENDING">Pending</SelectItem>
+            <SelectItem value="EXECUTED">Executed</SelectItem>
+            <SelectItem value="SKIPPED">Skipped</SelectItem>
+            <SelectItem value="DISMISSED">Dismissed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 text-xs gap-1"
+          onClick={() => handleSortToggle("date")}
+          data-testid="button-sort-date"
+        >
+          <Clock className="w-3 h-3" />
+          Date {sortField === "date" ? (sortDir === "desc" ? "↓" : "↑") : ""}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 text-xs gap-1"
+          onClick={() => handleSortToggle("symbol")}
+          data-testid="button-sort-symbol"
+        >
+          Symbol {sortField === "symbol" ? (sortDir === "asc" ? "A→Z" : "Z→A") : ""}
+        </Button>
       </div>
+
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="py-6 text-center">
+            <p className="text-sm text-muted-foreground">No trades match your filters</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {paginated.map((trade) => {
+              const isExit = trade.alertType === "exit";
+              const isPending = trade.status === "PENDING";
+
+              return (
+                <Card key={trade.id} className={`overflow-visible ${isSuggestMode && isPending ? "border-yellow-500/40" : ""}`} data-testid={`card-trade-${trade.id}`}>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isExit ? (
+                          <TrendingDown className="w-4 h-4 text-orange-500" />
+                        ) : (
+                          <ArrowUpRight className="w-4 h-4 text-green-500" />
+                        )}
+                        <span className="font-mono font-bold">{trade.symbol}</span>
+                        <Badge variant={isExit ? "secondary" : "outline"} className={isExit ? "" : "border-green-500 text-green-600"}>
+                          {isExit ? "EXIT" : trade.direction}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={trade.status === "EXECUTED" ? "default" : "outline"} className={trade.status === "EXECUTED" ? "bg-green-600 border-green-700" : isPending ? "border-yellow-500 text-yellow-600" : ""}>
+                          {trade.status}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground mb-2">{trade.strategyName}</div>
+
+                    {!isExit && (
+                      <div className="flex items-center gap-3 text-xs">
+                        <span>Entry: {formatPrice(trade.entryPrice)}</span>
+                        {trade.riskPrice != null && <span className="text-red-500">Risk: {formatPrice(trade.riskPrice)}</span>}
+                        {trade.targetPrice != null && <span className="text-green-500">Target: {formatPrice(trade.targetPrice)}</span>}
+                      </div>
+                    )}
+
+                    {trade.exitReason && (
+                      <div className="text-xs text-orange-500 mt-1">{trade.exitReason}</div>
+                    )}
+
+                    {trade.executedPrice && (
+                      <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        Filled at {formatPrice(trade.executedPrice)}
+                      </div>
+                    )}
+
+                    {trade.skipReason && (
+                      <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {trade.skipReason}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDate(trade.alertTimestamp)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isPending && !trade.id.startsWith("broker-") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs gap-1"
+                            onClick={() => dismissMutation.mutate(trade.id)}
+                            disabled={dismissMutation.isPending}
+                            data-testid={`button-dismiss-trade-${trade.id}`}
+                          >
+                            <X className="h-3 w-3" />
+                            Dismiss
+                          </Button>
+                        )}
+                        {isSuggestMode && isPending && !isExit && brokerAccounts.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="text-xs gap-1"
+                            onClick={() => handleInstaTrade(trade)}
+                            data-testid={`button-instatrade-trade-${trade.id}`}
+                          >
+                            <Zap className="h-3 w-3" />
+                            InstaTrade&trade;
+                          </Button>
+                        )}
+                        {trade.brokerOrderId && (trade.status === "EXECUTED" || trade.status === "PENDING") && trade.id.startsWith("broker-") && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="text-xs gap-1"
+                            onClick={() => cancelOrderMutation.mutate(trade.brokerOrderId!)}
+                            disabled={cancelOrderMutation.isPending}
+                            data-testid={`button-cancel-order-${trade.id}`}
+                          >
+                            <Ban className="h-3 w-3" />
+                            {cancelOrderMutation.isPending ? "Cancelling..." : "Cancel Order"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span data-testid="text-trades-showing">
+              Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)} of {sorted.length}{statusFilter !== "all" || searchQuery ? ` (filtered from ${trades.length})` : ""}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={safePage <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                data-testid="button-trades-prev"
+              >
+                Prev
+              </Button>
+              <span className="px-2" data-testid="text-trades-page">{safePage} / {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                data-testid="button-trades-next"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
 
       <StockTradeTicket
         open={showTicket}

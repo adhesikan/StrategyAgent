@@ -683,22 +683,39 @@ async function processExternalAlerts(userId: string): Promise<void> {
 
       let effectiveEntry = alert.entryPrice;
       let effectiveTarget = alert.targetPrice;
-      if (effectiveEntry >= effectiveTarget && alert.direction !== "Short") {
+      const webhookEntryEqualsTarget = effectiveEntry > 0 && effectiveTarget != null && effectiveEntry >= effectiveTarget;
+      if (webhookEntryEqualsTarget && alert.direction !== "Short") {
+        let corrected = false;
         try {
           const connWithToken = await storage.getBrokerConnectionWithToken(userId);
           if (connWithToken) {
             const quotes = await fetchQuotesFromBroker(connWithToken, [alert.symbol]);
             const quote = quotes[0];
             if (quote && quote.last > 0 && quote.last < effectiveEntry) {
-              console.log(`[AgentWorker] Correcting entry for ${alert.symbol}: webhook sent entry=$${effectiveEntry}, using live quote=$${quote.last}, target=$${effectiveTarget}`);
+              console.log(`[AgentWorker] Correcting entry for ${alert.symbol}: webhook entry=$${effectiveEntry} is upside reference, using live quote=$${quote.last} as entry, target=$${effectiveEntry}`);
               effectiveTarget = effectiveEntry;
               effectiveEntry = quote.last;
-            } else if (effectiveEntry === effectiveTarget) {
-              console.log(`[AgentWorker] Entry equals target for ${alert.symbol} ($${effectiveEntry}), cannot determine correct entry`);
+              corrected = true;
             }
           }
         } catch (err: any) {
           console.log(`[AgentWorker] Could not fetch live quote for ${alert.symbol} to correct entry: ${err?.message}`);
+        }
+
+        if (!corrected && effectiveEntry === effectiveTarget) {
+          const reason = `Entry price ($${effectiveEntry.toFixed(2)}) equals target — webhook may be sending upside reference as entry. Connect a broker for live quote correction.`;
+          await storage.updateExternalAlert(alert.id, { status: "SKIPPED", skipReason: reason });
+          try { await storage.createSkippedTrade({ userId, symbol: alert.symbol, skipReason: reason, source: "external_alert", price: effectiveEntry, strategyId: null }); } catch (e) {}
+          continue;
+        }
+
+        if (corrected) {
+          try {
+            await storage.updateExternalAlert(alert.id, {
+              entryPrice: effectiveEntry,
+              targetPrice: effectiveTarget,
+            });
+          } catch (e) {}
         }
       }
 

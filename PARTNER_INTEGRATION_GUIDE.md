@@ -113,6 +113,14 @@ The endpoint supports two payload formats:
 }
 ```
 
+**Entry signal with explicit entry price (recommended):**
+```json
+{
+  "rawText": "enter sym=PWR ep=500.00 lp=534.78 sl=408.36"
+}
+```
+When `ep=` (entry price / Reference Entry Level) is provided, it is used as the actual entry price and `lp=` (limit price / Upside Reference Level) becomes the target. This prevents entry/target price confusion when the webhook sends the upside reference as `lp`.
+
 **Exit signal:**
 ```json
 {
@@ -123,7 +131,7 @@ The endpoint supports two payload formats:
 Optional fields with raw text:
 ```json
 {
-  "rawText": "enter sym=AAPL lp=185.50 tp=195.00 sl=180.00",
+  "rawText": "enter sym=AAPL ep=180.00 lp=185.50 sl=175.00",
   "strategy_name": "Momentum Breakout",
   "strategy_group": "swing-trades"
 }

@@ -5463,6 +5463,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   // Parse Strategy Fundamentals rawText format
   // Entry: "enter sym=PWR lp=534.78 tp=584.9 sl=408.36"
+  // Entry with explicit entry price: "enter sym=PWR ep=500.00 lp=534.78 sl=408.36"
+  //   (ep = reference entry level, lp = upside reference / limit price → becomes target)
   // Exit:  "exit sym=WDC reason=\"Profit Target1\" tp=307.96"
   // Exit:  "exit sym=XLY reason=\"Stop Loss\" sl=115.4"
   function parseSfRawText(rawText: string): {
@@ -5483,23 +5485,32 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     if (!symMatch) return null;
     const symbol = symMatch[1].toUpperCase();
 
+    const epMatch = text.match(/ep=([\d.]+)/i);
     const lpMatch = text.match(/lp=([\d.]+)/i);
     const tpMatch = text.match(/tp=([\d.]+)/i);
     const slMatch = text.match(/sl=([\d.]+)/i);
     const reasonMatch = text.match(/reason="([^"]+)"/i)
-      || text.match(/reason=(.+?)(?:\s+(?:tp|sl|sym|lp)=|$)/i);
+      || text.match(/reason=(.+?)(?:\s+(?:tp|sl|sym|lp|ep)=|$)/i);
 
-    const targetPrice = tpMatch ? parseFloat(tpMatch[1]) : null;
     const riskPrice = slMatch ? parseFloat(slMatch[1]) : null;
     const exitReason = reasonMatch ? reasonMatch[1].trim() : null;
 
     if (alertType === "entry") {
+      if (epMatch) {
+        const entryPrice = parseFloat(epMatch[1]);
+        if (!entryPrice || entryPrice <= 0) return null;
+        const targetPrice = lpMatch ? parseFloat(lpMatch[1]) : (tpMatch ? parseFloat(tpMatch[1]) : null);
+        return { alertType, symbol, entryPrice, riskPrice, targetPrice, exitReason };
+      }
+
       if (!lpMatch) return null;
       const entryPrice = parseFloat(lpMatch[1]);
       if (!entryPrice || entryPrice <= 0) return null;
+      const targetPrice = tpMatch ? parseFloat(tpMatch[1]) : null;
       return { alertType, symbol, entryPrice, riskPrice, targetPrice, exitReason };
     } else {
       const exitPrice = tpMatch ? parseFloat(tpMatch[1]) : slMatch ? parseFloat(slMatch[1]) : 0;
+      const targetPrice = tpMatch ? parseFloat(tpMatch[1]) : null;
       return { alertType, symbol, entryPrice: exitPrice, riskPrice, targetPrice, exitReason };
     }
   }

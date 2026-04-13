@@ -52,7 +52,7 @@ const VCP_TUTORIAL: Tutorial = {
     {
       id: "vcp-stages",
       title: "Pattern Stages",
-      content: "VCP Trader tracks three key stages: FORMING (pattern developing, volatility contracting), READY (pattern mature, approaching breakout point), and BREAKOUT (price breaking above resistance with volume).",
+      content: "Strategy Agent tracks three key stages: FORMING (pattern developing, volatility contracting), READY (pattern mature, approaching breakout point), and BREAKOUT (price breaking above resistance with volume).",
       icon: Target,
       tips: [
         "FORMING: Pattern building, not yet ready to trade",
@@ -117,7 +117,7 @@ const SCANNER_TUTORIAL: Tutorial = {
     {
       id: "scanner-strategies",
       title: "9 Trading Strategies",
-      content: "VCP Trader includes strategies across 4 categories: Momentum (VCP, Classic Pullback), Trend (Gap & Go, Trend Continuation), Volatility (Volatility Squeeze, High RVOL), and Intraday (ORB 5min, ORB 15min, VWAP Reclaim).",
+      content: "Strategy Agent includes strategies across 4 categories: Momentum (VCP, Classic Pullback), Trend (Gap & Go, Trend Continuation), Volatility (Volatility Squeeze, High RVOL), and Intraday (ORB 5min, ORB 15min, VWAP Reclaim).",
       icon: Zap,
       tips: [
         "VCP is the flagship momentum strategy",
@@ -171,7 +171,7 @@ const ALERTS_TUTORIAL: Tutorial = {
     {
       id: "alerts-types",
       title: "Alert Types",
-      content: "VCP Trader offers 4 alert types: BREAKOUT (price crosses resistance), STOP HIT (price falls below stop), EMA EXIT (trend reversal signal), and APPROACHING (price nearing key level).",
+      content: "Strategy Agent offers 4 alert types: BREAKOUT (price crosses resistance), STOP HIT (price falls below stop), EMA EXIT (trend reversal signal), and APPROACHING (price nearing key level).",
       icon: Bell,
       tips: [
         "BREAKOUT alerts trigger entry signals",
@@ -410,7 +410,7 @@ export function InteractiveTutorial({ tutorialId, isOpen, onClose, onComplete }:
               {showTutorialList ? (
                 <div className="space-y-4">
                   <p className="text-muted-foreground">
-                    Welcome to VCP Trader! Choose a tutorial to get started:
+                    Welcome to Strategy Agent! Choose a tutorial to get started:
                   </p>
                   <div className="grid gap-3">
                     {TUTORIALS.map((tutorial) => (

@@ -220,11 +220,11 @@ export default function ExecutionCockpit() {
           <AlertTitle>Market Intelligence & User-Controlled Automation</AlertTitle>
           <AlertDescription className="space-y-2">
             <p>
-              VCP Trader delivers real-time market intelligence, strategy signals, and alert-driven trade ideas.
+              Strategy Agent delivers real-time market intelligence, strategy signals, and alert-driven trade ideas.
               When you choose, these signals can be forwarded to your automation endpoints, where you control how trades are executed through your own automation rules, risk limits, and brokerage connections.
             </p>
             <p className="font-medium">
-              VCP Trader does not place trades, manage accounts, or access brokerage credentials.
+              Strategy Agent does not place trades, manage accounts, or access brokerage credentials.
               All execution decisions, sizing, and risk management are configured and approved by you.
             </p>
           </AlertDescription>
@@ -441,7 +441,7 @@ export default function ExecutionCockpit() {
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-medium text-primary">1</div>
                   <div>
                     <div className="font-medium">Scan for Setups</div>
-                    <div className="text-muted-foreground">VCP Trader identifies breakout setups</div>
+                    <div className="text-muted-foreground">Strategy Agent identifies breakout setups</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -480,7 +480,7 @@ export default function ExecutionCockpit() {
                   </div>
                   <Separator className="my-2" />
                   <div className="text-xs text-muted-foreground">
-                    VCP Trader does not execute trades. Trade execution happens through your configured automation endpoints.
+                    Strategy Agent does not execute trades. Trade execution happens through your configured automation endpoints.
                   </div>
                 </CardContent>
               </Card>

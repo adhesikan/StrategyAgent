@@ -47,7 +47,7 @@ export default function PrivacyPage() {
               <h3>B. How We Use Information</h3>
               <p>We use your information to:</p>
               <ul>
-                <li>Provide, maintain, and improve the VCP Trader platform operated by Sunfish Technologies LLC</li>
+                <li>Provide, maintain, and improve the Strategy Agent platform operated by Sunfish Technologies LLC</li>
                 <li>Authenticate your identity and manage your account</li>
                 <li>Deliver alerts and notifications you have configured</li>
                 <li>Maintain security and prevent fraud or abuse</li>
@@ -83,7 +83,7 @@ export default function PrivacyPage() {
               <ul>
                 <li><strong>Service Providers:</strong> Database hosting, email delivery, and push notification services that help us operate the platform.</li>
                 <li><strong>Legal Requirements:</strong> When required by law, subpoena, or legal process.</li>
-                <li><strong>Protection:</strong> To protect the rights, property, or safety of Sunfish Technologies LLC, VCP Trader, our users, or others.</li>
+                <li><strong>Protection:</strong> To protect the rights, property, or safety of Sunfish Technologies LLC, Strategy Agent, our users, or others.</li>
               </ul>
               <p><strong>We never sell your personal information to third parties.</strong></p>
             </section>

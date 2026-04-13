@@ -479,7 +479,7 @@ export default function AutomationAgentPage() {
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <p>
-                  VCP Trader provides market intelligence only. All trade execution happens through your configured 
+                  Strategy Agent provides market intelligence only. All trade execution happens through your configured 
                   automation endpoints after your explicit confirmation. This is educational and informational only, not investment advice.
                 </p>
               </div>

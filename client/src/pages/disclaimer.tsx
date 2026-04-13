@@ -31,23 +31,23 @@ export default function DisclaimerPage() {
           </CardHeader>
           <CardContent className="prose prose-sm dark:prose-invert max-w-none space-y-4">
             <p>
-              VCP Trader is a software platform designed to help self-directed traders and investors analyze financial markets, explore trading ideas, and optionally automate trade execution based on user-defined rules.
+              Strategy Agent is a software platform designed to help self-directed traders and investors analyze financial markets, generate structured trade setups using AI-powered strategy analysis, and optionally execute trades based on user-defined rules.
             </p>
 
             <p>
-              VCP Trader provides market scanning, filtering, and monitoring tools based on widely recognized technical analysis concepts using objective data such as price, volume, and technical indicators. The platform includes an in-app Strategy Guide explaining how supported strategies work so users can learn about market patterns and independently decide which strategies, filters, and parameters to apply.
+              Strategy Agent provides AI-powered strategy analysis, natural language setup generation, and monitoring tools based on widely recognized technical analysis concepts using objective data such as price, volume, and technical indicators. The platform includes built-in and custom strategies so users can learn about market patterns and independently decide which strategies, filters, and parameters to apply.
             </p>
 
             <p>
-              VCP Trader includes optional, self-directed automation tools, including InstaTrade™ and the built-in Auto Agent, which allow users to automate trade execution only according to rules, conditions, and risk settings defined and authorized by the user. VCP Trader does not create strategies, select securities, or determine trade suitability for any user.
+              Strategy Agent includes optional, self-directed execution tools, including InstaTrade™, which allow users to send generated setups for trade execution only according to rules, conditions, and risk settings defined and authorized by the user. Strategy Agent does not select securities or determine trade suitability for any user.
             </p>
 
             <p>
-              All data, charts, alerts, strategy descriptions, automation tools, and outputs provided by VCP Trader are for educational and informational purposes only and do not constitute investment advice, trading advice, recommendations, endorsements, or a solicitation to buy or sell any security or financial instrument.
+              All data, charts, alerts, strategy descriptions, trade setup outputs, and analysis provided by Strategy Agent are for educational and informational purposes only and do not constitute investment advice, trading advice, recommendations, endorsements, or a solicitation to buy or sell any security or financial instrument.
             </p>
 
             <p>
-              VCP Trader is not registered as an investment adviser or broker-dealer. The platform does not provide personalized investment advice, does not act in a fiduciary capacity, and does not assess the suitability of any strategy or trade for any individual user. The platform does not manage accounts, exercise discretionary trading authority, or place trades except as explicitly directed and authorized by the user through their selected brokerage.
+              Strategy Agent is not registered as an investment adviser or broker-dealer. The platform does not provide personalized investment advice, does not act in a fiduciary capacity, and does not assess the suitability of any strategy or trade for any individual user. The platform does not manage accounts, exercise discretionary trading authority, or place trades except as explicitly directed and authorized by the user through their selected brokerage.
             </p>
 
             <p>

@@ -1,7 +1,7 @@
 {
-  "name": "VCP Trader by Sunfish Technologies",
-  "short_name": "VCP Trader",
-  "description": "Scan, Alert, and Trade Volatility Contraction Breakouts. A Sunfish Technologies LLC platform.",
+  "name": "Strategy Agent by Sunfish Technologies",
+  "short_name": "Strategy Agent",
+  "description": "AI-powered strategy analysis and trade setup generation. A Sunfish Technologies LLC platform.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

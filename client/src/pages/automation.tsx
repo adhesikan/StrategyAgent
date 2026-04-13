@@ -98,7 +98,7 @@ export default function AutomationPage() {
             Trade Autopilot
           </h1>
           <p className="text-sm text-muted-foreground">
-            Configure how VCP Trader acts on opportunities. Connect your broker and set your limits.
+            Configure how Strategy Agent acts on opportunities. Connect your broker and set your limits.
           </p>
         </div>
 
@@ -618,7 +618,7 @@ function BrokerConnectionSection({ isConnected, providerName, isPaper }: {
           </Link>
         </div>
         <p className="text-xs text-muted-foreground">
-          Broker credentials are handled via OAuth on the broker's site. VCP Trader never sees your login details.
+          Broker credentials are handled via OAuth on the broker's site. Strategy Agent never sees your login details.
         </p>
       </CardContent>
     </Card>

@@ -52,7 +52,7 @@ export default function AuthPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center mb-4">
-            <img src={logoUrl} alt="VCP Trader" className="h-10 w-auto" />
+            <img src={logoUrl} alt="Strategy Agent" className="h-10 w-auto" />
           </div>
           <CardTitle data-testid="text-auth-title">{isLogin ? "Sign In" : "Create Account"}</CardTitle>
           <CardDescription>

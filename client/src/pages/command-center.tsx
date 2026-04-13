@@ -911,7 +911,7 @@ export default function CommandCenter() {
                   </div>
                   <div>
                     <CardTitle className="text-base">Finish Your Setup</CardTitle>
-                    <CardDescription>Complete these steps to start using VCP Trader</CardDescription>
+                    <CardDescription>Complete these steps to start using Strategy Agent</CardDescription>
                   </div>
                 </div>
                 <Button asChild data-testid="button-finish-setup">

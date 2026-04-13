@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable, agentSkippedTrades as agentSkippedTradesTable, customStrategies as customStrategiesTable, tradeSetupHistory as tradeSetupHistoryTable, promptRequestLogs as promptRequestLogsTable, activityLogs as activityLogsTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable, agentSkippedTrades as agentSkippedTradesTable, customStrategies as customStrategiesTable, tradeSetupHistory as tradeSetupHistoryTable, promptRequestLogs as promptRequestLogsTable, activityLogs as activityLogsTable, analysisConditions as analysisConditionsTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count, isNull } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -103,6 +103,8 @@ import type {
   InsertPromptRequestLog,
   ActivityLog,
   InsertActivityLog,
+  AnalysisCondition,
+  InsertAnalysisCondition,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -366,6 +368,11 @@ export interface IStorage {
 
   getActivityLogs(userId: string, limit?: number): Promise<ActivityLog[]>;
   createActivityLog(data: InsertActivityLog): Promise<ActivityLog>;
+
+  getAnalysisConditions(userId: string): Promise<AnalysisCondition[]>;
+  createAnalysisCondition(data: InsertAnalysisCondition): Promise<AnalysisCondition>;
+  updateAnalysisCondition(id: string, userId: string, data: Partial<AnalysisCondition>): Promise<AnalysisCondition | null>;
+  deleteAnalysisCondition(id: string, userId: string): Promise<void>;
 }
 
 export interface OpportunityFilters {
@@ -2994,6 +3001,27 @@ export class MemStorage implements IStorage {
   async createActivityLog(data: InsertActivityLog): Promise<ActivityLog> {
     const [result] = await db.insert(activityLogsTable).values(data).returning();
     return result;
+  }
+
+  async getAnalysisConditions(userId: string): Promise<AnalysisCondition[]> {
+    return db.select().from(analysisConditionsTable).where(eq(analysisConditionsTable.userId, userId)).orderBy(desc(analysisConditionsTable.createdAt));
+  }
+
+  async createAnalysisCondition(data: InsertAnalysisCondition): Promise<AnalysisCondition> {
+    const [result] = await db.insert(analysisConditionsTable).values(data).returning();
+    return result;
+  }
+
+  async updateAnalysisCondition(id: string, userId: string, data: Partial<AnalysisCondition>): Promise<AnalysisCondition | null> {
+    const [result] = await db.update(analysisConditionsTable)
+      .set(data)
+      .where(and(eq(analysisConditionsTable.id, id), eq(analysisConditionsTable.userId, userId)))
+      .returning();
+    return result || null;
+  }
+
+  async deleteAnalysisCondition(id: string, userId: string): Promise<void> {
+    await db.delete(analysisConditionsTable).where(and(eq(analysisConditionsTable.id, id), eq(analysisConditionsTable.userId, userId)));
   }
 }
 

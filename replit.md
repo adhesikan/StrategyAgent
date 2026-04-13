@@ -11,14 +11,24 @@ Strategy Agent is an AI-powered strategy analysis and trade setup generation pla
 ### Agent Architecture
 - `server/agent/prompt-interpreter.ts` — Deterministic NLP parser converting natural language to structured request objects
 - `server/agent/strategy-engine.ts` — Wraps existing strategy plugins to produce normalized TradeSetup objects
-- `server/routes/agent.ts` — API routes for setup generation, custom strategies, and activity logging
+- `server/routes/agent.ts` — API routes for setup generation, custom strategies, conditions CRUD, and activity logging
 - `client/src/components/trade-setup-card.tsx` — Reusable setup card component with compliance microcopy
+
+### Analysis Conditions System
+- 14 built-in conditions organized by category (Volume, Trend, Momentum, Pattern, Risk, Price Level, Volatility)
+- Users can toggle built-in conditions on/off and adjust threshold values before generating setups
+- Users can create custom conditions (saved to DB) with configurable type, operator, and value
+- Active conditions are sent with each generate request; the server evaluates each condition against the resulting setup
+- Setup results show pass/fail badges for each applied condition and warnings for failed conditions
+- Built-in conditions endpoint: `GET /api/agent/built-in-conditions`
+- User conditions CRUD: `GET/POST /api/agent/conditions`, `PATCH/DELETE /api/agent/conditions/:id`
 
 ### New Database Models
 - `custom_strategies` — User-uploaded strategy definitions with validation status
 - `trade_setup_history` — Generated setup history with status tracking
 - `prompt_request_logs` — Audit trail of parsed prompts
 - `activity_logs` — Activity event log
+- `analysis_conditions` — User-created analysis conditions with type, operator, value, category, and enabled state
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.

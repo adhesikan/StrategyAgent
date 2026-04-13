@@ -1769,3 +1769,23 @@ export const insertAgentSkippedTradeSchema = createInsertSchema(agentSkippedTrad
 });
 export type InsertAgentSkippedTrade = z.infer<typeof insertAgentSkippedTradeSchema>;
 export type AgentSkippedTrade = typeof agentSkippedTrades.$inferSelect;
+
+export const analysisConditions = pgTable("analysis_conditions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  label: text("label").notNull(),
+  category: text("category").notNull().default("custom"),
+  conditionType: text("condition_type").notNull(),
+  operator: text("operator").notNull().default("gte"),
+  value: text("value").notNull(),
+  isBuiltIn: boolean("is_built_in").default(false),
+  isEnabled: boolean("is_enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAnalysisConditionSchema = createInsertSchema(analysisConditions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAnalysisCondition = z.infer<typeof insertAnalysisConditionSchema>;
+export type AnalysisCondition = typeof analysisConditions.$inferSelect;

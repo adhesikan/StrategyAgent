@@ -58,11 +58,26 @@ import AdminPartnersPage from "@/pages/admin-partners";
 import AdminDisclaimerLogs from "@/pages/admin-disclaimer-logs";
 import AdminUsersPage from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
+import AgentPage from "@/pages/agent";
+import StrategiesPage from "@/pages/strategies";
+import MyStrategiesPage from "@/pages/my-strategies";
+import TradeSetupsPage from "@/pages/trade-setups";
+import BrokerConnectionsPage from "@/pages/broker-connections";
+import ActivityPage from "@/pages/activity";
+import HomeDashboard from "@/pages/home-dashboard";
 import { Redirect } from "wouter";
 
 function AppRouter() {
   return (
     <Switch>
+      <Route path="/home" component={HomeDashboard} />
+      <Route path="/agent" component={AgentPage} />
+      <Route path="/strategies" component={StrategiesPage} />
+      <Route path="/my-strategies" component={MyStrategiesPage} />
+      <Route path="/trade-setups" component={TradeSetupsPage} />
+      <Route path="/broker-connections" component={BrokerConnectionsPage} />
+      <Route path="/activity" component={ActivityPage} />
+
       <Route path="/command-center" component={CommandCenter} />
       <Route path="/discover" component={DiscoverPage} />
       <Route path="/automation" component={AutomationPage} />
@@ -83,7 +98,7 @@ function AppRouter() {
       <Route path="/open-source" component={OpenSourcePage} />
       <Route path="/snaptrade/callback" component={SnaptradeCallback} />
 
-      <Route path="/">{() => <Redirect to="/command-center" />}</Route>
+      <Route path="/">{() => <Redirect to="/home" />}</Route>
       <Route path="/scanner">{() => <Redirect to="/discover?tab=stocks" />}</Route>
       <Route path="/signals">{() => <Redirect to="/discover?tab=stocks" />}</Route>
       <Route path="/watchlists">{() => <Redirect to="/discover?tab=stocks" />}</Route>
@@ -194,11 +209,6 @@ function AppHeader() {
       </div>
       <div className="flex items-center gap-2">
         <AlertBell />
-        <Link href="/help" data-testid="link-help">
-          <Button variant="ghost" size="icon" data-testid="button-help">
-            <HelpCircle className="h-5 w-5" />
-          </Button>
-        </Link>
         <ThemeToggle />
         <UserMenu />
       </div>

@@ -1,7 +1,29 @@
-# VCP Trader
+# Strategy Agent
 
 ## Overview
-VCP Trader is a production-grade SaaS web application for active day traders, designed to automate the detection, tracking, and real-time alerting of Volatility Contraction Pattern (VCP) breakouts in the US stock market. It identifies VCP patterns in various stages (FORMING, READY, BREAKOUT), automatically drawing resistance and stop levels, and supports direct brokerage market data connectivity. The platform functions as a mobile-ready Progressive Web App (PWA) and aims to automate trade execution through an auto-agent and options trading capabilities. Its vision is to empower traders with sophisticated tools for automated strategy execution and risk management.
+Strategy Agent is an AI-powered strategy analysis and trade setup generation platform, built as a remix of the VCP Trader codebase. It presents existing broker connections, market data, charting, and execution infrastructure through a simplified AI-agent-driven interface. Users can ask for strategy-based trade setups using natural language, review structured setup cards with entry/stop/target/reasoning, and optionally execute via InstaTrade™. The app maintains compliance-safe framing throughout — all outputs are positioned as software-generated analysis, not investment advice.
+
+### New AI-First Navigation
+- **Home** — Getting started and recent setups
+- **Agent** — Natural language prompt input for AI-powered setup generation
+- **Strategies** — Built-in strategy templates (ORB, VWAP Reclaim, EMA Pullback, VCP, etc.)
+- **My Strategies** — Custom user-uploaded strategies with validation
+- **Trade Setups** — Setup history with status tracking
+- **Broker Connections** — Broker connection management
+- **Activity** — Event log and audit trail
+- **Settings** — Account & configuration
+
+### Agent Architecture
+- `server/agent/prompt-interpreter.ts` — Deterministic NLP parser converting natural language to structured request objects
+- `server/agent/strategy-engine.ts` — Wraps existing strategy plugins to produce normalized TradeSetup objects
+- `server/routes/agent.ts` — API routes for setup generation, custom strategies, and activity logging
+- `client/src/components/trade-setup-card.tsx` — Reusable setup card component with compliance microcopy
+
+### New Database Models
+- `custom_strategies` — User-uploaded strategy definitions with validation status
+- `trade_setup_history` — Generated setup history with status tracking
+- `prompt_request_logs` — Audit trail of parsed prompts
+- `activity_logs` — Activity event log
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.

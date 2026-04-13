@@ -1673,6 +1673,84 @@ export const insertDisclaimerAcceptanceLogSchema = createInsertSchema(disclaimer
 export type InsertDisclaimerAcceptanceLog = z.infer<typeof insertDisclaimerAcceptanceLogSchema>;
 export type DisclaimerAcceptanceLog = typeof disclaimerAcceptanceLogs.$inferSelect;
 
+export const customStrategies = pgTable("custom_strategies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  assetType: text("asset_type").notNull().default("stock"),
+  timeframe: text("timeframe"),
+  rulesJson: jsonb("rules_json"),
+  sourceText: text("source_text"),
+  validationStatus: text("validation_status").notNull().default("draft"),
+  isEnabled: boolean("is_enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCustomStrategySchema = createInsertSchema(customStrategies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCustomStrategy = z.infer<typeof insertCustomStrategySchema>;
+export type CustomStrategy = typeof customStrategies.$inferSelect;
+
+export const tradeSetupHistory = pgTable("trade_setup_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  strategyName: text("strategy_name").notNull(),
+  assetType: text("asset_type").notNull().default("stock"),
+  timeframe: text("timeframe"),
+  setupJson: jsonb("setup_json"),
+  modelScore: integer("model_score"),
+  status: text("status").notNull().default("generated"),
+  sentToInstatrade: boolean("sent_to_instatrade").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTradeSetupHistorySchema = createInsertSchema(tradeSetupHistory).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertTradeSetupHistory = z.infer<typeof insertTradeSetupHistorySchema>;
+export type TradeSetupHistory = typeof tradeSetupHistory.$inferSelect;
+
+export const promptRequestLogs = pgTable("prompt_request_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  prompt: text("prompt").notNull(),
+  resolvedIntent: text("resolved_intent"),
+  resolvedSymbol: text("resolved_symbol"),
+  resolvedStrategy: text("resolved_strategy"),
+  requestJson: jsonb("request_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPromptRequestLogSchema = createInsertSchema(promptRequestLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPromptRequestLog = z.infer<typeof insertPromptRequestLogSchema>;
+export type PromptRequestLog = typeof promptRequestLogs.$inferSelect;
+
+export const activityLogs = pgTable("activity_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  eventType: text("event_type").notNull(),
+  description: text("description").notNull(),
+  metadataJson: jsonb("metadata_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+export type ActivityLog = typeof activityLogs.$inferSelect;
+
 export const agentSkippedTrades = pgTable("agent_skipped_trades", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

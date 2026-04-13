@@ -59,24 +59,15 @@ import AdminDisclaimerLogs from "@/pages/admin-disclaimer-logs";
 import AdminUsersPage from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
 import AgentPage from "@/pages/agent";
-import StrategiesPage from "@/pages/strategies";
-import MyStrategiesPage from "@/pages/my-strategies";
 import TradeSetupsPage from "@/pages/trade-setups";
-import BrokerConnectionsPage from "@/pages/broker-connections";
-import ActivityPage from "@/pages/activity";
-import HomeDashboard from "@/pages/home-dashboard";
 import { Redirect } from "wouter";
 
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/home" component={HomeDashboard} />
+      <Route path="/home" component={AgentPage} />
       <Route path="/agent" component={AgentPage} />
-      <Route path="/strategies" component={StrategiesPage} />
-      <Route path="/my-strategies" component={MyStrategiesPage} />
       <Route path="/trade-setups" component={TradeSetupsPage} />
-      <Route path="/broker-connections" component={BrokerConnectionsPage} />
-      <Route path="/activity" component={ActivityPage} />
 
       <Route path="/command-center" component={CommandCenter} />
       <Route path="/discover" component={DiscoverPage} />
@@ -104,6 +95,10 @@ function AppRouter() {
       <Route path="/watchlists">{() => <Redirect to="/discover?tab=stocks" />}</Route>
       <Route path="/app/stocks">{() => <Redirect to="/discover?tab=stocks" />}</Route>
       <Route path="/app/options">{() => <Redirect to="/discover?tab=options" />}</Route>
+      <Route path="/strategies">{() => <Redirect to="/home" />}</Route>
+      <Route path="/my-strategies">{() => <Redirect to="/home" />}</Route>
+      <Route path="/broker-connections">{() => <Redirect to="/settings" />}</Route>
+      <Route path="/activity">{() => <Redirect to="/home" />}</Route>
       <Route path="/execution">{() => <Redirect to="/automation?view=cockpit" />}</Route>
       <Route path="/opportunities">{() => <Redirect to="/automation?view=outcomes" />}</Route>
       <Route path="/alerts" component={AlertsPage} />

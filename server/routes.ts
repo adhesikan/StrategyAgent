@@ -2347,6 +2347,57 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.get("/api/broker/order-updates", isAuthenticated, async (req, res) => {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    res.write("data: {\"type\":\"connected\"}\n\n");
+
+    let lastOrderState = "";
+    const pollInterval = setInterval(async () => {
+      try {
+        const orders = await brokerService.getBrokerOrders(req.session.userId!);
+        const stateKey = JSON.stringify(
+          orders.map((o: any) => ({ id: o.id, status: o.status, filledQty: o.filledQty }))
+        );
+
+        if (lastOrderState && stateKey !== lastOrderState) {
+          const prevOrders = JSON.parse(lastOrderState) as any[];
+          for (const order of orders) {
+            const prev = prevOrders.find((p: any) => p.id === order.id);
+            if (!prev || prev.status !== order.status || prev.filledQty !== order.filledQty) {
+              res.write(
+                `data: ${JSON.stringify({
+                  type: "order_update",
+                  orderId: order.id,
+                  symbol: order.symbol,
+                  side: order.side,
+                  qty: order.qty,
+                  status: order.status,
+                  filledQty: order.filledQty,
+                })}\n\n`
+              );
+            }
+          }
+        }
+        lastOrderState = stateKey;
+      } catch {}
+    }, 3000);
+
+    const heartbeat = setInterval(() => {
+      res.write(": heartbeat\n\n");
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(pollInterval);
+      clearInterval(heartbeat);
+    });
+  });
+
   app.post("/api/broker/orders", isAuthenticated, async (req, res) => {
     try {
       const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration, orderClass, optionSymbol, optionSide } = req.body;

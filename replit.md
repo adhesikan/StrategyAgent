@@ -3,15 +3,10 @@
 ## Overview
 Strategy Agent is an AI-powered strategy analysis and trade setup generation platform, built as a remix of the VCP Trader codebase. It presents existing broker connections, market data, charting, and execution infrastructure through a simplified AI-agent-driven interface. Users can ask for strategy-based trade setups using natural language, review structured setup cards with entry/stop/target/reasoning, and optionally execute via InstaTrade™. The app maintains compliance-safe framing throughout — all outputs are positioned as software-generated analysis, not investment advice.
 
-### New AI-First Navigation
-- **Home** — Getting started and recent setups
-- **Agent** — Natural language prompt input for AI-powered setup generation
-- **Strategies** — Built-in strategy templates (ORB, VWAP Reclaim, EMA Pullback, VCP, etc.)
-- **My Strategies** — Custom user-uploaded strategies with validation
-- **Trade Setups** — Setup history with status tracking
-- **Broker Connections** — Broker connection management
-- **Activity** — Event log and audit trail
-- **Settings** — Account & configuration
+### AI-First Navigation (3 items)
+- **Agent** (`/home`) — Main dashboard: natural language prompt input, AI-powered setup generation, InstaTrade™ integration, live orders panel with SSE-based real-time updates
+- **Setups** (`/trade-setups`) — Setup history with status tracking
+- **Settings** (`/settings`) — Account, broker connections, & configuration
 
 ### Agent Architecture
 - `server/agent/prompt-interpreter.ts` — Deterministic NLP parser converting natural language to structured request objects

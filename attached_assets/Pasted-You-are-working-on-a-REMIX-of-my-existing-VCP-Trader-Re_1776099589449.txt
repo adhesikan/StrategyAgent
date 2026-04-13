@@ -1,0 +1,584 @@
+You are working on a REMIX of my existing VCP Trader Replit app.
+
+IMPORTANT
+This is NOT a brand new build from scratch.
+This is a transformation of the existing VCP Trader codebase into a new AI-first product shell.
+
+GOAL
+Create a new app experience that uses the existing VCP Trader platform capabilities (broker connections, market data, charting, trading workflows, InstaTrade™, auth, settings, execution plumbing) but presents them through a simplified AI-agent-driven interface.
+
+The new app should allow users to:
+1. Connect broker accounts for market data and order placement
+2. Ask for a strategy-based trade setup using natural language
+3. Use built-in strategies to generate software-based trade setups
+4. Upload or define their own strategy and have the system interpret it into structured rules
+5. Review setup details, metrics, reasoning, and chart overlays
+6. Optionally use InstaTrade™ to act on the setup
+7. Keep compliance-safe framing throughout the product
+
+IMPORTANT POSITIONING
+Do NOT frame the app as giving investment advice or recommending trades.
+Do NOT use wording like:
+- recommended trade
+- best trade
+- winning trade
+- AI stock picker
+- high probability winner
+- you should buy/sell this
+
+Instead, frame the app as:
+- AI-assisted strategy analysis
+- software-generated trade setups
+- strategy-based setup generation
+- user-directed execution
+- informational/educational use only
+
+PRODUCT DIRECTION
+This remix should feel like:
+- the same powerful underlying engine
+- but with a new AI-first UX shell
+- much simpler navigation
+- focused on strategy-driven setup generation rather than broad scanner dashboards
+
+==================================================
+PHASE 1 — NEW PRODUCT SHELL
+==================================================
+
+Create a new app shell and navigation based on the existing codebase.
+
+REPLACE the current broad VCP Trader navigation with a simpler navigation:
+
+- Home
+- Agent
+- Strategies
+- My Strategies
+- Trade Setups
+- Broker Connections
+- Activity
+- Settings
+
+Keep any admin or internal routes if they already exist, but do not expose them prominently in the main nav.
+
+HIDE or REMOVE from the main UI any pages/features that make the app feel like a broad manual trading terminal unless they directly support this new AI-agent workflow.
+
+Examples of things to reduce or remove from primary navigation:
+- broad dashboard clutter
+- generic “discover” views
+- overly dense scanner controls
+- pages that distract from the AI setup flow
+
+Create a new landing/home page that explains the new experience:
+- Connect your broker
+- Choose a built-in strategy or upload your own
+- Ask the agent for a setup
+- Review software-generated setup details
+- Send to InstaTrade™
+
+==================================================
+PHASE 2 — KEEP / REUSE EXISTING CORE SERVICES
+==================================================
+
+Preserve and reuse existing infrastructure from VCP Trader wherever possible:
+
+KEEP:
+- authentication and users
+- broker connections and OAuth flows
+- market data services
+- charting components
+- order preview and execution services
+- InstaTrade™ functionality
+- settings and risk controls
+- alert/notification infrastructure if reusable
+- audit logging if present
+
+Do NOT rewrite working broker connectivity unless necessary.
+Wrap or adapt existing services into the new product flow.
+
+==================================================
+PHASE 3 — AGENT PAGE (MOST IMPORTANT)
+==================================================
+
+Build a new primary page: /agent
+
+This is the central experience of the app.
+
+The Agent page should include:
+
+1. Natural language prompt input
+Examples shown in UI:
+- Give me a 15-minute ORB setup on TSLA
+- Find a bullish pullback setup on NVDA
+- Use my uploaded breakout strategy on AAPL
+- Show a futures setup on ES using opening range breakout
+- Generate a setup with at least 2:1 reward to risk
+
+2. Structured helper inputs above or below the prompt:
+- Symbol selector/search
+- Asset type selector (Stock / Option / Future)
+- Strategy selector
+- Timeframe selector
+- Market data source status (connected broker/live data if available)
+
+3. Submit action:
+- “Generate Setup”
+
+4. Results area:
+Render structured setup cards, not freeform chatbot blobs.
+
+==================================================
+PHASE 4 — AI INTERPRETATION LAYER
+==================================================
+
+Add an AI interpretation layer that converts user prompts into a structured request object.
+
+Example:
+User prompt:
+“Give me a trade idea based on the 15 ORB on TSLA”
+
+Should be interpreted as something like:
+{
+  "intent": "generate_trade_setup",
+  "strategy": "15_min_orb",
+  "symbol": "TSLA",
+  "assetType": "stock",
+  "timeframe": "15m"
+}
+
+Implement a prompt parser / interpreter service:
+- detect symbol
+- detect asset type if possible
+- detect strategy
+- detect timeframe
+- detect filters like reward/risk or directional preference
+- identify ambiguity and ask for clarification only when necessary
+
+Prefer deterministic parsing when possible.
+Use LLM/NLP support where helpful, but the result must always map to a structured internal request object.
+
+==================================================
+PHASE 5 — BUILT-IN STRATEGY ENGINE
+==================================================
+
+Create a strategy engine layer that supports built-in strategies first.
+
+Initial built-in strategies to support:
+- 15-minute ORB
+- VWAP reclaim
+- EMA pullback
+- volatility breakout
+- VCP-style breakout
+
+Each strategy should produce a normalized trade setup object.
+
+Create a standard internal type like:
+
+type TradeSetup = {
+  id: string;
+  symbol: string;
+  assetType: "stock" | "option" | "future";
+  strategyName: string;
+  timeframe: string;
+  setupType: string;
+  bias: "bullish" | "bearish" | "neutral";
+  entry: string | number;
+  stop: string | number;
+  targets: Array<string | number>;
+  rewardRisk?: number;
+  modelScore?: number;
+  reasoning: string[];
+  invalidation: string[];
+  metrics: {
+    trend?: string;
+    volume?: string;
+    volatility?: string;
+    openingRangeHigh?: number;
+    openingRangeLow?: number;
+    currentPrice?: number;
+    rvol?: number;
+  };
+  dataSource?: string;
+  generatedAt: string;
+};
+
+Use existing market data services and scanner logic wherever possible.
+
+For ORB example:
+- calculate opening range
+- determine breakout threshold
+- generate entry/stop/target
+- compute reward/risk
+- compute a neutral “Model Score”
+- list rule-based reasoning
+
+==================================================
+PHASE 6 — TRADE SETUP CARD UI
+==================================================
+
+Create a polished reusable TradeSetupCard component.
+
+Each result card should display:
+
+Header
+- Symbol
+- Strategy name
+- Asset type
+- Timeframe
+- Bias
+- Model Score
+
+Core setup details
+- Entry
+- Stop
+- Target 1 / Target 2
+- Reward/Risk
+- Current price
+- Trend / volume / volatility context
+
+Reasoning section
+- Why this setup qualifies
+  - list of passed rules
+  - list of confirming metrics
+
+Invalidation section
+- What would invalidate the setup
+
+Footer actions
+- Review Setup
+- Open Chart
+- Send to InstaTrade™
+
+Compliance microcopy at bottom of every card:
+“Software-generated setup for informational purposes only. Not investment advice or a recommendation.”
+
+Do NOT rename InstaTrade™.
+Keep that label exactly as-is.
+
+==================================================
+PHASE 7 — CHART INTEGRATION
+==================================================
+
+Reuse the existing charting system if possible.
+
+When a setup is generated:
+- open/show chart for the symbol
+- overlay the relevant strategy levels when possible:
+  - OR high / OR low
+  - entry line
+  - stop line
+  - target line(s)
+  - VWAP / EMA where applicable
+
+Add a “View Chart” or “Open Chart” action from the setup card.
+
+==================================================
+PHASE 8 — MY STRATEGIES / USER-UPLOADED STRATEGIES
+==================================================
+
+Create a new page: /my-strategies
+
+Users should be able to add strategies in 3 ways:
+
+1. Plain-English strategy input
+Example:
+“Buy when price breaks above the high of the first 15 minutes and volume is above average. Stop below the opening range low. Exit at 2x risk.”
+
+2. Structured strategy form
+Fields:
+- strategy name
+- asset class
+- timeframe
+- entry logic
+- stop logic
+- target logic
+- filters
+- session constraints
+- notes
+
+3. Advanced JSON/rules mode (optional in v1 if easy)
+
+Workflow:
+- user submits plain-English or form-based strategy
+- AI converts it into a structured strategy draft
+- app validates it
+- user reviews
+- user approves and saves
+- strategy becomes available on Agent page
+
+IMPORTANT
+Do NOT allow unvalidated freeform strategy text to immediately become executable.
+All uploaded strategies must go through a validation/review step.
+
+Each saved user strategy should have:
+- name
+- type
+- asset class
+- created by
+- enabled/disabled
+- validation status
+- last updated
+
+==================================================
+PHASE 9 — STRATEGY VALIDATION
+==================================================
+
+Create validation rules for custom strategies:
+- required fields must be present
+- no contradictory entry/stop logic
+- supported asset class must be defined
+- timeframe must be defined
+- targets must be computable or explicitly described
+- invalid or ambiguous strategies should be marked:
+  - Draft
+  - Needs Review
+  - Validated
+
+Show clear UI warnings when strategy parsing is incomplete.
+
+==================================================
+PHASE 10 — TRADE SETUPS HISTORY
+==================================================
+
+Create a page: /trade-setups
+
+This should show previously generated setup cards/history:
+- symbol
+- strategy
+- timeframe
+- setup type
+- model score
+- generated time
+- user
+- whether sent to InstaTrade™
+- status (Generated / Reviewed / Sent to InstaTrade™ / Archived)
+
+Allow filters:
+- symbol
+- strategy
+- asset type
+- date
+- status
+
+==================================================
+PHASE 11 — BROKER CONNECTIONS PAGE
+==================================================
+
+Create or simplify a page: /broker-connections
+
+Reuse existing broker connection logic.
+
+Page should show:
+- connected brokers
+- connection status
+- available capabilities per broker:
+  - market data
+  - positions
+  - order placement
+- connect / reconnect actions
+
+Make this page simple and product-friendly.
+Use messaging like:
+- Connect broker for live market data
+- Connect broker for order placement
+- Execution available through InstaTrade™
+
+==================================================
+PHASE 12 — ACTIVITY / AUDIT LOGGING
+==================================================
+
+Create an Activity page that logs key events:
+- prompt submitted
+- parsed request
+- strategy used
+- setup generated
+- user reviewed setup
+- setup sent to InstaTrade™
+- broker connection events
+- strategy upload events
+
+For each setup generation, log:
+- user prompt
+- resolved symbol
+- resolved strategy
+- data source used
+- generated setup snapshot
+- timestamp
+- whether user acted on it
+
+This is important for trust, debugging, and product maturity.
+
+==================================================
+PHASE 13 — COMPLIANCE / DISCLAIMER LAYER
+==================================================
+
+Add persistent compliance-safe framing across the product.
+
+Top-level disclaimer banner or modal on first use:
+“This application provides software-generated strategy analysis and trade setup tools for informational and educational purposes only. It does not provide investment advice, trade recommendations, or guarantees. You are solely responsible for your trading decisions.”
+
+Add “I Understand” acceptance and persist by user.
+
+Log acceptance:
+- userId
+- acceptedAt
+- version
+- context
+
+Every setup card should also show:
+“Software-generated setup for informational purposes only. Not investment advice or a recommendation.”
+
+Replace risky copy across the app:
+- do NOT say “recommended trade”
+- do NOT say “top picks”
+- do NOT say “best setup”
+- do NOT say “AI says buy”
+- do NOT say “confidence”
+Use:
+- Model Score
+- Setup Classification
+- Strategy-Based Setup
+- Software-Generated Analysis
+
+==================================================
+PHASE 14 — AI RESPONSE FORMAT
+==================================================
+
+The agent should not respond like a generic chatbot.
+Responses should be structured and concise.
+
+Preferred output structure on the UI:
+1. Setup Summary
+2. Why It Qualifies
+3. Invalidation / Risk Notes
+4. Metrics
+5. Actions
+
+If no valid setup exists, say:
+“No valid setup currently matches the selected strategy conditions.”
+
+Do NOT fabricate setups when market conditions do not qualify.
+
+==================================================
+PHASE 15 — DATABASE / MODELS
+==================================================
+
+Add or update models as needed for:
+- CustomStrategy
+- TradeSetupHistory
+- PromptRequestLog
+- DisclaimerAcceptance
+
+Suggested fields:
+
+CustomStrategy
+- id
+- userId
+- name
+- description
+- assetType
+- timeframe
+- rulesJson
+- sourceText
+- validationStatus
+- isEnabled
+- createdAt
+- updatedAt
+
+TradeSetupHistory
+- id
+- userId
+- symbol
+- strategyName
+- assetType
+- timeframe
+- setupJson
+- modelScore
+- sentToInstatrade
+- createdAt
+
+PromptRequestLog
+- id
+- userId
+- prompt
+- resolvedIntent
+- resolvedSymbol
+- resolvedStrategy
+- requestJson
+- createdAt
+
+DisclaimerAcceptance
+- id
+- userId
+- version
+- context
+- acceptedAt
+- ip
+- userAgent
+
+==================================================
+PHASE 16 — DESIGN / UI STYLE
+==================================================
+
+Keep the dark modern VCP style, but simplify the experience.
+
+Design goals:
+- cleaner
+- more guided
+- less terminal clutter
+- more AI-assistant feel
+- cards and panels should look premium and simple
+- keep charts strong
+- keep execution handoff professional
+
+Use clear labels:
+- Generate Setup
+- Review Setup
+- Open Chart
+- Send to InstaTrade™
+
+==================================================
+PHASE 17 — MVP PRIORITY ORDER
+==================================================
+
+Implement in this order:
+
+1. New shell and navigation
+2. Home page
+3. Agent page with prompt input
+4. Prompt interpreter
+5. One built-in strategy first: 15-minute ORB
+6. TradeSetupCard
+7. Chart integration
+8. Broker connections page
+9. Trade setup history
+10. My Strategies page
+11. Custom strategy draft + validation flow
+12. Disclaimer acceptance logging
+13. Activity log
+
+Do not try to fully perfect every strategy before the ORB flow works end-to-end.
+
+==================================================
+PHASE 18 — DELIVERABLE EXPECTATIONS
+==================================================
+
+At the end of this update, I should be able to:
+
+- open the remixed app
+- see the new product shell
+- connect or view broker connections
+- go to Agent
+- type: “Give me a 15-minute ORB setup on TSLA”
+- get a structured software-generated setup card
+- review setup details and metrics
+- open the chart
+- click InstaTrade™ to continue execution flow
+- see safe disclaimer language
+- upload/save a custom strategy draft
+
+Please preserve existing working infrastructure and refactor carefully rather than replacing functioning broker and execution services unnecessarily.
+
+As you code, leave concise comments in critical places explaining:
+- reused services
+- new AI interpretation flow
+- custom strategy validation
+- compliance-safe wording choices

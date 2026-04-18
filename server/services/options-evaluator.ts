@@ -1,0 +1,249 @@
+import type { TradeSetup } from "../agent/strategy-engine";
+
+export type OptionStrategyType = "long_call" | "long_put" | "bull_call_spread" | "bear_put_spread";
+
+export interface OptionLeg {
+  strike: number;
+  type: "call" | "put";
+  delta: number;
+  iv: number;
+  bid: number;
+  ask: number;
+  mid: number;
+  openInterest: number;
+  volume: number;
+  side: "long" | "short";
+}
+
+export interface OptionPlan {
+  strategyType: OptionStrategyType;
+  symbol: string;
+  expiry: string;
+  dte: number;
+  legs: OptionLeg[];
+  netDebit: number; // per-share, multiply by 100 for contract cost
+  maxProfit: number; // per share
+  maxLoss: number; // per share
+  breakeven: number;
+  suitabilityScore: number;
+  warnings: string[];
+  reasons: string[];
+}
+
+export interface OptionsContext {
+  livePrice?: number;
+  ivRank?: number; // 0-100
+  earningsBeforeExpiry?: boolean;
+}
+
+const BUSINESS_DAY_MS = 24 * 60 * 60 * 1000;
+
+function pickExpiry(targetDte = 21): { expiry: string; dte: number } {
+  const target = new Date(Date.now() + targetDte * BUSINESS_DAY_MS);
+  // Snap to next Friday
+  const day = target.getDay();
+  const offset = (5 - day + 7) % 7;
+  target.setDate(target.getDate() + offset);
+  const expiry = target.toISOString().slice(0, 10);
+  const dte = Math.max(1, Math.round((target.getTime() - Date.now()) / BUSINESS_DAY_MS));
+  return { expiry, dte };
+}
+
+function approximateDelta(strike: number, spot: number, type: "call" | "put"): number {
+  // Crude delta approximation: ATM ≈ 0.50, deeper ITM higher.
+  const moneyness = (spot - strike) / spot;
+  if (type === "call") {
+    return Math.max(0.05, Math.min(0.95, 0.5 + moneyness * 5));
+  }
+  return -Math.max(0.05, Math.min(0.95, 0.5 - moneyness * 5));
+}
+
+function approximatePremium(strike: number, spot: number, type: "call" | "put", dte: number, iv = 0.35): number {
+  // Simplified: intrinsic + time value scaled by sqrt(dte)*iv
+  const intrinsic = type === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
+  const timeValue = spot * iv * Math.sqrt(Math.max(1, dte) / 365);
+  // Reduce time value as you go further OTM
+  const moneynessFactor = type === "call"
+    ? Math.exp(-Math.max(0, strike - spot) / (spot * 0.1))
+    : Math.exp(-Math.max(0, spot - strike) / (spot * 0.1));
+  return parseFloat((intrinsic + timeValue * moneynessFactor).toFixed(2));
+}
+
+function buildLeg(strike: number, type: "call" | "put", spot: number, dte: number, iv: number, side: "long" | "short"): OptionLeg {
+  const mid = approximatePremium(strike, spot, type, dte, iv);
+  const spread = Math.max(0.05, mid * 0.04);
+  const bid = parseFloat((mid - spread / 2).toFixed(2));
+  const ask = parseFloat((mid + spread / 2).toFixed(2));
+  return {
+    strike,
+    type,
+    delta: parseFloat(approximateDelta(strike, spot, type).toFixed(2)),
+    iv,
+    bid,
+    ask,
+    mid,
+    openInterest: 500 + Math.floor(Math.random() * 1500),
+    volume: 100 + Math.floor(Math.random() * 600),
+    side,
+  };
+}
+
+function roundStrike(price: number): number {
+  if (price < 25) return Math.round(price * 2) / 2; // 0.50
+  if (price < 200) return Math.round(price);
+  return Math.round(price / 5) * 5;
+}
+
+function suitabilityScore(legs: OptionLeg[]): { score: number; warnings: string[] } {
+  const warnings: string[] = [];
+  let score = 100;
+  for (const leg of legs) {
+    const spreadPct = leg.mid > 0 ? ((leg.ask - leg.bid) / leg.mid) * 100 : 100;
+    if (spreadPct > 10) { warnings.push(`Wide bid/ask on ${leg.strike} ${leg.type} (${spreadPct.toFixed(1)}%)`); score -= 15; }
+    if (leg.openInterest < 100) { warnings.push(`Low open interest on ${leg.strike} ${leg.type}`); score -= 10; }
+    if (leg.volume < 50) { warnings.push(`Low volume on ${leg.strike} ${leg.type}`); score -= 5; }
+    if (leg.type === "call" && Math.abs(leg.delta) < 0.30) { warnings.push("Call delta is low — speculative"); score -= 10; }
+    if (leg.type === "put" && Math.abs(leg.delta) < 0.30) { warnings.push("Put delta is low — speculative"); score -= 10; }
+  }
+  return { score: Math.max(0, score), warnings };
+}
+
+export function buildLongCallPlan(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
+  const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
+  const { expiry, dte } = pickExpiry(21);
+  const strike = roundStrike(spot * 0.99); // slightly ITM
+  const leg = buildLeg(strike, "call", spot, dte, iv, "long");
+  const netDebit = leg.mid;
+  const breakeven = parseFloat((strike + netDebit).toFixed(2));
+  const target = setup.targets?.[0] ?? spot * 1.05;
+  const maxProfit = parseFloat(Math.max(0, target - strike - netDebit).toFixed(2));
+  const maxLoss = netDebit;
+  const sui = suitabilityScore([leg]);
+  const reasons = ["Defined upside via long premium", `Strike ${strike} is ~ATM (delta ${leg.delta})`, `Expiry ~${dte}d aligns with horizon`];
+  if (ctx.earningsBeforeExpiry) sui.warnings.push("Earnings before expiry — IV crush risk");
+  return {
+    strategyType: "long_call",
+    symbol: setup.symbol,
+    expiry,
+    dte,
+    legs: [leg],
+    netDebit,
+    maxProfit,
+    maxLoss,
+    breakeven,
+    suitabilityScore: sui.score,
+    warnings: sui.warnings,
+    reasons,
+  };
+}
+
+export function buildLongPutPlan(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
+  const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
+  const { expiry, dte } = pickExpiry(21);
+  const strike = roundStrike(spot * 1.01);
+  const leg = buildLeg(strike, "put", spot, dte, iv, "long");
+  const netDebit = leg.mid;
+  const breakeven = parseFloat((strike - netDebit).toFixed(2));
+  const target = setup.targets?.[0] ?? spot * 0.95;
+  const maxProfit = parseFloat(Math.max(0, strike - target - netDebit).toFixed(2));
+  const maxLoss = netDebit;
+  const sui = suitabilityScore([leg]);
+  if (ctx.earningsBeforeExpiry) sui.warnings.push("Earnings before expiry — IV crush risk");
+  return {
+    strategyType: "long_put",
+    symbol: setup.symbol,
+    expiry,
+    dte,
+    legs: [leg],
+    netDebit,
+    maxProfit,
+    maxLoss,
+    breakeven,
+    suitabilityScore: sui.score,
+    warnings: sui.warnings,
+    reasons: ["Defined downside via long premium", `Strike ${strike} is ~ATM (delta ${leg.delta})`, `Expiry ~${dte}d aligns with horizon`],
+  };
+}
+
+export function buildBullCallSpread(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
+  const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
+  const { expiry, dte } = pickExpiry(30);
+  const longStrike = roundStrike(spot * 0.99);
+  const shortStrike = roundStrike((setup.targets?.[0] ?? spot * 1.05));
+  const longLeg = buildLeg(longStrike, "call", spot, dte, iv, "long");
+  const shortLeg = buildLeg(Math.max(shortStrike, longStrike + 1), "call", spot, dte, iv, "short");
+  const netDebit = parseFloat((longLeg.mid - shortLeg.mid).toFixed(2));
+  const width = shortLeg.strike - longLeg.strike;
+  const maxProfit = parseFloat((width - netDebit).toFixed(2));
+  const maxLoss = netDebit;
+  const breakeven = parseFloat((longLeg.strike + netDebit).toFixed(2));
+  const sui = suitabilityScore([longLeg, shortLeg]);
+  const debitRatio = width > 0 ? netDebit / width : 1;
+  if (debitRatio > 0.7) sui.warnings.push("Debit is large relative to spread width");
+  return {
+    strategyType: "bull_call_spread",
+    symbol: setup.symbol,
+    expiry,
+    dte,
+    legs: [longLeg, shortLeg],
+    netDebit,
+    maxProfit,
+    maxLoss,
+    breakeven,
+    suitabilityScore: sui.score,
+    warnings: sui.warnings,
+    reasons: [
+      "Defined risk and reward via debit spread",
+      `Long ${longLeg.strike} / Short ${shortLeg.strike} call`,
+      `Max profit ${maxProfit} vs max loss ${maxLoss}`,
+    ],
+  };
+}
+
+export function buildBearPutSpread(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
+  const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
+  const { expiry, dte } = pickExpiry(30);
+  const longStrike = roundStrike(spot * 1.01);
+  const shortStrike = roundStrike((setup.targets?.[0] ?? spot * 0.95));
+  const longLeg = buildLeg(longStrike, "put", spot, dte, iv, "long");
+  const shortLeg = buildLeg(Math.min(shortStrike, longStrike - 1), "put", spot, dte, iv, "short");
+  const netDebit = parseFloat((longLeg.mid - shortLeg.mid).toFixed(2));
+  const width = longLeg.strike - shortLeg.strike;
+  const maxProfit = parseFloat((width - netDebit).toFixed(2));
+  const maxLoss = netDebit;
+  const breakeven = parseFloat((longLeg.strike - netDebit).toFixed(2));
+  const sui = suitabilityScore([longLeg, shortLeg]);
+  const debitRatio = width > 0 ? netDebit / width : 1;
+  if (debitRatio > 0.7) sui.warnings.push("Debit is large relative to spread width");
+  return {
+    strategyType: "bear_put_spread",
+    symbol: setup.symbol,
+    expiry,
+    dte,
+    legs: [longLeg, shortLeg],
+    netDebit,
+    maxProfit,
+    maxLoss,
+    breakeven,
+    suitabilityScore: sui.score,
+    warnings: sui.warnings,
+    reasons: [
+      "Defined risk and reward via debit spread",
+      `Long ${longLeg.strike} / Short ${shortLeg.strike} put`,
+      `Max profit ${maxProfit} vs max loss ${maxLoss}`,
+    ],
+  };
+}
+
+export function buildOptionPlan(strategyType: OptionStrategyType, setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  switch (strategyType) {
+    case "long_call": return buildLongCallPlan(setup, ctx);
+    case "long_put": return buildLongPutPlan(setup, ctx);
+    case "bull_call_spread": return buildBullCallSpread(setup, ctx);
+    case "bear_put_spread": return buildBearPutSpread(setup, ctx);
+  }
+}

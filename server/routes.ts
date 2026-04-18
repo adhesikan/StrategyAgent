@@ -2466,7 +2466,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // ─── Stock Trade Ticket (Place Equity with optional OTOCO bracket) ──
   app.post("/api/trade/place-equity", isAuthenticatedOrPartner, async (req, res) => {
     try {
-      const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop } = req.body;
+      const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop, setupId, setupScore, rewardRisk, overrideGuardrails } = req.body;
 
       if (!accountId || !symbol || !quantity) {
         return res.status(400).json({ error: "Missing required fields: accountId, symbol, quantity" });
@@ -2474,6 +2474,26 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       if (typeof quantity !== "number" || quantity < 1 || quantity > 10000) {
         return res.status(400).json({ error: "quantity must be between 1 and 10,000" });
+      }
+
+      // Execution guardrails (skip for partner / non-session calls)
+      if (req.session?.userId) {
+        const { checkGuardrails } = await import("./services/execution-guardrails");
+        const prefs = (await storage.getUserTradePreferences(req.session.userId)) || {};
+        const gr = checkGuardrails({
+          prefs,
+          instrumentType: "stock",
+          setupScore: typeof setupScore === "number" ? setupScore : null,
+          rewardRisk: typeof rewardRisk === "number" ? rewardRisk : null,
+        });
+        if (!gr.passed && !overrideGuardrails) {
+          return res.status(422).json({
+            error: "Trade blocked by your trade preferences",
+            blockers: gr.blockers,
+            warnings: gr.warnings,
+            code: "GUARDRAIL_BLOCKED",
+          });
+        }
       }
 
       const accounts = await brokerService.getBrokerAccounts(req.session.userId!);
@@ -2534,6 +2554,78 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.status(422).json({ error: error.message });
       }
       res.status(500).json({ error: error.message || "Failed to place order" });
+    }
+  });
+
+  // ─── Option Place (mock execution + outcome record) ──
+  app.post("/api/trade/place-option", isAuthenticatedOrPartner, async (req, res) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "Auth required" });
+
+      const { symbol, instrumentType, legs, quantity, setupId, setupScore, vehicleScore, rewardRisk, overrideGuardrails } = req.body;
+      if (!symbol || !instrumentType || !Array.isArray(legs) || legs.length === 0) {
+        return res.status(400).json({ error: "Missing required fields: symbol, instrumentType, legs" });
+      }
+      const qty = Number(quantity) || 1;
+      if (qty < 1 || qty > 100) {
+        return res.status(400).json({ error: "quantity must be between 1 and 100 contracts" });
+      }
+
+      const { checkGuardrails } = await import("./services/execution-guardrails");
+      const prefs = (await storage.getUserTradePreferences(userId)) || {};
+      const totalDebit = legs.reduce((acc: number, l: any) => acc + (l.side === "buy" ? 1 : -1) * (Number(l.estimatedPremium) || 0), 0);
+      const gr = checkGuardrails({
+        prefs,
+        instrumentType,
+        setupScore: typeof setupScore === "number" ? setupScore : null,
+        rewardRisk: typeof rewardRisk === "number" ? rewardRisk : null,
+      });
+      if (!gr.passed && !overrideGuardrails) {
+        return res.status(422).json({
+          error: "Trade blocked by your trade preferences",
+          blockers: gr.blockers,
+          warnings: gr.warnings,
+          code: "GUARDRAIL_BLOCKED",
+        });
+      }
+
+      // Mock execution — real options-broker integration TBD
+      const mockOrderId = `mock-opt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Create outcome record for learning
+      try {
+        await storage.createTradeOutcome({
+          userId,
+          setupId: setupId || null,
+          symbol: String(symbol).toUpperCase(),
+          executedInstrumentType: instrumentType,
+          strategy: instrumentType,
+          scoreAtEntry: typeof setupScore === "number" ? setupScore : null,
+          vehicleScoreAtEntry: typeof vehicleScore === "number" ? vehicleScore : null,
+          entryTime: new Date(),
+          entryPrice: Math.abs(totalDebit) || null,
+          quantity: qty,
+          outcomeLabel: "open",
+          notes: `Mock option fill (${legs.length} legs)`,
+        } as any);
+      } catch (e: any) {
+        console.warn("[place-option] outcome record failed:", e.message);
+      }
+
+      res.json({
+        orderId: mockOrderId,
+        status: "filled_mock",
+        symbol,
+        instrumentType,
+        quantity: qty,
+        netDebit: totalDebit,
+        warnings: gr.warnings,
+        notice: "Options execution is in preview mode (mock fill). Real broker routing coming soon.",
+      });
+    } catch (err: any) {
+      console.error("[place-option] error:", err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 

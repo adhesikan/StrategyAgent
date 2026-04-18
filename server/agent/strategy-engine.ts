@@ -31,6 +31,8 @@ export interface TradeSetup {
   };
   dataSource: string;
   generatedAt: string;
+  appliedConditions?: Array<{ type: string; operator: string; value: string; passed: boolean }>;
+  conditionWarnings?: string[];
 }
 
 const STRATEGY_DISPLAY_NAMES: Record<string, string> = {

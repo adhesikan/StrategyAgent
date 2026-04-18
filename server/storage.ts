@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable, agentSkippedTrades as agentSkippedTradesTable, customStrategies as customStrategiesTable, tradeSetupHistory as tradeSetupHistoryTable, promptRequestLogs as promptRequestLogsTable, activityLogs as activityLogsTable, analysisConditions as analysisConditionsTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable, agentSkippedTrades as agentSkippedTradesTable, customStrategies as customStrategiesTable, tradeSetupHistory as tradeSetupHistoryTable, promptRequestLogs as promptRequestLogsTable, activityLogs as activityLogsTable, analysisConditions as analysisConditionsTable, setupScores as setupScoresTable, instrumentRecommendations as instrumentRecommendationsTable, optionCandidates as optionCandidatesTable, tradeOutcomes as tradeOutcomesTable, userTradePreferences as userTradePreferencesTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count, isNull } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -105,6 +105,16 @@ import type {
   InsertActivityLog,
   AnalysisCondition,
   InsertAnalysisCondition,
+  SetupScore,
+  InsertSetupScore,
+  InstrumentRecommendation,
+  InsertInstrumentRecommendation,
+  OptionCandidate,
+  InsertOptionCandidate,
+  TradeOutcome,
+  InsertTradeOutcome,
+  UserTradePreferences,
+  InsertUserTradePreferences,
 } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
@@ -373,6 +383,22 @@ export interface IStorage {
   createAnalysisCondition(data: InsertAnalysisCondition): Promise<AnalysisCondition>;
   updateAnalysisCondition(id: string, userId: string, data: Partial<AnalysisCondition>): Promise<AnalysisCondition | null>;
   deleteAnalysisCondition(id: string, userId: string): Promise<void>;
+
+  createSetupScore(data: InsertSetupScore): Promise<SetupScore>;
+  getSetupScore(setupId: string): Promise<SetupScore | null>;
+
+  createInstrumentRecommendation(data: InsertInstrumentRecommendation): Promise<InstrumentRecommendation>;
+  getInstrumentRecommendation(setupId: string): Promise<InstrumentRecommendation | null>;
+
+  createOptionCandidate(data: InsertOptionCandidate): Promise<OptionCandidate>;
+  getOptionCandidates(setupId: string): Promise<OptionCandidate[]>;
+
+  createTradeOutcome(data: InsertTradeOutcome): Promise<TradeOutcome>;
+  updateTradeOutcome(id: string, userId: string, data: Partial<TradeOutcome>): Promise<TradeOutcome | null>;
+  getTradeOutcomes(userId: string, limit?: number): Promise<TradeOutcome[]>;
+
+  getUserTradePreferences(userId: string): Promise<UserTradePreferences | null>;
+  upsertUserTradePreferences(userId: string, data: Partial<InsertUserTradePreferences>): Promise<UserTradePreferences>;
 }
 
 export interface OpportunityFilters {
@@ -3022,6 +3048,70 @@ export class MemStorage implements IStorage {
 
   async deleteAnalysisCondition(id: string, userId: string): Promise<void> {
     await db.delete(analysisConditionsTable).where(and(eq(analysisConditionsTable.id, id), eq(analysisConditionsTable.userId, userId)));
+  }
+
+  async createSetupScore(data: InsertSetupScore): Promise<SetupScore> {
+    const [result] = await db.insert(setupScoresTable).values(data).returning();
+    return result;
+  }
+
+  async getSetupScore(setupId: string): Promise<SetupScore | null> {
+    const [result] = await db.select().from(setupScoresTable).where(eq(setupScoresTable.setupId, setupId)).limit(1);
+    return result || null;
+  }
+
+  async createInstrumentRecommendation(data: InsertInstrumentRecommendation): Promise<InstrumentRecommendation> {
+    const [result] = await db.insert(instrumentRecommendationsTable).values(data).returning();
+    return result;
+  }
+
+  async getInstrumentRecommendation(setupId: string): Promise<InstrumentRecommendation | null> {
+    const [result] = await db.select().from(instrumentRecommendationsTable).where(eq(instrumentRecommendationsTable.setupId, setupId)).limit(1);
+    return result || null;
+  }
+
+  async createOptionCandidate(data: InsertOptionCandidate): Promise<OptionCandidate> {
+    const [result] = await db.insert(optionCandidatesTable).values(data).returning();
+    return result;
+  }
+
+  async getOptionCandidates(setupId: string): Promise<OptionCandidate[]> {
+    return db.select().from(optionCandidatesTable).where(eq(optionCandidatesTable.setupId, setupId));
+  }
+
+  async createTradeOutcome(data: InsertTradeOutcome): Promise<TradeOutcome> {
+    const [result] = await db.insert(tradeOutcomesTable).values(data).returning();
+    return result;
+  }
+
+  async updateTradeOutcome(id: string, userId: string, data: Partial<TradeOutcome>): Promise<TradeOutcome | null> {
+    const [result] = await db.update(tradeOutcomesTable)
+      .set(data)
+      .where(and(eq(tradeOutcomesTable.id, id), eq(tradeOutcomesTable.userId, userId)))
+      .returning();
+    return result || null;
+  }
+
+  async getTradeOutcomes(userId: string, limit: number = 100): Promise<TradeOutcome[]> {
+    return db.select().from(tradeOutcomesTable).where(eq(tradeOutcomesTable.userId, userId)).orderBy(desc(tradeOutcomesTable.createdAt)).limit(limit);
+  }
+
+  async getUserTradePreferences(userId: string): Promise<UserTradePreferences | null> {
+    const [result] = await db.select().from(userTradePreferencesTable).where(eq(userTradePreferencesTable.userId, userId)).limit(1);
+    return result || null;
+  }
+
+  async upsertUserTradePreferences(userId: string, data: Partial<InsertUserTradePreferences>): Promise<UserTradePreferences> {
+    const existing = await this.getUserTradePreferences(userId);
+    if (existing) {
+      const [result] = await db.update(userTradePreferencesTable)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(userTradePreferencesTable.userId, userId))
+        .returning();
+      return result;
+    }
+    const [result] = await db.insert(userTradePreferencesTable).values({ ...data, userId } as any).returning();
+    return result;
   }
 }
 

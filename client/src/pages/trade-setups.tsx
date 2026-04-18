@@ -33,6 +33,10 @@ interface SetupHistoryItem {
 export default function TradeSetupsPage() {
   const [symbolFilter, setSymbolFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [gradeFilter, setGradeFilter] = useState("all");
+  const [instrumentFilter, setInstrumentFilter] = useState("all");
+  const [executedFilter, setExecutedFilter] = useState("all");
+  const [minScore, setMinScore] = useState<string>("");
   const [, navigate] = useLocation();
 
   const buildQueryString = () => {
@@ -43,8 +47,22 @@ export default function TradeSetupsPage() {
     return qs ? `?${qs}` : "";
   };
 
-  const { data: setups, isLoading } = useQuery<SetupHistoryItem[]>({
+  const { data: setupsRaw, isLoading } = useQuery<SetupHistoryItem[]>({
     queryKey: [`/api/agent/setups${buildQueryString()}`],
+  });
+
+  const setups = (setupsRaw || []).filter((s) => {
+    const sj = s.setupJson || {};
+    const grade = sj.probability?.grade;
+    const score = sj.probability?.finalScore ?? s.modelScore ?? 0;
+    const instrument = sj.instrument?.recommended || (s.assetType === "option" ? "option" : "stock");
+    if (gradeFilter !== "all" && grade !== gradeFilter) return false;
+    if (instrumentFilter === "stock" && instrument !== "stock") return false;
+    if (instrumentFilter === "option" && instrument === "stock") return false;
+    if (executedFilter === "yes" && !s.sentToInstatrade) return false;
+    if (executedFilter === "no" && s.sentToInstatrade) return false;
+    if (minScore && Number(score) < Number(minScore)) return false;
+    return true;
   });
 
   const statusColor = (status: string) => {
@@ -91,7 +109,7 @@ export default function TradeSetupsPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px] h-9" data-testid="select-filter-status">
+          <SelectTrigger className="w-[160px] h-9" data-testid="select-filter-status">
             <Filter className="h-3.5 w-3.5 mr-1.5" />
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
@@ -103,6 +121,48 @@ export default function TradeSetupsPage() {
             <SelectItem value="archived">Archived</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={gradeFilter} onValueChange={setGradeFilter}>
+          <SelectTrigger className="w-[130px] h-9" data-testid="select-filter-grade">
+            <SelectValue placeholder="All Grades" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Grades</SelectItem>
+            <SelectItem value="A+">A+ only</SelectItem>
+            <SelectItem value="A">A only</SelectItem>
+            <SelectItem value="B">B only</SelectItem>
+            <SelectItem value="C">C only</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={instrumentFilter} onValueChange={setInstrumentFilter}>
+          <SelectTrigger className="w-[140px] h-9" data-testid="select-filter-instrument">
+            <SelectValue placeholder="Instrument" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Instruments</SelectItem>
+            <SelectItem value="stock">Stock</SelectItem>
+            <SelectItem value="option">Options</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={executedFilter} onValueChange={setExecutedFilter}>
+          <SelectTrigger className="w-[140px] h-9" data-testid="select-filter-executed">
+            <SelectValue placeholder="Executed" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Executed</SelectItem>
+            <SelectItem value="yes">Sent only</SelectItem>
+            <SelectItem value="no">Not sent</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          placeholder="Min score"
+          value={minScore}
+          onChange={(e) => setMinScore(e.target.value)}
+          className="w-[110px] h-9"
+          data-testid="input-filter-minscore"
+        />
       </div>
 
       {isLoading ? (

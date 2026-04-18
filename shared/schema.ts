@@ -1789,3 +1789,114 @@ export const insertAnalysisConditionSchema = createInsertSchema(analysisConditio
 });
 export type InsertAnalysisCondition = z.infer<typeof insertAnalysisConditionSchema>;
 export type AnalysisCondition = typeof analysisConditions.$inferSelect;
+
+// ============================================================
+// Probability Engine + Instrument Selector + Options + Outcomes
+// ============================================================
+
+export const setupScores = pgTable("setup_scores", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  setupId: varchar("setup_id").notNull(),
+  finalScore: real("final_score").notNull(),
+  technicalScore: real("technical_score").notNull(),
+  realtimeScore: real("realtime_score").notNull(),
+  newsScore: real("news_score").notNull(),
+  analystScore: real("analyst_score").notNull(),
+  riskScore: real("risk_score").notNull(),
+  grade: text("grade").notNull(),
+  reasonsJson: jsonb("reasons_json"),
+  warningsJson: jsonb("warnings_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertSetupScoreSchema = createInsertSchema(setupScores).omit({ id: true, createdAt: true });
+export type InsertSetupScore = z.infer<typeof insertSetupScoreSchema>;
+export type SetupScore = typeof setupScores.$inferSelect;
+
+export const instrumentRecommendations = pgTable("instrument_recommendations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  setupId: varchar("setup_id").notNull(),
+  recommendedInstrumentType: text("recommended_instrument_type").notNull(),
+  alternativeInstrumentType: text("alternative_instrument_type"),
+  vehicleScore: real("vehicle_score"),
+  recommendationJson: jsonb("recommendation_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertInstrumentRecommendationSchema = createInsertSchema(instrumentRecommendations).omit({ id: true, createdAt: true });
+export type InsertInstrumentRecommendation = z.infer<typeof insertInstrumentRecommendationSchema>;
+export type InstrumentRecommendation = typeof instrumentRecommendations.$inferSelect;
+
+export const optionCandidates = pgTable("option_candidates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  setupId: varchar("setup_id").notNull(),
+  symbol: text("symbol").notNull(),
+  expiry: text("expiry").notNull(),
+  strikeLong: real("strike_long").notNull(),
+  strikeShort: real("strike_short"),
+  optionType: text("option_type").notNull(),
+  strategyType: text("strategy_type").notNull(),
+  delta: real("delta"),
+  iv: real("iv"),
+  bid: real("bid"),
+  ask: real("ask"),
+  mid: real("mid"),
+  openInterest: integer("open_interest"),
+  volume: integer("volume"),
+  maxProfit: real("max_profit"),
+  maxLoss: real("max_loss"),
+  breakeven: real("breakeven"),
+  suitabilityScore: real("suitability_score"),
+  detailsJson: jsonb("details_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertOptionCandidateSchema = createInsertSchema(optionCandidates).omit({ id: true, createdAt: true });
+export type InsertOptionCandidate = z.infer<typeof insertOptionCandidateSchema>;
+export type OptionCandidate = typeof optionCandidates.$inferSelect;
+
+export const tradeOutcomes = pgTable("trade_outcomes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  setupId: varchar("setup_id"),
+  symbol: text("symbol").notNull(),
+  executedInstrumentType: text("executed_instrument_type").notNull(),
+  strategy: text("strategy"),
+  scoreAtEntry: real("score_at_entry"),
+  vehicleScoreAtEntry: real("vehicle_score_at_entry"),
+  entryTime: timestamp("entry_time"),
+  exitTime: timestamp("exit_time"),
+  entryPrice: real("entry_price"),
+  exitPrice: real("exit_price"),
+  quantity: real("quantity"),
+  pnl: real("pnl"),
+  pnlPercent: real("pnl_percent"),
+  outcomeLabel: text("outcome_label"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertTradeOutcomeSchema = createInsertSchema(tradeOutcomes).omit({ id: true, createdAt: true });
+export type InsertTradeOutcome = z.infer<typeof insertTradeOutcomeSchema>;
+export type TradeOutcome = typeof tradeOutcomes.$inferSelect;
+
+export const userTradePreferences = pgTable("user_trade_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  allowStocks: boolean("allow_stocks").default(true),
+  allowLongCalls: boolean("allow_long_calls").default(true),
+  allowLongPuts: boolean("allow_long_puts").default(true),
+  allowDebitSpreads: boolean("allow_debit_spreads").default(true),
+  allowCreditSpreads: boolean("allow_credit_spreads").default(false),
+  definedRiskOnly: boolean("defined_risk_only").default(false),
+  preferredDteMin: integer("preferred_dte_min").default(7),
+  preferredDteMax: integer("preferred_dte_max").default(45),
+  minOpenInterest: integer("min_open_interest").default(100),
+  minOptionVolume: integer("min_option_volume").default(50),
+  maxBidAskSpreadPct: real("max_bid_ask_spread_pct").default(10.0),
+  minRewardRisk: real("min_reward_risk").default(1.5),
+  minProbabilityScore: integer("min_probability_score").default(65),
+  defaultOrderType: text("default_order_type").default("limit"),
+  requireConfirmation: boolean("require_confirmation").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertUserTradePreferencesSchema = createInsertSchema(userTradePreferences).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertUserTradePreferences = z.infer<typeof insertUserTradePreferencesSchema>;
+export type UserTradePreferences = typeof userTradePreferences.$inferSelect;

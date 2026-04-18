@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle, User, KeyRound, UserX, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle, User, KeyRound, UserX, Loader2, SlidersHorizontal } from "lucide-react";
+import { TradePreferencesSection } from "@/components/trade-preferences-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -824,6 +825,10 @@ export default function Settings() {
             <Eye className="h-4 w-4" />
             Display
           </TabsTrigger>
+          <TabsTrigger value="trade-prefs" className="gap-2" data-testid="tab-trade-prefs">
+            <SlidersHorizontal className="h-4 w-4" />
+            Trade Prefs
+          </TabsTrigger>
           <TabsTrigger value="scanner" className="gap-2" data-testid="tab-scanner">
             <Database className="h-4 w-4" />
             Scanner
@@ -1429,6 +1434,10 @@ export default function Settings() {
           </Card>
 
           <TutorialSettings />
+        </TabsContent>
+
+        <TabsContent value="trade-prefs">
+          <TradePreferencesSection />
         </TabsContent>
 
         <TabsContent value="scanner">

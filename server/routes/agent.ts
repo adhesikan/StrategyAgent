@@ -5,6 +5,8 @@ import { generateMockSetup, generateSetupFromScanResult, getBuiltInStrategies, t
 import { getStrategyPlugin, getStrategy, StrategyId } from "../strategies";
 import { storage } from "../storage";
 import { fetchQuotesFromBroker, fetchHistoryFromBroker } from "../broker-service";
+import { scoreSetup } from "../services/probability-engine";
+import { selectInstrument } from "../services/instrument-selector";
 
 const conditionSchema = z.object({
   conditionType: z.string(),
@@ -138,26 +140,91 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
         }
       }
 
-      await storage.createTradeSetupHistory({
+      // Phase 1: Probability scoring
+      const probability = scoreSetup({ setup });
+
+      // Phase 2: Instrument selection (uses user prefs + options eval)
+      const prefs = (await storage.getUserTradePreferences(userId)) || {};
+      const instrument = selectInstrument({ setup, probability, prefs });
+
+      // Persist setup history
+      const persisted = await storage.createTradeSetupHistory({
         userId,
         symbol: setup.symbol,
         strategyName: setup.strategyName,
         assetType: setup.assetType,
         timeframe: setup.timeframe,
-        setupJson: setup as any,
+        setupJson: { ...setup, probability, instrument } as any,
         modelScore: setup.modelScore,
         status: "generated",
         sentToInstatrade: false,
       });
 
+      // Persist score
+      try {
+        await storage.createSetupScore({
+          setupId: persisted.id,
+          finalScore: probability.finalScore,
+          technicalScore: probability.breakdown.technicalScore,
+          realtimeScore: probability.breakdown.realtimeScore,
+          newsScore: probability.breakdown.newsScore,
+          analystScore: probability.breakdown.analystScore,
+          riskScore: probability.breakdown.riskScore,
+          grade: probability.grade,
+          reasonsJson: probability.reasons as any,
+          warningsJson: probability.warnings as any,
+        });
+      } catch (e) { /* non-fatal */ }
+
+      // Persist instrument recommendation
+      try {
+        await storage.createInstrumentRecommendation({
+          setupId: persisted.id,
+          recommendedInstrumentType: instrument.recommended,
+          alternativeInstrumentType: instrument.alternative || null,
+          vehicleScore: instrument.vehicleScore,
+          recommendationJson: instrument as any,
+        });
+      } catch (e) { /* non-fatal */ }
+
+      // Persist option candidate(s)
+      try {
+        for (const plan of [instrument.recommendedPlan, instrument.alternativePlan]) {
+          if (!plan) continue;
+          const longLeg = plan.legs.find((l) => l.side === "long");
+          const shortLeg = plan.legs.find((l) => l.side === "short");
+          await storage.createOptionCandidate({
+            setupId: persisted.id,
+            symbol: plan.symbol,
+            expiry: plan.expiry,
+            strikeLong: longLeg?.strike ?? 0,
+            strikeShort: shortLeg?.strike ?? null,
+            optionType: longLeg?.type === "call" ? "call" : "put",
+            strategyType: plan.strategyType,
+            delta: longLeg?.delta ?? null,
+            iv: longLeg?.iv ?? null,
+            bid: longLeg?.bid ?? null,
+            ask: longLeg?.ask ?? null,
+            mid: longLeg?.mid ?? null,
+            openInterest: longLeg?.openInterest ?? null,
+            volume: longLeg?.volume ?? null,
+            maxProfit: plan.maxProfit,
+            maxLoss: plan.maxLoss,
+            breakeven: plan.breakeven,
+            suitabilityScore: plan.suitabilityScore,
+            detailsJson: plan as any,
+          });
+        }
+      } catch (e) { /* non-fatal */ }
+
       await storage.createActivityLog({
         userId,
         eventType: "setup_generated",
-        description: `Generated ${setup.strategyName} setup for ${setup.symbol}`,
-        metadataJson: { setupId: setup.id, symbol: setup.symbol, strategy: setup.strategyName } as any,
+        description: `Generated ${setup.strategyName} setup for ${setup.symbol} (${probability.grade}, ${probability.finalScore})`,
+        metadataJson: { setupId: persisted.id, symbol: setup.symbol, strategy: setup.strategyName, grade: probability.grade } as any,
       });
 
-      res.json({ setup, parsed });
+      res.json({ setup: { ...setup, id: persisted.id }, parsed, probability, instrument });
     } catch (err: any) {
       console.error("Agent generate error:", err);
       res.status(500).json({ error: err.message || "Failed to generate setup" });
@@ -330,6 +397,109 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.get("/api/agent/built-in-conditions", isAuthenticated, (_req, res) => {
     res.json(getBuiltInConditions());
+  });
+
+  // ─── Trade Preferences ───────────────────────────────────
+  app.get("/api/user/trade-preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const prefs = await storage.getUserTradePreferences(userId);
+      res.json(prefs || {});
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const tradePrefSchema = z.object({
+    allowStocks: z.boolean().optional(),
+    allowLongCalls: z.boolean().optional(),
+    allowLongPuts: z.boolean().optional(),
+    allowDebitSpreads: z.boolean().optional(),
+    allowCreditSpreads: z.boolean().optional(),
+    definedRiskOnly: z.boolean().optional(),
+    preferredDteMin: z.number().int().min(0).max(365).optional(),
+    preferredDteMax: z.number().int().min(0).max(365).optional(),
+    minOpenInterest: z.number().int().min(0).optional(),
+    minOptionVolume: z.number().int().min(0).optional(),
+    maxBidAskSpreadPct: z.number().min(0).max(100).optional(),
+    minRewardRisk: z.number().min(0).optional(),
+    minProbabilityScore: z.number().int().min(0).max(100).optional(),
+    defaultOrderType: z.enum(["market", "limit"]).optional(),
+    requireConfirmation: z.boolean().optional(),
+  });
+
+  app.put("/api/user/trade-preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const body = tradePrefSchema.parse(req.body);
+      const result = await storage.upsertUserTradePreferences(userId, body as any);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ─── Trade Outcomes ───────────────────────────────────
+  app.get("/api/trade-outcomes", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const outcomes = await storage.getTradeOutcomes(userId, limit);
+      res.json(outcomes);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const outcomeCreateSchema = z.object({
+    setupId: z.string().optional(),
+    symbol: z.string(),
+    executedInstrumentType: z.string(),
+    strategy: z.string().optional(),
+    scoreAtEntry: z.number().optional(),
+    vehicleScoreAtEntry: z.number().optional(),
+    entryTime: z.string().optional(),
+    entryPrice: z.number().optional(),
+    quantity: z.number().optional(),
+    notes: z.string().optional(),
+  });
+
+  app.post("/api/trade-outcomes", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const body = outcomeCreateSchema.parse(req.body);
+      const created = await storage.createTradeOutcome({
+        userId,
+        ...body,
+        entryTime: body.entryTime ? new Date(body.entryTime) : new Date(),
+      } as any);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  const outcomeUpdateSchema = z.object({
+    exitTime: z.string().optional(),
+    exitPrice: z.number().optional(),
+    pnl: z.number().optional(),
+    pnlPercent: z.number().optional(),
+    outcomeLabel: z.enum(["win", "loss", "breakeven", "open"]).optional(),
+    notes: z.string().optional(),
+  });
+
+  app.patch("/api/trade-outcomes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const body = outcomeUpdateSchema.parse(req.body);
+      const data: any = { ...body };
+      if (body.exitTime) data.exitTime = new Date(body.exitTime);
+      const updated = await storage.updateTradeOutcome(req.params.id, userId, data);
+      if (!updated) return res.status(404).json({ error: "Outcome not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
   });
 
   app.post("/api/agent/parse-strategy", isAuthenticated, async (req, res) => {

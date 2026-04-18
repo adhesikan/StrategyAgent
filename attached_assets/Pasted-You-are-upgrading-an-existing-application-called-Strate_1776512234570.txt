@@ -1,0 +1,782 @@
+You are upgrading an existing application called Strategy Agent.
+
+IMPORTANT:
+This is an enhancement of an existing app, not a greenfield rebuild.
+Preserve the current architecture and working flows wherever possible.
+Make changes incrementally, modularly, and safely.
+Do not break existing broker connections, setup generation, or execution flows.
+Maintain all existing compliance language and add new compliance-safe wording where needed.
+
+==================================================
+PRODUCT VISION
+==================================================
+
+Strategy Agent is an AI-powered trade analysis and execution platform for stocks and options.
+
+Current core workflow:
+Describe → Analyze → Generate Setup → Execute
+
+New upgraded workflow:
+Describe → Analyze → Generate Setup → Score Probability → Recommend Best Instrument → Preview Clearly → Execute
+
+The goal is to make the app dramatically easier for end users to use successfully by:
+1. Filtering out weaker setups
+2. Highlighting only the best opportunities
+3. Supporting stocks and options in one unified experience
+4. Recommending the best trade vehicle for the setup
+5. Explaining clearly why a trade is high probability or not
+6. Making execution safer and simpler
+7. Tracking outcomes so the system gets more credible over time
+
+This is not investment advice software.
+All outputs must be framed as software-generated market analysis for informational and educational purposes only.
+Users remain fully responsible for every trade decision and execution.
+
+==================================================
+CORE UPGRADE OBJECTIVES
+==================================================
+
+1. Add a Probability Engine on top of the existing setup engine
+2. Add support for option trades in addition to stock trades
+3. Add an Instrument Selection Engine:
+   - stock
+   - long call
+   - long put
+   - bull call debit spread
+   - bear put debit spread
+   - later-ready architecture for credit spreads
+4. Add easy-to-understand trade grades:
+   - A+
+   - A
+   - B
+   - C
+5. Make the UI much easier for users to succeed:
+   - show only the best setups by default
+   - explain why a setup is strong or weak
+   - reduce clutter
+   - give simple action choices
+6. Add outcome tracking for credibility and future tuning
+7. Keep navigation simple:
+   - Agent
+   - Setups
+   - Settings
+
+==================================================
+DESIGN PRINCIPLES
+==================================================
+
+The product must feel:
+- simple
+- fast
+- confidence-building
+- action-oriented
+- professional
+- not overwhelming
+
+Avoid dense, over-technical screens.
+Prioritize clean UX, clear hierarchy, large cards, obvious next actions, and strong defaults.
+
+The end user should be able to do this:
+1. Describe a trade idea in plain English
+2. See the best structured setup
+3. See a probability grade and why
+4. See the best instrument to express the trade
+5. See risk clearly
+6. Preview the order
+7. Execute with confidence
+
+==================================================
+TECH STACK EXPECTATIONS
+==================================================
+
+Use the existing app stack and patterns wherever possible.
+Assume current stack is something like:
+- Next.js / React
+- TypeScript
+- Tailwind
+- server routes / API routes
+- existing brokerage integrations
+- existing setup generation logic
+- existing order execution logic
+
+Refactor only where necessary.
+Keep modules clean and reusable.
+
+==================================================
+NEW ARCHITECTURE TO ADD
+==================================================
+
+Add the following modules/services:
+
+1. Probability Engine
+2. Instrument Selection Engine
+3. Options Chain / Contract Evaluation Service
+4. Trade Explanation Builder
+5. Outcome Tracking / Analytics Service
+
+Suggested service files:
+
+/services/probability-engine.ts
+/services/instrument-selector.ts
+/services/options-evaluator.ts
+/services/trade-explainer.ts
+/services/outcome-tracker.ts
+
+Suggested shared types:
+
+/types/trade.ts
+/types/probability.ts
+/types/options.ts
+
+==================================================
+DATA MODEL CHANGES
+==================================================
+
+Add or update database tables/models for the following:
+
+1. generated_setups
+- id
+- userId
+- symbol
+- assetType
+- strategy
+- timeframe
+- direction
+- setupJson
+- createdAt
+
+2. setup_scores
+- id
+- setupId
+- finalScore
+- technicalScore
+- realtimeScore
+- newsScore
+- analystScore
+- riskScore
+- grade
+- reasonsJson
+- warningsJson
+- createdAt
+
+3. instrument_recommendations
+- id
+- setupId
+- recommendedInstrumentType
+- alternativeInstrumentType
+- vehicleScore
+- recommendationJson
+- createdAt
+
+4. option_candidates
+- id
+- setupId
+- symbol
+- expiry
+- strikeLong
+- strikeShort
+- optionType
+- strategyType
+- delta
+- iv
+- bid
+- ask
+- mid
+- openInterest
+- volume
+- maxProfit
+- maxLoss
+- breakeven
+- suitabilityScore
+- detailsJson
+- createdAt
+
+5. trade_outcomes
+- id
+- userId
+- setupId
+- symbol
+- executedInstrumentType
+- strategy
+- scoreAtEntry
+- vehicleScoreAtEntry
+- entryTime
+- exitTime
+- pnl
+- pnlPercent
+- outcomeLabel
+- notes
+- createdAt
+
+6. user_trade_preferences
+- id
+- userId
+- allowStocks
+- allowLongCalls
+- allowLongPuts
+- allowDebitSpreads
+- allowCreditSpreads
+- definedRiskOnly
+- preferredDteMin
+- preferredDteMax
+- minOpenInterest
+- minOptionVolume
+- maxBidAskSpreadPct
+- minRewardRisk
+- minProbabilityScore
+- createdAt
+- updatedAt
+
+==================================================
+PROBABILITY ENGINE
+==================================================
+
+Create a modular Probability Engine that calculates a final score from 0 to 100.
+
+Inputs:
+- generated setup
+- market data
+- symbol context
+- optional news sentiment
+- optional analyst sentiment
+- risk structure
+
+Outputs:
+- finalScore
+- score breakdown
+- reasons
+- warnings
+- grade
+
+Scoring categories and target weights:
+
+1. technicalScore = 30%
+2. realtimeScore = 25%
+3. newsScore = 15%
+4. analystScore = 15%
+5. riskScore = 15%
+
+Formula:
+finalScore =
+  0.30 * technicalScore +
+  0.25 * realtimeScore +
+  0.15 * newsScore +
+  0.15 * analystScore +
+  0.15 * riskScore
+
+Grade mapping:
+- A+ = 85+
+- A = 75–84
+- B = 65–74
+- C = below 65
+
+Technical score should consider:
+- trend alignment
+- setup/pattern score
+- breakout or pullback quality
+- relative strength if available
+- structure clarity
+
+Realtime score should consider:
+- live volume vs average
+- price holding/breaking key level
+- intraday trend strength
+- liquidity / spread quality
+- whether confirmation is improving or failing
+
+News score should consider:
+- positive vs negative recent news
+- headline velocity
+- catalyst presence
+- direction alignment with setup
+
+Analyst score should consider:
+- normalized analyst rating
+- upgrades / downgrades if available
+- target upside/downside if available
+
+Risk score should consider:
+- reward/risk ratio
+- stop clarity
+- volatility-adjusted risk
+- whether the setup is too extended
+
+IMPORTANT:
+The score system must be explainable.
+Always generate:
+- 3 to 5 “Why this trade is strong” reasons
+- 2 to 4 “What to watch / weakness” warnings
+
+==================================================
+OPTIONS SUPPORT
+==================================================
+
+Add first-class support for options in the same workflow.
+
+Initial supported option trade types:
+1. Long Call
+2. Long Put
+3. Bull Call Debit Spread
+4. Bear Put Debit Spread
+
+Design the code so future support can be added for:
+- Bull Put Credit Spread
+- Bear Call Credit Spread
+- Covered Calls
+- Cash-Secured Puts
+
+Do NOT surface advanced strategies to users yet unless the architecture already supports them cleanly.
+
+==================================================
+INSTRUMENT SELECTION ENGINE
+==================================================
+
+Create an engine that recommends the best vehicle for the trade idea.
+
+Input:
+- setup direction
+- trade horizon
+- probability score
+- option chain data
+- user preferences
+- liquidity metrics
+- implied volatility context if available
+
+Possible outputs:
+- Stock
+- Long Call
+- Long Put
+- Bull Call Debit Spread
+- Bear Put Debit Spread
+
+Decision framework:
+
+Recommend Stock when:
+- options liquidity is weak
+- bid/ask spreads are too wide
+- user prefers simplicity
+- the move is expected to be steady and not highly leveraged
+- options pricing is unattractive
+
+Recommend Long Call when:
+- bullish setup
+- high conviction
+- options liquidity is good
+- delta is appropriate
+- IV is not excessively expensive
+- user allows long premium
+
+Recommend Long Put when:
+- bearish setup
+- high conviction
+- options liquidity is good
+- delta is appropriate
+- IV is not excessively expensive
+- user allows long premium
+
+Recommend Bull Call Debit Spread when:
+- bullish setup
+- defined risk preferred
+- IV is moderate or slightly elevated
+- expected move is meaningful but not extreme
+- user allows debit spreads
+
+Recommend Bear Put Debit Spread when:
+- bearish setup
+- defined risk preferred
+- IV is moderate or slightly elevated
+- expected move is meaningful but not extreme
+- user allows debit spreads
+
+Always provide:
+- recommended instrument
+- alternative instrument
+- “why this vehicle fits”
+- “what makes it safer / better”
+- “what tradeoff it has”
+
+==================================================
+OPTION CONTRACT EVALUATION RULES
+==================================================
+
+For options, evaluate contracts and spreads using a suitability score.
+
+Single-leg long option preferences:
+- delta around 0.50 to 0.70 preferred
+- good liquidity
+- acceptable open interest
+- acceptable volume
+- tight bid/ask spread
+- expiration aligned with expected trade horizon
+- avoid extremely far OTM contracts by default
+
+Debit spread preferences:
+- long strike near ATM or slightly ITM
+- short strike near expected target area
+- defined max loss / max profit shown clearly
+- debit reasonable relative to width
+- both legs liquid enough
+
+Option suitability scoring should consider:
+- bid/ask spread percentage
+- open interest
+- volume
+- delta
+- DTE fit
+- IV reasonableness
+- slippage risk
+
+Add warnings for:
+- low open interest
+- wide spread
+- too little volume
+- expiration too close
+- excessive theta risk
+- earnings/event risk
+- overly speculative far OTM contract
+
+==================================================
+BROKER / EXECUTION SAFETY IMPROVEMENTS
+==================================================
+
+Keep existing broker execution integrations intact.
+Add guardrails before order preview and execution.
+
+Before execution, validate:
+- setup score meets minimum threshold if user enabled that
+- instrument is allowed by user settings
+- enough buying power
+- option contract still valid
+- chain data is fresh enough
+- liquidity acceptable
+- spread order is valid
+- limit pricing uses sensible midpoint logic, not market order by default
+
+For options:
+- prefer limit order previews
+- show max loss clearly
+- show max profit clearly for spreads
+- show breakeven clearly
+- show assignment-related notice only where applicable
+- keep warnings concise and readable
+
+==================================================
+UI / UX CHANGES
+==================================================
+
+Preserve the simple navigation:
+- Agent
+- Setups
+- Settings
+
+==================================================
+AGENT PAGE UPDATES
+==================================================
+
+This is the main page and should become the best experience in the app.
+
+Add the following:
+
+1. Prompt input area
+Keep plain-English prompt input as primary action.
+
+2. High-quality setup cards
+Each card should show:
+- symbol
+- direction
+- strategy
+- timeframe
+- setup grade badge (A+, A, B, C)
+- final score
+- recommended instrument
+- alternative instrument
+- entry / stop / target
+- key reasons
+- key warnings
+- risk/reward
+- quick action buttons:
+  - View Details
+  - Preview Trade
+  - Save Setup
+
+3. Smart defaults
+Default filter should emphasize stronger trades:
+- show A and A+ first
+- optional filter: “High Probability Only”
+
+4. Minimal clutter
+Do not overload cards with too much detail.
+Put advanced details inside expandable sections or detail modals.
+
+5. Clear explanation
+Every setup should answer:
+- Why this setup is attractive
+- Why this trade vehicle was chosen
+- What could go wrong
+
+6. Instrument choice component
+Users should be able to switch between:
+- Recommended
+- Alternative
+and see the trade details update cleanly.
+
+==================================================
+SETUP DETAILS PAGE / MODAL
+==================================================
+
+Create a clean detailed view with sections:
+
+1. Overview
+- symbol
+- setup grade
+- final score
+- direction
+- strategy
+- timeframe
+
+2. Trade Plan
+- entry
+- stop
+- target
+- invalidation
+- reward/risk
+
+3. Why This Trade
+- bullet list of strengths
+
+4. Risk / Watchouts
+- bullet list of warnings
+
+5. Instrument Recommendation
+- recommended vehicle
+- alternative vehicle
+- why recommended
+- option structure details if applicable
+
+6. Execution Preview
+- estimated price / premium
+- max loss
+- max profit
+- breakeven
+- quantity controls
+- preview button
+
+==================================================
+SETUPS PAGE UPDATES
+==================================================
+
+Enhance setup history to support review and learning.
+
+Add:
+- filter by score
+- filter by grade
+- filter by stocks/options
+- filter by strategy
+- filter by executed vs not executed
+
+Each historical setup row/card should show:
+- setup score
+- vehicle score
+- whether executed
+- result if available
+
+==================================================
+SETTINGS PAGE UPDATES
+==================================================
+
+Add a user-friendly “Trade Preferences” section.
+
+Include:
+- Enable Stocks
+- Enable Long Calls
+- Enable Long Puts
+- Enable Debit Spreads
+- Enable Credit Spreads (hidden or disabled for now if not implemented)
+- Defined Risk Only
+- Minimum Probability Score
+- Preferred DTE Range
+- Minimum Open Interest
+- Minimum Option Volume
+- Maximum Bid/Ask Spread %
+- Minimum Reward/Risk
+- Default order type
+- Confirmation prompts before execution
+
+Also preserve existing broker connection settings.
+
+==================================================
+SUCCESS-ORIENTED UX IMPROVEMENTS
+==================================================
+
+Make the application easier for end users to succeed by implementing these UX rules:
+
+1. Show fewer, better setups
+Do not overwhelm users with too many mediocre trades.
+
+2. Use plain English
+Avoid overly technical wording unless in an advanced expandable section.
+
+3. Explain every recommendation
+Users should never wonder why a score or instrument was chosen.
+
+4. Make the best action obvious
+Highlight the best trade vehicle clearly.
+
+5. Use friendly guardrails
+Warn users when quality is low or liquidity is poor.
+
+6. Show quality, not just possibility
+A valid setup is not enough; communicate whether it is actually attractive.
+
+7. Build trust through transparency
+Always show key reasons and warnings.
+
+==================================================
+OUTCOME TRACKING / LEARNING
+==================================================
+
+Add outcome tracking so the app becomes more credible and tunable.
+
+Track:
+- score at setup time
+- selected vehicle
+- executed or not
+- entry and exit if available
+- PnL
+- pnl %
+- win/loss
+- holding time
+
+Add a simple analytics section later-ready, but at minimum store the data now.
+
+Optional initial summary widgets:
+- Win rate by grade
+- Win rate by strategy
+- Win rate by instrument type
+- Average PnL by score bucket
+
+==================================================
+INTEGRATIONS
+==================================================
+
+Use available existing market data and broker integrations.
+Also structure the app for optional enrichment with:
+- StockNews API for news/sentiment
+- analyst data provider integrations if available
+
+Create adapter-style interfaces so data providers can be swapped without changing core scoring logic.
+
+Example:
+- news provider adapter
+- analyst provider adapter
+- options data provider adapter
+
+==================================================
+PROMPT / AI RESPONSE ENHANCEMENTS
+==================================================
+
+Update the AI setup generation layer so it produces not just a setup, but a more useful structured result.
+
+The AI should generate:
+- direction
+- strategy
+- entry
+- stop
+- target
+- invalidation
+- pattern confidence
+- reasoning
+- risk/reward
+- notes on what confirms the trade
+- notes on what weakens the trade
+
+Then the Probability Engine and Instrument Selection Engine will enrich it further.
+
+==================================================
+COMPLIANCE / MESSAGING
+==================================================
+
+Keep and strengthen compliance-safe messaging throughout the app.
+
+Every setup/detail/execution page should clearly communicate:
+- This is software-generated market analysis
+- For informational and educational purposes only
+- Not investment advice
+- Not a recommendation personalized to the user
+- User retains full control of every decision and order
+
+Keep messaging concise and professional.
+
+==================================================
+IMPLEMENTATION ORDER
+==================================================
+
+Complete the upgrade in this order:
+
+PHASE 1
+- Add types and DB changes
+- Add Probability Engine
+- Add trade grades
+- Add score breakdown and explanation generation
+- Show scores on setup cards
+
+PHASE 2
+- Add Instrument Selection Engine
+- Add stock vs option recommendation logic
+- Add option contract evaluation logic
+- Add long call / long put support
+
+PHASE 3
+- Add bull call debit spread / bear put debit spread support
+- Add option preview UI
+- Add option risk summaries
+
+PHASE 4
+- Add user preference controls
+- Add execution guardrails
+- Add outcome tracking persistence
+
+PHASE 5
+- Add data provider adapter hooks for news / analyst enrichment
+- Improve ranking and filtering UX
+
+==================================================
+IMPORTANT CODING REQUIREMENTS
+==================================================
+
+1. Preserve all existing working features
+2. Add code comments only where useful
+3. Use TypeScript types throughout
+4. Keep functions modular and testable
+5. Build reusable scoring utilities
+6. Avoid giant monolithic files
+7. Add sensible loading and error states
+8. Handle missing data gracefully
+9. If news or analyst data is unavailable, do not break scoring; degrade gracefully
+10. Make the UI polished and clean
+
+==================================================
+DELIVERABLES
+==================================================
+
+Implement the upgrade and provide:
+
+1. Updated schema/models
+2. New services/modules
+3. Updated Agent page
+4. Updated Setups page
+5. Updated Settings page
+6. Instrument recommendation UI
+7. Options preview support
+8. Guardrails before execution
+9. Outcome tracking persistence
+10. A concise summary of what was changed and any migration steps needed
+
+==================================================
+FINAL PRODUCT STANDARD
+==================================================
+
+The final product should feel like:
+“An easy-to-use AI trade structure and execution engine for stocks and options that helps users focus on high-quality setups and express them with the best vehicle while staying fully in control.”
+
+Start by analyzing the current codebase structure, finding the existing setup-generation and execution flow, and implementing the upgrade in phases without breaking working behavior.

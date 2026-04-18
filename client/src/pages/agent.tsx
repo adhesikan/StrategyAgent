@@ -333,7 +333,43 @@ export default function AgentPage() {
     generateMutation.mutate(data);
   };
 
-  const handleSendToInstatrade = (setup: any) => {
+  const placeOptionMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/trade/place-option", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Option Order Sent",
+        description: data.notice || `Mock fill for ${data.symbol} (${data.instrumentType}) — outcome tracked.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/trade-outcomes"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Option Order Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSendToInstatrade = (setup: any, useAlternative?: boolean) => {
+    const instrument = setup.instrument;
+    const activeType = useAlternative && instrument?.alternative ? instrument.alternative : instrument?.recommended;
+    const activePlan = useAlternative ? instrument?.alternativePlan : instrument?.recommendedPlan;
+    const isOption = activeType && activeType !== "stock";
+
+    if (isOption && activePlan) {
+      placeOptionMutation.mutate({
+        symbol: setup.symbol,
+        instrumentType: activeType,
+        legs: activePlan.legs,
+        quantity: 1,
+        setupId: setup.id,
+        setupScore: setup.probability?.finalScore,
+        vehicleScore: instrument?.vehicleScore,
+        rewardRisk: setup.rewardRisk,
+      });
+      return;
+    }
+
     if (!isConnected) {
       toast({
         title: "Broker Not Connected",
@@ -352,6 +388,9 @@ export default function AgentPage() {
       patternScore: setup.modelScore || 70,
       prefillTarget: setup.targets?.[0] || null,
       prefillQuantity: 1,
+      setupId: setup.id,
+      setupScore: setup.probability?.finalScore,
+      rewardRisk: setup.rewardRisk,
     });
     setTicketOpen(true);
   };

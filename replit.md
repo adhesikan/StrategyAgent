@@ -124,3 +124,10 @@ A standalone partner dashboard allows newsletter subscribers to automate trade e
 
 ### News & Research
 - **Stock News API**: Provides compliance-safe news headlines by ticker symbol with caching and rate limiting.
+### Strategy Agent — Probability Engine & Instrument Selector (April 2026)
+The Agent now scores every generated setup with a 5-factor weighted Probability Engine (technical 30 / realtime 25 / news 15 / analyst 15 / risk 15) and assigns an A+/A/B/C grade. An Instrument Selector then recommends stock vs option (long call/put or debit spread) based on bias, conviction, and user trade preferences, with an alternative vehicle toggle.
+- New tables: `setup_scores`, `instrument_recommendations`, `option_candidates`, `trade_outcomes`, `user_trade_preferences`.
+- New services: `probability-engine.ts`, `instrument-selector.ts`, `options-evaluator.ts`, `execution-guardrails.ts`.
+- New endpoints: `GET/PUT /api/user/trade-preferences`, `GET/POST/PATCH /api/trade-outcomes`, `POST /api/trade/place-option` (mock execution).
+- Execution guardrails block trades that violate stored preferences (allowed instruments, defined-risk-only, min score, min R/R) on both equity and option place endpoints, with a clear `GUARDRAIL_BLOCKED` response code.
+- Settings now has a "Trade Prefs" tab; Trade Setups page filters by grade, instrument, executed status, and minimum score.

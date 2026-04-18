@@ -14,8 +14,46 @@ import {
   AlertTriangle,
   CheckCircle2,
   LineChart,
+  Layers,
+  Award,
+  Repeat,
 } from "lucide-react";
 import { useState } from "react";
+
+interface OptionPlanLite {
+  type: string;
+  legs: Array<{
+    side: "buy" | "sell";
+    optionType: "call" | "put";
+    strike: number;
+    expiration: string;
+    estimatedPremium?: number;
+  }>;
+  dte: number;
+  netDebit?: number;
+  maxProfit?: number | null;
+  maxLoss?: number;
+  breakeven?: number;
+  suitabilityScore: number;
+}
+
+interface InstrumentRec {
+  recommended: string;
+  alternative: string | null;
+  recommendedPlan?: OptionPlanLite;
+  alternativePlan?: OptionPlanLite;
+  vehicleScore: number;
+  reasons: string[];
+  tradeoffs: string[];
+}
+
+interface ProbabilityResult {
+  finalScore: number;
+  grade: "A+" | "A" | "B" | "C";
+  breakdown: Record<string, number>;
+  reasons: string[];
+  warnings: string[];
+}
 
 interface TradeSetup {
   id: string;
@@ -46,13 +84,41 @@ interface TradeSetup {
   };
   dataSource: string;
   generatedAt: string;
+  probability?: ProbabilityResult;
+  instrument?: InstrumentRec;
 }
 
 interface TradeSetupCardProps {
   setup: TradeSetup;
   onOpenChart?: (symbol: string) => void;
-  onSendToInstatrade?: (setup: TradeSetup) => void;
+  onSendToInstatrade?: (setup: TradeSetup, useAlternative?: boolean) => void;
   onReviewSetup?: (setup: TradeSetup) => void;
+}
+
+const GRADE_COLORS: Record<string, string> = {
+  "A+": "bg-emerald-500/15 text-emerald-400 border-emerald-500/40",
+  "A": "bg-green-500/15 text-green-400 border-green-500/30",
+  "B": "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  "C": "bg-red-500/15 text-red-400 border-red-500/30",
+};
+
+const INSTRUMENT_LABELS: Record<string, string> = {
+  stock: "Stock",
+  long_call: "Long Call",
+  long_put: "Long Put",
+  bull_call_spread: "Bull Call Spread",
+  bear_put_spread: "Bear Put Spread",
+};
+
+function GradeBadge({ probability }: { probability?: ProbabilityResult }) {
+  if (!probability) return null;
+  const cls = GRADE_COLORS[probability.grade] || GRADE_COLORS.C;
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-bold ${cls}`} data-testid="badge-grade">
+      <Award className="h-3.5 w-3.5" />
+      Grade {probability.grade} · {probability.finalScore}
+    </div>
+  );
 }
 
 function ScoreBadge({ score }: { score: number | null }) {
@@ -78,9 +144,115 @@ function BiasIcon({ bias }: { bias: string }) {
   return <Minus className="h-4 w-4 text-muted-foreground" />;
 }
 
+function InstrumentBlock({
+  rec,
+  showingAlt,
+  onToggleAlt,
+}: {
+  rec: InstrumentRec;
+  showingAlt: boolean;
+  onToggleAlt: () => void;
+}) {
+  const activeType = showingAlt && rec.alternative ? rec.alternative : rec.recommended;
+  const activePlan = showingAlt ? rec.alternativePlan : rec.recommendedPlan;
+  const label = INSTRUMENT_LABELS[activeType] || activeType;
+
+  return (
+    <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2" data-testid="block-instrument">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Layers className="h-3.5 w-3.5 text-primary" />
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">
+            {showingAlt ? "Alternative" : "Recommended"}
+          </span>
+          <Badge variant="outline" className="text-[11px] font-semibold" data-testid="badge-instrument-type">
+            {label}
+          </Badge>
+          {!showingAlt && (
+            <span className="text-[10px] text-muted-foreground">vehicle score {rec.vehicleScore}</span>
+          )}
+        </div>
+        {rec.alternative && (
+          <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={onToggleAlt} data-testid="button-toggle-alternative">
+            <Repeat className="h-3 w-3 mr-1" />
+            {showingAlt ? "Show recommended" : `Show ${INSTRUMENT_LABELS[rec.alternative] || rec.alternative}`}
+          </Button>
+        )}
+      </div>
+
+      {activePlan && activeType !== "stock" && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          <div>
+            <p className="text-[10px] uppercase text-muted-foreground">DTE</p>
+            <p className="font-medium" data-testid="text-option-dte">{activePlan.dte}d</p>
+          </div>
+          {typeof activePlan.netDebit === "number" && (
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground">Net Debit</p>
+              <p className="font-medium" data-testid="text-option-debit">${activePlan.netDebit.toFixed(2)}</p>
+            </div>
+          )}
+          {typeof activePlan.breakeven === "number" && (
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground">Breakeven</p>
+              <p className="font-medium" data-testid="text-option-breakeven">${activePlan.breakeven.toFixed(2)}</p>
+            </div>
+          )}
+          {typeof activePlan.maxLoss === "number" && (
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground">Max Loss</p>
+              <p className="font-medium text-red-400" data-testid="text-option-maxloss">${activePlan.maxLoss.toFixed(2)}</p>
+            </div>
+          )}
+          {activePlan.maxProfit !== null && typeof activePlan.maxProfit === "number" && (
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground">Max Profit</p>
+              <p className="font-medium text-green-400" data-testid="text-option-maxprofit">${activePlan.maxProfit.toFixed(2)}</p>
+            </div>
+          )}
+          {activePlan.maxProfit === null && (
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground">Max Profit</p>
+              <p className="font-medium text-green-400">Unlimited</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activePlan && activePlan.legs && activePlan.legs.length > 0 && activeType !== "stock" && (
+        <div className="space-y-1">
+          {activePlan.legs.map((leg, i) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground" data-testid={`leg-${i}`}>
+              <Badge variant="outline" className="text-[10px] px-1 py-0">
+                {leg.side === "buy" ? "BUY" : "SELL"}
+              </Badge>
+              <span>
+                {leg.optionType.toUpperCase()} ${leg.strike} · exp {leg.expiration}
+              </span>
+              {typeof leg.estimatedPremium === "number" && (
+                <span className="ml-auto">~${leg.estimatedPremium.toFixed(2)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!showingAlt && rec.reasons?.length > 0 && (
+        <ul className="pl-4 space-y-0.5">
+          {rec.reasons.slice(0, 3).map((r, i) => (
+            <li key={i} className="text-[11px] text-muted-foreground list-disc" data-testid={`text-instrument-reason-${i}`}>{r}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onReviewSetup }: TradeSetupCardProps) {
   const [expandedReasoning, setExpandedReasoning] = useState(false);
   const [expandedInvalidation, setExpandedInvalidation] = useState(false);
+  const [expandedScore, setExpandedScore] = useState(false);
+  const [showAlt, setShowAlt] = useState(false);
 
   const biasColor =
     setup.bias === "bullish"
@@ -101,7 +273,7 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-base" data-testid="text-strategy-name">{setup.strategyName}</h3>
               </div>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0" data-testid="badge-asset-type">
                   {setup.assetType.toUpperCase()}
                 </Badge>
@@ -115,7 +287,10 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
               </div>
             </div>
           </div>
-          <ScoreBadge score={setup.modelScore} />
+          <div className="flex flex-col gap-1.5 items-end">
+            <GradeBadge probability={setup.probability} />
+            {!setup.probability && <ScoreBadge score={setup.modelScore} />}
+          </div>
         </div>
       </CardHeader>
 
@@ -168,6 +343,57 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
           <div className="space-y-0.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Trend</p>
             <p className="text-sm font-medium" data-testid="text-trend">{setup.metrics.trend}</p>
+          </div>
+        )}
+
+        {setup.instrument && (
+          <>
+            <Separator className="opacity-50" />
+            <InstrumentBlock
+              rec={setup.instrument}
+              showingAlt={showAlt}
+              onToggleAlt={() => setShowAlt((s) => !s)}
+            />
+          </>
+        )}
+
+        {setup.probability && (
+          <div>
+            <button
+              onClick={() => setExpandedScore(!expandedScore)}
+              className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+              data-testid="button-toggle-score"
+            >
+              <Award className="h-3.5 w-3.5 text-primary" />
+              Probability Score Breakdown
+              {expandedScore ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+            </button>
+            {expandedScore && (
+              <div className="mt-2 pl-5 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {Object.entries(setup.probability.breakdown).map(([k, v]) => (
+                    <div key={k} className="flex items-center justify-between text-[11px] text-muted-foreground" data-testid={`score-${k}`}>
+                      <span className="capitalize">{k}</span>
+                      <span className="font-mono">{Math.round(v as number)}</span>
+                    </div>
+                  ))}
+                </div>
+                {setup.probability.reasons?.length > 0 && (
+                  <ul className="space-y-0.5 pl-3">
+                    {setup.probability.reasons.map((r, i) => (
+                      <li key={i} className="text-[11px] text-muted-foreground list-disc" data-testid={`text-prob-reason-${i}`}>{r}</li>
+                    ))}
+                  </ul>
+                )}
+                {setup.probability.warnings?.length > 0 && (
+                  <ul className="space-y-0.5 pl-3">
+                    {setup.probability.warnings.map((w, i) => (
+                      <li key={i} className="text-[11px] text-amber-400 list-disc" data-testid={`text-prob-warn-${i}`}>{w}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -234,7 +460,7 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
           </Button>
           <Button
             size="sm"
-            onClick={() => onSendToInstatrade?.(setup)}
+            onClick={() => onSendToInstatrade?.(setup, showAlt)}
             className="bg-primary hover:bg-primary/90"
             data-testid="button-send-instatrade"
           >

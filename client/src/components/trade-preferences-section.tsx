@@ -6,9 +6,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Save, Loader2, ShieldAlert } from "lucide-react";
+import { Save, Loader2, ShieldAlert, HelpCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+function InfoTip({ text, testId }: { text: string; testId?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="inline-flex items-center text-muted-foreground hover:text-foreground" data-testid={testId}>
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[260px] text-[11px] leading-snug">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+const HELP: Record<string, string> = {
+  allowStocks: "Allow the agent to recommend buying shares of stock outright.",
+  allowLongCalls: "Allow buying call options to express bullish bias with leverage and capped downside (premium).",
+  allowLongPuts: "Allow buying put options to express bearish bias with capped downside (premium).",
+  allowDebitSpreads: "Allow bull-call or bear-put debit spreads — defined risk and defined reward.",
+  allowCreditSpreads: "Credit spreads (selling premium) — disabled until full margin/risk support is added.",
+  definedRiskOnly: "When on, the agent will not recommend naked long calls/puts. Spreads and stocks remain available.",
+  minProbabilityScore: "Setups with a probability score below this number will be blocked at the Send step.",
+  minRewardRisk: "Minimum reward-to-risk ratio (e.g. 1.5 means target distance must be at least 1.5× the stop distance).",
+  preferredDteMin: "Minimum days-to-expiration the agent will pick when selecting an option contract.",
+  preferredDteMax: "Maximum days-to-expiration the agent will pick when selecting an option contract.",
+  minOpenInterest: "Minimum open interest required on a contract to be considered tradable.",
+  minOptionVolume: "Minimum daily volume required on a contract to be considered tradable.",
+  maxBidAskSpreadPct: "Maximum bid/ask spread (as a percentage of mid) before the option is flagged as illiquid.",
+  defaultOrderType: "Default order type the InstaTrade ticket will pre-fill (limit is safer; market fills faster).",
+  requireConfirmation: "When on, the InstaTrade ticket will require an explicit confirmation tap before sending.",
+};
 
 interface Prefs {
   allowStocks?: boolean;
@@ -103,7 +137,10 @@ export function TradePreferencesSection() {
             ["allowCreditSpreads", "Credit Spreads (advanced — coming soon)"],
           ].map(([key, label]) => (
             <div key={key as string} className="flex items-center justify-between">
-              <Label htmlFor={`pref-${key}`} className="text-sm">{label}</Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor={`pref-${key}`} className="text-sm">{label}</Label>
+                <InfoTip text={HELP[key as string]} testId={`tip-${key}`} />
+              </div>
               <Switch
                 id={`pref-${key}`}
                 checked={!!form[key as keyof Prefs]}
@@ -115,10 +152,13 @@ export function TradePreferencesSection() {
           <Separator />
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="pref-definedRiskOnly" className="text-sm flex items-center gap-1.5">
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
-                Defined-Risk Only
-              </Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="pref-definedRiskOnly" className="text-sm flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+                  Defined-Risk Only
+                </Label>
+                <InfoTip text={HELP.definedRiskOnly} testId="tip-definedRiskOnly" />
+              </div>
               <p className="text-[11px] text-muted-foreground">Blocks naked long calls/puts; allows spreads &amp; stock.</p>
             </div>
             <Switch
@@ -138,7 +178,10 @@ export function TradePreferencesSection() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="pref-minScore" className="text-xs">Minimum Probability Score (0-100)</Label>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="pref-minScore" className="text-xs">Minimum Probability Score (0-100)</Label>
+              <InfoTip text={HELP.minProbabilityScore} testId="tip-minProbabilityScore" />
+            </div>
             <Input
               id="pref-minScore" type="number" min={0} max={100}
               value={form.minProbabilityScore ?? ""}
@@ -147,7 +190,10 @@ export function TradePreferencesSection() {
             />
           </div>
           <div>
-            <Label htmlFor="pref-minRR" className="text-xs">Minimum Reward/Risk</Label>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="pref-minRR" className="text-xs">Minimum Reward/Risk</Label>
+              <InfoTip text={HELP.minRewardRisk} testId="tip-minRewardRisk" />
+            </div>
             <Input
               id="pref-minRR" type="number" step="0.1" min={0}
               value={form.minRewardRisk ?? ""}
@@ -165,7 +211,10 @@ export function TradePreferencesSection() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <Label className="text-xs">Preferred DTE Min</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs">Preferred DTE Min</Label>
+              <InfoTip text={HELP.preferredDteMin} testId="tip-dteMin" />
+            </div>
             <Input
               type="number" min={0}
               value={form.preferredDteMin ?? ""}
@@ -174,7 +223,10 @@ export function TradePreferencesSection() {
             />
           </div>
           <div>
-            <Label className="text-xs">Preferred DTE Max</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs">Preferred DTE Max</Label>
+              <InfoTip text={HELP.preferredDteMax} testId="tip-dteMax" />
+            </div>
             <Input
               type="number" min={0}
               value={form.preferredDteMax ?? ""}
@@ -183,7 +235,10 @@ export function TradePreferencesSection() {
             />
           </div>
           <div>
-            <Label className="text-xs">Min Open Interest</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs">Min Open Interest</Label>
+              <InfoTip text={HELP.minOpenInterest} testId="tip-minOI" />
+            </div>
             <Input
               type="number" min={0}
               value={form.minOpenInterest ?? ""}
@@ -192,7 +247,10 @@ export function TradePreferencesSection() {
             />
           </div>
           <div>
-            <Label className="text-xs">Min Option Volume</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs">Min Option Volume</Label>
+              <InfoTip text={HELP.minOptionVolume} testId="tip-minVol" />
+            </div>
             <Input
               type="number" min={0}
               value={form.minOptionVolume ?? ""}
@@ -201,7 +259,10 @@ export function TradePreferencesSection() {
             />
           </div>
           <div className="sm:col-span-2">
-            <Label className="text-xs">Max Bid/Ask Spread (%)</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs">Max Bid/Ask Spread (%)</Label>
+              <InfoTip text={HELP.maxBidAskSpreadPct} testId="tip-maxSpread" />
+            </div>
             <Input
               type="number" step="0.1" min={0}
               value={form.maxBidAskSpreadPct ?? ""}
@@ -218,7 +279,10 @@ export function TradePreferencesSection() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label className="text-sm">Default Order Type</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-sm">Default Order Type</Label>
+              <InfoTip text={HELP.defaultOrderType} testId="tip-defaultOrderType" />
+            </div>
             <select
               value={form.defaultOrderType ?? "limit"}
               onChange={(e) => update("defaultOrderType", e.target.value as any)}
@@ -230,7 +294,10 @@ export function TradePreferencesSection() {
             </select>
           </div>
           <div className="flex items-center justify-between">
-            <Label className="text-sm">Require confirmation before sending</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-sm">Require confirmation before sending</Label>
+              <InfoTip text={HELP.requireConfirmation} testId="tip-requireConfirmation" />
+            </div>
             <Switch
               checked={!!form.requireConfirmation}
               onCheckedChange={(v) => update("requireConfirmation", v)}

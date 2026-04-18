@@ -19,6 +19,7 @@ import {
   Repeat,
 } from "lucide-react";
 import { useState } from "react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface OptionPlanLite {
   type: string;
@@ -114,10 +115,19 @@ function GradeBadge({ probability }: { probability?: ProbabilityResult }) {
   if (!probability) return null;
   const cls = GRADE_COLORS[probability.grade] || GRADE_COLORS.C;
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-bold ${cls}`} data-testid="badge-grade">
-      <Award className="h-3.5 w-3.5" />
-      Grade {probability.grade} · {probability.finalScore}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-bold cursor-help ${cls}`} data-testid="badge-grade">
+          <Award className="h-3.5 w-3.5" />
+          Grade {probability.grade} · {probability.finalScore}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="left" className="max-w-[280px] text-[11px] leading-snug">
+        <p className="font-medium mb-1">Probability Grade</p>
+        <p>Weighted score from technical, real-time, news, analyst and risk factors.</p>
+        <p className="mt-1 text-muted-foreground">A+ ≥ 85 · A ≥ 75 · B ≥ 65 · C &lt; 65</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

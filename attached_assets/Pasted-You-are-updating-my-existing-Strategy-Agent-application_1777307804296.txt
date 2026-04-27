@@ -1,0 +1,180 @@
+You are updating my existing Strategy Agent application into a modern high-converting SaaS landing page and onboarding experience.
+
+Product context:
+Strategy Agent is an AI co-pilot for stock and options traders. Users can type plain-English trade ideas like “find me a bullish pullback on NVDA” and receive broker-ready trade plans with probability grades, stock/options recommendations, risk controls, liquidity filters, Greeks, and optional broker execution through InstaTrade™.
+
+Goal:
+Transform the public marketing site into a polished SaaS conversion experience that clearly communicates outcomes, builds trust, and drives free-trial signups.
+
+Build/update the following:
+
+1. Homepage hero
+- Headline: “Your AI Co-Pilot for Stocks & Options”
+- Subheadline: “Turn a plain-English trade idea into a broker-ready stock or options setup in seconds — with probability scoring, risk controls, and one-click execution.”
+- CTA buttons:
+  - Start Free Trial
+  - Watch Demo
+- Add trust badges:
+  - Stocks + Options
+  - AI Probability Grades
+  - Risk Guardrails
+  - Broker-Ready Orders
+- Add a clean product mockup showing:
+  - User prompt: “Find me a high-probability bullish setup on AMD with defined risk”
+  - AI result card with grade A, entry, stop, target, suggested call spread, max loss, max profit, breakeven, and Execute button.
+
+2. Problem section
+Title: “Trading Shouldn’t Require 7 Tabs and Guesswork”
+Explain that traders currently juggle scanners, charts, broker platforms, options chains, news, calculators, and spreadsheets.
+Position Strategy Agent as one AI command center.
+
+3. Benefits section
+Create modern cards for:
+- Find Better Trades
+- Trade Stocks or Options
+- Get Probability Grades
+- Avoid Bad Trades
+- Execute Faster
+- Improve Over Time
+
+Each card should use simple outcome-based language, not technical jargon.
+
+4. Feature sections
+Add polished sections for:
+A. Natural-Language Trade Setups
+B. AI Probability Engine
+C. Smart Stock vs Options Selector
+D. Options Intelligence
+E. Trade Guardrails™
+F. InstaTrade™ Execution
+G. Trade History & Learning
+
+Use screenshots/mock UI cards where real screenshots do not exist.
+
+5. “Trade Guardrails™” section
+Make this a major differentiator.
+Copy:
+“Your broker lets you place trades. Strategy Agent helps stop the ones that don’t fit your rules.”
+Show examples:
+- Blocks low-grade setups
+- Blocks oversized positions
+- Blocks illiquid options
+- Blocks naked options if disabled
+- Warns when reward/risk is too weak
+
+6. Options Income section
+Add a dedicated section:
+Title: “Built for Options Income Traders Too”
+Copy:
+“Find covered call, cash-secured put, long option, and defined-risk spread ideas with liquidity checks, Greeks, breakevens, and max loss shown before you act.”
+CTA: “Explore Options Mode”
+
+7. Pricing section
+Use two paid plans plus free trial:
+
+Pro — $79/month
+- AI Trade Finder
+- Stock and options setups
+- Probability grades
+- Watchlist ideas
+- Paper/simulated mode
+- Basic trade history
+
+Elite — $149/month
+- Everything in Pro
+- Live broker connection
+- InstaTrade™ execution
+- Advanced options intelligence
+- Trade Guardrails™
+- Portfolio insights
+- AI trade review coach
+
+Add 14-day free trial messaging.
+Highlight Elite as “Best for active traders.”
+
+8. Compliance / trust section
+Add clear but non-scary copy:
+“Strategy Agent provides software-generated analysis and trading tools for educational and informational purposes only. It does not provide personalized investment advice. You remain responsible for every trade decision and order submitted.”
+
+9. FAQ section
+Include:
+- Does Strategy Agent place trades automatically?
+- Is this investment advice?
+- Can I use paper mode first?
+- Does it support options?
+- Can I set my own risk rules?
+- Which brokers are supported?
+- Can I cancel anytime?
+
+10. Onboarding modal / flow
+When user clicks Start Free Trial, show a 5-step onboarding wizard before signup or immediately after account creation:
+Step 1: What do you trade?
+- Stocks
+- Options
+- Both
+
+Step 2: What is your trading style?
+- Options Income
+- Swing Trading
+- Momentum
+- Day Trading
+
+Step 3: What is your risk comfort?
+- Conservative
+- Moderate
+- Aggressive
+
+Step 4: What instruments are allowed?
+- Shares
+- Long Calls/Puts
+- Debit Spreads
+- Covered Calls
+- Cash-Secured Puts
+
+Step 5: Show first “AI setup preview” based on their choices.
+Make this feel like instant value in under 60 seconds.
+
+11. Design requirements
+- Modern SaaS style
+- Dark premium trading aesthetic
+- Mobile responsive
+- Smooth animations
+- Clean cards with rounded corners
+- Strong visual hierarchy
+- Sticky top navigation
+- CTA buttons repeated throughout page
+- Add subtle trading-grid/background pattern
+- Use Tailwind CSS
+- Use existing app design system where possible
+- Do not break existing authenticated app routes
+
+12. Navigation
+Top nav:
+- Features
+- Options
+- Guardrails
+- Pricing
+- FAQ
+- Login
+- Start Free Trial
+
+13. Tracking-ready CTA events
+Add clean event hooks or placeholder functions for:
+- start_free_trial_clicked
+- watch_demo_clicked
+- pricing_plan_selected
+- onboarding_completed
+- broker_connect_clicked
+
+14. Deliverables
+- Update existing landing page components
+- Add reusable pricing component
+- Add onboarding wizard component
+- Add FAQ component
+- Add mock trade setup card component
+- Ensure everything builds without TypeScript errors
+- Preserve existing app functionality and routes
+- Add comments where future Stripe checkout and analytics tracking should be connected
+
+Important tone:
+Use outcome-driven copy. Avoid hype, guaranteed profit claims, or language implying investment advice. Emphasize control, discipline, risk awareness, and user responsibility.

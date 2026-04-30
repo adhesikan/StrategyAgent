@@ -1707,6 +1707,17 @@ export const tradeSetupHistory = pgTable("trade_setup_history", {
   modelScore: integer("model_score"),
   status: text("status").notNull().default("generated"),
   sentToInstatrade: boolean("sent_to_instatrade").default(false),
+  sourceMode: text("source_mode"),
+  userCapital: integer("user_capital"),
+  monthlyTarget: integer("monthly_target"),
+  maxRiskPerTrade: integer("max_risk_per_trade"),
+  allowedInstruments: text("allowed_instruments").array(),
+  activityLevel: text("activity_level"),
+  goalType: text("goal_type"),
+  realityCheckText: text("reality_check_text"),
+  complianceAcknowledged: boolean("compliance_acknowledged").default(false),
+  orderReviewedAt: timestamp("order_reviewed_at"),
+  userConfirmedOrder: boolean("user_confirmed_order").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

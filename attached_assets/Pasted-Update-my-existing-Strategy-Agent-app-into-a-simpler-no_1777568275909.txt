@@ -1,0 +1,308 @@
+Update my existing Strategy Agent app into a simpler, novice-friendly AI trading assistant while preserving all existing backend logic, broker integrations, setup generation, history, settings, and InstaTrade functionality.
+
+Primary goal:
+Make the app feel like an easy AI trading assistant, not a clunky professional platform. Add a new beginner-friendly “Goal Mode” as the default experience, while keeping the existing prompt-based setup generator as “Advanced Trade Builder.”
+
+Do not remove existing features. Reorganize and simplify the UX.
+
+Current app context:
+- Strategy Agent generates AI trade setups from natural language
+- Supports stocks, options, debit spreads, probability grades, risk preferences, broker connection, simulated/mock data, setup history, and InstaTrade/self-directed broker order submission
+- User must approve orders before anything is sent
+- App already has pages for Agent, Setups, Settings, Broker, Risk Profile, Trade Preferences, Universes, Scanner, Legal, Account
+
+New UX direction:
+Strategy Agent should have two main user paths:
+1. Goal Mode — default, simple, novice-friendly
+2. Advanced Trade Builder — current prompt/setup mode for experienced traders
+
+Important compliance language:
+Use “software-generated scenarios,” “candidate trades,” “review before acting,” and “self-directed execution.”
+Avoid “guaranteed income,” “we trade for you,” “best trade for you,” “make $X/month,” or “AI manages your account.”
+
+Navigation changes:
+Replace the left nav with:
+- Home
+- Goal Mode
+- Trade Finder
+- Income Mode
+- Market Intel
+- History
+- Settings
+
+Map existing pages:
+- Current Agent page becomes Trade Finder or Advanced Trade Builder
+- Current Setups page becomes History
+- Current Settings remains Settings
+- Broker connection stays under Settings and also appears as a CTA on Home
+
+Home screen:
+Create a clean dashboard with the headline:
+“What would you like help with today?”
+
+Add four large action cards:
+1. Grow My Account
+   Subtitle: “Explore risk-aware growth scenarios”
+2. Generate Income
+   Subtitle: “Find covered call, cash-secured put, and defined-risk income ideas”
+3. Find a Trade
+   Subtitle: “Describe a setup in plain English”
+4. Understand Markets
+   Subtitle: “Summarize news, catalysts, and watchlist impact”
+
+Each card should open the relevant mode.
+
+Add a top status strip:
+- Broker status: Connected / Not Connected
+- Data mode: Mock / Live
+- Today’s market status placeholder
+- Risk profile status
+
+Goal Mode:
+Create a simple wizard or single-page guided flow.
+
+Step 1:
+“How much capital do you want to work with?”
+Preset chips:
+- $2,500
+- $5,000
+- $10,000
+- $25,000
+- Custom
+
+Step 2:
+“What is your primary goal?”
+Options:
+- Monthly income
+- Account growth
+- Lower-risk ideas
+- Learn and practice
+
+Step 3:
+“What is your max risk per trade?”
+Options:
+- $50
+- $100
+- $200
+- $500
+- Custom
+
+Step 4:
+“How active do you want to be?”
+Options:
+- Low activity
+- Moderate
+- Active
+
+Step 5:
+“What instruments are you comfortable with?”
+Options:
+- Stocks
+- Covered calls
+- Cash-secured puts
+- Long calls/puts
+- Debit spreads
+- Credit spreads
+
+Step 6:
+“Broker connection”
+If no broker connected:
+Show:
+“You can explore scenarios in simulated mode now. Connect your broker later for live market data and self-directed order entry.”
+Buttons:
+- Continue in Simulated Mode
+- Connect Broker
+
+Goal Mode output screen:
+After the wizard, show a “Goal Reality Check” card before showing any trade ideas.
+
+Example language:
+“Your goal requires approximately X% monthly return before fees and slippage. That may be aggressive depending on market conditions. Strategy Agent will show risk-defined scenarios for review, not guaranteed outcomes.”
+
+Then show:
+- Capital selected
+- Goal selected
+- Max risk per trade
+- Allowed instruments
+- Risk level: Conservative / Moderate / Aggressive
+- Realistic range placeholder
+- Warnings if requested goal is unrealistic
+
+Then show “Candidate Scenarios” cards:
+Each card should include:
+- Ticker
+- Strategy type
+- Bias
+- Approx capital required
+- Max theoretical loss
+- Max theoretical gain
+- Breakeven
+- Probability grade
+- Liquidity status
+- Why this scenario appeared
+- Main risks
+- Buttons:
+  - Review Details
+  - Paper Trade
+  - Prepare Order
+
+Do not auto-submit anything.
+
+When user clicks Prepare Order:
+Show an order review modal:
+Title: “Review Before Sending”
+Include:
+- Full order details
+- Max loss / max gain
+- Breakeven
+- Expiration if options
+- Liquidity warning
+- User confirmation checkbox:
+  “I understand this is a self-directed order and not investment advice.”
+Buttons:
+- Cancel
+- Send to Broker
+
+If no broker connected:
+Button should say:
+“Connect Broker to Use InstaTrade”
+and keep paper/simulated option available.
+
+Trade Finder / Advanced Trade Builder:
+Keep the current Agent functionality but rename the heading to:
+“Advanced Trade Builder”
+Subtitle:
+“Describe a specific setup, apply filters, and review a broker-ready scenario.”
+
+Keep existing prompt box, symbol, asset type, strategy, timeframe, analysis conditions, and Generate Setup button.
+
+Add novice-friendly prompt chips:
+- “Find a simple income idea”
+- “Show a lower-risk bullish setup”
+- “Find a trade with max $200 risk”
+- “Explain what trade fits this market”
+
+Income Mode:
+Create a dedicated income-focused page using the same underlying engine.
+Title:
+“Income Mode”
+Subtitle:
+“Explore covered calls, cash-secured puts, and defined-risk income scenarios.”
+
+Inputs:
+- Capital available
+- Desired monthly income
+- Max risk per trade
+- Preferred tickers / watchlist
+- Avoid earnings toggle
+- Minimum option volume
+- Minimum open interest
+- Max bid/ask spread
+
+Add a reality check:
+“Income targets are not guaranteed. Higher premium usually comes with higher risk.”
+
+Market Intel:
+Create a page scaffold for future news API integration.
+Title:
+“Market Intel”
+Subtitle:
+“AI summaries of market news, catalysts, and watchlist impact.”
+
+Sections:
+- Morning Briefing
+- Why Is It Moving?
+- Watchlist Impact
+- Congress Flow
+- Top Catalysts
+
+Use placeholder cards if API is not wired yet.
+Include code comments showing where to connect existing stock news API and congress flow data.
+
+History:
+Use current Setups page but rename labels:
+- “Trade History”
+- “Generated Scenarios”
+- Filters remain
+- Add filter for Goal Mode / Trade Finder / Income Mode
+
+Settings language simplification:
+Rename:
+- Risk Profile → My Limits
+- Universes → Watchlists
+- Trade Prefs → Trading Preferences
+- Scanner → Opportunity Filters
+
+Broker page:
+Make broker connection more user-friendly.
+Replace “Data Providers” with:
+“Connect Your Broker”
+Subtitle:
+“Use live market data and send self-directed orders after review.”
+
+For each broker card show:
+- Market data
+- Order execution
+- Options support if applicable
+- Status: Available / Coming Soon
+
+Add compliance copy:
+“Orders are only sent after you review and confirm them.”
+
+Design requirements:
+- Premium but simple dark UI
+- Fewer controls visible by default
+- Larger action cards
+- Plain-English labels
+- Mobile responsive
+- Use existing Tailwind/shadcn design style
+- Keep blue accent color
+- Keep mock/live data banner
+- Avoid dense tables on beginner screens
+- Use progressive disclosure: advanced settings hidden under “Advanced options”
+
+Compliance footer on all trading pages:
+“Strategy Agent provides software-generated trading scenarios for educational and informational purposes only. It does not provide investment advice or guarantee results. You are responsible for every trade decision and order submitted.”
+
+Technical requirements:
+- Preserve existing routes where possible
+- Add new routes if needed:
+  /home
+  /goal-mode
+  /trade-finder
+  /income-mode
+  /market-intel
+  /history
+  /settings
+- Existing /agent should redirect or alias to /trade-finder
+- Existing /setups should redirect or alias to /history
+- Avoid breaking TypeScript build
+- Use reusable components:
+  GoalModeWizard
+  GoalRealityCheck
+  CandidateScenarioCard
+  OrderReviewModal
+  HomeActionCard
+  BrokerStatusStrip
+  ComplianceFooter
+  IncomeModeForm
+  MarketIntelCard
+
+Data model additions:
+Add fields to generated setup/scenario records if needed:
+- sourceMode: goal_mode | trade_finder | income_mode | market_intel
+- userCapital
+- monthlyTarget
+- maxRiskPerTrade
+- allowedInstruments
+- activityLevel
+- goalType
+- realityCheckText
+- complianceAcknowledged
+- orderReviewedAt
+- userConfirmedOrder
+
+Important:
+Do not implement autonomous trading.
+Do not allow fully automatic order submission.
+Every live order must require explicit user review and confirmation.

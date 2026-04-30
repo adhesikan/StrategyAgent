@@ -60,12 +60,22 @@ import AdminUsersPage from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
 import AgentPage from "@/pages/agent";
 import TradeSetupsPage from "@/pages/trade-setups";
+import HomeDashboard from "@/pages/home-dashboard";
+import GoalModePage from "@/pages/goal-mode";
+import IncomeModePage from "@/pages/income-mode";
+import MarketIntelPage from "@/pages/market-intel";
+import HistoryPage from "@/pages/history";
 import { Redirect } from "wouter";
 
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/home" component={AgentPage} />
+      <Route path="/home" component={HomeDashboard} />
+      <Route path="/goal-mode" component={GoalModePage} />
+      <Route path="/trade-finder" component={AgentPage} />
+      <Route path="/income-mode" component={IncomeModePage} />
+      <Route path="/market-intel" component={MarketIntelPage} />
+      <Route path="/history" component={HistoryPage} />
       <Route path="/agent" component={AgentPage} />
       <Route path="/trade-setups" component={TradeSetupsPage} />
 

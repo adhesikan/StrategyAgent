@@ -465,10 +465,10 @@ export default function AgentPage() {
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
             <Bot className="h-6 w-6 text-primary" />
-            Strategy Agent
+            Advanced Trade Builder
           </h1>
           <p className="text-sm text-muted-foreground" data-testid="text-page-subtitle">
-            Describe a setup, apply conditions, and execute
+            Describe a specific setup, apply filters, and review a broker-ready scenario.
           </p>
         </div>
         {!isConnected && (
@@ -500,6 +500,24 @@ export default function AgentPage() {
                 }
               }}
             />
+            <div className="flex flex-wrap gap-1.5 pt-1" data-testid="prompt-chips">
+              {[
+                "Find a simple income idea",
+                "Show a lower-risk bullish setup",
+                "Find a trade with max $200 risk",
+                "Explain what trade fits this market",
+              ].map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPrompt(p)}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-muted/30 hover-elevate transition-colors"
+                  data-testid={`chip-prompt-${p.toLowerCase().replace(/[^a-z]+/g, "-").slice(0, 30)}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

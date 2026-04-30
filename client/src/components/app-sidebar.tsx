@@ -8,6 +8,11 @@ import {
   Users,
   Handshake,
   Shield,
+  Home,
+  Target,
+  Search,
+  DollarSign,
+  Newspaper,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,9 +40,13 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { title: "Agent", description: "AI setup generation", url: "/home", icon: Bot },
-  { title: "Setups", description: "Setup history", url: "/trade-setups", icon: History },
-  { title: "Settings", description: "Account & broker", url: "/settings", icon: Settings },
+  { title: "Home", description: "Dashboard & quick actions", url: "/home", icon: Home },
+  { title: "Goal Mode", description: "Goal-driven scenarios", url: "/goal-mode", icon: Target },
+  { title: "Trade Finder", description: "Advanced trade builder", url: "/trade-finder", icon: Search },
+  { title: "Income Mode", description: "Premium & defined-risk income", url: "/income-mode", icon: DollarSign },
+  { title: "Market Intel", description: "News, catalysts, watchlist", url: "/market-intel", icon: Newspaper },
+  { title: "History", description: "Generated scenarios", url: "/history", icon: History },
+  { title: "Settings", description: "Account, broker & limits", url: "/settings", icon: Settings },
 ];
 
 function SidebarBrandHeader() {
@@ -113,7 +122,9 @@ export function AppSidebar() {
   };
 
   const isActive = (url: string) => {
-    if (url === "/home") return location === "/home" || location === "/agent";
+    if (url === "/home") return location === "/home";
+    if (url === "/trade-finder") return location === "/trade-finder" || location === "/agent";
+    if (url === "/history") return location === "/history" || location === "/trade-setups";
     if (url === "/settings") return location === "/settings" || location.startsWith("/settings/");
     return location === url;
   };

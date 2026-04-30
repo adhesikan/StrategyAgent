@@ -778,8 +778,8 @@ export default function Settings() {
             <CardContent className="p-4 flex items-center gap-3">
               <Radio className="h-5 w-5 text-primary" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">Risk Profile</p>
-                <p className="text-xs text-muted-foreground">Manage risk settings</p>
+                <p className="font-medium text-sm">My Limits</p>
+                <p className="text-xs text-muted-foreground">Daily loss, position size, risk per trade</p>
               </div>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </CardContent>
@@ -790,7 +790,7 @@ export default function Settings() {
             <CardContent className="p-4 flex items-center gap-3">
               <List className="h-5 w-5 text-primary" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">Universes</p>
+                <p className="font-medium text-sm">Watchlists</p>
                 <p className="text-xs text-muted-foreground">Manage ticker lists</p>
               </div>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -827,11 +827,11 @@ export default function Settings() {
           </TabsTrigger>
           <TabsTrigger value="trade-prefs" className="gap-2" data-testid="tab-trade-prefs">
             <SlidersHorizontal className="h-4 w-4" />
-            Trade Prefs
+            Trading Preferences
           </TabsTrigger>
           <TabsTrigger value="scanner" className="gap-2" data-testid="tab-scanner">
             <Database className="h-4 w-4" />
-            Scanner
+            Opportunity Filters
           </TabsTrigger>
           <TabsTrigger value="legal" className="gap-2" data-testid="tab-legal">
             <FileText className="h-4 w-4" />
@@ -1064,9 +1064,9 @@ export default function Settings() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base font-medium">Data Providers</CardTitle>
+                <CardTitle className="text-base font-medium">Connect Your Broker</CardTitle>
                 <CardDescription>
-                  Select a brokerage to connect for live market data
+                  Use live market data and send self-directed orders after review. Orders are only sent after you review and confirm them.
                 </CardDescription>
               </CardHeader>
               <CardContent>

@@ -45,6 +45,7 @@ import { registerFuturesRoutes } from "./routes/futures";
 import { registerAgentRoutes } from "./routes/agent";
 import { registerOpportunityRadarRoutes } from "./routes/opportunity-radar";
 import { registerNewsSentimentRoutes } from "./routes/news-sentiment";
+import { registerHomeSnapshotRoutes } from "./routes/home-snapshot";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -146,6 +147,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerAgentRoutes(app, isAuthenticated);
   registerOpportunityRadarRoutes(app, isAuthenticated);
   registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
+  registerHomeSnapshotRoutes(app, isAuthenticated);
 
   startFuturesWorker().then(async () => {
     try {

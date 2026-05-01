@@ -30,6 +30,7 @@ import { BrokerStatusProvider } from "@/hooks/use-broker-status";
 import { TooltipVisibilityProvider } from "@/hooks/use-tooltips";
 import { StatusBanner } from "@/components/status-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import type { AlertEvent } from "@shared/schema";
@@ -301,7 +302,7 @@ function AppLayout() {
         <SidebarProvider style={sidebarStyle}>
           <div className="flex h-screen w-full">
             <AppSidebar />
-            <SidebarInset className="flex flex-col flex-1 min-w-0">
+            <SidebarInset className="flex flex-col flex-1 min-w-0 pb-16 md:pb-0">
               <AppHeader />
               <StatusBanner />
               <PullToRefresh
@@ -313,6 +314,7 @@ function AppLayout() {
                 <Footer />
               </PullToRefresh>
             </SidebarInset>
+            <MobileBottomNav />
           </div>
         </SidebarProvider>
         <LegalAcceptanceModal

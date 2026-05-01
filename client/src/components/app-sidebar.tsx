@@ -1,19 +1,29 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Settings,
   Bot,
   ChevronsLeft,
   ChevronsRight,
+  ChevronDown,
+  ChevronRight,
   History,
   Users,
   Handshake,
   Shield,
   Home,
-  Target,
+  TrendingUp,
   Search,
   DollarSign,
   Newspaper,
   Radar,
+  SlidersHorizontal,
+  LineChart,
+  Bell,
+  Compass,
+  Workflow,
+  Beaker,
+  Wrench,
 } from "lucide-react";
 import {
   Sidebar,
@@ -41,14 +51,27 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { title: "Home", description: "Dashboard & quick actions", url: "/home", icon: Home },
-  { title: "Goal Mode", description: "Goal-driven scenarios", url: "/goal-mode", icon: Target },
-  { title: "Opportunity Radar", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
-  { title: "Trade Finder", description: "Advanced trade builder", url: "/trade-finder", icon: Search },
-  { title: "Income Mode", description: "Premium & defined-risk income", url: "/income-mode", icon: DollarSign },
-  { title: "Market Intel", description: "News, catalysts, watchlist", url: "/market-intel", icon: Newspaper },
-  { title: "History", description: "Generated scenarios", url: "/history", icon: History },
-  { title: "Settings", description: "Account, broker & limits", url: "/settings", icon: Settings },
+  { title: "Home", description: "Your starting point", url: "/home", icon: Home },
+  { title: "Grow", description: "Risk-aware growth ideas", url: "/goal-mode", icon: TrendingUp },
+  { title: "Income", description: "Premium & income setups", url: "/income-mode", icon: DollarSign },
+  { title: "Trade", description: "Describe a setup in plain English", url: "/trade-finder", icon: Search },
+  { title: "Markets", description: "News, catalysts, sentiment", url: "/market-intel", icon: Newspaper },
+];
+
+const moreNavItems: NavItem[] = [
+  { title: "Top Opportunities", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
+  { title: "My Activity", description: "Past ideas & history", url: "/history", icon: History },
+  { title: "My Limits", description: "Risk profile & guardrails", url: "/settings/risk-profile", icon: SlidersHorizontal },
+  { title: "Settings", description: "Account, broker & preferences", url: "/settings", icon: Settings },
+];
+
+const advancedToolsItems: NavItem[] = [
+  { title: "Trade Setups", description: "Saved setup builder", url: "/trade-setups", icon: Wrench },
+  { title: "Discover", description: "Scanner & filters", url: "/discover", icon: Compass },
+  { title: "Automation", description: "Cockpit & outcomes", url: "/automation", icon: Workflow },
+  { title: "Charts", description: "Technical charts", url: "/charts", icon: LineChart },
+  { title: "Backtest", description: "Strategy backtests", url: "/backtest", icon: Beaker },
+  { title: "Alerts", description: "Trade alerts", url: "/alerts", icon: Bell },
 ];
 
 function SidebarBrandHeader() {
@@ -104,6 +127,43 @@ function SidebarBrandHeader() {
   );
 }
 
+function NavMenuItem({ item, active, onNavClick }: { item: NavItem; active: boolean; onNavClick: () => void }) {
+  return (
+    <SidebarMenuItem key={item.title}>
+      <SidebarMenuButton
+        asChild
+        isActive={active}
+        size="lg"
+        variant="outline"
+        tooltip={item.title}
+        className="h-auto py-3"
+      >
+        <Link
+          href={item.url}
+          onClick={onNavClick}
+          data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+        >
+          <div className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+            active
+              ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "bg-accent/50 text-foreground"
+          )}>
+            <item.icon className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-medium leading-tight truncate">{item.title}</span>
+            <span className={cn(
+              "text-xs leading-tight truncate",
+              active ? "text-sidebar-accent-foreground/70" : "text-muted-foreground"
+            )}>{item.description}</span>
+          </div>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { setOpenMobile, isMobile, state, toggleSidebar } = useSidebar();
@@ -111,13 +171,14 @@ export function AppSidebar() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const adminItems: NavItem[] = isAdmin ? [
     { title: "Users", description: "User administration", url: "/admin/users", icon: Users },
     { title: "Partners", description: "Signal providers", url: "/admin/partners", icon: Handshake },
     { title: "Compliance", description: "Acceptance logs", url: "/admin/disclaimer-logs", icon: Shield },
   ] : [];
-
-  const allItems = [...mainNavItems, ...adminItems];
 
   const handleNavClick = () => {
     if (isMobile) setOpenMobile(false);
@@ -127,7 +188,9 @@ export function AppSidebar() {
     if (url === "/home") return location === "/home";
     if (url === "/trade-finder") return location === "/trade-finder" || location === "/agent";
     if (url === "/history") return location === "/history" || location === "/trade-setups";
-    if (url === "/settings") return location === "/settings" || location.startsWith("/settings/");
+    if (url === "/settings/risk-profile") return location === "/settings/risk-profile";
+    if (url === "/settings") return location === "/settings" || (location.startsWith("/settings/") && location !== "/settings/risk-profile");
+    if (url === "/charts") return location === "/charts" || location.startsWith("/charts/");
     return location === url;
   };
 
@@ -143,43 +206,91 @@ export function AppSidebar() {
         <SidebarGroup className="py-1">
           <SidebarGroupContent>
             <SidebarMenu className="gap-2">
-              {allItems.map((item) => {
-                const active = isActive(item.url);
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={active}
-                      size="lg"
-                      variant="outline"
-                      tooltip={item.title}
-                      className="h-auto py-3"
-                    >
-                      <Link
-                        href={item.url}
-                        onClick={handleNavClick}
-                        data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                      >
-                        <div className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                          active
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                            : "bg-accent/50 text-foreground"
-                        )}>
-                          <item.icon className="h-4 w-4" />
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-medium leading-tight truncate">{item.title}</span>
-                          <span className={cn(
-                            "text-xs leading-tight truncate",
-                            active ? "text-sidebar-accent-foreground/70" : "text-muted-foreground"
-                          )}>{item.description}</span>
-                        </div>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {mainNavItems.map((item) => (
+                <NavMenuItem
+                  key={item.title}
+                  item={item}
+                  active={isActive(item.url)}
+                  onNavClick={handleNavClick}
+                />
+              ))}
+
+              {!isCollapsed && (
+                <SidebarMenuItem>
+                  <button
+                    type="button"
+                    onClick={() => setMoreOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2 mt-1 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="button-toggle-more"
+                    aria-expanded={moreOpen}
+                  >
+                    <span>More</span>
+                    {moreOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  </button>
+                </SidebarMenuItem>
+              )}
+
+              {!isCollapsed && moreOpen && moreNavItems.map((item) => (
+                <NavMenuItem
+                  key={item.title}
+                  item={item}
+                  active={isActive(item.url)}
+                  onNavClick={handleNavClick}
+                />
+              ))}
+
+              {!isCollapsed && moreOpen && (
+                <SidebarMenuItem>
+                  <button
+                    type="button"
+                    onClick={() => setAdvancedOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="button-toggle-advanced"
+                    aria-expanded={advancedOpen}
+                  >
+                    <span>Advanced Tools</span>
+                    {advancedOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  </button>
+                </SidebarMenuItem>
+              )}
+
+              {!isCollapsed && moreOpen && advancedOpen && advancedToolsItems.map((item) => (
+                <NavMenuItem
+                  key={item.title}
+                  item={item}
+                  active={isActive(item.url)}
+                  onNavClick={handleNavClick}
+                />
+              ))}
+
+              {isCollapsed && [...moreNavItems, ...advancedToolsItems].map((item) => (
+                <NavMenuItem
+                  key={item.title}
+                  item={item}
+                  active={isActive(item.url)}
+                  onNavClick={handleNavClick}
+                />
+              ))}
+
+              {adminItems.length > 0 && (
+                <>
+                  {!isCollapsed && (
+                    <SidebarMenuItem>
+                      <div className="px-3 py-2 mt-1 text-xs uppercase tracking-wide text-muted-foreground">
+                        Admin
+                      </div>
+                    </SidebarMenuItem>
+                  )}
+                  {adminItems.map((item) => (
+                    <NavMenuItem
+                      key={item.title}
+                      item={item}
+                      active={isActive(item.url)}
+                      onNavClick={handleNavClick}
+                    />
+                  ))}
+                </>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

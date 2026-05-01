@@ -1,8 +1,29 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
-import { ShieldCheck, Wifi, WifiOff, FlaskConical, Activity, Gauge } from "lucide-react";
+import { ShieldCheck, FlaskConical, Activity, Plug, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
+
+function isMarketOpenEt(): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      minute: "2-digit",
+      weekday: "short",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+    const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+    if (weekday === "Sat" || weekday === "Sun") return false;
+    const minutes = hour * 60 + minute;
+    return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
+  } catch {
+    return false;
+  }
+}
 
 interface HomeActionCardProps {
   title: string;
@@ -50,49 +71,63 @@ export function HomeActionCard({ title, subtitle, icon: Icon, onClick, testId, a
 export function BrokerStatusStrip() {
   const { isConnected, providerName, status } = useBrokerStatus();
   const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
-  const dataMode = isConnected && !isPaper ? "Live" : "Mock";
+  const isLiveMode = isConnected && !isPaper;
+  const marketOpen = isMarketOpenEt();
 
   return (
-    <Card data-testid="card-broker-status-strip" className="bg-card/60 backdrop-blur">
+    <Card data-testid="card-broker-status-strip" className="bg-card/40 backdrop-blur border-border/60 shadow-sm">
       <CardContent className="p-3 md:p-4">
-        <div className="flex flex-wrap items-center gap-3 md:gap-6 text-xs md:text-sm">
-          <div className="flex items-center gap-2" data-testid="strip-broker">
-            {isConnected ? (
-              <Wifi className="h-4 w-4 text-emerald-400" />
-            ) : (
-              <WifiOff className="h-4 w-4 text-muted-foreground" />
-            )}
-            <span className="text-muted-foreground">Broker:</span>
-            <Badge variant={isConnected ? "default" : "outline"} className="font-medium">
-              {isConnected ? `${providerName ?? "Connected"}${isPaper ? " · Paper" : ""}` : "Not Connected"}
-            </Badge>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm">
+          <Badge
+            variant="outline"
+            className={
+              isLiveMode
+                ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
+                : "border-amber-500/40 text-amber-400 bg-amber-500/5 gap-1.5"
+            }
+            data-testid="pill-mode"
+          >
+            <FlaskConical className="h-3 w-3" />
+            {isLiveMode ? "Live Mode" : "Simulated Mode"}
+          </Badge>
 
-          <div className="flex items-center gap-2" data-testid="strip-data-mode">
-            <FlaskConical className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Data:</span>
-            <Badge variant="outline" className={dataMode === "Live" ? "border-emerald-500/40 text-emerald-400" : "border-amber-500/40 text-amber-400"}>
-              {dataMode}
-            </Badge>
-          </div>
-
-          <div className="flex items-center gap-2" data-testid="strip-market">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Market:</span>
-            <Badge variant="outline">Regular Hours</Badge>
-          </div>
-
-          <div className="flex items-center gap-2" data-testid="strip-risk">
-            <Gauge className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Risk profile:</span>
-            <Link
-              href="/settings/risk-profile"
-              className="text-primary hover:underline font-medium"
-              data-testid="link-strip-risk"
+          {isConnected ? (
+            <Badge
+              variant="outline"
+              className="border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
+              data-testid="pill-broker"
             >
-              Review
+              <CheckCircle2 className="h-3 w-3" />
+              {providerName ? `${providerName} Connected` : "Broker Connected"}
+            </Badge>
+          ) : (
+            <Link
+              href="/settings"
+              className="inline-flex"
+              data-testid="link-connect-broker"
+            >
+              <Badge
+                variant="outline"
+                className="border-border/60 text-muted-foreground hover:text-foreground hover:border-border gap-1.5 cursor-pointer transition-colors"
+              >
+                <Plug className="h-3 w-3" />
+                Connect broker for live data
+              </Badge>
             </Link>
-          </div>
+          )}
+
+          <Badge
+            variant="outline"
+            className={
+              marketOpen
+                ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
+                : "border-border/60 text-muted-foreground gap-1.5"
+            }
+            data-testid="pill-market"
+          >
+            <Activity className="h-3 w-3" />
+            {marketOpen ? "Market Open" : "Market Closed"}
+          </Badge>
         </div>
       </CardContent>
     </Card>
@@ -108,9 +143,8 @@ export function ComplianceFooter() {
       <div className="flex gap-2 items-start">
         <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
         <p>
-          Strategy Agent provides software-generated trading scenarios for educational and informational
-          purposes only. It does not provide investment advice or guarantee results. You are responsible
-          for every trade decision and order submitted.
+          Strategy Agent provides software-generated scenarios for informational and educational
+          purposes only. You remain responsible for every decision and order submitted.
         </p>
       </div>
     </div>

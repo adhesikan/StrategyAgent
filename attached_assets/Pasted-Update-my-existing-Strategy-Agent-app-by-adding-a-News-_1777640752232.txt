@@ -1,0 +1,343 @@
+Update my existing Strategy Agent app by adding a News Sentiment Analysis layer to the existing Opportunity Radar module.
+
+Goal:
+Use my existing StockNews API feed plus OpenAI API (my own key) using GPT-4 Mini to generate ticker-level sentiment scores, trader-friendly summaries, catalyst insights, and sentiment-based ranking inputs for Opportunity Radar.
+
+Important:
+Do NOT market this as “buy/sell signals.”
+Use language like:
+- sentiment context
+- market impact
+- AI-ranked candidate scenarios
+- informational insights
+- review before acting
+
+Do NOT imply guaranteed outcomes or investment advice.
+
+Existing app context:
+- Strategy Agent already has Opportunity Radar
+- Strategy Agent already has broker connections
+- Existing scoring engine ranks candidate scenarios
+- Existing mock/live data modes
+- Existing dark UI
+- Existing user auth and settings
+
+New feature:
+Add a News Sentiment Engine that:
+1. Pulls latest articles from StockNews API
+2. Maps articles to symbols
+3. Deduplicates repeated stories
+4. Sends article content to OpenAI GPT-4 Mini
+5. Returns structured sentiment JSON
+6. Aggregates sentiment by ticker
+7. Feeds sentiment into Opportunity Radar score
+8. Displays sentiment explanations in UI
+
+Environment Variables:
+Use:
+OPENAI_API_KEY=
+STOCKNEWS_API_KEY=
+
+Use OpenAI model:
+gpt-4o-mini
+
+Architecture:
+
+Create new backend services:
+
+1. /server/services/news/stockNewsService.ts
+Responsibilities:
+- fetchLatestNews(symbols?: string[])
+- fetchTrendingNews()
+- normalize article payload
+- return:
+  {
+    headline,
+    summary,
+    source,
+    url,
+    publishedAt,
+    symbols[]
+  }
+
+2. /server/services/news/newsDedupService.ts
+Responsibilities:
+- remove duplicate headlines
+- group same-event stories
+- fuzzy match similar titles
+- keep best source article
+
+3. /server/services/news/openAiSentimentService.ts
+Use OpenAI SDK with GPT-4 Mini.
+
+Function:
+analyzeArticle(article)
+
+Prompt:
+
+You are a financial news sentiment engine for self-directed traders.
+
+Analyze this stock market news article.
+
+Return ONLY valid JSON:
+
+{
+  "sentimentLabel": "bullish | bearish | neutral | mixed",
+  "sentimentScore": -100 to 100,
+  "confidence": 0 to 100,
+  "impactLevel": "low | medium | high",
+  "timeHorizon": "intraday | swing | long_term",
+  "summary": "max 2 sentences plain English",
+  "whyItMatters": "why traders may care",
+  "bullishDrivers": [],
+  "bearishDrivers": [],
+  "riskWarnings": [],
+  "affectedSymbols": []
+}
+
+Rules:
+- No investment advice
+- No buy/sell language
+- Focus on informational market impact
+- Be concise
+
+4. /server/services/news/sentimentAggregationService.ts
+
+Functions:
+aggregateByTicker(articles)
+
+Output example:
+
+{
+  symbol: "NVDA",
+  sentimentLabel: "bearish",
+  sentimentScore: -42,
+  confidence: 81,
+  impactLevel: "high",
+  articleCount: 6,
+  buzzScore: 88,
+  topThemes: [
+    "valuation concerns",
+    "sector liquidation",
+    "AI stock weakness"
+  ],
+  whyItMatters: "Negative short-term sentiment with elevated attention."
+}
+
+5. /server/services/opportunityRadar/newsScoreAdapter.ts
+
+Integrate aggregated sentiment into Opportunity Radar.
+
+Update scoring formula:
+
+finalOpportunityScore =
+technicalScore * 0.28 +
+momentumScore * 0.20 +
+sentimentScoreNormalized * 0.22 +
+liquidityScore * 0.15 +
+riskScore * 0.15
+
+Normalize sentiment:
+-100 = 0
+0 = 50
++100 = 100
+
+If no sentiment available:
+Use neutral midpoint.
+
+Database / Prisma / Drizzle additions:
+
+Create table NewsSentiment:
+
+id
+symbol
+headline
+source
+url
+publishedAt
+rawSummary
+aiSummary
+sentimentLabel
+sentimentScore
+confidence
+impactLevel
+timeHorizon
+whyItMatters
+bullishDrivers (json)
+bearishDrivers (json)
+riskWarnings (json)
+createdAt
+updatedAt
+
+Create table TickerSentimentSnapshot:
+
+id
+symbol
+sentimentLabel
+sentimentScore
+confidence
+impactLevel
+buzzScore
+articleCount
+topThemes (json)
+whyItMatters
+lastUpdated
+
+Caching:
+Very important.
+
+Do NOT send duplicate articles repeatedly to OpenAI.
+
+Implement:
+- cache by article headline hash + published date
+- refresh ticker sentiment every 15 mins
+- store prior results in DB
+
+API Routes:
+
+Create:
+
+GET /api/sentiment/:symbol
+Returns latest ticker sentiment snapshot
+
+GET /api/sentiment/watchlist
+Returns watchlist sentiment
+
+POST /api/admin/run-sentiment-refresh
+Protected admin route
+
+GET /api/news/trending
+Returns recent analyzed news
+
+UI Changes:
+
+Update Opportunity Radar cards.
+
+Each candidate card should now show:
+
+Sentiment Badge:
+- Bullish
+- Bearish
+- Neutral
+- Mixed
+
+Sentiment Score:
++72 / -41 / etc
+
+Mini reason:
+“Positive earnings sentiment”
+“Sector weakness headlines”
+“Mixed analyst outlook”
+
+Add button:
+View News Context
+
+When clicked open drawer/modal:
+
+News Context Drawer:
+
+Header:
+NVDA News Sentiment
+
+Show:
+- Overall sentiment
+- Confidence
+- Impact level
+- Why it matters
+- Top bullish drivers
+- Top bearish drivers
+- Risk warnings
+- Recent headlines list
+
+Add link:
+Open article
+
+Opportunity Radar Enhancements:
+
+Sort options:
+- Highest Grade
+- Strongest Sentiment
+- Most Negative Sentiment
+- Highest Buzz
+- Best Risk/Reward
+
+Add filter:
+Sentiment:
+- Any
+- Bullish
+- Bearish
+- Neutral
+- Mixed
+
+Add Watchlist Market Intel Page:
+
+Create /market-intel
+
+Sections:
+
+1. Morning Briefing
+Use top stories + OpenAI summary
+
+2. Watchlist Sentiment
+Cards for user watchlist symbols
+
+3. Strongest Positive Sentiment
+
+4. Strongest Negative Sentiment
+
+5. Why Is It Moving?
+Search box by ticker
+
+Typing symbol loads:
+- latest headlines
+- AI summary
+- sentiment context
+
+Mock Mode:
+
+If StockNews API missing:
+Generate realistic mock news items.
+
+If OpenAI key missing:
+Fallback to rule-based keyword sentiment:
+upgrade, beat, strong = bullish
+miss, lawsuit, downgrade, weak = bearish
+
+Compliance Footer:
+
+“News sentiment is software-generated informational analysis based on public articles. It is not investment advice or a recommendation to buy or sell securities.”
+
+Technical Requirements:
+
+- Preserve all existing Opportunity Radar logic
+- Do not break broker connections
+- Do not break mock/live mode
+- Build clean TypeScript code
+- Use existing Tailwind/shadcn UI
+- Mobile responsive
+- Gracefully handle API failures
+- Show loading states:
+  “Analyzing latest news sentiment…”
+
+Performance:
+
+- Batch symbol processing
+- Use queue/background job if already available
+- Limit OpenAI token usage by summarizing only title + summary first
+- Only analyze full content if needed
+
+Deliverables:
+
+1. Working StockNews API integration
+2. Working OpenAI GPT-4 Mini sentiment engine
+3. Ticker sentiment snapshots
+4. Opportunity Radar score enhancement
+5. UI badges + drawer
+6. Market Intel page
+7. Caching + error handling
+8. No TypeScript errors
+
+Important:
+Keep UX simple and premium.
+Do not make it look cluttered.
+This should feel like a smart AI trading assistant, not an enterprise dashboard.

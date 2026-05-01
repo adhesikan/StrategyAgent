@@ -224,9 +224,9 @@ export function computeFinalScore(parts: {
   risk: number;
 }): number {
   const composite =
-    parts.technical * 0.3 +
-    parts.sentiment * 0.2 +
-    parts.momentum * 0.2 +
+    parts.technical * 0.28 +
+    parts.momentum * 0.20 +
+    parts.sentiment * 0.22 +
     parts.liquidity * 0.15 +
     parts.risk * 0.15;
   return Math.round(clamp(composite));

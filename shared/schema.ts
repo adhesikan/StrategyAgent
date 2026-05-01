@@ -1775,6 +1775,61 @@ export const insertOpportunityScenarioSchema = createInsertSchema(opportunitySce
 export type InsertOpportunityScenario = z.infer<typeof insertOpportunityScenarioSchema>;
 export type OpportunityScenario = typeof opportunityScenarios.$inferSelect;
 
+// News Sentiment — per-article AI analysis cache
+export const newsSentiment = pgTable("news_sentiment", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleHash: text("article_hash").notNull().unique(),
+  symbol: text("symbol"),
+  headline: text("headline").notNull(),
+  source: text("source"),
+  url: text("url"),
+  publishedAt: timestamp("published_at"),
+  rawSummary: text("raw_summary"),
+  aiSummary: text("ai_summary"),
+  sentimentLabel: text("sentiment_label"),
+  sentimentScore: real("sentiment_score"),
+  confidence: real("confidence"),
+  impactLevel: text("impact_level"),
+  timeHorizon: text("time_horizon"),
+  whyItMatters: text("why_it_matters"),
+  bullishDrivers: jsonb("bullish_drivers"),
+  bearishDrivers: jsonb("bearish_drivers"),
+  riskWarnings: jsonb("risk_warnings"),
+  affectedSymbols: jsonb("affected_symbols"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertNewsSentimentSchema = createInsertSchema(newsSentiment).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertNewsSentiment = z.infer<typeof insertNewsSentimentSchema>;
+export type NewsSentiment = typeof newsSentiment.$inferSelect;
+
+// Ticker-level sentiment snapshot (rollup of recent articles)
+export const tickerSentimentSnapshot = pgTable("ticker_sentiment_snapshot", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull().unique(),
+  sentimentLabel: text("sentiment_label").notNull(),
+  sentimentScore: real("sentiment_score").notNull(),
+  confidence: real("confidence").notNull(),
+  impactLevel: text("impact_level").notNull(),
+  buzzScore: real("buzz_score").notNull(),
+  articleCount: integer("article_count").notNull(),
+  topThemes: jsonb("top_themes"),
+  whyItMatters: text("why_it_matters"),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+export const insertTickerSentimentSnapshotSchema = createInsertSchema(tickerSentimentSnapshot).omit({
+  id: true,
+  lastUpdated: true,
+});
+export type InsertTickerSentimentSnapshot = z.infer<typeof insertTickerSentimentSnapshotSchema>;
+export type TickerSentimentSnapshot = typeof tickerSentimentSnapshot.$inferSelect;
+
 export const promptRequestLogs = pgTable("prompt_request_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

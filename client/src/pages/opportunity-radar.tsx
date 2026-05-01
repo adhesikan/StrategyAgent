@@ -13,6 +13,12 @@ import {
   ChevronDown,
   X,
   RefreshCw,
+  Newspaper,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ExternalLink,
+  ArrowUpDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -98,7 +104,52 @@ interface CandidateScenario {
   };
   dataMode: "live" | "simulated";
   isOptions: boolean;
+  sentiment?: SentimentBlock;
 }
+
+interface SentimentBlock {
+  available: boolean;
+  label: "bullish" | "bearish" | "neutral" | "mixed";
+  rawScore: number;
+  normalizedScore: number;
+  confidence: number;
+  impactLevel: "low" | "medium" | "high";
+  buzzScore: number;
+  articleCount: number;
+  topThemes: string[];
+  whyItMatters: string;
+  biasAlignment: "aligned" | "opposed" | "neutral";
+  miniReason: string;
+  source: "live" | "stale" | "missing";
+}
+
+interface NewsArticleContext {
+  id: string;
+  headline: string;
+  source: string | null;
+  url: string | null;
+  publishedAt: string | null;
+  summary: string | null;
+  whyItMatters: string | null;
+  sentimentLabel: "bullish" | "bearish" | "neutral" | "mixed" | null;
+  sentimentScore: number | null;
+  impactLevel: "low" | "medium" | "high" | null;
+  bullishDrivers: string[];
+  bearishDrivers: string[];
+  riskWarnings: string[];
+}
+
+interface SymbolSentimentResponse {
+  symbol: string;
+  snapshot: SentimentBlock | null;
+  articles: NewsArticleContext[];
+  stale: boolean;
+  sources: { news: "live" | "mock"; sentiment: "openai" | "rule_based" };
+  disclaimer: string;
+}
+
+type SortOption = "score_desc" | "sentiment_desc" | "sentiment_asc" | "buzz_desc";
+type SentimentFilter = "any" | "bullish" | "bearish" | "neutral_or_mixed" | "available";
 
 interface RadarResult {
   candidates: CandidateScenario[];
@@ -194,6 +245,9 @@ export default function OpportunityRadarPage() {
   const [filters, setFilters] = useState<RadarFilters>(DEFAULT_FILTERS);
   const [explainScenario, setExplainScenario] = useState<CandidateScenario | null>(null);
   const [reviewScenario, setReviewScenario] = useState<CandidateScenario | null>(null);
+  const [newsScenario, setNewsScenario] = useState<CandidateScenario | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>("score_desc");
+  const [sentimentFilter, setSentimentFilter] = useState<SentimentFilter>("any");
   const { isConnected } = useBrokerStatus();
 
   const queryString = useMemo(() => buildQueryParams(filters).toString(), [filters]);
@@ -238,8 +292,15 @@ export default function OpportunityRadarPage() {
 
       <FilterPanel filters={filters} onChange={updateFilter} onApply={() => refetch()} />
 
+      <SentimentSortBar
+        sortBy={sortBy}
+        onSortChange={setSortBy}
+        sentimentFilter={sentimentFilter}
+        onSentimentChange={setSentimentFilter}
+      />
+
       <RankedList
-        data={data}
+        data={applySentimentSort(data, sortBy, sentimentFilter)}
         isLoading={isLoading}
         onExplain={(s) => {
           setExplainScenario(s);
@@ -254,9 +315,11 @@ export default function OpportunityRadarPage() {
           setReviewScenario(s);
           logScenarioAction(s, "prepared_order");
         }}
+        onViewNews={(s) => setNewsScenario(s)}
       />
 
       <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
+      <NewsContextDrawer scenario={newsScenario} onClose={() => setNewsScenario(null)} />
 
       <OrderReviewDialog
         scenario={reviewScenario}
@@ -604,6 +667,7 @@ function RankedList({
   onReview,
   onPaperTrade,
   onPrepareOrder,
+  onViewNews,
 }: {
   data?: RadarResult;
   isLoading: boolean;
@@ -611,6 +675,7 @@ function RankedList({
   onReview: (s: CandidateScenario) => void;
   onPaperTrade: (s: CandidateScenario) => void;
   onPrepareOrder: (s: CandidateScenario) => void;
+  onViewNews: (s: CandidateScenario) => void;
 }) {
   if (isLoading) {
     return (
@@ -662,6 +727,7 @@ function RankedList({
             onReview={() => onReview(c)}
             onPaperTrade={() => onPaperTrade(c)}
             onPrepareOrder={() => onPrepareOrder(c)}
+            onViewNews={() => onViewNews(c)}
           />
         ))}
       </div>
@@ -675,12 +741,14 @@ function CandidateCard({
   onReview,
   onPaperTrade,
   onPrepareOrder,
+  onViewNews,
 }: {
   scenario: CandidateScenario;
   onExplain: () => void;
   onReview: () => void;
   onPaperTrade: () => void;
   onPrepareOrder: () => void;
+  onViewNews: () => void;
 }) {
   return (
     <Card className="hover-elevate" data-testid={`card-scenario-${scenario.symbol}`}>
@@ -711,6 +779,8 @@ function CandidateCard({
             <div className="text-2xl font-bold" data-testid={`text-final-score-${scenario.symbol}`}>{scenario.finalScore}</div>
           </div>
         </div>
+
+        <SentimentChip scenario={scenario} onViewNews={onViewNews} />
 
         <div className="grid grid-cols-5 gap-1 text-[10px]">
           <SubScore label="Tech" value={scenario.technicalScore} />
@@ -994,5 +1064,328 @@ function OrderReviewDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------- Sentiment helpers + components ----------
+
+const SENTIMENT_BADGE: Record<"bullish" | "bearish" | "neutral" | "mixed", string> = {
+  bullish: "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
+  bearish: "border-rose-500/40 text-rose-300 bg-rose-500/10",
+  neutral: "border-zinc-500/30 text-zinc-300 bg-zinc-500/10",
+  mixed: "border-amber-500/40 text-amber-300 bg-amber-500/10",
+};
+
+function sentimentIcon(label: "bullish" | "bearish" | "neutral" | "mixed") {
+  if (label === "bullish") return <TrendingUp className="h-3.5 w-3.5" />;
+  if (label === "bearish") return <TrendingDown className="h-3.5 w-3.5" />;
+  return <Minus className="h-3.5 w-3.5" />;
+}
+
+function applySentimentSort(
+  data: RadarResult | undefined,
+  sortBy: SortOption,
+  sentimentFilter: SentimentFilter,
+): RadarResult | undefined {
+  if (!data) return data;
+  let candidates = data.candidates.slice();
+
+  if (sentimentFilter !== "any") {
+    candidates = candidates.filter((c) => {
+      const s = c.sentiment;
+      if (sentimentFilter === "available") return !!s?.available;
+      if (!s?.available) return false;
+      if (sentimentFilter === "bullish") return s.label === "bullish";
+      if (sentimentFilter === "bearish") return s.label === "bearish";
+      if (sentimentFilter === "neutral_or_mixed") return s.label === "neutral" || s.label === "mixed";
+      return true;
+    });
+  }
+
+  switch (sortBy) {
+    case "sentiment_desc":
+      candidates.sort((a, b) => (b.sentiment?.rawScore ?? -101) - (a.sentiment?.rawScore ?? -101));
+      break;
+    case "sentiment_asc":
+      candidates.sort((a, b) => (a.sentiment?.rawScore ?? 101) - (b.sentiment?.rawScore ?? 101));
+      break;
+    case "buzz_desc":
+      candidates.sort((a, b) => (b.sentiment?.buzzScore ?? -1) - (a.sentiment?.buzzScore ?? -1));
+      break;
+    case "score_desc":
+    default:
+      candidates.sort((a, b) => b.finalScore - a.finalScore);
+      break;
+  }
+
+  candidates = candidates.map((c, i) => ({ ...c, rank: i + 1 }));
+  return { ...data, candidates };
+}
+
+function SentimentSortBar({
+  sortBy,
+  onSortChange,
+  sentimentFilter,
+  onSentimentChange,
+}: {
+  sortBy: SortOption;
+  onSortChange: (v: SortOption) => void;
+  sentimentFilter: SentimentFilter;
+  onSentimentChange: (v: SentimentFilter) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-3" data-testid="bar-sentiment-sort">
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+          <ArrowUpDown className="h-3 w-3" />
+          Sort
+        </Label>
+        <Select value={sortBy} onValueChange={(v) => onSortChange(v as SortOption)}>
+          <SelectTrigger className="w-[200px]" data-testid="select-radar-sort">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="score_desc">Final score (high → low)</SelectItem>
+            <SelectItem value="sentiment_desc">News sentiment (most positive)</SelectItem>
+            <SelectItem value="sentiment_asc">News sentiment (most negative)</SelectItem>
+            <SelectItem value="buzz_desc">News buzz (most coverage)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+          <Newspaper className="h-3 w-3" />
+          Sentiment filter
+        </Label>
+        <Select value={sentimentFilter} onValueChange={(v) => onSentimentChange(v as SentimentFilter)}>
+          <SelectTrigger className="w-[200px]" data-testid="select-sentiment-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Any sentiment</SelectItem>
+            <SelectItem value="available">Has news context</SelectItem>
+            <SelectItem value="bullish">Bullish only</SelectItem>
+            <SelectItem value="bearish">Bearish only</SelectItem>
+            <SelectItem value="neutral_or_mixed">Neutral or mixed</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function SentimentChip({
+  scenario,
+  onViewNews,
+}: {
+  scenario: CandidateScenario;
+  onViewNews: () => void;
+}) {
+  const s = scenario.sentiment;
+  if (!s || !s.available) {
+    return (
+      <div
+        className="flex items-center justify-between rounded border border-zinc-500/30 bg-zinc-500/5 px-2 py-1.5 text-xs"
+        data-testid={`chip-sentiment-${scenario.symbol}`}
+      >
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Newspaper className="h-3.5 w-3.5" />
+          <span>No recent headline coverage</span>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-xs"
+          onClick={onViewNews}
+          data-testid={`button-news-${scenario.symbol}`}
+        >
+          Refresh news
+        </Button>
+      </div>
+    );
+  }
+  const tone = SENTIMENT_BADGE[s.label];
+  return (
+    <div
+      className={`rounded border px-2 py-1.5 text-xs space-y-1 ${tone}`}
+      data-testid={`chip-sentiment-${scenario.symbol}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {sentimentIcon(s.label)}
+          <span className="font-semibold capitalize">{s.label}</span>
+          <span className="opacity-80">
+            {s.rawScore > 0 ? "+" : ""}
+            {Math.round(s.rawScore)}
+          </span>
+          <span className="opacity-70">
+            · {s.articleCount} article{s.articleCount === 1 ? "" : "s"}
+          </span>
+          <span className="opacity-70">· impact {s.impactLevel}</span>
+          {s.biasAlignment === "opposed" && (
+            <Badge variant="outline" className="border-amber-500/40 text-amber-300 text-[10px] py-0 h-4">
+              caveat
+            </Badge>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-xs"
+          onClick={onViewNews}
+          data-testid={`button-news-${scenario.symbol}`}
+        >
+          <Newspaper className="h-3.5 w-3.5 mr-1" />
+          View News Context
+        </Button>
+      </div>
+      <p className="opacity-90 leading-snug" data-testid={`text-sentiment-reason-${scenario.symbol}`}>
+        {s.miniReason}
+      </p>
+    </div>
+  );
+}
+
+function NewsContextDrawer({
+  scenario,
+  onClose,
+}: {
+  scenario: CandidateScenario | null;
+  onClose: () => void;
+}) {
+  const open = !!scenario;
+  const symbol = scenario?.symbol;
+  const { data, isLoading } = useQuery<SymbolSentimentResponse>({
+    queryKey: ["/api/sentiment", symbol],
+    enabled: open && !!symbol,
+  });
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="sheet-news-context">
+        {scenario && (
+          <>
+            <SheetHeader>
+              <SheetTitle data-testid="text-news-title">
+                News context — {scenario.symbol}
+              </SheetTitle>
+              <SheetDescription>
+                Recent articles and software-generated sentiment summary. Informational only.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-4 mt-4 text-sm">
+              {isLoading && <Skeleton className="h-32 w-full" />}
+              {data?.snapshot && (
+                <div className={`rounded border p-3 ${SENTIMENT_BADGE[data.snapshot.label]}`}>
+                  <div className="flex items-center gap-2 font-semibold">
+                    {sentimentIcon(data.snapshot.label)}
+                    <span className="capitalize">{data.snapshot.label}</span>
+                    <span>
+                      {data.snapshot.rawScore > 0 ? "+" : ""}
+                      {Math.round(data.snapshot.rawScore)}
+                    </span>
+                    <span className="opacity-80 text-xs">
+                      · {data.snapshot.articleCount} articles · impact {data.snapshot.impactLevel} · buzz{" "}
+                      {data.snapshot.buzzScore}
+                    </span>
+                  </div>
+                  <p className="text-xs opacity-90 mt-1">{data.snapshot.whyItMatters}</p>
+                  {data.snapshot.topThemes.length > 0 && (
+                    <div className="mt-2 text-xs opacity-90">
+                      <span className="font-semibold">Top themes: </span>
+                      {data.snapshot.topThemes.join(" · ")}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <h4 className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Recent articles ({data?.articles.length ?? 0})
+                </h4>
+                {data?.articles.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No recent articles found in cache.</p>
+                )}
+                {data?.articles.map((a) => (
+                  <div
+                    key={a.id}
+                    className="rounded border border-border p-3 space-y-1"
+                    data-testid={`article-${a.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium leading-snug" data-testid={`text-article-headline-${a.id}`}>
+                          {a.headline}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {a.source ?? "Unknown"}
+                          {a.publishedAt ? ` · ${new Date(a.publishedAt).toLocaleString()}` : ""}
+                        </div>
+                      </div>
+                      {a.url && (
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1 shrink-0"
+                          data-testid={`link-article-${a.id}`}
+                        >
+                          Open <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                    {a.sentimentLabel && (
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <Badge variant="outline" className={SENTIMENT_BADGE[a.sentimentLabel]}>
+                          {a.sentimentLabel}
+                          {a.sentimentScore != null
+                            ? ` ${a.sentimentScore > 0 ? "+" : ""}${Math.round(a.sentimentScore)}`
+                            : ""}
+                        </Badge>
+                        {a.impactLevel && (
+                          <span className="text-muted-foreground">impact {a.impactLevel}</span>
+                        )}
+                      </div>
+                    )}
+                    {a.summary && <p className="text-xs leading-snug">{a.summary}</p>}
+                    {a.whyItMatters && (
+                      <p className="text-xs italic text-muted-foreground">Why it matters: {a.whyItMatters}</p>
+                    )}
+                    {a.bullishDrivers.length > 0 && (
+                      <div className="text-[11px]">
+                        <span className="text-emerald-300 font-semibold">Bullish: </span>
+                        {a.bullishDrivers.join(" · ")}
+                      </div>
+                    )}
+                    {a.bearishDrivers.length > 0 && (
+                      <div className="text-[11px]">
+                        <span className="text-rose-300 font-semibold">Bearish: </span>
+                        {a.bearishDrivers.join(" · ")}
+                      </div>
+                    )}
+                    {a.riskWarnings.length > 0 && (
+                      <div className="text-[11px] text-amber-300">
+                        <AlertTriangle className="h-3 w-3 inline mr-1" />
+                        {a.riskWarnings.join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {data?.disclaimer && (
+                <div
+                  className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200"
+                  data-testid="text-news-disclaimer"
+                >
+                  {data.disclaimer}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -117,7 +117,12 @@ import type {
   InsertTradeOutcome,
   UserTradePreferences,
   InsertUserTradePreferences,
+  NewsSentiment,
+  InsertNewsSentiment,
+  TickerSentimentSnapshot,
+  InsertTickerSentimentSnapshot,
 } from "@shared/schema";
+import { newsSentiment as newsSentimentTable, tickerSentimentSnapshot as tickerSentimentSnapshotTable } from "@shared/schema";
 
 const ALERT_DISCLAIMER = "This alert is informational only and not investment advice.";
 
@@ -379,6 +384,14 @@ export interface IStorage {
   createOpportunityScenario(data: InsertOpportunityScenario): Promise<OpportunityScenario>;
   getOpportunityScenariosByUser(userId: string, limit?: number): Promise<OpportunityScenario[]>;
   updateOpportunityScenario(id: string, userId: string, data: Partial<OpportunityScenario>): Promise<OpportunityScenario | null>;
+
+  createNewsSentimentRecord(data: InsertNewsSentiment): Promise<NewsSentiment>;
+  getNewsSentimentByHash(hash: string): Promise<NewsSentiment | null>;
+  getRecentNewsSentimentForSymbol(symbol: string, limit?: number): Promise<NewsSentiment[]>;
+  upsertTickerSnapshot(data: InsertTickerSentimentSnapshot): Promise<TickerSentimentSnapshot>;
+  getTickerSnapshot(symbol: string): Promise<TickerSentimentSnapshot | null>;
+  getTickerSnapshotsForSymbols(symbols: string[]): Promise<TickerSentimentSnapshot[]>;
+  getTrendingNewsSentiment(limit?: number): Promise<TickerSentimentSnapshot[]>;
 
   createPromptRequestLog(data: InsertPromptRequestLog): Promise<PromptRequestLog>;
 
@@ -3135,6 +3148,61 @@ export class MemStorage implements IStorage {
     }
     const [result] = await db.insert(userTradePreferencesTable).values({ ...data, userId } as any).returning();
     return result;
+  }
+
+  async createNewsSentimentRecord(data: InsertNewsSentiment): Promise<NewsSentiment> {
+    const [result] = await db.insert(newsSentimentTable)
+      .values(data)
+      .onConflictDoUpdate({
+        target: newsSentimentTable.articleHash,
+        set: { ...data, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
+  }
+
+  async getNewsSentimentByHash(hash: string): Promise<NewsSentiment | null> {
+    const [row] = await db.select().from(newsSentimentTable).where(eq(newsSentimentTable.articleHash, hash)).limit(1);
+    return row || null;
+  }
+
+  async getRecentNewsSentimentForSymbol(symbol: string, limit: number = 10): Promise<NewsSentiment[]> {
+    return db.select()
+      .from(newsSentimentTable)
+      .where(eq(newsSentimentTable.symbol, symbol.toUpperCase()))
+      .orderBy(desc(newsSentimentTable.publishedAt))
+      .limit(limit);
+  }
+
+  async upsertTickerSnapshot(data: InsertTickerSentimentSnapshot): Promise<TickerSentimentSnapshot> {
+    const sym = data.symbol.toUpperCase();
+    const payload = { ...data, symbol: sym, lastUpdated: new Date() };
+    const [result] = await db.insert(tickerSentimentSnapshotTable)
+      .values(payload as any)
+      .onConflictDoUpdate({
+        target: tickerSentimentSnapshotTable.symbol,
+        set: payload as any,
+      })
+      .returning();
+    return result;
+  }
+
+  async getTickerSnapshot(symbol: string): Promise<TickerSentimentSnapshot | null> {
+    const [row] = await db.select().from(tickerSentimentSnapshotTable).where(eq(tickerSentimentSnapshotTable.symbol, symbol.toUpperCase())).limit(1);
+    return row || null;
+  }
+
+  async getTickerSnapshotsForSymbols(symbols: string[]): Promise<TickerSentimentSnapshot[]> {
+    if (symbols.length === 0) return [];
+    const upper = symbols.map((s) => s.toUpperCase());
+    return db.select().from(tickerSentimentSnapshotTable).where(inArray(tickerSentimentSnapshotTable.symbol, upper));
+  }
+
+  async getTrendingNewsSentiment(limit: number = 20): Promise<TickerSentimentSnapshot[]> {
+    return db.select()
+      .from(tickerSentimentSnapshotTable)
+      .orderBy(desc(tickerSentimentSnapshotTable.buzzScore))
+      .limit(limit);
   }
 }
 

@@ -1,0 +1,318 @@
+Update the existing Strategy Agent app homepage/dashboard UI to feel ultra-simple, friendly, and highly useful for traders — like Robinhood meets ChatGPT.
+
+Goal:
+Reduce intimidation, reduce decision friction, and make the app feel like an AI assistant that helps users make money decisions easily.
+
+Do NOT remove any existing backend logic, routes, broker integrations, scoring engines, Opportunity Radar, Goal Mode, or existing features.
+
+Only redesign the UX / IA (information architecture) and navigation to be more beginner-friendly while preserving power-user access.
+
+Core UX Principle:
+Hide complexity.
+Lead with outcomes.
+Guide users to the best next step.
+
+====================================================
+1. HOMEPAGE REDESIGN (PRIMARY TASK)
+====================================================
+
+Replace the current homepage with a guided assistant experience.
+
+New hero section:
+
+Headline:
+“What would you like help with today?”
+
+Subheadline:
+“Tell Strategy Agent your goal. We’ll show scenarios, explain risks, and never send orders without your review.”
+
+Below headline add a conversational quick prompt bar:
+
+Input placeholder:
+- “How can I grow $10k?”
+- “Find income ideas today”
+- “Why is NVDA down?”
+- “Show bullish setups under $200 risk”
+
+When submitted:
+Route to relevant module automatically.
+
+====================================================
+2. PRIMARY ACTION CARDS (ONLY 4 VISIBLE)
+====================================================
+
+Show only four large premium cards.
+
+Card 1:
+Title: Grow My Money
+Subtitle: Explore risk-aware growth opportunities
+
+Card 2:
+Title: Generate Income
+Subtitle: Covered calls, cash-secured puts, and monthly income ideas
+
+Card 3:
+Title: Find a Trade
+Subtitle: Describe what you want in plain English
+
+Card 4:
+Title: Understand Markets
+Subtitle: News, catalysts, sentiment, and watchlist impact
+
+Each card routes:
+
+Grow My Money -> /goal-mode
+Generate Income -> /income-mode
+Find a Trade -> /trade-finder
+Understand Markets -> /market-intel
+
+Use large icons, warm gradients, hover lift effect, rounded corners.
+
+====================================================
+3. TODAY'S AI SNAPSHOT PANEL
+====================================================
+
+Add a right-side panel (desktop) or below cards (mobile):
+
+Title:
+Today’s AI Snapshot
+
+Show 4 small cards:
+
+- Market Tone: Bullish / Mixed / Defensive
+- Best Income Setup Today
+- Top Growth Opportunity
+- Watchlist Risk Alert
+
+Use placeholder/mock values if no live data available.
+
+This creates instant value on login.
+
+====================================================
+4. START HERE FOR NEW USERS
+====================================================
+
+At top above cards add:
+
+Badge:
+New Here?
+
+CTA:
+Start with Grow My Money →
+
+This routes to Goal Mode.
+
+====================================================
+5. SIMPLIFY STATUS BAR
+====================================================
+
+Replace current intimidating top strip:
+
+Broker / Data / Market / Risk profile
+
+With simplified pills:
+
+- Simulated Mode or Live Mode
+- Broker Connected / Optional
+- Market Open / Closed
+
+If no broker connected:
+Show subtle CTA:
+Connect broker for live data and self-directed order previews.
+
+Do NOT show too much technical detail.
+
+====================================================
+6. LEFT NAVIGATION RESTRUCTURE
+====================================================
+
+Primary Nav Only:
+
+- Home
+- Grow
+- Income
+- Trade
+- Markets
+
+Secondary Collapsible Section:
+“More”
+
+Inside More:
+- Opportunity Radar
+- History
+- Settings
+- Advanced Tools
+
+Default collapsed.
+
+This reduces overwhelm.
+
+====================================================
+7. RENAME EXISTING MODULES FOR FRIENDLIER LANGUAGE
+====================================================
+
+Goal Mode -> Grow
+Income Mode -> Income
+Trade Finder -> Trade
+Market Intel -> Markets
+History -> My Activity
+Risk Profile -> My Limits
+Trade Preferences -> My Preferences
+Opportunity Radar -> Top Opportunities
+
+Keep routes internally if needed.
+
+====================================================
+8. POWER USER ACCESS (IMPORTANT)
+====================================================
+
+Do NOT remove advanced features.
+
+Inside “More > Advanced Tools” include:
+
+- Opportunity Radar
+- Original prompt builder
+- Filters
+- Risk settings
+- Setup history
+- Scanner tools
+
+This preserves power users.
+
+====================================================
+9. VISUAL DESIGN IMPROVEMENTS
+====================================================
+
+Keep dark premium aesthetic but soften it:
+
+- More spacing
+- Less harsh borders
+- Softer shadows
+- More gradient cards
+- Slightly warmer accent colors
+- Cleaner typography hierarchy
+- Larger headings
+- Simpler labels
+- Friendlier icons
+
+Use current Tailwind/shadcn stack.
+
+====================================================
+10. MICROCOPY IMPROVEMENTS
+====================================================
+
+Replace technical language everywhere.
+
+Instead of:
+Generated scenarios
+
+Use:
+Ideas for You
+
+Instead of:
+Setup history
+
+Use:
+Past Ideas
+
+Instead of:
+Risk Profile
+
+Use:
+My Limits
+
+Instead of:
+Brokerage Connection
+
+Use:
+Connect Broker
+
+====================================================
+11. EMPTY STATES
+====================================================
+
+If no history:
+“No saved ideas yet. Start with Grow or Income.”
+
+If no broker:
+“You can explore in simulated mode now.”
+
+If no data:
+“Live data unavailable. Showing simulated insights.”
+
+====================================================
+12. COMPLIANCE FOOTER
+====================================================
+
+Small footer on home:
+
+“Strategy Agent provides software-generated scenarios for informational and educational purposes only. You remain responsible for every decision and order submitted.”
+
+====================================================
+13. MOBILE EXPERIENCE
+====================================================
+
+On mobile:
+
+- Stack cards vertically
+- Sticky bottom nav:
+  Home | Grow | Income | Trade | More
+
+- AI Snapshot becomes swipe cards
+
+====================================================
+14. PERFORMANCE
+====================================================
+
+Fast load homepage.
+Lazy-load advanced modules.
+Cache snapshot data.
+
+====================================================
+15. TECHNICAL REQUIREMENTS
+====================================================
+
+Do not break:
+- broker integrations
+- existing routes
+- Opportunity Radar
+- Goal Mode
+- Trade Finder
+- auth
+- TypeScript build
+
+Existing routes can remain but map to friendlier labels.
+
+====================================================
+16. BONUS MAGIC TOUCH
+====================================================
+
+At bottom of homepage add:
+
+Popular Today:
+
+Quick chips:
+- Grow $10k conservatively
+- Income ideas under $200 risk
+- Why is TSLA moving?
+- Best setups today
+- Covered call ideas
+
+One click launches relevant flows.
+
+====================================================
+17. FINAL FEELING TO USER
+====================================================
+
+The app should feel like:
+
+“Wow, this is easy.”
+“I know exactly where to start.”
+“This helps me immediately.”
+“This is smart but not overwhelming.”
+
+NOT:
+
+“Complex trading software.”
+
+Implement all UI updates cleanly using reusable components and preserve current backend functionality.

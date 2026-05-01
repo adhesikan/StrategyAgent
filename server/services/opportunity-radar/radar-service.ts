@@ -15,6 +15,12 @@ import { getBrokerAccounts, getBrokerPositions } from "../../broker";
 import { resolveUniverse, type RadarUniverseId } from "./universe-service";
 import { defaultMLAdapter, type MLAdapter } from "./ml-adapter";
 import {
+  adaptSnapshotToRadar,
+  loadSnapshotsForRadar,
+  type RadarSentimentBlock,
+} from "./news-score-adapter";
+import { refreshSentimentForSymbols } from "../news";
+import {
   scoreTechnical,
   scoreMomentum,
   scoreSentiment,
@@ -100,6 +106,7 @@ export interface CandidateScenario {
     optionVolume: number | null;
     bidAskSpreadPct: number | null;
   };
+  sentiment: RadarSentimentBlock;
 }
 
 export interface RadarResult {
@@ -259,6 +266,7 @@ function buildScenarioFromEnriched(
   filters: RadarFilters,
   rank: number,
   ml: MLAdapter,
+  sentimentBlock: RadarSentimentBlock,
 ): CandidateScenario {
   const isOptions = strategy !== "stock_swing";
   const price = e.quote.last;
@@ -376,11 +384,14 @@ function buildScenarioFromEnriched(
     bias,
   );
 
-  // Sentiment is unavailable until news adapter is wired — use neutral 50.
-  const sentimentScore = scoreSentiment(
-    { bullishHeadlines: 0, neutralHeadlines: 0, bearishHeadlines: 0, available: false },
-    bias,
-  );
+  // Sentiment from the News Sentiment service (pre-loaded snapshot map).
+  // When unavailable we fall back to neutral 50 so the composite is unbiased.
+  const sentimentScore = sentimentBlock.available
+    ? sentimentBlock.normalizedScore
+    : scoreSentiment(
+        { bullishHeadlines: 0, neutralHeadlines: 0, bearishHeadlines: 0, available: false },
+        bias,
+      );
 
   const optionOpenInterest = isOptions ? 250 + (symbolHash(e.quote.symbol) % 4000) : null;
   const optionVolume = isOptions ? 80 + (symbolHash(e.quote.symbol) % 1500) : null;
@@ -430,7 +441,20 @@ function buildScenarioFromEnriched(
   else if (e.rsi > 70) technicalFactors.push(`RSI ${e.rsi} — extended; pullback risk`);
   technicalFactors.push(`20-day range $${e.low20}–$${e.high20}, last $${price}`);
 
-  const sentimentFactors = ["Sentiment unavailable — connect a news provider for headline scoring"];
+  const sentimentFactors: string[] = [];
+  if (sentimentBlock.available) {
+    sentimentFactors.push(
+      `Recent news ${sentimentBlock.label} (${sentimentBlock.articleCount} articles, impact ${sentimentBlock.impactLevel})`,
+    );
+    if (sentimentBlock.biasAlignment === "aligned") {
+      sentimentFactors.push("Headline tone aligns with the candidate thesis");
+    } else if (sentimentBlock.biasAlignment === "opposed") {
+      sentimentFactors.push("Headline tone runs against the candidate thesis — caveat");
+    }
+    for (const t of sentimentBlock.topThemes.slice(0, 2)) sentimentFactors.push(`Theme: ${t}`);
+  } else {
+    sentimentFactors.push("No recent headline coverage — sentiment treated as neutral");
+  }
 
   const liquidityFactors: string[] = [];
   liquidityFactors.push(`Stock volume ${e.quote.volume.toLocaleString()} (avg ${(e.quote.avgVolume ?? 0).toLocaleString()})`);
@@ -512,6 +536,7 @@ function buildScenarioFromEnriched(
       optionVolume,
       bidAskSpreadPct,
     },
+    sentiment: sentimentBlock,
   };
 }
 
@@ -694,6 +719,21 @@ export async function generateCandidateScenarios(
   const ctx = await buildUserContext(userId, filters);
   const enriched = await enrichWithMarketData(symbols, userId, ctx);
 
+  // Pre-load existing snapshots; refresh in background for any missing/stale.
+  let snapshotMap = await loadSnapshotsForRadar(symbols);
+  const needsRefresh = symbols.filter((s) => {
+    const m = snapshotMap.get(s.toUpperCase());
+    return !m || !m.fresh;
+  });
+  if (needsRefresh.length > 0) {
+    try {
+      await refreshSentimentForSymbols(needsRefresh);
+      snapshotMap = await loadSnapshotsForRadar(symbols);
+    } catch (err) {
+      console.warn("[radar] sentiment refresh failed, continuing with existing snapshots:", err);
+    }
+  }
+
   const requestedStrategy = filters.strategyType ?? "any";
   const requestedBias = filters.bias ?? "any";
 
@@ -703,7 +743,11 @@ export async function generateCandidateScenarios(
   enriched.forEach((e, idx) => {
     const strategy = pickStrategyForSymbol(e.quote.symbol, requestedStrategy);
     const bias = pickBiasForSymbol(e.quote.symbol, requestedBias, strategy);
-    const c = buildScenarioFromEnriched(e, strategy, bias, ctx, filters, idx + 1, defaultMLAdapter);
+    const snapMeta = snapshotMap.get(e.quote.symbol.toUpperCase());
+    const sentimentBlock = adaptSnapshotToRadar(snapMeta?.snapshot ?? null, bias, {
+      fresh: snapMeta?.fresh ?? false,
+    });
+    const c = buildScenarioFromEnriched(e, strategy, bias, ctx, filters, idx + 1, defaultMLAdapter, sentimentBlock);
     const verdict = applyGuardrails(c, filters, ctx);
     if (verdict.keep) candidates.push(c);
     else hidden += 1;
@@ -712,6 +756,12 @@ export async function generateCandidateScenarios(
   // Sort by final score descending and re-rank
   candidates.sort((a, b) => b.finalScore - a.finalScore);
   candidates = candidates.slice(0, 20).map((c, i) => ({ ...c, rank: i + 1 }));
+
+  const sentimentAvailableCount = candidates.filter((c) => c.sentiment.available).length;
+  const sentimentNote =
+    sentimentAvailableCount > 0
+      ? `News sentiment included for ${sentimentAvailableCount} of ${candidates.length} candidates.`
+      : "News sentiment unavailable — sentiment treated as neutral in scoring.";
 
   return {
     candidates,
@@ -726,7 +776,7 @@ export async function generateCandidateScenarios(
       ctx.dataMode === "simulated"
         ? "Simulated data mode — connect a broker for live quotes and account-aware risk checks."
         : "Using live broker quotes.",
-      "Sentiment scoring is currently neutral; news adapter not yet wired.",
+      sentimentNote,
     ],
   };
 }

@@ -145,7 +145,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerFuturesRoutes(app);
   registerAgentRoutes(app, isAuthenticated);
   registerOpportunityRadarRoutes(app, isAuthenticated);
-  registerNewsSentimentRoutes(app, isAuthenticated);
+  registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
 
   startFuturesWorker().then(async () => {
     try {

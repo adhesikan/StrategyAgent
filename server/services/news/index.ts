@@ -89,6 +89,10 @@ async function getOrAnalyze(
   return { analyzed, cached: false };
 }
 
+// Single-flight: coalesce concurrent refresh requests for the same symbol-set
+// to prevent thundering-herd OpenAI calls on a cold/stale cache.
+const inflightRefreshes = new Map<string, Promise<RefreshResult>>();
+
 export async function refreshSentimentForSymbols(
   symbols: string[],
   opts: { force?: boolean; itemsPerSymbol?: number } = {},
@@ -97,6 +101,22 @@ export async function refreshSentimentForSymbols(
   if (cleaned.length === 0) {
     return { snapshots: [], analyzed: 0, cached: 0, source: { news: "mock", sentiment: "rule_based" } };
   }
+
+  const flightKey = `${opts.force ? "F" : "S"}:${opts.itemsPerSymbol ?? 6}:${cleaned.slice().sort().join(",")}`;
+  const existing = inflightRefreshes.get(flightKey);
+  if (existing) return existing;
+
+  const promise = doRefreshSentimentForSymbols(cleaned, opts).finally(() => {
+    inflightRefreshes.delete(flightKey);
+  });
+  inflightRefreshes.set(flightKey, promise);
+  return promise;
+}
+
+async function doRefreshSentimentForSymbols(
+  cleaned: string[],
+  opts: { force?: boolean; itemsPerSymbol?: number },
+): Promise<RefreshResult> {
 
   const toRefresh: string[] = [];
   const reuse: AggregatedSnapshot[] = [];

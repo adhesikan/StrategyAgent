@@ -139,9 +139,21 @@ interface NewsArticleContext {
   riskWarnings: string[];
 }
 
+interface AggregatedSnapshotResponse {
+  symbol: string;
+  sentimentLabel: "bullish" | "bearish" | "neutral" | "mixed";
+  sentimentScore: number;
+  confidence: number;
+  impactLevel: "low" | "medium" | "high";
+  buzzScore: number;
+  articleCount: number;
+  topThemes: string[];
+  whyItMatters: string;
+}
+
 interface SymbolSentimentResponse {
   symbol: string;
-  snapshot: SentimentBlock | null;
+  snapshot: AggregatedSnapshotResponse | null;
   articles: NewsArticleContext[];
   stale: boolean;
   sources: { news: "live" | "mock"; sentiment: "openai" | "rule_based" };
@@ -1277,13 +1289,13 @@ function NewsContextDrawer({
             <div className="space-y-4 mt-4 text-sm">
               {isLoading && <Skeleton className="h-32 w-full" />}
               {data?.snapshot && (
-                <div className={`rounded border p-3 ${SENTIMENT_BADGE[data.snapshot.label]}`}>
+                <div className={`rounded border p-3 ${SENTIMENT_BADGE[data.snapshot.sentimentLabel]}`}>
                   <div className="flex items-center gap-2 font-semibold">
-                    {sentimentIcon(data.snapshot.label)}
-                    <span className="capitalize">{data.snapshot.label}</span>
+                    {sentimentIcon(data.snapshot.sentimentLabel)}
+                    <span className="capitalize">{data.snapshot.sentimentLabel}</span>
                     <span>
-                      {data.snapshot.rawScore > 0 ? "+" : ""}
-                      {Math.round(data.snapshot.rawScore)}
+                      {data.snapshot.sentimentScore > 0 ? "+" : ""}
+                      {Math.round(data.snapshot.sentimentScore)}
                     </span>
                     <span className="opacity-80 text-xs">
                       · {data.snapshot.articleCount} articles · impact {data.snapshot.impactLevel} · buzz{" "}

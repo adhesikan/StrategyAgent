@@ -29,6 +29,16 @@ Strategy Agent is an AI-powered strategy analysis and trade setup generation pla
 - `prompt_request_logs` — Audit trail of parsed prompts
 - `activity_logs` — Activity event log
 - `analysis_conditions` — User-created analysis conditions with type, operator, value, category, and enabled state
+- `news_sentiment` — Per-article sentiment analysis (headline hash, source, sentiment label/score, confidence, drivers, AI summary)
+- `ticker_sentiment_snapshot` — Per-ticker rollup (label/score, confidence, impact level, buzz, article count, top themes, why-it-matters); 15-minute TTL
+
+### News Sentiment Layer (Opportunity Radar + Market Intel)
+- Sources: StockNews API for headlines (mock fallback if `STOCKNEWS_API_KEY` missing), OpenAI gpt-4o-mini for strict-JSON sentiment (rule-based keyword fallback if `OPENAI_API_KEY` missing).
+- Pipeline: `server/services/news/{stockNewsService,newsDedupService,openAiSentimentService,sentimentAggregationService,index}.ts` — fetch → dedupe by headline hash → analyze (cached by hash) → aggregate per ticker → upsert snapshot. Single-flight refresh prevents thundering-herd OpenAI calls.
+- Radar integration: `server/services/opportunity-radar/news-score-adapter.ts` normalizes raw sentiment (-100→0, 0→50, +100→100) with bias-aware adjustment (bullish keeps, bearish inverts, neutral compresses 0.6x). Composite scoring weights: 28 technical / 20 sentiment / 22 momentum / 15 liquidity / 15 risk.
+- Routes (`server/routes/news-sentiment.ts`): `GET /api/sentiment/:symbol`, `GET /api/sentiment/watchlist`, `GET /api/news/trending`, `POST /api/admin/run-sentiment-refresh` (admin-only).
+- UI: Opportunity Radar shows sentiment chip + mini reason on each card, "View News Context" drawer with article-level details, sort options (final/sentiment/buzz), and sentiment filter. Market Intel page renders Morning Briefing, Watchlist Sentiment, Strongest Positive/Negative, and "Why Is It Moving?" symbol search.
+- Compliance: All output is "informational" / "AI-ranked candidate scenarios" / "sentiment context"; never "buy/sell signals". `ComplianceFooter` rendered on both pages plus a per-payload disclaimer string.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.

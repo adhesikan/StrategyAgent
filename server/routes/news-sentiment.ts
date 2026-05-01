@@ -22,7 +22,11 @@ const refreshBody = z.object({
 const COMPLIANCE_FOOTER =
   "News sentiment is software-generated informational analysis based on public articles. It is not investment advice.";
 
-export function registerNewsSentimentRoutes(app: Express, isAuthenticated: RequestHandler) {
+export function registerNewsSentimentRoutes(
+  app: Express,
+  isAuthenticated: RequestHandler,
+  isAdmin: RequestHandler,
+) {
   // Per-symbol sentiment with article context
   app.get("/api/sentiment/:symbol", isAuthenticated, async (req, res) => {
     try {
@@ -122,8 +126,8 @@ export function registerNewsSentimentRoutes(app: Express, isAuthenticated: Reque
     }
   });
 
-  // Manual refresh — works for any logged-in user, capped at 50 symbols
-  app.post("/api/admin/run-sentiment-refresh", isAuthenticated, async (req, res) => {
+  // Manual refresh — admin only, capped at 50 symbols
+  app.post("/api/admin/run-sentiment-refresh", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const parsed = refreshBody.safeParse(req.body);
       if (!parsed.success) {

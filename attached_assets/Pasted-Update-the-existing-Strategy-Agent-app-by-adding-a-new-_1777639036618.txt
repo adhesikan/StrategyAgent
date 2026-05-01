@@ -1,0 +1,392 @@
+Update the existing Strategy Agent app by adding a new “Opportunity Radar” module that ranks AI-generated stock/options candidate scenarios using live broker data, market data, technical signals, sentiment inputs, options liquidity, and risk guardrails.
+
+Important:
+Do not build this as a “predictive stock picker” or “buy/sell signal” tool.
+Position it as “AI-ranked candidate scenarios for user review.”
+Do not implement autonomous trading.
+Every live order must require explicit user review and confirmation.
+
+Existing app context:
+- Strategy Agent already has user login
+- Broker connections already exist
+- Broker connection can provide live market data, balances, positions, and order submission
+- App already supports InstaTrade / broker order submission
+- App already has AI setup generation
+- App already has risk preferences / guardrails
+- App already has setup history
+- App already has simulated/mock data mode
+
+Goal:
+Add a new module called “Opportunity Radar” that helps users discover and review risk-aware stock and options scenarios using their selected preferences and connected broker data.
+
+Navigation:
+Add “Opportunity Radar” to the main left navigation.
+
+Suggested nav:
+- Home
+- Goal Mode
+- Opportunity Radar
+- Trade Finder
+- Income Mode
+- Market Intel
+- History
+- Settings
+
+Route:
+Create /opportunity-radar
+
+Main page headline:
+“Opportunity Radar”
+
+Subtitle:
+“AI-ranked stock and options scenarios for review — based on market data, sentiment, liquidity, and your selected limits.”
+
+Add compliance microcopy near the top:
+“Scenarios are software-generated for informational and educational purposes only. They are not investment advice or recommendations. You decide whether to place any order.”
+
+Page layout:
+1. Broker/data status card
+2. Filter panel
+3. Ranked candidate scenario list
+4. Explanation drawer/modal
+5. Order preview flow
+
+Broker/data status card:
+Show:
+- Broker status: Connected / Not Connected
+- Data mode: Live / Simulated
+- Buying power if available
+- Number of current positions if available
+- Last data refresh time
+
+If no broker connected:
+Show:
+“You can explore simulated scenarios now. Connect your broker for live market data, account-aware risk checks, and self-directed order previews.”
+Buttons:
+- Continue Simulated
+- Connect Broker
+
+Filter panel:
+Add simple filters:
+- Strategy type:
+  - Any
+  - Stock swing
+  - Long call
+  - Long put
+  - Debit spread
+  - Covered call
+  - Cash-secured put
+- Bias:
+  - Any
+  - Bullish
+  - Bearish
+  - Neutral / income
+- Max theoretical loss:
+  - $50
+  - $100
+  - $200
+  - $500
+  - Custom
+- Minimum grade:
+  - A
+  - B
+  - C
+- Time horizon:
+  - Intraday
+  - 1–5 days
+  - 1–4 weeks
+  - 30–60 days
+- Universe:
+  - Watchlist
+  - Large cap
+  - High volume
+  - Options liquid
+  - Custom symbols
+
+Add an “Advanced Filters” accordion:
+- Minimum stock volume
+- Minimum option open interest
+- Minimum option volume
+- Max bid/ask spread %
+- Avoid earnings within X days
+- Minimum reward/risk
+- Exclude current holdings
+- Include current holdings only
+
+Candidate scenario card:
+Each ranked scenario card should show:
+- Rank number
+- Ticker
+- Company name if available
+- Strategy type
+- Bias
+- Final grade: A+, A, B, C
+- Opportunity score 0–100
+- Technical score
+- Sentiment score
+- Momentum score
+- Options liquidity score
+- Risk score
+- Approx capital required
+- Max theoretical loss
+- Max theoretical gain if available
+- Breakeven if options
+- Expiration / strikes if options
+- Main reason it ranked
+- Main risk warning
+- Buttons:
+  - View Why
+  - Review Scenario
+  - Paper Trade
+  - Prepare Order
+
+Use language:
+“Candidate scenario”
+“Review”
+“Software-generated”
+“Based on selected filters”
+“Historical pattern context”
+
+Avoid language:
+“Buy now”
+“Guaranteed”
+“Best trade for you”
+“75% win probability”
+“AI says buy/sell”
+“Make money”
+
+Scoring engine:
+Create or update a scoring service that calculates:
+
+finalOpportunityScore =
+  technicalScore * 0.30 +
+  sentimentScore * 0.20 +
+  momentumScore * 0.20 +
+  liquidityScore * 0.15 +
+  riskScore * 0.15
+
+Map final score to grade:
+- 90–100: A+
+- 80–89: A
+- 70–79: B
+- 60–69: C
+- below 60: Do not show by default
+
+Technical score inputs:
+- Trend direction
+- Price above/below moving averages
+- RSI range
+- Breakout/pullback structure
+- Support/resistance proximity
+- Volume confirmation
+
+Momentum score inputs:
+- Relative volume
+- 1-day move
+- 5-day move
+- Gap behavior
+- Intraday trend if available
+
+Sentiment score inputs:
+- Existing stock news API if available
+- Placeholder adapter if not wired yet
+- Summarize recent headlines by ticker
+- Score bullish / neutral / bearish
+- Show “sentiment unavailable” if missing
+
+Options liquidity score inputs:
+- Open interest
+- Option volume
+- Bid/ask spread
+- Delta availability
+- Expiration availability
+
+Risk score inputs:
+- Max loss vs user limit
+- Position size vs buying power
+- Earnings proximity
+- Sector concentration if positions available
+- Existing exposure to same ticker
+- Strategy risk level
+
+Modeling:
+Do not rely on TensorFlow/LSTM initially.
+Create a modular ML adapter interface for future models:
+- getPredictedMove()
+- getPatternConfidence()
+- getVolatilityEdge()
+Return null/placeholder values for now if not implemented.
+Add comments where future Random Forest/LSTM/TensorFlow models can be integrated.
+
+Explanation drawer/modal:
+When user clicks “View Why,” show:
+- Final grade explanation
+- Technical factors
+- Sentiment factors
+- Liquidity factors
+- Risk factors
+- Data used
+- What could invalidate the scenario
+- Compliance note
+
+Example:
+“This scenario ranked highly because momentum improved, price is above key moving averages, recent news sentiment is positive, and options liquidity passed your filters. Main risks include earnings proximity and broad market weakness.”
+
+Review Scenario page/modal:
+Show full scenario details:
+- Setup thesis
+- Entry zone
+- Stop/exit level
+- Target
+- Max loss
+- Max gain
+- Breakeven
+- Risk/reward
+- Options chain details if applicable
+- Order preview
+- Warnings
+- Editable order fields
+
+Before live order:
+Show confirmation checkbox:
+“I understand this is a self-directed order. Strategy Agent is not providing investment advice, and I am responsible for this order.”
+
+Buttons:
+- Cancel
+- Paper Trade
+- Send to Broker
+
+If no broker connected:
+Disable Send to Broker and show:
+“Connect Broker to use self-directed InstaTrade.”
+
+Data handling:
+Use existing broker connection services where available.
+Create a normalized MarketDataProvider interface:
+- getQuote(symbol)
+- getBars(symbol, timeframe)
+- getOptionsChain(symbol, expiration?)
+- getAccountSummary()
+- getPositions()
+- placeOrder(order)
+
+Use existing services if already present.
+Do not duplicate broker logic unnecessarily.
+
+Create a RadarUniverseService:
+- Pull symbols from user watchlist if available
+- Provide fallback demo symbols:
+  AAPL, MSFT, NVDA, AMD, TSLA, META, AMZN, GOOGL, MU, PLTR
+- Allow custom symbols
+
+Create OpportunityRadarService:
+- loadUniverse()
+- enrichWithMarketData()
+- calculateTechnicalScore()
+- calculateMomentumScore()
+- calculateSentimentScore()
+- calculateOptionsLiquidityScore()
+- calculateRiskScore()
+- rankScenarios()
+- applyGuardrails()
+- return top candidates
+
+Guardrails:
+Use existing user risk preferences if available.
+Block or hide scenarios that violate:
+- Max loss per trade
+- Minimum grade
+- Naked options disabled
+- Bid/ask spread too wide
+- Open interest too low
+- Volume too low
+- Earnings too close if user enabled avoid earnings
+- Buying power exceeded
+- Position concentration too high
+
+Show blocked scenario count:
+“7 scenarios hidden because they did not meet your limits.”
+
+History integration:
+When a user reviews, paper trades, or prepares an order, save the scenario to history.
+Add sourceMode: opportunity_radar.
+
+Database/schema additions if needed:
+OpportunityScenario:
+- id
+- userId
+- sourceMode
+- symbol
+- companyName
+- strategyType
+- bias
+- finalGrade
+- finalScore
+- technicalScore
+- sentimentScore
+- momentumScore
+- liquidityScore
+- riskScore
+- thesis
+- mainReason
+- mainRisk
+- entry
+- stop
+- target
+- maxLoss
+- maxGain
+- breakeven
+- capitalRequired
+- expiration
+- strikes
+- orderPreviewJson
+- dataMode
+- brokerConnected
+- reviewedAt
+- paperTradedAt
+- preparedOrderAt
+- sentOrderAt
+- complianceAcknowledged
+- createdAt
+- updatedAt
+
+Market Intel integration:
+If the app already has or will have Market Intel:
+- Reuse sentiment summaries from Market Intel
+- Link from candidate card to “View related news”
+- Show top 3 recent headlines per ticker if available
+
+UI design:
+- Keep existing dark premium theme
+- Make it beginner-friendly and not cluttered
+- Use large cards, clear labels, and progressive disclosure
+- Avoid dense tables on the main view
+- Use badges for grade, bias, liquidity, and risk
+- Mobile responsive
+- Use Tailwind/shadcn components consistent with current app
+
+Empty states:
+If no candidates:
+“Nothing passed your filters right now. Try lowering the minimum grade, expanding the universe, or increasing max risk.”
+
+Loading state:
+“Scanning market data, sentiment, liquidity, and your limits…”
+
+Mock mode:
+If mock data mode is active:
+Generate realistic sample candidates using fallback symbols.
+Clearly show the existing Mock Data banner.
+
+Compliance footer on Opportunity Radar:
+“Strategy Agent provides software-generated scenarios for educational and informational purposes only. Scenarios are not recommendations or personalized investment advice. Trading involves risk, including loss of principal. You are responsible for every decision and order submitted.”
+
+Testing:
+- App builds without TypeScript errors
+- Opportunity Radar works with no broker connected using mock data
+- Opportunity Radar works with broker connected using existing broker services
+- Filters update results
+- View Why opens explanation drawer
+- Review Scenario opens modal/page
+- Prepare Order never sends automatically
+- Send to Broker requires checkbox confirmation
+- History records scenario actions

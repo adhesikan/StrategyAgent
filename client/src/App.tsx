@@ -65,6 +65,7 @@ import GoalModePage from "@/pages/goal-mode";
 import IncomeModePage from "@/pages/income-mode";
 import MarketIntelPage from "@/pages/market-intel";
 import HistoryPage from "@/pages/history";
+import OpportunityRadarPage from "@/pages/opportunity-radar";
 import { Redirect } from "wouter";
 
 function AppRouter() {
@@ -72,6 +73,7 @@ function AppRouter() {
     <Switch>
       <Route path="/home" component={HomeDashboard} />
       <Route path="/goal-mode" component={GoalModePage} />
+      <Route path="/opportunity-radar" component={OpportunityRadarPage} />
       <Route path="/trade-finder" component={AgentPage} />
       <Route path="/income-mode" component={IncomeModePage} />
       <Route path="/market-intel" component={MarketIntelPage} />

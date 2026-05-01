@@ -134,3 +134,11 @@ The Agent now scores every generated setup with a 5-factor weighted Probability 
 - New endpoints: `GET/PUT /api/user/trade-preferences`, `GET/POST/PATCH /api/trade-outcomes`, `POST /api/trade/place-option` (mock execution).
 - Execution guardrails block trades that violate stored preferences (allowed instruments, defined-risk-only, min score, min R/R) on both equity and option place endpoints, with a clear `GUARDRAIL_BLOCKED` response code.
 - Settings now has a "Trade Prefs" tab; Trade Setups page filters by grade, instrument, executed status, and minimum score.
+
+### Opportunity Radar (May 2026)
+A new `/opportunity-radar` page surfaces software-generated, AI-ranked stock & options candidate scenarios for self-directed review. **Not autonomous trading** — every live order requires explicit user review and a checkbox acknowledgment.
+- Nav: between Goal Mode and Trade Finder.
+- New table: `opportunity_scenarios` (persisted on user action only: reviewed / paper_traded / prepared_order / sent_order). Sent orders are mirrored to `tradeSetupHistory`.
+- New services in `server/services/opportunity-radar/`: `scoring.ts` (5-factor weights — technical 30 / sentiment 20 / momentum 20 / liquidity 15 / risk 15; A+/A/B/C grades, <60 hidden), `universe-service.ts`, `ml-adapter.ts` (placeholder), `radar-service.ts` (orchestrator). Uses live broker quotes, account balance, and positions when connected; deterministic mock fallback otherwise.
+- New endpoints in `server/routes/opportunity-radar.ts`: `GET /api/radar/scenarios`, `POST /api/radar/scenarios` (sent_order requires `complianceAcknowledged: true`), `GET /api/radar/scenarios/history`.
+- Frontend: filter panel (strategy, bias, max loss, min grade, time horizon, universe + advanced liquidity/earnings/RR filters), ranked candidate cards with sub-scores, "View Why" drawer showing factor breakdown, Review Scenario modal mirroring `OrderReviewModal` acknowledgment pattern, Paper Trade / Send to Broker actions.

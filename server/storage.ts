@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { encryptCredentials, decryptCredentials, hasEncryptionKey, encryptToken, decryptToken } from "./crypto";
 import { db } from "./db";
-import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable, agentSkippedTrades as agentSkippedTradesTable, customStrategies as customStrategiesTable, tradeSetupHistory as tradeSetupHistoryTable, promptRequestLogs as promptRequestLogsTable, activityLogs as activityLogsTable, analysisConditions as analysisConditionsTable, setupScores as setupScoresTable, instrumentRecommendations as instrumentRecommendationsTable, optionCandidates as optionCandidatesTable, tradeOutcomes as tradeOutcomesTable, userTradePreferences as userTradePreferencesTable } from "@shared/schema";
+import { brokerConnections, watchlists as watchlistsTable, opportunityDefaults as opportunityDefaultsTable, userSettings as userSettingsTable, algoPilotxConnections as algoPilotxConnectionsTable, executionRequests as executionRequestsTable, automationEndpoints as automationEndpointsTable, trades as tradesTable, alertRules as alertRulesTable, alertEvents as alertEventsTable, opportunityFirstSeen as opportunityFirstSeenTable, snaptradeConnections as snaptradeConnectionsTable, opportunities as opportunitiesTable, agentPolicies as agentPoliciesTable, agentDecisions as agentDecisionsTable, agentState as agentStateTable, auditEvents as auditEventsTable, optionsScans as optionsScansTable, riskProfiles as riskProfilesTable, tickerUniverses as tickerUniversesTable, tickerUniverseMembers as tickerUniverseMembersTable, externalAlerts as externalAlertsTable, externalAlertApiKeys as externalAlertApiKeysTable, partnerConfigs as partnerConfigsTable, partnerUsers as partnerUsersTable, agentSettings as agentSettingsTable, agentSettingsAudit as agentSettingsAuditTable, autoModeConsents as autoModeConsentsTable, userSystemProfiles as userSystemProfilesTable, userAdvancedConfigs as userAdvancedConfigsTable, userOnboardingStates as userOnboardingStatesTable, disclaimerAcceptanceLogs as disclaimerAcceptanceLogsTable, agentSkippedTrades as agentSkippedTradesTable, customStrategies as customStrategiesTable, tradeSetupHistory as tradeSetupHistoryTable, opportunityScenarios as opportunityScenariosTable, promptRequestLogs as promptRequestLogsTable, activityLogs as activityLogsTable, analysisConditions as analysisConditionsTable, setupScores as setupScoresTable, instrumentRecommendations as instrumentRecommendationsTable, optionCandidates as optionCandidatesTable, tradeOutcomes as tradeOutcomesTable, userTradePreferences as userTradePreferencesTable } from "@shared/schema";
 import { users as usersTable } from "@shared/models/auth";
 import { desc, asc, inArray, lt, gte, lte, or, sql, avg, count, isNull } from "drizzle-orm";
 import { eq, and } from "drizzle-orm";
@@ -99,6 +99,8 @@ import type {
   InsertCustomStrategy,
   TradeSetupHistory,
   InsertTradeSetupHistory,
+  OpportunityScenario,
+  InsertOpportunityScenario,
   PromptRequestLog,
   InsertPromptRequestLog,
   ActivityLog,
@@ -373,6 +375,10 @@ export interface IStorage {
   getTradeSetupHistoryList(userId: string, filters?: { symbol?: string; strategy?: string; status?: string; limit?: number }): Promise<TradeSetupHistory[]>;
   createTradeSetupHistory(data: InsertTradeSetupHistory): Promise<TradeSetupHistory>;
   updateTradeSetupHistory(id: string, userId: string, data: Partial<TradeSetupHistory>): Promise<TradeSetupHistory | null>;
+
+  createOpportunityScenario(data: InsertOpportunityScenario): Promise<OpportunityScenario>;
+  getOpportunityScenariosByUser(userId: string, limit?: number): Promise<OpportunityScenario[]>;
+  updateOpportunityScenario(id: string, userId: string, data: Partial<OpportunityScenario>): Promise<OpportunityScenario | null>;
 
   createPromptRequestLog(data: InsertPromptRequestLog): Promise<PromptRequestLog>;
 
@@ -3012,6 +3018,23 @@ export class MemStorage implements IStorage {
 
   async updateTradeSetupHistory(id: string, userId: string, data: Partial<TradeSetupHistory>): Promise<TradeSetupHistory | null> {
     const [result] = await db.update(tradeSetupHistoryTable).set(data).where(and(eq(tradeSetupHistoryTable.id, id), eq(tradeSetupHistoryTable.userId, userId))).returning();
+    return result || null;
+  }
+
+  async createOpportunityScenario(data: InsertOpportunityScenario): Promise<OpportunityScenario> {
+    const [result] = await db.insert(opportunityScenariosTable).values(data).returning();
+    return result;
+  }
+
+  async getOpportunityScenariosByUser(userId: string, limit: number = 50): Promise<OpportunityScenario[]> {
+    return db.select().from(opportunityScenariosTable).where(eq(opportunityScenariosTable.userId, userId)).orderBy(desc(opportunityScenariosTable.createdAt)).limit(limit);
+  }
+
+  async updateOpportunityScenario(id: string, userId: string, data: Partial<OpportunityScenario>): Promise<OpportunityScenario | null> {
+    const [result] = await db.update(opportunityScenariosTable)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(opportunityScenariosTable.id, id), eq(opportunityScenariosTable.userId, userId)))
+      .returning();
     return result || null;
   }
 

@@ -13,6 +13,7 @@ import {
   Search,
   DollarSign,
   Newspaper,
+  Radar,
 } from "lucide-react";
 import {
   Sidebar,
@@ -42,6 +43,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { title: "Home", description: "Dashboard & quick actions", url: "/home", icon: Home },
   { title: "Goal Mode", description: "Goal-driven scenarios", url: "/goal-mode", icon: Target },
+  { title: "Opportunity Radar", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
   { title: "Trade Finder", description: "Advanced trade builder", url: "/trade-finder", icon: Search },
   { title: "Income Mode", description: "Premium & defined-risk income", url: "/income-mode", icon: DollarSign },
   { title: "Market Intel", description: "News, catalysts, watchlist", url: "/market-intel", icon: Newspaper },

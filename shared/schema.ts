@@ -1728,6 +1728,53 @@ export const insertTradeSetupHistorySchema = createInsertSchema(tradeSetupHistor
 export type InsertTradeSetupHistory = z.infer<typeof insertTradeSetupHistorySchema>;
 export type TradeSetupHistory = typeof tradeSetupHistory.$inferSelect;
 
+export const opportunityScenarios = pgTable("opportunity_scenarios", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  sourceMode: text("source_mode").notNull().default("opportunity_radar"),
+  symbol: text("symbol").notNull(),
+  companyName: text("company_name"),
+  strategyType: text("strategy_type").notNull(),
+  bias: text("bias"),
+  finalGrade: text("final_grade"),
+  finalScore: integer("final_score"),
+  technicalScore: integer("technical_score"),
+  sentimentScore: integer("sentiment_score"),
+  momentumScore: integer("momentum_score"),
+  liquidityScore: integer("liquidity_score"),
+  riskScore: integer("risk_score"),
+  thesis: text("thesis"),
+  mainReason: text("main_reason"),
+  mainRisk: text("main_risk"),
+  entry: real("entry"),
+  stop: real("stop"),
+  target: real("target"),
+  maxLoss: real("max_loss"),
+  maxGain: real("max_gain"),
+  breakeven: real("breakeven"),
+  capitalRequired: real("capital_required"),
+  expiration: text("expiration"),
+  strikes: text("strikes"),
+  orderPreviewJson: jsonb("order_preview_json"),
+  dataMode: text("data_mode"),
+  brokerConnected: boolean("broker_connected").default(false),
+  reviewedAt: timestamp("reviewed_at"),
+  paperTradedAt: timestamp("paper_traded_at"),
+  preparedOrderAt: timestamp("prepared_order_at"),
+  sentOrderAt: timestamp("sent_order_at"),
+  complianceAcknowledged: boolean("compliance_acknowledged").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOpportunityScenarioSchema = createInsertSchema(opportunityScenarios).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOpportunityScenario = z.infer<typeof insertOpportunityScenarioSchema>;
+export type OpportunityScenario = typeof opportunityScenarios.$inferSelect;
+
 export const promptRequestLogs = pgTable("prompt_request_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

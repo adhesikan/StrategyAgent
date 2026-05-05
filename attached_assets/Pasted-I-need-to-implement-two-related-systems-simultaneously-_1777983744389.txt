@@ -1,0 +1,931 @@
+I need to implement two related systems simultaneously:
+1. Trader persona segmentation (buyer/seller/complex/learner)
+2. Subscription plans with Stripe and feature locking
+
+These must be built together because personas and plans 
+are deeply connected — some personas require certain plans,
+and the UI personalizes based on both.
+
+Do not remove any existing features. Do not modify any 
+existing broker integrations, scanning logic, or the 
+existing partner/AlgoPilotX Stripe code. All existing 
+functionality must remain accessible.
+
+Looking at the current app UI:
+- The homepage has a good foundation — keep the layout
+- The sidebar has Home/Grow/Income/Trade/Markets + More
+- Today's AI Snapshot panel exists on the right
+- The "Mock Data" yellow banner needs to be toned down
+- The "Best Income Setup" showing only "T" needs to be fixed
+- Simulated Mode / Connect Broker / Market Closed pills exist
+
+---
+
+PHASE 1 — FOUNDATION (do this first, everything depends on it)
+
+1A. SHARED PLAN DEFINITIONS
+CREATE: shared/plans.ts
+
+export const PLANS = {
+  free: {
+    id: 'free',
+    name: 'Explorer',
+    price: 0,
+    priceAnnual: 0,
+    stripeMonthlyPriceId: null,
+    stripeAnnualPriceId: null,
+    limits: {
+      dailyAnalyses: 5,
+      brokerConnections: 0,
+      scannerResults: 0,
+      automationMode: 'none',
+      dataDelay: 15,
+      users: 1,
+    },
+    features: {
+      liveData: false,
+      brokerConnect: false,
+      scanner: false,
+      automation: false,
+      optionsFlow: false,
+      multiLeg: false,
+      tradeJournal: false,
+      paperTrading: true,
+      morningBriefing: false,
+      alerts: false,
+      teamSharing: false,
+      partnerSignals: false,
+    },
+    allowedPersonas: ['learner'],
+  },
+  pro: {
+    id: 'pro',
+    name: 'Trader',
+    price: 29,
+    priceAnnual: 278,
+    stripeMonthlyPriceId: process.env.STRIPE_PRO_MONTHLY_PRICE_ID,
+    stripeAnnualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
+    limits: {
+      dailyAnalyses: 50,
+      brokerConnections: 1,
+      scannerResults: 10,
+      automationMode: 'alerts',
+      dataDelay: 0,
+      users: 1,
+    },
+    features: {
+      liveData: true,
+      brokerConnect: true,
+      scanner: true,
+      automation: false,
+      optionsFlow: false,
+      multiLeg: false,
+      tradeJournal: false,
+      paperTrading: true,
+      morningBriefing: true,
+      alerts: true,
+      teamSharing: false,
+      partnerSignals: false,
+    },
+    allowedPersonas: ['learner', 'buyer', 'seller'],
+  },
+  edge: {
+    id: 'edge',
+    name: 'Active Trader',
+    price: 79,
+    priceAnnual: 758,
+    stripeMonthlyPriceId: process.env.STRIPE_EDGE_MONTHLY_PRICE_ID,
+    stripeAnnualPriceId: process.env.STRIPE_EDGE_ANNUAL_PRICE_ID,
+    limits: {
+      dailyAnalyses: -1,
+      brokerConnections: 5,
+      scannerResults: -1,
+      automationMode: 'assisted',
+      dataDelay: 0,
+      users: 1,
+    },
+    features: {
+      liveData: true,
+      brokerConnect: true,
+      scanner: true,
+      automation: true,
+      optionsFlow: true,
+      multiLeg: true,
+      tradeJournal: true,
+      paperTrading: true,
+      morningBriefing: true,
+      alerts: true,
+      teamSharing: false,
+      partnerSignals: false,
+    },
+    allowedPersonas: ['learner', 'buyer', 'seller', 'complex'],
+  },
+  team: {
+    id: 'team',
+    name: 'Pro Desk',
+    price: 199,
+    priceAnnual: 1908,
+    stripeMonthlyPriceId: process.env.STRIPE_TEAM_MONTHLY_PRICE_ID,
+    stripeAnnualPriceId: process.env.STRIPE_TEAM_ANNUAL_PRICE_ID,
+    limits: {
+      dailyAnalyses: -1,
+      brokerConnections: -1,
+      scannerResults: -1,
+      automationMode: 'autonomous',
+      dataDelay: 0,
+      users: 5,
+    },
+    features: {
+      liveData: true,
+      brokerConnect: true,
+      scanner: true,
+      automation: true,
+      optionsFlow: true,
+      multiLeg: true,
+      tradeJournal: true,
+      paperTrading: true,
+      morningBriefing: true,
+      alerts: true,
+      teamSharing: true,
+      partnerSignals: true,
+    },
+    allowedPersonas: ['learner', 'buyer', 'seller', 'complex'],
+  },
+}
+
+export type PlanId = keyof typeof PLANS
+export type Plan = typeof PLANS[PlanId]
+
+Export these helper functions:
+- getPlan(planId: PlanId): Plan
+- canAccessFeature(planId: PlanId, feature: string): boolean
+- isWithinLimit(planId: PlanId, limit: string, current: number): boolean
+- canUsePersona(planId: PlanId, persona: string): boolean
+- getUpgradePlan(planId: PlanId): PlanId | null
+  (free→pro, pro→edge, edge→team, team→null)
+- getRequiredPlan(feature: string): PlanId
+  (returns the minimum plan that includes a feature)
+
+1B. DATABASE MIGRATION
+Add these fields to the existing users table 
+using the existing ORM/migration pattern:
+
+traderPersona: text nullable 
+  ('buyer' | 'seller' | 'complex' | 'learner')
+planId: text default 'free'
+stripeCustomerId: text nullable
+stripeSubscriptionId: text nullable
+subscriptionStatus: text default 'active'
+  ('active' | 'canceled' | 'past_due' | 'trialing')
+billingCycle: text default 'monthly'
+trialEndsAt: timestamp nullable
+currentPeriodEndsAt: timestamp nullable
+dailyAnalysesUsed: integer default 0
+dailyAnalysesResetAt: timestamp nullable
+
+Add server helper:
+resetDailyAnalysesIfNeeded(userId): checks if 
+dailyAnalysesResetAt is before today midnight UTC,
+resets dailyAnalysesUsed to 0 and updates resetAt.
+
+Update existing GET /api/user/settings to return 
+traderPersona and planId.
+Update existing PATCH /api/user/settings to accept 
+and save traderPersona.
+
+1C. REACT CONTEXTS
+CREATE: client/src/context/PersonaContext.tsx
+
+Reads traderPersona from existing auth/user context.
+Exposes: persona, isLearner, isBuyer, isSeller, 
+isComplex, setPersona(p) function.
+Export usePersona() hook.
+
+CREATE: client/src/context/PlanContext.tsx
+
+Fetches GET /api/billing/status on mount.
+Exposes:
+- plan: PlanId
+- planName: string  
+- status: subscription status
+- isTrialing: boolean
+- trialDaysLeft: number | null
+- dailyAnalysesUsed: number
+- dailyAnalysesLimit: number
+- canAccess: (feature: string) => boolean
+- isWithinQuota: boolean
+- upgradeTo: PlanId | null
+Export usePlan() hook.
+
+Wrap the entire app with both providers:
+<PlanProvider>
+  <PersonaProvider>
+    {children}
+  </PersonaProvider>
+</PlanProvider>
+
+---
+
+PHASE 2 — ONBOARDING FLOW
+
+Show these screens in order on first login, after 
+the existing legal/compliance modal:
+
+2A. PERSONA SELECTOR
+CREATE: client/src/components/Onboarding/PersonaSelector.tsx
+
+Only show if traderPersona === null.
+Full screen overlay matching existing modal style.
+No skip button — must select to proceed.
+
+Heading: "How do you primarily trade options?"
+Subtext: "This personalizes your experience. 
+  Change it anytime in Settings."
+
+4 selectable cards in 2x2 grid (1 column mobile):
+
+CARD 1 — buyer:
+  Title: "I buy calls and puts"
+  Description: "Direction trades — momentum, 
+    earnings, breakouts"
+
+CARD 2 — seller:
+  Title: "I sell premium for income"
+  Description: "Covered calls, cash secured puts, 
+    credit spreads — I collect theta"
+
+CARD 3 — complex:
+  Title: "I trade spreads and structures"
+  Description: "Iron condors, butterflies, 
+    calendars, multi-leg strategies"
+
+CARD 4 — learner:
+  Title: "I'm still learning"
+  Description: "Show me the basics and explain 
+    things in plain English"
+
+After selecting complex on free plan, show inline:
+"Complex strategies require the Edge plan ($79/mo). 
+ Continue with paper trading for now, or upgrade 
+ after setup."
+Two buttons: "Upgrade to Edge →" | "Continue free →"
+
+"Continue →" button appears after selection.
+Saves via PATCH /api/user/settings.
+On success: dismiss and show plan selector (2B).
+On error: show "Something went wrong. Try again."
+
+2B. PLAN SELECTOR (shown immediately after persona)
+CREATE: client/src/components/Onboarding/PlanSelector.tsx
+
+Only show once, right after PersonaSelector.
+Track shown state in localStorage: 
+key 'planSelectorShown', value 'true'.
+
+Heading: "Choose your plan"
+Subtext: "Start free, upgrade anytime."
+
+Show 3 plan cards (pro, edge, team) + free option.
+Highlight the recommended plan based on persona:
+  buyer → highlight Pro
+  seller → highlight Pro
+  complex → highlight Edge
+  learner → highlight Free
+
+Each card:
+- Plan name + price
+- 4-5 key features
+- CTA button
+
+Free: "Start for free →" → dismiss onboarding
+Pro: "Start 7-day free trial →" → Stripe Checkout
+Edge: "Upgrade to Edge →" → Stripe Checkout
+Team: "Upgrade to Team →" → Stripe Checkout
+
+"Maybe later — start free" text link at bottom.
+Clicking dismisses without selecting a paid plan.
+
+---
+
+PHASE 3 — STRIPE BACKEND
+
+Reuse existing Stripe client from partner dashboard.
+Do not duplicate Stripe initialization.
+
+ADD to server routes (or existing billing file):
+
+POST /api/billing/create-checkout-session
+Body: { planId, billingCycle: 'monthly' | 'annual' }
+- Verify authentication
+- Get or create Stripe customer, save stripeCustomerId
+- Create Checkout Session:
+  * price: correct priceId from PLANS config
+  * mode: 'subscription'
+  * allow_promotion_codes: true
+  * trial_period_days: 7 (pro plan, new subscribers only)
+  * success_url: [appUrl]/billing/success
+  * cancel_url: [appUrl]/pricing
+  * metadata: { userId, planId, billingCycle }
+- Return { url }
+
+POST /api/billing/create-portal-session
+- Create Stripe Billing Portal session
+- Return { url }
+
+POST /api/billing/webhook
+Register BEFORE body-parsing middleware.
+Verify signature with STRIPE_WEBHOOK_SECRET.
+
+Handle events:
+  checkout.session.completed:
+    → Update planId, stripeSubscriptionId,
+      subscriptionStatus, billingCycle,
+      trialEndsAt, currentPeriodEndsAt
+
+  customer.subscription.updated:
+    → Update subscriptionStatus, currentPeriodEndsAt
+    → Update planId if plan changed in Stripe
+
+  customer.subscription.deleted:
+    → Set planId: 'free', status: 'canceled',
+      stripeSubscriptionId: null
+
+  invoice.payment_failed:
+    → Set subscriptionStatus: 'past_due'
+
+  invoice.payment_succeeded:
+    → Set subscriptionStatus: 'active',
+      update currentPeriodEndsAt
+
+GET /api/billing/status
+Returns: { planId, planName, subscriptionStatus,
+  billingCycle, trialEndsAt, currentPeriodEndsAt,
+  dailyAnalysesUsed, dailyAnalysesLimit }
+
+PLAN ENFORCEMENT MIDDLEWARE
+CREATE: server/middleware/planGuard.ts
+
+requireFeature(feature: string):
+  - Check canAccessFeature(user.planId, feature)
+  - If false: return 403 {
+      error: 'PLAN_LIMIT',
+      feature,
+      currentPlan: planId,
+      requiredPlan: getRequiredPlan(feature),
+      message: 'Upgrade to access this feature'
+    }
+
+requireAnalysisQuota():
+  - Call resetDailyAnalysesIfNeeded(userId)
+  - Check limit (-1 = unlimited)
+  - If exceeded: return 429 {
+      error: 'DAILY_LIMIT',
+      used, limit,
+      resetsAt: tomorrow midnight UTC,
+      currentPlan: planId,
+      upgradePlan: getUpgradePlan(planId)
+    }
+  - If within limit: increment counter, pass through
+
+Apply to existing routes:
+  POST /api/trade-chat → requireAnalysisQuota()
+  POST /api/trade-setup → requireAnalysisQuota()
+  GET /api/scanner/* → requireFeature('scanner')
+  POST /api/orders/* → requireFeature('brokerConnect')
+  POST /api/automation/* → requireFeature('automation')
+  GET /api/options-flow/* → requireFeature('optionsFlow')
+
+---
+
+PHASE 4 — SOFT LOCK COMPONENTS
+
+CREATE: client/src/components/Plans/FeatureLock.tsx
+
+Props:
+- feature: string
+- lockStyle: 'blur' | 'banner' | 'modal'
+- children: ReactNode
+
+If canAccess(feature) → render children normally.
+If not:
+
+BLUR style:
+- Render children with filter: blur(4px), 
+  pointer-events: none
+- Overlay centered card:
+  * Lock icon
+  * "Available on [Plan Name]"
+  * Feature-specific message (see below)
+  * "Upgrade to [Plan] →" button → UpgradeModal
+  * "See all plans" link → /pricing
+
+BANNER style:
+- Replace with pill: "[Feature] — [Plan] feature ↑"
+- Clicking → UpgradeModal
+
+MODAL style:
+- Render children normally
+- Intercept clicks → show UpgradeModal instead
+
+Feature messages:
+  brokerConnect: "Connect your broker and place 
+    live trades with real-time data."
+  scanner: "Scan hundreds of tickers automatically 
+    to surface the best setups."
+  automation: "Set alerts and let AI manage your 
+    exit strategy automatically."
+  optionsFlow: "See real-time unusual options 
+    activity and institutional flow."
+  multiLeg: "Access condors, butterflies, 
+    calendars, and complex multi-leg strategies."
+  tradeJournal: "Track performance over time and 
+    find patterns in your trading."
+  teamSharing: "Share watchlists and ideas 
+    with your team."
+  partnerSignals: "Automate execution from 
+    external signal providers."
+
+CREATE: client/src/components/Plans/UpgradeModal.tsx
+
+Props: isOpen, onClose, highlightPlan?, triggerFeature?
+
+Layout:
+- Header: "Unlock [feature]" or "Upgrade your plan"
+- Monthly/Annual toggle (annual shows "Save 20%")
+- 3 plan cards: Pro, Edge (Most Popular badge), Team
+- Each card: name, price, 5 features, CTA button
+- CTA calls /api/billing/create-checkout-session
+  then redirects to Stripe Checkout URL
+- "Cancel anytime. No hidden fees." below cards
+
+CREATE: client/src/components/Plans/QuotaBanner.tsx
+
+Show on Find a Trade page only.
+At 80% of limit → subtle yellow banner:
+  "X of Y analyses used today. Upgrade for unlimited →"
+At 100% → red banner:
+  "Daily limit reached. Resets midnight UTC. 
+   Upgrade for unlimited →"
+Hidden for unlimited plans.
+
+---
+
+PHASE 5 — HOMEPAGE PERSONALIZATION
+
+UPDATE existing homepage. Keep current layout — 
+only change content based on persona + plan.
+
+5A. FIX EXISTING BUGS FIRST:
+- Mock Data yellow banner → replace with small 
+  muted pill in top-right, same style as 
+  existing Simulated Mode pill
+- Best Income Setup showing "T" → fix data 
+  truncation, show full ticker + description
+- Sidebar descriptions that are cut off → 
+  shorten to 3 words max or remove subtitles
+
+5B. PERSONALIZED HEADING:
+buyer:   "What's moving today?"
+         "Find directional trades with the best setups."
+seller:  "What can you sell this week?"
+         "Find high IV tickers and income opportunities."
+complex: "What's the volatility environment today?"
+         "Find the best structures for current conditions."
+learner: Keep existing heading and subtext as-is.
+
+5C. ACTION CARD ORDER (reorder only, don't remove):
+buyer:   Find a Trade → Grow → Markets → Income
+seller:  Income → Find a Trade → Markets → Grow
+complex: Find a Trade → Markets → Grow → Income
+learner: Keep existing order
+
+5D. TODAY'S AI SNAPSHOT — PERSONALIZED LABELS:
+buyer snapshot:
+  1. Market Tone (keep)
+  2. "Top Momentum Play" (highest momentum score)
+  3. "Best Earnings Play" (nearest earnings + high IV)
+  4. Watchlist Risk (keep)
+
+seller snapshot:
+  1. Market Tone (keep)
+  2. "Best Premium to Sell" (highest IV rank, stable)
+  3. "Top Income Setup" (best covered call or CSP)
+  4. Watchlist Risk (keep)
+
+complex snapshot:
+  1. Market Tone (keep)
+  2. "Volatility Regime" (VIX + direction)
+  3. "Best Structure Today" (condor/butterfly signal)
+  4. Watchlist Risk (keep)
+
+learner: Keep existing snapshot as-is.
+
+Pull items 2 and 3 from existing scanner/radar data.
+Show "Scanning..." if no data available.
+
+5E. POPULAR TODAY CHIPS — PERSONALIZED:
+buyer:   "Best call today" | "Earnings this week" | 
+         "Momentum breakouts" | "Oversold bounces"
+seller:  "Highest IV to sell" | "Best covered call" | 
+         "Cash secured puts" | "Credit spread setups"
+complex: "Iron condor setups" | "Calendar spreads" | 
+         "Butterfly plays" | "Vol structure plays"
+learner: Keep existing chips.
+
+5F. ROTATING ASK BAR PLACEHOLDER:
+Rotate every 3 seconds with CSS fade transition.
+buyer:   "Find me a bullish momentum trade" /
+         "What calls should I look at on NVDA?" /
+         "Any earnings plays this week?" /
+         "Show me a breakout setup"
+seller:  "What can I sell on AAPL this week?" /
+         "Find me the highest IV tickers" /
+         "Best covered call opportunity?" /
+         "Show me a cash secured put"
+complex: "Where's a good iron condor right now?" /
+         "Best structure for this volatility?" /
+         "Find me a calendar spread setup" /
+         "Show me a butterfly on SPY"
+learner: Keep existing placeholders.
+Clear interval on component unmount.
+
+---
+
+PHASE 6 — NAVIGATION PERSONALIZATION
+
+UPDATE existing sidebar nav.
+
+6A. NAV ORDER (reorder top 5, rest stay in More):
+buyer:   Home | Trade Ideas | Grow | Markets | Scanner
+seller:  Home | Income | Trade Ideas | Markets | Scanner
+complex: Home | Trade Ideas | Markets | Scanner | Income
+learner: Keep existing order
+
+6B. PERSONA BADGE
+Add small pill below app logo in sidebar:
+buyer:   "↑ Buyer"
+seller:  "$ Seller"  
+complex: "⬡ Complex"
+learner: "◎ Learning"
+
+If complex persona + free/pro plan, show:
+"⬡ Complex ↑" with ↑ in amber
+Clicking → UpgradeModal highlighting Edge plan.
+
+If traderPersona is null → show nothing.
+Clicking badge → Change Persona modal in Settings.
+
+6C. INCOME PAGE IN NAV:
+seller → Income is 2nd nav item (prominent)
+buyer → Income moves to More section
+complex → Income stays in main nav
+learner → Income stays in main nav
+
+---
+
+PHASE 7 — TRADE IDEAS PAGE
+
+UPDATE existing Opportunity Radar / Trade Ideas page.
+
+7A. PERSONALIZED HEADER:
+buyer:   "Trade Ideas — Directional Setups"
+seller:  "Trade Ideas — Income & Premium"
+complex: "Trade Ideas — Structures & Spreads"
+learner: "Trade Ideas"
+
+7B. PERSONA DEFAULT FILTERS (silent, no chips shown):
+buyer:   strategy: ['long call','long put','debit spread']
+seller:  strategy: ['covered call','cash secured put',
+                    'credit spread','iron condor']
+complex: strategy: ['iron condor','butterfly','calendar',
+                    'ratio spread','strangle','straddle']
+learner: no filters
+
+Add text link: "Showing [persona] setups — See all →"
+Clicking clears persona filters.
+
+7C. CARD METRIC EMPHASIS (reorder, don't remove):
+buyer:   lead with Probability of Profit
+seller:  lead with IV Rank + Premium Collected
+complex: lead with Max Profit Range
+learner: lead with Grade (keep existing large A/B/C)
+
+7D. FEATURE LOCKS ON CARDS:
+Wrap complex strategy cards with 
+FeatureLock banner style for free/pro users.
+Required plan: edge.
+
+---
+
+PHASE 8 — AI CHAT PERSONALIZATION
+
+UPDATE existing TradeChat component (or the Find 
+a Trade page AI input if chat isn't built yet).
+
+8A. PERSONA SYSTEM PROMPT ADDITIONS:
+Append to existing OpenAI gpt-4o-mini system prompt:
+
+buyer:
+  "This user buys calls and puts for directional 
+   trades. Focus on: momentum, catalysts, IV rank 
+   (flag if high — they don't want to overpay), 
+   probability of profit, entry timing. Suggest 
+   debit spreads when IV is elevated. Always 
+   mention theta decay risk."
+
+seller:
+  "This user sells options for income. Focus on: 
+   IV rank (higher = better for sellers), premium 
+   collected, probability of expiring worthless, 
+   assignment risk, downside protection. Favor 
+   covered calls, CSPs, credit spreads. Always 
+   mention max loss and gap risk."
+
+complex:
+  "This user trades multi-leg structures. They are 
+   experienced — use technical terminology freely. 
+   Focus on: volatility regime, skew, term structure, 
+   max profit range, breakeven prices, ideal structure. 
+   Suggest condors, butterflies, calendars as appropriate."
+
+learner:
+  "This user is learning options. Use very simple 
+   language. No jargon. Explain every trade as if 
+   they've never placed an options trade. Focus only 
+   on: what it does in plain English, max profit, 
+   max loss, one key risk. Always recommend paper 
+   trading first."
+
+8B. PERSONA STARTER CHIPS (empty chat state):
+buyer:   "Best call today" | "Earnings plays" | 
+         "Momentum breakouts" | "Oversold bounce"
+seller:  "Highest IV to sell" | "Best covered call" | 
+         "Cash secured puts" | "Credit spreads"
+complex: "Iron condor setup" | "Calendar spread" | 
+         "Butterfly play" | "Vol structure"
+learner: Keep existing defaults.
+
+8C. QUOTA ENFORCEMENT IN CHAT:
+When API returns 429 DAILY_LIMIT error, show 
+in chat as AI message:
+"You've used all X analyses for today. 
+ Resets at midnight UTC.
+ [Upgrade for unlimited →]"
+The upgrade link opens UpgradeModal.
+
+When API returns 403 PLAN_LIMIT error, show:
+"That feature requires the [Plan] plan.
+ [See what's included →]"
+Link opens UpgradeModal.
+
+---
+
+PHASE 9 — SETTINGS PAGE UPDATES
+
+UPDATE existing Settings page.
+
+9A. MY TRADING STYLE SECTION
+New section heading: "My Trading Style"
+Subtext: "Personalizes your homepage, trade ideas, 
+  and AI suggestions."
+
+Shows current persona as a pill badge.
+"Change trading style" button → modal with same 
+4 persona cards from Phase 2 onboarding.
+Selecting new persona saves immediately via 
+PATCH /api/user/settings and updates PersonaContext
+triggering instant UI re-render.
+Success toast: "Trading style updated"
+
+9B. BILLING SECTION
+New section heading: "Billing & Plan"
+
+Shows:
+- Current plan name + badge
+- Status pill (Active/Trialing/Past due/Canceled)
+- For trialing: "Trial ends in X days"
+- "Renews on [date]" or "Expires on [date]"
+- Daily analyses bar (hidden for unlimited plans):
+  "[X] of [Y] analyses used today"
+- Button: "Manage billing" → Stripe Portal
+- Button: "Upgrade plan" → UpgradeModal
+  (hidden if Team plan)
+
+Trial banner (if trialing):
+"Your free trial ends in X days. 
+ Add a payment method to keep access. →"
+→ Stripe Portal
+
+---
+
+PHASE 10 — PRICING PAGE
+
+CREATE: client/src/pages/Pricing.tsx
+Route: /pricing
+Also link from sidebar More section.
+
+HEADER:
+"Simple, transparent pricing"
+"Start free. Upgrade when you're ready."
+Monthly/Annual toggle (Annual: "Save 20%")
+
+4 PLAN CARDS (horizontal desktop, stacked mobile):
+
+FREE — Explorer — $0:
+  "Learn the basics risk-free"
+  ✓ 5 trade analyses/day
+  ✓ Paper trading
+  ✓ AI explanations
+  ✓ Learner persona
+  ✗ Live data
+  ✗ Broker connection
+  CTA: "Get started free" → /register
+
+PRO — Trader — $29/mo ($278/yr):
+  "For active buyers and sellers"
+  ✓ 50 analyses/day
+  ✓ Real-time data
+  ✓ 1 broker connection
+  ✓ Morning scan
+  ✓ Buyer + Seller personas
+  ✗ Automation
+  ✗ Options flow
+  CTA: "Start 7-day free trial"
+  Note: "No credit card required"
+
+EDGE — Active Trader — $79/mo ($758/yr):
+  "For serious options traders"
+  Badge: "Most Popular"
+  Highlighted border (existing primary color)
+  ✓ Unlimited analyses
+  ✓ Real-time + options flow
+  ✓ 5 broker connections
+  ✓ All personas incl. Complex
+  ✓ Full scanner + automation
+  ✓ Trade journal
+  CTA: "Upgrade to Edge"
+
+TEAM — Pro Desk — $199/mo ($1,908/yr):
+  "For trading groups and small funds"
+  ✓ Everything in Edge
+  ✓ Up to 5 members
+  ✓ Shared watchlists
+  ✓ Partner signals
+  ✓ Admin controls
+  CTA: "Upgrade to Team"
+
+FAQ ACCORDION below cards:
+Q: "Can I change plans later?"
+A: "Yes — upgrade or downgrade anytime. Upgrades 
+    take effect immediately. Downgrades at period end."
+
+Q: "What happens to my data if I downgrade?"
+A: "Your history is preserved. You lose access to 
+    premium features but your data stays safe."
+
+Q: "Is there a free trial?"
+A: "Yes — Pro includes a 7-day free trial, 
+    no credit card required."
+
+Q: "Can I cancel anytime?"
+A: "Yes — cancel from Settings anytime, 
+    no cancellation fees."
+
+Q: "What payment methods do you accept?"
+A: "All major credit and debit cards via Stripe. 
+    We never store your card details."
+
+Compliance footer:
+"Strategy Agent provides analytical tools for 
+ informational purposes only. Not investment advice."
+
+---
+
+PHASE 11 — BILLING SUCCESS / CANCEL PAGES
+
+CREATE: client/src/pages/BillingSuccess.tsx
+Route: /billing/success
+
+Poll GET /api/billing/status every 2 seconds 
+(max 30 seconds) to confirm plan updated.
+
+If confirmed:
+  Success checkmark animation (CSS only)
+  "You're on [Plan Name]!"
+  Plan-specific message:
+    pro: "Real-time data and broker connection active."
+    edge: "Unlimited analyses and automation unlocked."
+    team: "Your Pro Desk is ready. Invite team in Settings."
+  Button: "Go to dashboard →" → /
+
+If not confirmed after 30 seconds:
+  "Taking longer than expected. Your plan will 
+   activate shortly."
+
+CREATE: client/src/pages/BillingCancel.tsx
+Route: /billing/cancel
+
+"No changes made. Your current plan is active."
+Button: "Back to pricing →" | "Go to dashboard →"
+
+---
+
+PHASE 12 — APPLY FEATURE LOCKS
+
+Wrap these UI elements with FeatureLock.
+Do not remove underlying components.
+
+broker connect button (homepage + settings):
+  → FeatureLock modal style, feature: 'brokerConnect'
+  → Required plan: pro
+
+scanner results section:
+  → FeatureLock blur style, feature: 'scanner'
+  → Show top 3 blurred, required plan: pro
+
+automation/autopilot page:
+  → FeatureLock blur style, feature: 'automation'
+  → Required plan: edge
+
+options flow data (anywhere it appears):
+  → FeatureLock blur style, feature: 'optionsFlow'
+  → Required plan: edge
+
+complex strategy cards in Trade Ideas:
+  → FeatureLock banner style, feature: 'multiLeg'
+  → Required plan: edge
+
+trade journal / performance analytics:
+  → FeatureLock blur style, feature: 'tradeJournal'
+  → Required plan: edge
+
+team sharing features:
+  → FeatureLock blur style, feature: 'teamSharing'
+  → Required plan: team
+
+partner signals automation:
+  → FeatureLock blur style, feature: 'partnerSignals'
+  → Required plan: team
+
+---
+
+ENVIRONMENT VARIABLES TO ADD:
+
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRO_MONTHLY_PRICE_ID=price_...
+STRIPE_PRO_ANNUAL_PRICE_ID=price_...
+STRIPE_EDGE_MONTHLY_PRICE_ID=price_...
+STRIPE_EDGE_ANNUAL_PRICE_ID=price_...
+STRIPE_TEAM_MONTHLY_PRICE_ID=price_...
+STRIPE_TEAM_ANNUAL_PRICE_ID=price_...
+
+---
+
+BUILD ORDER — do phases in this exact order:
+
+Phase 1 first — all other phases depend on it.
+  1A (plans config) → 1B (database) → 1C (contexts)
+
+Phase 2 — onboarding flow
+  Test persona selector works before continuing.
+
+Phase 3 — Stripe backend + middleware
+  Test webhook with Stripe CLI before continuing:
+  stripe listen --forward-to localhost:5000/api/billing/webhook
+
+Phase 4 — lock components
+  Build components before applying anywhere.
+
+Phases 5-8 — personalization (one at a time)
+  Test each persona after each phase.
+
+Phases 9-10 — settings + pricing page
+
+Phases 11-12 — billing pages + apply locks
+
+---
+
+IMPORTANT RULES:
+
+- Never hard-block any user from the app
+- Free users must always access paper trading 
+  and the core UI — soft locks only
+- All plan enforcement must happen server-side 
+  AND client-side — never trust client alone
+- Do not modify existing partner Stripe code
+- Do not modify broker integration code
+- Do not modify existing scanner/analysis logic
+- Maintain existing dark theme throughout
+- All compliance/disclaimer text stays on every page
+- traderPersona null must fall back to existing 
+  default behavior gracefully — nothing breaks
+- planId 'free' must fall back gracefully if 
+  field doesn't exist yet on a user record
+- Test all 4 personas × all 4 plans = 16 combinations
+  by manually setting values in the database
+- Test Stripe webhook full cycle with test mode
+- Verify downgrade correctly re-locks features
+- Verify daily counter resets at midnight UTC
+- No TypeScript errors in any new files
+- No console errors after implementation

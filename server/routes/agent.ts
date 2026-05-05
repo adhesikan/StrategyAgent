@@ -7,6 +7,7 @@ import { storage } from "../storage";
 import { fetchQuotesFromBroker, fetchHistoryFromBroker } from "../broker-service";
 import { scoreSetup } from "../services/probability-engine";
 import { selectInstrument } from "../services/instrument-selector";
+import { checkAnalysisQuota, trackAnalysisUsage, requireFeature } from "../middleware/planGuard";
 
 const conditionSchema = z.object({
   conditionType: z.string(),
@@ -24,7 +25,7 @@ const generateSchema = z.object({
 });
 
 export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandler) {
-  app.post("/api/agent/generate", isAuthenticated, async (req, res) => {
+  app.post("/api/agent/generate", isAuthenticated, checkAnalysisQuota(), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const body = generateSchema.parse(req.body);
@@ -224,6 +225,7 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
         metadataJson: { setupId: persisted.id, symbol: setup.symbol, strategy: setup.strategyName, grade: probability.grade } as any,
       });
 
+      await trackAnalysisUsage(userId);
       res.json({ setup: { ...setup, id: persisted.id }, parsed, probability, instrument });
     } catch (err: any) {
       console.error("Agent generate error:", err);

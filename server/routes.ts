@@ -3,6 +3,9 @@ import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { storage } from "./storage";
 import { insertAlertSchema, insertAlertRuleSchema, insertWatchlistSchema, insertAutomationSettingsSchema, scannerFilters, UserRole, RuleConditionType, PatternStage, StrategyType, userSettingsUpdateSchema } from "@shared/schema";
+import { getUserPlanRecord, setUserTraderPersona } from "./services/billing/userPlan";
+import { registerBillingRoutes } from "./routes/billing";
+import { requireFeature } from "./middleware/planGuard";
 import { sendEntrySignal, sendExitSignal, createAutomationLogEntry, type EntrySignal, type ExitSignal } from "./algopilotx";
 import { getStrategyList, classifyQuote, StrategyId, PullbackStage, runAllPluginScans, STRATEGY_PRESETS, getAllStrategyIds, StrategyIdType } from "./strategies";
 import { classifyMarketRegime, getRegimeAdjustment } from "./engine/regime";
@@ -148,6 +151,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerOpportunityRadarRoutes(app, isAuthenticated);
   registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
   registerHomeSnapshotRoutes(app, isAuthenticated);
+  registerBillingRoutes(app, isAuthenticated);
 
   startFuturesWorker().then(async () => {
     try {
@@ -262,7 +266,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/scan/multi-strategy", isAuthenticated, async (req, res) => {
+  app.post("/api/scan/multi-strategy", isAuthenticated, requireFeature("scanner"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const connection = await storage.getBrokerConnectionWithToken(userId);
@@ -349,7 +353,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/scan/confluence", isAuthenticated, async (req, res) => {
+  app.post("/api/scan/confluence", isAuthenticated, requireFeature("scanner"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const connection = await storage.getBrokerConnectionWithToken(userId);
@@ -490,7 +494,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/scan/live", isAuthenticated, async (req, res) => {
+  app.post("/api/scan/live", isAuthenticated, requireFeature("scanner"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const connection = await storage.getBrokerConnectionWithToken(userId);
@@ -2913,7 +2917,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     res.json(STRATEGY_DEFINITIONS);
   });
 
-  app.post("/api/options/scan", isAuthenticated, async (req, res) => {
+  app.post("/api/options/scan", isAuthenticated, requireFeature("optionsFlow"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const entitlements = getUserEntitlements(userId);
@@ -4129,7 +4133,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
-  app.post("/api/automation/settings", isAuthenticated, async (req, res) => {
+  app.post("/api/automation/settings", isAuthenticated, requireFeature("automation"), async (req, res) => {
     try {
       const userId = req.session.userId;
       if (!userId) {
@@ -4563,8 +4567,13 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
       
       const settings = await storage.getUserSettings(userId);
+      const planRecord = await getUserPlanRecord(userId);
+      const traderPersona = planRecord?.traderPersona ?? null;
+      const planId = planRecord?.planId ?? "free";
       if (!settings) {
         return res.json({
+          traderPersona,
+          planId,
           showTooltips: true,
           pushNotificationsEnabled: false,
           breakoutAlertsEnabled: true,
@@ -4600,6 +4609,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
       
       res.json({
+        traderPersona,
+        planId,
         showTooltips: settings.showTooltips === "true",
         pushNotificationsEnabled: settings.pushNotificationsEnabled === "true",
         breakoutAlertsEnabled: settings.breakoutAlertsEnabled === "true",
@@ -4647,9 +4658,26 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
       
       const parsed = userSettingsUpdateSchema.parse(req.body);
+
+      // Persona lives on the users table, not user_settings
+      let personaForResponse: "buyer" | "seller" | "complex" | "learner" | null | undefined = undefined;
+      if (parsed.traderPersona !== undefined) {
+        await setUserTraderPersona(userId, parsed.traderPersona);
+        personaForResponse = parsed.traderPersona;
+      }
+
       const settings = await storage.setUserSettings(userId, parsed);
-      
+      const planRecord = personaForResponse === undefined
+        ? await getUserPlanRecord(userId)
+        : null;
+      const traderPersona = personaForResponse !== undefined
+        ? personaForResponse
+        : (planRecord?.traderPersona ?? null);
+      const planId = planRecord?.planId ?? "free";
+
       res.json({
+        traderPersona,
+        planId,
         showTooltips: settings.showTooltips === "true",
         pushNotificationsEnabled: settings.pushNotificationsEnabled === "true",
         breakoutAlertsEnabled: settings.breakoutAlertsEnabled === "true",

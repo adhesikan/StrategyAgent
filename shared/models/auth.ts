@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -30,9 +30,18 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role").default("user").notNull(),
   stripeCustomerId: varchar("stripe_customer_id"),
-  subscriptionStatus: varchar("subscription_status"),
+  subscriptionStatus: varchar("subscription_status").default("active"),
   subscriptionPlanId: varchar("subscription_plan_id"),
   subscriptionEndDate: timestamp("subscription_end_date"),
+  // Persona + subscription plan system
+  traderPersona: varchar("trader_persona"),
+  planId: varchar("plan_id").default("free"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  billingCycle: varchar("billing_cycle").default("monthly"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  currentPeriodEndsAt: timestamp("current_period_ends_at"),
+  dailyAnalysesUsed: integer("daily_analyses_used").default(0),
+  dailyAnalysesResetAt: timestamp("daily_analyses_reset_at"),
   acceptedLegalVersion: varchar("accepted_legal_version"),
   acceptedAt: timestamp("accepted_at"),
   acceptedIp: varchar("accepted_ip"),
@@ -96,6 +105,7 @@ export const userSettingsUpdateSchema = z.object({
   stopAlertsEnabled: z.boolean().optional(),
   emaAlertsEnabled: z.boolean().optional(),
   approachingAlertsEnabled: z.boolean().optional(),
+  traderPersona: z.enum(["buyer", "seller", "complex", "learner"]).nullable().optional(),
 });
 
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;

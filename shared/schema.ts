@@ -730,6 +730,7 @@ export const userSettingsUpdateSchema = z.object({
   onboardingStep: z.number().min(0).max(6).optional(),
   positionSizingMethod: z.enum(["fixed_dollar", "fixed_shares", "percent_account"]).optional(),
   positionSizingValue: z.number().min(1).optional(),
+  traderPersona: z.enum(["buyer", "seller", "complex", "learner"]).nullable().optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;

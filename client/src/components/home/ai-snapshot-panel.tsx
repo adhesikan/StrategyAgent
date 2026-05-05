@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 interface SnapshotItem {
   symbol: string;
+  name?: string;
   headline: string;
 }
 
@@ -110,7 +111,7 @@ export function AiSnapshotPanel() {
             <SnapshotCard
               icon={DollarSign}
               label="Best Income Setup"
-              value={data.bestIncome.symbol}
+              value={data.bestIncome.name ? `${data.bestIncome.symbol} · ${data.bestIncome.name}` : data.bestIncome.symbol}
               sub={data.bestIncome.headline}
               testId="snapshot-best-income"
               onClick={() => navigate("/income-mode")}
@@ -118,7 +119,7 @@ export function AiSnapshotPanel() {
             <SnapshotCard
               icon={TrendingUp}
               label="Top Growth Opportunity"
-              value={data.topGrowth.symbol}
+              value={data.topGrowth.name ? `${data.topGrowth.symbol} · ${data.topGrowth.name}` : data.topGrowth.symbol}
               sub={data.topGrowth.headline}
               testId="snapshot-top-growth"
               onClick={() => navigate(`/market-intel?symbol=${encodeURIComponent(data.topGrowth.symbol)}`)}

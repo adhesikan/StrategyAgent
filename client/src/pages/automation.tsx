@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { UserSettings } from "@shared/schema";
+import { FeatureLock } from "@/components/feature-lock";
 
 interface AgentState {
   userId: string;
@@ -101,6 +102,15 @@ export default function AutomationPage() {
             Configure how Strategy Agent acts on opportunities. Connect your broker and set your limits.
           </p>
         </div>
+
+        <FeatureLock
+          feature="automation"
+          variant="banner"
+          title="Automation is an Active Trader feature"
+          description="Upgrade to let Strategy Agent place orders for you, set safety limits, and run scheduled scans — always with your rules and guardrails."
+        >
+          <></>
+        </FeatureLock>
 
         <AutoAgentConfig />
 

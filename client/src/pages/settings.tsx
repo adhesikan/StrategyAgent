@@ -42,6 +42,8 @@ import type { BrokerConnection, BrokerProviderType, OpportunityDefaults, Snaptra
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { useTooltipVisibility } from "@/hooks/use-tooltips";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { TradingStyleSection } from "@/components/settings/trading-style-section";
+import { BillingSection } from "@/components/settings/billing-section";
 
 interface UserSettingsResponse {
   showTooltips: boolean;
@@ -159,9 +161,26 @@ function TradeStationSimModeCard() {
   );
 }
 
+const VALID_SETTINGS_TABS = new Set([
+  "trading-style",
+  "billing",
+  "broker",
+  "notifications",
+  "display",
+  "trade-prefs",
+  "scanner",
+  "legal",
+  "account",
+]);
+
 export default function Settings() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const initialTab = (() => {
+    if (typeof window === "undefined") return "broker";
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t && VALID_SETTINGS_TABS.has(t) ? t : "broker";
+  })();
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState("");
@@ -811,8 +830,16 @@ export default function Settings() {
         </Link>
       </div>
 
-      <Tabs defaultValue="broker" className="space-y-6">
-        <TabsList>
+      <Tabs defaultValue={initialTab} className="space-y-6">
+        <TabsList className="flex flex-wrap h-auto">
+          <TabsTrigger value="trading-style" className="gap-2" data-testid="tab-trading-style">
+            <Target className="h-4 w-4" />
+            Trading Style
+          </TabsTrigger>
+          <TabsTrigger value="billing" className="gap-2" data-testid="tab-billing">
+            <Zap className="h-4 w-4" />
+            Plan & Billing
+          </TabsTrigger>
           <TabsTrigger value="broker" className="gap-2" data-testid="tab-broker">
             <Wifi className="h-4 w-4" />
             Broker
@@ -842,6 +869,14 @@ export default function Settings() {
             Account
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="trading-style">
+          <TradingStyleSection />
+        </TabsContent>
+
+        <TabsContent value="billing">
+          <BillingSection />
+        </TabsContent>
 
         <TabsContent value="broker">
           <div className="space-y-6">

@@ -1,4 +1,5 @@
 export type PersonaId = 'buyer' | 'seller' | 'complex' | 'learner';
+export type TraderPersona = PersonaId;
 
 export interface PlanLimits {
   dailyAnalyses: number;

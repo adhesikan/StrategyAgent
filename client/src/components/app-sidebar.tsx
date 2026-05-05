@@ -42,6 +42,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useAuth } from "@/hooks/use-auth";
+import { usePersona } from "@/context/PersonaContext";
+import { usePlan } from "@/context/PlanContext";
 
 interface NavItem {
   title: string;
@@ -74,10 +76,26 @@ const advancedToolsItems: NavItem[] = [
   { title: "Alerts", description: "Trade alerts", url: "/alerts", icon: Bell },
 ];
 
+const PERSONA_LABEL: Record<string, string> = {
+  buyer: "Buyer",
+  seller: "Income",
+  complex: "Complex",
+  learner: "Learner",
+};
+
+const PLAN_LABEL: Record<string, string> = {
+  free: "Explorer",
+  pro: "Trader",
+  edge: "Active",
+  team: "Pro Desk",
+};
+
 function SidebarBrandHeader() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const { isConnected, providerName, status } = useBrokerStatus();
+  const { persona } = usePersona();
+  const { plan } = usePlan();
   const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
 
   let brokerLabel = "No Broker";
@@ -113,7 +131,7 @@ function SidebarBrandHeader() {
       </Link>
 
       {!isCollapsed && (
-        <div className="mt-2" data-testid="status-chips">
+        <div className="mt-2 flex flex-wrap gap-1" data-testid="status-chips">
           <span className={cn(
             "inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border",
             brokerColor
@@ -121,6 +139,24 @@ function SidebarBrandHeader() {
             <span className={cn("h-1.5 w-1.5 rounded-full", dotColor)} />
             {brokerLabel}
           </span>
+          {persona && (
+            <Link
+              href="/settings?tab=trading-style"
+              className="inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-primary/30 text-primary hover-elevate"
+              data-testid="badge-persona"
+              title="Change your trading style"
+            >
+              {PERSONA_LABEL[persona] ?? persona}
+            </Link>
+          )}
+          <Link
+            href="/pricing"
+            className="inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-border text-muted-foreground hover-elevate"
+            data-testid="badge-plan"
+            title="Manage your plan"
+          >
+            {PLAN_LABEL[plan] ?? "Free"}
+          </Link>
         </div>
       )}
     </>
@@ -151,10 +187,10 @@ function NavMenuItem({ item, active, onNavClick }: { item: NavItem; active: bool
           )}>
             <item.icon className="h-4 w-4" />
           </div>
-          <div className="flex flex-col min-w-0">
+          <div className="flex flex-col min-w-0 flex-1">
             <span className="text-sm font-medium leading-tight truncate">{item.title}</span>
             <span className={cn(
-              "text-xs leading-tight truncate",
+              "text-xs leading-snug line-clamp-2 whitespace-normal",
               active ? "text-sidebar-accent-foreground/70" : "text-muted-foreground"
             )}>{item.description}</span>
           </div>

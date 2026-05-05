@@ -71,6 +71,9 @@ import IncomeModePage from "@/pages/income-mode";
 import MarketIntelPage from "@/pages/market-intel";
 import HistoryPage from "@/pages/history";
 import OpportunityRadarPage from "@/pages/opportunity-radar";
+import PricingPage from "@/pages/pricing";
+import BillingSuccessPage from "@/pages/billing-success";
+import BillingCancelPage from "@/pages/billing-cancel";
 import { Redirect } from "wouter";
 
 function AppRouter() {
@@ -105,6 +108,10 @@ function AppRouter() {
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/open-source" component={OpenSourcePage} />
       <Route path="/snaptrade/callback" component={SnaptradeCallback} />
+
+      <Route path="/pricing" component={PricingPage} />
+      <Route path="/billing/success" component={BillingSuccessPage} />
+      <Route path="/billing/cancel" component={BillingCancelPage} />
 
       <Route path="/">{() => <Redirect to="/home" />}</Route>
       <Route path="/scanner">{() => <Redirect to="/discover?tab=stocks" />}</Route>
@@ -236,6 +243,16 @@ interface LegalStatus {
 }
 
 function AppLayout() {
+  return (
+    <PlanProvider>
+      <PersonaProvider>
+        <AppLayoutInner />
+      </PersonaProvider>
+    </PlanProvider>
+  );
+}
+
+function AppLayoutInner() {
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -351,8 +368,6 @@ function AppLayout() {
 
   return (
     <>
-      <PlanProvider>
-      <PersonaProvider>
       <BrokerStatusProvider>
         <SidebarProvider style={sidebarStyle}>
           <div className="flex h-screen w-full">
@@ -409,8 +424,6 @@ function AppLayout() {
           } : undefined}
         />
       </BrokerStatusProvider>
-      </PersonaProvider>
-      </PlanProvider>
     </>
   );
 }

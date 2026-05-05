@@ -1,4 +1,39 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { usePersona } from "@/context/PersonaContext";
+import type { PersonaId } from "@shared/plans";
+
+const PERSONA_CHIPS: Record<PersonaId | "default", string[]> = {
+  buyer: [
+    "Find a momentum breakout under $100",
+    "Show a swing setup on TSLA",
+    "Best growth name today",
+    "Lower-risk bullish setup",
+  ],
+  seller: [
+    "Covered call idea on a high-IV name",
+    "Cash-secured put I can collect $100 on",
+    "Best wheel candidate this week",
+    "Find a high-IV-rank stock for premium",
+  ],
+  complex: [
+    "Iron condor on SPY with 30 DTE",
+    "Bull put spread with 70% PoP",
+    "Calendar spread on AAPL into earnings",
+    "Best ratio spread this week",
+  ],
+  learner: [
+    "Explain a covered call in plain English",
+    "Show me a paper-trade setup on SPY",
+    "What's a stop loss?",
+    "Walk me through a basic breakout trade",
+  ],
+  default: [
+    "Find a simple income idea",
+    "Show a lower-risk bullish setup",
+    "Find a trade with max $200 risk",
+    "Explain what trade fits this market",
+  ],
+};
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -131,6 +166,8 @@ const OPERATOR_LABELS: Record<string, string> = {
 
 export default function AgentPage() {
   const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const { persona } = usePersona();
+  const personaChips = useMemo(() => PERSONA_CHIPS[persona ?? "default"] ?? PERSONA_CHIPS.default, [persona]);
   const [prompt, setPrompt] = useState("");
   const [symbol, setSymbol] = useState("");
   const [strategy, setStrategy] = useState(urlParams.get("strategy") || "");
@@ -501,12 +538,7 @@ export default function AgentPage() {
               }}
             />
             <div className="flex flex-wrap gap-1.5 pt-1" data-testid="prompt-chips">
-              {[
-                "Find a simple income idea",
-                "Show a lower-risk bullish setup",
-                "Find a trade with max $200 risk",
-                "Explain what trade fits this market",
-              ].map((p) => (
+              {personaChips.map((p) => (
                 <button
                   key={p}
                   type="button"

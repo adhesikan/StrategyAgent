@@ -3,6 +3,7 @@ import { storage } from "../storage";
 
 interface SnapshotItem {
   symbol: string;
+  name?: string;
   headline: string;
 }
 
@@ -25,17 +26,17 @@ const DISCLAIMER =
   "Snapshot is software-generated informational context — not investment advice.";
 
 const FALLBACK_GROWTH: SnapshotItem[] = [
-  { symbol: "NVDA", headline: "AI infrastructure spend remains a multi-quarter tailwind." },
-  { symbol: "MSFT", headline: "Cloud + Copilot expansion supports continued earnings growth." },
-  { symbol: "AAPL", headline: "Services revenue mix continues to widen margins." },
-  { symbol: "AMZN", headline: "AWS reacceleration plus retail efficiency gains in focus." },
+  { symbol: "NVDA", name: "NVIDIA", headline: "AI infrastructure spend remains a multi-quarter tailwind." },
+  { symbol: "MSFT", name: "Microsoft", headline: "Cloud + Copilot expansion supports continued earnings growth." },
+  { symbol: "AAPL", name: "Apple", headline: "Services revenue mix continues to widen margins." },
+  { symbol: "AMZN", name: "Amazon", headline: "AWS reacceleration plus retail efficiency gains in focus." },
 ];
 
 const FALLBACK_INCOME: SnapshotItem[] = [
-  { symbol: "SPY", headline: "Index covered calls — high IV rank, defined risk." },
-  { symbol: "QQQ", headline: "Cash-secured puts at support — collect premium." },
-  { symbol: "T", headline: "Dividend + monthly call write candidate." },
-  { symbol: "XLE", headline: "Energy IV elevated — premium-selling environment." },
+  { symbol: "SPY", name: "S&P 500 ETF", headline: "Index covered calls — high IV rank, defined risk." },
+  { symbol: "QQQ", name: "Nasdaq 100 ETF", headline: "Cash-secured puts at support — collect premium." },
+  { symbol: "T", name: "AT&T", headline: "Dividend + monthly call write candidate." },
+  { symbol: "XLE", name: "Energy Select Sector", headline: "Energy IV elevated — premium-selling environment." },
 ];
 
 function pickByDay<T>(arr: T[]): T {

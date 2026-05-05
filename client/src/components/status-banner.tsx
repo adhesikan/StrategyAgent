@@ -70,14 +70,19 @@ export function StatusBanner() {
   }
 
   return (
-    <div 
-      className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-1.5 flex items-center justify-center gap-2"
+    <div
+      className="bg-muted/40 border-b border-border/60 px-4 py-1.5 flex items-center justify-center gap-2"
       data-testid="banner-mock-data"
     >
-      <WifiOff className="h-3.5 w-3.5 text-yellow-500" />
-      <span className="text-xs text-yellow-600 dark:text-yellow-400">
-        Mock Data
+      <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-xs text-muted-foreground">
+        Sample data — connect a broker for live prices.
       </span>
+      <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs">
+        <Link href="/settings" data-testid="link-connect-broker-banner">
+          Connect
+        </Link>
+      </Button>
     </div>
   );
 }

@@ -139,23 +139,15 @@ function SidebarBrandHeader() {
             <span className={cn("h-1.5 w-1.5 rounded-full", dotColor)} />
             {brokerLabel}
           </span>
-          {persona && (
-            <Link
-              href="/settings?tab=trading-style"
-              className="inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-primary/30 text-primary hover-elevate"
-              data-testid="badge-persona"
-              title="Change your trading style"
-            >
-              {PERSONA_LABEL[persona] ?? persona}
-            </Link>
-          )}
           <Link
-            href="/pricing"
-            className="inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-border text-muted-foreground hover-elevate"
-            data-testid="badge-plan"
-            title="Manage your plan"
+            href={persona ? "/settings?tab=trading-style" : "/pricing"}
+            className="inline-flex items-center gap-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full border border-primary/30 text-primary hover-elevate"
+            data-testid="badge-plan-persona"
+            title="Trading style & plan"
           >
             {PLAN_LABEL[plan] ?? "Free"}
+            {persona && <span className="text-muted-foreground/70">·</span>}
+            {persona && <span>{PERSONA_LABEL[persona] ?? persona}</span>}
           </Link>
         </div>
       )}

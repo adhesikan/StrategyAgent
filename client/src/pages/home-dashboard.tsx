@@ -1,11 +1,10 @@
 import { useMemo } from "react";
 import { useLocation } from "wouter";
 import { TrendingUp, DollarSign, Search, Newspaper, GraduationCap, Layers } from "lucide-react";
-import { HomeActionCard, BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
+import { HomeActionCard, ComplianceFooter } from "@/components/trading-shell";
 import { QuickPromptBar } from "@/components/home/quick-prompt-bar";
 import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
 import { PopularChips } from "@/components/home/popular-chips";
-import { NewHereBadge } from "@/components/home/new-here-badge";
 import { QuotaBanner } from "@/components/quota-banner";
 import { usePersona } from "@/context/PersonaContext";
 import type { TraderPersona } from "@shared/plans";
@@ -133,14 +132,6 @@ export default function HomeDashboard() {
 
       {/* Quota banner (only shows when usage > 80%) */}
       <QuotaBanner />
-
-      {/* Status pills */}
-      <BrokerStatusStrip />
-
-      {/* New Here badge */}
-      <div>
-        <NewHereBadge />
-      </div>
 
       {/* Main grid: action cards + snapshot panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">

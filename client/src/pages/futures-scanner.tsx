@@ -151,7 +151,7 @@ function computeEMA(closes: number[], period: number): number[] {
 }
 
 export default function FuturesScanner() {
-  const { theme } = useTheme();
+  const { resolvedTheme: theme } = useTheme();
   const { toast } = useToast();
   const [selectedSymbol, setSelectedSymbol] = useState("MES");
   const [streamStatus, setStreamStatus] = useState<"disconnected" | "connected" | "streaming">("disconnected");

@@ -176,6 +176,80 @@
 }
 
 /**
+ * Light-mode contrast overrides.
+ * Many cards use tinted-color text (text-emerald-300/400, text-rose-300/400,
+ * text-amber-200/300/400, etc.) on near-white tinted backgrounds. These read
+ * fine on a dark background but become near-invisible on a light one.
+ * In light mode, remap those shades to readable 700-level colors so labels,
+ * Max Loss / Max Gain values, sentiment chips, and similar elements stay
+ * legible without having to add `dark:` variants throughout the codebase.
+ */
+html:not(.dark) .text-emerald-200,
+html:not(.dark) .text-emerald-300,
+html:not(.dark) .text-emerald-400 { color: rgb(4 120 87); }    /* emerald-700 */
+
+html:not(.dark) .text-rose-200,
+html:not(.dark) .text-rose-300,
+html:not(.dark) .text-rose-400 { color: rgb(190 18 60); }       /* rose-700 */
+
+html:not(.dark) .text-amber-200,
+html:not(.dark) .text-amber-300,
+html:not(.dark) .text-amber-400 { color: rgb(180 83 9); }       /* amber-700 */
+
+html:not(.dark) .text-sky-300,
+html:not(.dark) .text-sky-400 { color: rgb(3 105 161); }        /* sky-700 */
+
+html:not(.dark) .text-blue-300,
+html:not(.dark) .text-blue-400 { color: rgb(29 78 216); }       /* blue-700 */
+
+html:not(.dark) .text-violet-300,
+html:not(.dark) .text-violet-400 { color: rgb(109 40 217); }    /* violet-700 */
+
+html:not(.dark) .text-orange-300,
+html:not(.dark) .text-orange-400 { color: rgb(194 65 12); }     /* orange-700 */
+
+html:not(.dark) .text-zinc-300,
+html:not(.dark) .text-zinc-400 { color: rgb(63 63 70); }        /* zinc-700 */
+
+html:not(.dark) .text-green-300,
+html:not(.dark) .text-green-400 { color: rgb(21 128 61); }      /* green-700 */
+
+html:not(.dark) .text-red-300,
+html:not(.dark) .text-red-400 { color: rgb(185 28 28); }        /* red-700 */
+
+/* Opacity modifiers (e.g. text-amber-300/90). Match the explicit shade-then-slash
+ * pattern so we don't accidentally hit unrelated fraction classes like w-1/2. */
+html:not(.dark) [class*="text-emerald-200/"],
+html:not(.dark) [class*="text-emerald-300/"],
+html:not(.dark) [class*="text-emerald-400/"] { color: rgb(4 120 87); }
+
+html:not(.dark) [class*="text-rose-200/"],
+html:not(.dark) [class*="text-rose-300/"],
+html:not(.dark) [class*="text-rose-400/"] { color: rgb(190 18 60); }
+
+html:not(.dark) [class*="text-amber-200/"],
+html:not(.dark) [class*="text-amber-300/"],
+html:not(.dark) [class*="text-amber-400/"] { color: rgb(180 83 9); }
+
+html:not(.dark) [class*="text-sky-300/"],
+html:not(.dark) [class*="text-sky-400/"] { color: rgb(3 105 161); }
+
+html:not(.dark) [class*="text-blue-300/"],
+html:not(.dark) [class*="text-blue-400/"] { color: rgb(29 78 216); }
+
+html:not(.dark) [class*="text-violet-300/"],
+html:not(.dark) [class*="text-violet-400/"] { color: rgb(109 40 217); }
+
+html:not(.dark) [class*="text-orange-300/"],
+html:not(.dark) [class*="text-orange-400/"] { color: rgb(194 65 12); }
+
+html:not(.dark) [class*="text-green-300/"],
+html:not(.dark) [class*="text-green-400/"] { color: rgb(21 128 61); }
+
+html:not(.dark) [class*="text-red-300/"],
+html:not(.dark) [class*="text-red-400/"] { color: rgb(185 28 28); }
+
+/**
  * Using the elevate system.
  * Automatic contrast adjustment.
  *

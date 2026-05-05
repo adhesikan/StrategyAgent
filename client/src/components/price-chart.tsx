@@ -70,7 +70,7 @@ export function PriceChart({
 }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const { theme } = useTheme();
+  const { resolvedTheme: theme } = useTheme();
   const [tooltipData, setTooltipData] = useState<ChartTooltipData | null>(null);
 
   useEffect(() => {

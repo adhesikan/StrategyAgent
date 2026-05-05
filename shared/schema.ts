@@ -2014,3 +2014,51 @@ export const userTradePreferences = pgTable("user_trade_preferences", {
 export const insertUserTradePreferencesSchema = createInsertSchema(userTradePreferences).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertUserTradePreferences = z.infer<typeof insertUserTradePreferencesSchema>;
 export type UserTradePreferences = typeof userTradePreferences.$inferSelect;
+
+export const sessionAuditEvents = pgTable("session_audit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  email: text("email"),
+  eventType: text("event_type").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  deviceType: text("device_type"),
+  browser: text("browser"),
+  os: text("os"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertSessionAuditEventSchema = createInsertSchema(sessionAuditEvents).omit({ id: true, createdAt: true });
+export type InsertSessionAuditEvent = z.infer<typeof insertSessionAuditEventSchema>;
+export type SessionAuditEvent = typeof sessionAuditEvents.$inferSelect;
+
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  subject: text("subject").notNull(),
+  htmlBody: text("html_body").notNull(),
+  audienceType: text("audience_type").notNull(),
+  recipientUserId: varchar("recipient_user_id"),
+  status: text("status").notNull().default("draft"),
+  sentCount: integer("sent_count").default(0),
+  deliveredCount: integer("delivered_count").default(0),
+  openedCount: integer("opened_count").default(0),
+  clickedCount: integer("clicked_count").default(0),
+  bouncedCount: integer("bounced_count").default(0),
+  unsubscribedCount: integer("unsubscribed_count").default(0),
+  errorMessage: text("error_message"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  sentAt: timestamp("sent_at"),
+});
+export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  sentCount: true,
+  deliveredCount: true,
+  openedCount: true,
+  clickedCount: true,
+  bouncedCount: true,
+  unsubscribedCount: true,
+});
+export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;

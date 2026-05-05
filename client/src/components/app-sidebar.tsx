@@ -24,6 +24,9 @@ import {
   Workflow,
   Beaker,
   Wrench,
+  Mail,
+  Eye,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -67,14 +70,20 @@ const moreNavItems: NavItem[] = [
   { title: "Settings", description: "Account, broker & preferences", url: "/settings", icon: Settings },
 ];
 
-const advancedToolsItems: NavItem[] = [
+const baseAdvancedToolsItems: NavItem[] = [
   { title: "Trade Setups", description: "Saved setup builder", url: "/trade-setups", icon: Wrench },
   { title: "Discover", description: "Scanner & filters", url: "/discover", icon: Compass },
-  { title: "Automation", description: "Cockpit & outcomes", url: "/automation", icon: Workflow },
   { title: "Charts", description: "Technical charts", url: "/charts", icon: LineChart },
   { title: "Backtest", description: "Strategy backtests", url: "/backtest", icon: Beaker },
   { title: "Alerts", description: "Trade alerts", url: "/alerts", icon: Bell },
 ];
+
+const automationNavItem: NavItem = {
+  title: "Automation",
+  description: "Cockpit & outcomes",
+  url: "/automation",
+  icon: Workflow,
+};
 
 const PERSONA_LABEL: Record<string, string> = {
   buyer: "Buyer",
@@ -202,8 +211,15 @@ export function AppSidebar() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  const advancedToolsItems: NavItem[] = isAdmin
+    ? [...baseAdvancedToolsItems, automationNavItem]
+    : baseAdvancedToolsItems;
+
   const adminItems: NavItem[] = isAdmin ? [
+    { title: "Admin Home", description: "All admin tools", url: "/admin", icon: LayoutDashboard },
     { title: "Users", description: "User administration", url: "/admin/users", icon: Users },
+    { title: "Email Campaigns", description: "Send & track emails", url: "/admin/emails", icon: Mail },
+    { title: "Sessions", description: "Login/logout audit log", url: "/admin/sessions", icon: Eye },
     { title: "Partners", description: "Signal providers", url: "/admin/partners", icon: Handshake },
     { title: "Compliance", description: "Acceptance logs", url: "/admin/disclaimer-logs", icon: Shield },
   ] : [];

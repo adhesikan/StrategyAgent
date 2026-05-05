@@ -62,6 +62,9 @@ import PartnerDashboard from "@/pages/partner-dashboard";
 import AdminPartnersPage from "@/pages/admin-partners";
 import AdminDisclaimerLogs from "@/pages/admin-disclaimer-logs";
 import AdminUsersPage from "@/pages/admin-users";
+import AdminHomePage from "@/pages/admin-home";
+import AdminEmailsPage from "@/pages/admin-emails";
+import AdminSessionsPage from "@/pages/admin-sessions";
 import NotFound from "@/pages/not-found";
 import AgentPage from "@/pages/agent";
 import TradeSetupsPage from "@/pages/trade-setups";
@@ -75,6 +78,21 @@ import PricingPage from "@/pages/pricing";
 import BillingSuccessPage from "@/pages/billing-success";
 import BillingCancelPage from "@/pages/billing-cancel";
 import { Redirect } from "wouter";
+
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (user?.role !== "admin") {
+    return <Redirect to="/home" />;
+  }
+  return <>{children}</>;
+}
 
 function AppRouter() {
   return (
@@ -91,7 +109,7 @@ function AppRouter() {
 
       <Route path="/command-center" component={CommandCenter} />
       <Route path="/discover" component={DiscoverPage} />
-      <Route path="/automation" component={AutomationPage} />
+      <Route path="/automation">{() => <AdminOnly><AutomationPage /></AdminOnly>}</Route>
       <Route path="/news" component={NewsPage} />
       <Route path="/help" component={StrategyGuide} />
 
@@ -123,14 +141,17 @@ function AppRouter() {
       <Route path="/my-strategies">{() => <Redirect to="/home" />}</Route>
       <Route path="/broker-connections">{() => <Redirect to="/settings" />}</Route>
       <Route path="/activity">{() => <Redirect to="/home" />}</Route>
-      <Route path="/execution">{() => <Redirect to="/automation?view=cockpit" />}</Route>
-      <Route path="/opportunities">{() => <Redirect to="/automation?view=outcomes" />}</Route>
+      <Route path="/execution">{() => <AdminOnly><Redirect to="/automation?view=cockpit" /></AdminOnly>}</Route>
+      <Route path="/opportunities">{() => <AdminOnly><Redirect to="/automation?view=outcomes" /></AdminOnly>}</Route>
       <Route path="/alerts" component={AlertsPage} />
       <Route path="/trade-alerts" component={TradeAlertsPage} />
-      <Route path="/admin/partners" component={AdminPartnersPage} />
-      <Route path="/admin/disclaimer-logs" component={AdminDisclaimerLogs} />
-      <Route path="/admin/users" component={AdminUsersPage} />
-      <Route path="/app/automation">{() => <Redirect to="/automation" />}</Route>
+      <Route path="/admin">{() => <AdminOnly><AdminHomePage /></AdminOnly>}</Route>
+      <Route path="/admin/partners">{() => <AdminOnly><AdminPartnersPage /></AdminOnly>}</Route>
+      <Route path="/admin/disclaimer-logs">{() => <AdminOnly><AdminDisclaimerLogs /></AdminOnly>}</Route>
+      <Route path="/admin/users">{() => <AdminOnly><AdminUsersPage /></AdminOnly>}</Route>
+      <Route path="/admin/emails">{() => <AdminOnly><AdminEmailsPage /></AdminOnly>}</Route>
+      <Route path="/admin/sessions">{() => <AdminOnly><AdminSessionsPage /></AdminOnly>}</Route>
+      <Route path="/app/automation">{() => <AdminOnly><Redirect to="/automation" /></AdminOnly>}</Route>
       <Route path="/learn/news">{() => <Redirect to="/news" />}</Route>
       <Route path="/strategy-guide">{() => <Redirect to="/help" />}</Route>
 

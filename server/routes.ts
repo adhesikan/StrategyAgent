@@ -145,6 +145,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   await setupAuth(app);
   app.use(verifyJwt);
   registerAuthRoutes(app);
+
+  app.use(
+    [
+      "/api/automation",
+      "/api/automation-profiles",
+      "/api/automation-endpoints",
+      "/api/automation-events",
+    ],
+    isAuthenticated,
+    isAdmin,
+  );
   registerPlatformRoutes(app);
   registerFuturesRoutes(app);
   registerAgentRoutes(app, isAuthenticated);
@@ -7424,6 +7435,155 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     } catch (error: any) {
       console.error("[Admin] Update user error:", error.message);
       res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  app.get("/api/admin/sessions", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql, and, desc, eq } = await import("drizzle-orm");
+      const { sessionAuditEvents } = await import("@shared/schema");
+
+      const search = (req.query.search as string | undefined)?.trim();
+      const eventType = req.query.eventType as string | undefined;
+      const page = req.query.page ? Math.max(1, parseInt(req.query.page as string)) : 1;
+      const pageSize = req.query.pageSize ? Math.min(200, parseInt(req.query.pageSize as string)) : 25;
+      const offset = (page - 1) * pageSize;
+
+      const conds: any[] = [];
+      if (search) {
+        const like = `%${search.toLowerCase()}%`;
+        conds.push(sql`(LOWER(${sessionAuditEvents.email}) LIKE ${like} OR ${sessionAuditEvents.ipAddress} LIKE ${like} OR LOWER(${sessionAuditEvents.browser}) LIKE ${like} OR ${sessionAuditEvents.userId} = ${search})`);
+      }
+      if (eventType && eventType !== "all") {
+        conds.push(eq(sessionAuditEvents.eventType, eventType));
+      }
+      const whereClause = conds.length ? and(...conds) : undefined;
+
+      const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(sessionAuditEvents).where(whereClause);
+      const total = Number(countRow?.count || 0);
+
+      const events = await db
+        .select()
+        .from(sessionAuditEvents)
+        .where(whereClause)
+        .orderBy(desc(sessionAuditEvents.createdAt))
+        .limit(pageSize)
+        .offset(offset);
+
+      res.json({ events, total, page, pageSize });
+    } catch (error: any) {
+      console.error("[Admin] List sessions error:", error.message);
+      res.status(500).json({ error: "Failed to list sessions" });
+    }
+  });
+
+  app.get("/api/admin/email-campaigns/provider", isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const { getEmailProviderStatus } = await import("./email-service");
+      res.json(getEmailProviderStatus());
+    } catch (error: any) {
+      console.error("[Admin] Email provider status error:", error.message);
+      res.status(500).json({ error: "Failed to get provider status" });
+    }
+  });
+
+  app.get("/api/admin/email-campaigns", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql, desc } = await import("drizzle-orm");
+      const { emailCampaigns } = await import("@shared/schema");
+
+      const page = req.query.page ? Math.max(1, parseInt(req.query.page as string)) : 1;
+      const pageSize = req.query.pageSize ? Math.min(200, parseInt(req.query.pageSize as string)) : 25;
+      const offset = (page - 1) * pageSize;
+
+      const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(emailCampaigns);
+      const total = Number(countRow?.count || 0);
+
+      const campaigns = await db
+        .select()
+        .from(emailCampaigns)
+        .orderBy(desc(emailCampaigns.createdAt))
+        .limit(pageSize)
+        .offset(offset);
+
+      res.json({ campaigns, total, page, pageSize });
+    } catch (error: any) {
+      console.error("[Admin] List campaigns error:", error.message);
+      res.status(500).json({ error: "Failed to list campaigns" });
+    }
+  });
+
+  app.post("/api/admin/email-campaigns", isAuthenticated, isAdmin, async (req, res) => {
+    const { db } = await import("./db");
+    const { sql, eq, and } = await import("drizzle-orm");
+    const { emailCampaigns } = await import("@shared/schema");
+    const { users } = await import("@shared/models/auth");
+
+    const { subject, html, audienceType, recipientUserId } = req.body || {};
+    if (!subject || !html || !audienceType) {
+      return res.status(400).json({ error: "subject, html and audienceType are required" });
+    }
+    if (!["all", "admins", "individual"].includes(audienceType)) {
+      return res.status(400).json({ error: "Invalid audienceType" });
+    }
+    if (audienceType === "individual" && !recipientUserId) {
+      return res.status(400).json({ error: "recipientUserId required when audienceType=individual" });
+    }
+
+    const [campaign] = await db.insert(emailCampaigns).values({
+      subject,
+      htmlBody: html,
+      audienceType,
+      recipientUserId: audienceType === "individual" ? recipientUserId : null,
+      status: "sending",
+      createdBy: req.session.userId!,
+    }).returning();
+
+    try {
+      let recipientRows: { id: string; email: string; firstName: string | null; lastName: string | null }[] = [];
+      if (audienceType === "individual") {
+        recipientRows = await db
+          .select({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName })
+          .from(users)
+          .where(eq(users.id, recipientUserId));
+      } else if (audienceType === "admins") {
+        recipientRows = await db
+          .select({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName })
+          .from(users)
+          .where(eq(users.role, "admin"));
+      } else {
+        recipientRows = await db
+          .select({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName })
+          .from(users);
+      }
+
+      const recipients = recipientRows
+        .filter((r) => r.email)
+        .map((r) => ({ email: r.email, userId: r.id, firstName: r.firstName, lastName: r.lastName }));
+
+      const { sendCampaign } = await import("./email-service");
+      const result = await sendCampaign({ subject, html, recipients });
+
+      const [updated] = await db.update(emailCampaigns)
+        .set({
+          status: "sent",
+          sentAt: new Date(),
+          sentCount: result.sent,
+          deliveredCount: result.sent - result.failed,
+        })
+        .where(eq(emailCampaigns.id, campaign.id))
+        .returning();
+      res.json(updated);
+    } catch (error: any) {
+      console.error("[Admin] Send campaign failed:", error.message);
+      const [updated] = await db.update(emailCampaigns)
+        .set({ status: "failed", errorMessage: error.message })
+        .where(eq(emailCampaigns.id, campaign.id))
+        .returning();
+      const status = error?.code === "provider_not_configured" ? 400 : 500;
+      res.status(status).json({ error: error.message, campaign: updated });
     }
   });
 

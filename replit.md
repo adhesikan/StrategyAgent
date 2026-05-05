@@ -3,6 +3,18 @@
 ## Overview
 Strategy Agent is an AI-powered strategy analysis and trade setup generation platform, built as a remix of the VCP Trader codebase. It presents existing broker connections, market data, charting, and execution infrastructure through a simplified AI-agent-driven interface. Users can ask for strategy-based trade setups using natural language, review structured setup cards with entry/stop/target/reasoning, and optionally execute via InstaTrade™. The app maintains compliance-safe framing throughout — all outputs are positioned as software-generated analysis, not investment advice.
 
+### Admin Portal (admin role only)
+- **/admin** — admin home with stat tiles + tool cards (`client/src/pages/admin-home.tsx`).
+- **/admin/users** — user management (existing).
+- **/admin/emails** — email campaign console: composer + provider status banner + history table (`client/src/pages/admin-emails.tsx`).
+- **/admin/sessions** — session audit log w/ search & event-type filter (`client/src/pages/admin-sessions.tsx`).
+- Frontend gate: `<AdminOnly>` wrapper in `client/src/App.tsx` redirects non-admin users away from `/automation`, `/execution`, `/opportunities`, `/app/automation`, and all `/admin/*` routes; sidebar conditionally appends Automation + admin items only when `user.role === "admin"`.
+- Backend gate: `app.use(['/api/automation', '/api/automation-profiles', '/api/automation-endpoints', '/api/automation-events'], isAuthenticated, isAdmin)` in `server/routes.ts` provides defense-in-depth.
+- New tables: `session_audit_events` and `email_campaigns` (definitions in `shared/schema.ts`).
+- Auth instrumentation: `recordSessionEvent()` (with inline UA parser) in `server/replit_integrations/auth/routes.ts` fires fire-and-forget on login, logout (before session destroy), and register.
+- Email service: `server/email-service.ts` supports SendGrid (`SENDGRID_API_KEY` + `EMAIL_FROM_ADDRESS`); throws clean `provider_not_configured` error otherwise — surfaced as a banner in the admin Emails page.
+- Admin API routes (all `isAuthenticated + isAdmin`): `GET /api/admin/sessions`, `GET /api/admin/email-campaigns`, `GET /api/admin/email-campaigns/provider`, `POST /api/admin/email-campaigns`.
+
 ### AI-First Navigation (3 items)
 - **Agent** (`/home`) — Main dashboard: natural language prompt input, AI-powered setup generation, InstaTrade™ integration, live orders panel with SSE-based real-time updates
 - **Setups** (`/trade-setups`) — Setup history with status tracking

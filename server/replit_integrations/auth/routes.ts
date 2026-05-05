@@ -1,14 +1,76 @@
-import type { Express, RequestHandler } from "express";
+import type { Express, Request, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./sessionAuth";
 import { loginSchema, registerSchema, users } from "@shared/models/auth";
+import { sessionAuditEvents } from "@shared/schema";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { storage } from "../../storage";
 import { seedDefaultUniverse } from "../../models/ticker-universes";
 import { getDefaultRiskProfile } from "../../models/risk-profiles";
+
+function parseUserAgent(ua: string): { browser: string; os: string; deviceType: string } {
+  const u = ua || "";
+  let browser = "Unknown";
+  let os = "Unknown";
+  let deviceType = "Desktop";
+
+  const browserMatchers: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
+    [/Edg\/(\d+)/, (m) => `Edge ${m[1]}`],
+    [/OPR\/(\d+)/, (m) => `Opera ${m[1]}`],
+    [/Firefox\/(\d+)/, (m) => `Firefox ${m[1]}`],
+    [/Chrome\/(\d+)/, (m) => `Chrome ${m[1]}`],
+    [/Version\/(\d+).*Safari/, (m) => `Safari ${m[1]}`],
+    [/Safari\/(\d+)/, (m) => `Safari ${m[1]}`],
+  ];
+  for (const [re, fmt] of browserMatchers) {
+    const m = u.match(re);
+    if (m) { browser = fmt(m); break; }
+  }
+
+  if (/Windows NT 10/.test(u)) os = "Windows 10/11";
+  else if (/Windows NT/.test(u)) os = "Windows";
+  else if (/Mac OS X/.test(u)) os = "macOS";
+  else if (/Android/.test(u)) os = "Android";
+  else if (/iPhone|iPad|iPod/.test(u)) os = "iOS";
+  else if (/Linux/.test(u)) os = "Linux";
+
+  if (/iPad|Tablet/i.test(u)) deviceType = "Tablet";
+  else if (/Mobile|iPhone|Android/i.test(u)) deviceType = "Mobile";
+
+  return { browser, os, deviceType };
+}
+
+function getRequestIp(req: Request): string {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length) return fwd.split(",")[0].trim();
+  if (Array.isArray(fwd) && fwd.length) return fwd[0];
+  return req.ip || "unknown";
+}
+
+function recordSessionEvent(args: {
+  req: Request;
+  userId: string | null;
+  email: string | null;
+  eventType: "login" | "logout" | "register";
+}) {
+  const ua = args.req.headers["user-agent"] || "";
+  const parsed = parseUserAgent(ua);
+  db.insert(sessionAuditEvents).values({
+    userId: args.userId,
+    email: args.email,
+    eventType: args.eventType,
+    ipAddress: getRequestIp(args.req),
+    userAgent: ua.slice(0, 500),
+    browser: parsed.browser,
+    os: parsed.os,
+    deviceType: parsed.deviceType,
+  }).catch((err) => {
+    console.error("[Audit] Failed to record session event:", err.message);
+  });
+}
 
 const JWT_EXPIRATION = "12h";
 
@@ -102,7 +164,8 @@ export function registerAuthRoutes(app: Express): void {
       req.session.userId = user.id;
 
       seedNewUser(user.id);
-      
+      recordSessionEvent({ req, userId: user.id, email: user.email, eventType: "register" });
+
       const updatedUser = await authStorage.getUser(user.id);
       const { password: _, ...safeUser } = updatedUser!;
       res.status(201).json(safeUser);
@@ -131,7 +194,8 @@ export function registerAuthRoutes(app: Express): void {
 
       req.session.userId = user.id;
       delete req.session.partnerUserId;
-      
+      recordSessionEvent({ req, userId: user.id, email: user.email, eventType: "login" });
+
       const { password: _, ...safeUser } = user;
       res.json(safeUser);
     } catch (error) {
@@ -143,7 +207,16 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
+    const userId = req.session.userId || null;
+    let email: string | null = null;
+    if (userId) {
+      try {
+        const u = await authStorage.getUser(userId);
+        email = u?.email || null;
+      } catch {}
+      recordSessionEvent({ req, userId, email, eventType: "logout" });
+    }
     req.session.destroy((err) => {
       if (err) {
         console.error("Logout error:", err);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -13,7 +13,11 @@ import {
   DollarSign,
   Newspaper,
   BarChart3,
+  Sparkles,
+  X,
 } from "lucide-react";
+
+const PLAN_DISMISSED_KEY = "home_plan_card_dismissed";
 
 interface Snapshot {
   marketTone: string;
@@ -72,6 +76,22 @@ export default function HomeV2() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const [q, setQ] = useState("");
+  const [showPlanCard, setShowPlanCard] = useState(false);
+
+  useEffect(() => {
+    try {
+      setShowPlanCard(localStorage.getItem(PLAN_DISMISSED_KEY) !== "1");
+    } catch {
+      setShowPlanCard(true);
+    }
+  }, []);
+
+  const dismissPlanCard = () => {
+    try {
+      localStorage.setItem(PLAN_DISMISSED_KEY, "1");
+    } catch {}
+    setShowPlanCard(false);
+  };
 
   const { data: snap } = useQuery<Snapshot>({
     queryKey: ["/api/home/snapshot"],
@@ -118,6 +138,47 @@ export default function HomeV2() {
             Ask <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
+
+        {showPlanCard && (
+          <Card
+            className="p-4 md:p-5 bg-violet-50/60 border-violet-200 flex items-center justify-between gap-4"
+            data-testid="card-personalized-plan"
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center shrink-0">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-violet-900">
+                  First time? Build a personalized plan
+                </div>
+                <p className="text-xs text-violet-900/70 mt-0.5">
+                  Tell us your capital, goal, and risk tolerance — we'll match you with setups that fit.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                size="sm"
+                onClick={() => navigate("/goal-mode")}
+                className="bg-violet-700 hover:bg-violet-800 text-white"
+                data-testid="button-build-plan"
+              >
+                Build my plan <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={dismissPlanCard}
+                className="text-violet-900/60 hover:text-violet-900 h-8 w-8"
+                aria-label="Dismiss"
+                data-testid="button-dismiss-plan"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        )}
 
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">

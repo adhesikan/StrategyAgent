@@ -67,7 +67,6 @@ const mainNavItems: NavItem[] = [
 ];
 
 const moreNavItems: NavItem[] = [
-  { title: "Grow", description: "Risk-aware growth ideas", url: "/goal-mode", icon: TrendingUp },
   { title: "Income", description: "Premium & income setups", url: "/income-mode", icon: DollarSign },
   { title: "Top Opportunities", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
   { title: "My Limits", description: "Risk profile & guardrails", url: "/settings/risk-profile", icon: SlidersHorizontal },

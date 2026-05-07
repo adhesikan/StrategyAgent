@@ -1,0 +1,309 @@
+I have an existing trading platform called Strategy Agent by Sunfish Technologies. I need you to redesign and update the UI across the entire app based on the following detailed specifications. The goal is a platform that feels instantly simple, valuable, and trustworthy for both beginner investors and active options traders.
+
+DESIGN PHILOSOPHY — Apply to every screen
+
+Radical simplicity: Every screen should have one primary action. Remove anything decorative or redundant.
+White space is your friend: Generous padding, clean cards, no clutter.
+Plain English everywhere: No jargon unless the user is in Pro/Trader mode. Every metric gets a plain-English subtitle.
+Value in 5 seconds: A new user must see something useful within 5 seconds of landing on any screen.
+Color palette: Primary dark #1a1a2e, success green #22c55e / #166534, warning amber #92400e / #fef3c7, purple accent #5b21b6 / #ede9fe, clean borders 1px solid #e5e7eb.
+Typography: System font stack, two weights only — 400 regular and 500 medium. Never bold heavy text.
+No admin nav items visible to regular users: Users, Email Campaigns, Sessions, Compliance, Partners should only appear in a separate /admin route.
+
+
+GLOBAL LAYOUT
+Sidebar (collapsed icon-only, 72px wide)
+Replace the current text-heavy sidebar with icon-only navigation:
+[Logo — dark square with star icon]
+─────────
+[Home icon] — active state: bg-secondary
+[Scanner/search icon] — with notification dot if new results
+[Chart/trade icon]
+[Journal/document icon]
+[Markets/grid icon]
+─────────
+[Separator line]
+[InstaTrade™ button — dark bg, white lightning icon, "INSTA" label below]
+─────────
+[bottom: User avatar circle]
+
+Hover tooltips show the label
+Active item gets background: #f3f4f6 with primary-colored icon
+InstaTrade gets permanent dark background to stand out as a primary action
+Admin items only show when user role is admin
+
+Top bar (56px height)
+[Back button if drill-down] [Divider] [Page title] | [Right: broker chip + market tone badge]
+
+Broker chip: green dot + broker name + "Live" or "Sample data"
+Market tone badge: amber pill showing current market condition
+Keep it minimal — no clutter
+
+
+SCREEN 1 — HOME (/)
+Replace current home with this exact layout:
+Header
+"Good morning, [First Name]."  ← 26px, weight 500
+"Here's what's worth your attention today."  ← 15px, muted
+AI Ask Bar (full width, prominent)
+[Search icon] [input: "Ask anything — 'How do I grow $10k safely?' or 'Show me iron condor setups'"] [Ask → button dark]
+
+On submit, navigate to /results with query as param
+Rounded corners border-radius: 14px
+Border: 1px solid #d1d5db, focus: 1px solid #1a1a2e
+
+Today's Snapshot (3 cards, equal width)
+[Market Tone]          [Best Income Setup]     [Top Opportunity]
+"Defensive"            "XLE"                   "MU"
+pill: amber badge      plain English desc      plain English desc
+
+Pull from real API data
+Cards: white bg, 1px solid #e5e7eb, border-radius: 12px
+
+What do you want to do? (2×2 grid)
+Four action cards with icon, title, one-line description:
+[Grow my money]        [Find a trade]
+purple icon bg         green icon bg
+
+[Generate income]      [Understand markets]
+amber icon bg          blue icon bg
+
+Each card navigates to relevant page or triggers AI query
+Hover: border darkens slightly
+No nested text — just icon + title + one-line description
+
+Popular right now (pill row)
+[Grow $10k conservatively] [Income ideas under $200 risk] [Why is TSLA moving?] [Best setups today] [Covered call ideas]
+
+Clicking any pill fires that query into the AI engine
+Pills: background: #f9fafb, border, rounded-full
+
+
+SCREEN 2 — SCANNER (/scanner)
+Top filter pills (not tabs)
+[All strategies] [● Momentum] [● Trend] [● Volatility] [● Intraday]
+
+Active pill: background: #1a1a2e, color: white
+Filtering hides/shows cards without page reload
+
+Strategy Cards Grid (3 columns)
+Each strategy is a card with:
+[Icon in colored circle]              [Type badge pill]
+[Strategy Name — 14px 500]
+[One-line description — 12px muted, max 2 lines]
+[Best conditions · Timeframe  — 11px icons + text]
+─────────────────────────
+[68% hist. win rate]    [Run scan button]
+Strategies to include (preserve all existing strategies, add these if missing):
+Momentum: Volume Surge, Gap Force
+Trend: Precision Pullback, Trend Pilot
+Volatility: IV Crush Play, Iron Condor Hunter
+Intraday: Opening Range, VWAP Reclaim
+
+Selected card gets border: 2px solid #1a1a2e
+"Run scan" button becomes "Running…" with spinner on select
+Clicking "Run scan" selects that strategy and fires the scanner
+
+Live Results Panel (below grid, always visible)
+[● live dot] [Strategy Name] results     [14 matches · updated 12s ago]
+─────────────────────────────────────────
+NVDA  Nvidia Corp                        Score: 96   Win prob: 74%   [View setup →]
+      Vol 3.8× avg · Breaking resistance
+META  Meta Platforms                     Score: 89   Win prob: 69%   [View setup →]
+      Vol 2.9× avg · News catalyst
+
+Results update when strategy is selected
+"View setup →" navigates to /trade/:ticker with strategy context
+Show top 10 results, sorted by score descending
+Live dot pulses green with CSS animation
+
+
+SCREEN 3 — TRADE DETAIL (/trade/:ticker)
+Header
+[Ticker badge — dark square]  [Trade name — 22px]        [Score: 94/100 — green badge]
+                               [ETF name · Expiry · Days]
+4 metric cards (equal grid)
+[Win probability: 71%]  [Max profit: $340]  [Max loss: $160]  [Break even: $84–$94]
+
+Background: #f9fafb (metric card style, no border)
+Label 11px uppercase muted, value 20px weight 500
+
+Two-column layout
+Left: Trade Legs
+Each leg row:
+[SELL pill amber] [$94 call · Jun 6]  [Delta 0.16]    [+$1.20]
+[BUY pill green]  [$97 call · Jun 6]  [Delta 0.07]    [–$0.45]
+Net credit row at bottom: Net credit received: +$1.40 per share · $140 total
+Right: Payoff Diagram
+
+Use Chart.js bar chart
+Green bars for profit zone, red for loss zone
+Hover tooltip: "XLE at $89 → +$140"
+X-axis: price range, Y-axis: P&L in dollars
+
+Why this scores high (left) + Exit plan (right)
+Check/warning icon rows:
+✅ IV rank at 78th percentile — premiums are elevated
+✅ Tight trading range past 30 days
+✅ Risk is fully defined — max loss is $160
+⚠️  No earnings in next 30 days — clean window
+Step-by-step placement guide
+Numbered steps 1–6 walking through exactly how to place this trade in the connected broker. Use <code> styled chips for strike prices and values.
+Action buttons
+[Send to InstaTrade™ →]  [Save to watchlist]  [Find similar setups]
+
+Primary button: dark bg, white text, send icon
+Clicking "Send to InstaTrade™" opens the InstaTrade panel pre-populated with this trade's details
+
+Disclaimer footer
+Small muted text: informational purposes only, not financial advice.
+
+SCREEN 4 — INSTATRADE™ (/instatrade or slide-in panel)
+This is a trademarked feature. Display the InstaTrade™ wordmark prominently.
+Mode toggle
+[Simple]  [Advanced · OCO]
+Simple mode fields (2-row grid)
+Row 1: Symbol | Action (buy/sell to open/close) | Quantity | Order type
+Row 2: Strategy | Expiration | Limit price | Time in force
+Footer: Summary text + [Send order] button
+When navigated from a trade detail, pre-populate all fields from that trade's data.
+Advanced OCO mode
+Same header fields, plus:
+OCO section (labeled with amber "OCO" badge):
+Two columns side by side:
+
+[Profit target — green header]      [Stop loss — red header]
+Close at credit: $0.70              Close at debit: $2.80
+% of max profit: 50%                2× credit rule: Auto
+Order type: Limit                   Order type: Market
+Footer: "Entry + OCO exits pre-loaded · Profit at $0.70 · Stop at $2.80 · via [Broker]" + [Send all orders]
+Pre-populate OCO values from trade detail when launched from that context:
+
+Profit target = 50% of max credit
+Stop loss = 2× credit received
+
+
+SCREEN 5 — TRADE JOURNAL (/journal)
+Top bar additions
+View toggle: [Open (n)] [Closed (n)] [All]
+5 metric cards
+[Total P&L]  [Win Rate]  [Avg Winner]  [Avg Loser]  [Open Theta]
+Pull from broker API — real numbers from connected account.
+Two-column layout
+Left: Open positions + AI insight
+AI insight box (purple background #ede9fe):
+
+Automatically generated based on journal data
+Example: "Your iron condors are winning at 83% — your best strategy. Your directional calls are only 40%."
+"Ask AI why →" button triggers AI explanation
+
+Position rows:
+[Ticker badge] [Name] [Strategy] [Status pill]    [P&L]  [% of max · days left]
+Status pills: Open (blue), Win (green), Loss (red)
+Right: Monthly P&L bar chart + Recent closed trades
+
+Bar chart: 6 months of history, green/red bars
+Below: last 3–5 closed trades with same row format
+
+InstaTrade panel embedded at bottom
+Full InstaTrade™ panel (simple mode by default) embedded directly in journal so traders can place a new trade without leaving.
+
+SCREEN 6 — RESULTS PAGE (/results)
+Query echo
+Show user's question in a dark speech bubble at top.
+AI intro paragraph
+One paragraph explaining what was found and why, in plain English. Show before any cards.
+Setup cards grid (2 columns)
+[Best match badge if top result]
+[Ticker — 18px]     [Score badge with colored dot]
+[Strategy · Days]
+
+[Win prob]  [Max profit]  [Max loss]  ← 3 metric chips
+
+[One-line why this scores high]
+
+[See full trade →]  [What is this?]
+"What is this?" button triggers plain-English explanation — critical for beginners.
+Featured card (highest score): border: 2px solid #4f46e5
+Follow-up ask bar
+Below results grid:
+[search icon] [input: "Ask a follow-up or refine..."] [Ask →]
+Follow-up pills
+[Max loss under $200] [Beginner-friendly only] [For a $5k account] [Walk me through [top ticker]]
+
+USER MODE SYSTEM
+On first login, detect or ask the user's experience level:
+"What describes you best?"
+○ New to investing — want to grow my money
+○ I trade stocks and want better ideas
+○ I trade options actively
+○ Professional / manage others' money
+Store in user profile. Use to:
+
+Explorer mode (beginner): Hide Greeks, IV rank, delta. Show plain-English metrics only. Show educational tooltips on every metric.
+Trader mode (active): Show full metrics, IV rank, PoP, Greeks, score breakdowns.
+
+Add a toggle in settings to switch between modes at any time.
+
+BROKER CONNECTION UX
+When no broker is connected:
+
+Top bar shows amber banner: "Using sample data — [Connect your broker] for live prices and your real positions"
+Home snapshot cards show blurred/preview state with "Connect to unlock" overlay
+After connecting, refresh all data and show a success state
+
+Support: Tastytrade, TradeStation, Tradier, Schwab (existing integrations — don't break these)
+
+AI INTEGRATION REQUIREMENTS
+The natural language ask bar must handle:
+Beginner queries:
+
+"How do I grow $10k safely?" → conservative growth plan
+"What should I do with my savings?" → goal-based suggestions
+"What is a covered call?" → plain English education
+
+Trader queries:
+
+"Show me iron condors with IV rank above 60" → filtered scanner
+"Find credit spreads on tech with max loss under $200" → filtered results
+"Why is NVDA moving today?" → news + technical summary
+
+Route responses to the appropriate result format (trade cards, education card, market summary card).
+
+DAILY BRIEFING FEATURE
+Every morning at market open, generate a personalized briefing:
+Explorer mode: "Good morning. Markets are [tone] today. Your plan is on track. One idea: [top idea]."
+Trader mode: "IV rank elevated on [n] tickers. Top setup: [ticker + strategy], score [n]. Earnings this week: [list]. Your portfolio theta: +$[n]/day."
+Show as a dismissible card at top of home screen.
+
+PERFORMANCE & TECHNICAL NOTES
+
+Keep all existing broker OAuth integrations intact — do not touch auth flows
+All data currently flowing from Tastytrade, TradeStation, Tradier, Schwab must continue working
+InstaTrade™ order submission must remain connected to broker APIs
+Add loading skeletons for any data that fetches async — never show empty states without context
+All screens must work at 1280px+ desktop width
+Use existing component library/framework already in the codebase
+Do not change the database schema — adapt UI to existing data models
+Preserve all existing strategy logic — only update how it's presented
+
+
+WHAT NOT TO CHANGE
+
+All broker API integration code
+InstaTrade™ order routing logic
+Existing scoring/signal engine logic
+Database models and API endpoints
+Authentication system
+Admin panel functionality (just hide it from regular users)
+
+
+DEFINITION OF DONE
+The redesign is complete when:
+
+A brand new user can land on the home screen and understand what to do within 5 seconds
+A beginner can find a trade idea and understand it without any jargon
+An active trader can run a scanner, see results, and send a trade via InstaTrade™ in under 60 seconds
+The journal shows real P&L from connected broker with an AI insight
+No admin navigation is visible to non-admin users
+InstaTrade™ branding is prominent and the feature is accessible from every screen via sidebar

@@ -143,8 +143,14 @@ export function ComplianceFooter() {
       <div className="flex gap-2 items-start">
         <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
         <p>
-          Strategy Agent provides software-generated scenarios for informational and educational
-          purposes only. You remain responsible for every decision and order submitted.
+          <span className="font-medium text-foreground">Not investment advice.</span>{" "}
+          Strategy Agent is a software tool providing algorithmically-generated scenarios
+          and educational analysis only. It is not a registered broker-dealer or
+          investment adviser, and nothing displayed here constitutes a recommendation,
+          solicitation, or offer to buy or sell any security. You are solely responsible
+          for every order you submit. Trading involves substantial risk of loss; past
+          performance does not guarantee future results. Consult a licensed financial
+          professional before acting on any information shown.
         </p>
       </div>
     </div>

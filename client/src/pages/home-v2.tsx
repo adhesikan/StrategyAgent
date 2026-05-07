@@ -51,14 +51,6 @@ const ACTIONS = [
   },
 ];
 
-const POPULAR = [
-  "Grow $10k conservatively",
-  "Income ideas under $200 risk",
-  "Why is TSLA moving?",
-  "Best setups today",
-  "Covered call ideas",
-];
-
 export default function HomeV2() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
@@ -173,24 +165,6 @@ export default function HomeV2() {
                 <div className="mt-4 text-base font-medium">{a.title}</div>
                 <div className="text-sm text-muted-foreground mt-1">{a.desc}</div>
               </Card>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-            Popular right now
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {POPULAR.map((p) => (
-              <button
-                key={p}
-                onClick={() => submit(p)}
-                className="rounded-full border border-border bg-muted/40 hover:bg-muted text-sm px-4 py-2 transition-colors"
-                data-testid={`pill-popular-${p.slice(0, 12).toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                {p}
-              </button>
             ))}
           </div>
         </section>

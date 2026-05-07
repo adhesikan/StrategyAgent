@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Search,
   ArrowRight,
-  TrendingUp,
   DollarSign,
   Newspaper,
   BarChart3,
@@ -26,14 +25,6 @@ interface Snapshot {
 }
 
 const ACTIONS = [
-  {
-    title: "Grow my money",
-    desc: "Risk-aware ideas for long-term growth",
-    icon: TrendingUp,
-    href: "/goal-mode",
-    color: "bg-violet-100 text-violet-700",
-    testId: "card-action-grow",
-  },
   {
     title: "Find a trade",
     desc: "Describe a setup in plain English",

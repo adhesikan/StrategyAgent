@@ -1,9 +1,20 @@
-import { useMemo } from "react";
-import { Link, useLocation, useParams, useSearch } from "wouter";
+import { useMemo, useState } from "react";
+import { useLocation, useParams, useSearch } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle } from "lucide-react";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
+
+interface BrokerAccount {
+  id: string;
+  name: string;
+  type: string;
+  buyingPower: number;
+  equity: number;
+  currency: string;
+}
 
 interface Leg {
   side: "BUY" | "SELL";
@@ -79,6 +90,28 @@ export default function TradeDetailPage() {
   const tradeName = "Bear Call Spread";
   const score = 94;
   const breakeven: [number, number] = [86, 94];
+  const entryPrice = 90;
+  const stopLoss = 97;
+  const target = 84;
+
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
+
+  const { data: brokerAccounts } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+  });
+
+  const scanResult = {
+    ticker,
+    price: entryPrice,
+    resistance: stopLoss,
+    stopLoss: target,
+    stage: "BREAKOUT",
+    patternScore: score,
+    rvol: 1.4,
+    prefillTarget: target,
+    prefillQuantity: 1,
+  };
 
   return (
     <div className="flex-1 overflow-auto">
@@ -202,11 +235,13 @@ export default function TradeDetailPage() {
         </Card>
 
         <div className="flex flex-wrap gap-3 pt-2">
-          <Link href={`/instatrade?ticker=${ticker}&strategy=${strategy}`}>
-            <Button className="gap-2" data-testid="button-send-instatrade">
-              <Send className="h-4 w-4" /> Send to InstaTrade™
-            </Button>
-          </Link>
+          <Button
+            className="gap-2"
+            onClick={() => setTicketOpen(true)}
+            data-testid="button-send-instatrade"
+          >
+            <Send className="h-4 w-4" /> Send to InstaTrade™
+          </Button>
           <Button variant="outline" className="gap-2" data-testid="button-save-watchlist">
             <Bookmark className="h-4 w-4" /> Save to watchlist
           </Button>
@@ -219,6 +254,15 @@ export default function TradeDetailPage() {
           For informational purposes only — not financial advice.
         </p>
       </div>
+
+      <StockTradeTicket
+        open={ticketOpen}
+        onOpenChange={setTicketOpen}
+        scanResult={scanResult}
+        brokerAccounts={brokerAccounts || []}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+      />
     </div>
   );
 }

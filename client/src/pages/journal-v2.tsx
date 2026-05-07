@@ -1,9 +1,19 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowRight } from "lucide-react";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
+
+interface BrokerAccount {
+  id: string;
+  name: string;
+  type: string;
+  buyingPower: number;
+  equity: number;
+  currency: string;
+}
 
 type View = "open" | "closed" | "all";
 
@@ -37,6 +47,11 @@ const MONTHLY = [
 
 export default function JournalV2() {
   const [view, setView] = useState<View>("open");
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
+  const { data: brokerAccounts } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+  });
   const visible = view === "open" ? POSITIONS : view === "closed" ? CLOSED : [...POSITIONS, ...CLOSED];
 
   const totalPl = [...POSITIONS, ...CLOSED].reduce((s, p) => s + p.pl, 0);
@@ -171,12 +186,28 @@ export default function JournalV2() {
               <div className="text-sm font-medium">Place a new trade without leaving</div>
               <p className="text-xs text-muted-foreground mt-0.5">Open the InstaTrade™ panel pre-filled to a fresh ticket.</p>
             </div>
-            <Link href="/instatrade">
-              <Button data-testid="button-open-instatrade">Open InstaTrade™</Button>
-            </Link>
+            <Button onClick={() => setTicketOpen(true)} data-testid="button-open-instatrade">
+              Open InstaTrade™
+            </Button>
           </div>
         </Card>
       </div>
+
+      <StockTradeTicket
+        open={ticketOpen}
+        onOpenChange={setTicketOpen}
+        scanResult={{
+          ticker: "SPY",
+          price: 0,
+          resistance: null,
+          stopLoss: null,
+          stage: "WATCH",
+          patternScore: 0,
+        }}
+        brokerAccounts={brokerAccounts || []}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+      />
     </div>
   );
 }

@@ -30,6 +30,7 @@ import {
   BarChart3,
   BookOpen,
   Zap,
+  HelpCircle,
 } from "lucide-react";
 import {
   Sidebar,
@@ -69,6 +70,7 @@ const mainNavItems: NavItem[] = [
 const moreNavItems: NavItem[] = [
   { title: "Income", description: "Premium & income setups", url: "/income-mode", icon: DollarSign },
   { title: "Top Opportunities", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
+  { title: "Help & Guide", description: "Strategy details & how-to", url: "/help", icon: HelpCircle },
   { title: "My Limits", description: "Risk profile & guardrails", url: "/settings/risk-profile", icon: SlidersHorizontal },
   { title: "Settings", description: "Account, broker & preferences", url: "/settings", icon: Settings },
 ];

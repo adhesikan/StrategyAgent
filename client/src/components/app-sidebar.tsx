@@ -27,6 +27,9 @@ import {
   Mail,
   Eye,
   LayoutDashboard,
+  BarChart3,
+  BookOpen,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -57,22 +60,22 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { title: "Home", description: "Your starting point", url: "/home", icon: Home },
-  { title: "Grow", description: "Risk-aware growth ideas", url: "/goal-mode", icon: TrendingUp },
-  { title: "Income", description: "Premium & income setups", url: "/income-mode", icon: DollarSign },
-  { title: "Trade", description: "Describe a setup in plain English", url: "/trade-finder", icon: Search },
+  { title: "Scanner", description: "Find setups by strategy", url: "/scanner", icon: Search },
+  { title: "Trade", description: "AI trade builder", url: "/trade-finder", icon: BarChart3 },
+  { title: "Journal", description: "Positions, P&L & insights", url: "/journal", icon: BookOpen },
   { title: "Markets", description: "News, catalysts, sentiment", url: "/market-intel", icon: Newspaper },
 ];
 
 const moreNavItems: NavItem[] = [
+  { title: "Grow", description: "Risk-aware growth ideas", url: "/goal-mode", icon: TrendingUp },
+  { title: "Income", description: "Premium & income setups", url: "/income-mode", icon: DollarSign },
   { title: "Top Opportunities", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
-  { title: "My Activity", description: "Past ideas & history", url: "/history", icon: History },
   { title: "My Limits", description: "Risk profile & guardrails", url: "/settings/risk-profile", icon: SlidersHorizontal },
   { title: "Settings", description: "Account, broker & preferences", url: "/settings", icon: Settings },
 ];
 
 const baseAdvancedToolsItems: NavItem[] = [
   { title: "Trade Setups", description: "Saved setup builder", url: "/trade-setups", icon: Wrench },
-  { title: "Discover", description: "Scanner & filters", url: "/discover", icon: Compass },
   { title: "Charts", description: "Technical charts", url: "/charts", icon: LineChart },
   { title: "Backtest", description: "Strategy backtests", url: "/backtest", icon: Beaker },
   { title: "Alerts", description: "Trade alerts", url: "/alerts", icon: Bell },
@@ -230,8 +233,9 @@ export function AppSidebar() {
 
   const isActive = (url: string) => {
     if (url === "/home") return location === "/home";
-    if (url === "/trade-finder") return location === "/trade-finder" || location === "/agent";
-    if (url === "/history") return location === "/history" || location === "/trade-setups";
+    if (url === "/scanner") return location === "/scanner" || location === "/discover";
+    if (url === "/trade-finder") return location === "/trade-finder" || location === "/agent" || location.startsWith("/trade/");
+    if (url === "/journal") return location === "/journal" || location === "/history" || location === "/trade-setups";
     if (url === "/settings/risk-profile") return location === "/settings/risk-profile";
     if (url === "/settings") return location === "/settings" || (location.startsWith("/settings/") && location !== "/settings/risk-profile");
     if (url === "/charts") return location === "/charts" || location.startsWith("/charts/");
@@ -306,6 +310,32 @@ export function AppSidebar() {
                   onNavClick={handleNavClick}
                 />
               ))}
+
+              {isCollapsed && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/instatrade"}
+                    size="lg"
+                    tooltip="InstaTrade™"
+                    className="h-auto py-3 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
+                  >
+                    <Link
+                      href="/instatrade"
+                      onClick={handleNavClick}
+                      data-testid="link-nav-instatrade"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/15">
+                        <Zap className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm font-medium leading-tight truncate">InstaTrade™</span>
+                        <span className="text-xs leading-snug text-white/70">Place orders fast</span>
+                      </div>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
               {isCollapsed && [...moreNavItems, ...advancedToolsItems].map((item) => (
                 <NavMenuItem

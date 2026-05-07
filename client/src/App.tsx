@@ -74,6 +74,12 @@ import IncomeModePage from "@/pages/income-mode";
 import MarketIntelPage from "@/pages/market-intel";
 import HistoryPage from "@/pages/history";
 import OpportunityRadarPage from "@/pages/opportunity-radar";
+import HomeV2 from "@/pages/home-v2";
+import StrategyScannerPage from "@/pages/strategy-scanner";
+import TradeDetailPage from "@/pages/trade-detail";
+import InstaTradePage from "@/pages/instatrade-page";
+import JournalV2 from "@/pages/journal-v2";
+import ResultsPage from "@/pages/results-page";
 import PricingPage from "@/pages/pricing";
 import BillingSuccessPage from "@/pages/billing-success";
 import BillingCancelPage from "@/pages/billing-cancel";
@@ -97,18 +103,23 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/home" component={HomeDashboard} />
+      <Route path="/home" component={HomeV2} />
+      <Route path="/scanner" component={StrategyScannerPage} />
+      <Route path="/trade/:ticker" component={TradeDetailPage} />
+      <Route path="/instatrade" component={InstaTradePage} />
+      <Route path="/journal" component={JournalV2} />
+      <Route path="/results" component={ResultsPage} />
       <Route path="/goal-mode" component={GoalModePage} />
       <Route path="/opportunity-radar" component={OpportunityRadarPage} />
       <Route path="/trade-finder" component={AgentPage} />
       <Route path="/income-mode" component={IncomeModePage} />
       <Route path="/market-intel" component={MarketIntelPage} />
-      <Route path="/history" component={HistoryPage} />
+      <Route path="/history" component={JournalV2} />
       <Route path="/agent" component={AgentPage} />
       <Route path="/trade-setups" component={TradeSetupsPage} />
 
       <Route path="/command-center" component={CommandCenter} />
-      <Route path="/discover" component={DiscoverPage} />
+      <Route path="/discover" component={StrategyScannerPage} />
       <Route path="/automation">{() => <AdminOnly><AutomationPage /></AdminOnly>}</Route>
       <Route path="/news" component={NewsPage} />
       <Route path="/help" component={StrategyGuide} />
@@ -132,11 +143,10 @@ function AppRouter() {
       <Route path="/billing/cancel" component={BillingCancelPage} />
 
       <Route path="/">{() => <Redirect to="/home" />}</Route>
-      <Route path="/scanner">{() => <Redirect to="/discover?tab=stocks" />}</Route>
-      <Route path="/signals">{() => <Redirect to="/discover?tab=stocks" />}</Route>
-      <Route path="/watchlists">{() => <Redirect to="/discover?tab=stocks" />}</Route>
-      <Route path="/app/stocks">{() => <Redirect to="/discover?tab=stocks" />}</Route>
-      <Route path="/app/options">{() => <Redirect to="/discover?tab=options" />}</Route>
+      <Route path="/signals">{() => <Redirect to="/scanner" />}</Route>
+      <Route path="/watchlists">{() => <Redirect to="/scanner" />}</Route>
+      <Route path="/app/stocks">{() => <Redirect to="/scanner" />}</Route>
+      <Route path="/app/options">{() => <Redirect to="/scanner" />}</Route>
       <Route path="/strategies">{() => <Redirect to="/home" />}</Route>
       <Route path="/my-strategies">{() => <Redirect to="/home" />}</Route>
       <Route path="/broker-connections">{() => <Redirect to="/settings" />}</Route>
@@ -376,7 +386,7 @@ function AppLayoutInner() {
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
+    "--sidebar-width-icon": "4.5rem",
   } as React.CSSProperties;
 
   if (legalLoading) {
@@ -390,7 +400,7 @@ function AppLayoutInner() {
   return (
     <>
       <BrokerStatusProvider>
-        <SidebarProvider style={sidebarStyle}>
+        <SidebarProvider style={sidebarStyle} defaultOpen={false}>
           <div className="flex h-screen w-full">
             <AppSidebar />
             <SidebarInset className="flex flex-col flex-1 min-w-0 pb-16 md:pb-0">

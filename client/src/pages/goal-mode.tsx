@@ -12,6 +12,7 @@ import {
   type CandidateScenario,
 } from "@/components/goal-mode-shell";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
+import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { Target, RotateCcw } from "lucide-react";
 
 const MOCK_SCENARIOS: CandidateScenario[] = [
@@ -115,14 +116,36 @@ export default function GoalModePage() {
       <div className="space-y-1">
         <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
           <Target className="h-6 w-6 text-primary" />
-          Goal Mode
+          Grow
         </h1>
         <p className="text-sm text-muted-foreground">
-          Tell us your goal and risk. We'll build risk-defined candidate scenarios for review.
+          Explore stock and options opportunities that fit your selected limits.
         </p>
       </div>
 
       <BrokerStatusStrip />
+
+      <DailyIdeasSection
+        bucket="growth"
+        title="Your Growth Ideas"
+        subtitle="Stock & options candidates ranked for growth potential — review before acting."
+        limit={6}
+      />
+
+      <DailyIdeasSection
+        bucket="options"
+        title="Options Opportunities"
+        subtitle="Defined-risk option setups aligned with your limits."
+        limit={3}
+      />
+
+      <DailyIdeasSection
+        bucket="watchlist"
+        title="Watchlist Ideas"
+        subtitle="Ideas pulled from symbols on your watchlist."
+        limit={3}
+        emptyText="Add symbols to your watchlist to see ideas here."
+      />
 
       {!prefs && !wizardOpen && (
         <Card data-testid="card-empty-prefs">

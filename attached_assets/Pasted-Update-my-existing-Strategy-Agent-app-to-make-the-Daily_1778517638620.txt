@@ -1,0 +1,400 @@
+Update my existing Strategy Agent app to make the Daily AI Opportunity Scan feel simple, friendly, and useful for both stock and options traders without adding more visible complexity.
+
+Primary goal:
+Do NOT create another clunky scanner page as the main user experience.
+Instead, make Daily AI Opportunity Scan an invisible intelligence layer that powers simple “Today’s Ideas” across Home, Grow, Income, Trade, and Markets.
+
+The app should feel like:
+“ChatGPT for stock and options traders”
+not:
+“professional trading cockpit software.”
+
+Preserve all existing functionality:
+- Broker connections
+- InstaTrade™
+- TradeGuard
+- Opportunity Radar
+- Strategy Scanner
+- Goal Mode
+- Income Mode
+- Trade Finder
+- Market Intel
+- Journal / Results
+- Automation admin-gated features
+- Sentiment analysis
+- Compliance flows
+- Admin portal
+- Stripe subscriptions
+- Existing backend routes and services
+
+The platform must work naturally for:
+- stock traders
+- options traders
+- beginner users
+- advanced traders
+
+Do not break existing routes.
+Add aliases or redirects if needed.
+
+====================================================
+1. INFORMATION ARCHITECTURE SIMPLIFICATION
+====================================================
+
+Restructure the main authenticated navigation around 5 simple user journeys:
+
+Primary nav:
+- Home
+- Grow
+- Income
+- Trade
+- Markets
+
+Secondary collapsed section:
+More
+
+Inside More:
+- Top Opportunities
+- Scanner
+- Journal
+- Results
+- Automation
+- Settings
+- Account
+- Legal
+
+Rename labels in UI only:
+- Goal Mode → Grow
+- Income Mode → Income
+- Trade Finder → Trade
+- Market Intel → Markets
+- Opportunity Radar → Top Opportunities
+- Trade Journal → Journal
+- Risk Profile → My Limits
+- Trade Preferences → My Preferences
+- Universes → Watchlists
+
+Keep internal route compatibility:
+- /goal-mode still works but nav label is Grow
+- /income-mode still works but nav label is Income
+- /trade-finder still works but nav label is Trade
+- /market-intel still works but nav label is Markets
+- /opportunity-radar still works but appears under More as Top Opportunities
+
+====================================================
+2. DAILY AI OPPORTUNITY SCAN AS INVISIBLE ENGINE
+====================================================
+
+Create or update a backend/service layer called:
+
+DailyOpportunityScanService
+
+Purpose:
+Run a daily scan across either:
+- user watchlist
+- connected brokerage positions
+- selected universe
+- fallback popular liquid symbols
+
+It should generate simple candidate ideas for:
+- Stock growth opportunities
+- Bullish/bearish stock setups
+- Options income ideas
+- Defined-risk option trades
+- Watchlist alerts
+- Market/news/sentiment opportunities
+
+Supported instruments:
+- Stocks
+- Long Calls
+- Long Puts
+- Covered Calls
+- Cash-Secured Puts
+- Debit Spreads
+- Vertical Spreads
+
+This service should reuse existing engines where possible:
+- Opportunity Radar scoring
+- Probability Engine
+- News Sentiment Layer
+- Instrument Selector
+- Risk Preferences / Guardrails
+- Broker data service
+- Options chain service
+- Strategy Scanner logic
+
+Do not duplicate broker or scanner logic unnecessarily.
+
+Service functions:
+- getDailyIdeasForUser(userId)
+- getGrowthIdeas(userId)
+- getIncomeIdeas(userId)
+- getStockIdeas(userId)
+- getOptionIdeas(userId)
+- getWatchlistAlerts(userId)
+- getMarketSnapshot(userId)
+- getBeginnerFriendlyIdeaCards(userId)
+
+Return simple normalized objects:
+
+DailyIdea {
+  id
+  userId
+  symbol
+  companyName
+  category: growth | income | trade | market_alert
+  instrumentType: stock | long_call | long_put | spread | covered_call | cash_secured_put
+  title
+  simpleSummary
+  whyItAppeared
+  riskLevel: low | medium | high
+  grade
+  score
+  maxRisk
+  capitalNeeded
+  potentialReward
+  timeHorizon
+  sentimentLabel
+  brokerConnected
+  dataMode
+  sourceEngine
+  createdAt
+}
+
+Important:
+For novice-facing cards, hide technical score breakdown by default.
+Allow “View Details” to expand into the existing advanced details.
+
+====================================================
+3. HOME PAGE REDESIGN — “TODAY’S IDEAS”
+====================================================
+
+Update /home to lead with simplicity.
+
+Hero:
+Headline:
+“What would you like help with today?”
+
+Subheadline:
+“Strategy Agent scans stocks, options, news, market sentiment, and your selected limits to surface ideas you can review — nothing is sent without your approval.”
+
+Add ChatGPT-style ask bar:
+Placeholder examples:
+- “How can I grow $10k?”
+- “Find income ideas under $200 risk”
+- “Show bullish stock setups today”
+- “Find defined-risk option ideas”
+- “Why is NVDA moving?”
+- “Show lower-risk swing trades”
+
+When submitted:
+Route intelligently:
+- growth/income question → Grow or Income
+- stock/options setup question → Trade
+- ticker/news question → Markets
+
+Add 4 primary cards:
+1. Grow My Money
+Subtitle: “Simple stock and options ideas based on your limits”
+Route: /goal-mode
+
+2. Generate Income
+Subtitle: “Covered calls, cash-secured puts, and income opportunities”
+Route: /income-mode
+
+3. Find a Trade
+Subtitle: “Describe a stock or options setup in plain English”
+Route: /trade-finder
+
+4. Understand Markets
+Subtitle: “News, sentiment, catalysts, and watchlist impact”
+Route: /market-intel
+
+Add a major section:
+
+Title:
+“Today’s Ideas For You”
+
+Tabs:
+- All
+- Stocks
+- Options
+- Income
+- Watchlist
+- Market Alerts
+
+Each tab shows DailyIdea cards.
+
+====================================================
+4. DAILY IDEA CARD — SIMPLE FOR NOVICES
+====================================================
+
+Create reusable component:
+DailyIdeaCard
+
+Card should show:
+- Category badge: Stock / Options / Income / Market Alert
+- Symbol
+- Short title
+- Grade
+- Risk level
+- Max risk if available
+- Capital needed if available
+- Simple “Why it appeared” line
+- Buttons:
+  - Learn More
+  - Review
+  - Paper Trade
+
+Do NOT show:
+- Greeks
+- IV rank
+- technical score breakdown
+- scanner internals
+- dense option chain tables
+
+Unless user clicks Learn More or Review.
+
+Click Learn More:
+Open friendly explanation drawer:
+- What this means
+- Why it appeared
+- What could go wrong
+- What to review before trading
+- Related news/sentiment
+- Advanced details collapsed
+
+Click Review:
+Route to existing /trade/:ticker or open existing trade detail flow.
+
+====================================================
+5. GROW PAGE
+====================================================
+
+Page title:
+“Grow”
+
+Subtitle:
+“Explore stock and options opportunities that fit your selected limits.”
+
+After wizard, show:
+“Your Growth Ideas”
+
+Sections:
+1. Stock Opportunities
+2. Options Opportunities
+3. Watchlist Ideas
+4. Learn Before You Trade
+
+====================================================
+6. INCOME PAGE
+====================================================
+
+Page title:
+“Income”
+
+Subtitle:
+“Explore stock and options income opportunities with defined risk.”
+
+Show:
+“Today’s Income Ideas”
+
+Supported:
+- Covered Calls
+- Cash-Secured Puts
+- Defined-Risk Option Spreads
+- Dividend-oriented stock ideas if enabled
+
+====================================================
+7. TRADE PAGE
+====================================================
+
+Keep existing Trade Finder functionality.
+
+Add top prompt chips:
+- Find bullish stock ideas
+- Find lower-risk option ideas
+- Show swing trade setups
+- Find income opportunities
+- Explain today’s best opportunity
+
+====================================================
+8. MARKETS PAGE
+====================================================
+
+Page title:
+“Markets”
+
+Subtitle:
+“Understand what matters today before you trade.”
+
+Sections:
+1. Morning Briefing
+2. Why Is It Moving?
+3. Watchlist Sentiment
+4. Top Catalysts
+5. Congress Flow
+6. Stock Opportunities
+7. Options Opportunities
+
+====================================================
+9. BEGINNER / ADVANCED MODES
+====================================================
+
+Add global preference:
+experienceMode: beginner | advanced
+
+Default:
+beginner
+
+Beginner mode:
+- simplified stock and options cards
+- no Greeks shown by default
+- no complex chain tables
+- no dense scanners visible
+- fewer filters
+
+Advanced mode:
+- show Greeks
+- show IV/IV Rank
+- show technical breakdowns
+- show Opportunity Radar prominently
+- show advanced filters
+
+====================================================
+10. COMPLIANCE LANGUAGE
+====================================================
+
+Use:
+- stock and options ideas
+- candidate scenarios
+- opportunities
+- review before acting
+- self-directed execution
+
+Avoid:
+- guaranteed returns
+- buy/sell signals
+- AI predicts winners
+- best trade for you
+- autopilot profits
+
+====================================================
+11. FINAL UX GOAL
+====================================================
+
+A novice trader should be able to:
+
+1. Open the app
+2. Understand what to do within 5 seconds
+3. Choose Stocks, Options, Growth, or Income
+4. Enter capital and max risk
+5. See simple ideas immediately
+6. Learn why an idea appeared
+7. Paper trade or review safely
+8. Only submit live order after explicit confirmation
+
+The app should feel:
+simple, helpful, modern, and intelligent
+
+NOT:
+overwhelming, technical, or cluttered.

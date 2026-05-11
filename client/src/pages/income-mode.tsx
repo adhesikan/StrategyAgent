@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { CandidateScenarioCard, type CandidateScenario } from "@/components/goal-mode-shell";
+import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
 
 const INCOME_IDEAS: CandidateScenario[] = [
@@ -77,14 +78,21 @@ export default function IncomeModePage() {
       <div className="space-y-1">
         <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
           <DollarSign className="h-6 w-6 text-emerald-400" />
-          Income Mode
+          Income
         </h1>
         <p className="text-sm text-muted-foreground">
-          Explore covered calls, cash-secured puts, and defined-risk income scenarios.
+          Explore stock and options income opportunities with defined risk.
         </p>
       </div>
 
       <BrokerStatusStrip />
+
+      <DailyIdeasSection
+        bucket="income"
+        title="Today's Income Ideas"
+        subtitle="Covered calls, cash-secured puts, and defined-risk income setups."
+        limit={6}
+      />
 
       <Card data-testid="card-income-form">
         <CardHeader>

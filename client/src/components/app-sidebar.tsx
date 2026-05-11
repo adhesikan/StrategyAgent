@@ -60,19 +60,20 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { title: "Home", description: "Your starting point", url: "/home", icon: Home },
-  { title: "Scanner", description: "Find setups by strategy", url: "/scanner", icon: Search },
-  { title: "Trade", description: "AI trade builder", url: "/trade-finder", icon: BarChart3 },
-  { title: "Journal", description: "Positions, P&L & insights", url: "/journal", icon: BookOpen },
+  { title: "Home", description: "Today's ideas, your starting point", url: "/home", icon: Home },
+  { title: "Grow", description: "Stock & options growth ideas", url: "/goal-mode", icon: TrendingUp },
+  { title: "Income", description: "Covered calls, CSPs, defined-risk income", url: "/income-mode", icon: DollarSign },
+  { title: "Trade", description: "Describe a setup in plain English", url: "/trade-finder", icon: BarChart3 },
   { title: "Markets", description: "News, catalysts, sentiment", url: "/market-intel", icon: Newspaper },
 ];
 
 const moreNavItems: NavItem[] = [
-  { title: "Income", description: "Premium & income setups", url: "/income-mode", icon: DollarSign },
   { title: "Top Opportunities", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
+  { title: "Scanner", description: "Find setups by strategy", url: "/scanner", icon: Search },
+  { title: "Journal", description: "Positions, P&L & insights", url: "/journal", icon: BookOpen },
   { title: "Help & Guide", description: "Strategy details & how-to", url: "/help", icon: HelpCircle },
   { title: "My Limits", description: "Risk profile & guardrails", url: "/settings/risk-profile", icon: SlidersHorizontal },
-  { title: "Settings", description: "Account, broker & preferences", url: "/settings", icon: Settings },
+  { title: "My Preferences", description: "Trading preferences", url: "/settings", icon: Settings },
 ];
 
 const baseAdvancedToolsItems: NavItem[] = [
@@ -234,6 +235,9 @@ export function AppSidebar() {
 
   const isActive = (url: string) => {
     if (url === "/home") return location === "/home";
+    if (url === "/goal-mode") return location === "/goal-mode";
+    if (url === "/income-mode") return location === "/income-mode";
+    if (url === "/market-intel") return location === "/market-intel";
     if (url === "/scanner") return location === "/scanner" || location === "/discover";
     if (url === "/trade-finder") return location === "/trade-finder" || location === "/agent" || location.startsWith("/trade/");
     if (url === "/journal") return location === "/journal" || location === "/history" || location === "/trade-setups";

@@ -38,6 +38,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { InteractiveTutorial } from "@/components/interactive-tutorial";
+import { useExperienceMode } from "@/hooks/use-experience-mode";
 import type { BrokerConnection, BrokerProviderType, OpportunityDefaults, SnaptradeConnection } from "@shared/schema";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { useTooltipVisibility } from "@/hooks/use-tooltips";
@@ -1467,6 +1468,8 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          <ExperienceModeCard />
 
           <TutorialSettings />
         </TabsContent>
@@ -3009,6 +3012,49 @@ function EditProfileForm({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+function ExperienceModeCard() {
+  const [mode, setMode] = useExperienceMode();
+  return (
+    <Card className="mt-6" data-testid="card-experience-mode">
+      <CardHeader>
+        <CardTitle className="text-base font-medium">Experience Mode</CardTitle>
+        <CardDescription>
+          Choose how much detail you'd like to see across the app.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setMode("beginner")}
+            className={`text-left rounded-lg border p-4 hover-elevate ${mode === "beginner" ? "border-primary bg-primary/5" : ""}`}
+            data-testid="button-experience-beginner"
+          >
+            <div className="font-medium text-sm">Beginner-Friendly</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Plain-English ideas, simple cards, fewer numbers, more guidance.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("advanced")}
+            className={`text-left rounded-lg border p-4 hover-elevate ${mode === "advanced" ? "border-primary bg-primary/5" : ""}`}
+            data-testid="button-experience-advanced"
+          >
+            <div className="font-medium text-sm">Advanced</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Full scoring breakdowns, factor details, and advanced filters.
+            </p>
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          You can switch any time. This only changes how information is presented — it does not change your trading limits.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

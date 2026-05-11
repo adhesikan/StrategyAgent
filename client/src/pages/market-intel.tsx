@@ -18,6 +18,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { ComplianceFooter } from "@/components/trading-shell";
+import { DailyIdeasSection } from "@/components/daily-ideas-section";
 
 type SentimentLabel = "bullish" | "bearish" | "neutral" | "mixed";
 type ImpactLevel = "low" | "medium" | "high";
@@ -169,12 +170,12 @@ export default function MarketIntelPage() {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
             <Newspaper className="h-6 w-6 text-amber-400" />
-            Market Intel
+            Markets
           </h1>
           <SourceBadge sources={sources} />
         </div>
         <p className="text-sm text-muted-foreground">
-          AI-summarized news context, watchlist sentiment, and informational catalyst tracking.
+          Understand what matters today before you trade.
         </p>
       </div>
 
@@ -215,6 +216,20 @@ export default function MarketIntelPage() {
         activeSymbol={activeWhySymbol}
         result={whyQuery.data}
         isLoading={whyQuery.isLoading}
+      />
+
+      <DailyIdeasSection
+        bucket="stocks"
+        title="Stock Opportunities"
+        subtitle="AI-ranked stock candidate scenarios for self-directed review."
+        limit={6}
+      />
+
+      <DailyIdeasSection
+        bucket="options"
+        title="Options Opportunities"
+        subtitle="Defined-risk option ideas aligned with current market conditions."
+        limit={6}
       />
 
       <ComplianceFooter />

@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Zap } from "lucide-react";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
+import { HelpLink } from "@/components/help-link";
 
 interface BrokerAccount {
   id: string;
@@ -38,7 +39,10 @@ export default function InstaTradePage() {
           <div className="h-12 w-12 rounded-lg bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4">
             <Zap className="h-5 w-5" />
           </div>
-          <h1 className="text-xl font-medium">InstaTrade™</h1>
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-xl font-medium">InstaTrade™</h1>
+            <HelpLink section="instatrade" />
+          </div>
           <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
             The trade ticket panel is open on the right. Close it to return here, or
             open it again any time.

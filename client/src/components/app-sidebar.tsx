@@ -71,7 +71,8 @@ const moreNavItems: NavItem[] = [
   { title: "Top Opportunities", description: "AI-ranked candidate scenarios", url: "/opportunity-radar", icon: Radar },
   { title: "Scanner", description: "Find setups by strategy", url: "/scanner", icon: Search },
   { title: "Journal", description: "Positions, P&L & insights", url: "/journal", icon: BookOpen },
-  { title: "Help & Guide", description: "Strategy details & how-to", url: "/help", icon: HelpCircle },
+  { title: "User Guide", description: "How every feature works", url: "/guide", icon: HelpCircle },
+  { title: "Strategy Reference", description: "Strategy details (VCP, ORB, …)", url: "/help", icon: BookOpen },
   { title: "My Limits", description: "Risk profile & guardrails", url: "/settings/risk-profile", icon: SlidersHorizontal },
   { title: "My Preferences", description: "Trading preferences", url: "/settings", icon: Settings },
 ];

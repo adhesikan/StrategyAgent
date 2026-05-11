@@ -58,6 +58,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useLocation } from "wouter";
+import { HelpLink } from "@/components/help-link";
 import {
   Sparkles,
   Send,
@@ -500,10 +501,13 @@ export default function AgentPage() {
     <div className="flex-1 p-4 md:p-6 space-y-5 max-w-5xl mx-auto">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-0.5">
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-            <Bot className="h-6 w-6 text-primary" />
-            Advanced Trade Builder
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+              <Bot className="h-6 w-6 text-primary" />
+              Advanced Trade Builder
+            </h1>
+            <HelpLink section="trade" />
+          </div>
           <p className="text-sm text-muted-foreground" data-testid="text-page-subtitle">
             Describe a specific setup, apply filters, and review a broker-ready scenario.
           </p>

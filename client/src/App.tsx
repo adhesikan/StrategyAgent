@@ -49,6 +49,7 @@ import DisclaimerPage from "@/pages/disclaimer";
 import PrivacyPage from "@/pages/privacy";
 import OpenSourcePage from "@/pages/open-source";
 import StrategyGuide from "@/pages/strategy-guide";
+import UserGuidePage from "@/pages/user-guide";
 import AutomationPage from "@/pages/automation";
 import AlertsPage from "@/pages/alerts";
 import SnaptradeCallback from "@/pages/snaptrade-callback";
@@ -123,6 +124,8 @@ function AppRouter() {
       <Route path="/automation">{() => <AdminOnly><AutomationPage /></AdminOnly>}</Route>
       <Route path="/news" component={NewsPage} />
       <Route path="/help" component={StrategyGuide} />
+      <Route path="/guide" component={UserGuidePage} />
+      <Route path="/guide/:section" component={UserGuidePage} />
 
       <Route path="/settings/risk-profile" component={RiskProfilePage} />
       <Route path="/settings/universes" component={UniversesPage} />

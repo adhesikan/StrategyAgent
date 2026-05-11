@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { ComplianceFooter } from "@/components/trading-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
+import { HelpLink } from "@/components/help-link";
 
 type SentimentLabel = "bullish" | "bearish" | "neutral" | "mixed";
 type ImpactLevel = "low" | "medium" | "high";
@@ -172,7 +173,10 @@ export default function MarketIntelPage() {
             <Newspaper className="h-6 w-6 text-amber-400" />
             Markets
           </h1>
-          <SourceBadge sources={sources} />
+          <div className="flex items-center gap-2">
+            <SourceBadge sources={sources} />
+            <HelpLink section="markets" />
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">
           Understand what matters today before you trade.

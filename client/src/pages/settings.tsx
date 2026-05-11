@@ -45,6 +45,7 @@ import { useTooltipVisibility } from "@/hooks/use-tooltips";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { TradingStyleSection } from "@/components/settings/trading-style-section";
 import { BillingSection } from "@/components/settings/billing-section";
+import { HelpLink } from "@/components/help-link";
 
 interface UserSettingsResponse {
   showTooltips: boolean;
@@ -771,11 +772,14 @@ export default function Settings() {
 
   return (
     <div className="p-6 space-y-6" data-testid="settings-page">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configure your trading preferences and connections
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Configure your trading preferences and connections
+          </p>
+        </div>
+        <HelpLink section="settings" />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">

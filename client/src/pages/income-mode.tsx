@@ -10,6 +10,7 @@ import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell"
 import { CandidateScenarioCard, type CandidateScenario } from "@/components/goal-mode-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
+import { HelpLink } from "@/components/help-link";
 
 const INCOME_IDEAS: CandidateScenario[] = [
   {
@@ -76,10 +77,13 @@ export default function IncomeModePage() {
   return (
     <div className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
-          <DollarSign className="h-6 w-6 text-emerald-400" />
-          Income
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
+            <DollarSign className="h-6 w-6 text-emerald-400" />
+            Income
+          </h1>
+          <HelpLink section="income" />
+        </div>
         <p className="text-sm text-muted-foreground">
           Explore stock and options income opportunities with defined risk.
         </p>

@@ -14,6 +14,7 @@ import {
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { Target, RotateCcw } from "lucide-react";
+import { HelpLink } from "@/components/help-link";
 
 const MOCK_SCENARIOS: CandidateScenario[] = [
   {
@@ -114,10 +115,13 @@ export default function GoalModePage() {
   return (
     <div className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
-          <Target className="h-6 w-6 text-primary" />
-          Grow
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2" data-testid="text-page-title">
+            <Target className="h-6 w-6 text-primary" />
+            Grow
+          </h1>
+          <HelpLink section="grow" />
+        </div>
         <p className="text-sm text-muted-foreground">
           Explore stock and options opportunities that fit your selected limits.
         </p>

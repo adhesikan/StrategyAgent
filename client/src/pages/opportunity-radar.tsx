@@ -53,6 +53,7 @@ import { ComplianceFooter } from "@/components/trading-shell";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { HelpLink } from "@/components/help-link";
 
 type Bias = "any" | "bullish" | "bearish" | "neutral";
 type StrategyType =
@@ -284,10 +285,13 @@ export default function OpportunityRadarPage() {
           <div className="h-10 w-10 rounded-lg bg-primary/15 border border-primary/20 flex items-center justify-center">
             <Radar className="h-5 w-5 text-primary" />
           </div>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-radar-title">
-              Opportunity Radar
-            </h1>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-radar-title">
+                Opportunity Radar
+              </h1>
+              <HelpLink section="radar" />
+            </div>
             <p className="text-sm text-muted-foreground" data-testid="text-radar-subtitle">
               AI-ranked stock and options scenarios for review — based on market data, sentiment, liquidity,
               and your selected limits.

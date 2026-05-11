@@ -99,7 +99,7 @@ const PERSONA_HERO: Record<TraderPersona | "default", { title: string; subtitle:
   },
   default: {
     title: "What would you like help with today?",
-    subtitle: "Tell Strategy Agent your goal. We'll show scenarios, explain risks, and never send orders without your review.",
+    subtitle: "Tell VCP Trader AI your goal. We'll show scenarios, explain risks, and never send orders without your review.",
     cards: ["grow", "income", "find", "markets"],
   },
 };

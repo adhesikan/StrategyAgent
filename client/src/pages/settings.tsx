@@ -1258,7 +1258,7 @@ export default function Settings() {
                             {isOAuthPending ? "Connecting..." : `Sign in with ${brokerProviders.find(b => b.id === selectedProvider)?.name}`}
                           </Button>
                           <p className="text-xs text-muted-foreground text-center">
-                            Securely authorize Strategy Agent to access market data from your account
+                            Securely authorize VCP Trader AI to access market data from your account
                           </p>
                           
                           <div className="relative py-2">
@@ -1352,7 +1352,7 @@ export default function Settings() {
                           <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Security Notice</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          By connecting, you authorize Strategy Agent to access account data and (if enabled) place trades on your behalf.
+                          By connecting, you authorize VCP Trader AI to access account data and (if enabled) place trades on your behalf.
                           Your credentials are encrypted at rest and never shared with third parties.
                         </p>
                       </div>
@@ -2390,7 +2390,7 @@ function AutomationSettings() {
             </div>
             <p className="text-xs text-muted-foreground">
               Automated trading carries significant risk. Always monitor your positions and ensure 
-              proper risk management is in place. Strategy Agent is not responsible for any trading losses.
+              proper risk management is in place. VCP Trader AI is not responsible for any trading losses.
             </p>
           </div>
 
@@ -3101,7 +3101,7 @@ function TutorialSettings() {
               Learning Center
             </CardTitle>
             <CardDescription>
-              Access tutorials and guides to master Strategy Agent
+              Access tutorials and guides to master VCP Trader AI
             </CardDescription>
           </div>
         </CardHeader>

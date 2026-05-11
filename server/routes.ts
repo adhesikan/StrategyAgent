@@ -118,7 +118,7 @@ export async function registerRoutes(
     if (accept.includes("application/json")) {
       return res.status(503).json({
         error: "Service temporarily unavailable",
-        message: "Strategy Agent is undergoing scheduled maintenance. Please check back shortly.",
+        message: "VCP Trader AI is undergoing scheduled maintenance. Please check back shortly.",
         maintenance: true,
       });
     }
@@ -126,7 +126,7 @@ export async function registerRoutes(
     return res.status(503).send(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Strategy Agent - Maintenance</title>
+<title>VCP Trader AI - Maintenance</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -137,7 +137,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 </style></head>
 <body><div class="wrap">
 <div class="badge">Scheduled Maintenance</div>
-<h1>Strategy Agent is temporarily offline</h1>
+<h1>VCP Trader AI is temporarily offline</h1>
 <p>We're performing upgrades to improve your trading experience. This usually takes just a few minutes.</p>
 <p style="font-size:.875rem">If you need immediate help, contact <a href="mailto:support@sunfishtech.com" style="color:#60a5fa">support@sunfishtech.com</a></p>
 </div></body></html>`);
@@ -4942,7 +4942,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const testPayload = {
         type: "test",
         timestamp: new Date().toISOString(),
-        message: "Strategy Agent connection test",
+        message: "VCP Trader AI connection test",
       };
 
       try {
@@ -5247,7 +5247,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const testPayload = {
         type: "test",
         timestamp: new Date().toISOString(),
-        message: "Strategy Agent connection test",
+        message: "VCP Trader AI connection test",
         endpointId: endpointWithSecret.id,
         endpointName: endpointWithSecret.name,
       };

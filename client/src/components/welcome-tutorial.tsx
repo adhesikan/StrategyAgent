@@ -146,7 +146,7 @@ export function WelcomeTutorial({ onClose, forceShow }: WelcomeTutorialProps) {
                   <Rocket className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold">Welcome to Strategy Agent</h2>
+                  <h2 className="text-2xl font-bold">Welcome to VCP Trader AI</h2>
                   <p className="text-muted-foreground text-sm">by Sunfish Technologies</p>
                 </div>
               </motion.div>

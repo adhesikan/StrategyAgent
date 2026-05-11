@@ -329,7 +329,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
                   <Sparkles className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Welcome to Strategy Agent</h3>
+                <h3 className="text-xl font-semibold mb-2">Welcome to VCP Trader AI</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
                   Answer a few questions about your trading style and we'll configure everything
                   automatically. You can always adjust settings later.
@@ -632,7 +632,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
                         <div className="text-xs text-muted-foreground space-y-1">
                           <p className="font-medium text-orange-700 dark:text-orange-400">Important Acknowledgment</p>
                           <ul className="list-disc list-inside space-y-0.5">
-                            <li>Strategy Agent automates order placement based on your rules.</li>
+                            <li>VCP Trader AI automates order placement based on your rules.</li>
                             <li>It does not provide investment advice or guarantee outcomes.</li>
                             <li>You are solely responsible for all trades, settings, and risk.</li>
                             <li>Trading involves risk, including loss of principal.</li>

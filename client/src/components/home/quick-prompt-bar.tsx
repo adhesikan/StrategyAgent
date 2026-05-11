@@ -70,7 +70,7 @@ export function QuickPromptBar() {
           placeholder={PLACEHOLDERS[placeholderIdx]}
           className="flex-1 bg-transparent border-0 outline-none text-sm md:text-base placeholder:text-muted-foreground/70 py-2 min-w-0"
           data-testid="input-quick-prompt"
-          aria-label="Ask Strategy Agent"
+          aria-label="Ask VCP Trader AI"
         />
         <button
           type="submit"

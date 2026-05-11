@@ -33,42 +33,42 @@ export default function TermsPage() {
             <section>
               <h3>1. Description of Service</h3>
               <p>
-                Strategy Agent is a software platform developed and operated by Sunfish Technologies LLC that provides AI-powered strategy analysis, trade setup generation, market scanning tools, technical analysis charts, and educational resources for traders. The platform includes features such as natural language setup generation, built-in and custom strategies, interactive charts, and push notifications.
+                VCP Trader AI is a software platform developed and operated by Sunfish Technologies LLC that provides AI-powered strategy analysis, trade setup generation, market scanning tools, technical analysis charts, and educational resources for traders. The platform includes features such as natural language setup generation, built-in and custom strategies, interactive charts, and push notifications.
               </p>
             </section>
 
             <section>
               <h3>2. Educational Purpose Only</h3>
               <p>
-                All information, analysis, alerts, and features provided by Strategy Agent are for educational and informational purposes only. Nothing on this platform constitutes investment advice, financial advice, trading advice, or any other type of professional advice. You should consult with qualified professionals before making any financial decisions.
+                All information, analysis, alerts, and features provided by VCP Trader AI are for educational and informational purposes only. Nothing on this platform constitutes investment advice, financial advice, trading advice, or any other type of professional advice. You should consult with qualified professionals before making any financial decisions.
               </p>
             </section>
 
             <section>
               <h3>3. User Responsibility</h3>
               <p>
-                You are solely responsible for all trading and investment decisions you make. Strategy Agent provides tools and information, but any actions you take based on this information are at your own risk. You acknowledge that trading involves substantial risk of loss and may not be suitable for all investors.
+                You are solely responsible for all trading and investment decisions you make. VCP Trader AI provides tools and information, but any actions you take based on this information are at your own risk. You acknowledge that trading involves substantial risk of loss and may not be suitable for all investors.
               </p>
             </section>
 
             <section>
               <h3>4. No Warranties</h3>
               <p>
-                Strategy Agent is provided "as is" without warranties of any kind, express or implied. We do not guarantee that the service will be uninterrupted, error-free, or completely secure. Market data may be delayed, incomplete, or inaccurate. We make no warranties regarding the accuracy, reliability, or completeness of any information provided.
+                VCP Trader AI is provided "as is" without warranties of any kind, express or implied. We do not guarantee that the service will be uninterrupted, error-free, or completely secure. Market data may be delayed, incomplete, or inaccurate. We make no warranties regarding the accuracy, reliability, or completeness of any information provided.
               </p>
             </section>
 
             <section>
               <h3>5. Limitation of Liability</h3>
               <p>
-                To the maximum extent permitted by law, Sunfish Technologies LLC, Strategy Agent, and its operators, developers, affiliates, and partners shall not be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising from your use of the platform, including but not limited to trading losses, lost profits, or missed opportunities.
+                To the maximum extent permitted by law, Sunfish Technologies LLC, VCP Trader AI, and its operators, developers, affiliates, and partners shall not be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising from your use of the platform, including but not limited to trading losses, lost profits, or missed opportunities.
               </p>
             </section>
 
             <section>
               <h3>6. Indemnification</h3>
               <p>
-                You agree to indemnify and hold harmless Sunfish Technologies LLC, Strategy Agent, and its operators from any claims, damages, losses, or expenses arising from your use of the platform, your violation of these terms, or your violation of any rights of third parties.
+                You agree to indemnify and hold harmless Sunfish Technologies LLC, VCP Trader AI, and its operators from any claims, damages, losses, or expenses arising from your use of the platform, your violation of these terms, or your violation of any rights of third parties.
               </p>
             </section>
 

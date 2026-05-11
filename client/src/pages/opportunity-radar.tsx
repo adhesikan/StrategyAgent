@@ -1038,7 +1038,7 @@ function OrderReviewDialog({
               data-testid="checkbox-radar-acknowledge"
             />
             <span className="leading-snug text-xs">
-              I understand this is a self-directed order. Strategy Agent is not providing investment advice,
+              I understand this is a self-directed order. VCP Trader AI is not providing investment advice,
               and I am responsible for this order.
             </span>
           </label>

@@ -8,7 +8,7 @@ export const PROMO_CONFIG = {
   standardPrice: 99,
   promoPrice: 49,
   discountPercent: 50,
-  planName: "Strategy Agent Pro",
+  planName: "VCP Trader AI Pro",
   endDateDisplay: "Jan 30, 2026",
   trialDays: TRIAL_DAYS,
 };

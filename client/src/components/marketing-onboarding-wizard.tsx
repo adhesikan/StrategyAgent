@@ -148,7 +148,7 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
           </DialogTitle>
           <DialogDescription data-testid="text-mw-description">
             {step === TOTAL_STEPS - 1
-              ? `Step ${TOTAL_STEPS} of ${TOTAL_STEPS} — here's an example of what Strategy Agent will build for you.`
+              ? `Step ${TOTAL_STEPS} of ${TOTAL_STEPS} — here's an example of what VCP Trader AI will build for you.`
               : `Step ${step + 1} of ${TOTAL_STEPS} — takes under 60 seconds.`}
           </DialogDescription>
         </DialogHeader>

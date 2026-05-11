@@ -144,7 +144,7 @@ export default function HomeV2() {
             What would you like help with today?
           </p>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            Strategy Agent scans stocks, options, news, market sentiment, and your selected limits to
+            VCP Trader AI scans stocks, options, news, market sentiment, and your selected limits to
             surface ideas you can review — nothing is sent without your approval.
           </p>
         </div>

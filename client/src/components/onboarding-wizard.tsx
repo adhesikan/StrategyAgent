@@ -278,7 +278,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
           <DialogTitle data-testid="text-wizard-title">
             {step === TOTAL_STEPS - 1
               ? (isEditing ? "Configuration Updated" : "You're All Set")
-              : (isEditing ? "Edit Configuration" : "Welcome to Strategy Agent")}
+              : (isEditing ? "Edit Configuration" : "Welcome to VCP Trader AI")}
           </DialogTitle>
           <DialogDescription data-testid="text-wizard-description">
             {step === TOTAL_STEPS - 1

@@ -378,7 +378,7 @@ export function GoalRealityCheck({ prefs, monthlyTarget }: GoalRealityCheckProps
     1,
   )}% monthly before fees and slippage.${
     aggressive ? " That may be aggressive depending on market conditions." : ""
-  } Strategy Agent will show risk-defined scenarios for review, not guaranteed outcomes.`;
+  } VCP Trader AI will show risk-defined scenarios for review, not guaranteed outcomes.`;
 
   return (
     <Card data-testid="card-reality-check" className="border-amber-500/30 bg-amber-500/5">

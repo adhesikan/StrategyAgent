@@ -1152,7 +1152,7 @@ function LandingFooter() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <img src={logoUrl} alt="VCP Trader AI" className="h-6 w-auto" />
-            <span className="text-sm font-medium text-muted-foreground">VCP Trader AI · Powered by Strategy Agent</span>
+            <span className="text-sm font-medium text-muted-foreground">VCP Trader AI · Powered by Strategy Agent engine</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm">
             <Link href="/terms" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-footer-terms">Terms</Link>

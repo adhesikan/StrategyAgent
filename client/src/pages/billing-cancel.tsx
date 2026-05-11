@@ -7,7 +7,7 @@ export default function BillingCancelPage() {
   const [, navigate] = useLocation();
 
   useEffect(() => {
-    document.title = "Checkout cancelled — Strategy Agent";
+    document.title = "Checkout cancelled — VCP Trader AI";
   }, []);
 
   return (
@@ -21,7 +21,7 @@ export default function BillingCancelPage() {
             Checkout cancelled
           </h1>
           <p className="text-sm text-muted-foreground">
-            No worries — nothing was charged. You can keep using Strategy Agent on the free Explorer plan,
+            No worries — nothing was charged. You can keep using VCP Trader AI on the free Explorer plan,
             or pick a different plan whenever you're ready.
           </p>
         </div>

@@ -117,12 +117,12 @@ export function computePersona(input: PersonaInput): PersonaOutput {
 export const DISCLAIMER_VERSION = "v1.1.0";
 
 export const DISCLAIMER_BULLETS = [
-  "Strategy Agent is software that helps you analyze strategies and generate trade setups based on rules you choose.",
+  "VCP Trader AI is software that helps you analyze strategies and generate trade setups based on rules you choose.",
   "It does not provide investment advice and does not guarantee outcomes.",
   "You are solely responsible for all trading decisions, settings, and risk.",
   "Trading involves risk, including loss of principal.",
   "Past performance and backtests (if shown) are not indicative of future results.",
-  "By enabling autopilot you agree you will not hold Sunfish Technologies/Strategy Agent liable for gains or losses.",
+  "By enabling autopilot you agree you will not hold Sunfish Technologies/VCP Trader AI liable for gains or losses.",
 ];
 
 export const DISCLAIMER_FULL_TEXT = DISCLAIMER_BULLETS.join(" ");

@@ -42,7 +42,7 @@ function isProviderConfigured(): { provider: string | null; reason?: string } {
 async function sendViaSendGrid(args: SendCampaignArgs): Promise<SendCampaignResult> {
   const apiKey = process.env.SENDGRID_API_KEY!;
   const from = args.fromEmail || process.env.EMAIL_FROM_ADDRESS;
-  const fromName = args.fromName || process.env.EMAIL_FROM_NAME || "Strategy Agent";
+  const fromName = args.fromName || process.env.EMAIL_FROM_NAME || "VCP Trader AI";
   if (!from) {
     throw new EmailServiceError(
       "EMAIL_FROM_ADDRESS is not configured. Add a verified sender address.",

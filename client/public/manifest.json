@@ -1,6 +1,6 @@
 {
-  "name": "Strategy Agent by Sunfish Technologies",
-  "short_name": "Strategy Agent",
+  "name": "VCP Trader AI by Sunfish Technologies",
+  "short_name": "VCP Trader AI",
   "description": "AI-powered strategy analysis and trade setup generation. A Sunfish Technologies LLC platform.",
   "start_url": "/",
   "display": "standalone",

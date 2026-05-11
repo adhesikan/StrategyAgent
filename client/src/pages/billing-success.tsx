@@ -10,7 +10,7 @@ export default function BillingSuccessPage() {
   const { plan, planName } = usePlan();
 
   useEffect(() => {
-    document.title = "Subscription confirmed — Strategy Agent";
+    document.title = "Subscription confirmed — VCP Trader AI";
     // Refresh billing + auth so the rest of the app picks up the new plan.
     queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
     queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });

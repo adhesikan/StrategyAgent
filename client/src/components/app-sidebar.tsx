@@ -138,7 +138,7 @@ function SidebarBrandHeader() {
           </div>
           {!isCollapsed && (
             <div className="flex flex-col overflow-hidden">
-              <span className="font-semibold text-sm leading-tight truncate" data-testid="text-brand-name">Strategy Agent</span>
+              <span className="font-semibold text-sm leading-tight truncate" data-testid="text-brand-name">VCP Trader AI</span>
               <span className="text-[10px] text-muted-foreground leading-tight truncate">AI-powered setups</span>
             </div>
           )}

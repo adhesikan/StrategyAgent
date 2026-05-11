@@ -34,13 +34,20 @@ const allowlist = [
 ];
 
 async function buildAll() {
-  console.log("running database migrations...");
-  try {
-    execSync("npx drizzle-kit push", { stdio: "inherit" });
-    console.log("database migrations complete");
-  } catch (error) {
-    console.error("database migration failed:", error);
-    throw error;
+  if (process.env.DATABASE_URL) {
+    console.log("running database migrations...");
+    try {
+      execSync("npx drizzle-kit push", { stdio: "inherit" });
+      console.log("database migrations complete");
+    } catch (error) {
+      console.error("database migration failed:", error);
+      throw error;
+    }
+  } else {
+    console.log(
+      "DATABASE_URL not set at build time — skipping migrations. " +
+        "They will run at startup via script/migrate.ts.",
+    );
   }
 
   await rm("dist", { recursive: true, force: true });

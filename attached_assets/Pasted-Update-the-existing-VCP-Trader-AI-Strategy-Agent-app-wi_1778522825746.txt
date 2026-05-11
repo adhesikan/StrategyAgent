@@ -1,0 +1,460 @@
+Update the existing VCP Trader AI / Strategy Agent app with the latest pricing, broker-data, trial, and execution model.
+
+Core direction:
+VCP Trader AI is an AI-powered stock and options trading workspace for self-directed traders.
+
+The app should:
+- Offer a 14-day trial using paper/simulated mode
+- Use company-supported Tradier/TradeStation delayed/sandbox/snapshot data during trial where allowed by our agreements
+- Require or strongly prompt users to connect a supported brokerage account after trial to continue live market data and InstaTrade™ workflows
+- Support Tradier and TradeStation agreements/integrations
+- Keep InstaTrade™ as the only execution workflow
+- Do NOT support or market full automation
+- Use one simple paid plan instead of multiple confusing tiers
+
+====================================================
+1. BRANDING
+====================================================
+
+Public-facing brand:
+VCP Trader AI
+
+AI engine/sub-brand:
+Strategy Agent
+
+Trademarked feature:
+InstaTrade™
+
+Do not use TradeGuard™.
+Replace with:
+- Risk Controls
+- Order Guardrails
+- Built-In Risk Checks
+- Exit Protection
+
+Public positioning:
+“AI-powered stock and options intelligence for self-directed traders.”
+
+Homepage tagline:
+“Discover opportunities. Understand risks. Review with InstaTrade™.”
+
+====================================================
+2. PRICING MODEL
+====================================================
+
+Replace existing multi-tier pricing with one simple plan.
+
+Plan:
+VCP Trader AI Pro — $99/month
+
+Trial:
+14-Day Free Trial
+
+Pricing headline:
+Simple Pricing. Bring Your Broker.
+
+Pricing subheadline:
+Start in paper mode during your trial. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
+
+Plan includes:
+- Daily AI stock ideas
+- Daily AI options ideas
+- Grow, Income, Trade, and Markets modes
+- Opportunity Radar / Top Opportunities
+- News sentiment and market context
+- Watchlist intelligence
+- Paper/simulated trading during trial
+- Broker connection support
+- Tradier and TradeStation support
+- Live market data through connected brokerage account
+- Options chains through connected brokerage account where supported
+- InstaTrade™ order review and submission
+- Journal and results tracking
+- Built-in risk controls
+- Paper-to-live workflow
+
+CTA:
+Start 14-Day Trial
+
+Secondary CTA:
+Explore in Paper Mode
+
+Remove public Pro/Elite split.
+Remove public automation add-on.
+Remove public autonomous trading language.
+
+====================================================
+3. TRIAL MODEL
+====================================================
+
+Create clear trial state logic.
+
+Trial users:
+- Start in Paper Mode by default
+- Can explore AI stock/options ideas
+- Can paper trade simulated ideas
+- Can use delayed/sandbox/snapshot data from company-supported Tradier/TradeStation integrations where allowed
+- Can connect broker early if they want
+- Cannot submit live orders unless broker is connected and required acknowledgments are completed
+
+After trial:
+Show conversion wall:
+“Connect your broker and activate VCP Trader AI Pro to continue with live market data and InstaTrade™ workflows.”
+
+If user subscribes but has no broker connected:
+Allow limited simulated/paper access if desired, but show strong CTA:
+“Connect Broker for Live Market Data and InstaTrade™.”
+
+====================================================
+4. DATA MODEL CLARITY
+====================================================
+
+Create/standardize three data modes:
+
+1. Trial Paper Mode
+Label:
+Paper Mode
+
+Description:
+Practice with simulated trades using delayed/snapshot market context.
+
+2. Broker-Connected Mode
+Label:
+Live Broker Mode
+
+Description:
+Uses your connected brokerage account for live or broker-provided market data, options chains, balances, positions, and self-directed order submission.
+
+3. Simulated Fallback Mode
+Label:
+Simulated Examples
+
+Description:
+Used when market data is unavailable. Examples are for learning the workflow only.
+
+Do not call trial data “live.”
+Do not imply VCP Trader AI provides its own live market data feed.
+
+Add global badge:
+- Paper Mode
+- Live Broker Mode
+- Simulated Examples
+
+====================================================
+5. BROKER CONNECTION MODEL
+====================================================
+
+Supported brokers:
+- Tradier
+- TradeStation
+- SnapTrade-connected brokerages if already implemented
+
+Broker connection screen title:
+Connect Your Broker
+
+Subtitle:
+Use your brokerage account for live market data, options chains, account context, and self-directed InstaTrade™ order submission.
+
+Broker cards should show:
+Tradier
+- Market data through connected account
+- Options chains where supported
+- Stock/options order submission
+- Paper/sandbox support if enabled
+
+TradeStation
+- Market data through connected account
+- Stock/options order submission where supported
+- Sim/sandbox support if enabled
+
+SnapTrade
+- Supported brokerage connections
+- Account and position context where available
+- Execution support depends on broker availability
+
+Add copy:
+VCP Trader AI does not provide a separate live market data feed. Live data availability depends on your connected brokerage account, broker entitlements, and market data permissions.
+
+====================================================
+6. PAPER MODE SIMULATION ENGINE
+====================================================
+
+If not already implemented, create or improve internal paper trading engine.
+
+Paper trading should simulate:
+- balances
+- buying power
+- paper orders
+- paper fills
+- paper positions
+- realized/unrealized P&L
+- journal entries
+
+Use delayed/snapshot/sandbox data as market context when available.
+
+Important:
+Paper Mode should simulate execution, not fake the entire market randomly.
+
+Use labels:
+- Delayed Snapshot
+- Simulated Fill
+- Estimated Option Price
+
+For options:
+If actual option chain is unavailable, generate estimated option prices using stock price, strike, DTE, volatility assumption, and simple pricing model.
+Clearly label:
+“Estimated option price for paper mode.”
+
+Do not display estimated option prices as live option quotes.
+
+====================================================
+7. INSTATRADE™ FLOW
+====================================================
+
+Keep InstaTrade™ as the only execution path.
+
+No full automation.
+No autonomous orders.
+No “AI trades for you.”
+
+InstaTrade™ flow:
+1. User reviews AI scenario
+2. User opens InstaTrade™ ticket
+3. User sees order details
+4. User sees max risk / capital required / breakeven
+5. User can edit order
+6. User checks acknowledgment box
+7. User clicks Send to Broker
+
+Acknowledgment:
+“I understand this is a self-directed order. VCP Trader AI is not providing investment advice, and I am responsible for this order.”
+
+If in Paper Mode:
+Button:
+Paper Trade
+
+If broker connected:
+Button:
+Send to Broker with InstaTrade™
+
+If no broker:
+Button disabled with:
+Connect Broker to Use InstaTrade™
+
+====================================================
+8. REMOVE AUTOMATION LANGUAGE
+====================================================
+
+Search and remove/rewrite public UI and pricing references to:
+- Automation
+- Autopilot
+- Autonomous
+- AI trades for you
+- Set and forget
+- Fully automatic
+- Auto profits
+
+If admin-only automation routes exist:
+- Hide from regular users
+- Hide from public nav
+- Keep admin-gated only if necessary
+
+Public FAQ:
+Q:
+Does VCP Trader AI place trades automatically?
+
+A:
+No. VCP Trader AI does not place trades automatically. It can help generate software-based stock and options scenarios and prepare an order ticket through InstaTrade™, but every live order requires your review, acknowledgment, and confirmation before submission.
+
+====================================================
+9. HOME PAGE UPDATE
+====================================================
+
+Update authenticated Home to match the simpler model.
+
+Hero:
+“What would you like help with today?”
+
+Subheadline:
+“VCP Trader AI scans stocks, options, news, sentiment, and your selected limits to surface ideas you can review. Nothing is sent without your approval.”
+
+Show data mode badge:
+Paper Mode / Live Broker Mode / Simulated Examples
+
+Show broker CTA:
+- Trial: “Connect broker anytime”
+- Paid/no broker: “Connect broker for live data”
+- Connected: “Live Broker Mode enabled”
+
+Today’s Ideas section:
+Tabs:
+- All
+- Stocks
+- Options
+- Income
+- Watchlist
+- Market Alerts
+
+Each idea card:
+- Stock or Options badge
+- Symbol
+- Simple title
+- Grade
+- Risk level
+- Max risk if available
+- Capital needed if available
+- Why it appeared
+- Learn More
+- Review
+- Paper Trade / Prepare with InstaTrade™
+
+====================================================
+10. PUBLIC HOMEPAGE / MARKETING SITE UPDATE
+====================================================
+
+Hero headline:
+Trade Stocks & Options Smarter With AI
+
+Subheadline:
+VCP Trader AI helps self-directed traders discover stock and options opportunities, understand risks, and prepare reviewed orders through their connected broker with InstaTrade™.
+
+CTA:
+Start 14-Day Trial
+
+Secondary:
+Watch Demo
+
+Trust badges:
+- Stocks + Options
+- Daily AI Ideas
+- Paper Mode Trial
+- Broker-Connected Data
+- InstaTrade™
+
+Add data note:
+Trial mode uses paper/simulated workflows with delayed or snapshot market context. Live market data and order submission require a supported connected brokerage account.
+
+====================================================
+11. FAQ UPDATE
+====================================================
+
+Add/update FAQ:
+
+Q:
+Do I need a brokerage account to start?
+
+A:
+No. You can start the 14-day trial in Paper Mode. To access live market data, live account context, options chains, and InstaTrade™ order submission, connect a supported brokerage account such as Tradier or TradeStation.
+
+Q:
+Does VCP Trader AI include live market data?
+
+A:
+No separate live market data feed is included. Live data comes through your connected brokerage account and depends on your broker’s entitlements and permissions.
+
+Q:
+Can I paper trade without connecting a broker?
+
+A:
+Yes. Paper Mode lets you practice with simulated trades using delayed/snapshot market context or simulated examples when data is unavailable.
+
+Q:
+Are paper option prices real quotes?
+
+A:
+When broker or approved delayed options data is unavailable, option prices in Paper Mode may be estimated for learning purposes and can differ from live market quotes.
+
+Q:
+Does it trade automatically?
+
+A:
+No. VCP Trader AI does not automatically place trades. Every live order requires user review, acknowledgment, and confirmation through InstaTrade™.
+
+Q:
+Is this investment advice?
+
+A:
+No. VCP Trader AI provides software-generated scenarios and market context for educational and informational purposes only. You remain responsible for every trading decision.
+
+====================================================
+12. COMPLIANCE FOOTER
+====================================================
+
+Update sitewide footer:
+
+VCP Trader AI provides software-generated trading scenarios, market context, paper trading workflows, and order preparation tools for educational and informational purposes only. VCP Trader AI is not a broker-dealer, investment adviser, fiduciary, or data vendor and does not provide personalized investment advice. Trading stocks and options involves risk, including loss of principal. Paper Mode uses simulated execution and delayed, snapshot, sandbox, or estimated market context. Live market data, options chains, account balances, positions, and order submission are available only through supported connected brokerage accounts and depend on broker entitlements. You are responsible for every trading decision and order submitted.
+
+====================================================
+13. SUBSCRIPTION / BILLING LOGIC
+====================================================
+
+Stripe:
+Create/update product:
+VCP Trader AI Pro
+Price:
+$99/month
+Trial:
+14 days
+
+Trial status:
+- trialing
+- active
+- past_due
+- canceled
+- expired
+
+If trial expired and no active subscription:
+- allow login
+- show upgrade wall
+- allow limited marketing/educational pages
+- block new scans/order flows
+- keep existing history view if desired
+
+If active subscription but no broker connected:
+- allow paper mode
+- show persistent broker CTA
+- block live order submission
+
+If active subscription and broker connected:
+- enable Live Broker Mode
+- enable InstaTrade™ live order submission after confirmation
+
+====================================================
+14. ADMIN / SETTINGS
+====================================================
+
+Add admin config flags:
+- enableTradierTrialData
+- enableTradeStationTrialData
+- enablePaperMode
+- requireBrokerAfterTrial
+- allowPaidWithoutBroker
+- enableEstimatedOptionPrices
+
+Default:
+enablePaperMode = true
+requireBrokerAfterTrial = false initially, but show strong broker CTA
+allowPaidWithoutBroker = true initially
+enableEstimatedOptionPrices = true with clear labels
+
+This lets us adjust business policy without code changes.
+
+====================================================
+15. FINAL QA
+====================================================
+
+Verify:
+- Public brand is VCP Trader AI
+- Strategy Agent appears only as engine/sub-brand if needed
+- Pricing is one plan: $99/month
+- Trial is 14 days
+- No public Pro/Elite split remains
+- No automation/autopilot/autonomous language remains publicly
+- InstaTrade™ remains trademarked
+- TradeGuard™ is removed/replaced
+- Live market data is clearly broker-connected only
+- Paper Mode is clearly simulated/delayed/snapshot/estimated
+- Tradier and TradeStation are shown as supported broker connections
+- No live order can be sent without broker connection and explicit confirmation
+- TypeScript build passes
+- Existing app routes still work

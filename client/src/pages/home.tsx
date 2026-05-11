@@ -108,7 +108,7 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
                     }}
                     data-testid="button-start-trial"
                   >
-                    Start Free Trial
+                    Start 14-Day Trial
                   </Button>
                 </>
               )}
@@ -156,7 +156,7 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
                       }}
                       data-testid="button-start-trial-mobile"
                     >
-                      Start Free Trial
+                      Start 14-Day Trial
                     </Button>
                   </>
                 )}
@@ -257,9 +257,9 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
   const trustBadges = [
     "Stocks + Options",
     "Daily AI Ideas",
-    "Risk Checks",
-    "InstaTrade™",
+    "Paper Mode Trial",
     "Broker-Connected Data",
+    "InstaTrade™",
   ];
 
   return (
@@ -307,7 +307,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
                 }}
                 data-testid="button-hero-trial"
               >
-                Start Free Trial
+                Start 14-Day Trial
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Button
@@ -338,7 +338,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
               ))}
             </div>
             <p className="mt-4 text-xs text-muted-foreground max-w-xl mx-auto lg:mx-0" data-testid="text-hero-disclaimer">
-              14-day free trial. Explore in paper/simulated mode. Live market data is provided through your connected brokerage account. Informational only — not investment advice.
+              Trial mode uses paper/simulated workflows with delayed or snapshot market context. Live market data and order submission require a supported connected brokerage account. Informational only — not investment advice.
             </p>
             <p className="mt-2 text-[11px] text-muted-foreground/80">
               Powered by Strategy Agent
@@ -927,38 +927,26 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
 }
 
 /* -----------------------------------------------------------
- * PRICING — Pro $79 / Elite $149
+ * PRICING — Single plan: VCP Trader AI Pro $99/mo + 14-day trial
  * --------------------------------------------------------- */
 function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
-  const proFeatures = [
+  const planFeatures = [
     "Daily AI stock ideas",
     "Daily AI options ideas",
     "Grow, Income, Trade, and Markets modes",
+    "Opportunity Radar / Top Opportunities",
     "News sentiment and market context",
     "Watchlist intelligence",
-    "Paper/simulated trading",
-    "Basic Opportunity Radar",
+    "Paper/simulated trading during trial",
     "Broker connection support",
-    "InstaTrade™ order preparation",
+    "Tradier and TradeStation support",
     "Live market data through connected brokerage account",
+    "Options chains through connected brokerage account where supported",
+    "InstaTrade™ order review and submission",
+    "Journal and results tracking",
+    "Built-in risk controls",
+    "Paper-to-live workflow",
   ];
-  const eliteFeatures = [
-    "Everything in Pro",
-    "Advanced Opportunity Radar",
-    "Advanced options analytics",
-    "Advanced filters",
-    "Scenario scoring breakdowns",
-    "Portfolio and position context from connected broker",
-    "Journal analytics",
-    "AI trade review insights",
-    "Multi-broker support, where available",
-    "Priority scans",
-  ];
-
-  const handleSelect = (plan: "pro" | "elite") => {
-    track("pricing_plan_selected", { plan });
-    onStartTrial();
-  };
 
   return (
     <section className="py-16 md:py-24" id="pricing">
@@ -968,87 +956,65 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
             Simple Pricing. Bring Your Broker.
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Start in paper/simulated mode. Connect your brokerage for live market data and self-directed InstaTrade™ order submission.
-          </p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            14-day free trial. Upgrade when ready. Cancel anytime.
+            Start in paper mode during your trial. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-          {/* PRO */}
-          <Card className="bg-card flex flex-col" data-testid="card-plan-pro">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xl">Pro</CardTitle>
-                <Badge variant="outline" className="text-[11px]">Best for most traders</Badge>
-              </div>
-              <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-4xl font-bold" data-testid="text-pro-price">$79</span>
-                <span className="text-muted-foreground">/month</span>
-              </div>
-              <CardDescription className="mt-1">Daily AI stock and options ideas, plus broker-connected order preparation.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col">
-              <ul className="space-y-2 mb-6 flex-1">
-                {proFeatures.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => handleSelect("pro")}
-                data-testid="button-select-pro"
-              >
-                Start Pro Trial
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* ELITE */}
-          <Card className="border-primary bg-card flex flex-col relative shadow-lg" data-testid="card-plan-elite">
-            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-elite-best">
-              Best for active traders
+        <div className="max-w-xl mx-auto">
+          <Card className="border-primary bg-card flex flex-col relative shadow-xl" data-testid="card-plan-pro">
+            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-trial">
+              14-Day Free Trial
             </Badge>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xl">Elite</CardTitle>
-                <Badge className="text-[11px]">Most popular</Badge>
-              </div>
-              <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-4xl font-bold" data-testid="text-elite-price">$149</span>
+            <CardHeader className="text-center pt-8">
+              <CardTitle className="text-2xl">VCP Trader AI Pro</CardTitle>
+              <div className="mt-3 flex items-baseline justify-center gap-1">
+                <span className="text-5xl font-bold" data-testid="text-pro-price">$99</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
-              <CardDescription className="mt-1">For active stock and options traders who want every edge.</CardDescription>
+              <CardDescription className="mt-2">
+                One simple plan. Everything you need to research, review, and submit self-directed stock and options orders.
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-2 mb-6 flex-1">
-                {eliteFeatures.map((f) => (
+                {planFeatures.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>{f}</span>
                   </li>
                 ))}
               </ul>
-              <Button
-                size="lg"
-                onClick={() => handleSelect("elite")}
-                data-testid="button-select-elite"
-              >
-                Start Elite Trial
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  size="lg"
+                  onClick={() => {
+                    track("pricing_plan_selected", { plan: "pro" });
+                    onStartTrial();
+                  }}
+                  data-testid="button-select-pro"
+                >
+                  Start 14-Day Trial
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => {
+                    track("explore_paper_mode_clicked", { location: "pricing" });
+                    onStartTrial();
+                  }}
+                  data-testid="button-explore-paper"
+                >
+                  Explore in Paper Mode
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
 
         <div className="mt-10 max-w-3xl mx-auto space-y-3 text-xs text-muted-foreground text-center">
           <p>
-            VCP Trader AI does not include a separate live market data feed. Live quotes, option chains, account balances, positions, and order submission are available through supported brokerage connections and the user's brokerage entitlements.
+            VCP Trader AI does not provide a separate live market data feed. Live data availability depends on your connected brokerage account, broker entitlements, and market data permissions.
           </p>
           <p>
             All scenarios are software-generated for informational and educational purposes only. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice.
@@ -1085,36 +1051,36 @@ function ComplianceSection() {
 function FAQSection() {
   const faqs = [
     {
-      q: "Does VCP Trader AI place trades automatically?",
-      a: "No. VCP Trader AI does not place trades automatically. It can help generate software-based stock and options scenarios and prepare an order ticket through InstaTrade™, but every live order requires your review, acknowledgment, and confirmation before it is submitted to your connected broker.",
+      q: "Do I need a brokerage account to start?",
+      a: "No. You can start the 14-day trial in Paper Mode. To access live market data, live account context, options chains, and InstaTrade™ order submission, connect a supported brokerage account such as Tradier or TradeStation.",
+    },
+    {
+      q: "Does VCP Trader AI include live market data?",
+      a: "No separate live market data feed is included. Live data comes through your connected brokerage account and depends on your broker's entitlements and permissions.",
+    },
+    {
+      q: "Can I paper trade without connecting a broker?",
+      a: "Yes. Paper Mode lets you practice with simulated trades using delayed/snapshot market context, or simulated examples when data is unavailable.",
+    },
+    {
+      q: "Are paper option prices real quotes?",
+      a: "When broker or approved delayed options data is unavailable, option prices in Paper Mode may be estimated for learning purposes and can differ from live market quotes.",
+    },
+    {
+      q: "Does it trade automatically?",
+      a: "No. VCP Trader AI does not automatically place trades. Every live order requires user review, acknowledgment, and confirmation through InstaTrade™.",
     },
     {
       q: "Is this investment advice?",
-      a: "No. VCP Trader AI provides software-generated scenarios and market context for educational and informational purposes only. You remain responsible for every decision and order.",
-    },
-    {
-      q: "Do you provide live market data?",
-      a: "VCP Trader AI does not provide a separate live market data feed. Live market data is accessed through your connected brokerage account, subject to your broker's entitlements and availability.",
-    },
-    {
-      q: "Can I use paper mode first?",
-      a: "Yes. You can explore in paper or simulated mode before connecting a live brokerage account.",
-    },
-    {
-      q: "Does it support both stocks and options?",
-      a: "Yes. VCP Trader AI supports stock ideas, long calls/puts, covered calls, cash-secured puts, and defined-risk spreads where supported by your broker.",
+      a: "No. VCP Trader AI provides software-generated scenarios and market context for educational and informational purposes only. You remain responsible for every trading decision.",
     },
     {
       q: "Which brokers are supported?",
-      a: "Supported broker connections may include Tradier, TradeStation, SnapTrade-connected brokerages, and others as enabled in the app. Availability may vary by account type and broker support.",
-    },
-    {
-      q: "Can I set my own limits?",
-      a: "Yes. You can set allowed instruments, max risk per idea, minimum grade, liquidity preferences, and other risk controls.",
+      a: "Tradier and TradeStation are the primary supported integrations. SnapTrade-connected brokerages are also supported where available. Availability may vary by account type and broker entitlements.",
     },
     {
       q: "Can I cancel anytime?",
-      a: "Yes. Subscriptions can be managed through the billing portal.",
+      a: "Yes. Subscriptions can be managed and canceled through the billing portal at any time.",
     },
   ];
 
@@ -1151,7 +1117,7 @@ function FinalCtaSection({ onStartTrial }: { onStartTrial: () => void }) {
     <section className="py-16 md:py-20" id="instatrade">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-2xl md:text-3xl font-bold">Ready to trade with clarity?</h2>
-        <p className="mt-3 text-muted-foreground">Start your free 14-day trial. Bring your broker. Review every order before it's sent.</p>
+        <p className="mt-3 text-muted-foreground">Start your 14-day free trial in Paper Mode. Connect your broker when you're ready. Review every order before it's sent.</p>
         <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button
             size="lg"
@@ -1161,7 +1127,7 @@ function FinalCtaSection({ onStartTrial }: { onStartTrial: () => void }) {
             }}
             data-testid="button-final-trial"
           >
-            Start Free Trial
+            Start 14-Day Trial
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
           <a href="#features">

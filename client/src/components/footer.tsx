@@ -13,15 +13,17 @@ export function Footer() {
         <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
         <p>
           <span className="font-medium">Important — Not Investment Advice.</span>{" "}
-          VCP Trader AI is a software tool that surfaces algorithmically-generated
-          scenarios and educational analysis. It is not a registered broker-dealer or
-          investment adviser. Nothing here is a recommendation, solicitation, or offer
-          to buy or sell any security. All trading decisions and orders are made solely
-          by you. Live market data and order submission are available only through
-          supported connected brokerage accounts. Past performance and back-tested
-          results do not guarantee future outcomes. Trading involves substantial risk
-          of loss, including loss of principal, and is not suitable for every investor.
-          Consult a licensed financial professional before making any investment decision. Use is subject to our{" "}
+          VCP Trader AI provides software-generated trading scenarios, market context,
+          paper trading workflows, and order preparation tools for educational and
+          informational purposes only. VCP Trader AI is not a broker-dealer, investment
+          adviser, fiduciary, or data vendor and does not provide personalized investment
+          advice. Trading stocks and options involves risk, including loss of principal.
+          Paper Mode uses simulated execution and delayed, snapshot, sandbox, or estimated
+          market context. Live market data, options chains, account balances, positions,
+          and order submission are available only through your supported connected
+          brokerage account, subject to your broker's entitlements. Past performance and
+          back-tested results do not guarantee future outcomes. You are solely
+          responsible for every trading decision and order. Use is subject to our{" "}
           <Link href="/disclaimer" className="underline hover:no-underline">full disclaimer</Link>,{" "}
           <Link href="/terms" className="underline hover:no-underline">terms</Link>, and{" "}
           <Link href="/privacy" className="underline hover:no-underline">privacy policy</Link>.

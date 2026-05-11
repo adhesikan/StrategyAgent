@@ -536,13 +536,18 @@ export function StockTradeTicket({
             }
             className="flex-1"
             data-testid="button-stock-ticket-place"
+            title={!selectedAccount ? "Connect Broker to Use InstaTrade™" : undefined}
           >
             {placeMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
             ) : (
               <Zap className="h-4 w-4 mr-1" />
             )}
-            {bracketEnabled ? "Place Bracket Order" : "Place Order"}
+            {!selectedAccount
+              ? "Connect Broker to Use InstaTrade™"
+              : selectedAccount.id?.startsWith("sandbox:")
+              ? "Paper Trade"
+              : "Send to Broker with InstaTrade™"}
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -72,7 +72,19 @@ export function BrokerStatusStrip() {
   const { isConnected, providerName, status } = useBrokerStatus();
   const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
   const isLiveMode = isConnected && !isPaper;
+  const isPaperMode = isConnected && isPaper;
   const marketOpen = isMarketOpenEt();
+
+  const modeLabel = isLiveMode
+    ? "Live Broker Mode"
+    : isPaperMode
+    ? "Paper Mode"
+    : "Simulated Examples";
+  const modeTitle = isLiveMode
+    ? "Using your connected brokerage account for live or broker-provided market data and order submission."
+    : isPaperMode
+    ? "Practicing with simulated trades using delayed/snapshot market context from your broker sandbox."
+    : "Examples for learning the workflow only — connect a broker for live market data.";
 
   return (
     <Card data-testid="card-broker-status-strip" className="bg-card/40 backdrop-blur border-border/60 shadow-sm">
@@ -80,6 +92,7 @@ export function BrokerStatusStrip() {
         <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm">
           <Badge
             variant="outline"
+            title={modeTitle}
             className={
               isLiveMode
                 ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
@@ -88,7 +101,7 @@ export function BrokerStatusStrip() {
             data-testid="pill-mode"
           >
             <FlaskConical className="h-3 w-3" />
-            {isLiveMode ? "Live Mode" : "Simulated Mode"}
+            {modeLabel}
           </Badge>
 
           {isConnected ? (
@@ -144,13 +157,17 @@ export function ComplianceFooter() {
         <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
         <p>
           <span className="font-medium text-foreground">Not investment advice.</span>{" "}
-          Strategy Agent is a software tool providing algorithmically-generated scenarios
-          and educational analysis only. It is not a registered broker-dealer or
-          investment adviser, and nothing displayed here constitutes a recommendation,
-          solicitation, or offer to buy or sell any security. You are solely responsible
-          for every order you submit. Trading involves substantial risk of loss; past
-          performance does not guarantee future results. Consult a licensed financial
-          professional before acting on any information shown.
+          VCP Trader AI provides software-generated trading scenarios, market context,
+          paper trading workflows, and order preparation tools for educational and
+          informational purposes only. VCP Trader AI is not a broker-dealer, investment
+          adviser, fiduciary, or data vendor and does not provide personalized investment
+          advice. Trading stocks and options involves risk, including loss of principal.
+          Paper Mode uses simulated execution and delayed, snapshot, sandbox, or
+          estimated market context. Live market data, options chains, account balances,
+          positions, and order submission are available only through your supported
+          connected brokerage account, subject to your broker's entitlements. Past
+          performance and back-tested results do not guarantee future outcomes. You are
+          solely responsible for every trading decision and order.
         </p>
       </div>
     </div>

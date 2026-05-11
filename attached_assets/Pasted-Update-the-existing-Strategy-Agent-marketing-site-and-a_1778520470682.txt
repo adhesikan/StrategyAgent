@@ -1,0 +1,580 @@
+Update the existing Strategy Agent marketing site and authenticated app positioning based on the latest product/pricing direction.
+
+Primary goals:
+1. Rebrand the public-facing product away from “Strategy Agent” as the main brand and toward “VCP Trader AI.”
+2. Keep “Strategy Agent” as the AI engine/sub-brand where needed.
+3. Emphasize stocks + options.
+4. Emphasize user-controlled InstaTrade™ execution only — no full automation.
+5. Emphasize live market data is available only through the user’s connected brokerage account.
+6. Simplify pricing.
+7. Improve conversion while keeping compliance-safe wording.
+
+Do not break existing authenticated app functionality, routes, broker integrations, setup generation, Opportunity Radar, Goal Mode, Income Mode, Market Intel, InstaTrade™, paper trading, Stripe, or login.
+
+====================================================
+1. BRANDING UPDATE
+====================================================
+
+Public-facing brand:
+VCP Trader AI
+
+AI engine/sub-brand:
+Strategy Agent
+
+Trademarked execution feature:
+InstaTrade™
+
+Do not use TradeGuard™ as a trademark.
+Replace “TradeGuard™” or “Trade Guardrails™” branding with generic wording:
+- Risk Controls
+- Built-In Guardrails
+- Order Guardrails
+- Smart Risk Checks
+- Exit Protection
+- Risk Rules
+
+Keep InstaTrade™ with trademark symbol.
+
+Top nav logo/name:
+Replace:
+Strategy Agent
+
+With:
+VCP Trader AI
+
+Optional small subtext in hero or footer:
+Powered by Strategy Agent
+
+====================================================
+2. HERO SECTION UPDATE
+====================================================
+
+Current hero:
+“Your AI Co-Pilot for Stocks & Options”
+
+Keep concept but update brand and positioning.
+
+New hero badge:
+AI Trading Assistant for Self-Directed Traders
+
+Headline:
+Trade Stocks & Options Smarter With AI
+
+Subheadline:
+VCP Trader AI helps self-directed traders discover stock and options opportunities, understand risks, and send reviewed orders through their connected broker with InstaTrade™.
+
+CTA buttons:
+- Start Free Trial
+- Watch Demo
+
+Trust badges:
+- Stocks + Options
+- Daily AI Ideas
+- Risk Checks
+- InstaTrade™
+- Broker-Connected Data
+
+Small compliance/data copy under badges:
+14-day free trial. Explore in paper/simulated mode. Live market data is provided through your connected brokerage account. Informational only — not investment advice.
+
+Hero mock card:
+Update card language to avoid “Recommended” and avoid implying advice.
+
+Use:
+AI Scenario
+
+Example:
+AMD · Bullish Pullback
+Candidate vehicle: Bull Call Spread
+Grade A · 81
+
+Fields:
+Entry
+Stop
+Target
+Max Loss
+Max Profit
+Breakeven
+
+Button:
+Review with InstaTrade™
+
+Small footer:
+Software-generated scenario. Review before acting.
+
+Do NOT use:
+Execute via InstaTrade™ on hero.
+Use “Review with InstaTrade™” or “Prepare in InstaTrade™.”
+
+====================================================
+3. NAVIGATION UPDATE
+====================================================
+
+Current nav:
+Features, Options, Guardrails, Pricing, FAQ
+
+Update to:
+Features
+Stocks
+Options
+InstaTrade™
+Pricing
+FAQ
+
+Optional:
+Replace “Guardrails” with “Risk Controls”
+
+Do not show “Automation” anywhere in public marketing.
+
+====================================================
+4. PROBLEM SECTION UPDATE
+====================================================
+
+Keep section idea but simplify copy.
+
+Headline:
+Trading Shouldn’t Require 7 Tabs and Guesswork
+
+Body:
+Most traders bounce between scanners, charts, broker platforms, option chains, news feeds, calculators, and spreadsheets just to evaluate one idea.
+
+Tags:
+Scanners
+Charts
+Broker
+Options Chain
+News
+Risk Math
+Journal
+
+Closing line:
+VCP Trader AI brings opportunity discovery, market context, risk checks, and self-directed order review into one simple workflow.
+
+Avoid:
+“command center” if it feels too enterprise.
+Prefer:
+“one simple workflow.”
+
+====================================================
+5. BENEFITS SECTION UPDATE
+====================================================
+
+Current:
+Built for Traders Who Want Discipline, Not Noise
+
+Keep but improve with both stocks/options and simpler language.
+
+Headline:
+Built for Traders Who Want Clarity, Not Noise
+
+Subheadline:
+Find ideas faster, understand the tradeoffs, and stay in control before every order.
+
+Cards:
+
+1. Daily Stock & Options Ideas
+Copy:
+See AI-ranked candidate scenarios based on market data, sentiment, and your selected limits.
+
+2. Simple Plain-English Workflow
+Copy:
+Ask for what you want — growth, income, a ticker setup, or market context.
+
+3. Stocks or Options
+Copy:
+Review stock setups, long calls/puts, spreads, covered calls, and cash-secured puts.
+
+4. Built-In Risk Checks
+Copy:
+Your selected limits help filter oversized, illiquid, or low-quality scenarios.
+
+5. InstaTrade™ Review
+Copy:
+Prepare a broker-ready order after reviewing the setup. Nothing is sent without your confirmation.
+
+6. Learn Over Time
+Copy:
+Track reviewed, paper-traded, and executed ideas so you can see what’s working.
+
+====================================================
+6. FEATURE SECTION UPDATE
+====================================================
+
+Replace “Everything You Need, in One Agent” with:
+
+Everything You Need to Review a Trade — In One Workflow
+
+Subheadline:
+From idea discovery to risk review to InstaTrade™ order preparation.
+
+Feature blocks:
+
+A. Daily AI Ideas
+Title:
+Daily AI Ideas for Stocks & Options
+
+Copy:
+VCP Trader AI scans your watchlist, market conditions, news sentiment, and selected limits to surface simple candidate scenarios.
+
+Bullets:
+- Growth ideas
+- Income ideas
+- Watchlist alerts
+- Market context
+
+B. Plain-English Trade Requests
+Title:
+Ask in Plain English
+
+Copy:
+Type what you’re looking for, such as “find income ideas under $200 risk” or “show bullish setups on NVDA.”
+
+Bullets:
+- No complex setup required
+- Beginner-friendly prompts
+- Advanced controls available when needed
+
+C. AI Probability Grades
+Title:
+AI Scenario Grades
+
+Copy:
+Each candidate scenario receives a clear A+/A/B/C grade with plain-English reasons and risk warnings.
+
+Replace:
+“Probability Engine”
+With:
+“Scenario Scoring”
+
+Do not imply guaranteed probability.
+
+D. Stock vs Options Helper
+Title:
+Stocks or Options — Explained Simply
+
+Copy:
+Compare possible vehicles such as shares, long calls/puts, debit spreads, covered calls, or cash-secured puts.
+
+Replace:
+“The agent picks the best vehicle”
+With:
+“The app helps compare possible vehicles.”
+
+E. Options Intelligence
+Title:
+Options Made Easier
+
+Copy:
+View key contract details, liquidity checks, max loss, breakeven, and payoff context before acting.
+
+Bullets:
+- Open interest and volume checks
+- Bid/ask spread checks
+- Max loss and breakeven shown up front
+- Greeks available in advanced view
+
+F. Risk Controls
+Title:
+Built-In Risk Controls
+
+Copy:
+Your rules are checked before an order can be prepared.
+
+Bullets:
+- Minimum grade
+- Max risk per idea
+- Allowed instruments
+- Defined-risk preferences
+- Liquidity filters
+
+Remove all “TradeGuard™” trademark references.
+
+G. InstaTrade™
+Title:
+Self-Directed InstaTrade™ Execution
+
+Copy:
+Prepare reviewed orders through your connected broker. You approve every order before it is submitted.
+
+Bullets:
+- Works with supported connected brokerages
+- Paper mode available
+- Live data through your brokerage connection
+- Explicit confirmation required before submission
+
+Avoid:
+“One-click execution”
+Use:
+“One-click order preparation” or “fast reviewed order submission.”
+
+H. Journal / Learning
+Title:
+Track What You Review and Trade
+
+Copy:
+Review your past ideas, paper trades, executed trades, and outcomes to understand what works for you.
+
+====================================================
+7. OPTIONS SECTION UPDATE
+====================================================
+
+Current:
+Built for Options Income Traders Too
+
+Update:
+Built for Stock and Options Traders
+
+Copy:
+Whether you prefer shares, swing setups, covered calls, cash-secured puts, long calls/puts, or defined-risk spreads, VCP Trader AI helps you review opportunities with risk and liquidity context.
+
+Bullets:
+Stocks:
+- Swing setups
+- Pullbacks
+- Breakouts
+- Watchlist opportunities
+
+Options:
+- Covered calls
+- Cash-secured puts
+- Long calls / puts
+- Defined-risk debit spreads
+- Liquidity checks
+- Breakeven and max loss shown before order review
+
+CTA:
+Explore Stocks & Options
+
+Example card:
+Use both stock and options examples:
+- AMD Stock Pullback
+- AAPL Covered Call
+- SPY Cash-Secured Put
+
+====================================================
+8. PRICING UPDATE
+====================================================
+
+Replace current pricing section with the revised model.
+
+Headline:
+Simple Pricing. Bring Your Broker.
+
+Subheadline:
+Start in paper/simulated mode. Connect your brokerage for live market data and self-directed InstaTrade™ order submission.
+
+Trial:
+14-Day Free Trial
+No credit card required for paper/simulated mode, if supported.
+If Stripe requires card, say:
+14-day free trial. Upgrade when ready. Cancel anytime.
+
+Plans:
+
+Plan 1:
+Pro — $79/month
+Badge:
+Best for most traders
+
+Includes:
+- Daily AI stock ideas
+- Daily AI options ideas
+- Grow, Income, Trade, and Markets modes
+- News sentiment and market context
+- Watchlist intelligence
+- Paper/simulated trading
+- Basic Opportunity Radar
+- Broker connection support
+- InstaTrade™ order preparation
+- Live market data through connected brokerage account
+
+CTA:
+Start Pro Trial
+
+Plan 2:
+Elite — $149/month
+Badge:
+Best for active traders
+
+Includes everything in Pro plus:
+- Advanced Opportunity Radar
+- Advanced options analytics
+- Advanced filters
+- Scenario scoring breakdowns
+- Portfolio and position context from connected broker
+- Journal analytics
+- AI trade review insights
+- Congress/public disclosure flow, if enabled
+- Multi-broker support, if enabled
+- Priority scans
+
+CTA:
+Start Elite Trial
+
+Optional Add-On:
+Do NOT show public automation add-on.
+Since full automation is not planned, remove automation pricing from public site.
+
+Add pricing footnote:
+VCP Trader AI does not include a separate live market data feed. Live quotes, option chains, account balances, positions, and order submission are available through supported brokerage connections and the user’s brokerage entitlements.
+
+Add compliance footnote:
+All scenarios are software-generated for informational and educational purposes only. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice.
+
+====================================================
+9. REMOVE / REWRITE AUTOMATION LANGUAGE
+====================================================
+
+Search the public marketing site for:
+- automation
+- autonomous
+- autopilot
+- AI trades for you
+- set and forget
+- fully automatic
+- automatically execute
+- TradeGuard™
+
+Remove or rewrite.
+
+Use:
+- self-directed
+- reviewed
+- user-approved
+- prepared order
+- order review
+- InstaTrade™
+- broker-connected execution
+
+FAQ update:
+Question:
+Does VCP Trader AI place trades automatically?
+
+Answer:
+No. VCP Trader AI does not place trades automatically. It can help generate software-based stock and options scenarios and prepare an order ticket through InstaTrade™, but every live order requires your review, acknowledgment, and confirmation before it is submitted to your connected broker.
+
+====================================================
+10. FAQ UPDATE
+====================================================
+
+Update FAQ questions and answers:
+
+Q1:
+Does VCP Trader AI place trades automatically?
+A:
+No. VCP Trader AI does not place trades automatically. Every live order requires your review and confirmation before submission.
+
+Q2:
+Is this investment advice?
+A:
+No. VCP Trader AI provides software-generated scenarios and market context for educational and informational purposes only. You remain responsible for every decision and order.
+
+Q3:
+Do you provide live market data?
+A:
+VCP Trader AI does not provide a separate live market data feed. Live market data is accessed through your connected brokerage account, subject to your broker’s entitlements and availability.
+
+Q4:
+Can I use paper mode first?
+A:
+Yes. You can explore in paper or simulated mode before connecting a live brokerage account.
+
+Q5:
+Does it support both stocks and options?
+A:
+Yes. VCP Trader AI supports stock ideas, long calls/puts, covered calls, cash-secured puts, and defined-risk spreads where supported by your broker.
+
+Q6:
+Which brokers are supported?
+A:
+Supported broker connections may include Tradier, TradeStation, SnapTrade-connected brokerages, and others as enabled in the app. Availability may vary by account type and broker support.
+
+Q7:
+Can I set my own limits?
+A:
+Yes. You can set allowed instruments, max risk per idea, minimum grade, liquidity preferences, and other risk controls.
+
+Q8:
+Can I cancel anytime?
+A:
+Yes. Subscriptions can be managed through the billing portal.
+
+====================================================
+11. LOGIN / CTA UPDATE
+====================================================
+
+All CTAs should use one of:
+
+Start Free Trial
+Explore in Paper Mode
+Connect Broker Later
+Review with InstaTrade™
+
+Avoid:
+Execute Now
+Auto Trade
+Guaranteed income
+Best trade
+
+====================================================
+12. INTERNAL APP ALIGNMENT
+====================================================
+
+Authenticated app should use same naming:
+- VCP Trader AI in header
+- Strategy Agent can appear as “AI engine” if needed
+- Use InstaTrade™ for execution
+- Use Risk Controls / Order Guardrails, not TradeGuard™
+
+No full automation UI should be exposed to regular users.
+If automation/admin routes still exist internally, keep them admin-only and hidden from public nav.
+
+====================================================
+13. VISUAL OPTIMIZATION
+====================================================
+
+Keep current dark premium aesthetic.
+Improve conversion:
+- More spacing above fold
+- Make CTA buttons larger
+- Use “Daily AI Ideas” as a key visual
+- Add “Bring your broker” messaging near pricing and broker sections
+- Use fewer technical terms on first scroll
+- Make beginner-friendly value obvious within 5 seconds
+
+Hero should answer:
+1. What is it?
+AI trading assistant for stocks and options
+2. Who is it for?
+Self-directed traders
+3. Why does it matter?
+Find ideas, understand risk, prepare orders faster
+4. Is it automatic?
+No, user reviews and confirms
+5. Where does data come from?
+Connected brokerage
+
+====================================================
+14. COMPLIANCE FOOTER SITEWIDE
+====================================================
+
+Add or update footer disclaimer:
+
+VCP Trader AI provides software-generated trading scenarios, market context, and workflow tools for educational and informational purposes only. It is not a broker-dealer, investment adviser, or fiduciary and does not provide personalized investment advice. Trading stocks and options involves risk, including loss of principal. Live market data and order submission are available only through supported connected brokerage accounts. You are responsible for every trading decision and order submitted.
+
+====================================================
+15. FINAL QA
+====================================================
+
+After changes:
+- Public brand says VCP Trader AI, not Strategy Agent
+- InstaTrade™ remains trademarked
+- TradeGuard™ is removed/replaced with generic risk controls
+- No full automation language appears publicly
+- Pricing shows Pro $79 and Elite $149 only
+- Live data clearly says provided through connected brokerage account
+- FAQ reflects no automatic trading
+- CTAs are consistent
+- TypeScript builds without errors
+- Existing app routes still function
+- Login and Start Free Trial still work

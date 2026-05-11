@@ -60,8 +60,9 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
 
   const navLinks = [
     { href: "#features", label: "Features" },
+    { href: "#stocks", label: "Stocks" },
     { href: "#options", label: "Options" },
-    { href: "#guardrails", label: "Guardrails" },
+    { href: "#instatrade", label: "InstaTrade™" },
     { href: "#pricing", label: "Pricing" },
     { href: "#faq", label: "FAQ" },
   ];
@@ -72,8 +73,8 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-2">
-              <img src={logoUrl} alt="Strategy Agent" className="h-8 w-auto" data-testid="img-logo" />
-              <span className="font-semibold text-lg hidden sm:inline">Strategy Agent</span>
+              <img src={logoUrl} alt="VCP Trader AI" className="h-8 w-auto" data-testid="img-logo" />
+              <span className="font-semibold text-lg hidden sm:inline">VCP Trader AI</span>
             </Link>
             <div className="hidden md:flex items-center gap-6">
               {navLinks.map((link) => (
@@ -193,7 +194,7 @@ function MockSetupCard() {
             <div className="flex items-center justify-between mb-2">
               <Badge variant="outline" className="text-[11px] bg-background">
                 <Sparkles className="h-3 w-3 mr-1" />
-                AI Setup
+                AI Scenario
               </Badge>
               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                 <Award className="h-3 w-3" />
@@ -201,7 +202,7 @@ function MockSetupCard() {
               </div>
             </div>
             <p className="font-bold text-lg">AMD · Bullish Pullback</p>
-            <p className="text-xs text-muted-foreground">Recommended: Bull Call Spread (defined risk)</p>
+            <p className="text-xs text-muted-foreground">Candidate vehicle: Bull Call Spread (defined risk)</p>
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-xs">
@@ -236,12 +237,12 @@ function MockSetupCard() {
 
           <Button className="w-full" size="sm" data-testid="button-mock-execute">
             <Zap className="h-4 w-4 mr-1.5" />
-            Execute via InstaTrade™
+            Review with InstaTrade™
           </Button>
 
           <p className="text-[10px] text-muted-foreground border-t pt-2 flex items-center gap-1">
             <Activity className="h-3 w-3" />
-            Software-generated, not investment advice.
+            Software-generated scenario. Review before acting.
           </p>
         </CardContent>
       </Card>
@@ -255,9 +256,10 @@ function MockSetupCard() {
 function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
   const trustBadges = [
     "Stocks + Options",
-    "AI Probability Grades",
-    "Risk Guardrails",
-    "Broker-Ready Orders",
+    "Daily AI Ideas",
+    "Risk Checks",
+    "InstaTrade™",
+    "Broker-Connected Data",
   ];
 
   return (
@@ -281,20 +283,20 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
           <div className="text-center lg:text-left">
             <Badge variant="outline" className="mb-6 text-xs py-1 px-3 border-primary/30 bg-primary/5 text-primary">
               <Bot className="h-3 w-3 mr-1" />
-              AI Co-Pilot for Active Traders
+              AI Trading Assistant for Self-Directed Traders
             </Badge>
             <h1
               className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight"
               data-testid="text-hero-headline"
             >
-              Your AI Co-Pilot for{" "}
-              <span className="text-primary">Stocks &amp; Options</span>
+              Trade Stocks &amp; Options{" "}
+              <span className="text-primary">Smarter With AI</span>
             </h1>
             <p
               className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0"
               data-testid="text-hero-subheadline"
             >
-              Turn a plain-English trade idea into a broker-ready stock or options setup in seconds — with probability scoring, risk controls, and one-click execution.
+              VCP Trader AI helps self-directed traders discover stock and options opportunities, understand risks, and send reviewed orders through their connected broker with InstaTrade™.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
               <Button
@@ -335,8 +337,11 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
                 </Badge>
               ))}
             </div>
-            <p className="mt-4 text-xs text-muted-foreground" data-testid="text-hero-disclaimer">
-              14-day free trial · No credit card to explore in paper mode · Informational only — not investment advice.
+            <p className="mt-4 text-xs text-muted-foreground max-w-xl mx-auto lg:mx-0" data-testid="text-hero-disclaimer">
+              14-day free trial. Explore in paper/simulated mode. Live market data is provided through your connected brokerage account. Informational only — not investment advice.
+            </p>
+            <p className="mt-2 text-[11px] text-muted-foreground/80">
+              Powered by Strategy Agent
             </p>
           </div>
           <div className="lg:pl-6">
@@ -352,7 +357,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
  * PROBLEM
  * --------------------------------------------------------- */
 function ProblemSection() {
-  const tabs = ["Scanners", "Charts", "Broker", "Options Chain", "News", "Calculators", "Spreadsheets"];
+  const tabs = ["Scanners", "Charts", "Broker", "Options Chain", "News", "Risk Math", "Journal"];
   return (
     <section className="py-16 md:py-24 bg-muted/30 border-y">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
@@ -360,7 +365,7 @@ function ProblemSection() {
           Trading Shouldn't Require 7 Tabs and Guesswork
         </h2>
         <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-          Most traders juggle a dozen tools just to size a single trade — switching between scanners, charts, broker platforms, options chains, news feeds, calculators, and spreadsheets.
+          Most traders bounce between scanners, charts, broker platforms, option chains, news feeds, calculators, and spreadsheets just to evaluate one idea.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
           {tabs.map((t) => (
@@ -377,7 +382,7 @@ function ProblemSection() {
         <div className="mt-10 flex items-center justify-center gap-3">
           <ArrowRight className="h-5 w-5 text-primary" />
           <p className="text-base md:text-lg font-medium">
-            Strategy Agent is one AI command center for the entire workflow.
+            VCP Trader AI brings opportunity discovery, market context, risk checks, and self-directed order review into one simple workflow.
           </p>
         </div>
       </div>
@@ -391,34 +396,34 @@ function ProblemSection() {
 function BenefitsSection() {
   const benefits = [
     {
-      icon: Search,
-      title: "Find Better Trades",
-      copy: "Just type what you're looking for. The agent scans, ranks, and shows only setups worth your time.",
+      icon: Sparkles,
+      title: "Daily Stock & Options Ideas",
+      copy: "See AI-ranked candidate scenarios based on market data, sentiment, and your selected limits.",
+    },
+    {
+      icon: MessageSquare,
+      title: "Simple Plain-English Workflow",
+      copy: "Ask for what you want — growth, income, a ticker setup, or market context.",
     },
     {
       icon: Layers,
-      title: "Trade Stocks or Options",
-      copy: "Pick shares, long calls/puts, or defined-risk spreads — the agent recommends the best vehicle.",
+      title: "Stocks or Options",
+      copy: "Review stock setups, long calls/puts, spreads, covered calls, and cash-secured puts.",
     },
     {
-      icon: Award,
-      title: "Get Probability Grades",
-      copy: "Every setup gets a clear A+/A/B/C grade so you know which ideas actually deserve capital.",
-    },
-    {
-      icon: ShieldAlert,
-      title: "Avoid Bad Trades",
-      copy: "Built-in guardrails block low-quality setups, oversized positions, and illiquid options before you click.",
+      icon: ShieldCheck,
+      title: "Built-In Risk Checks",
+      copy: "Your selected limits help filter oversized, illiquid, or low-quality scenarios.",
     },
     {
       icon: Zap,
-      title: "Execute Faster",
-      copy: "Send orders straight to your connected broker with InstaTrade™ — no copy-pasting tickers.",
+      title: "InstaTrade™ Review",
+      copy: "Prepare a broker-ready order after reviewing the setup. Nothing is sent without your confirmation.",
     },
     {
       icon: GraduationCap,
-      title: "Improve Over Time",
-      copy: "Every trade outcome is tracked so you can see what's working and refine your edge.",
+      title: "Learn Over Time",
+      copy: "Track reviewed, paper-traded, and executed ideas so you can see what's working.",
     },
   ];
 
@@ -427,10 +432,10 @@ function BenefitsSection() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-benefits-heading">
-            Built for Traders Who Want Discipline, Not Noise
+            Built for Traders Who Want Clarity, Not Noise
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Outcomes you can feel from day one.
+            Find ideas faster, understand the tradeoffs, and stay in control before every order.
           </p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -504,41 +509,73 @@ function MockPanel({ title, children }: { title: string; children: React.ReactNo
 function FeaturesSection() {
   const rows: FeatureRowProps[] = [
     {
-      testId: "feature-natural-language",
-      eyebrow: "A · Natural Language",
-      title: "Natural-Language Trade Setups",
-      copy: "Describe what you want like you're texting a smart trading buddy. The agent does the structuring.",
+      testId: "feature-daily-ideas",
+      eyebrow: "A · Daily AI Ideas",
+      title: "Daily AI Ideas for Stocks & Options",
+      copy: "VCP Trader AI scans your watchlist, market conditions, news sentiment, and selected limits to surface simple candidate scenarios.",
       bullets: [
-        "Plain English prompts — symbol, bias, timeframe, style",
-        "Pre-built and custom strategies",
-        "Structured output: entry, stop, target, R/R, reasoning",
+        "Growth ideas",
+        "Income ideas",
+        "Watchlist alerts",
+        "Market context",
       ],
       visual: (
-        <MockPanel title="Prompt → Setup">
+        <MockPanel title="Today's Ideas">
           <div className="space-y-2 text-sm">
-            <div className="rounded-md border bg-muted/50 p-2 italic">
-              "Find me a bullish pullback on NVDA with at least 2R reward."
+            <div className="rounded-md border bg-background p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold">AMD · Bullish Pullback</span>
+                <Badge variant="outline" className="text-[10px]">A · 81</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Stock candidate · Max risk $185</p>
             </div>
             <div className="rounded-md border bg-background p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="font-semibold">NVDA · Pullback</span>
-                <Badge variant="outline" className="text-[10px]">2.3R</Badge>
+                <span className="font-semibold">SPY · Cash-Secured Put</span>
+                <Badge variant="outline" className="text-[10px]">A · 79</Badge>
               </div>
-              <p className="text-xs text-muted-foreground">Entry $478.10 · Stop $471.50 · Target $493.30</p>
+              <p className="text-xs text-muted-foreground">Income candidate · 28 DTE</p>
             </div>
           </div>
         </MockPanel>
       ),
     },
     {
-      testId: "feature-probability",
-      eyebrow: "B · Probability Engine",
-      title: "AI Probability Engine",
-      copy: "Every setup is scored across technical, real-time, news, analyst, and risk factors — then graded.",
+      testId: "feature-plain-english",
+      eyebrow: "B · Plain-English Trade Requests",
+      title: "Ask in Plain English",
+      copy: "Type what you're looking for, such as \"find income ideas under $200 risk\" or \"show bullish setups on NVDA.\"",
       bullets: [
-        "Single A+ / A / B / C grade you can trust",
+        "No complex setup required",
+        "Beginner-friendly prompts",
+        "Advanced controls available when needed",
+      ],
+      visual: (
+        <MockPanel title="Prompt → Ideas">
+          <div className="space-y-2 text-sm">
+            <div className="rounded-md border bg-muted/50 p-2 italic">
+              "Find income ideas under $200 risk."
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold">AAPL · Covered Call</span>
+                <Badge variant="outline" className="text-[10px]">B · 73</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Income candidate · Premium ~$165</p>
+            </div>
+          </div>
+        </MockPanel>
+      ),
+    },
+    {
+      testId: "feature-scoring",
+      eyebrow: "C · AI Scenario Grades",
+      title: "AI Scenario Grades",
+      copy: "Each candidate scenario receives a clear A+/A/B/C grade with plain-English reasons and risk warnings.",
+      bullets: [
+        "Single A+ / A / B / C grade per scenario",
         "Plain-English reasons and warnings on every score",
-        "Higher-quality setups float to the top automatically",
+        "Higher-quality scenarios surface automatically",
       ],
       visual: (
         <MockPanel title="Grade Breakdown">
@@ -590,21 +627,21 @@ function FeaturesSection() {
     },
     {
       testId: "feature-instrument",
-      eyebrow: "C · Instrument Selector",
-      title: "Smart Stock vs Options Selector",
-      copy: "The agent picks the best vehicle — shares, long calls/puts, or debit spreads — based on your setup, account, and rules.",
+      eyebrow: "D · Stock vs Options Helper",
+      title: "Stocks or Options — Explained Simply",
+      copy: "Compare possible vehicles such as shares, long calls/puts, debit spreads, covered calls, or cash-secured puts. The app helps compare possible vehicles.",
       bullets: [
-        "Recommended trade plus an alternative side-by-side",
+        "Possible vehicle plus an alternative side-by-side",
         "Trade-offs explained in plain English",
         "Honors your defined-risk-only and risk-comfort settings",
       ],
       visual: (
-        <MockPanel title="Vehicle Recommendation">
+        <MockPanel title="Vehicle Comparison">
           <div className="space-y-2 text-sm">
             <div className="rounded-md border bg-primary/5 border-primary/30 p-3">
               <div className="flex items-center justify-between">
                 <span className="font-semibold">Bull Call Spread</span>
-                <Badge variant="default" className="text-[10px]">Recommended</Badge>
+                <Badge variant="default" className="text-[10px]">Defined risk</Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-1">Defined risk · Lower cost · Capped upside</p>
             </div>
@@ -621,13 +658,14 @@ function FeaturesSection() {
     },
     {
       testId: "feature-options",
-      eyebrow: "D · Options Intelligence",
-      title: "Options Intelligence",
-      copy: "Strikes, expiries, and Greeks chosen for you — with liquidity checks built in.",
+      eyebrow: "E · Options Intelligence",
+      title: "Options Made Easier",
+      copy: "View key contract details, liquidity checks, max loss, breakeven, and payoff context before acting.",
       bullets: [
-        "Auto-selected strikes inside your DTE window",
-        "Open interest, volume and bid/ask spread filters",
-        "Max profit, max loss, breakeven shown up front",
+        "Open interest and volume checks",
+        "Bid/ask spread checks",
+        "Max loss and breakeven shown up front",
+        "Greeks available in advanced view",
       ],
       visual: (
         <MockPanel title="Selected Contract">
@@ -643,26 +681,28 @@ function FeaturesSection() {
       ),
     },
     {
-      testId: "feature-guardrails-row",
-      eyebrow: "E · Trade Guardrails™",
-      title: "Trade Guardrails™",
-      copy: "Your rules, enforced before the order leaves the app. Block what doesn't fit; ship what does.",
+      testId: "feature-risk-controls",
+      eyebrow: "F · Risk Controls",
+      title: "Built-In Risk Controls",
+      copy: "Your rules are checked before an order can be prepared.",
       bullets: [
-        "Minimum probability score and reward/risk floor",
-        "Allowed instruments and defined-risk-only modes",
-        "Liquidity checks on every options contract",
+        "Minimum grade",
+        "Max risk per idea",
+        "Allowed instruments",
+        "Defined-risk preferences",
+        "Liquidity filters",
       ],
       visual: (
-        <MockPanel title="Guardrail Block Example">
+        <MockPanel title="Risk Check Example">
           <div className="space-y-2 text-sm">
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
               <div className="flex items-center gap-2 font-semibold text-destructive text-xs">
-                <CircleSlash className="h-4 w-4" /> Order Blocked
+                <CircleSlash className="h-4 w-4" /> Blocked by your rules
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Setup grade C is below your minimum (B).</p>
+              <p className="text-xs text-muted-foreground mt-1">Scenario grade C is below your minimum (B).</p>
             </div>
             <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
-              Adjust your threshold or pick a higher-graded setup.
+              Adjust your threshold or pick a higher-graded scenario.
             </div>
           </div>
         </MockPanel>
@@ -670,16 +710,17 @@ function FeaturesSection() {
     },
     {
       testId: "feature-instatrade",
-      eyebrow: "F · InstaTrade™",
-      title: "InstaTrade™ Execution",
-      copy: "Send orders straight to your connected broker without leaving the agent.",
+      eyebrow: "G · InstaTrade™",
+      title: "Self-Directed InstaTrade™ Execution",
+      copy: "Prepare reviewed orders through your connected broker. You approve every order before it is submitted.",
       bullets: [
-        "One-click execution for stocks and options",
-        "Tradier, TradeStation and Tastytrade supported",
-        "Paper mode for risk-free practice",
+        "Works with supported connected brokerages",
+        "Paper mode available",
+        "Live data through your brokerage connection",
+        "Explicit confirmation required before submission",
       ],
       visual: (
-        <MockPanel title="One-Click Order">
+        <MockPanel title="Order Review">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Account</span>
@@ -689,19 +730,20 @@ function FeaturesSection() {
               <span className="text-muted-foreground">Order</span>
               <span className="font-semibold">BUY 1 AMD 155C 5/22 @ $3.90</span>
             </div>
-            <Button size="sm" className="w-full mt-2"><Zap className="h-4 w-4 mr-1.5" />Send Order</Button>
+            <Button size="sm" className="w-full mt-2"><Zap className="h-4 w-4 mr-1.5" />Review with InstaTrade™</Button>
+            <p className="text-[10px] text-muted-foreground text-center pt-1">You approve every order before submission.</p>
           </div>
         </MockPanel>
       ),
     },
     {
       testId: "feature-history",
-      eyebrow: "G · Learning Loop",
-      title: "Trade History &amp; Learning",
-      copy: "Every executed trade is logged with its outcome — so you can finally see what's actually working.",
+      eyebrow: "H · Journal / Learning",
+      title: "Track What You Review and Trade",
+      copy: "Review your past ideas, paper trades, executed trades, and outcomes to understand what works for you.",
       bullets: [
         "Filter by grade, instrument and executed status",
-        "Outcomes feed future recommendations",
+        "Outcomes inform future scenarios",
         "Compare your edge across strategies and styles",
       ],
       visual: (
@@ -732,10 +774,10 @@ function FeaturesSection() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-features-heading">
-            Everything You Need, In One Agent
+            Everything You Need to Review a Trade — In One Workflow
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            From idea to execution — and the learning loop after.
+            From idea discovery to risk review to InstaTrade™ order preparation.
           </p>
         </div>
         <div className="space-y-20">
@@ -761,18 +803,18 @@ function GuardrailsSection() {
   ];
 
   return (
-    <section className="py-16 md:py-24" id="guardrails">
+    <section className="py-16 md:py-24" id="risk-controls">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 text-center">
         <Badge variant="outline" className="mb-4 text-[11px] border-primary/30 bg-primary/5 text-primary">
           <ShieldAlert className="h-3 w-3 mr-1" />
-          Trade Guardrails™
+          Risk Controls
         </Badge>
         <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-guardrails-heading">
           Your broker lets you place trades.<br className="hidden md:block" />
-          Strategy Agent helps stop the ones that don't fit your rules.
+          VCP Trader AI helps stop the ones that don't fit your rules.
         </h2>
         <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-          Set your bar once. Every order is checked against your rules before it ever reaches your broker.
+          Set your bar once. Every order is checked against your rules before you submit it through your broker.
         </p>
         <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {blocks.map((b, i) => (
@@ -795,37 +837,59 @@ function GuardrailsSection() {
  * OPTIONS INCOME
  * --------------------------------------------------------- */
 function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
-  const items = [
+  const stockItems = [
+    "Swing setups",
+    "Pullbacks",
+    "Breakouts",
+    "Watchlist opportunities",
+  ];
+  const optionItems = [
     "Covered calls",
     "Cash-secured puts",
     "Long calls / puts",
     "Defined-risk debit spreads",
-    "Liquidity checks on every contract",
-    "Greeks, breakeven and max loss shown up front",
+    "Liquidity checks",
+    "Breakeven and max loss shown before order review",
   ];
 
   return (
-    <section className="py-16 md:py-24 bg-gradient-to-b from-background via-primary/5 to-background border-y" id="options">
+    <section className="py-16 md:py-24 bg-gradient-to-b from-background via-primary/5 to-background border-y" id="stocks">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-12 items-center">
         <div>
           <Badge variant="outline" className="mb-4 text-[11px] border-primary/30 bg-primary/5 text-primary">
             <PieChart className="h-3 w-3 mr-1" />
-            Options
+            Stocks &amp; Options
           </Badge>
-          <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-options-heading">
-            Built for Options Income Traders Too
+          <h2 id="options" className="text-2xl md:text-3xl font-bold scroll-mt-20" data-testid="text-options-heading">
+            Built for Stock and Options Traders
           </h2>
           <p className="mt-4 text-muted-foreground">
-            Find covered call, cash-secured put, long option, and defined-risk spread ideas with liquidity checks, Greeks, breakevens, and max loss shown before you act.
+            Whether you prefer shares, swing setups, covered calls, cash-secured puts, long calls/puts, or defined-risk spreads, VCP Trader AI helps you review opportunities with risk and liquidity context.
           </p>
-          <ul className="mt-6 grid sm:grid-cols-2 gap-2">
-            {items.map((it) => (
-              <li key={it} className="flex items-start gap-2 text-sm">
-                <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                <span>{it}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-6 grid sm:grid-cols-2 gap-6">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Stocks</p>
+              <ul className="space-y-2">
+                {stockItems.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>{it}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Options</p>
+              <ul className="space-y-2">
+                {optionItems.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>{it}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
           <div className="mt-8">
             <Button
               size="lg"
@@ -835,7 +899,7 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
               }}
               data-testid="button-options-cta"
             >
-              Explore Options Mode
+              Explore Stocks &amp; Options
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
@@ -854,7 +918,7 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
               <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Breakeven</p><p className="font-semibold">$422.55</p></div>
               <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Max Risk</p><p className="font-semibold">$42,255</p></div>
             </div>
-            <p className="text-[10px] text-muted-foreground border-t pt-2">Software-generated, not investment advice.</p>
+            <p className="text-[10px] text-muted-foreground border-t pt-2">Software-generated scenario. Review before acting.</p>
           </div>
         </MockPanel>
       </div>
@@ -867,21 +931,28 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
  * --------------------------------------------------------- */
 function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
   const proFeatures = [
-    "AI Trade Finder",
-    "Stock and options setups",
-    "Probability grades",
-    "Watchlist ideas",
-    "Paper / simulated mode",
-    "Basic trade history",
+    "Daily AI stock ideas",
+    "Daily AI options ideas",
+    "Grow, Income, Trade, and Markets modes",
+    "News sentiment and market context",
+    "Watchlist intelligence",
+    "Paper/simulated trading",
+    "Basic Opportunity Radar",
+    "Broker connection support",
+    "InstaTrade™ order preparation",
+    "Live market data through connected brokerage account",
   ];
   const eliteFeatures = [
     "Everything in Pro",
-    "Live broker connection",
-    "InstaTrade™ execution",
-    "Advanced options intelligence",
-    "Trade Guardrails™",
-    "Portfolio insights",
-    "AI trade review coach",
+    "Advanced Opportunity Radar",
+    "Advanced options analytics",
+    "Advanced filters",
+    "Scenario scoring breakdowns",
+    "Portfolio and position context from connected broker",
+    "Journal analytics",
+    "AI trade review insights",
+    "Multi-broker support, where available",
+    "Priority scans",
   ];
 
   const handleSelect = (plan: "pro" | "elite") => {
@@ -894,10 +965,13 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-pricing-heading">
-            Simple Pricing. 14-Day Free Trial.
+            Simple Pricing. Bring Your Broker.
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Start free. Upgrade when you're ready to go live. Cancel anytime.
+            Start in paper/simulated mode. Connect your brokerage for live market data and self-directed InstaTrade™ order submission.
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            14-day free trial. Upgrade when ready. Cancel anytime.
           </p>
         </div>
 
@@ -907,13 +981,13 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl">Pro</CardTitle>
-                <Badge variant="outline" className="text-[11px]">Get started</Badge>
+                <Badge variant="outline" className="text-[11px]">Best for most traders</Badge>
               </div>
               <div className="mt-2 flex items-baseline gap-1">
                 <span className="text-4xl font-bold" data-testid="text-pro-price">$79</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
-              <CardDescription className="mt-1">For traders building a structured workflow.</CardDescription>
+              <CardDescription className="mt-1">Daily AI stock and options ideas, plus broker-connected order preparation.</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <ul className="space-y-2 mb-6 flex-1">
@@ -930,7 +1004,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                 onClick={() => handleSelect("pro")}
                 data-testid="button-select-pro"
               >
-                Start 14-Day Free Trial
+                Start Pro Trial
               </Button>
             </CardContent>
           </Card>
@@ -965,19 +1039,21 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                 onClick={() => handleSelect("elite")}
                 data-testid="button-select-elite"
               >
-                Start 14-Day Free Trial
+                Start Elite Trial
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </CardContent>
           </Card>
         </div>
 
-        {/* TODO: Wire selected plan to Stripe Checkout (existing javascript_stripe integration). */}
-        {/* TODO: Capture pricing_plan_selected event in your analytics provider. */}
-
-        <p className="text-center mt-8 text-xs text-muted-foreground max-w-2xl mx-auto">
-          14-day free trial included on both plans. No credit card required to explore in paper mode.
-        </p>
+        <div className="mt-10 max-w-3xl mx-auto space-y-3 text-xs text-muted-foreground text-center">
+          <p>
+            VCP Trader AI does not include a separate live market data feed. Live quotes, option chains, account balances, positions, and order submission are available through supported brokerage connections and the user's brokerage entitlements.
+          </p>
+          <p>
+            All scenarios are software-generated for informational and educational purposes only. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice.
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -994,7 +1070,7 @@ function ComplianceSection() {
           <CardContent className="pt-6 text-center">
             <ShieldCheck className="h-8 w-8 text-primary mx-auto mb-3" />
             <p className="text-sm text-muted-foreground" data-testid="text-compliance">
-              Strategy Agent provides software-generated analysis and trading tools for educational and informational purposes only. It does not provide personalized investment advice. You remain responsible for every trade decision and order submitted.
+              VCP Trader AI provides software-generated trading scenarios, market context, and workflow tools for educational and informational purposes only. It is not a broker-dealer, investment adviser, or fiduciary and does not provide personalized investment advice. Trading stocks and options involves risk, including loss of principal. Live market data and order submission are available only through supported connected brokerage accounts. You are responsible for every trading decision and order submitted.
             </p>
           </CardContent>
         </Card>
@@ -1009,32 +1085,36 @@ function ComplianceSection() {
 function FAQSection() {
   const faqs = [
     {
-      q: "Does Strategy Agent place trades automatically?",
-      a: "No. By default, you review and approve every trade. Optional automation modes only act within rules you set explicitly, and you can pause or stop them at any time.",
+      q: "Does VCP Trader AI place trades automatically?",
+      a: "No. VCP Trader AI does not place trades automatically. It can help generate software-based stock and options scenarios and prepare an order ticket through InstaTrade™, but every live order requires your review, acknowledgment, and confirmation before it is submitted to your connected broker.",
     },
     {
       q: "Is this investment advice?",
-      a: "No. Strategy Agent is software for self-directed traders. It generates structured analysis and setups for informational purposes only — not personalized investment advice. You stay in control of every decision.",
+      a: "No. VCP Trader AI provides software-generated scenarios and market context for educational and informational purposes only. You remain responsible for every decision and order.",
+    },
+    {
+      q: "Do you provide live market data?",
+      a: "VCP Trader AI does not provide a separate live market data feed. Live market data is accessed through your connected brokerage account, subject to your broker's entitlements and availability.",
     },
     {
       q: "Can I use paper mode first?",
-      a: "Yes. You can explore setups, grades, and the full workflow in paper / simulated mode before connecting a live broker.",
+      a: "Yes. You can explore in paper or simulated mode before connecting a live brokerage account.",
     },
     {
-      q: "Does it support options?",
-      a: "Yes. Strategy Agent supports long calls, long puts, debit spreads, covered calls, and cash-secured puts — with liquidity checks, Greeks, breakeven, and max loss shown for every recommendation.",
-    },
-    {
-      q: "Can I set my own risk rules?",
-      a: "Absolutely. You set the minimum probability grade, reward/risk floor, allowed instruments, options liquidity filters, and execution defaults. Trade Guardrails™ block anything that doesn't fit.",
+      q: "Does it support both stocks and options?",
+      a: "Yes. VCP Trader AI supports stock ideas, long calls/puts, covered calls, cash-secured puts, and defined-risk spreads where supported by your broker.",
     },
     {
       q: "Which brokers are supported?",
-      a: "Tradier, TradeStation, and Tastytrade are supported today, with more on the roadmap. You can connect your broker from Settings.",
+      a: "Supported broker connections may include Tradier, TradeStation, SnapTrade-connected brokerages, and others as enabled in the app. Availability may vary by account type and broker support.",
+    },
+    {
+      q: "Can I set my own limits?",
+      a: "Yes. You can set allowed instruments, max risk per idea, minimum grade, liquidity preferences, and other risk controls.",
     },
     {
       q: "Can I cancel anytime?",
-      a: "Yes — both plans are month-to-month with no long-term commitment. You can cancel from your settings at any time.",
+      a: "Yes. Subscriptions can be managed through the billing portal.",
     },
   ];
 
@@ -1068,10 +1148,10 @@ function FAQSection() {
  * --------------------------------------------------------- */
 function FinalCtaSection({ onStartTrial }: { onStartTrial: () => void }) {
   return (
-    <section className="py-16 md:py-20">
+    <section className="py-16 md:py-20" id="instatrade">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-2xl md:text-3xl font-bold">Ready to trade with discipline?</h2>
-        <p className="mt-3 text-muted-foreground">Start your free 14-day trial — under 60 seconds to set up.</p>
+        <h2 className="text-2xl md:text-3xl font-bold">Ready to trade with clarity?</h2>
+        <p className="mt-3 text-muted-foreground">Start your free 14-day trial. Bring your broker. Review every order before it's sent.</p>
         <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button
             size="lg"
@@ -1105,8 +1185,8 @@ function LandingFooter() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-            <img src={logoUrl} alt="Strategy Agent" className="h-6 w-auto" />
-            <span className="text-sm font-medium text-muted-foreground">Strategy Agent</span>
+            <img src={logoUrl} alt="VCP Trader AI" className="h-6 w-auto" />
+            <span className="text-sm font-medium text-muted-foreground">VCP Trader AI · Powered by Strategy Agent</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm">
             <Link href="/terms" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-footer-terms">Terms</Link>

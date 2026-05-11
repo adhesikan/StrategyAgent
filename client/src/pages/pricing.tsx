@@ -11,37 +11,54 @@ import { usePlan } from "@/context/PlanContext";
 import { usePersona } from "@/context/PersonaContext";
 import { PLANS, PERSONA_RECOMMENDED_PLAN, type PlanId } from "@shared/plans";
 
-const HIGHLIGHTS: Record<PlanId, string[]> = {
-  free: [
-    "5 AI analyses / day",
-    "Educational paper trading",
-    "Delayed market data",
-    "No broker connection",
-  ],
+const DISPLAY_NAME: Partial<Record<PlanId, string>> = {
+  pro: "Pro",
+  edge: "Elite",
+};
+
+const DISPLAY_PRICE_MONTHLY: Partial<Record<PlanId, number>> = {
+  pro: 79,
+  edge: 149,
+};
+
+const DISPLAY_PRICE_ANNUAL: Partial<Record<PlanId, number>> = {
+  pro: 758,
+  edge: 1430,
+};
+
+const DISPLAY_TAGLINE: Partial<Record<PlanId, string>> = {
+  pro: "Daily AI stock and options ideas, plus broker-connected order preparation.",
+  edge: "For active stock and options traders who want every edge.",
+};
+
+const HIGHLIGHTS: Partial<Record<PlanId, string[]>> = {
   pro: [
-    "50 AI analyses / day",
-    "Live market data",
-    "1 broker connection",
-    "Smart alerts + scanner",
-    "Morning briefing",
+    "Daily AI stock ideas",
+    "Daily AI options ideas",
+    "Grow, Income, Trade, and Markets modes",
+    "News sentiment and market context",
+    "Watchlist intelligence",
+    "Paper/simulated trading",
+    "Basic Opportunity Radar",
+    "Broker connection support",
+    "InstaTrade™ order preparation",
+    "Live market data through connected brokerage account",
   ],
   edge: [
-    "Unlimited AI analyses",
-    "Up to 5 brokers",
-    "Automation (assisted)",
-    "Options flow + multi-leg builder",
-    "Trade journal",
-  ],
-  team: [
-    "Everything in Active Trader",
-    "5 team seats",
-    "Team sharing",
-    "Partner signals",
-    "Priority support",
+    "Everything in Pro",
+    "Advanced Opportunity Radar",
+    "Advanced options analytics",
+    "Advanced filters",
+    "Scenario scoring breakdowns",
+    "Portfolio and position context from connected broker",
+    "Journal analytics",
+    "AI trade review insights",
+    "Multi-broker support, where available",
+    "Priority scans",
   ],
 };
 
-const ORDER: PlanId[] = ["free", "pro", "edge", "team"];
+const ORDER: PlanId[] = ["pro", "edge"];
 
 export default function PricingPage() {
   const [, navigate] = useLocation();
@@ -54,10 +71,11 @@ export default function PricingPage() {
   const initialCycle = params.get("cycle");
 
   const [annual, setAnnual] = useState(initialCycle === "annual");
-  const recommended: PlanId = persona ? PERSONA_RECOMMENDED_PLAN[persona] : "pro";
+  const recommendedRaw: PlanId = persona ? PERSONA_RECOMMENDED_PLAN[persona] : "pro";
+  const recommended: PlanId = ORDER.includes(recommendedRaw) ? recommendedRaw : "pro";
 
   useEffect(() => {
-    document.title = "Pricing — Strategy Agent";
+    document.title = "Pricing — VCP Trader AI";
   }, []);
 
   const checkout = useMutation({
@@ -123,10 +141,10 @@ export default function PricingPage() {
 
       <div className="text-center space-y-3">
         <h1 className="text-3xl md:text-5xl font-bold tracking-tight" data-testid="text-pricing-title">
-          Pick the plan that fits your trading
+          Simple Pricing. Bring Your Broker.
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Start free. Upgrade anytime. Cancel anytime. All paid plans include a 14-day trial.
+          Start in paper/simulated mode. Connect your brokerage for live market data and self-directed InstaTrade™ order submission. 14-day free trial. Cancel anytime.
         </p>
 
         <div className="flex items-center justify-center gap-3 pt-2">
@@ -138,20 +156,24 @@ export default function PricingPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
         {ORDER.map((id) => {
-          const plan = PLANS[id];
           const isCurrent = id === currentPlan;
           const isRecommended = id === recommended && id !== currentPlan;
           const isHighlighted = id === initialPlan || isRecommended;
-          const price = annual ? plan.priceAnnual : plan.price;
+          const monthly = DISPLAY_PRICE_MONTHLY[id] ?? 0;
+          const annualPrice = DISPLAY_PRICE_ANNUAL[id] ?? 0;
+          const price = annual ? annualPrice : monthly;
           const cycleLabel = annual ? "/yr" : "/mo";
+          const displayName = DISPLAY_NAME[id] ?? PLANS[id].name;
+          const tagline = DISPLAY_TAGLINE[id];
+          const highlights = HIGHLIGHTS[id] ?? [];
 
           return (
             <div
               key={id}
-              className={`relative rounded-xl border p-5 flex flex-col gap-4 bg-card/40 backdrop-blur ${
-                isHighlighted ? "border-primary ring-2 ring-primary/40" : "border-border"
+              className={`relative rounded-xl border p-6 flex flex-col gap-4 bg-card/40 backdrop-blur ${
+                isHighlighted ? "border-primary ring-2 ring-primary/40 shadow-lg" : "border-border"
               }`}
               data-testid={`card-plan-${id}`}
             >
@@ -167,20 +189,23 @@ export default function PricingPage() {
               )}
 
               <div>
-                <h3 className="font-bold text-xl" data-testid={`text-plan-name-${id}`}>{plan.name}</h3>
-                <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">${price}</span>
+                <h3 className="font-bold text-2xl" data-testid={`text-plan-name-${id}`}>{displayName}</h3>
+                {tagline && (
+                  <p className="text-sm text-muted-foreground mt-1">{tagline}</p>
+                )}
+                <div className="mt-3 flex items-baseline gap-1">
+                  <span className="text-4xl font-bold">${price}</span>
                   <span className="text-sm text-muted-foreground">{cycleLabel}</span>
                 </div>
-                {id !== "free" && annual && (
+                {annual && (
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    ${(plan.priceAnnual / 12).toFixed(0)}/mo billed annually
+                    ${(annualPrice / 12).toFixed(0)}/mo billed annually
                   </p>
                 )}
               </div>
 
               <ul className="space-y-2 text-sm flex-1">
-                {HIGHLIGHTS[id].map((h) => (
+                {highlights.map((h) => (
                   <li key={h} className="flex items-start gap-2">
                     <Check className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
                     <span>{h}</span>
@@ -191,14 +216,6 @@ export default function PricingPage() {
               {isCurrent ? (
                 <Button variant="outline" disabled data-testid={`button-current-${id}`}>
                   Your current plan
-                </Button>
-              ) : id === "free" ? (
-                <Button
-                  variant="outline"
-                  onClick={() => navigate("/home")}
-                  data-testid={`button-stay-${id}`}
-                >
-                  Continue free
                 </Button>
               ) : (
                 <Button
@@ -220,10 +237,14 @@ export default function PricingPage() {
         })}
       </div>
 
-      <p className="text-xs text-muted-foreground text-center max-w-2xl mx-auto">
-        All plans are software tools for analysis and education. Strategy Agent does not provide
-        investment advice. You always confirm orders before they're sent.
-      </p>
+      <div className="max-w-3xl mx-auto space-y-3 text-xs text-muted-foreground text-center">
+        <p>
+          VCP Trader AI does not include a separate live market data feed. Live quotes, option chains, account balances, positions, and order submission are available through supported brokerage connections and the user's brokerage entitlements.
+        </p>
+        <p>
+          All plans are software tools for analysis and education. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice. You always confirm orders before they're sent.
+        </p>
+      </div>
     </div>
   );
 }

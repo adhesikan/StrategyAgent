@@ -13,14 +13,15 @@ export function Footer() {
         <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
         <p>
           <span className="font-medium">Important — Not Investment Advice.</span>{" "}
-          Strategy Agent is a software tool that surfaces algorithmically-generated
+          VCP Trader AI is a software tool that surfaces algorithmically-generated
           scenarios and educational analysis. It is not a registered broker-dealer or
           investment adviser. Nothing here is a recommendation, solicitation, or offer
           to buy or sell any security. All trading decisions and orders are made solely
-          by you. Past performance and back-tested results do not guarantee future
-          outcomes. Trading involves substantial risk of loss, including loss of principal,
-          and is not suitable for every investor. Consult a licensed financial professional
-          before making any investment decision. Use is subject to our{" "}
+          by you. Live market data and order submission are available only through
+          supported connected brokerage accounts. Past performance and back-tested
+          results do not guarantee future outcomes. Trading involves substantial risk
+          of loss, including loss of principal, and is not suitable for every investor.
+          Consult a licensed financial professional before making any investment decision. Use is subject to our{" "}
           <Link href="/disclaimer" className="underline hover:no-underline">full disclaimer</Link>,{" "}
           <Link href="/terms" className="underline hover:no-underline">terms</Link>, and{" "}
           <Link href="/privacy" className="underline hover:no-underline">privacy policy</Link>.

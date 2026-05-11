@@ -64,14 +64,14 @@ const MOCK_SCENARIOS: CandidateScenario[] = [
 export default function GoalModePage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [wizardOpen, setWizardOpen] = useState(true);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [prefs, setPrefs] = useState<GoalModePrefs | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("skip") === "1") setWizardOpen(false);
+    if (params.get("wizard") === "1") setWizardOpen(true);
   }, []);
 
   const handleComplete = (p: GoalModePrefs) => {
@@ -153,12 +153,12 @@ export default function GoalModePage() {
 
       {!prefs && !wizardOpen && (
         <Card data-testid="card-empty-prefs">
-          <CardContent className="p-6 text-center space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Run the short questionnaire to see your candidate scenarios.
-            </p>
-            <Button onClick={() => setWizardOpen(true)} data-testid="button-open-wizard">
-              Start questionnaire
+          <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="text-sm text-muted-foreground text-center md:text-left">
+              Want ideas tailored to your capital, risk, and goals? Take a 1-minute questionnaire.
+            </div>
+            <Button variant="outline" onClick={() => setWizardOpen(true)} data-testid="button-open-wizard">
+              Personalize my ideas
             </Button>
           </CardContent>
         </Card>

@@ -28,10 +28,8 @@ import {
 import { LogOut, User, Loader2, Bell, HelpCircle } from "lucide-react";
 import { BrokerStatusProvider } from "@/hooks/use-broker-status";
 import { TooltipVisibilityProvider } from "@/hooks/use-tooltips";
-import { PersonaProvider, usePersona } from "@/context/PersonaContext";
+import { PersonaProvider } from "@/context/PersonaContext";
 import { PlanProvider } from "@/context/PlanContext";
-import { PersonaSelector } from "@/components/persona-selector";
-import { PlanSelector } from "@/components/plan-selector";
 import { StatusBanner } from "@/components/status-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
@@ -289,14 +287,9 @@ function AppLayout() {
 function AppLayoutInner() {
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [isEditingSetup, setIsEditingSetup] = useState(false);
-  const [showPersonaSelector, setShowPersonaSelector] = useState(false);
-  const [showPlanSelector, setShowPlanSelector] = useState(false);
-  const [planSelectorDismissed, setPlanSelectorDismissed] = useState(false);
   const { user } = useAuth();
-  const { persona, isLoading: personaLoading } = usePersona();
-  
+
   const { data: legalStatus, isLoading: legalLoading } = useReactQuery<LegalStatus>({
     queryKey: ["/api/auth/legal-status"],
     enabled: !!user,
@@ -319,12 +312,12 @@ function AppLayoutInner() {
     enabled: !!user,
   });
 
+  // Setup wizard is no longer auto-shown for new users — they go straight to the
+  // dashboard. It can still be opened manually from Settings via this event.
   useEffect(() => {
     const handler = () => {
-      if (userSettings) {
-        setIsEditingSetup(true);
-        setShowOnboarding(true);
-      }
+      setIsEditingSetup(!!userSettings);
+      setShowOnboarding(true);
     };
     window.addEventListener("open-setup-wizard", handler);
     return () => window.removeEventListener("open-setup-wizard", handler);
@@ -335,57 +328,6 @@ function AppLayoutInner() {
       setShowLegalModal(true);
     }
   }, [legalStatus]);
-
-  // Step 2: persona selection (required, blocks rest of onboarding)
-  useEffect(() => {
-    if (
-      legalStatus?.accepted &&
-      !showLegalModal &&
-      !personaLoading &&
-      persona === null &&
-      user
-    ) {
-      setShowPersonaSelector(true);
-    } else if (persona !== null) {
-      setShowPersonaSelector(false);
-    }
-  }, [legalStatus, showLegalModal, persona, personaLoading, user]);
-
-  // Step 3: plan selector (one-time, dismissible)
-  useEffect(() => {
-    if (
-      legalStatus?.accepted &&
-      !showLegalModal &&
-      !showPersonaSelector &&
-      persona !== null &&
-      !planSelectorDismissed
-    ) {
-      let alreadySeen = false;
-      try {
-        alreadySeen = localStorage.getItem("plan_selector_seen") === "1";
-      } catch {}
-      if (!alreadySeen) {
-        setShowPlanSelector(true);
-      } else {
-        setPlanSelectorDismissed(true);
-      }
-    }
-  }, [legalStatus, showLegalModal, showPersonaSelector, persona, planSelectorDismissed]);
-
-  // Step 4: existing setup wizard (only after persona + plan steps clear)
-  useEffect(() => {
-    if (
-      userSettings &&
-      !userSettings.setupCompleted &&
-      legalStatus?.accepted &&
-      !showLegalModal &&
-      !showPersonaSelector &&
-      !showPlanSelector &&
-      !onboardingDismissed
-    ) {
-      setShowOnboarding(true);
-    }
-  }, [userSettings, legalStatus, showLegalModal, showPersonaSelector, showPlanSelector, onboardingDismissed]);
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -425,27 +367,14 @@ function AppLayoutInner() {
           open={showLegalModal}
           onAccepted={() => setShowLegalModal(false)}
         />
-        <PersonaSelector
-          open={showPersonaSelector}
-          onComplete={() => setShowPersonaSelector(false)}
-        />
-        <PlanSelector
-          open={showPlanSelector}
-          onComplete={() => {
-            setShowPlanSelector(false);
-            setPlanSelectorDismissed(true);
-          }}
-        />
         <OnboardingWizard
           open={showOnboarding}
           onComplete={() => {
             setShowOnboarding(false);
-            setOnboardingDismissed(true);
             setIsEditingSetup(false);
           }}
           onClose={() => {
             setShowOnboarding(false);
-            setOnboardingDismissed(true);
             setIsEditingSetup(false);
           }}
           isEditing={isEditingSetup}

@@ -714,7 +714,7 @@ function FeaturesSection() {
       title: "Self-Directed InstaTrade™ Execution",
       copy: "Prepare reviewed orders through your connected broker. You approve every order before it is submitted.",
       bullets: [
-        "Works with supported connected brokerages",
+        "Tradier, TradeStation, and SnapTrade-connected brokerages",
         "Paper mode available",
         "Live data through your brokerage connection",
         "Explicit confirmation required before submission",

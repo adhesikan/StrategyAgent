@@ -137,6 +137,37 @@ function buildSimpleTitle(c: CandidateScenario): string {
   return `${c.symbol} — ${label}`;
 }
 
+function buildAlertTitle(c: CandidateScenario): string {
+  const sent = c.sentiment;
+  if (sent?.available && (sent.impactLevel === "high" || sent.impactLevel === "medium")) {
+    const tone = sent.label === "bearish" ? "bearish" : sent.label === "bullish" ? "bullish" : "mixed";
+    return `${c.symbol} — ${tone} news catalyst`;
+  }
+  if (sent?.available && sent.label === "bearish") return `${c.symbol} — bearish headlines`;
+  if (sent?.biasAlignment === "opposed") return `${c.symbol} — headlines run against the setup`;
+  if (c.bias === "bearish") return `${c.symbol} — downside risk flagged`;
+  return `${c.symbol} — watchlist alert`;
+}
+
+function buildAlertSummary(c: CandidateScenario): string {
+  const sent = c.sentiment;
+  if (sent?.available) {
+    const articles = sent.articleCount ?? 0;
+    const impact = sent.impactLevel;
+    if (sent.label === "bearish") {
+      return `${articles} recent ${articles === 1 ? "headline" : "headlines"} skew bearish (impact: ${impact}). Review before holding or adding exposure.`;
+    }
+    if (sent.label === "mixed") {
+      return `Mixed news flow on ${c.symbol} (${articles} articles, impact ${impact}). Watch for direction confirmation.`;
+    }
+    if (sent.biasAlignment === "opposed") {
+      return `Headline tone on ${c.symbol} runs against the current setup. Confirm thesis before acting.`;
+    }
+    return `${articles} recent ${articles === 1 ? "headline" : "headlines"} (${sent.label}, impact ${impact}). Heads-up on ${c.symbol}.`;
+  }
+  return `${c.symbol} flagged on your watchlist with elevated risk signals. Informational only — review before any action.`;
+}
+
 function buildSimpleSummary(c: CandidateScenario): string {
   const directionWord =
     c.bias === "bullish" ? "leans higher" : c.bias === "bearish" ? "leans lower" : "looks range-bound";
@@ -156,6 +187,7 @@ function buildSimpleSummary(c: CandidateScenario): string {
 }
 
 function toDailyIdea(c: CandidateScenario, userId: string, brokerConnected: boolean, category?: DailyIdeaCategory): DailyIdea {
+  const isAlert = category === "market_alert";
   return {
     id: c.id,
     userId,
@@ -163,9 +195,13 @@ function toDailyIdea(c: CandidateScenario, userId: string, brokerConnected: bool
     companyName: c.companyName,
     category: category ?? classifyCategory(c.strategyType),
     instrumentType: classifyInstrument(c.strategyType),
-    title: buildSimpleTitle(c),
-    simpleSummary: buildSimpleSummary(c),
-    whyItAppeared: c.mainReason,
+    title: isAlert ? buildAlertTitle(c) : buildSimpleTitle(c),
+    simpleSummary: isAlert ? buildAlertSummary(c) : buildSimpleSummary(c),
+    whyItAppeared: isAlert
+      ? (c.sentiment?.available
+          ? `News-driven alert: ${c.sentiment.label} tone, impact ${c.sentiment.impactLevel}.`
+          : "Risk signal flagged on your watchlist.")
+      : c.mainReason,
     riskLevel: classifyRisk(c),
     grade: c.finalGrade,
     score: c.finalScore,
@@ -221,23 +257,34 @@ async function runScan(userId: string, filters: RadarFilters, category?: DailyId
 
 // ---------- Public API ----------
 
+// Quality-first helper: try B+ first, fall back to C only if no B-grade ideas surface.
+async function scanQualityFirst(
+  userId: string,
+  base: RadarFilters,
+  overrides: ScanOverrides | undefined,
+  category?: DailyIdeaCategory,
+): Promise<DailyIdeasResult> {
+  const high = await runScan(userId, withOverrides({ ...base, minGrade: "B" }, overrides), category);
+  if (high.ideas.length > 0) return high;
+  return runScan(userId, withOverrides({ ...base, minGrade: "C" }, overrides), category);
+}
+
 export async function getDailyIdeasForUser(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
-  const r = await runScan(userId, withOverrides({ strategyType: "any", minGrade: "C", timeHorizon: "1_4w" }, overrides));
+  const r = await scanQualityFirst(userId, { strategyType: "any", timeHorizon: "1_4w" }, overrides);
   if (r.ideas.length > 0) return r;
-  const broad = await runScan(userId, withOverrides({ strategyType: "any", minGrade: "C" }, overrides));
+  const broad = await scanQualityFirst(userId, { strategyType: "any" }, overrides);
   if (broad.ideas.length > 0) return broad;
-  // Last resort: widen universe to high-volume liquid names (only if user didn't pin a universe).
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return broad;
   return runScan(userId, { strategyType: "any", universe: "high_volume", minGrade: "C" });
 }
 
 export async function getGrowthIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
-  return runScan(userId, withOverrides({ strategyType: "stock_swing", bias: "bullish", minGrade: "B" }, overrides), "growth");
+  return scanQualityFirst(userId, { strategyType: "stock_swing", bias: "bullish" }, overrides, "growth");
 }
 
 export async function getIncomeIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
-  const cc = await runScan(userId, withOverrides({ strategyType: "covered_call", minGrade: "C" }, overrides), "income");
-  const csp = await runScan(userId, withOverrides({ strategyType: "cash_secured_put", minGrade: "C" }, overrides), "income");
+  const cc = await scanQualityFirst(userId, { strategyType: "covered_call" }, overrides, "income");
+  const csp = await scanQualityFirst(userId, { strategyType: "cash_secured_put" }, overrides, "income");
   const merged = [...cc.ideas, ...csp.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
   if (merged.length > 0) return { ...cc, ideas: merged };
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return { ...cc, ideas: merged };
@@ -248,7 +295,7 @@ export async function getIncomeIdeas(userId: string, overrides?: ScanOverrides):
 }
 
 export async function getStockIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
-  const r = await runScan(userId, withOverrides({ strategyType: "stock_swing", minGrade: "C" }, overrides));
+  const r = await scanQualityFirst(userId, { strategyType: "stock_swing" }, overrides);
   if (r.ideas.length > 0) return r;
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return r;
   return runScan(userId, { strategyType: "stock_swing", universe: "high_volume", minGrade: "C" });
@@ -256,7 +303,7 @@ export async function getStockIdeas(userId: string, overrides?: ScanOverrides): 
 
 export async function getOptionIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
   const types: StrategyType[] = ["long_call", "long_put", "debit_spread"];
-  const results = await Promise.all(types.map((t) => runScan(userId, withOverrides({ strategyType: t, minGrade: "C" }, overrides))));
+  const results = await Promise.all(types.map((t) => scanQualityFirst(userId, { strategyType: t }, overrides)));
   const ideas = results.flatMap((r) => r.ideas).sort((a, b) => b.score - a.score).slice(0, 12);
   if (ideas.length > 0) return { ...results[0], ideas };
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return { ...results[0], ideas };
@@ -270,13 +317,17 @@ export async function getOptionIdeas(userId: string, overrides?: ScanOverrides):
 export async function getWatchlistAlerts(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
   // Watchlist tab keeps watchlist semantics unless caller pins custom symbols.
   const filters: RadarFilters = (overrides?.customSymbols?.length ?? 0) > 0
-    ? { strategyType: "any", universe: "custom", customSymbols: overrides!.customSymbols, minGrade: "C" }
-    : { strategyType: "any", universe: "watchlist", minGrade: "C" };
-  const r = await runScan(userId, filters);
+    ? { strategyType: "any", universe: "custom", customSymbols: overrides!.customSymbols }
+    : { strategyType: "any", universe: "watchlist" };
+  const r = await scanQualityFirst(userId, filters, undefined);
   return { ...r, ideas: r.ideas.slice(0, 12) };
 }
 
 export async function getMarketAlerts(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
+  // Market Alerts is a heads-up feed, NOT a trade-idea list. We pull a wide pool
+  // of watchlist scenarios and keep ONLY those with a real news-driven trigger
+  // (bearish or mixed sentiment). Items are then re-titled as alerts so they
+  // read as informational warnings rather than buy ideas.
   const types: StrategyType[] = ["stock_swing", "long_put", "long_call", "debit_spread"];
   const results = await Promise.all(
     types.map((t) =>
@@ -284,37 +335,35 @@ export async function getMarketAlerts(userId: string, overrides?: ScanOverrides)
     ),
   );
 
-  // Prefer risk-leaning items first (bearish / mixed sentiment, or weaker scores),
-  // then fill with the highest-scoring items from the remaining strategies so
-  // every instrument type gets a fair shot at appearing.
-  const all = results.flatMap((r) => r.ideas).map((i) => ({ ...i, category: "market_alert" as const }));
-  const riskLeaning = all.filter(
-    (i) => i.sentimentLabel === "bearish" || i.sentimentLabel === "mixed" || i.score < 70,
+  const all = results.flatMap((r) => r.ideas);
+
+  // Primary trigger: real news-driven alerts (bearish or mixed sentiment).
+  let filtered = all.filter(
+    (i) => i.sentimentLabel === "bearish" || i.sentimentLabel === "mixed",
   );
 
-  // Round-robin across instrument types so the visible mix is varied.
-  const byType = new Map<DailyIdeaInstrument, DailyIdea[]>();
-  for (const i of riskLeaning.length > 0 ? riskLeaning : all) {
-    const arr = byType.get(i.instrumentType) ?? [];
-    arr.push(i);
-    byType.set(i.instrumentType, arr);
+  // Fallback when news data isn't available for any candidate (e.g., no
+  // STOCKNEWS_API_KEY): show bearish-bias setups (long puts) as risk alerts so
+  // the tab isn't empty. The alert title/summary builders already handle the
+  // "no sentiment" case with sensible copy ("downside risk flagged").
+  if (filtered.length === 0) {
+    filtered = all.filter((i) => i.instrumentType === "long_put" || i.title.toLowerCase().includes("bearish"));
   }
-  for (const arr of byType.values()) arr.sort((a, b) => b.score - a.score);
 
-  const mixed: DailyIdea[] = [];
-  const seen = new Set<string>();
-  let added = true;
-  while (added && mixed.length < 8) {
-    added = false;
-    for (const arr of byType.values()) {
-      const next = arr.shift();
-      if (!next || seen.has(next.symbol)) continue;
-      seen.add(next.symbol);
-      mixed.push(next);
-      added = true;
-      if (mixed.length >= 8) break;
-    }
+  // Dedupe by symbol — keep the highest-scoring per ticker so each shows once.
+  const bySymbol = new Map<string, DailyIdea>();
+  for (const i of filtered) {
+    const prev = bySymbol.get(i.symbol);
+    if (!prev || i.score > prev.score) bySymbol.set(i.symbol, i);
   }
+
+  const mixed = Array.from(bySymbol.values())
+    .sort((a, b) => {
+      const tone = (x: DailyIdea) =>
+        x.sentimentLabel === "bearish" ? 2 : x.sentimentLabel === "mixed" ? 1 : 0;
+      return tone(b) - tone(a) || b.score - a.score;
+    })
+    .slice(0, 8);
 
   return { ...results[0], ideas: mixed };
 }

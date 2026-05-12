@@ -750,19 +750,21 @@ export async function generateCandidateScenarios(
   const ctx = await buildUserContext(userId, filters);
   const enriched = await enrichWithMarketData(symbols, userId, ctx);
 
-  // Pre-load existing snapshots; refresh in background for any missing/stale.
-  let snapshotMap = await loadSnapshotsForRadar(symbols);
+  // Use existing snapshots immediately. Sentiment refresh is kicked off in the
+  // background so it never blocks the scan response — the next scan within
+  // SNAPSHOT_TTL_MS picks up the warmed cache. Missing/stale snapshots are
+  // treated as neutral by adaptSnapshotToRadar, which is the correct fallback.
+  const snapshotMap = await loadSnapshotsForRadar(symbols);
   const needsRefresh = symbols.filter((s) => {
     const m = snapshotMap.get(s.toUpperCase());
     return !m || !m.fresh;
   });
   if (needsRefresh.length > 0) {
-    try {
-      await refreshSentimentForSymbols(needsRefresh);
-      snapshotMap = await loadSnapshotsForRadar(symbols);
-    } catch (err) {
-      console.warn("[radar] sentiment refresh failed, continuing with existing snapshots:", err);
-    }
+    // Fire-and-forget. refreshSentimentForSymbols already coalesces concurrent
+    // requests via its in-flight map, so multiple buckets won't stampede.
+    void refreshSentimentForSymbols(needsRefresh).catch((err) => {
+      console.warn("[radar] background sentiment refresh failed:", err?.message ?? err);
+    });
   }
 
   const requestedStrategy = filters.strategyType ?? "any";

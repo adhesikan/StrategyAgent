@@ -133,10 +133,18 @@ export const vcpMultidayStrategy: Strategy = {
     
     if (!candles || candles.length < 30) {
       const volumeRatio = quote.avgVolume ? quote.volume / quote.avgVolume : 1;
+      const proximityBoost = quote.dayHigh
+        ? Math.max(0, Math.min(10, (12 - ((quote.dayHigh - quote.last) / quote.dayHigh) * 100) * 0.8))
+        : 4;
+      const rvolBoost = Math.max(0, Math.min(12, (volumeRatio - 1) * 8));
+      const momentumBoost = Math.max(0, Math.min(8, quote.changePercent * 2));
+      const fallbackScore = Math.round(
+        Math.max(50, Math.min(70, 50 + rvolBoost + proximityBoost + momentumBoost)),
+      );
       return {
         stage: PatternStage.FORMING,
         levels,
-        score: 30,
+        score: fallbackScore,
         ema9: quote.last * 0.99,
         ema21: quote.last * 0.97,
         rvol: volumeRatio,
@@ -180,7 +188,14 @@ export const vcpMultidayStrategy: Strategy = {
       score = Math.min(100, Math.max(40, 55 + numContractions * 5 - Math.floor(priceFromHigh)));
     } else {
       stage = PatternStage.FORMING;
-      score = Math.max(20, 40 - Math.floor(priceFromHigh * 2));
+      // Even setups without contractions or uptrend deserve a signal-driven
+      // score (rvol/proximity/momentum) instead of always flooring at 20-30.
+      const rvolBoost = Math.max(0, Math.min(12, (volumeRatio - 1) * 8));
+      const proximityBoost = Math.max(0, Math.min(10, (15 - priceFromHigh) * 0.7));
+      const momentumBoost = Math.max(0, Math.min(8, quote.changePercent * 2));
+      score = Math.round(
+        Math.max(48, Math.min(68, 48 + rvolBoost + proximityBoost + momentumBoost)),
+      );
     }
 
     return {

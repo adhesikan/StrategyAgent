@@ -29,7 +29,14 @@ export const vcpStrategy: Strategy = {
       score = Math.min(95, 65 + Math.floor((5 - priceFromHigh) * 6));
     } else {
       stage = PatternStage.FORMING;
-      score = Math.max(30, 60 - Math.floor(priceFromHigh * 2));
+      // Forming setups still vary by RVOL, proximity to high, and intraday move.
+      // Old formula floored at 30 for every quote >15% off the high — too flat.
+      const rvolBoost = Math.max(0, Math.min(14, (volumeRatio - 1) * 10));
+      const proximityBoost = Math.max(0, Math.min(10, (12 - priceFromHigh) * 0.8));
+      const momentumBoost = Math.max(0, Math.min(8, quote.changePercent * 2));
+      score = Math.round(
+        Math.max(50, Math.min(72, 50 + rvolBoost + proximityBoost + momentumBoost)),
+      );
     }
     
     const levels = this.computeLevels(quote);

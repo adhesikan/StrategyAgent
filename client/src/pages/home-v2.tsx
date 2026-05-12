@@ -147,24 +147,75 @@ export default function HomeV2() {
           </p>
         </div>
 
-        <div className="relative">
-          <Search className="h-4 w-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit(q)}
-            placeholder={placeholder}
-            className="h-14 pl-11 pr-32 text-[15px] rounded-[14px] border-border focus-visible:ring-1 focus-visible:ring-foreground"
-            data-testid="input-home-ask"
-          />
-          <Button
-            onClick={() => submit(q)}
-            className="absolute right-2 top-2 h-10 rounded-[10px] gap-2"
-            data-testid="button-home-ask"
-          >
-            Ask <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Today's Ideas For You
+            </h2>
+            {ideasResp?.dataMode === "simulated" && (
+              <Badge variant="outline" className="text-[10px]">Simulated data</Badge>
+            )}
+          </div>
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>
+                  {t.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {TABS.map((t) => (
+              <TabsContent key={t.value} value={t.value} className="mt-4">
+                {ideasLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[0, 1, 2].map((i) => (
+                      <Skeleton key={i} className="h-56 rounded-lg" />
+                    ))}
+                  </div>
+                ) : ideasResp && ideasResp.ideas.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {ideasResp.ideas.slice(0, 9).map((idea) => (
+                      <DailyIdeaCard key={idea.id} idea={idea} />
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="p-8 text-center text-sm text-muted-foreground" data-testid="text-no-ideas">
+                    No ideas in this category right now. Try another tab or adjust your watchlist.
+                  </Card>
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
+        </section>
+
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            Ask VCP Trader AI
+          </h2>
+          <div className="relative">
+            <Search className="h-4 w-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit(q)}
+              placeholder={placeholder}
+              className="h-14 pl-11 pr-32 text-[15px] rounded-[14px] border-border focus-visible:ring-1 focus-visible:ring-foreground"
+              data-testid="input-home-ask"
+            />
+            <Button
+              onClick={() => submit(q)}
+              className="absolute right-2 top-2 h-10 rounded-[10px] gap-2"
+              data-testid="button-home-ask"
+            >
+              Ask <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Ask about a ticker, news, income ideas, or a setup — get an AI-generated answer with live context.
+          </p>
+        </section>
 
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
@@ -223,48 +274,6 @@ export default function HomeV2() {
               </Card>
             ))}
           </div>
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Today's Ideas For You
-            </h2>
-            {ideasResp?.dataMode === "simulated" && (
-              <Badge variant="outline" className="text-[10px]">Simulated data</Badge>
-            )}
-          </div>
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
-              {TABS.map((t) => (
-                <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>
-                  {t.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {TABS.map((t) => (
-              <TabsContent key={t.value} value={t.value} className="mt-4">
-                {ideasLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {[0, 1, 2].map((i) => (
-                      <Skeleton key={i} className="h-56 rounded-lg" />
-                    ))}
-                  </div>
-                ) : ideasResp && ideasResp.ideas.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {ideasResp.ideas.slice(0, 9).map((idea) => (
-                      <DailyIdeaCard key={idea.id} idea={idea} />
-                    ))}
-                  </div>
-                ) : (
-                  <Card className="p-8 text-center text-sm text-muted-foreground" data-testid="text-no-ideas">
-                    No ideas in this category right now. Try another tab or adjust your watchlist.
-                  </Card>
-                )}
-              </TabsContent>
-            ))}
-          </Tabs>
         </section>
 
         <p className="text-xs text-muted-foreground pt-6 border-t" data-testid="text-home-disclaimer">

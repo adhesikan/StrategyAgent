@@ -317,31 +317,50 @@ export function AppSidebar() {
                 />
               ))}
 
-              {isCollapsed && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === "/instatrade"}
-                    size="lg"
-                    tooltip="InstaTrade™"
-                    className="h-auto py-3 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
-                  >
-                    <Link
-                      href="/instatrade"
-                      onClick={handleNavClick}
-                      data-testid="link-nav-instatrade"
+              {isCollapsed && (() => {
+                const instaActive = location === "/instatrade";
+                return (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={instaActive}
+                      size="lg"
+                      tooltip="InstaTrade™"
+                      className={
+                        instaActive
+                          ? "h-auto py-3 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
+                          : "h-auto py-3"
+                      }
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/15">
-                        <Zap className="h-4 w-4" />
-                      </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-sm font-medium leading-tight truncate">InstaTrade™</span>
-                        <span className="text-xs leading-snug text-white/70">Place orders fast</span>
-                      </div>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+                      <Link
+                        href="/instatrade"
+                        onClick={handleNavClick}
+                        data-testid="link-nav-instatrade"
+                      >
+                        <div
+                          className={
+                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md " +
+                            (instaActive ? "bg-white/15" : "bg-primary/10 text-primary")
+                          }
+                        >
+                          <Zap className="h-4 w-4" />
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-sm font-medium leading-tight truncate">InstaTrade™</span>
+                          <span
+                            className={
+                              "text-xs leading-snug " +
+                              (instaActive ? "text-white/70" : "text-muted-foreground")
+                            }
+                          >
+                            Place orders fast
+                          </span>
+                        </div>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })()}
 
               {isCollapsed && [...moreNavItems, ...advancedToolsItems].map((item) => (
                 <NavMenuItem

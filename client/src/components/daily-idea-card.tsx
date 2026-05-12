@@ -39,7 +39,7 @@ export interface DailyIdea {
   timeHorizon: string;
   sentimentLabel: string | null;
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
 }
 
 const CATEGORY_LABEL: Record<DailyIdea["category"], string> = {

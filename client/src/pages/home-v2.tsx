@@ -31,7 +31,7 @@ interface Snapshot {
 interface IdeasResponse {
   ideas: DailyIdea[];
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   asOf: string;
   disclaimer: string;
 }

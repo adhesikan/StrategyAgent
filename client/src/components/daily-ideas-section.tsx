@@ -8,7 +8,9 @@ import { DailyIdeaCard, type DailyIdea } from "@/components/daily-idea-card";
 interface IdeasResponse {
   ideas: DailyIdea[];
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
+  liveQuoteCount?: number;
+  quoteFetchError?: string | null;
   asOf: string;
   disclaimer: string;
 }

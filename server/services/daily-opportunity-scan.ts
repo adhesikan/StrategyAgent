@@ -45,7 +45,7 @@ export interface DailyIdea {
   timeHorizon: string;
   sentimentLabel: string | null;
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   sourceEngine: string;
   createdAt: string;
 }
@@ -53,7 +53,9 @@ export interface DailyIdea {
 export interface DailyIdeasResult {
   ideas: DailyIdea[];
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
+  liveQuoteCount?: number;
+  quoteFetchError?: string | null;
   asOf: string;
   disclaimer: string;
 }
@@ -156,6 +158,8 @@ async function runScan(userId: string, filters: RadarFilters, category?: DailyId
     ideas,
     brokerConnected: radar.brokerConnected,
     dataMode: radar.dataMode,
+    liveQuoteCount: radar.liveQuoteCount,
+    quoteFetchError: radar.quoteFetchError,
     asOf: radar.lastRefresh,
     disclaimer: DISCLAIMER,
   };

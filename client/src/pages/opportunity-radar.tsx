@@ -103,7 +103,7 @@ interface CandidateScenario {
     risk: string[];
     invalidators: string[];
   };
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   isOptions: boolean;
   sentiment?: SentimentBlock;
 }
@@ -168,11 +168,13 @@ interface RadarResult {
   candidates: CandidateScenario[];
   hiddenByGuardrails: number;
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   buyingPower: number | null;
   positionsCount: number | null;
   lastRefresh: string;
   universeSize: number;
+  liveQuoteCount?: number;
+  quoteFetchError?: string | null;
   notes: string[];
 }
 
@@ -415,8 +417,14 @@ function BrokerStatusCard({
             />
             <StatusChip
               label="Data mode"
-              value={dataMode === "live" ? "Live" : "Simulated"}
-              tone={dataMode === "live" ? "green" : "amber"}
+              value={
+                dataMode === "live"
+                  ? "Live"
+                  : dataMode === "mixed"
+                    ? `Partial Live${data?.liveQuoteCount != null && data?.universeSize ? ` (${data.liveQuoteCount}/${data.universeSize})` : ""}`
+                    : "Simulated"
+              }
+              tone={dataMode === "live" ? "green" : dataMode === "mixed" ? "amber" : "amber"}
               testId="chip-data-mode"
             />
             <StatusChip

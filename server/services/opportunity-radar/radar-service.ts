@@ -98,7 +98,7 @@ export interface CandidateScenario {
     risk: string[];
     invalidators: string[];
   };
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   isOptions: boolean;
   liquidityMetrics: {
     stockVolume: number;
@@ -113,11 +113,13 @@ export interface RadarResult {
   candidates: CandidateScenario[];
   hiddenByGuardrails: number;
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   buyingPower: number | null;
   positionsCount: number | null;
   lastRefresh: string;
   universeSize: number;
+  liveQuoteCount: number;
+  quoteFetchError: string | null;
   notes: string[];
 }
 
@@ -128,9 +130,12 @@ interface UserContext {
   positionsCount: number | null;
   currentHoldingsSymbols: string[];
   brokerConnected: boolean;
-  dataMode: "live" | "simulated";
+  dataMode: "live" | "simulated" | "mixed";
   avoidEarningsDays: number;
   minRewardRisk: number;
+  liveQuoteCount: number;
+  requestedSymbolCount: number;
+  quoteFetchError: string | null;
 }
 
 const COMPANY_NAMES: Record<string, string> = {
@@ -629,32 +634,55 @@ async function buildUserContext(userId: string, filters: RadarFilters): Promise<
     dataMode: brokerConnected ? "live" : "simulated",
     avoidEarningsDays: filters.avoidEarningsDays ?? 7,
     minRewardRisk: filters.minRewardRisk ?? 1.0,
+    liveQuoteCount: 0,
+    requestedSymbolCount: 0,
+    quoteFetchError: null,
   };
 }
 
 async function enrichWithMarketData(symbols: string[], userId: string, ctx: UserContext): Promise<EnrichedSymbol[]> {
   let quotes: QuoteData[] = [];
+  let liveCount = 0;
+  let fetchError: string | null = null;
+
   if (ctx.brokerConnected) {
     try {
       const conn = await storage.getBrokerConnectionWithToken(userId);
       if (conn && conn.accessToken) {
         quotes = await fetchQuotesFromBroker(conn as any, symbols);
+        liveCount = quotes.length;
+        console.log(
+          `[OpportunityRadar] broker=${conn.provider} returned ${liveCount}/${symbols.length} live quotes`,
+        );
+      } else {
+        fetchError = "Broker shows connected but no access token is available — please reconnect.";
+        console.warn("[OpportunityRadar]", fetchError);
       }
-    } catch (err) {
-      console.warn("[OpportunityRadar] live quote fetch failed, falling back to simulated:", err);
-      ctx.dataMode = "simulated";
+    } catch (err: any) {
+      fetchError = `Live quote fetch failed: ${err?.message ?? String(err)}`;
+      console.warn("[OpportunityRadar]", fetchError);
       quotes = [];
+      liveCount = 0;
     }
   }
-  if (quotes.length === 0) {
+
+  ctx.liveQuoteCount = liveCount;
+  ctx.requestedSymbolCount = symbols.length;
+  ctx.quoteFetchError = fetchError;
+
+  if (liveCount === 0) {
+    // Broker either not connected, returned nothing, or errored — be honest.
+    ctx.dataMode = "simulated";
     quotes = symbols.map(buildMockQuote);
-  } else {
-    // backfill any missing symbols with mocks so the UI never has gaps
+  } else if (liveCount < symbols.length) {
+    // Partial coverage — backfill missing symbols with mocks but keep dataMode honest.
     const present = new Set(quotes.map((q) => q.symbol.toUpperCase()));
     for (const s of symbols) {
-      if (!present.has(s)) quotes.push(buildMockQuote(s));
+      if (!present.has(s.toUpperCase())) quotes.push(buildMockQuote(s));
     }
+    ctx.dataMode = "mixed";
   }
+
   return quotes.map(deriveTechnicals);
 }
 
@@ -772,10 +800,18 @@ export async function generateCandidateScenarios(
     positionsCount: ctx.positionsCount,
     lastRefresh: new Date().toISOString(),
     universeSize: symbols.length,
+    liveQuoteCount: ctx.liveQuoteCount,
+    quoteFetchError: ctx.quoteFetchError,
     notes: [
-      ctx.dataMode === "simulated"
-        ? "Simulated data mode — connect a broker for live quotes and account-aware risk checks."
-        : "Using live broker quotes.",
+      ctx.dataMode === "live"
+        ? `Using live broker quotes (${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols).`
+        : ctx.dataMode === "mixed"
+          ? `Partial live data — ${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols came from your broker; the rest used simulated quotes.`
+          : ctx.quoteFetchError
+            ? `Simulated data mode — ${ctx.quoteFetchError}`
+            : ctx.brokerConnected
+              ? "Simulated data mode — your broker returned no live quotes for this universe. Try a different universe or reconnect."
+              : "Simulated data mode — connect a broker for live quotes and account-aware risk checks.",
       sentimentNote,
     ],
   };

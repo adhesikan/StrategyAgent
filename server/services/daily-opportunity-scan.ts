@@ -151,18 +151,42 @@ function toDailyIdea(c: CandidateScenario, userId: string, brokerConnected: bool
   };
 }
 
+// Per-user scan cache. Each radar scan touches broker quotes + sentiment, which is
+// expensive; the home page hits multiple buckets back-to-back, so we memoize each
+// (user, filters) pair for a short window. TTL is small enough that real changes
+// surface within a minute.
+const SCAN_TTL_MS = 60_000;
+type CacheEntry = { expires: number; promise: Promise<DailyIdeasResult> };
+const scanCache = new Map<string, CacheEntry>();
+
+function cacheKey(userId: string, filters: RadarFilters, category?: DailyIdeaCategory): string {
+  return `${userId}::${category ?? ""}::${JSON.stringify(filters)}`;
+}
+
 async function runScan(userId: string, filters: RadarFilters, category?: DailyIdeaCategory): Promise<DailyIdeasResult> {
-  const radar = await generateCandidateScenarios(userId, filters);
-  const ideas = radar.candidates.map((c) => toDailyIdea(c, userId, radar.brokerConnected, category));
-  return {
-    ideas,
-    brokerConnected: radar.brokerConnected,
-    dataMode: radar.dataMode,
-    liveQuoteCount: radar.liveQuoteCount,
-    quoteFetchError: radar.quoteFetchError,
-    asOf: radar.lastRefresh,
-    disclaimer: DISCLAIMER,
-  };
+  const key = cacheKey(userId, filters, category);
+  const now = Date.now();
+  const cached = scanCache.get(key);
+  if (cached && cached.expires > now) {
+    return cached.promise;
+  }
+  const promise = (async () => {
+    const radar = await generateCandidateScenarios(userId, filters);
+    const ideas = radar.candidates.map((c) => toDailyIdea(c, userId, radar.brokerConnected, category));
+    return {
+      ideas,
+      brokerConnected: radar.brokerConnected,
+      dataMode: radar.dataMode,
+      liveQuoteCount: radar.liveQuoteCount,
+      quoteFetchError: radar.quoteFetchError,
+      asOf: radar.lastRefresh,
+      disclaimer: DISCLAIMER,
+    };
+  })();
+  // Drop the entry if the underlying scan rejects so callers can retry.
+  promise.catch(() => scanCache.delete(key));
+  scanCache.set(key, { expires: now + SCAN_TTL_MS, promise });
+  return promise;
 }
 
 // ---------- Public API ----------
@@ -206,14 +230,51 @@ export async function getWatchlistAlerts(userId: string): Promise<DailyIdeasResu
 }
 
 export async function getMarketAlerts(userId: string): Promise<DailyIdeasResult> {
-  // Risk-leaning items across the user's universe — bearish sentiment or weaker scores.
-  const r = await runScan(userId, { strategyType: "any", universe: "watchlist", minGrade: "C" }, "market_alert");
-  const alerts = r.ideas
-    .filter((i) => i.sentimentLabel === "bearish" || i.sentimentLabel === "mixed" || i.score < 70)
-    .map((i) => ({ ...i, category: "market_alert" as const }))
-    .slice(0, 8);
-  // If nothing risk-leaning, surface lower-conviction items so the tab still has content.
-  return { ...r, ideas: alerts.length > 0 ? alerts : r.ideas.slice(0, 4) };
+  // Market Alerts should surface items that warrant attention across instrument
+  // types — bearish or weak setups, plus protective option ideas — not just one
+  // narrow strategy. We pull from several strategies in parallel and mix them so
+  // the tab doesn't collapse to all-vertical-spreads when the radar's instrument
+  // selector happens to converge.
+  const types: StrategyType[] = ["stock_swing", "long_put", "long_call", "debit_spread"];
+  const results = await Promise.all(
+    types.map((t) =>
+      runScan(userId, { strategyType: t, universe: "watchlist", minGrade: "C" }, "market_alert"),
+    ),
+  );
+
+  // Prefer risk-leaning items first (bearish / mixed sentiment, or weaker scores),
+  // then fill with the highest-scoring items from the remaining strategies so
+  // every instrument type gets a fair shot at appearing.
+  const all = results.flatMap((r) => r.ideas).map((i) => ({ ...i, category: "market_alert" as const }));
+  const riskLeaning = all.filter(
+    (i) => i.sentimentLabel === "bearish" || i.sentimentLabel === "mixed" || i.score < 70,
+  );
+
+  // Round-robin across instrument types so the visible mix is varied.
+  const byType = new Map<DailyIdeaInstrument, DailyIdea[]>();
+  for (const i of riskLeaning.length > 0 ? riskLeaning : all) {
+    const arr = byType.get(i.instrumentType) ?? [];
+    arr.push(i);
+    byType.set(i.instrumentType, arr);
+  }
+  for (const arr of byType.values()) arr.sort((a, b) => b.score - a.score);
+
+  const mixed: DailyIdea[] = [];
+  const seen = new Set<string>();
+  let added = true;
+  while (added && mixed.length < 8) {
+    added = false;
+    for (const arr of byType.values()) {
+      const next = arr.shift();
+      if (!next || seen.has(next.symbol)) continue;
+      seen.add(next.symbol);
+      mixed.push(next);
+      added = true;
+      if (mixed.length >= 8) break;
+    }
+  }
+
+  return { ...results[0], ideas: mixed };
 }
 
 export async function getMarketSnapshot(userId: string): Promise<DailyIdeasResult> {

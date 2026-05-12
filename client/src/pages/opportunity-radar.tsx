@@ -172,6 +172,8 @@ interface RadarResult {
   positionsCount: number | null;
   lastRefresh: string;
   universeSize: number;
+  universeSource?: "custom" | "watchlist" | "starter_fallback" | "large_cap" | "high_volume" | "options_liquid";
+  universeLabel?: string;
   liveQuoteCount?: number;
   quoteFetchError?: string | null;
   notes: string[];
@@ -401,6 +403,11 @@ function BrokerStatusCard({
 }) {
   const brokerConnected = data?.brokerConnected ?? false;
   const dataMode = data?.dataMode ?? "simulated";
+  const universeLabel = data?.universeLabel
+    ? `${data.universeLabel}${data?.universeSize ? ` · ${data.universeSize}` : ""}`
+    : "—";
+  const universeTone: "amber" | "neutral" =
+    data?.universeSource === "starter_fallback" ? "amber" : "neutral";
 
   return (
     <Card data-testid="card-broker-status">
@@ -438,6 +445,12 @@ function BrokerStatusCard({
               testId="chip-positions"
             />
             <StatusChip
+              label="Universe"
+              value={universeLabel}
+              tone={universeTone}
+              testId="chip-universe"
+            />
+            <StatusChip
               label="Last refresh"
               value={data?.lastRefresh ? new Date(data.lastRefresh).toLocaleTimeString() : "—"}
               tone="neutral"
@@ -452,6 +465,12 @@ function BrokerStatusCard({
             <div className="flex flex-wrap items-center gap-3">
               <StatusChip label="Broker" value="Not Connected" tone="amber" testId="chip-broker" />
               <StatusChip label="Data mode" value="Simulated" tone="amber" testId="chip-data-mode" />
+              <StatusChip
+                label="Universe"
+                value={universeLabel}
+                tone={universeTone}
+                testId="chip-universe"
+              />
               <StatusChip
                 label="Last refresh"
                 value={data?.lastRefresh ? new Date(data.lastRefresh).toLocaleTimeString() : "—"}

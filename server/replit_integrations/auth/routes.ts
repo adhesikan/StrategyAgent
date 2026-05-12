@@ -74,12 +74,40 @@ function recordSessionEvent(args: {
 
 const JWT_EXPIRATION = "12h";
 
+const STARTER_WATCHLIST_SYMBOLS = [
+  "AAPL", "MSFT", "NVDA", "AMD", "TSLA",
+  "META", "AMZN", "GOOGL", "MU", "PLTR",
+];
+
+const starterWatchlistSeedInFlight = new Map<string, Promise<void>>();
+
+async function seedStarterWatchlist(userId: string): Promise<void> {
+  const existing = starterWatchlistSeedInFlight.get(userId);
+  if (existing) return existing;
+  const p = (async () => {
+    try {
+      const current = await storage.getWatchlists(userId);
+      if (current && current.length > 0) return;
+      await storage.createWatchlist({
+        userId,
+        name: "Starter Watchlist",
+        symbols: STARTER_WATCHLIST_SYMBOLS,
+      });
+    } catch (err) {
+      console.error("[Seed] Failed to create starter watchlist:", err);
+    }
+  })();
+  starterWatchlistSeedInFlight.set(userId, p);
+  p.finally(() => starterWatchlistSeedInFlight.delete(userId));
+  return p;
+}
+
 function seedNewUser(userId: string) {
-  if (process.env.NODE_ENV !== "development") return;
-  Promise.all([
-    seedDefaultUniverse(userId),
-    getDefaultRiskProfile(userId),
-  ]).catch((err) => console.error("[Seed] Error seeding new user:", err));
+  const tasks: Promise<unknown>[] = [seedStarterWatchlist(userId)];
+  if (process.env.NODE_ENV === "development") {
+    tasks.push(seedDefaultUniverse(userId), getDefaultRiskProfile(userId));
+  }
+  Promise.all(tasks).catch((err) => console.error("[Seed] Error seeding new user:", err));
 }
 
 function getJwtSecret(): string {

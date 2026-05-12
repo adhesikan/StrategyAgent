@@ -12,7 +12,7 @@
 import { storage } from "../../storage";
 import { fetchQuotesFromBroker, type QuoteData } from "../../broker-service";
 import { getBrokerAccounts, getBrokerPositions } from "../../broker";
-import { resolveUniverse, type RadarUniverseId } from "./universe-service";
+import { resolveUniverseWithMeta, type RadarUniverseId, type UniverseSource } from "./universe-service";
 import { defaultMLAdapter, type MLAdapter } from "./ml-adapter";
 import {
   adaptSnapshotToRadar,
@@ -118,6 +118,8 @@ export interface RadarResult {
   positionsCount: number | null;
   lastRefresh: string;
   universeSize: number;
+  universeSource: UniverseSource;
+  universeLabel: string;
   liveQuoteCount: number;
   quoteFetchError: string | null;
   notes: string[];
@@ -743,7 +745,8 @@ export async function generateCandidateScenarios(
   filters: RadarFilters,
 ): Promise<RadarResult> {
   const universe = filters.universe ?? "watchlist";
-  const symbols = await resolveUniverse({ universe, customSymbols: filters.customSymbols, userId });
+  const resolved = await resolveUniverseWithMeta({ universe, customSymbols: filters.customSymbols, userId });
+  const symbols = resolved.symbols;
   const ctx = await buildUserContext(userId, filters);
   const enriched = await enrichWithMarketData(symbols, userId, ctx);
 
@@ -833,6 +836,8 @@ export async function generateCandidateScenarios(
     positionsCount: ctx.positionsCount,
     lastRefresh: new Date().toISOString(),
     universeSize: symbols.length,
+    universeSource: resolved.source,
+    universeLabel: resolved.label,
     liveQuoteCount: ctx.liveQuoteCount,
     quoteFetchError: ctx.quoteFetchError,
     notes: [

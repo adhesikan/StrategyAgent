@@ -29,15 +29,38 @@ const OPTIONS_LIQUID = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "AMD", "ME
 
 export type RadarUniverseId = "watchlist" | "large_cap" | "high_volume" | "options_liquid" | "custom";
 
+export type UniverseSource =
+  | "custom"
+  | "watchlist"
+  | "starter_fallback"
+  | "large_cap"
+  | "high_volume"
+  | "options_liquid";
+
 export interface UniverseRequest {
   universe: RadarUniverseId;
   customSymbols?: string[];
   userId: string;
 }
 
-export async function resolveUniverse(req: UniverseRequest): Promise<string[]> {
+export interface ResolvedUniverse {
+  symbols: string[];
+  source: UniverseSource;
+  label: string;
+}
+
+const SOURCE_LABELS: Record<UniverseSource, string> = {
+  custom: "Custom symbols",
+  watchlist: "My Watchlist",
+  starter_fallback: "Starter List (10 popular symbols)",
+  large_cap: "Large Cap (Dow 30)",
+  high_volume: "High Volume",
+  options_liquid: "Options Liquid",
+};
+
+export async function resolveUniverseWithMeta(req: UniverseRequest): Promise<ResolvedUniverse> {
   if (req.customSymbols && req.customSymbols.length > 0) {
-    return normalize(req.customSymbols);
+    return { symbols: normalize(req.customSymbols), source: "custom", label: SOURCE_LABELS.custom };
   }
 
   switch (req.universe) {
@@ -49,21 +72,28 @@ export async function resolveUniverse(req: UniverseRequest): Promise<string[]> {
           for (const s of wl.symbols ?? []) symbols.add(s);
         }
         const arr = Array.from(symbols);
-        return arr.length > 0 ? normalize(arr) : normalize(FALLBACK_DEMO_SYMBOLS);
+        if (arr.length > 0) {
+          return { symbols: normalize(arr), source: "watchlist", label: SOURCE_LABELS.watchlist };
+        }
+        return { symbols: normalize(FALLBACK_DEMO_SYMBOLS), source: "starter_fallback", label: SOURCE_LABELS.starter_fallback };
       } catch {
-        return normalize(FALLBACK_DEMO_SYMBOLS);
+        return { symbols: normalize(FALLBACK_DEMO_SYMBOLS), source: "starter_fallback", label: SOURCE_LABELS.starter_fallback };
       }
     }
     case "large_cap":
-      return normalize(DOW_30);
+      return { symbols: normalize(DOW_30), source: "large_cap", label: SOURCE_LABELS.large_cap };
     case "high_volume":
-      return normalize(HIGH_VOLUME);
+      return { symbols: normalize(HIGH_VOLUME), source: "high_volume", label: SOURCE_LABELS.high_volume };
     case "options_liquid":
-      return normalize(OPTIONS_LIQUID);
+      return { symbols: normalize(OPTIONS_LIQUID), source: "options_liquid", label: SOURCE_LABELS.options_liquid };
     case "custom":
     default:
-      return normalize(FALLBACK_DEMO_SYMBOLS);
+      return { symbols: normalize(FALLBACK_DEMO_SYMBOLS), source: "starter_fallback", label: SOURCE_LABELS.starter_fallback };
   }
+}
+
+export async function resolveUniverse(req: UniverseRequest): Promise<string[]> {
+  return (await resolveUniverseWithMeta(req)).symbols;
 }
 
 function normalize(symbols: string[]): string[] {

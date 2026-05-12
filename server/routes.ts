@@ -1704,10 +1704,36 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  const starterWatchlistInFlight = new Map<string, Promise<void>>();
+  async function ensureStarterWatchlist(userId: string): Promise<void> {
+    const existing = starterWatchlistInFlight.get(userId);
+    if (existing) return existing;
+    const p = (async () => {
+      try {
+        const current = await storage.getWatchlists(userId);
+        if (current && current.length > 0) return;
+        await storage.createWatchlist({
+          userId,
+          name: "Starter Watchlist",
+          symbols: ["AAPL", "MSFT", "NVDA", "AMD", "TSLA", "META", "AMZN", "GOOGL", "MU", "PLTR"],
+        });
+      } catch (seedErr) {
+        console.error("[watchlists] Failed to seed starter watchlist:", seedErr);
+      }
+    })();
+    starterWatchlistInFlight.set(userId, p);
+    p.finally(() => starterWatchlistInFlight.delete(userId));
+    return p;
+  }
+
   app.get("/api/watchlists", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const watchlists = await storage.getWatchlists(userId);
+      let watchlists = await storage.getWatchlists(userId);
+      if (!watchlists || watchlists.length === 0) {
+        await ensureStarterWatchlist(userId);
+        watchlists = await storage.getWatchlists(userId);
+      }
       res.json(watchlists);
     } catch (error) {
       console.error("Error getting watchlists:", error);

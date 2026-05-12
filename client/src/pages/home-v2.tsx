@@ -15,18 +15,61 @@ import {
   Newspaper,
   Sparkles,
   TrendingUp,
+  TrendingDown,
+  Activity,
+  AlertTriangle,
+  Info,
 } from "lucide-react";
 import { DailyIdeaCard, type DailyIdea } from "@/components/daily-idea-card";
+import { HelpLink } from "@/components/help-link";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+
+interface IndexQuote { symbol: string; name: string; last: number; changePercent: number; }
+interface MoverQuote { symbol: string; last: number; changePercent: number; }
+interface NewsItem {
+  symbol: string;
+  label: "bullish" | "bearish" | "neutral";
+  impact: "high" | "medium" | "low";
+  buzz: number;
+  whyItMatters: string;
+  articleCount: number;
+}
 
 interface Snapshot {
-  marketTone: string;
+  marketTone: "bullish" | "mixed" | "defensive";
   marketToneReason: string;
-  bestIncome: { symbol: string; headline: string } | null;
-  topGrowth: { symbol: string; headline: string } | null;
-  watchlistAlert: { symbol: string; reason: string } | null;
+  indices: IndexQuote[];
+  topMovers: MoverQuote[];
+  topNews: NewsItem[];
+  bestIncome: { symbol: string; name?: string; headline: string } | null;
+  topGrowth: { symbol: string; name?: string; headline: string } | null;
+  watchlistAlert: { symbol: string; message: string } | null;
+  dataMode: "live" | "simulated";
   asOf: string;
   disclaimer: string;
 }
+
+function InfoHint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="text-muted-foreground/70 hover:text-foreground" aria-label="What does this mean?">
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+const TONE_CLASS: Record<string, string> = {
+  bullish: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  mixed: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  defensive: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+};
 
 interface IdeasResponse {
   ideas: DailyIdea[];
@@ -217,42 +260,237 @@ export default function HomeV2() {
           </p>
         </section>
 
-        <section>
-          <h2 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-            Today's snapshot
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Card className="p-5" data-testid="snapshot-tone">
-              <div className="text-[11px] uppercase text-muted-foreground tracking-wide">Market tone</div>
+        <TooltipProvider delayDuration={150}>
+        <section data-testid="section-snapshot">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              Today's snapshot
+              <InfoHint text="A live read on market tone, indices, biggest movers in your watchlist, and the news catalysts driving them. Click any tile to dig deeper." />
+            </h2>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  snap?.dataMode === "live"
+                    ? "text-[10px] text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
+                    : "text-[10px] text-amber-300 border-amber-500/40 bg-amber-500/10"
+                }
+                data-testid="badge-snapshot-source"
+              >
+                {snap?.dataMode === "live" ? "Live broker data" : "Simulated"}
+              </Badge>
+              <HelpLink section="home" label="Snapshot help" />
+            </div>
+          </div>
+
+          {/* Row 1 — tone + indices */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <Card
+              onClick={() => navigate("/market-intel")}
+              className="p-4 md:col-span-1 cursor-pointer hover-elevate active-elevate-2"
+              data-testid="snapshot-tone"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] uppercase text-muted-foreground tracking-wide">
+                <Activity className="h-3.5 w-3.5" /> Market tone
+                <InfoHint text="Derived from SPY, QQQ, and IWM intraday performance. Bullish = all up. Defensive = all down. Mixed = rotation under the surface." />
+              </div>
               <div className="mt-3 flex items-center gap-2">
-                <Badge variant="outline" className="bg-amber-50 border-amber-200 text-amber-800 capitalize dark:bg-amber-500/15 dark:text-amber-300">
+                <Badge variant="outline" className={cn("capitalize", TONE_CLASS[snap?.marketTone ?? "mixed"])}>
                   {snap?.marketTone || "Loading"}
                 </Badge>
               </div>
-              <p className="text-sm mt-3 text-foreground/80 leading-snug">
+              <p className="text-xs mt-2 text-foreground/80 leading-snug line-clamp-3" data-testid="text-tone-reason">
                 {snap?.marketToneReason || "Reading market conditions..."}
               </p>
             </Card>
-            <Card className="p-5" data-testid="snapshot-income">
-              <div className="text-[11px] uppercase text-muted-foreground tracking-wide">Best income idea</div>
+
+            {(snap?.indices ?? [
+              { symbol: "SPY", name: "S&P 500", last: 0, changePercent: 0 },
+              { symbol: "QQQ", name: "Nasdaq 100", last: 0, changePercent: 0 },
+              { symbol: "IWM", name: "Russell 2000", last: 0, changePercent: 0 },
+            ]).slice(0, 3).map((idx) => {
+              const up = idx.changePercent >= 0;
+              return (
+                <Card
+                  key={idx.symbol}
+                  onClick={() => navigate(`/market-intel?symbol=${idx.symbol}`)}
+                  className="p-4 cursor-pointer hover-elevate active-elevate-2"
+                  data-testid={`snapshot-index-${idx.symbol}`}
+                >
+                  <div className="flex items-center justify-between text-[11px] uppercase text-muted-foreground tracking-wide">
+                    <span>{idx.name}</span>
+                    <span className="font-mono">{idx.symbol}</span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <div className="text-xl font-semibold tabular-nums" data-testid={`text-index-last-${idx.symbol}`}>
+                      {idx.last > 0 ? idx.last.toFixed(2) : "—"}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-sm font-medium tabular-nums flex items-center gap-1",
+                        idx.last === 0 ? "text-muted-foreground" : up ? "text-emerald-400" : "text-rose-400",
+                      )}
+                      data-testid={`text-index-change-${idx.symbol}`}
+                    >
+                      {idx.last === 0 ? null : up ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                      {idx.last === 0 ? "—" : `${up ? "+" : ""}${idx.changePercent.toFixed(2)}%`}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Row 2 — movers + top news */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <Card className="p-5" data-testid="snapshot-movers">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5 text-[11px] uppercase text-muted-foreground tracking-wide">
+                  <TrendingUp className="h-3.5 w-3.5" /> Biggest movers
+                  <InfoHint text="Largest absolute % moves from your watchlist (or a default universe if you haven't built one yet). Live broker quotes when connected." />
+                </div>
+                <span className="text-[10px] text-muted-foreground">{snap?.topMovers?.length ?? 0} symbols</span>
+              </div>
+              {snap?.topMovers && snap.topMovers.length > 0 ? (
+                <ul className="divide-y divide-border/60">
+                  {snap.topMovers.slice(0, 5).map((m) => {
+                    const up = m.changePercent >= 0;
+                    return (
+                      <li
+                        key={m.symbol}
+                        className="flex items-center justify-between py-2 cursor-pointer hover:bg-muted/30 -mx-2 px-2 rounded"
+                        onClick={() => navigate(`/market-intel?symbol=${m.symbol}`)}
+                        data-testid={`row-mover-${m.symbol}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium font-mono text-sm">{m.symbol}</span>
+                          <span className="text-xs text-muted-foreground tabular-nums">${m.last.toFixed(2)}</span>
+                        </div>
+                        <span className={cn(
+                          "text-sm font-medium tabular-nums flex items-center gap-1",
+                          up ? "text-emerald-400" : "text-rose-400",
+                        )}>
+                          {up ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                          {up ? "+" : ""}{m.changePercent.toFixed(2)}%
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground py-3" data-testid="text-no-movers">
+                  Connect a broker to see live movers from your watchlist.
+                </p>
+              )}
+            </Card>
+
+            <Card className="p-5" data-testid="snapshot-news">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5 text-[11px] uppercase text-muted-foreground tracking-wide">
+                  <Newspaper className="h-3.5 w-3.5" /> Top news catalysts
+                  <InfoHint text="High-buzz stories from the last few hours. Bullish/bearish labels are AI-generated from headline + summary; impact is heuristic." />
+                </div>
+                <button
+                  onClick={() => navigate("/market-intel")}
+                  className="text-[10px] text-primary hover:underline"
+                  data-testid="link-all-news"
+                >
+                  View all
+                </button>
+              </div>
+              {snap?.topNews && snap.topNews.length > 0 ? (
+                <ul className="space-y-2.5">
+                  {snap.topNews.slice(0, 4).map((n, i) => (
+                    <li
+                      key={`${n.symbol}-${i}`}
+                      className="flex gap-2 cursor-pointer hover:bg-muted/30 -mx-2 px-2 py-1 rounded"
+                      onClick={() => navigate(`/market-intel?symbol=${n.symbol}`)}
+                      data-testid={`row-news-${n.symbol}`}
+                    >
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "h-5 text-[10px] shrink-0 mt-0.5",
+                          n.label === "bullish" && "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
+                          n.label === "bearish" && "border-rose-500/40 text-rose-300 bg-rose-500/10",
+                          n.label === "neutral" && "border-border text-muted-foreground",
+                        )}
+                      >
+                        {n.symbol}
+                      </Badge>
+                      <p className="text-xs leading-snug text-foreground/80 line-clamp-2 flex-1">{n.whyItMatters}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground py-3">
+                  No high-impact stories tracked right now. Check back during market hours.
+                </p>
+              )}
+            </Card>
+          </div>
+
+          {/* Row 3 — actionable: income / growth / watchlist alert */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+            <Card
+              onClick={() => navigate("/income-mode")}
+              className="p-5 cursor-pointer hover-elevate active-elevate-2"
+              data-testid="snapshot-income"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] uppercase text-muted-foreground tracking-wide">
+                <DollarSign className="h-3.5 w-3.5" /> Best income idea
+                <InfoHint text="Today's highest-rated covered call, cash-secured put, or defined-risk premium-selling candidate." />
+              </div>
               <div className="mt-3 text-2xl font-medium" data-testid="text-income-symbol">
                 {snap?.bestIncome?.symbol || "—"}
               </div>
-              <p className="text-sm mt-2 text-foreground/80 leading-snug">
+              <p className="text-xs mt-2 text-foreground/80 leading-snug line-clamp-3">
                 {snap?.bestIncome?.headline || "Looking for income candidates..."}
               </p>
             </Card>
-            <Card className="p-5" data-testid="snapshot-growth">
-              <div className="text-[11px] uppercase text-muted-foreground tracking-wide">Top growth opportunity</div>
+
+            <Card
+              onClick={() => snap?.topGrowth?.symbol && navigate(`/market-intel?symbol=${snap.topGrowth.symbol}`)}
+              className="p-5 cursor-pointer hover-elevate active-elevate-2"
+              data-testid="snapshot-growth"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] uppercase text-muted-foreground tracking-wide">
+                <TrendingUp className="h-3.5 w-3.5" /> Top growth opportunity
+                <InfoHint text="Symbol with the strongest combination of bullish news flow and trending buzz score this session." />
+              </div>
               <div className="mt-3 text-2xl font-medium" data-testid="text-growth-symbol">
                 {snap?.topGrowth?.symbol || "—"}
               </div>
-              <p className="text-sm mt-2 text-foreground/80 leading-snug">
+              <p className="text-xs mt-2 text-foreground/80 leading-snug line-clamp-3">
                 {snap?.topGrowth?.headline || "Looking for growth candidates..."}
+              </p>
+            </Card>
+
+            <Card
+              onClick={() => snap?.watchlistAlert
+                ? navigate(`/market-intel?symbol=${snap.watchlistAlert.symbol}`)
+                : navigate("/market-intel")
+              }
+              className={cn(
+                "p-5 cursor-pointer hover-elevate active-elevate-2",
+                snap?.watchlistAlert && "border-rose-500/30 bg-rose-500/5",
+              )}
+              data-testid="snapshot-watchlist-alert"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] uppercase text-muted-foreground tracking-wide">
+                <AlertTriangle className="h-3.5 w-3.5" /> Watchlist alert
+                <InfoHint text="Bearish news flow on a symbol from your watchlist that may warrant review. If empty, no flagged risks right now." />
+              </div>
+              <div className="mt-3 text-2xl font-medium" data-testid="text-watchlist-alert-symbol">
+                {snap?.watchlistAlert?.symbol || "All clear"}
+              </div>
+              <p className="text-xs mt-2 text-foreground/80 leading-snug line-clamp-3">
+                {snap?.watchlistAlert?.message || "No flagged risks on your watchlist right now."}
               </p>
             </Card>
           </div>
         </section>
+        </TooltipProvider>
 
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">

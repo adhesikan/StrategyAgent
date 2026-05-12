@@ -15,7 +15,10 @@ import {
   Zap,
   Eye,
   Loader2,
+  Info,
 } from "lucide-react";
+import { HelpLink } from "@/components/help-link";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SetupHistoryItem {
   id: string;
@@ -87,14 +90,29 @@ export default function TradeSetupsPage() {
 
   return (
     <div className="flex-1 p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-          <History className="h-6 w-6 text-primary" />
-          Trade Setups
-        </h1>
-        <p className="text-sm text-muted-foreground" data-testid="text-page-subtitle">
-          Previously generated setup history
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+            <History className="h-6 w-6 text-primary" />
+            Trade Setups
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="text-muted-foreground/70 hover:text-foreground" aria-label="About trade setups">
+                    <Info className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[300px] text-xs leading-snug">
+                  Every AI-generated setup is logged here — including its score, instrument recommendation, status, and whether you sent it to InstaTrade™. Use the filters to narrow by symbol, grade, or execution status.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </h1>
+          <p className="text-sm text-muted-foreground" data-testid="text-page-subtitle">
+            Previously generated setup history
+          </p>
+        </div>
+        <HelpLink section="journal" label="History help" />
       </div>
 
       <div className="flex flex-wrap gap-3">

@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sparkles, ArrowRight, ArrowLeft, AlertTriangle, CheckCircle2, Loader2, Search } from "lucide-react";
+import { Sparkles, ArrowRight, ArrowLeft, AlertTriangle, CheckCircle2, Loader2, Search, Info } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { ComplianceFooter } from "@/components/trading-shell";
+import { HelpLink } from "@/components/help-link";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface AskResponse {
   question: string;
@@ -78,6 +80,21 @@ export default function AskPage() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Sparkles className="h-4 w-4 text-primary" />
           <span>Ask VCP Trader AI</span>
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="text-muted-foreground/70 hover:text-foreground" aria-label="How Ask works">
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-snug">
+                Ask any plain-English question about a ticker, news, or setup. Answers are AI-generated using live news sentiment and broker quotes when available — informational only, never advice.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="ml-auto">
+          <HelpLink section="home" label="How Ask works" />
         </div>
       </div>
 

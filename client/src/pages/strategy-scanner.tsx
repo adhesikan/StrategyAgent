@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { HelpLink } from "@/components/help-link";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sheet,
   SheetContent,
@@ -730,11 +732,28 @@ export default function StrategyScannerPage() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 space-y-6">
-        <div>
-          <h1 className="text-[22px] font-medium" data-testid="text-scanner-title">Scanner</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Pick what you want to trade and a strategy. Run a scan. See ranked candidates instantly.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-[22px] font-medium flex items-center gap-2" data-testid="text-scanner-title">
+              Scanner
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="text-muted-foreground/70 hover:text-foreground" aria-label="What is the scanner?">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-snug">
+                    Pick a trade type and strategy. Each card runs that strategy's pattern logic against live broker quotes (or illustrative data when no broker is connected) and ranks candidates by score.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Pick what you want to trade and a strategy. Run a scan. See ranked candidates instantly.
+            </p>
+          </div>
+          <HelpLink section="strategies" label="Scanner help" />
         </div>
 
         <Card className="p-5">

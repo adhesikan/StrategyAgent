@@ -92,7 +92,7 @@ export async function tradierGetBatchQuotes(accessToken: string, symbols: string
     const batch = symbols.slice(i, i + batchSize);
     try {
       const data = await tradierFetch(
-        `${BASE_URL}/markets/quotes?symbols=${batch.join(",")}&greeks=false`,
+        `${getBaseUrlForToken(accessToken)}/markets/quotes?symbols=${batch.join(",")}&greeks=false`,
         accessToken,
       );
       const quotes = data?.quotes?.quote;
@@ -499,3 +499,74 @@ export const tradierProvider: BrokerProvider = {
     return { success: false, message: data?.errors?.error || "Unknown error cancelling order" };
   },
 };
+
+export interface HistoricalBar {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export async function tradierGetHistoricalBars(
+  accessToken: string,
+  symbol: string,
+  options: { interval?: "daily" | "weekly" | "monthly"; lookbackDays?: number } = {},
+): Promise<HistoricalBar[]> {
+  const interval = options.interval ?? "daily";
+  const lookbackDays = options.lookbackDays ?? 200;
+  const end = new Date();
+  const start = new Date(end.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  try {
+    const data = await tradierFetch(
+      `${getBaseUrlForToken(accessToken)}/markets/history?symbol=${encodeURIComponent(symbol)}&interval=${interval}&start=${fmt(start)}&end=${fmt(end)}`,
+      accessToken,
+    );
+    const days = data?.history?.day;
+    if (!days) return [];
+    const arr = Array.isArray(days) ? days : [days];
+    return arr.map((d: any) => ({
+      timestamp: d.date,
+      open: Number(d.open) || 0,
+      high: Number(d.high) || 0,
+      low: Number(d.low) || 0,
+      close: Number(d.close) || 0,
+      volume: Number(d.volume) || 0,
+    })).filter((b) => b.close > 0);
+  } catch (e) {
+    console.error(`[Tradier] History error for ${symbol}:`, (e as Error).message);
+    return [];
+  }
+}
+
+export async function tradierGetIntradayBars(
+  accessToken: string,
+  symbol: string,
+  intervalMinutes: 1 | 5 | 15 = 15,
+): Promise<HistoricalBar[]> {
+  const end = new Date();
+  const start = new Date(end.getTime() - 5 * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 16).replace("T", " ");
+  try {
+    const data = await tradierFetch(
+      `${getBaseUrlForToken(accessToken)}/markets/timesales?symbol=${encodeURIComponent(symbol)}&interval=${intervalMinutes}min&start=${encodeURIComponent(fmt(start))}&end=${encodeURIComponent(fmt(end))}&session_filter=open`,
+      accessToken,
+    );
+    const data2 = data?.series?.data;
+    if (!data2) return [];
+    const arr = Array.isArray(data2) ? data2 : [data2];
+    return arr.map((d: any) => ({
+      timestamp: d.time,
+      open: Number(d.open) || 0,
+      high: Number(d.high) || 0,
+      low: Number(d.low) || 0,
+      close: Number(d.close ?? d.price) || 0,
+      volume: Number(d.volume) || 0,
+    })).filter((b) => b.close > 0);
+  } catch (e) {
+    console.error(`[Tradier] Intraday error for ${symbol}:`, (e as Error).message);
+    return [];
+  }
+}

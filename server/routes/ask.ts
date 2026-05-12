@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { refreshSentimentForSymbols, isOpenAiConfigured } from "../services/news";
+import { getMarketSnapshot, type MarketSnapshot } from "../services/market-data";
 
 const askSchema = z.object({
   question: z.string().trim().min(1).max(500),
@@ -109,8 +110,8 @@ Strict rules:
 - You provide software-generated educational analysis. You NEVER give personalized investment advice, price predictions, or guarantees.
 - Always include a brief risk note when discussing a specific trade idea.
 - Keep answers concise (max ~180 words) and structured. Use plain English; avoid jargon unless asked.
-- If the user mentions a ticker, anchor your answer to the supplied live quote and sentiment context. Do not invent prices.
-- If you don't have enough live data, say so honestly and point to where to look in the app.
+- If the user mentions a ticker, anchor your answer to the supplied live quote, computed indicators (RSI, MACD, SMA/EMA, Bollinger, ATR, VWAP, volume, support/resistance), and sentiment context. Do not invent prices or invent indicator values.
+- Reference indicators in plain English (e.g., "RSI is overbought near 72" or "trading above the 50-day average"). If indicators or live quote are missing, say so honestly.
 - Never suggest auto-trading or autopilot behavior.
 
 Return STRICT JSON with this exact shape:
@@ -122,41 +123,58 @@ Return STRICT JSON with this exact shape:
   "confidence": "low | medium | high"
 }`;
 
+interface TickerContext {
+  symbol: string;
+  last: number | null;
+  changePercent: number | null;
+  sentimentLabel: string | null;
+  sentimentScore: number | null;
+  whyItMatters: string | null;
+  market: MarketSnapshot | null;
+}
+
 interface ContextBlock {
-  tickers: { symbol: string; last: number | null; changePercent: number | null; sentimentLabel: string | null; sentimentScore: number | null; whyItMatters: string | null }[];
+  tickers: TickerContext[];
   brokerConnected: boolean;
+  brokerProvider: string | null;
   intent: string;
 }
 
 async function buildContext(userId: string, question: string, intent: string, tickers: string[]): Promise<ContextBlock> {
-  const ctx: ContextBlock = { tickers: [], brokerConnected: false, intent };
+  const ctx: ContextBlock = { tickers: [], brokerConnected: false, brokerProvider: null, intent };
 
   try {
     const conn = await storage.getBrokerConnectionWithToken(userId);
     ctx.brokerConnected = !!(conn && conn.isConnected && conn.accessToken);
+    ctx.brokerProvider = conn?.provider ?? null;
   } catch {}
 
   if (tickers.length > 0) {
-    // Pull sentiment (cached if fresh) for each ticker. This is the safest
-    // shared data source — broker quotes vary per provider and may not be
-    // available without a connection.
-    let snapshots: any[] = [];
-    try {
-      const result = await refreshSentimentForSymbols(tickers, { itemsPerSymbol: 4 });
-      snapshots = result.snapshots ?? [];
-    } catch (err) {
-      console.warn("[ask] sentiment lookup failed:", err);
-    }
+    // Pull sentiment + live broker market snapshots (quote + indicators) in parallel.
+    const [sentimentResult, snapshots] = await Promise.all([
+      refreshSentimentForSymbols(tickers, { itemsPerSymbol: 4 }).catch((err) => {
+        console.warn("[ask] sentiment lookup failed:", err);
+        return { snapshots: [] as any[] };
+      }),
+      Promise.all(tickers.map((s) => getMarketSnapshot(userId, s).catch((e) => {
+        console.warn(`[ask] market snapshot failed for ${s}:`, (e as Error).message);
+        return null;
+      }))),
+    ]);
+    const sentSnaps = sentimentResult.snapshots ?? [];
 
-    for (const sym of tickers) {
-      const snap = snapshots.find((s) => s.symbol === sym);
+    for (let i = 0; i < tickers.length; i++) {
+      const sym = tickers[i];
+      const snap = sentSnaps.find((s: any) => s.symbol === sym);
+      const market = snapshots[i];
       ctx.tickers.push({
         symbol: sym,
-        last: null,
-        changePercent: null,
+        last: market?.quote?.last ?? null,
+        changePercent: market?.quote?.changePercent ?? null,
         sentimentLabel: snap?.sentimentLabel ?? null,
         sentimentScore: snap?.sentimentScore ?? null,
         whyItMatters: snap?.whyItMatters ?? null,
+        market: market ?? null,
       });
     }
   }
@@ -222,7 +240,38 @@ async function callOpenAi(question: string, ctx: ContextBlock): Promise<AskAnswe
   try {
     const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const userContent = JSON.stringify({ question, context: ctx });
+    // Trim context for prompt: keep only top S/R levels and key indicator values to reduce tokens.
+    const compact = {
+      ...ctx,
+      tickers: ctx.tickers.map((t) => ({
+        symbol: t.symbol,
+        last: t.last,
+        changePercent: t.changePercent,
+        sentimentLabel: t.sentimentLabel,
+        sentimentScore: t.sentimentScore,
+        whyItMatters: t.whyItMatters,
+        provider: t.market?.provider ?? null,
+        indicators: t.market?.indicators
+          ? {
+              trend: t.market.indicators.trend,
+              sma20: t.market.indicators.sma20,
+              sma50: t.market.indicators.sma50,
+              sma200: t.market.indicators.sma200,
+              ema9: t.market.indicators.ema9,
+              ema21: t.market.indicators.ema21,
+              rsi14: t.market.indicators.rsi14,
+              macd: t.market.indicators.macd,
+              bollinger: t.market.indicators.bollinger,
+              atr14: t.market.indicators.atr14,
+              vwapSession: t.market.indicators.vwapSession,
+              volume: t.market.indicators.volume,
+              supports: t.market.indicators.supportResistance.support,
+              resistances: t.market.indicators.supportResistance.resistance,
+            }
+          : null,
+      })),
+    };
+    const userContent = JSON.stringify({ question, context: compact });
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.3,

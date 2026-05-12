@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useLocation } from "wouter";
-import { TrendingUp, DollarSign, Search, Newspaper, GraduationCap, Layers } from "lucide-react";
+import { Search, Sparkles, ArrowRight } from "lucide-react";
 import { HomeActionCard, ComplianceFooter } from "@/components/trading-shell";
 import { QuickPromptBar } from "@/components/home/quick-prompt-bar";
 import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
@@ -9,98 +9,26 @@ import { QuotaBanner } from "@/components/quota-banner";
 import { usePersona } from "@/context/PersonaContext";
 import type { TraderPersona } from "@shared/plans";
 
-interface ActionCard {
-  id: string;
-  title: string;
-  subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent: "blue" | "emerald" | "violet" | "amber";
-  testId: string;
-  href: string;
-}
-
-const ACTION_CARDS: Record<string, ActionCard> = {
-  grow: {
-    id: "grow",
-    title: "Grow My Money",
-    subtitle: "Explore risk-aware growth opportunities",
-    icon: TrendingUp,
-    accent: "blue",
-    testId: "card-action-grow",
-    href: "/goal-mode?goal=account_growth",
-  },
-  income: {
-    id: "income",
-    title: "Generate Income",
-    subtitle: "Covered calls, cash-secured puts, and monthly income ideas",
-    icon: DollarSign,
-    accent: "emerald",
-    testId: "card-action-income",
-    href: "/income-mode",
-  },
-  find: {
-    id: "find",
-    title: "Find a Trade",
-    subtitle: "Describe what you want in plain English",
-    icon: Search,
-    accent: "violet",
-    testId: "card-action-find",
-    href: "/trade-finder",
-  },
-  markets: {
-    id: "markets",
-    title: "Understand Markets",
-    subtitle: "News, catalysts, sentiment, and watchlist impact",
-    icon: Newspaper,
-    accent: "amber",
-    testId: "card-action-markets",
-    href: "/market-intel",
-  },
-  multileg: {
-    id: "multileg",
-    title: "Options & Spreads",
-    subtitle: "Scan options flow, find spreads & condors",
-    icon: Layers,
-    accent: "violet",
-    testId: "card-action-multileg",
-    href: "/discover?tab=options",
-  },
-  learn: {
-    id: "learn",
-    title: "Learn the Basics",
-    subtitle: "Walkthroughs, glossary, and worked examples",
-    icon: GraduationCap,
-    accent: "amber",
-    testId: "card-action-learn",
-    href: "/help",
-  },
-};
-
-const PERSONA_HERO: Record<TraderPersona | "default", { title: string; subtitle: string; cards: string[] }> = {
+const PERSONA_HERO: Record<TraderPersona | "default", { title: string; subtitle: string }> = {
   buyer: {
     title: "What growth idea should we explore today?",
-    subtitle: "We surface stocks and ETFs aligned with your goals — with risk explained, not hidden.",
-    cards: ["grow", "find", "markets", "income"],
+    subtitle: "Describe a stock or setup in plain English — we'll surface ranked candidates with news, sentiment, and technicals built in.",
   },
   seller: {
     title: "Let's find your next premium-selling setup.",
-    subtitle: "Covered calls, cash-secured puts, and monthly income ideas — sized to your account.",
-    cards: ["income", "markets", "find", "grow"],
+    subtitle: "Tell us what you want — covered calls, cash-secured puts, or defined-risk plays — with markets context built right in.",
   },
   complex: {
     title: "Ready to structure your next trade?",
-    subtitle: "Multi-leg spreads, options flow, and defined-risk plays with the math shown.",
-    cards: ["find", "multileg", "income", "markets"],
+    subtitle: "Describe a multi-leg or directional setup. We'll rank candidates and pull live news, sentiment, and indicators in one place.",
   },
   learner: {
-    title: "Welcome — let's learn one idea at a time.",
-    subtitle: "Plain-English walkthroughs, sample setups, and zero pressure to trade.",
-    cards: ["learn", "markets", "grow", "find"],
+    title: "Welcome — let's find one idea to learn from today.",
+    subtitle: "Type what you're curious about. We'll show ideas with risk, news, and the math explained in plain English.",
   },
   default: {
     title: "What would you like help with today?",
-    subtitle: "Tell VCP Trader AI your goal. We'll show scenarios, explain risks, and never send orders without your review.",
-    cards: ["grow", "income", "find", "markets"],
+    subtitle: "Describe a trade or ask a market question. VCP Trader AI ranks candidates and pulls live news, sentiment, and indicators in one place.",
   },
 };
 
@@ -109,7 +37,6 @@ export default function HomeDashboard() {
   const { persona } = usePersona();
 
   const hero = useMemo(() => PERSONA_HERO[persona ?? "default"] ?? PERSONA_HERO.default, [persona]);
-  const cards = useMemo(() => hero.cards.map((id) => ACTION_CARDS[id]).filter(Boolean), [hero.cards]);
 
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 md:space-y-8">
@@ -133,21 +60,26 @@ export default function HomeDashboard() {
       {/* Quota banner (only shows when usage > 80%) */}
       <QuotaBanner />
 
-      {/* Main grid: action cards + snapshot panel */}
+      {/* Main grid: single merged action card + Ask AI + snapshot panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="lg:col-span-2 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-            {cards.map((card) => (
-              <HomeActionCard
-                key={card.id}
-                title={card.title}
-                subtitle={card.subtitle}
-                icon={card.icon}
-                accent={card.accent}
-                testId={card.testId}
-                onClick={() => navigate(card.href)}
-              />
-            ))}
+            <HomeActionCard
+              title="Find a Trade"
+              subtitle="Describe a stock or options setup in plain English. Ranked candidates include live news, sentiment, and technical indicators."
+              icon={Search}
+              accent="violet"
+              testId="card-action-find"
+              onClick={() => navigate("/trade-finder")}
+            />
+            <HomeActionCard
+              title="Ask AI"
+              subtitle="Ask any market question. Live broker quotes, computed indicators, and news sentiment power every answer."
+              icon={Sparkles}
+              accent="blue"
+              testId="card-action-ask"
+              onClick={() => navigate("/ask")}
+            />
           </div>
         </div>
 

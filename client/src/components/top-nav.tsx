@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Loader2, LogOut, User, Bell, HelpCircle } from "lucide-react";
+import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Loader2, LogOut, User, Bell, HelpCircle, Sparkles } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -58,6 +58,13 @@ const NAV_ITEMS: TopNavItem[] = [
     icon: Newspaper,
     testId: "topnav-markets",
     matches: (p) => p === "/markets" || p === "/market-intel" || p === "/news",
+  },
+  {
+    label: "Ask AI",
+    href: "/ask",
+    icon: Sparkles,
+    testId: "topnav-ask",
+    matches: (p) => p === "/ask",
   },
 ];
 

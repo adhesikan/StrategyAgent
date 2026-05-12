@@ -566,3 +566,41 @@ export const tradestationProvider: BrokerProvider = {
     return { success: true, message: `Order ${orderId} cancelled` };
   },
 };
+
+export interface TsHistoricalBar {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export async function tsGetHistoricalBars(
+  accessToken: string,
+  symbol: string,
+  options: { unit?: "Daily" | "Weekly" | "Monthly" | "Minute"; interval?: number; barsBack?: number } = {},
+): Promise<TsHistoricalBar[]> {
+  const unit = options.unit ?? "Daily";
+  const interval = options.interval ?? 1;
+  const barsBack = options.barsBack ?? 200;
+  try {
+    const data = await tsFetch(
+      `${LIVE_BASE_URL}/marketdata/barcharts/${encodeURIComponent(symbol)}?interval=${interval}&unit=${unit}&barsback=${barsBack}`,
+      accessToken,
+    );
+    const bars = data?.Bars || [];
+    if (!Array.isArray(bars)) return [];
+    return bars.map((b: any) => ({
+      timestamp: b.TimeStamp || b.Timestamp || "",
+      open: parseFloat(b.Open ?? "0"),
+      high: parseFloat(b.High ?? "0"),
+      low: parseFloat(b.Low ?? "0"),
+      close: parseFloat(b.Close ?? "0"),
+      volume: parseInt(b.TotalVolume ?? b.Volume ?? "0", 10),
+    })).filter((b) => b.close > 0);
+  } catch (e) {
+    console.error(`[TradeStation] Bars error for ${symbol}:`, (e as Error).message);
+    return [];
+  }
+}

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { LivePositionsPanel } from "@/components/live-positions-panel";
 
 interface SetupHistoryItem {
   id: string;
@@ -114,6 +115,8 @@ export default function TradeSetupsPage() {
         </div>
         <HelpLink section="journal" label="History help" />
       </div>
+
+      <LivePositionsPanel />
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">

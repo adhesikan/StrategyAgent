@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, ExternalLink, Ban, Shield, Target, TrendingUp, TrendingDown } from "lucide-react";
+import { Bot, Zap, AlertCircle, ArrowUpDown, Search, ChevronLeft, ChevronRight, X, RefreshCw, Ban, Shield, Target, TrendingUp, TrendingDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -28,11 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
-
-const BROKER_DASHBOARD_URLS: Record<string, string> = {
-  tradier: "https://dash.tradier.com",
-  tradestation: "https://my.tradestation.com/dashboard",
-};
+import { OpenBrokerButton } from "@/components/open-broker-button";
 
 interface BrokerAccount {
   id: string;
@@ -317,7 +313,7 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
 
 export function TradeActivityPanel() {
   const { toast } = useToast();
-  const { isConnected, providerName } = useBrokerStatus();
+  const { isConnected } = useBrokerStatus();
   const { data: allTrades, isLoading } = useQuery<ExecutedTrade[]>({
     queryKey: ["/api/all-trades"],
     refetchInterval: 10000,
@@ -494,19 +490,8 @@ export function TradeActivityPanel() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            {isConnected && providerName && BROKER_DASHBOARD_URLS[providerName.toLowerCase()] && (
-              <a
-                href={BROKER_DASHBOARD_URLS[providerName.toLowerCase()]}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="link-broker-dashboard"
-              >
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  {providerName.charAt(0).toUpperCase() + providerName.slice(1)} Dashboard
-                </Button>
-              </a>
-            )}
+            <OpenBrokerButton view="orders" testId="link-broker-orders-activity" />
+            <OpenBrokerButton view="dashboard" testId="link-broker-dashboard" />
             <Button
               variant="outline"
               size="sm"

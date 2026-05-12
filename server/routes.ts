@@ -2265,6 +2265,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .set({ preferredAccountId: accountId, updatedAt: new Date() })
         .where(eq(brokerConnections.userId, userId));
 
+      // Account context changed — drop cached positions/orders/status so subsequent
+      // reads (and the close-position endpoint) never see stale prior-account data.
+      brokerService.invalidateBrokerCache(userId);
+
       res.json({ success: true, preferredAccountId: accountId });
     } catch (error: any) {
       console.error("[BrokerService] preferred account error:", error.message);
@@ -2421,6 +2425,172 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       clearInterval(pollInterval);
       clearInterval(heartbeat);
     });
+  });
+
+  // ─── Live Positions SSE ─────────────────────────────────
+  app.get("/api/broker/position-updates", isAuthenticated, async (req, res) => {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    res.write("data: {\"type\":\"connected\"}\n\n");
+
+    const userId = req.session.userId!;
+    let lastKey = "";
+
+    const sendSnapshot = async () => {
+      try {
+        // Bypass cache to get freshest data each tick
+        brokerService.invalidateBrokerCache(userId);
+        const positions = await brokerService.getBrokerPositions(userId);
+        const key = JSON.stringify(
+          positions.map((p: any) => ({
+            s: p.symbol,
+            q: p.qty,
+            m: Math.round(p.marketPrice * 100),
+            u: Math.round(p.unrealizedPnl * 100),
+          })),
+        );
+        if (key !== lastKey) {
+          if (!lastKey) {
+            res.write(`data: ${JSON.stringify({ type: "snapshot", positions })}\n\n`);
+          } else {
+            const prev = JSON.parse(lastKey) as Array<{ s: string }>;
+            const prevSyms = new Set(prev.map((p) => p.s));
+            const currSyms = new Set(positions.map((p: any) => p.symbol));
+            for (const pos of positions) {
+              res.write(
+                `data: ${JSON.stringify({
+                  type: "position_update",
+                  symbol: pos.symbol,
+                  qty: pos.qty,
+                  avgPrice: pos.avgPrice,
+                  marketPrice: pos.marketPrice,
+                  unrealizedPnl: pos.unrealizedPnl,
+                })}\n\n`,
+              );
+            }
+            prevSyms.forEach((sym) => {
+              if (!currSyms.has(sym)) {
+                res.write(`data: ${JSON.stringify({ type: "position_removed", symbol: sym })}\n\n`);
+              }
+            });
+          }
+          lastKey = key;
+        }
+      } catch {}
+    };
+
+    await sendSnapshot();
+    const pollInterval = setInterval(sendSnapshot, 5000);
+    const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 15000);
+
+    req.on("close", () => {
+      clearInterval(pollInterval);
+      clearInterval(heartbeat);
+    });
+  });
+
+  // ─── Close a position (market order, full quantity) ─────
+  // In-flight close locks: prevent duplicate market orders for the same user+account+symbol.
+  const closeInFlight = new Map<string, number>();
+  const CLOSE_LOCK_MS = 15_000;
+
+  app.post("/api/broker/positions/:symbol/close", isAuthenticated, async (req, res) => {
+    try {
+      const symbol = String(req.params.symbol || "").toUpperCase();
+      if (!symbol) return res.status(400).json({ error: "symbol is required" });
+
+      const userId = req.session.userId!;
+
+      // The position MUST come from the same account context that produced the
+      // displayed positions — i.e. the user's preferred account. We do NOT accept
+      // an arbitrary account override from the request body because that would
+      // allow closing a position in account X based on what was shown for account
+      // Y (including silently routing a paper close to a live account).
+      const conn = await storage.getBrokerConnection(userId);
+      const preferredAccountId = conn?.preferredAccountId ?? null;
+      if (!preferredAccountId) {
+        return res.status(400).json({
+          error: "Pick a preferred broker account in Settings before closing positions.",
+          code: "NO_PREFERRED_ACCOUNT",
+        });
+      }
+
+      const accounts = await brokerService.getBrokerAccounts(userId);
+      const targetAccount = accounts.find((a: any) => a.id === preferredAccountId);
+      if (!targetAccount) {
+        return res.status(403).json({ error: "Preferred broker account is not available on this connection." });
+      }
+      const targetAccountId = targetAccount.id;
+
+      // getBrokerPositions internally uses preferredAccountId, so this is the
+      // exact account the order will be placed against — no cross-account drift.
+      // Force-refresh first so a recent preferred-account change cannot serve
+      // cached positions from a different account.
+      brokerService.invalidateBrokerCache(userId);
+      const positions = await brokerService.getBrokerPositions(userId);
+      const position = positions.find((p: any) => p.symbol.toUpperCase() === symbol);
+      if (!position || !position.qty) {
+        return res.status(404).json({ error: `No open position for ${symbol} in ${targetAccount.name}` });
+      }
+
+      const lockKey = `${userId}::${targetAccountId}::${symbol}`;
+      const now = Date.now();
+      const existing = closeInFlight.get(lockKey);
+      if (existing && now - existing < CLOSE_LOCK_MS) {
+        return res.status(409).json({
+          error: `A close order for ${symbol} was just submitted. Please wait a few seconds before retrying.`,
+          code: "CLOSE_IN_FLIGHT",
+        });
+      }
+      closeInFlight.set(lockKey, now);
+
+      try {
+        const qty = Math.abs(Math.floor(position.qty));
+        const isLong = position.qty > 0;
+
+        const orderRequest: any = {
+          accountId: targetAccountId,
+          symbol,
+          side: isLong ? "sell" : "buy",
+          quantity: qty,
+          orderType: "market",
+          duration: "day",
+        };
+
+        const result = await brokerService.placeBrokerOrder(userId, orderRequest);
+        brokerService.invalidateBrokerCache(userId);
+
+        res.json({
+          ok: true,
+          symbol,
+          accountId: targetAccountId,
+          side: orderRequest.side,
+          quantity: qty,
+          brokerOrderId: result.orderId,
+          status: result.status,
+        });
+      } finally {
+        // Hold the lock for the full window even on success so retries within
+        // CLOSE_LOCK_MS still get blocked.
+        setTimeout(() => {
+          if (closeInFlight.get(lockKey) === now) closeInFlight.delete(lockKey);
+        }, CLOSE_LOCK_MS);
+      }
+    } catch (error: any) {
+      console.error("[BrokerService] close position error:", error.message);
+      if (error.message?.includes("InsufficientScope") || error.message?.includes("scope-trade")) {
+        return res.status(403).json({
+          error: "Your broker connection doesn't have trading permissions. Reconnect your broker in Settings.",
+          code: "INSUFFICIENT_SCOPE",
+        });
+      }
+      res.status(500).json({ error: error.message || "Failed to close position" });
+    }
   });
 
   app.post("/api/broker/orders", isAuthenticated, async (req, res) => {

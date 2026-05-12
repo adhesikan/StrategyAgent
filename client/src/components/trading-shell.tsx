@@ -4,6 +4,7 @@ import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { ShieldCheck, FlaskConical, Activity, Plug, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
 import { getMarketSessionInfo } from "@shared/market-session";
+import { OpenBrokerButton } from "@/components/open-broker-button";
 
 interface HomeActionCardProps {
   title: string;
@@ -97,14 +98,17 @@ export function BrokerStatusStrip() {
           </Badge>
 
           {isConnected ? (
-            <Badge
-              variant="outline"
-              className="border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
-              data-testid="pill-broker"
-            >
-              <CheckCircle2 className="h-3 w-3" />
-              {providerName ? `${providerName} Connected` : "Broker Connected"}
-            </Badge>
+            <>
+              <Badge
+                variant="outline"
+                className="border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
+                data-testid="pill-broker"
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                {providerName ? `${providerName} Connected` : "Broker Connected"}
+              </Badge>
+              <OpenBrokerButton view="dashboard" testId="link-open-broker-strip" />
+            </>
           ) : (
             <Link
               href="/settings"

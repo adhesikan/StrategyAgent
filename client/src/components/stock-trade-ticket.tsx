@@ -591,8 +591,6 @@ export function StockTradeTicket({
               ? "Connect Broker to Use InstaTrade™"
               : extendedHours
               ? `Send ${sessionInfo.session === "pre" ? "Pre-Market" : "After-Hours"} Order`
-              : selectedAccount.id?.startsWith("sandbox:")
-              ? "Paper Trade"
               : "Send to Broker with InstaTrade™"}
           </Button>
         </SheetFooter>

@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Send,
   Link2,
-  TestTube2,
   ListChecks,
   ChevronDown,
   X,
@@ -328,7 +327,6 @@ export default function OpportunityRadarPage() {
           setReviewScenario(s);
           logScenarioAction(s, "reviewed");
         }}
-        onPaperTrade={(s) => logScenarioAction(s, "paper_traded")}
         onPrepareOrder={(s) => {
           setReviewScenario(s);
           logScenarioAction(s, "prepared_order");
@@ -703,7 +701,6 @@ function RankedList({
   isLoading,
   onExplain,
   onReview,
-  onPaperTrade,
   onPrepareOrder,
   onViewNews,
 }: {
@@ -711,7 +708,6 @@ function RankedList({
   isLoading: boolean;
   onExplain: (s: CandidateScenario) => void;
   onReview: (s: CandidateScenario) => void;
-  onPaperTrade: (s: CandidateScenario) => void;
   onPrepareOrder: (s: CandidateScenario) => void;
   onViewNews: (s: CandidateScenario) => void;
 }) {
@@ -763,7 +759,6 @@ function RankedList({
             scenario={c}
             onExplain={() => onExplain(c)}
             onReview={() => onReview(c)}
-            onPaperTrade={() => onPaperTrade(c)}
             onPrepareOrder={() => onPrepareOrder(c)}
             onViewNews={() => onViewNews(c)}
           />
@@ -777,14 +772,12 @@ function CandidateCard({
   scenario,
   onExplain,
   onReview,
-  onPaperTrade,
   onPrepareOrder,
   onViewNews,
 }: {
   scenario: CandidateScenario;
   onExplain: () => void;
   onReview: () => void;
-  onPaperTrade: () => void;
   onPrepareOrder: () => void;
   onViewNews: () => void;
 }) {
@@ -852,10 +845,6 @@ function CandidateCard({
           <Button size="sm" variant="outline" onClick={onReview} data-testid={`button-review-${scenario.symbol}`}>
             <ListChecks className="h-4 w-4 mr-1" />
             Review Scenario
-          </Button>
-          <Button size="sm" variant="outline" onClick={onPaperTrade} data-testid={`button-paper-${scenario.symbol}`}>
-            <TestTube2 className="h-4 w-4 mr-1" />
-            Paper Trade
           </Button>
           <Button size="sm" onClick={onPrepareOrder} data-testid={`button-prepare-${scenario.symbol}`}>
             <Send className="h-4 w-4 mr-1" />
@@ -996,17 +985,6 @@ function OrderReviewDialog({
     },
   });
 
-  const paperMutation = useMutation({
-    mutationFn: async () => {
-      if (!scenario) return null;
-      await logScenarioAction(scenario, "paper_traded");
-    },
-    onSuccess: () => {
-      toast({ title: "Paper trade logged", description: "Recorded in your scenario history." });
-      handleClose();
-    },
-  });
-
   const handleClose = () => {
     setAcknowledged(false);
     onClose();
@@ -1070,15 +1048,6 @@ function OrderReviewDialog({
           <Button variant="ghost" onClick={handleClose} data-testid="button-radar-cancel">
             <X className="h-4 w-4 mr-1" />
             Cancel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => paperMutation.mutate()}
-            disabled={paperMutation.isPending}
-            data-testid="button-radar-paper"
-          >
-            <TestTube2 className="h-4 w-4 mr-1" />
-            Paper Trade
           </Button>
           {brokerConnected ? (
             <Button

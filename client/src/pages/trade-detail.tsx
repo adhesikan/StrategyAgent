@@ -842,6 +842,28 @@ export default function TradeDetailPage() {
               </div>
             </div>
 
+            {plan.legs.length > 1 && (
+              <div
+                className="rounded-md border p-3 bg-sky-50 dark:bg-sky-950/20 border-sky-200 dark:border-sky-900"
+                data-testid="banner-multileg-broker-warning"
+              >
+                <div className="flex items-start gap-2 text-xs text-sky-900 dark:text-sky-200">
+                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-medium">
+                      Multi-leg orders may not route as a single ticket
+                    </p>
+                    <p>
+                      Most broker APIs we connect to don't yet accept this entire {plan.legs.length}-leg
+                      spread in one call. We'll log this order plan and your acknowledgment, but you
+                      may need to place each leg manually inside your broker (or use your broker's
+                      native spread order ticket) to fill it as one combined order.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-start gap-2">
               <Checkbox
                 id="option-ack"

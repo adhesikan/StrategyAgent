@@ -30,11 +30,12 @@ const TS_ORDER_TYPE_MAP: Record<string, string> = {
   stop_limit: "StopLimit",
 };
 
+// TradeStation supports extended-hours via DAYPLUS / OPG mechanics that vary by
+// product. Until we wire each instrument-specific mapping, we expose only DAY
+// and GTC. Pre-/post-market durations are rejected upstream in placeOrder().
 const TS_DURATION_MAP: Record<string, string> = {
   day: "DAY",
   gtc: "GTC",
-  pre: "DAY",
-  post: "DAY",
 };
 
 function mapTradeAction(side: "buy" | "sell", optionSide?: string): string {
@@ -456,6 +457,11 @@ export const tradestationProvider: BrokerProvider = {
   },
 
   async placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse> {
+    if (order.duration === "pre" || order.duration === "post") {
+      throw new Error(
+        "TradeStation extended-hours order routing is not yet supported. Connect a Tradier account for pre-market / after-hours orders.",
+      );
+    }
     const isOption = order.orderClass === "option" && order.optionSymbol;
 
     const body: any = {

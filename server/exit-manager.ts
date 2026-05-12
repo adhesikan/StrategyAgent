@@ -4,32 +4,21 @@ import { eq } from "drizzle-orm";
 import * as brokerService from "./broker/index";
 import { storage } from "./storage";
 import { getTraderTypeConfig } from "./position-sizing";
+import { getMarketSession, durationForExtendedHours } from "@shared/market-session";
 
 const CHECK_INTERVAL_MS = 30_000;
-const MARKET_OPEN_HOUR = 9;
-const MARKET_OPEN_MINUTE = 30;
 const MARKET_CLOSE_HOUR = 16;
 const MARKET_CLOSE_MINUTE = 0;
 const EOD_CLOSE_MINUTES_BEFORE = 5;
 
-function isMarketHours(): boolean {
-  const now = new Date();
-  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-  const hour = et.getHours();
-  const minute = et.getMinutes();
-  const day = et.getDay();
-
-  if (day === 0 || day === 6) return false;
-
-  const currentMinutes = hour * 60 + minute;
-  const openMinutes = MARKET_OPEN_HOUR * 60 + MARKET_OPEN_MINUTE;
-  const closeMinutes = MARKET_CLOSE_HOUR * 60 + MARKET_CLOSE_MINUTE;
-
-  return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+// Active during regular + extended sessions (4:00 AM – 8:00 PM ET, weekdays).
+function isTradeableSession(): boolean {
+  const session = getMarketSession();
+  return session !== "closed";
 }
 
 async function checkManagedExits(): Promise<void> {
-  if (!isMarketHours()) return;
+  if (!isTradeableSession()) return;
 
   try {
     const activeExits = await db
@@ -136,16 +125,21 @@ async function processExit(exit: typeof managedExits.$inferSelect): Promise<void
       return;
     }
 
+    // In extended sessions market orders aren't accepted — fall back to a
+    // marketable limit at the current mid using the matching pre/post duration.
+    const extDur = durationForExtendedHours();
+    const useExtended = extDur !== null;
     const orderRequest: any = {
       accountId: exit.brokerAccountId,
       symbol: exit.symbol,
       side: isBuyToClose ? "buy" : "sell",
       quantity: exit.quantity,
-      orderType: "market" as const,
-      duration: "day" as const,
+      orderType: useExtended ? ("limit" as const) : ("market" as const),
+      duration: useExtended ? extDur! : ("day" as const),
       orderClass: "option",
       optionSymbol: exit.optionSymbol,
       optionSide: closeSide,
+      ...(useExtended ? { price: Number(currentMid.toFixed(2)) } : {}),
     };
 
     const result = await brokerService.placeBrokerOrder(exit.userId, orderRequest);

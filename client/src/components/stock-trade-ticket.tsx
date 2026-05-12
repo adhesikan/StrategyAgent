@@ -26,7 +26,9 @@ import {
   ChevronDown,
   ChevronUp,
   DollarSign,
+  Moon,
 } from "lucide-react";
+import { getMarketSessionInfo } from "@shared/market-session";
 
 interface ScanResultData {
   ticker: string;
@@ -76,6 +78,10 @@ export function StockTradeTicket({
   const [stopPrice, setStopPrice] = useState<string>("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [livePrice, setLivePrice] = useState<number>(0);
+  const [extendedHours, setExtendedHours] = useState(false);
+
+  const sessionInfo = getMarketSessionInfo();
+  const inExtendedSession = sessionInfo.session === "pre" || sessionInfo.session === "after";
 
   const needsQuote = open && scanResult && !scanResult.price;
   const { data: quoteData } = useQuery<{ last: number; symbol: string }>({
@@ -101,6 +107,7 @@ export function StockTradeTicket({
       setBracketEnabled(false);
       setAdvancedOpen(false);
       setLivePrice(0);
+      setExtendedHours(false);
 
       if (scanResult.prefillTarget && scanResult.stopLoss) {
         setBracketEnabled(true);
@@ -136,6 +143,10 @@ export function StockTradeTicket({
     mutationFn: async () => {
       if (!scanResult || !selectedAccount) throw new Error("Missing selection");
 
+      if (extendedHours && entryType !== "limit") {
+        throw new Error("Pre-market / after-hours orders must be limit orders");
+      }
+
       const payload: Record<string, any> = {
         accountId: selectedAccount.id,
         symbol: scanResult.ticker,
@@ -143,6 +154,7 @@ export function StockTradeTicket({
         quantity,
         orderType: entryType,
         duration,
+        extendedHours,
       };
 
       if (entryType === "limit") {
@@ -151,7 +163,7 @@ export function StockTradeTicket({
         payload.price = parsedPrice;
       }
 
-      if (bracketEnabled && targetPrice && stopPrice) {
+      if (bracketEnabled && targetPrice && stopPrice && !extendedHours) {
         payload.bracketTarget = parseFloat(targetPrice);
         payload.bracketStop = parseFloat(stopPrice);
       }
@@ -455,6 +467,36 @@ export function StockTradeTicket({
               )}
             </div>
 
+            {inExtendedSession && (
+              <div className="space-y-2 p-3 rounded-md border border-blue-500/30 bg-blue-500/5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Moon className="h-4 w-4 text-blue-400" />
+                    <Label className="text-xs font-medium">
+                      {sessionInfo.session === "pre" ? "Pre-Market Session" : "After-Hours Session"}
+                    </Label>
+                  </div>
+                  <Switch
+                    checked={extendedHours}
+                    onCheckedChange={(checked) => {
+                      setExtendedHours(checked);
+                      if (checked) {
+                        setEntryType("limit");
+                        setBracketEnabled(false);
+                        setDuration("day");
+                      }
+                    }}
+                    data-testid="switch-extended-hours"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Route this order to the {sessionInfo.session === "pre" ? "pre-market (4:00–9:30 AM ET)" : "after-hours (4:00–8:00 PM ET)"} session.
+                  Limit orders only — bracket exits aren't allowed and will be skipped.
+                  Spreads are wider and fills aren't guaranteed.
+                </p>
+              </div>
+            )}
+
             <div
               className="flex items-center gap-1 cursor-pointer text-xs text-muted-foreground transition-colors"
               onClick={() => setAdvancedOpen(!advancedOpen)}
@@ -545,6 +587,8 @@ export function StockTradeTicket({
             )}
             {!selectedAccount
               ? "Connect Broker to Use InstaTrade™"
+              : extendedHours
+              ? `Send ${sessionInfo.session === "pre" ? "Pre-Market" : "After-Hours"} Order`
               : selectedAccount.id?.startsWith("sandbox:")
               ? "Paper Trade"
               : "Send to Broker with InstaTrade™"}

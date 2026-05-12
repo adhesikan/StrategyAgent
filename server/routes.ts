@@ -2423,7 +2423,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.post("/api/broker/orders", isAuthenticated, async (req, res) => {
     try {
-      const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration, orderClass, optionSymbol, optionSide } = req.body;
+      const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration, orderClass, optionSymbol, optionSide, extendedHours } = req.body;
 
       if (!accountId || !symbol || !side || !quantity) {
         return res.status(400).json({ error: "Missing required fields: accountId, symbol, side, quantity" });
@@ -2446,6 +2446,32 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.status(403).json({ error: "Invalid or unauthorized broker account" });
       }
 
+      const { durationForExtendedHours, getMarketSession } = await import("@shared/market-session");
+      let resolvedDuration = duration || "day";
+      if (extendedHours === true) {
+        const extDur = durationForExtendedHours();
+        if (!extDur) {
+          return res.status(422).json({
+            error: "Pre-market / after-hours orders can only be submitted during 4:00 AM–9:30 AM ET (pre) or 4:00 PM–8:00 PM ET (after).",
+            code: "OUTSIDE_EXTENDED_HOURS",
+            currentSession: getMarketSession(),
+          });
+        }
+        if ((orderType || "limit") !== "limit") {
+          return res.status(422).json({
+            error: "Pre-market and after-hours orders must be limit orders.",
+            code: "EXTENDED_HOURS_REQUIRES_LIMIT",
+          });
+        }
+        if (price === undefined || price === null) {
+          return res.status(422).json({
+            error: "A limit price is required for pre-market / after-hours orders.",
+            code: "EXTENDED_HOURS_REQUIRES_PRICE",
+          });
+        }
+        resolvedDuration = extDur;
+      }
+
       const orderRequest: any = {
         accountId,
         symbol: symbol.toUpperCase(),
@@ -2454,7 +2480,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         orderType: orderType || "limit",
         price: price ?? undefined,
         stopPrice: stopPrice ?? undefined,
-        duration: duration || "day",
+        duration: resolvedDuration,
       };
 
       if (orderClass === "option") {
@@ -2489,7 +2515,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // ─── Stock Trade Ticket (Place Equity with optional OTOCO bracket) ──
   app.post("/api/trade/place-equity", isAuthenticatedOrPartner, async (req, res) => {
     try {
-      const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop, setupId, setupScore, rewardRisk, overrideGuardrails } = req.body;
+      const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop, setupId, setupScore, rewardRisk, overrideGuardrails, extendedHours } = req.body;
 
       if (!accountId || !symbol || !quantity) {
         return res.status(400).json({ error: "Missing required fields: accountId, symbol, quantity" });
@@ -2525,9 +2551,40 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const hasBracket = bracketTarget && bracketStop;
-      const finalOrderType = orderType || "market";
-      const finalDuration = duration || "day";
+      let finalOrderType = orderType || "market";
+      let finalDuration = duration || "day";
       const finalSide = side || "buy";
+
+      if (extendedHours === true) {
+        const { durationForExtendedHours, getMarketSession } = await import("@shared/market-session");
+        const extDur = durationForExtendedHours();
+        if (!extDur) {
+          return res.status(422).json({
+            error: "Pre-market / after-hours orders can only be submitted during 4:00 AM–9:30 AM ET (pre) or 4:00 PM–8:00 PM ET (after).",
+            code: "OUTSIDE_EXTENDED_HOURS",
+            currentSession: getMarketSession(),
+          });
+        }
+        if (finalOrderType !== "limit") {
+          return res.status(422).json({
+            error: "Pre-market and after-hours orders must be limit orders.",
+            code: "EXTENDED_HOURS_REQUIRES_LIMIT",
+          });
+        }
+        if (price === undefined || price === null) {
+          return res.status(422).json({
+            error: "A limit price is required for pre-market / after-hours orders.",
+            code: "EXTENDED_HOURS_REQUIRES_PRICE",
+          });
+        }
+        if (hasBracket) {
+          return res.status(422).json({
+            error: "Bracket exits aren't supported in pre-market / after-hours sessions. Submit the entry first; managed exits will activate at the next regular session.",
+            code: "EXTENDED_HOURS_NO_BRACKET",
+          });
+        }
+        finalDuration = extDur;
+      }
 
       const orderRequest: any = {
         accountId,

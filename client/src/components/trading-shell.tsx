@@ -3,27 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { ShieldCheck, FlaskConical, Activity, Plug, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
-
-function isMarketOpenEt(): boolean {
-  try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      hour: "2-digit",
-      minute: "2-digit",
-      weekday: "short",
-      hour12: false,
-    });
-    const parts = fmt.formatToParts(new Date());
-    const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-    const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
-    const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
-    if (weekday === "Sat" || weekday === "Sun") return false;
-    const minutes = hour * 60 + minute;
-    return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
-  } catch {
-    return false;
-  }
-}
+import { getMarketSessionInfo } from "@shared/market-session";
 
 interface HomeActionCardProps {
   title: string;
@@ -73,7 +53,19 @@ export function BrokerStatusStrip() {
   const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
   const isLiveMode = isConnected && !isPaper;
   const isPaperMode = isConnected && isPaper;
-  const marketOpen = isMarketOpenEt();
+  const sessionInfo = getMarketSessionInfo();
+  const sessionPillClass: Record<string, string> = {
+    regular: "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5",
+    pre: "border-blue-500/40 text-blue-400 bg-blue-500/5 gap-1.5",
+    after: "border-orange-500/40 text-orange-400 bg-orange-500/5 gap-1.5",
+    closed: "border-border/60 text-muted-foreground gap-1.5",
+  };
+  const sessionTooltip: Record<string, string> = {
+    regular: "Regular trading hours: 9:30 AM – 4:00 PM ET.",
+    pre: "Pre-market session: 4:00 AM – 9:30 AM ET. Limit orders only via your broker.",
+    after: "After-hours session: 4:00 PM – 8:00 PM ET. Limit orders only via your broker.",
+    closed: "Market is closed (outside 4:00 AM – 8:00 PM ET, weekends, or holidays).",
+  };
 
   const modeLabel = isLiveMode
     ? "Live Broker Mode"
@@ -131,15 +123,12 @@ export function BrokerStatusStrip() {
 
           <Badge
             variant="outline"
-            className={
-              marketOpen
-                ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
-                : "border-border/60 text-muted-foreground gap-1.5"
-            }
+            title={sessionTooltip[sessionInfo.session]}
+            className={sessionPillClass[sessionInfo.session]}
             data-testid="pill-market"
           >
             <Activity className="h-3 w-3" />
-            {marketOpen ? "Market Open" : "Market Closed"}
+            {sessionInfo.label}
           </Badge>
         </div>
       </CardContent>

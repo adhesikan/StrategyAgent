@@ -20,6 +20,7 @@ import {
 import { ComplianceFooter } from "@/components/trading-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { HelpLink } from "@/components/help-link";
+import { TradingViewHeatmap } from "@/components/tradingview-heatmap";
 
 type SentimentLabel = "bullish" | "bearish" | "neutral" | "mixed";
 type ImpactLevel = "low" | "medium" | "high";
@@ -59,6 +60,7 @@ interface WatchlistResponse {
   symbols: string[];
   snapshots: AggregatedSnapshot[];
   sources: { news: "live" | "mock"; sentiment: "openai" | "rule_based" };
+  source?: "user_watchlist" | "popular_fallback";
   disclaimer: string;
 }
 
@@ -191,6 +193,7 @@ export default function MarketIntelPage() {
         <WatchlistSentiment
           snapshots={sortedWatchlist}
           symbols={watchlistQuery.data?.symbols ?? []}
+          source={watchlistQuery.data?.source}
           isLoading={watchlistQuery.isLoading}
         />
         <ExtremesCard
@@ -212,6 +215,8 @@ export default function MarketIntelPage() {
           testId="card-strongest-negative"
         />
       </div>
+
+      <TradingViewHeatmap height={480} dataSource="SPX500" />
 
       <WhyIsItMovingCard
         symbol={whySymbol}
@@ -310,21 +315,31 @@ function MorningBriefing({
 function WatchlistSentiment({
   snapshots,
   symbols,
+  source,
   isLoading,
 }: {
   snapshots: AggregatedSnapshot[];
   symbols: string[];
+  source?: "user_watchlist" | "popular_fallback";
   isLoading: boolean;
 }) {
+  const isFallback = source === "popular_fallback";
   return (
     <Card data-testid="card-watchlist-sentiment" className="hover-elevate">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Eye className="h-4 w-4 text-primary" />
           Watchlist Sentiment
+          {isFallback && (
+            <Badge variant="outline" className="text-[10px]" data-testid="badge-watchlist-fallback">
+              popular fallback
+            </Badge>
+          )}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Per-ticker rollups across {symbols.length} watchlist symbol{symbols.length === 1 ? "" : "s"}.
+          {isFallback
+            ? `Showing popular tickers (${symbols.length}) — your watchlist is empty. Add symbols to personalize this panel.`
+            : `Per-ticker rollups across ${symbols.length} watchlist symbol${symbols.length === 1 ? "" : "s"}.`}
         </p>
       </CardHeader>
       <CardContent className="space-y-2">

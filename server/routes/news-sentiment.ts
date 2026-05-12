@@ -27,9 +27,13 @@ export function registerNewsSentimentRoutes(
   isAuthenticated: RequestHandler,
   isAdmin: RequestHandler,
 ) {
-  // Per-symbol sentiment with article context
-  app.get("/api/sentiment/:symbol", isAuthenticated, async (req, res) => {
+  // Per-symbol sentiment with article context. Reject the literal
+  // "watchlist" so the dynamic route doesn't shadow /api/sentiment/watchlist.
+  app.get("/api/sentiment/:symbol", isAuthenticated, async (req, res, next) => {
     try {
+      if ((req.params.symbol ?? "").toLowerCase() === "watchlist") {
+        return next();
+      }
       const parsed = symbolParam.safeParse(req.params);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid symbol" });
@@ -86,13 +90,17 @@ export function registerNewsSentimentRoutes(
     }
   });
 
-  // Watchlist sentiment for the authenticated user
+  // Watchlist sentiment for the authenticated user.
+  // If the user has no saved watchlist symbols, fall back to a curated
+  // set of popular, highly-traded names so the panel always shows useful
+  // sentiment context. The response flags the source so the UI can label
+  // it as a fallback.
   app.get("/api/sentiment/watchlist", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
       const watchlists = await storage.getWatchlists(userId);
-      const symbols = Array.from(
+      const userSymbols = Array.from(
         new Set(
           watchlists
             .flatMap((w) => (w.symbols ?? []) as string[])
@@ -101,23 +109,19 @@ export function registerNewsSentimentRoutes(
         ),
       ).slice(0, 25);
 
-      if (symbols.length === 0) {
-        return res.json({
-          snapshots: [],
-          symbols: [],
-          sources: {
-            news: isStockNewsConfigured() ? "live" : "mock",
-            sentiment: isOpenAiConfigured() ? "openai" : "rule_based",
-          },
-          disclaimer: COMPLIANCE_FOOTER,
-        });
-      }
+      const POPULAR_FALLBACK = [
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+        "META", "TSLA", "AMD", "SPY", "QQQ",
+      ];
+      const usingFallback = userSymbols.length === 0;
+      const symbols = usingFallback ? POPULAR_FALLBACK : userSymbols;
 
       const result = await refreshSentimentForSymbols(symbols);
       res.json({
         symbols,
         snapshots: result.snapshots,
         sources: result.source,
+        source: usingFallback ? "popular_fallback" : "user_watchlist",
         disclaimer: COMPLIANCE_FOOTER,
       });
     } catch (err) {

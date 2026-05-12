@@ -11,6 +11,12 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   TrendingUp,
   Coins,
   Target,
@@ -71,6 +77,31 @@ const INSTRUMENT_LABEL: Record<DailyIdea["instrumentType"], string> = {
   cash_secured_put: "Cash-Secured Put",
 };
 
+const CATEGORY_TIP: Record<DailyIdea["category"], string> = {
+  growth: "Bias toward stock-style swing setups (trend, breakout, momentum). Driven by the strategy that produced the idea.",
+  income: "Premium-collection style (covered calls, cash-secured puts, credit spreads). You collect premium and accept defined risk.",
+  trade: "General directional trade idea — could be stock or option, depending on the instrument selector.",
+  market_alert: "A heads-up about a market-wide event (volatility spike, sector move, news catalyst), not an entry signal.",
+};
+
+const INSTRUMENT_TIP: Record<DailyIdea["instrumentType"], string> = {
+  stock: "Buy the underlying shares. Risk = entry minus stop times shares.",
+  long_call: "Buy a call option. Defined risk = the premium paid. Profits if the stock rises before expiry.",
+  long_put: "Buy a put option. Defined risk = the premium paid. Profits if the stock falls before expiry.",
+  spread: "Vertical spread: buy one option and sell another at a different strike. Caps both risk and reward.",
+  covered_call: "Sell a call against shares you own. Collects premium; upside capped above the strike.",
+  cash_secured_put: "Sell a put while holding cash to buy the shares if assigned. Collects premium; obligated to buy at the strike.",
+};
+
+const RISK_TIP: Record<DailyIdea["riskLevel"], string> = {
+  low: "Lower historical volatility, defined-risk structure, or a small dollar exposure relative to your account size.",
+  medium: "Moderate volatility or partial capital exposure. Typical swing-trade risk profile.",
+  high: "Elevated volatility, undefined risk, or large notional exposure. Size carefully and consider defined-risk alternatives.",
+};
+
+const GRADE_TIP =
+  "Composite grade A+ / A / B / C from a 5-factor score (technical 30%, real-time price action 25%, news sentiment 15%, analyst 15%, risk 15%). Higher grades signal more factors agreeing — not a price target.";
+
 interface Props {
   idea: DailyIdea;
 }
@@ -92,29 +123,63 @@ export function DailyIdeaCard({ idea }: Props) {
     navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}`);
   };
 
+  const capitalTip =
+    idea.capitalNeeded > 0
+      ? "Approximate cash you need to set aside to enter this idea — share price × shares for stocks, or premium × contracts × 100 for options. Doesn't include commissions."
+      : "No upfront capital estimate — typically a defined-risk options structure where the max loss equals the debit shown.";
+
   return (
     <>
+      <TooltipProvider delayDuration={200}>
       <Card
         className="p-4 flex flex-col gap-3 hover-elevate"
         data-testid={`card-daily-idea-${idea.id}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className={CATEGORY_TONE[idea.category]} data-testid={`badge-category-${idea.id}`}>
-              {CATEGORY_LABEL[idea.category]}
-            </Badge>
-            <Badge variant="outline" className="text-[10px]">
-              {INSTRUMENT_LABEL[idea.instrumentType]}
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className={`cursor-help ${CATEGORY_TONE[idea.category]}`} data-testid={`badge-category-${idea.id}`}>
+                  {CATEGORY_LABEL[idea.category]}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+                <strong>{CATEGORY_LABEL[idea.category]}.</strong> {CATEGORY_TIP[idea.category]}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="text-[10px] cursor-help">
+                  {INSTRUMENT_LABEL[idea.instrumentType]}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+                <strong>{INSTRUMENT_LABEL[idea.instrumentType]}.</strong> {INSTRUMENT_TIP[idea.instrumentType]}
+              </TooltipContent>
+            </Tooltip>
             {idea.dataMode === "simulated" && (
-              <Badge variant="outline" className="text-[10px] border-muted-foreground/40 text-muted-foreground">
-                Simulated
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-[10px] cursor-help border-muted-foreground/40 text-muted-foreground">
+                    Simulated
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+                  No broker is connected, so prices and sizing are example values for learning. Connect a broker for live quotes.
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
-          <Badge variant="outline" className="text-[11px] font-semibold" data-testid={`badge-grade-${idea.id}`}>
-            {idea.grade}
-          </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="text-[11px] font-semibold cursor-help" data-testid={`badge-grade-${idea.id}`}>
+                {idea.grade}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
+              <strong>Grade {idea.grade} · score {idea.score}.</strong> {GRADE_TIP}
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         <div>
@@ -131,19 +196,38 @@ export function DailyIdeaCard({ idea }: Props) {
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-[11px]">
-          <Stat icon={ShieldCheck} label="Risk" value={idea.riskLevel} tone={RISK_TONE[idea.riskLevel]} />
-          <Stat icon={AlertTriangle} label="Max risk" value={`$${idea.maxRisk.toLocaleString()}`} />
+          <Stat
+            icon={ShieldCheck}
+            label="Risk"
+            value={idea.riskLevel}
+            tone={RISK_TONE[idea.riskLevel]}
+            tip={`${idea.riskLevel.charAt(0).toUpperCase() + idea.riskLevel.slice(1)} risk. ${RISK_TIP[idea.riskLevel]}`}
+          />
+          <Stat
+            icon={AlertTriangle}
+            label="Max risk"
+            value={`$${idea.maxRisk.toLocaleString()}`}
+            tip="The most you can lose on this single position if the stop is hit (stock) or the option expires worthless (defined-risk option). Capped by your per-trade max-risk limit in My Limits."
+          />
           <Stat
             icon={Coins}
             label="Capital"
             value={idea.capitalNeeded > 0 ? `$${idea.capitalNeeded.toLocaleString()}` : "—"}
+            tip={capitalTip}
           />
         </div>
 
-        <p className="text-[11px] text-muted-foreground border-t pt-2 leading-snug" data-testid={`text-why-${idea.id}`}>
-          <span className="font-medium text-foreground">Why it appeared: </span>
-          {idea.whyItAppeared}
-        </p>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className="text-[11px] text-muted-foreground border-t pt-2 leading-snug cursor-help" data-testid={`text-why-${idea.id}`}>
+              <span className="font-medium text-foreground">Why it appeared: </span>
+              {idea.whyItAppeared}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[300px] text-xs leading-snug">
+            Plain-English summary of which technical, sentiment, and risk filters this idea passed for the bucket you're viewing. Tap "Learn more" for the full breakdown.
+          </TooltipContent>
+        </Tooltip>
 
         <div className="flex items-center gap-2 pt-1">
           <Button
@@ -161,6 +245,7 @@ export function DailyIdeaCard({ idea }: Props) {
           </Button>
         </div>
       </Card>
+      </TooltipProvider>
 
       <Sheet open={learnOpen} onOpenChange={setLearnOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
@@ -242,41 +327,90 @@ export function DailyIdeaRow({ idea }: Props) {
     navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}`);
   };
 
+  const capitalTip =
+    idea.capitalNeeded > 0
+      ? "Approximate cash to set aside: share price × shares for stocks, or premium × contracts × 100 for options."
+      : "Defined-risk options idea — max loss equals the debit. No separate capital figure.";
+
   return (
+    <TooltipProvider delayDuration={200}>
     <div
       data-testid={`row-daily-idea-${idea.id}`}
       className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2.5 hover-elevate"
     >
       <div className="flex items-center gap-2 min-w-[140px]">
         <span className="text-base font-bold" data-testid={`row-symbol-${idea.id}`}>{idea.symbol}</span>
-        <Badge variant="outline" className="text-[10px] font-semibold" data-testid={`row-grade-${idea.id}`}>
-          {idea.grade}
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] font-semibold cursor-help" data-testid={`row-grade-${idea.id}`}>
+              {idea.grade}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[280px] text-xs leading-snug">
+            <strong>Grade {idea.grade} · score {idea.score}.</strong> {GRADE_TIP}
+          </TooltipContent>
+        </Tooltip>
       </div>
-      <Badge variant="outline" className={`text-[10px] ${CATEGORY_TONE[idea.category]}`}>
-        {CATEGORY_LABEL[idea.category]}
-      </Badge>
-      <Badge variant="outline" className="text-[10px]">
-        {INSTRUMENT_LABEL[idea.instrumentType]}
-      </Badge>
-      <Badge variant="outline" className={`text-[10px] capitalize ${RISK_TONE[idea.riskLevel]}`}>
-        {idea.riskLevel} risk
-      </Badge>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className={`text-[10px] cursor-help ${CATEGORY_TONE[idea.category]}`}>
+            {CATEGORY_LABEL[idea.category]}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+          <strong>{CATEGORY_LABEL[idea.category]}.</strong> {CATEGORY_TIP[idea.category]}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className="text-[10px] cursor-help">
+            {INSTRUMENT_LABEL[idea.instrumentType]}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+          <strong>{INSTRUMENT_LABEL[idea.instrumentType]}.</strong> {INSTRUMENT_TIP[idea.instrumentType]}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className={`text-[10px] capitalize cursor-help ${RISK_TONE[idea.riskLevel]}`}>
+            {idea.riskLevel} risk
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+          {RISK_TIP[idea.riskLevel]}
+        </TooltipContent>
+      </Tooltip>
       <span className="text-xs text-muted-foreground hidden md:inline truncate max-w-[260px]">{idea.title}</span>
       <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span>
-          <span className="text-muted-foreground">Max risk: </span>
-          <span className="font-semibold">${idea.maxRisk.toLocaleString()}</span>
-        </span>
-        <span>
-          <span className="text-muted-foreground">Cap: </span>
-          <span className="font-semibold">{idea.capitalNeeded > 0 ? `$${idea.capitalNeeded.toLocaleString()}` : "—"}</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="cursor-help">
+              <span className="text-muted-foreground">Max risk: </span>
+              <span className="font-semibold">${idea.maxRisk.toLocaleString()}</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[280px] text-xs leading-snug">
+            The most you can lose on this single position if the stop hits (stock) or the option expires worthless. Capped by your per-trade max-risk limit in My Limits.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="cursor-help">
+              <span className="text-muted-foreground">Cap: </span>
+              <span className="font-semibold">{idea.capitalNeeded > 0 ? `$${idea.capitalNeeded.toLocaleString()}` : "—"}</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+            {capitalTip}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <Button size="sm" onClick={handleReview} data-testid={`row-review-${idea.id}`}>
         Review <ArrowRight className="h-3.5 w-3.5 ml-1" />
       </Button>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -285,20 +419,31 @@ function Stat({
   label,
   value,
   tone,
+  tip,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
   tone?: string;
+  tip?: string;
 }) {
-  return (
-    <div className={`rounded-md border px-2 py-1.5 ${tone ?? ""}`}>
+  const inner = (
+    <div className={`rounded-md border px-2 py-1.5 ${tip ? "cursor-help" : ""} ${tone ?? ""}`}>
       <div className="flex items-center gap-1 text-muted-foreground">
         <Icon className="h-3 w-3" />
         <span className="uppercase tracking-wide text-[9px]">{label}</span>
       </div>
       <div className="font-medium capitalize mt-0.5">{value}</div>
     </div>
+  );
+  if (!tip) return inner;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{inner}</TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-snug">
+        {tip}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

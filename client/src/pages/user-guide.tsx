@@ -128,6 +128,59 @@ const SECTIONS: Section[] = [
           for that tab. Switch to Auto to let the system pick a fallback.
         </p>
 
+        <h4 className="font-semibold mt-3">What every value on an idea card means</h4>
+        <p className="text-sm">
+          Each idea card is built from the same five inputs. Hover any badge or stat on the card
+          to see a tooltip with the same explanation.
+        </p>
+        <ul className="list-disc pl-5 space-y-1.5 mt-2">
+          <li>
+            <strong>Category badge (Growth / Income / Trade / Market Alert).</strong> Comes from the
+            strategy that produced the idea. <em>Growth</em> is stock-style swing setups (trend,
+            breakout, momentum). <em>Income</em> is premium-collection (covered calls, cash-secured
+            puts, credit spreads). <em>Trade</em> is a general directional idea. <em>Market Alert</em>
+            is a heads-up about a market-wide event, not an entry signal.
+          </li>
+          <li>
+            <strong>Instrument badge (Stock / Long Call / Long Put / Vertical Spread / Covered Call /
+            Cash-Secured Put).</strong> The Instrument Selector picks this based on your bias,
+            conviction, and the asset classes you allowed in My Limits — for example a bullish bias
+            with options enabled may surface a Long Call instead of buying shares.
+          </li>
+          <li>
+            <strong>Grade letter (A+ / A / B / C).</strong> A composite grade from the 5-factor
+            Probability Engine: technical 30%, real-time price action 25%, news sentiment 15%,
+            analyst 15%, risk 15%. Higher = more factors agreeing. It's a confidence rank, not a
+            price target. Anything below 60 is hidden.
+          </li>
+          <li>
+            <strong>Risk pill (Low / Medium / High).</strong> Reflects the historical volatility of
+            the underlying, whether the structure is defined-risk, and how big the dollar exposure
+            is relative to your account size from My Limits.
+          </li>
+          <li>
+            <strong>Max risk.</strong> The most you can lose on this single position — entry minus
+            stop times shares for stocks, or the premium paid for a long option / debit spread.
+            Capped by your per-trade max-risk limit, so an idea's "Max risk" will never exceed the
+            number you set in My Limits.
+          </li>
+          <li>
+            <strong>Capital.</strong> Approximate cash you need to set aside to enter — share price
+            × shares for stocks, or premium × contracts × 100 for options. Excludes commissions and
+            broker fees. A dash ("—") means it's a defined-risk options idea where the capital and
+            max risk are the same number.
+          </li>
+          <li>
+            <strong>Why it appeared.</strong> Plain-English summary of which technical, sentiment,
+            and risk filters this idea passed for the tab you're viewing. The full per-factor
+            breakdown is in the "Learn more" drawer.
+          </li>
+          <li>
+            <strong>Simulated badge.</strong> Shows when no broker is connected, so prices and
+            sizing are example values for learning rather than live quotes.
+          </li>
+        </ul>
+
         <h4 className="font-semibold mt-3">Other things on Home</h4>
         <ul className="list-disc pl-5 space-y-1">
           <li>Type a request like "income ideas this week" or "why is NVDA moving?" — the prompt bar routes you to the right tool.</li>

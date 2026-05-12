@@ -124,12 +124,12 @@ const PLACEHOLDERS = [
 ];
 
 const TABS: { value: string; label: string; bucket: string }[] = [
-  { value: "all", label: "All", bucket: "beginner" },
+  { value: "all", label: "All", bucket: "all" },
   { value: "stocks", label: "Stocks", bucket: "stocks" },
   { value: "options", label: "Options", bucket: "options" },
   { value: "income", label: "Income", bucket: "income" },
   { value: "watchlist", label: "Watchlist", bucket: "watchlist" },
-  { value: "alerts", label: "Market Alerts", bucket: "watchlist" },
+  { value: "alerts", label: "Market Alerts", bucket: "alerts" },
 ];
 
 function routeFor(prompt: string): string {
@@ -223,8 +223,35 @@ export default function HomeV2() {
                     ))}
                   </div>
                 ) : (
-                  <Card className="p-8 text-center text-sm text-muted-foreground" data-testid="text-no-ideas">
-                    No ideas in this category right now. Try another tab or adjust your watchlist.
+                  <Card className="p-6 space-y-3" data-testid="text-no-ideas">
+                    <div className="flex items-start gap-2 text-sm">
+                      <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="font-medium">No ideas in this category right now.</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ideasResp?.brokerConnected === false
+                            ? "Your broker isn't connected, so we're running on simulated examples — and the strict filters for this tab didn't surface anything. "
+                            : "The filters for this tab didn't surface anything in the current scan. "}
+                          Try another tab, build a watchlist, or connect your broker for live data.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {tab !== "all" && (
+                        <Button size="sm" variant="outline" onClick={() => setTab("all")} data-testid="button-empty-try-all">
+                          Try All ideas
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => navigate("/settings/universes")} data-testid="button-empty-build-watchlist">
+                        Build watchlist
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/settings")} data-testid="button-empty-connect-broker">
+                        Connect broker
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")} data-testid="button-empty-open-radar">
+                        Open Opportunity Radar
+                      </Button>
+                    </div>
                   </Card>
                 )}
               </TabsContent>

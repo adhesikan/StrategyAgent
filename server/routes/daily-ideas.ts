@@ -6,10 +6,19 @@ import {
   getStockIdeas,
   getOptionIdeas,
   getWatchlistAlerts,
+  getMarketAlerts,
   getBeginnerFriendlyIdeaCards,
 } from "../services/daily-opportunity-scan";
 
-type Bucket = "all" | "growth" | "income" | "stocks" | "options" | "watchlist" | "beginner";
+type Bucket =
+  | "all"
+  | "growth"
+  | "income"
+  | "stocks"
+  | "options"
+  | "watchlist"
+  | "alerts"
+  | "beginner";
 
 const handlers: Record<Bucket, (userId: string) => Promise<unknown>> = {
   all: getDailyIdeasForUser,
@@ -18,6 +27,7 @@ const handlers: Record<Bucket, (userId: string) => Promise<unknown>> = {
   stocks: getStockIdeas,
   options: getOptionIdeas,
   watchlist: getWatchlistAlerts,
+  alerts: getMarketAlerts,
   beginner: getBeginnerFriendlyIdeaCards,
 };
 

@@ -168,7 +168,13 @@ async function runScan(userId: string, filters: RadarFilters, category?: DailyId
 // ---------- Public API ----------
 
 export async function getDailyIdeasForUser(userId: string): Promise<DailyIdeasResult> {
-  return runScan(userId, { strategyType: "any", minGrade: "C", timeHorizon: "1_4w" });
+  const r = await runScan(userId, { strategyType: "any", minGrade: "C", timeHorizon: "1_4w" });
+  if (r.ideas.length > 0) return r;
+  // Fallback: drop time-horizon constraint so simulated/no-watchlist users still see ideas.
+  const broad = await runScan(userId, { strategyType: "any", minGrade: "C" });
+  if (broad.ideas.length > 0) return broad;
+  // Last resort: widen universe to high-volume liquid names.
+  return runScan(userId, { strategyType: "any", universe: "high_volume", minGrade: "C" });
 }
 
 export async function getGrowthIdeas(userId: string): Promise<DailyIdeasResult> {
@@ -195,11 +201,18 @@ export async function getOptionIdeas(userId: string): Promise<DailyIdeasResult> 
 }
 
 export async function getWatchlistAlerts(userId: string): Promise<DailyIdeasResult> {
+  const r = await runScan(userId, { strategyType: "any", universe: "watchlist", minGrade: "C" });
+  return { ...r, ideas: r.ideas.slice(0, 12) };
+}
+
+export async function getMarketAlerts(userId: string): Promise<DailyIdeasResult> {
+  // Risk-leaning items across the user's universe — bearish sentiment or weaker scores.
   const r = await runScan(userId, { strategyType: "any", universe: "watchlist", minGrade: "C" }, "market_alert");
-  // Promote to "market_alert" for risk-leaning sentiment items
   const alerts = r.ideas
-    .filter((i) => i.sentimentLabel === "bearish" || i.sentimentLabel === "mixed" || i.score < 65)
-    .map((i) => ({ ...i, category: "market_alert" as const }));
+    .filter((i) => i.sentimentLabel === "bearish" || i.sentimentLabel === "mixed" || i.score < 70)
+    .map((i) => ({ ...i, category: "market_alert" as const }))
+    .slice(0, 8);
+  // If nothing risk-leaning, surface lower-conviction items so the tab still has content.
   return { ...r, ideas: alerts.length > 0 ? alerts : r.ideas.slice(0, 4) };
 }
 
@@ -208,11 +221,14 @@ export async function getMarketSnapshot(userId: string): Promise<DailyIdeasResul
 }
 
 export async function getBeginnerFriendlyIdeaCards(userId: string): Promise<DailyIdeasResult> {
-  // Bias toward defined-risk and lower-risk instruments
+  // Bias toward defined-risk and lower-risk instruments — fall back if too strict.
   const r = await runScan(userId, { strategyType: "any", minGrade: "B", minRewardRisk: 1.2 });
   const filtered = r.ideas
     .filter((i) => i.riskLevel !== "high")
     .sort((a, b) => b.score - a.score)
     .slice(0, 8);
-  return { ...r, ideas: filtered };
+  if (filtered.length > 0) return { ...r, ideas: filtered };
+  // Fallback: relax to any C+ ideas so the panel isn't blank for new users.
+  const broad = await runScan(userId, { strategyType: "any", minGrade: "C" });
+  return { ...broad, ideas: broad.ideas.slice(0, 8) };
 }

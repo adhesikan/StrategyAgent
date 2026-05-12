@@ -237,7 +237,7 @@ function InstrumentBlock({
                 {leg.side === "buy" ? "BUY" : "SELL"}
               </Badge>
               <span>
-                {leg.optionType.toUpperCase()} ${leg.strike} · exp {leg.expiration}
+                {leg.optionType?.toUpperCase() ?? ""} ${leg.strike} · exp {leg.expiration}
               </span>
               {typeof leg.estimatedPremium === "number" && (
                 <span className="ml-auto">~${leg.estimatedPremium.toFixed(2)}</span>
@@ -285,14 +285,14 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
               </div>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0" data-testid="badge-asset-type">
-                  {setup.assetType.toUpperCase()}
+                  {setup.assetType?.toUpperCase() ?? "—"}
                 </Badge>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0" data-testid="badge-timeframe">
                   {setup.timeframe}
                 </Badge>
                 <span className={`flex items-center gap-1 text-xs font-medium ${biasColor}`} data-testid="text-bias">
                   <BiasIcon bias={setup.bias} />
-                  {setup.bias.charAt(0).toUpperCase() + setup.bias.slice(1)}
+                  {setup.bias ? setup.bias.charAt(0).toUpperCase() + setup.bias.slice(1) : ""}
                 </span>
               </div>
             </div>

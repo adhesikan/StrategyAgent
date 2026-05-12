@@ -187,7 +187,7 @@ export function OptionTradeTicket({
     onSuccess: (data) => {
       toast({
         title: "Option Order Submitted",
-        description: data.notice || `Buy ${quantity} ${symbol} ${selectedContract?.optionType.toUpperCase()} ${selectedContract?.strike} @ ${selectedContract?.expiration}`,
+        description: data.notice || `Buy ${quantity} ${symbol} ${selectedContract?.optionType?.toUpperCase() ?? ""} ${selectedContract?.strike} @ ${selectedContract?.expiration}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/broker/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trade-outcomes"] });
@@ -386,7 +386,7 @@ export function OptionTradeTicket({
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Selected:</span>
                       <span className="font-mono font-medium">
-                        {symbol} {selectedContract.optionType.toUpperCase()} {selectedContract.strike} {selectedContract.expiration}
+                        {symbol} {selectedContract.optionType?.toUpperCase() ?? ""} {selectedContract.strike} {selectedContract.expiration}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -467,7 +467,7 @@ export function OptionTradeTicket({
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Action:</span>
                       <span className="font-medium">
-                        Buy to open {quantity} {selectedContract.optionType.toUpperCase()} {selectedContract.strike}
+                        Buy to open {quantity} {selectedContract.optionType?.toUpperCase() ?? ""} {selectedContract.strike}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">

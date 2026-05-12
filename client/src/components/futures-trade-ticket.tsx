@@ -98,7 +98,7 @@ export function FuturesTradeTicket({
     onSuccess: () => {
       toast({
         title: "Order Placed",
-        description: `${opportunity?.side.toUpperCase()} ${quantity} ${opportunity?.symbol} contract${quantity > 1 ? "s" : ""} submitted`,
+        description: `${opportunity?.side?.toUpperCase() ?? ""} ${quantity} ${opportunity?.symbol} contract${quantity > 1 ? "s" : ""} submitted`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/futures/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/futures/positions"] });
@@ -159,7 +159,7 @@ export function FuturesTradeTicket({
                   <span className="text-muted-foreground">Side:</span>
                   <span className={`font-medium flex items-center gap-0.5 ${isBuy ? "text-green-500" : "text-red-500"}`}>
                     {isBuy ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                    {opportunity.side.toUpperCase()}
+                    {opportunity.side?.toUpperCase() ?? ""}
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -383,7 +383,7 @@ export function FuturesTradeTicket({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Action:</span>
                 <span className={`font-medium ${isBuy ? "text-green-500" : "text-red-500"}`}>
-                  {opportunity.side.toUpperCase()} {quantity} {opportunity.symbol}
+                  {opportunity.side?.toUpperCase() ?? ""} {quantity} {opportunity.symbol}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
@@ -439,7 +439,7 @@ export function FuturesTradeTicket({
             ) : (
               <Zap className="h-4 w-4 mr-1" />
             )}
-            Place {opportunity.side.toUpperCase()} Order
+            Place {opportunity.side?.toUpperCase() ?? ""} Order
           </Button>
         </SheetFooter>
       </SheetContent>

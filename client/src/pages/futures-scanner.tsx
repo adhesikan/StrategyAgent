@@ -1071,7 +1071,7 @@ export default function FuturesScanner() {
                       <TableCell>
                         <span className={cn("flex items-center gap-1 text-sm", opp.side === "buy" ? "text-green-500" : "text-red-500")}>
                           {opp.side === "buy" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                          {opp.side.toUpperCase()}
+                          {opp.side?.toUpperCase() ?? ""}
                         </span>
                       </TableCell>
                       <TableCell className="font-mono text-sm">{opp.entry.toFixed(2)}</TableCell>

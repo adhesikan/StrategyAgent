@@ -105,7 +105,7 @@ interface TradeTicketProps {
 }
 
 function buildOccSymbol(candidate: OptionCandidate): string {
-  const underlying = candidate.underlying.toUpperCase();
+  const underlying = candidate.underlying?.toUpperCase() ?? "";
   const [expY, expM, expD] = candidate.expiration.split("-");
   const yy = expY.slice(-2);
   const mm = expM.padStart(2, "0");

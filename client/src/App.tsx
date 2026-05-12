@@ -17,6 +17,7 @@ import { PersonaProvider } from "@/context/PersonaContext";
 import { PlanProvider } from "@/context/PlanContext";
 import { StatusBanner } from "@/components/status-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 import Charts from "@/pages/charts";
 import Backtest from "@/pages/backtest";
@@ -162,6 +163,15 @@ interface LegalStatus {
   acceptedAt: string | null;
 }
 
+function RouteErrorBoundary() {
+  const [location] = useLocation();
+  return (
+    <ErrorBoundary key={location}>
+      <AppRouter />
+    </ErrorBoundary>
+  );
+}
+
 function AppLayout() {
   return (
     <PlanProvider>
@@ -237,7 +247,7 @@ function AppLayoutInner() {
             }}
           >
             <main className="flex-1 w-full">
-              <AppRouter />
+              <RouteErrorBoundary />
             </main>
             <Footer />
           </PullToRefresh>

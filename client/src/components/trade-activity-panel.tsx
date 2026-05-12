@@ -271,7 +271,7 @@ function TradeCard({ trade, onInstaTrade, onCancel, isCancelling, position }: {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Cancel Order</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Are you sure you want to cancel the {trade.side.toUpperCase()} order for{" "}
+                        Are you sure you want to cancel the {trade.side?.toUpperCase() ?? ""} order for{" "}
                         <span className="font-mono font-bold">{trade.symbol}</span>{" "}
                         (Qty: {trade.quantity})?
                         {trade.brokerOrderId && (
@@ -333,7 +333,7 @@ export function TradeActivityPanel() {
   const positionMap = useMemo(() => {
     const map = new Map<string, BrokerPosition>();
     for (const pos of brokerPositions) {
-      map.set(pos.symbol.toUpperCase(), pos);
+      if (pos.symbol) map.set(pos.symbol.toUpperCase(), pos);
     }
     return map;
   }, [brokerPositions]);
@@ -424,7 +424,7 @@ export function TradeActivityPanel() {
       const q = searchQuery.trim().toUpperCase();
       results = results.filter(
         (t) =>
-          t.symbol.toUpperCase().includes(q) ||
+          (t.symbol?.toUpperCase().includes(q) ?? false) ||
           t.brokerOrderId?.toUpperCase().includes(q)
       );
     }
@@ -591,7 +591,7 @@ export function TradeActivityPanel() {
                 onInstaTrade={handleInstaTrade}
                 onCancel={handleCancelOrder}
                 isCancelling={cancellingOrderId === (trade.brokerOrderId || trade.id.replace("broker-", ""))}
-                position={positionMap.get(trade.symbol.toUpperCase()) || null}
+                position={trade.symbol ? positionMap.get(trade.symbol.toUpperCase()) || null : null}
               />
             ))}
           </div>

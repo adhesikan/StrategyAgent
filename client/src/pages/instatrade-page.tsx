@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Zap, Search, Info } from "lucide-react";
 import { Link } from "wouter";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
+import { OptionTradeTicket } from "@/components/option-trade-ticket";
 import { HelpLink } from "@/components/help-link";
 
 interface BrokerAccount {
@@ -43,7 +44,7 @@ export default function InstaTradePage() {
   }, [urlTicker]);
 
   useEffect(() => {
-    if (assetType === "stock") setOpen(true);
+    setOpen(true);
   }, [activeTicker, assetType]);
 
   const updateUrl = (next: { ticker?: string; asset?: "stock" | "option" }) => {
@@ -110,7 +111,7 @@ export default function InstaTradePage() {
                   />
                 </div>
                 <Button onClick={applyTicker} data-testid="button-apply-symbol">
-                  {assetType === "stock" ? "Open Ticket" : "Find Options"}
+                  {assetType === "stock" ? "Open Ticket" : "Open Option Chain"}
                 </Button>
               </div>
               <div className="flex flex-wrap gap-1 pt-1">
@@ -135,43 +136,40 @@ export default function InstaTradePage() {
             </div>
 
             {assetType === "option" && (
-              <div className="rounded-md border border-border/60 bg-muted/40 p-3 text-sm flex gap-2">
+              <div className="rounded-md border border-border/60 bg-muted/40 p-3 text-xs flex gap-2">
                 <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                 <div>
-                  Option tickets (calls, puts, spreads) are built from a strategy idea — open{" "}
+                  Picks a single call or put from your broker's option chain. For multi-leg
+                  strategies (spreads, covered calls, CSPs) try{" "}
                   <Link href={`/trade-finder?ticker=${activeTicker}`} className="underline">
                     Trade Finder
                   </Link>{" "}
-                  for a custom plan, or{" "}
+                  or{" "}
                   <Link href="/income-mode" className="underline">
                     Generate Income
-                  </Link>{" "}
-                  for covered calls and CSPs. The reviewed setup will open back here for you to send
-                  to your broker.
+                  </Link>.
                 </div>
               </div>
             )}
 
-            {assetType === "stock" && (
-              <div className="flex items-center justify-between pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate("/home")}
-                  data-testid="button-back-home"
-                >
-                  Back to Home
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setOpen(true)}
-                  data-testid="button-reopen-ticket"
-                >
-                  Reopen Ticket
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center justify-between pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/home")}
+                data-testid="button-back-home"
+              >
+                Back to Home
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpen(true)}
+                data-testid="button-reopen-ticket"
+              >
+                Reopen Ticket
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
@@ -187,6 +185,27 @@ export default function InstaTradePage() {
             stopLoss: null,
             stage: "WATCH",
             patternScore: 0,
+          }}
+          brokerAccounts={brokerAccounts || []}
+          selectedAccount={selectedAccount}
+          onAccountChange={setSelectedAccount}
+          onSymbolChange={(sym) => {
+            setActiveTicker(sym);
+            setTickerInput(sym);
+            updateUrl({ ticker: sym, asset: "stock" });
+          }}
+        />
+      )}
+
+      {assetType === "option" && (
+        <OptionTradeTicket
+          open={open}
+          onOpenChange={setOpen}
+          symbol={activeTicker}
+          onSymbolChange={(sym) => {
+            setActiveTicker(sym);
+            setTickerInput(sym);
+            updateUrl({ ticker: sym, asset: "option" });
           }}
           brokerAccounts={brokerAccounts || []}
           selectedAccount={selectedAccount}

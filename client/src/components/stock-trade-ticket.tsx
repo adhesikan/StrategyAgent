@@ -59,6 +59,8 @@ interface StockTradeTicketProps {
   brokerAccounts: BrokerAccount[];
   selectedAccount: BrokerAccount | null;
   onAccountChange: (account: BrokerAccount | null) => void;
+  /** When provided, the symbol becomes editable inside the ticket. */
+  onSymbolChange?: (newSymbol: string) => void;
 }
 
 export function StockTradeTicket({
@@ -68,8 +70,21 @@ export function StockTradeTicket({
   brokerAccounts,
   selectedAccount,
   onAccountChange,
+  onSymbolChange,
 }: StockTradeTicketProps) {
   const { toast } = useToast();
+  const [symbolDraft, setSymbolDraft] = useState<string>("");
+
+  useEffect(() => {
+    if (scanResult) setSymbolDraft(scanResult.ticker);
+  }, [scanResult?.ticker]);
+
+  const commitSymbol = () => {
+    const sym = symbolDraft.trim().toUpperCase();
+    if (sym && onSymbolChange && scanResult && sym !== scanResult.ticker) {
+      onSymbolChange(sym);
+    }
+  };
   const [entryType, setEntryType] = useState<"market" | "limit">("limit");
   const [limitPrice, setLimitPrice] = useState<string>("");
   const [quantity, setQuantity] = useState<number>(1);
@@ -233,11 +248,29 @@ export function StockTradeTicket({
           <div className="px-4 py-3 space-y-4">
             <div className="p-3 rounded-md bg-muted/50 space-y-2">
               <p className="text-xs font-medium text-muted-foreground">Trade Details</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Symbol:</span>
-                  <span className="font-mono font-medium">{scanResult.ticker}</span>
+              {onSymbolChange ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Symbol</Label>
+                  <Input
+                    value={symbolDraft}
+                    onChange={(e) => setSymbolDraft(e.target.value.toUpperCase())}
+                    onBlur={commitSymbol}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+                    className="font-mono uppercase h-8"
+                    data-testid="input-stock-ticket-symbol"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Press Enter or click away to switch symbols.
+                  </p>
                 </div>
+              ) : null}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {!onSymbolChange && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">Symbol:</span>
+                    <span className="font-mono font-medium">{scanResult.ticker}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1">
                   <span className="text-muted-foreground">Stage:</span>
                   <span className={`font-medium ${stageColor}`}>{scanResult.stage}</span>

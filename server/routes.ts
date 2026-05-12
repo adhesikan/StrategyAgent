@@ -2927,6 +2927,46 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  app.get("/api/broker/options/expirations/:symbol", isAuthenticatedOrPartner, async (req, res) => {
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      if (!connection || !connection.isConnected || !connection.accessToken) {
+        return res.status(400).json({ error: "No active broker connection. Connect Tradier or TradeStation to load option chains." });
+      }
+      const { getOptionExpirations } = await import("./broker");
+      const expirations = await getOptionExpirations(userId, symbol);
+      res.json({ symbol, expirations });
+    } catch (error: any) {
+      console.error("[OptionExpirations] error:", error.message);
+      res.status(500).json({ error: "Failed to fetch option expirations from broker" });
+    }
+  });
+
+  // Path-style route so default React Query fetcher (joins queryKey with "/") works:
+  // queryKey: ['/api/broker/options/chain', symbol, expiration] → /api/broker/options/chain/SPY/2026-01-16
+  app.get("/api/broker/options/chain/:symbol/:expiration", isAuthenticatedOrPartner, async (req, res) => {
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const expiration = req.params.expiration;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(expiration)) {
+        return res.status(400).json({ error: "expiration must be in YYYY-MM-DD format" });
+      }
+      const userId = req.session.userId!;
+      const connection = await storage.getBrokerConnectionWithToken(userId);
+      if (!connection || !connection.isConnected || !connection.accessToken) {
+        return res.status(400).json({ error: "No active broker connection. Connect Tradier or TradeStation to load option chains." });
+      }
+      const { getOptionChain } = await import("./broker");
+      const contracts = await getOptionChain(userId, symbol, expiration);
+      res.json({ symbol, expiration, contracts });
+    } catch (error: any) {
+      console.error("[OptionChain] error:", error.message);
+      res.status(500).json({ error: "Failed to fetch option chain from broker" });
+    }
+  });
+
   // ─── Trade Ticket API (Preview & Place) ──────────────────────────────
   const { tradeOrders, managedExits } = await import("@shared/schema");
 

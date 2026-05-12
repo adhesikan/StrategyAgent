@@ -1,6 +1,17 @@
 import type { BrokerProvider, BrokerStatus, NormalizedAccount, NormalizedPosition, NormalizedOrder, OrderRequest, OrderResponse } from "./types";
-import { tradierProvider, registerSandboxToken } from "./providers/tradier";
-import { tradestationProvider, getTradeStationBaseUrl } from "./providers/tradestation";
+import {
+  tradierProvider,
+  registerSandboxToken,
+  tradierGetOptionExpirations,
+  tradierGetOptionChain,
+  type OptionChainContract,
+} from "./providers/tradier";
+import {
+  tradestationProvider,
+  getTradeStationBaseUrl,
+  tsGetOptionExpirations,
+  tsGetOptionChain,
+} from "./providers/tradestation";
 import { storage } from "../storage";
 
 const providers: Record<string, BrokerProvider> = {
@@ -558,6 +569,26 @@ export async function getOptionQuote(userId: string, optionSymbol: string) {
   if (!provider.getOptionQuote) return null;
   const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
   return provider.getOptionQuote(token, optionSymbol);
+}
+
+export async function getOptionExpirations(userId: string, symbol: string): Promise<string[]> {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) return [];
+  const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  if (connection.provider === "tradestation") return tsGetOptionExpirations(token, symbol);
+  return tradierGetOptionExpirations(token, symbol);
+}
+
+export async function getOptionChain(
+  userId: string,
+  symbol: string,
+  expiration: string,
+): Promise<OptionChainContract[]> {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) return [];
+  const { token } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  if (connection.provider === "tradestation") return tsGetOptionChain(token, symbol, expiration);
+  return tradierGetOptionChain(token, symbol, expiration);
 }
 
 export async function cancelBrokerOrder(userId: string, orderId: string): Promise<{ success: boolean; message: string }> {

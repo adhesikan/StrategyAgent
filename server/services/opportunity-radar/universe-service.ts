@@ -9,7 +9,7 @@
  */
 
 import { storage } from "../../storage";
-import { DOW_30 } from "../../symbol-universes";
+import { DOW_30, NASDAQ_100, SP_500 } from "../../symbol-universes";
 
 export const FALLBACK_DEMO_SYMBOLS = [
   "AAPL",
@@ -27,7 +27,14 @@ export const FALLBACK_DEMO_SYMBOLS = [
 const HIGH_VOLUME = ["AAPL", "MSFT", "NVDA", "AMD", "TSLA", "META", "AMZN", "GOOGL", "SPY", "QQQ", "PLTR", "MU", "INTC", "F", "BAC"];
 const OPTIONS_LIQUID = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "TSLA", "AMD", "META", "AMZN", "GOOGL", "IWM", "DIA", "BAC", "F", "INTC"];
 
-export type RadarUniverseId = "watchlist" | "large_cap" | "high_volume" | "options_liquid" | "custom";
+export type RadarUniverseId =
+  | "watchlist"
+  | "large_cap"
+  | "high_volume"
+  | "options_liquid"
+  | "nasdaq_100"
+  | "sp_500"
+  | "custom";
 
 export type UniverseSource =
   | "custom"
@@ -35,7 +42,9 @@ export type UniverseSource =
   | "starter_fallback"
   | "large_cap"
   | "high_volume"
-  | "options_liquid";
+  | "options_liquid"
+  | "nasdaq_100"
+  | "sp_500";
 
 export interface UniverseRequest {
   universe: RadarUniverseId;
@@ -56,6 +65,8 @@ const SOURCE_LABELS: Record<UniverseSource, string> = {
   large_cap: "Large Cap (Dow 30)",
   high_volume: "High Volume",
   options_liquid: "Options Liquid",
+  nasdaq_100: "Nasdaq 100",
+  sp_500: "S&P 500",
 };
 
 export async function resolveUniverseWithMeta(req: UniverseRequest): Promise<ResolvedUniverse> {
@@ -86,6 +97,10 @@ export async function resolveUniverseWithMeta(req: UniverseRequest): Promise<Res
       return { symbols: normalize(HIGH_VOLUME), source: "high_volume", label: SOURCE_LABELS.high_volume };
     case "options_liquid":
       return { symbols: normalize(OPTIONS_LIQUID), source: "options_liquid", label: SOURCE_LABELS.options_liquid };
+    case "nasdaq_100":
+      return { symbols: normalize(NASDAQ_100), source: "nasdaq_100", label: SOURCE_LABELS.nasdaq_100 };
+    case "sp_500":
+      return { symbols: normalize(SP_500), source: "sp_500", label: SOURCE_LABELS.sp_500 };
     case "custom":
     default:
       return { symbols: normalize(FALLBACK_DEMO_SYMBOLS), source: "starter_fallback", label: SOURCE_LABELS.starter_fallback };

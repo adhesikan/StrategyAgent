@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,6 +82,73 @@ interface IdeasResponse {
   disclaimer: string;
 }
 
+type ScanUniverseId =
+  | "default"
+  | "watchlist"
+  | "large_cap"
+  | "nasdaq_100"
+  | "sp_500"
+  | "high_volume"
+  | "options_liquid"
+  | "custom";
+
+const SCAN_UNIVERSE_OPTIONS: { value: ScanUniverseId; label: string; hint: string }[] = [
+  { value: "default", label: "Auto (recommended)", hint: "Use your watchlist with smart fallbacks" },
+  { value: "watchlist", label: "My Watchlist", hint: "Only the symbols you've saved" },
+  { value: "large_cap", label: "Dow 30", hint: "30 blue-chip stocks" },
+  { value: "nasdaq_100", label: "Nasdaq 100", hint: "Top 100 Nasdaq names" },
+  { value: "sp_500", label: "S&P 500", hint: "Top 500 US stocks (sampled)" },
+  { value: "high_volume", label: "High Volume", hint: "Most-traded liquid names" },
+  { value: "options_liquid", label: "Options Liquid", hint: "Best for option ideas" },
+  { value: "custom", label: "Custom symbols…", hint: "Enter your own list" },
+];
+
+interface ScanPrefs {
+  universe: ScanUniverseId;
+  customSymbols: string;
+}
+
+function decodeScanPrefs(raw: string | null | undefined): ScanPrefs {
+  if (!raw || raw === "all") return { universe: "default", customSymbols: "" };
+  if (raw.startsWith("custom:")) {
+    return { universe: "custom", customSymbols: raw.slice("custom:".length) };
+  }
+  const valid = SCAN_UNIVERSE_OPTIONS.map((o) => o.value);
+  if (valid.includes(raw as ScanUniverseId)) {
+    return { universe: raw as ScanUniverseId, customSymbols: "" };
+  }
+  return { universe: "default", customSymbols: "" };
+}
+
+function encodeScanPrefs(p: ScanPrefs): string {
+  if (p.universe === "default") return "all";
+  if (p.universe === "custom") {
+    const list = p.customSymbols
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 30)
+      .join(",");
+    return list ? `custom:${list}` : "all";
+  }
+  return p.universe;
+}
+
+function buildIdeasUrl(bucket: string, p: ScanPrefs): string {
+  const params = new URLSearchParams({ bucket });
+  if (p.universe === "custom") {
+    const list = p.customSymbols
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 30);
+    if (list.length > 0) params.set("customSymbols", list.join(","));
+  } else if (p.universe !== "default") {
+    params.set("universe", p.universe);
+  }
+  return `/api/daily-ideas?${params.toString()}`;
+}
+
 const ACTIONS = [
   {
     title: "Grow My Money",
@@ -143,17 +213,49 @@ export default function HomeV2() {
   const { user } = useAuth();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("all");
+  const { toast } = useToast();
+  const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
+  const [customDraft, setCustomDraft] = useState("");
 
   const { data: snap } = useQuery<Snapshot>({
     queryKey: ["/api/home/snapshot"],
     refetchInterval: 60_000,
   });
 
+  const { data: settingsData } = useQuery<{ scanUniverse?: string | null }>({
+    queryKey: ["/api/user/settings"],
+  });
+
+  useEffect(() => {
+    if (!settingsData) return;
+    const decoded = decodeScanPrefs(settingsData.scanUniverse);
+    setScanPrefs(decoded);
+    setCustomDraft(decoded.customSymbols);
+  }, [settingsData]);
+
+  const saveScanUniverse = useMutation({
+    mutationFn: async (raw: string) => {
+      return apiRequest("PATCH", "/api/user/settings", { scanUniverse: raw });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-ideas"] });
+    },
+    onError: () => {
+      toast({ title: "Couldn't save scan source", description: "Your selection is active for this session.", variant: "destructive" });
+    },
+  });
+
+  const applyPrefs = (next: ScanPrefs) => {
+    setScanPrefs(next);
+    saveScanUniverse.mutate(encodeScanPrefs(next));
+  };
+
   const activeBucket = TABS.find((t) => t.value === tab)?.bucket ?? "beginner";
   const { data: ideasResp, isLoading: ideasLoading } = useQuery<IdeasResponse>({
-    queryKey: ["/api/daily-ideas", { bucket: activeBucket }],
+    queryKey: ["/api/daily-ideas", { bucket: activeBucket, universe: scanPrefs.universe, custom: scanPrefs.customSymbols }],
     queryFn: async () => {
-      const r = await fetch(`/api/daily-ideas?bucket=${activeBucket}`, { credentials: "include" });
+      const r = await fetch(buildIdeasUrl(activeBucket, scanPrefs), { credentials: "include" });
       if (!r.ok) throw new Error("Failed to load ideas");
       return r.json();
     },
@@ -191,15 +293,69 @@ export default function HomeV2() {
         </div>
 
         <section>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-base font-semibold flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
               Today's Ideas For You
             </h2>
-            {ideasResp?.dataMode === "simulated" && (
-              <Badge variant="outline" className="text-[10px]">Simulated data</Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {ideasResp?.dataMode === "simulated" && (
+                <Badge variant="outline" className="text-[10px]" data-testid="badge-simulated">Simulated data</Badge>
+              )}
+              <span className="text-xs text-muted-foreground hidden sm:inline">Scan from</span>
+              <Select
+                value={scanPrefs.universe}
+                onValueChange={(v) => {
+                  const next: ScanPrefs = { universe: v as ScanUniverseId, customSymbols: scanPrefs.customSymbols };
+                  if (next.universe !== "custom") {
+                    applyPrefs({ ...next, customSymbols: "" });
+                    setCustomDraft("");
+                  } else {
+                    setScanPrefs(next);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs" data-testid="select-scan-universe">
+                  <SelectValue placeholder="Auto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCAN_UNIVERSE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} data-testid={`option-universe-${opt.value}`}>
+                      <span className="font-medium">{opt.label}</span>
+                      <span className="block text-[10px] text-muted-foreground">{opt.hint}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          {scanPrefs.universe === "custom" && (
+            <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+              <Input
+                value={customDraft}
+                onChange={(e) => setCustomDraft(e.target.value)}
+                placeholder="e.g. AAPL, MSFT, NVDA, TSLA"
+                className="h-8 max-w-md text-xs"
+                data-testid="input-custom-symbols"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyPrefs({ universe: "custom", customSymbols: customDraft });
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => applyPrefs({ universe: "custom", customSymbols: customDraft })}
+                data-testid="button-save-custom-symbols"
+              >
+                Apply
+              </Button>
+              <span className="text-muted-foreground">Comma-separated, up to 30 tickers.</span>
+            </div>
+          )}
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
               {TABS.map((t) => (

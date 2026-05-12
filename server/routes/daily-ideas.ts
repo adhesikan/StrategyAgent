@@ -8,7 +8,9 @@ import {
   getWatchlistAlerts,
   getMarketAlerts,
   getBeginnerFriendlyIdeaCards,
+  type ScanOverrides,
 } from "../services/daily-opportunity-scan";
+import type { RadarUniverseId } from "../services/opportunity-radar/universe-service";
 
 type Bucket =
   | "all"
@@ -20,7 +22,7 @@ type Bucket =
   | "alerts"
   | "beginner";
 
-const handlers: Record<Bucket, (userId: string) => Promise<unknown>> = {
+const handlers: Record<Bucket, (userId: string, overrides?: ScanOverrides) => Promise<unknown>> = {
   all: getDailyIdeasForUser,
   growth: getGrowthIdeas,
   income: getIncomeIdeas,
@@ -28,8 +30,37 @@ const handlers: Record<Bucket, (userId: string) => Promise<unknown>> = {
   options: getOptionIdeas,
   watchlist: getWatchlistAlerts,
   alerts: getMarketAlerts,
-  beginner: getBeginnerFriendlyIdeaCards,
+  beginner: (userId) => getBeginnerFriendlyIdeaCards(userId),
 };
+
+const VALID_UNIVERSES: RadarUniverseId[] = [
+  "watchlist",
+  "large_cap",
+  "high_volume",
+  "options_liquid",
+  "nasdaq_100",
+  "sp_500",
+  "custom",
+];
+
+function parseOverrides(query: Record<string, unknown>): ScanOverrides | undefined {
+  const overrides: ScanOverrides = {};
+  const rawUniverse = typeof query.universe === "string" ? query.universe : undefined;
+  if (rawUniverse && VALID_UNIVERSES.includes(rawUniverse as RadarUniverseId)) {
+    overrides.universe = rawUniverse as RadarUniverseId;
+  }
+  const rawSymbols = typeof query.customSymbols === "string" ? query.customSymbols : undefined;
+  if (rawSymbols) {
+    const list = rawSymbols
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 30);
+    if (list.length > 0) overrides.customSymbols = list;
+  }
+  if (!overrides.universe && !overrides.customSymbols) return undefined;
+  return overrides;
+}
 
 export function registerDailyIdeasRoutes(app: Express, isAuthenticated: RequestHandler): void {
   app.get("/api/daily-ideas", isAuthenticated, async (req, res) => {
@@ -38,7 +69,8 @@ export function registerDailyIdeasRoutes(app: Express, isAuthenticated: RequestH
       if (!userId) return res.status(401).json({ error: "unauthorized" });
       const bucket = (String(req.query.bucket || "all") as Bucket);
       const handler = handlers[bucket] ?? getDailyIdeasForUser;
-      const result = await handler(userId);
+      const overrides = parseOverrides(req.query as Record<string, unknown>);
+      const result = await handler(userId, overrides);
       res.json(result);
     } catch (err) {
       console.error("[daily-ideas] error:", err);

@@ -15,6 +15,23 @@ import {
   type RadarFilters,
   type StrategyType,
 } from "./opportunity-radar/radar-service";
+import type { RadarUniverseId } from "./opportunity-radar/universe-service";
+
+export interface ScanOverrides {
+  universe?: RadarUniverseId;
+  customSymbols?: string[];
+}
+
+function withOverrides(filters: RadarFilters, overrides?: ScanOverrides): RadarFilters {
+  if (!overrides) return filters;
+  const merged: RadarFilters = { ...filters };
+  if (overrides.universe) merged.universe = overrides.universe;
+  if (overrides.customSymbols && overrides.customSymbols.length > 0) {
+    merged.customSymbols = overrides.customSymbols;
+    merged.universe = "custom";
+  }
+  return merged;
+}
 
 export type DailyIdeaCategory = "growth" | "income" | "trade" | "market_alert";
 export type DailyIdeaInstrument =
@@ -191,48 +208,45 @@ async function runScan(userId: string, filters: RadarFilters, category?: DailyId
 
 // ---------- Public API ----------
 
-export async function getDailyIdeasForUser(userId: string): Promise<DailyIdeasResult> {
-  const r = await runScan(userId, { strategyType: "any", minGrade: "C", timeHorizon: "1_4w" });
+export async function getDailyIdeasForUser(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
+  const r = await runScan(userId, withOverrides({ strategyType: "any", minGrade: "C", timeHorizon: "1_4w" }, overrides));
   if (r.ideas.length > 0) return r;
-  // Fallback: drop time-horizon constraint so simulated/no-watchlist users still see ideas.
-  const broad = await runScan(userId, { strategyType: "any", minGrade: "C" });
+  const broad = await runScan(userId, withOverrides({ strategyType: "any", minGrade: "C" }, overrides));
   if (broad.ideas.length > 0) return broad;
-  // Last resort: widen universe to high-volume liquid names.
+  // Last resort: widen universe to high-volume liquid names (only if user didn't pin a universe).
+  if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return broad;
   return runScan(userId, { strategyType: "any", universe: "high_volume", minGrade: "C" });
 }
 
-export async function getGrowthIdeas(userId: string): Promise<DailyIdeasResult> {
-  return runScan(userId, { strategyType: "stock_swing", bias: "bullish", minGrade: "B" }, "growth");
+export async function getGrowthIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
+  return runScan(userId, withOverrides({ strategyType: "stock_swing", bias: "bullish", minGrade: "B" }, overrides), "growth");
 }
 
-export async function getIncomeIdeas(userId: string): Promise<DailyIdeasResult> {
-  // Generate income-side from covered calls + CSPs
-  const cc = await runScan(userId, { strategyType: "covered_call", minGrade: "C" }, "income");
-  const csp = await runScan(userId, { strategyType: "cash_secured_put", minGrade: "C" }, "income");
+export async function getIncomeIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
+  const cc = await runScan(userId, withOverrides({ strategyType: "covered_call", minGrade: "C" }, overrides), "income");
+  const csp = await runScan(userId, withOverrides({ strategyType: "cash_secured_put", minGrade: "C" }, overrides), "income");
   const merged = [...cc.ideas, ...csp.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
   if (merged.length > 0) return { ...cc, ideas: merged };
-  // Fallback to high-volume universe so the tab isn't blank for empty watchlists.
+  if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return { ...cc, ideas: merged };
   const ccBroad = await runScan(userId, { strategyType: "covered_call", universe: "high_volume", minGrade: "C" }, "income");
   const cspBroad = await runScan(userId, { strategyType: "cash_secured_put", universe: "high_volume", minGrade: "C" }, "income");
   const broad = [...ccBroad.ideas, ...cspBroad.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
   return { ...ccBroad, ideas: broad };
 }
 
-export async function getStockIdeas(userId: string): Promise<DailyIdeasResult> {
-  // Default universe is the user's watchlist. If that yields nothing (empty
-  // watchlist, all symbols filtered out, etc.) fall back to high-volume liquid
-  // names so the Stocks tab isn't blank for a connected user.
-  const r = await runScan(userId, { strategyType: "stock_swing", minGrade: "C" });
+export async function getStockIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
+  const r = await runScan(userId, withOverrides({ strategyType: "stock_swing", minGrade: "C" }, overrides));
   if (r.ideas.length > 0) return r;
+  if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return r;
   return runScan(userId, { strategyType: "stock_swing", universe: "high_volume", minGrade: "C" });
 }
 
-export async function getOptionIdeas(userId: string): Promise<DailyIdeasResult> {
+export async function getOptionIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
   const types: StrategyType[] = ["long_call", "long_put", "debit_spread"];
-  const results = await Promise.all(types.map((t) => runScan(userId, { strategyType: t, minGrade: "C" })));
+  const results = await Promise.all(types.map((t) => runScan(userId, withOverrides({ strategyType: t, minGrade: "C" }, overrides))));
   const ideas = results.flatMap((r) => r.ideas).sort((a, b) => b.score - a.score).slice(0, 12);
   if (ideas.length > 0) return { ...results[0], ideas };
-  // Fallback to high-volume universe if watchlist scan was empty.
+  if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return { ...results[0], ideas };
   const broad = await Promise.all(
     types.map((t) => runScan(userId, { strategyType: t, universe: "high_volume", minGrade: "C" })),
   );
@@ -240,21 +254,20 @@ export async function getOptionIdeas(userId: string): Promise<DailyIdeasResult> 
   return { ...broad[0], ideas: broadIdeas };
 }
 
-export async function getWatchlistAlerts(userId: string): Promise<DailyIdeasResult> {
-  const r = await runScan(userId, { strategyType: "any", universe: "watchlist", minGrade: "C" });
+export async function getWatchlistAlerts(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
+  // Watchlist tab keeps watchlist semantics unless caller pins custom symbols.
+  const filters: RadarFilters = (overrides?.customSymbols?.length ?? 0) > 0
+    ? { strategyType: "any", universe: "custom", customSymbols: overrides!.customSymbols, minGrade: "C" }
+    : { strategyType: "any", universe: "watchlist", minGrade: "C" };
+  const r = await runScan(userId, filters);
   return { ...r, ideas: r.ideas.slice(0, 12) };
 }
 
-export async function getMarketAlerts(userId: string): Promise<DailyIdeasResult> {
-  // Market Alerts should surface items that warrant attention across instrument
-  // types — bearish or weak setups, plus protective option ideas — not just one
-  // narrow strategy. We pull from several strategies in parallel and mix them so
-  // the tab doesn't collapse to all-vertical-spreads when the radar's instrument
-  // selector happens to converge.
+export async function getMarketAlerts(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
   const types: StrategyType[] = ["stock_swing", "long_put", "long_call", "debit_spread"];
   const results = await Promise.all(
     types.map((t) =>
-      runScan(userId, { strategyType: t, universe: "watchlist", minGrade: "C" }, "market_alert"),
+      runScan(userId, withOverrides({ strategyType: t, universe: "watchlist", minGrade: "C" }, overrides), "market_alert"),
     ),
   );
 

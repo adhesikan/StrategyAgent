@@ -1,11 +1,25 @@
 import { useMemo, useState } from "react";
 import { useLocation, useParams, useSearch } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info } from "lucide-react";
+import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2 } from "lucide-react";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface BrokerAccount {
   id: string;
@@ -456,11 +470,84 @@ export default function TradeDetailPage() {
   const score = 94;
 
   const [ticketOpen, setTicketOpen] = useState(false);
+  const [optionTicketOpen, setOptionTicketOpen] = useState(false);
+  const [contractQty, setContractQty] = useState(1);
+  const [optionAck, setOptionAck] = useState(false);
+  const [optionAccountId, setOptionAccountId] = useState<string>("");
   const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
+  const { toast } = useToast();
 
   const { data: brokerAccounts } = useQuery<BrokerAccount[]>({
     queryKey: ["/api/broker/accounts"],
   });
+
+  const isOptionType = type !== "stock";
+
+  // Convert TradePlan legs into the API shape used by /api/trade/place-option.
+  const apiLegs = useMemo(() => {
+    if (!isOptionType) return [];
+    return plan.legs.map((leg) => {
+      const m = leg.desc.match(/\$(\d+(?:\.\d+)?)\s+(call|put)/i);
+      const strike = m ? parseFloat(m[1]) : null;
+      const optionType = m ? (m[2].toLowerCase() as "call" | "put") : null;
+      return {
+        side: leg.side === "BUY" ? "buy" : "sell",
+        quantity: leg.qty,
+        strike,
+        optionType,
+        expiry: defaultExpiryLabel(),
+        estimatedPremium: Math.abs(leg.price),
+        delta: leg.delta,
+      };
+    });
+  }, [plan.legs, isOptionType]);
+
+  // Map plan name → instrumentType the server expects.
+  const instrumentType = useMemo(() => {
+    switch (type) {
+      case "long-call": return "long_call";
+      case "long-put": return "long_put";
+      case "vertical": return plan.legs[0]?.desc.includes("call") ? "bull_call_spread" : "bear_put_spread";
+      case "short-premium": return "short_put";
+      case "complex": return "iron_condor";
+      default: return "long_call";
+    }
+  }, [type, plan.legs]);
+
+  const placeOptionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trade/place-option", {
+        symbol: ticker,
+        instrumentType,
+        legs: apiLegs,
+        quantity: contractQty,
+        setupScore: score,
+        rewardRisk: plan.payoff.maxUp / Math.max(Math.abs(plan.payoff.maxDown), 1),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Multi-leg option order sent",
+        description: data.notice || `${plan.name} on ${ticker} — ${contractQty} contract${contractQty > 1 ? "s" : ""}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/trade-outcomes"] });
+      setOptionTicketOpen(false);
+      setOptionAck(false);
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to send option order";
+      if (msg.includes("GUARDRAIL_BLOCKED")) {
+        toast({ title: "Blocked by your trade limits", description: msg, variant: "destructive" });
+      } else {
+        toast({ title: "Option order failed", description: msg, variant: "destructive" });
+      }
+    },
+  });
+
+  const netPerContract = Math.abs(plan.netPerShare) * 100;
+  const totalNet = netPerContract * contractQty;
+  const isCredit = plan.netValue > 0;
 
   const scanResult = {
     ticker,
@@ -640,7 +727,7 @@ export default function TradeDetailPage() {
         <div className="flex flex-wrap gap-3 pt-2">
           <Button
             className="gap-2"
-            onClick={() => setTicketOpen(true)}
+            onClick={() => (isOptionType ? setOptionTicketOpen(true) : setTicketOpen(true))}
             data-testid="button-send-instatrade"
           >
             <Send className="h-4 w-4" /> Send to InstaTrade™
@@ -666,6 +753,129 @@ export default function TradeDetailPage() {
         selectedAccount={selectedAccount}
         onAccountChange={setSelectedAccount}
       />
+
+      <Sheet open={optionTicketOpen} onOpenChange={setOptionTicketOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2" data-testid="title-option-ticket">
+              <Send className="h-4 w-4" /> InstaTrade™ — {plan.name}
+            </SheetTitle>
+            <SheetDescription>
+              Multi-leg option order for {ticker}. Confirm strikes, premiums and quantity in your broker chain before submitting.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-4 space-y-4">
+            <Card className="p-3 space-y-2 bg-muted/30">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Order legs
+              </div>
+              {plan.legs.map((leg, i) => (
+                <div key={i} className="flex items-center justify-between text-sm" data-testid={`option-leg-${i}`}>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={
+                        leg.side === "SELL"
+                          ? "bg-amber-50 text-amber-800 border-amber-200"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      }
+                    >
+                      {leg.side} {leg.qty * contractQty}
+                    </Badge>
+                    <span>{leg.desc}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Δ {leg.delta.toFixed(2)}</span>
+                </div>
+              ))}
+              <div className="pt-2 border-t flex justify-between text-xs text-muted-foreground">
+                <span>{isCredit ? "Net credit" : "Net debit"} (est.)</span>
+                <span className={isCredit ? "text-emerald-700 font-medium" : "text-rose-700 font-medium"}>
+                  {isCredit ? "+" : "-"}${Math.abs(plan.netPerShare).toFixed(2)} × 100 = ${netPerContract.toFixed(0)} / contract
+                </span>
+              </div>
+            </Card>
+
+            {brokerAccounts && brokerAccounts.length > 0 && (
+              <div className="space-y-1.5">
+                <Label htmlFor="option-account">Account</Label>
+                <Select value={optionAccountId} onValueChange={setOptionAccountId}>
+                  <SelectTrigger id="option-account" data-testid="select-option-account">
+                    <SelectValue placeholder="Select brokerage account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brokerAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} (${a.buyingPower.toLocaleString()} BP)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="option-qty">Contracts</Label>
+              <Input
+                id="option-qty"
+                type="number"
+                min={1}
+                max={100}
+                value={contractQty}
+                onChange={(e) => setContractQty(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                data-testid="input-contract-qty"
+              />
+              <p className="text-xs text-muted-foreground">
+                Total {isCredit ? "credit" : "cost"}: <span className="font-medium text-foreground">${totalNet.toFixed(0)}</span>
+                {" "}({contractQty} contract{contractQty > 1 ? "s" : ""} × ${netPerContract.toFixed(0)})
+              </p>
+            </div>
+
+            <div className="rounded-md border p-3 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
+              <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <p>
+                  Strikes ({apiLegs.map((l) => `$${l.strike}`).join(" / ")}) and premiums are estimates.
+                  Confirm bid/ask, IV, delta and OI in your broker's chain. Options trading involves
+                  significant risk including total loss of premium.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="option-ack"
+                checked={optionAck}
+                onCheckedChange={(c) => setOptionAck(c === true)}
+                data-testid="checkbox-option-ack"
+              />
+              <Label htmlFor="option-ack" className="text-xs leading-relaxed font-normal">
+                I have reviewed all legs, strikes, expiry and premium. I understand this is software-generated
+                analysis — not investment advice — and I'm responsible for the order.
+              </Label>
+            </div>
+          </div>
+
+          <SheetFooter className="mt-6 flex-row gap-2">
+            <Button variant="outline" onClick={() => setOptionTicketOpen(false)} className="flex-1" data-testid="button-cancel-option">
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 gap-2"
+              disabled={!optionAck || placeOptionMutation.isPending}
+              onClick={() => placeOptionMutation.mutate()}
+              data-testid="button-submit-option"
+            >
+              {placeOptionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Send multi-leg order
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

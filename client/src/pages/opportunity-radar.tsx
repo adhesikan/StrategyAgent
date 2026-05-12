@@ -445,7 +445,7 @@ function BrokerStatusCard({
               testId="chip-positions"
             />
             <StatusChip
-              label="Universe"
+              label="Stock list"
               value={universeLabel}
               tone={universeTone}
               testId="chip-universe"
@@ -466,7 +466,7 @@ function BrokerStatusCard({
               <StatusChip label="Broker" value="Not Connected" tone="amber" testId="chip-broker" />
               <StatusChip label="Data mode" value="Simulated" tone="amber" testId="chip-data-mode" />
               <StatusChip
-                label="Universe"
+                label="Stock list"
                 value={universeLabel}
                 tone={universeTone}
                 testId="chip-universe"
@@ -632,7 +632,7 @@ function FilterPanel({
             </Select>
           </FilterField>
 
-          <FilterField label="Universe">
+          <FilterField label="Stock list">
             <Select value={filters.universe} onValueChange={(v) => onChange("universe", v as UniverseId)}>
               <SelectTrigger data-testid="select-universe"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -746,7 +746,7 @@ function RankedList({
           <ListChecks className="h-8 w-8 text-muted-foreground mx-auto" />
           <p className="text-sm font-medium">Nothing passed your filters right now.</p>
           <p className="text-xs text-muted-foreground">
-            Try lowering the minimum grade, expanding the universe, or increasing max risk.
+            Try lowering the minimum grade, switching to a broader stock list, or increasing max risk.
           </p>
           {data?.hiddenByGuardrails ? (
             <p className="text-xs text-muted-foreground" data-testid="text-hidden-count">

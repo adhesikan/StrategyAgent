@@ -208,7 +208,7 @@ export default function NewsPage() {
             {universeSymbols.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Universe:</span>
+                <span className="text-xs text-muted-foreground">Watchlist:</span>
                 {universeSymbols.map((t) => (
                   <Badge
                     key={t}

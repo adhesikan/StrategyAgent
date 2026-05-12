@@ -34,7 +34,7 @@ const SECTIONS: Section[] = [
         <ul className="list-disc pl-5 space-y-2 mt-3">
           <li>
             <strong>"Scan from" picker on Home.</strong> The "Today's Ideas For You" section now has an
-            inline selector so you can choose the universe each tab scans — <em>My Watchlist, Dow 30,
+            inline selector so you can choose the stock list each tab scans — <em>My Watchlist, Dow 30,
             Nasdaq 100, S&amp;P 500, High Volume, Options Liquid,</em> or <em>Custom symbols</em>. Your
             choice is saved as a preference and persists across sessions. See the{" "}
             <Link href="/guide#home" className="underline">Home</Link> section.
@@ -51,7 +51,7 @@ const SECTIONS: Section[] = [
             scanners and Markets pages have something to work with on day one.
           </li>
           <li>
-            <strong>Universe source chip on Top Opportunities.</strong> The Radar now shows which
+            <strong>Stock-list chip on Top Opportunities.</strong> The Radar now shows which
             symbol set it scanned (your watchlist, a fallback, a major index, or your custom list) and
             highlights it in amber when a fallback was used so you know to build your watchlist.
           </li>
@@ -96,7 +96,7 @@ const SECTIONS: Section[] = [
     title: "Home Dashboard",
     icon: Home,
     summary: "Daily ideas, market snapshot, and a scan-source picker that controls every tab.",
-    keywords: ["dashboard", "today's ideas", "scan from", "universe", "watchlist", "dow", "nasdaq", "sp500"],
+    keywords: ["dashboard", "today's ideas", "scan from", "stock list", "universe", "watchlist", "dow", "nasdaq", "sp500"],
     body: (
       <>
         <p>
@@ -109,7 +109,7 @@ const SECTIONS: Section[] = [
         <h4 className="font-semibold mt-3">"Scan from" picker</h4>
         <p>
           In the top-right of the Today's Ideas section there's a <strong>Scan from</strong> dropdown.
-          It controls the symbol universe used by every tab. Your selection is saved to your account,
+          It controls the stock list used by every tab. Your selection is saved to your account,
           so it sticks across devices and sessions.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
@@ -123,9 +123,9 @@ const SECTIONS: Section[] = [
           <li><strong>Custom symbols…</strong> — opens an inline input where you type your own list (e.g. <code>AAPL, MSFT, NVDA</code>) and click Apply. Up to 30 tickers, comma-separated.</li>
         </ul>
         <p className="mt-2 text-sm text-muted-foreground">
-          When you pin a specific universe, the scanner respects your choice and won't silently widen
-          to a different list — so an empty tab really means nothing in your selected universe meets
-          the filter for that tab. Switch to Auto to let the system pick a fallback.
+          When you pin a specific list, the scanner respects your choice and won't silently widen to a
+          different one — so an empty tab really means nothing in your selected list meets the filter
+          for that tab. Switch to Auto to let the system pick a fallback.
         </p>
 
         <h4 className="font-semibold mt-3">Other things on Home</h4>
@@ -246,7 +246,7 @@ const SECTIONS: Section[] = [
     id: "radar",
     title: "Top Opportunities (Radar)",
     icon: Radar,
-    summary: "AI-ranked candidate scenarios across your universe with composite scores.",
+    summary: "AI-ranked candidate scenarios across your chosen stock list with composite scores.",
     keywords: ["opportunity", "scanner", "ideas"],
     body: (
       <>
@@ -257,12 +257,12 @@ const SECTIONS: Section[] = [
         </p>
         <h4 className="font-semibold mt-3">Filters:</h4>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>Basic:</strong> strategy, bias, max loss, min grade, time horizon, universe.</li>
+          <li><strong>Basic:</strong> strategy, bias, max loss, min grade, time horizon, stock list.</li>
           <li><strong>Advanced:</strong> minimum option volume, avoid earnings days, min reward/risk, liquidity floors.</li>
         </ul>
-        <h4 className="font-semibold mt-3">Universe source chip</h4>
+        <h4 className="font-semibold mt-3">Stock-list chip</h4>
         <p>
-          A chip at the top of the page shows which symbol set the radar actually scanned —
+          A chip at the top of the page shows which stock list the radar actually scanned —
           <em> My Watchlist</em>, <em>Large Cap (Dow 30)</em>, <em>High Volume</em>, <em>Options
           Liquid</em>, <em>Nasdaq 100</em>, <em>S&amp;P 500</em>, or <em>Custom</em>. If your watchlist
           was empty and the system fell back to a starter list, the chip turns amber so you know to
@@ -546,7 +546,7 @@ const SECTIONS: Section[] = [
           </div>
           <div>
             <dt className="font-semibold">Why is my "Today's Ideas" tab empty?</dt>
-            <dd className="text-muted-foreground">The filters for that tab didn't surface anything in the universe you selected. Try the <em>Scan from</em> picker on Home to switch to Dow 30, Nasdaq 100, S&amp;P 500, or a custom list — or go back to <em>Auto</em> to let the system fall back to a broader set.</dd>
+            <dd className="text-muted-foreground">The filters for that tab didn't surface anything in the stock list you selected. Try the <em>Scan from</em> picker on Home to switch to Dow 30, Nasdaq 100, S&amp;P 500, or a custom list — or go back to <em>Auto</em> to let the system fall back to a broader set.</dd>
           </div>
           <div>
             <dt className="font-semibold">Can I scan a custom list of stocks?</dt>

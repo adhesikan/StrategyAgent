@@ -104,6 +104,14 @@ interface CandidateScenario {
   };
   dataMode: "live" | "simulated" | "mixed";
   isOptions: boolean;
+  liquidityMetrics?: {
+    stockVolume: number;
+    optionOpenInterest: number | null;
+    optionVolume: number | null;
+    bidAskSpreadPct: number | null;
+  };
+  currentlyHeld?: boolean;
+  earningsInDays?: number | null;
   sentiment?: SentimentBlock;
 }
 
@@ -237,24 +245,52 @@ const DEFAULT_FILTERS: RadarFilters = {
   includeOnlyCurrentHoldings: false,
 };
 
+// Scan-shaping params are sent to the server — changing these triggers a rescan because they
+// affect which symbols are scanned, how scenarios are constructed (incl. position sizing via
+// maxLoss), and which strategy is applied per symbol. All other filters
+// (minGrade, liquidity floors, R/R, holdings, earnings) are PURE display filters applied
+// client-side after the scan returns, so users can retune them without rescanning.
 function buildQueryParams(f: RadarFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (f.strategyType !== "any") params.set("strategyType", f.strategyType);
   if (f.bias !== "any") params.set("bias", f.bias);
-  params.set("maxLoss", String(f.maxLoss));
-  params.set("minGrade", f.minGrade);
   params.set("timeHorizon", f.timeHorizon);
   params.set("universe", f.universe);
+  // maxLoss is sent because the server uses it for position sizing, not just filtering.
+  // The server no longer hides candidates by maxLoss — the client post-filter does that below.
+  params.set("maxLoss", String(f.maxLoss));
   if (f.customSymbols.trim()) params.set("customSymbols", f.customSymbols.trim());
-  if (f.minStockVolume) params.set("minStockVolume", f.minStockVolume);
-  if (f.minOptionOpenInterest) params.set("minOptionOpenInterest", f.minOptionOpenInterest);
-  if (f.minOptionVolume) params.set("minOptionVolume", f.minOptionVolume);
-  if (f.maxBidAskSpreadPct) params.set("maxBidAskSpreadPct", f.maxBidAskSpreadPct);
-  if (f.avoidEarningsDays) params.set("avoidEarningsDays", f.avoidEarningsDays);
-  if (f.minRewardRisk) params.set("minRewardRisk", f.minRewardRisk);
-  if (f.excludeCurrentHoldings) params.set("excludeCurrentHoldings", "true");
-  if (f.includeOnlyCurrentHoldings) params.set("includeOnlyCurrentHoldings", "true");
   return params;
+}
+
+const GRADE_RANK: Record<Grade, number> = { "A+": 4, "A": 3, "B": 2, "C": 1 };
+
+function applyClientFilters(candidates: CandidateScenario[], f: RadarFilters): CandidateScenario[] {
+  const minStockVol = Number(f.minStockVolume) || 0;
+  const minOI = Number(f.minOptionOpenInterest) || 0;
+  const minOptVol = Number(f.minOptionVolume) || 0;
+  const maxSpread = Number(f.maxBidAskSpreadPct) || 0;
+  const avoidEarn = Number(f.avoidEarningsDays) || 0;
+  const minRR = Number(f.minRewardRisk) || 0;
+
+  return candidates.filter((c) => {
+    if (c.maxLoss > f.maxLoss) return false;
+    if (GRADE_RANK[c.finalGrade] < GRADE_RANK[f.minGrade]) return false;
+    if (minRR > 0 && c.rewardRisk > 0 && c.rewardRisk < minRR) return false;
+    if (minStockVol > 0 && c.liquidityMetrics && c.liquidityMetrics.stockVolume < minStockVol) return false;
+    if (c.isOptions && c.liquidityMetrics) {
+      const lm = c.liquidityMetrics;
+      if (minOI > 0 && lm.optionOpenInterest != null && lm.optionOpenInterest < minOI) return false;
+      if (minOptVol > 0 && lm.optionVolume != null && lm.optionVolume < minOptVol) return false;
+      if (maxSpread > 0 && lm.bidAskSpreadPct != null && lm.bidAskSpreadPct > maxSpread) return false;
+    }
+    if (avoidEarn > 0 && c.earningsInDays != null && c.earningsInDays >= 0 && c.earningsInDays <= avoidEarn) {
+      return false;
+    }
+    if (f.excludeCurrentHoldings && c.currentlyHeld) return false;
+    if (f.includeOnlyCurrentHoldings && !c.currentlyHeld) return false;
+    return true;
+  });
 }
 
 export default function OpportunityRadarPage() {
@@ -280,6 +316,16 @@ export default function OpportunityRadarPage() {
 
   const updateFilter = <K extends keyof RadarFilters>(key: K, value: RadarFilters[K]) =>
     setFilters((prev) => ({ ...prev, [key]: value }));
+
+  const filteredData = useMemo<RadarResult | undefined>(() => {
+    if (!data) return data;
+    const visible = applyClientFilters(data.candidates, filters);
+    return { ...data, candidates: visible };
+  }, [data, filters]);
+
+  const totalScanned = data?.candidates.length ?? 0;
+  const visibleCount = filteredData?.candidates.length ?? 0;
+  const filteredOutCount = totalScanned - visibleCount;
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto space-y-6">
@@ -309,7 +355,15 @@ export default function OpportunityRadarPage() {
 
       <BrokerStatusCard data={data} isLoading={isLoading} onRefresh={() => refetch()} isFetching={isFetching} />
 
-      <FilterPanel filters={filters} onChange={updateFilter} onApply={() => refetch()} />
+      <FilterPanel
+        filters={filters}
+        onChange={updateFilter}
+        onReset={() => setFilters(DEFAULT_FILTERS)}
+        totalScanned={totalScanned}
+        visibleCount={visibleCount}
+        filteredOutCount={filteredOutCount}
+        serverHidden={data?.hiddenByGuardrails ?? 0}
+      />
 
       <SentimentSortBar
         sortBy={sortBy}
@@ -319,7 +373,7 @@ export default function OpportunityRadarPage() {
       />
 
       <RankedList
-        data={applySentimentSort(data, sortBy, sentimentFilter)}
+        data={applySentimentSort(filteredData, sortBy, sentimentFilter)}
         isLoading={isLoading}
         onExplain={(s) => {
           setExplainScenario(s);
@@ -551,19 +605,42 @@ function StatusChip({
 function FilterPanel({
   filters,
   onChange,
-  onApply,
+  onReset,
+  totalScanned,
+  visibleCount,
+  filteredOutCount,
+  serverHidden,
 }: {
   filters: RadarFilters;
   onChange: <K extends keyof RadarFilters>(key: K, value: RadarFilters[K]) => void;
-  onApply: () => void;
+  onReset: () => void;
+  totalScanned: number;
+  visibleCount: number;
+  filteredOutCount: number;
+  serverHidden: number;
 }) {
   return (
     <Card data-testid="card-filters">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Filter className="h-4 w-4" />
-          Filters
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Filter className="h-4 w-4" />
+              Filters
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-filter-help">
+              Most filters update the visible results instantly. Strategy, Bias, Time horizon, Stock list and
+              Max loss change how scenarios are built and will rerun the scan.
+            </p>
+          </div>
+          {totalScanned > 0 && (
+            <span className="text-xs text-muted-foreground" data-testid="text-filter-counts">
+              Showing <span className="font-medium text-foreground">{visibleCount}</span> of {totalScanned} scanned
+              {filteredOutCount > 0 ? ` · ${filteredOutCount} hidden by filters` : ""}
+              {serverHidden > 0 ? ` · ${serverHidden} unaffordable / low quality` : ""}
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -696,9 +773,8 @@ function FilterPanel({
         </Accordion>
 
         <div className="flex justify-end">
-          <Button size="sm" onClick={onApply} data-testid="button-apply-filters">
-            <Filter className="h-4 w-4 mr-1" />
-            Apply Filters
+          <Button size="sm" variant="outline" onClick={onReset} data-testid="button-reset-filters">
+            Reset filters
           </Button>
         </div>
       </CardContent>
@@ -740,19 +816,18 @@ function RankedList({
     );
   }
   if (!data || data.candidates.length === 0) {
+    // data.candidates here is the post-filter list. If raw scan returned nothing,
+    // the empty state is "scan returned nothing". Otherwise filters hid everything.
     return (
       <Card data-testid="card-empty-state">
         <CardContent className="p-8 text-center space-y-2">
           <ListChecks className="h-8 w-8 text-muted-foreground mx-auto" />
-          <p className="text-sm font-medium">Nothing passed your filters right now.</p>
-          <p className="text-xs text-muted-foreground">
-            Try lowering the minimum grade, switching to a broader stock list, or increasing max risk.
+          <p className="text-sm font-medium" data-testid="text-empty-title">
+            Your filters hid every result.
           </p>
-          {data?.hiddenByGuardrails ? (
-            <p className="text-xs text-muted-foreground" data-testid="text-hidden-count">
-              {data.hiddenByGuardrails} scenarios hidden because they did not meet your limits.
-            </p>
-          ) : null}
+          <p className="text-xs text-muted-foreground">
+            Loosen a filter above (or click Reset filters) to see scan results.
+          </p>
         </CardContent>
       </Card>
     );

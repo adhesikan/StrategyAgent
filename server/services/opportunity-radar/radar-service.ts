@@ -106,6 +106,8 @@ export interface CandidateScenario {
     optionVolume: number | null;
     bidAskSpreadPct: number | null;
   };
+  currentlyHeld: boolean;
+  earningsInDays: number | null;
   sentiment: RadarSentimentBlock;
 }
 
@@ -543,6 +545,8 @@ function buildScenarioFromEnriched(
       optionVolume,
       bidAskSpreadPct,
     },
+    currentlyHeld: ctx.currentHoldingsSymbols.includes(e.quote.symbol),
+    earningsInDays: e.earningsInDays,
     sentiment: sentimentBlock,
   };
 }
@@ -690,52 +694,18 @@ async function enrichWithMarketData(symbols: string[], userId: string, ctx: User
 
 function applyGuardrails(
   c: CandidateScenario,
-  filters: RadarFilters,
+  _filters: RadarFilters,
   ctx: UserContext,
 ): { keep: boolean; reason?: string } {
-  if (c.maxLoss > ctx.userMaxLossLimit) return { keep: false, reason: "max loss exceeds limit" };
-  if (filters.minGrade && !gradeAtLeast(c.finalGrade, filters.minGrade)) return { keep: false, reason: "below minimum grade" };
-
-  // Real per-candidate liquidity guardrails
-  if (filters.minStockVolume && c.liquidityMetrics.stockVolume < filters.minStockVolume) {
-    return { keep: false, reason: "stock volume below minimum" };
-  }
-  if (c.isOptions) {
-    if (
-      filters.minOptionOpenInterest != null &&
-      c.liquidityMetrics.optionOpenInterest != null &&
-      c.liquidityMetrics.optionOpenInterest < filters.minOptionOpenInterest
-    ) {
-      return { keep: false, reason: "option OI below minimum" };
-    }
-    if (
-      filters.minOptionVolume != null &&
-      c.liquidityMetrics.optionVolume != null &&
-      c.liquidityMetrics.optionVolume < filters.minOptionVolume
-    ) {
-      return { keep: false, reason: "option volume below minimum" };
-    }
-    if (
-      filters.maxBidAskSpreadPct != null &&
-      c.liquidityMetrics.bidAskSpreadPct != null &&
-      c.liquidityMetrics.bidAskSpreadPct > filters.maxBidAskSpreadPct
-    ) {
-      return { keep: false, reason: "bid/ask spread above maximum" };
-    }
-  }
-  if (filters.minRewardRisk && c.rewardRisk > 0 && c.rewardRisk < filters.minRewardRisk) {
-    return { keep: false, reason: "reward/risk below minimum" };
-  }
-  if (filters.excludeCurrentHoldings && ctx.currentHoldingsSymbols.includes(c.symbol)) {
-    return { keep: false, reason: "currently held — excluded by filter" };
-  }
-  if (filters.includeOnlyCurrentHoldings && !ctx.currentHoldingsSymbols.includes(c.symbol)) {
-    return { keep: false, reason: "not currently held — filter requires holdings only" };
-  }
+  // User-tunable filters (maxLoss, minGrade, liquidity floors, R/R, holdings, earnings) are
+  // intentionally NOT applied server-side — the client filters the visible result list after
+  // the scan returns so users can retune filters without rescanning.
+  // Server-side gates are intrinsic-only:
+  //   - buying-power affordability (when broker-connected)
+  //   - a minimum quality floor (score < 60 ≈ below grade C)
   if (ctx.buyingPower != null && c.capitalRequired > ctx.buyingPower) {
     return { keep: false, reason: "exceeds buying power" };
   }
-  // Only show grade C and above by default per spec
   if (c.finalScore < 60) return { keep: false, reason: "below default grade C" };
   return { keep: true };
 }
@@ -796,32 +766,11 @@ export async function generateCandidateScenarios(
 
   const relaxedNotes: string[] = [];
 
-  // Fallback: if strict guardrails wiped everything, relax the most common cause
-  // (max-loss limit and minGrade) and surface the top-N by score.
-  // IMPORTANT: only relax in simulated mode. For live/mixed (broker connected)
-  // we must keep account-aware guardrails (buying power, max-loss limit) intact.
-  if (candidates.length === 0 && allScenarios.length > 0 && ctx.dataMode === "simulated") {
-    const relaxedFilters: RadarFilters = {
-      ...filters,
-      maxLoss: undefined,
-      minGrade: undefined,
-      minRewardRisk: undefined,
-    };
-    const relaxedCtx: UserContext = { ...ctx, userMaxLossLimit: Number.POSITIVE_INFINITY };
-    for (const c of allScenarios) {
-      const verdict = applyGuardrails(c, relaxedFilters, relaxedCtx);
-      if (verdict.keep) candidates.push(c);
-    }
-    if (candidates.length > 0) {
-      relaxedNotes.push(
-        `No candidates fit your strict filters (max loss $${ctx.userMaxLossLimit}, min grade ${filters.minGrade ?? "C"}). Showing top scenarios with those gates relaxed — review max loss carefully before any action. (Simulated mode only.)`,
-      );
-    }
-  }
-
-  // Sort by final score descending and re-rank
+  // Sort by final score descending and re-rank.
+  // We keep a generous cap (was 20) so client-side post-filtering has the full viable set
+  // to filter from. The radar pipeline already constrains the input universe size.
   candidates.sort((a, b) => b.finalScore - a.finalScore);
-  candidates = candidates.slice(0, 20).map((c, i) => ({ ...c, rank: i + 1 }));
+  candidates = candidates.slice(0, 200).map((c, i) => ({ ...c, rank: i + 1 }));
 
   const sentimentAvailableCount = candidates.filter((c) => c.sentiment.available).length;
   const sentimentNote =

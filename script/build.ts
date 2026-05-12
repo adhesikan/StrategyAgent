@@ -34,20 +34,34 @@ const allowlist = [
 ];
 
 async function buildAll() {
-  if (process.env.DATABASE_URL) {
+  // Migrations always run at startup via server/index.ts — see "Startup migrations".
+  // We only attempt drizzle-kit push at build time when the DB is actually reachable
+  // (e.g. local dev). On Railway / Fly / containerized hosts the DB hostname
+  // (postgres.railway.internal, etc.) is only resolvable at runtime, so we skip.
+  const dbUrl = process.env.DATABASE_URL;
+  const looksUnreachable =
+    !dbUrl ||
+    /\.railway\.internal/.test(dbUrl) ||
+    /\.flycast/.test(dbUrl) ||
+    process.env.RAILWAY_ENVIRONMENT ||
+    process.env.SKIP_BUILD_MIGRATIONS === "1";
+
+  if (looksUnreachable) {
+    console.log(
+      "Skipping build-time drizzle-kit push (DB not reachable at build time). " +
+        "Schema will be applied by startup migrations in server/index.ts.",
+    );
+  } else {
     console.log("running database migrations...");
     try {
       execSync("npx drizzle-kit push", { stdio: "inherit" });
       console.log("database migrations complete");
     } catch (error) {
-      console.error("database migration failed:", error);
-      throw error;
+      console.warn(
+        "Build-time drizzle-kit push failed — startup migrations will retry.",
+        error,
+      );
     }
-  } else {
-    console.log(
-      "DATABASE_URL not set at build time — skipping migrations. " +
-        "They will run at startup via script/migrate.ts.",
-    );
   }
 
   await rm("dist", { recursive: true, force: true });

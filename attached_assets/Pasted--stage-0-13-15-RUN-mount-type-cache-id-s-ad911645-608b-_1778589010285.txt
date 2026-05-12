@@ -1,0 +1,91 @@
+[stage-0 13/15] RUN --mount=type=cache,id=s/ad911645-608b-4c08-9c2b-f9f56501ae6a-node_modules/cache,target=/app/node_modules/.cache npm run build
+
+npm warn config production Use `--omit=dev` instead.
+
+
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+
+running database migrations...
+
+npm warn config production Use `--omit=dev` instead.
+
+No config path provided, using default 'drizzle.config.ts'
+
+Reading config file '/app/drizzle.config.ts'
+
+Using 'pg' driver for database querying
+
+[⣷] Pulling schema from database...
+
+Error: getaddrinfo ENOTFOUND postgres.railway.internal
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async Object.query (/app/node_modules/drizzle-kit/bin.cjs:80622:26)
+    at async fromDatabase2 (/app/node_modules/drizzle-kit/bin.cjs:19276:25) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'postgres.railway.internal'
+}
+
+database migrations complete
+
+building client...
+
+[36mvite v7.3.0 [32mbuilding client environment for production...[36m[39m
+
+transforming...
+
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+
+[32m✓[39m 2621 modules transformed.
+
+rendering chunks...
+
+computing gzip size...
+
+[2m../dist/public/[22m[32mindex.html                                                                [39m[1m[2m    1.74 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+
+[2m../dist/public/[22m[2massets/[22m[32mChatGPT_Image_Jan_1__2026__01_38_07_PM_1767292703801-DCNKK6Ij.png  [39m[1m[2m  220.65 kB[22m[1m[22m
+[2m../dist/public/[22m[2massets/[22m[35mindex-DFXSgcRV.css                                                 [39m[1m[2m  131.19 kB[22m[1m[22m[2m │ gzip:  20.23 kB[22m
+[2m../dist/public/[22m[2massets/[22m[36mindex-B1XR04F2.js                                                  [39m[1m[33m1,759.71 kB[39m[22m[2m │ gzip: 474.43 kB[22m
+
+[33m
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+
+[32m✓ built in 7.41s[39m
+
+building server...
+
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    scripts/import-rithmic-api.ts:109:10:
+      109 │   (typeof import.meta.url === "string" && import.meta.url.endsWit...
+          ╵           ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    scripts/import-rithmic-api.ts:109:42:
+      109 │ ....meta.url === "string" && import.meta.url.endsWith(process.arg...
+          ╵                              ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+
+2 warnings
+
+  dist/index.cjs  2.0mb ⚠️
+
+⚡ Done in 140ms

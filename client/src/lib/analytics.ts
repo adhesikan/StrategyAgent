@@ -1,6 +1,7 @@
 export type MarketingEvent =
   | "start_free_trial_clicked"
-  | "watch_demo_clicked"
+  | "see_how_it_works_clicked"
+  | "explore_paper_mode_clicked"
   | "pricing_plan_selected"
   | "onboarding_completed"
   | "broker_connect_clicked";

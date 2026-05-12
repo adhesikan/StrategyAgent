@@ -42,7 +42,6 @@ import {
   Search,
   Wallet,
   Repeat,
-  PlayCircle,
   Lock,
   GraduationCap,
 } from "lucide-react";
@@ -314,14 +313,14 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
                 size="lg"
                 variant="outline"
                 onClick={() => {
-                  track("watch_demo_clicked", { location: "hero" });
+                  track("see_how_it_works_clicked", { location: "hero" });
                   const el = document.getElementById("features");
                   el?.scrollIntoView({ behavior: "smooth" });
                 }}
-                data-testid="button-hero-demo"
+                data-testid="button-hero-how-it-works"
               >
-                <PlayCircle className="mr-2 h-4 w-4" />
-                Watch Demo
+                <Repeat className="mr-2 h-4 w-4" />
+                See How It Works
               </Button>
             </div>
             <div className="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-2">

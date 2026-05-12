@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { SaveToWatchlistDialog } from "@/components/save-to-watchlist-dialog";
 
 interface BrokerAccount {
   id: string;
@@ -495,6 +496,7 @@ export default function TradeDetailPage() {
 
   const [ticketOpen, setTicketOpen] = useState(false);
   const [optionTicketOpen, setOptionTicketOpen] = useState(false);
+  const [saveWatchlistOpen, setSaveWatchlistOpen] = useState(false);
   const [contractQty, setContractQty] = useState(1);
   const [optionAck, setOptionAck] = useState(false);
   const [optionAccountId, setOptionAccountId] = useState<string>("");
@@ -845,7 +847,12 @@ export default function TradeDetailPage() {
           >
             <Send className="h-4 w-4" /> Send to InstaTrade™
           </Button>
-          <Button variant="outline" className="gap-2" data-testid="button-save-watchlist">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => setSaveWatchlistOpen(true)}
+            data-testid="button-save-watchlist"
+          >
             <Bookmark className="h-4 w-4" /> Save to watchlist
           </Button>
           <Button variant="outline" onClick={() => navigate("/scanner")} data-testid="button-find-similar">
@@ -865,6 +872,12 @@ export default function TradeDetailPage() {
         brokerAccounts={brokerAccounts || []}
         selectedAccount={selectedAccount}
         onAccountChange={setSelectedAccount}
+      />
+
+      <SaveToWatchlistDialog
+        open={saveWatchlistOpen}
+        onOpenChange={setSaveWatchlistOpen}
+        ticker={ticker}
       />
 
       <Sheet open={optionTicketOpen} onOpenChange={setOptionTicketOpen}>

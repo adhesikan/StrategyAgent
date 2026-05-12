@@ -7,11 +7,13 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
-import { CandidateScenarioCard, OrderReviewModal, type CandidateScenario } from "@/components/goal-mode-shell";
+import { CandidateScenarioCard, CandidateScenarioRow, OrderReviewModal, type CandidateScenario } from "@/components/goal-mode-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
-import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
+import { DollarSign, AlertTriangle, Sparkles, LayoutGrid, List } from "lucide-react";
 import { HelpLink } from "@/components/help-link";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { HowToUseSection } from "@/components/how-to-use-section";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -81,6 +83,7 @@ export default function IncomeModePage() {
   const [showIdeas, setShowIdeas] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
 
   const { isConnected: brokerConnected } = useBrokerStatus();
 
@@ -123,6 +126,16 @@ export default function IncomeModePage() {
       </div>
 
       <BrokerStatusStrip />
+
+      <HowToUseSection
+        testIdSlug="income"
+        steps={[
+          { title: "Set income parameters", detail: "Enter your capital, monthly income target, and max risk per trade. We filter for income-style strategies that fit." },
+          { title: "Pick your symbol pool", detail: "Choose your watchlist, large caps, options-liquid names, or paste custom symbols." },
+          { title: "Review candidate income trades", detail: "Each shows premium, breakeven, and max loss. Hover any field for an explanation in plain English." },
+          { title: "Prepare an order", detail: "Click Prepare Order to see the full review modal — nothing is sent until you acknowledge and confirm." },
+        ]}
+      />
 
       <DailyIdeasSection
         bucket="income"
@@ -258,22 +271,59 @@ export default function IncomeModePage() {
 
       {showIdeas && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-semibold">Candidate Income Scenarios</h2>
-            <Badge variant="outline" className="text-xs">
-              ${target}/mo target on ${parseInt(capital, 10).toLocaleString()} capital
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="text-xs">
+                ${target}/mo target on ${parseInt(capital, 10).toLocaleString()} capital
+              </Badge>
+              <div className="flex items-center border rounded-md" data-testid="view-toggle-income">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("rounded-r-none h-8 w-8", viewMode === "card" && "bg-muted")}
+                  onClick={() => setViewMode("card")}
+                  aria-label="Card view"
+                  data-testid="button-view-card"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("rounded-l-none h-8 w-8", viewMode === "list" && "bg-muted")}
+                  onClick={() => setViewMode("list")}
+                  aria-label="List view"
+                  data-testid="button-view-list"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {INCOME_IDEAS.map((s) => (
-              <CandidateScenarioCard
-                key={s.id}
-                scenario={s}
-                onReview={() => handleReview(s)}
-                onPrepareOrder={() => handlePrepareOrder(s)}
-              />
-            ))}
-          </div>
+          {viewMode === "card" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {INCOME_IDEAS.map((s) => (
+                <CandidateScenarioCard
+                  key={s.id}
+                  scenario={s}
+                  onReview={() => handleReview(s)}
+                  onPrepareOrder={() => handlePrepareOrder(s)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {INCOME_IDEAS.map((s) => (
+                <CandidateScenarioRow
+                  key={s.id}
+                  scenario={s}
+                  onReview={() => handleReview(s)}
+                  onPrepareOrder={() => handlePrepareOrder(s)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

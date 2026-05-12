@@ -17,6 +17,13 @@ import {
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useLocation } from "wouter";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
+import {
   Wallet,
   Target,
   ShieldAlert,
@@ -498,16 +505,25 @@ export function CandidateScenarioCard({ scenario, onReview, onPrepareOrder }: Ca
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <Mini label="Capital" value={`$${scenario.capitalRequired.toLocaleString()}`} />
-          <Mini label="Max loss" value={`$${scenario.maxLoss.toLocaleString()}`} className="text-red-400" />
-          <Mini label="Max gain" value={`$${scenario.maxGain.toLocaleString()}`} className="text-emerald-400" />
-          <Mini label="Breakeven" value={`$${scenario.breakeven.toFixed(2)}`} />
+          <Mini label="Capital" value={`$${scenario.capitalRequired.toLocaleString()}`} hint="Cash or buying power required to open this trade." />
+          <Mini label="Max loss" value={`$${scenario.maxLoss.toLocaleString()}`} className="text-red-400" hint="Worst-case dollar loss if this trade goes against you." />
+          <Mini label="Max gain" value={`$${scenario.maxGain.toLocaleString()}`} className="text-emerald-400" hint="Best-case dollar gain if the setup works fully." />
+          <Mini label="Breakeven" value={`$${scenario.breakeven.toFixed(2)}`} hint="Price at expiration where the trade neither makes nor loses money." />
         </div>
 
         <div className="text-xs">
-          <Badge variant="outline" className="text-[10px]">
-            Liquidity: {scenario.liquidity}
-          </Badge>
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="text-[10px] cursor-help">
+                  Liquidity: {scenario.liquidity}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs text-xs">
+                How easily this can be traded at fair price. High = tight spreads and active volume.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <div className="text-xs">
@@ -537,12 +553,70 @@ export function CandidateScenarioCard({ scenario, onReview, onPrepareOrder }: Ca
   );
 }
 
-function Mini({ label, value, className }: { label: string; value: string; className?: string }) {
+function Mini({ label, value, className, hint }: { label: string; value: string; className?: string; hint?: string }) {
+  const labelEl = (
+    <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+      {label}
+      {hint && <Info className="h-2.5 w-2.5 opacity-60" />}
+    </div>
+  );
   return (
     <div className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      {hint ? (
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="cursor-help">{labelEl}</span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs">{hint}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        labelEl
+      )}
       <div className={`font-semibold ${className ?? ""}`}>{value}</div>
     </div>
+  );
+}
+
+export function CandidateScenarioRow({ scenario, onReview, onPrepareOrder }: CandidateScenarioCardProps) {
+  return (
+    <div
+      data-testid={`row-scenario-${scenario.id}`}
+      className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2.5 hover-elevate"
+    >
+      <div className="flex items-center gap-2 min-w-[150px]">
+        <span className="text-base font-bold" data-testid={`row-ticker-${scenario.id}`}>{scenario.ticker}</span>
+        <Badge className={`text-[10px] font-semibold ${GRADE_COLORS[scenario.probabilityGrade]}`}>
+          {scenario.probabilityGrade}
+        </Badge>
+      </div>
+      <Badge variant="outline" className="text-[10px]">{scenario.strategyType}</Badge>
+      <span className="text-xs text-muted-foreground hidden sm:inline">{scenario.bias}</span>
+      <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <RowStat label="Cap" value={`$${scenario.capitalRequired.toLocaleString()}`} />
+        <RowStat label="Max loss" value={`$${scenario.maxLoss.toLocaleString()}`} className="text-red-400" />
+        <RowStat label="Max gain" value={`$${scenario.maxGain.toLocaleString()}`} className="text-emerald-400" />
+        <RowStat label="BE" value={`$${scenario.breakeven.toFixed(2)}`} />
+      </div>
+      <div className="flex gap-2 ml-2">
+        <Button size="sm" variant="outline" onClick={onReview} data-testid={`row-review-${scenario.id}`}>
+          Review
+        </Button>
+        <Button size="sm" onClick={onPrepareOrder} data-testid={`row-prepare-${scenario.id}`}>
+          Prepare Order
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function RowStat({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <span>
+      <span className="text-muted-foreground">{label}: </span>
+      <span className={`font-semibold ${className ?? ""}`}>{value}</span>
+    </span>
   );
 }
 

@@ -7,15 +7,18 @@ import {
   GoalModeWizard,
   GoalRealityCheck,
   CandidateScenarioCard,
+  CandidateScenarioRow,
   OrderReviewModal,
   type GoalModePrefs,
   type CandidateScenario,
 } from "@/components/goal-mode-shell";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
-import { Target, RotateCcw } from "lucide-react";
+import { Target, RotateCcw, LayoutGrid, List } from "lucide-react";
 import { HelpLink } from "@/components/help-link";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
+import { HowToUseSection } from "@/components/how-to-use-section";
+import { cn } from "@/lib/utils";
 
 const MOCK_SCENARIOS: CandidateScenario[] = [
   {
@@ -69,6 +72,7 @@ export default function GoalModePage() {
   const [prefs, setPrefs] = useState<GoalModePrefs | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const { isConnected: brokerConnected } = useBrokerStatus();
 
   useEffect(() => {
@@ -124,6 +128,16 @@ export default function GoalModePage() {
 
       <BrokerStatusStrip />
 
+      <HowToUseSection
+        testIdSlug="grow"
+        steps={[
+          { title: "Set your goal", detail: "Tell us your capital, risk tolerance, and how active you want to be. We tailor candidates to those limits." },
+          { title: "Browse ranked ideas", detail: "Each card shows the strategy, capital required, max loss/gain, and breakeven. Higher grade (A+/A) means stronger signal." },
+          { title: "Review before sending", detail: "Click Review or Prepare Order to see full context. You always confirm before any order leaves the app." },
+          { title: "Toggle list view", detail: "Use the grid/list buttons (top-right) to switch how ideas are displayed." },
+        ]}
+      />
+
       <DailyIdeasSection
         bucket="growth"
         title="Your Growth Ideas"
@@ -169,17 +183,54 @@ export default function GoalModePage() {
           <GoalRealityCheck prefs={prefs} />
 
           <div>
-            <h2 className="text-lg font-semibold mb-3">Candidate Scenarios</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredScenarios.map((s) => (
-                <CandidateScenarioCard
-                  key={s.id}
-                  scenario={s}
-                  onReview={() => handleReview(s)}
-                  onPrepareOrder={() => handlePrepareOrder(s)}
-                />
-              ))}
+            <div className="flex items-center justify-between mb-3 gap-3">
+              <h2 className="text-lg font-semibold">Candidate Scenarios</h2>
+              <div className="flex items-center border rounded-md" data-testid="view-toggle-grow">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("rounded-r-none h-8 w-8", viewMode === "card" && "bg-muted")}
+                  onClick={() => setViewMode("card")}
+                  aria-label="Card view"
+                  data-testid="button-view-card"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("rounded-l-none h-8 w-8", viewMode === "list" && "bg-muted")}
+                  onClick={() => setViewMode("list")}
+                  aria-label="List view"
+                  data-testid="button-view-list"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
+            {viewMode === "card" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredScenarios.map((s) => (
+                  <CandidateScenarioCard
+                    key={s.id}
+                    scenario={s}
+                    onReview={() => handleReview(s)}
+                    onPrepareOrder={() => handlePrepareOrder(s)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredScenarios.map((s) => (
+                  <CandidateScenarioRow
+                    key={s.id}
+                    scenario={s}
+                    onReview={() => handleReview(s)}
+                    onPrepareOrder={() => handlePrepareOrder(s)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}

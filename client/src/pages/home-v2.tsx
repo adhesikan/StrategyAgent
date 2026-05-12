@@ -195,9 +195,11 @@ const PLACEHOLDERS = [
 
 const TABS: { value: string; label: string; bucket: string }[] = [
   { value: "all", label: "All", bucket: "all" },
+  { value: "grow", label: "Grow", bucket: "stocks" },
+  { value: "income", label: "Income", bucket: "income" },
+  { value: "trade", label: "Trade", bucket: "all" },
   { value: "stocks", label: "Stocks", bucket: "stocks" },
   { value: "options", label: "Options", bucket: "options" },
-  { value: "income", label: "Income", bucket: "income" },
   { value: "watchlist", label: "Watchlist", bucket: "watchlist" },
   { value: "alerts", label: "Market Alerts", bucket: "alerts" },
 ];
@@ -278,17 +280,15 @@ export default function HomeV2() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 space-y-10">
+      <div className="w-full px-4 md:px-8 py-8 md:py-12 space-y-10">
         <div>
           <h1 className="text-[26px] font-medium tracking-tight" data-testid="text-home-greeting">
             {greeting}, {firstName}.
           </h1>
-          <p className="text-[15px] text-muted-foreground mt-1">
-            What would you like help with today?
-          </p>
-          <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            VCP Trader AI scans stocks, options, news, market sentiment, and your selected limits to
-            surface ideas you can review — nothing is sent without your approval.
+          <p className="text-[15px] text-muted-foreground mt-1" data-testid="text-home-subtitle">
+            {ideasLoading
+              ? "Loading today's ideas…"
+              : `${ideasResp?.ideas.length ?? 0} ${(ideasResp?.ideas.length ?? 0) === 1 ? "idea" : "ideas"} ready to review — nothing sent without your approval.`}
           </p>
         </div>
 

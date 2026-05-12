@@ -5,37 +5,18 @@ import { QueryClientProvider, useQuery as useReactQuery } from "@tanstack/react-
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { AppSidebar } from "@/components/app-sidebar";
+import { TopNav } from "@/components/top-nav";
 import { LegalAcceptanceModal } from "@/components/legal-acceptance-modal";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { Footer } from "@/components/footer";
-import {
-  SidebarProvider,
-  SidebarTrigger,
-  SidebarInset,
-} from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { LogOut, User, Loader2, Bell, HelpCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { BrokerStatusProvider } from "@/hooks/use-broker-status";
 import { TooltipVisibilityProvider } from "@/hooks/use-tooltips";
 import { PersonaProvider } from "@/context/PersonaContext";
 import { PlanProvider } from "@/context/PlanContext";
 import { StatusBanner } from "@/components/status-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
-import { MobileBottomNav } from "@/components/mobile-bottom-nav";
-import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
-import type { AlertEvent } from "@shared/schema";
 
 import Charts from "@/pages/charts";
 import Backtest from "@/pages/backtest";
@@ -115,6 +96,7 @@ function AppRouter() {
       <Route path="/trade-finder" component={AgentPage} />
       <Route path="/income-mode" component={IncomeModePage} />
       <Route path="/market-intel" component={MarketIntelPage} />
+      <Route path="/markets" component={MarketIntelPage} />
       <Route path="/history" component={JournalV2} />
       <Route path="/agent" component={AgentPage} />
       <Route path="/trade-setups" component={TradeSetupsPage} />
@@ -170,102 +152,6 @@ function AppRouter() {
 
       <Route component={NotFound} />
     </Switch>
-  );
-}
-
-function UserMenu() {
-  const { user, logout, isLoggingOut } = useAuth();
-  
-  if (!user) return null;
-  
-  const initials = [user.firstName?.[0], user.lastName?.[0]]
-    .filter(Boolean)
-    .join("")
-    .toUpperCase() || user.email?.[0]?.toUpperCase() || "U";
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-user-menu">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <div className="px-2 py-1.5">
-          <p className="text-sm font-medium" data-testid="text-user-email">{user.email}</p>
-          <p className="text-xs text-muted-foreground">
-            {user.role === "admin" ? "Administrator" : "Member"}
-          </p>
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <a href="/settings" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            Settings
-          </a>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem 
-          onClick={() => logout()} 
-          disabled={isLoggingOut}
-          data-testid="button-logout"
-        >
-          {isLoggingOut ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <LogOut className="mr-2 h-4 w-4" />
-          )}
-          Sign out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function AlertBell() {
-  const { data: alertEvents } = useReactQuery<AlertEvent[]>({
-    queryKey: ["/api/alert-events"],
-    refetchInterval: 30000,
-  });
-
-  const unreadCount = alertEvents?.filter(e => !e.isRead).length || 0;
-
-  return (
-    <Link href="/alerts?tab=history" data-testid="link-alerts-bell">
-      <Button 
-        variant="ghost" 
-        size="icon" 
-        className="relative"
-        data-testid="button-alert-bell"
-      >
-        <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <span 
-            className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-xs font-medium flex items-center justify-center px-1"
-            data-testid="badge-unread-alerts"
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </Button>
-    </Link>
-  );
-}
-
-function AppHeader() {
-  return (
-    <header className="sticky top-0 z-50 flex h-14 items-center justify-between gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
-      <div className="flex items-center gap-4">
-        <SidebarTrigger data-testid="button-sidebar-toggle" />
-      </div>
-      <div className="flex items-center gap-2">
-        <AlertBell />
-        <ThemeToggle />
-        <UserMenu />
-      </div>
-    </header>
   );
 }
 
@@ -331,11 +217,6 @@ function AppLayoutInner() {
     }
   }, [legalStatus]);
 
-  const sidebarStyle = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "4.5rem",
-  } as React.CSSProperties;
-
   if (legalLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -347,24 +228,20 @@ function AppLayoutInner() {
   return (
     <>
       <BrokerStatusProvider>
-        <SidebarProvider style={sidebarStyle} defaultOpen={false}>
-          <div className="flex h-screen w-full">
-            <AppSidebar />
-            <SidebarInset className="flex flex-col flex-1 min-w-0 pb-16 md:pb-0">
-              <AppHeader />
-              <StatusBanner />
-              <PullToRefresh
-                onRefresh={async () => {
-                  await queryClient.invalidateQueries();
-                }}
-              >
-                <AppRouter />
-                <Footer />
-              </PullToRefresh>
-            </SidebarInset>
-            <MobileBottomNav />
-          </div>
-        </SidebarProvider>
+        <div className="flex flex-col min-h-screen w-full">
+          <TopNav />
+          <StatusBanner />
+          <PullToRefresh
+            onRefresh={async () => {
+              await queryClient.invalidateQueries();
+            }}
+          >
+            <main className="flex-1 w-full">
+              <AppRouter />
+            </main>
+            <Footer />
+          </PullToRefresh>
+        </div>
         <LegalAcceptanceModal
           open={showLegalModal}
           onAccepted={() => setShowLegalModal(false)}

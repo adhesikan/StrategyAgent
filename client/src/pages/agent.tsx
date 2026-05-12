@@ -883,7 +883,11 @@ export default function AgentPage() {
           )}
 
           <TradeSetupCard
-            setup={generateMutation.data.setup}
+            setup={{
+              ...generateMutation.data.setup,
+              probability: generateMutation.data.probability,
+              instrument: generateMutation.data.instrument,
+            }}
             onOpenChart={(sym) => navigate(`/charts/${sym}`)}
             onSendToInstatrade={handleSendToInstatrade}
             onReviewSetup={(setup) => {

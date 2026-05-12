@@ -41,9 +41,12 @@ import {
   Pencil,
   Trash2,
   Loader2,
-  Globe,
+  List,
+  Star,
+  X,
 } from "lucide-react";
 import type { PlatformUniverse } from "@shared/platform-types";
+import type { Watchlist } from "@shared/schema";
 
 interface UniverseDetail {
   id: string;
@@ -59,6 +62,7 @@ export default function UniversesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUniverse, setEditingUniverse] = useState<UniverseDetail | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PlatformUniverse | null>(null);
+  const [newSymbol, setNewSymbol] = useState("");
 
   const [formName, setFormName] = useState("");
   const [formTickers, setFormTickers] = useState("");
@@ -66,6 +70,54 @@ export default function UniversesPage() {
 
   const { data: universes, isLoading } = useQuery<PlatformUniverse[]>({
     queryKey: ["/api/platform/universes"],
+  });
+
+  const { data: watchlists, isLoading: watchlistsLoading } = useQuery<Watchlist[]>({
+    queryKey: ["/api/watchlists"],
+  });
+
+  const defaultWatchlist = watchlists?.[0];
+
+  const addSymbolMutation = useMutation({
+    mutationFn: async ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) => {
+      await apiRequest("POST", `/api/watchlists/${watchlistId}/symbols`, { symbol });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/watchlists"] });
+      setNewSymbol("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add symbol", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeSymbolMutation = useMutation({
+    mutationFn: async ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) => {
+      await apiRequest("DELETE", `/api/watchlists/${watchlistId}/symbols/${symbol}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/watchlists"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to remove symbol", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createDefaultMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/watchlists", {
+        name: "My Watchlist",
+        symbols: ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL"],
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/watchlists"] });
+      toast({ title: "Default watchlist created" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create watchlist", description: err.message, variant: "destructive" });
+    },
   });
 
   const createMutation = useMutation({
@@ -76,7 +128,7 @@ export default function UniversesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/platform/universes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/platform/context"] });
-      toast({ title: "Universe created" });
+      toast({ title: "Watchlist created" });
       closeDialog();
     },
     onError: (err: Error) => {
@@ -92,7 +144,7 @@ export default function UniversesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/platform/universes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/platform/context"] });
-      toast({ title: "Universe updated" });
+      toast({ title: "Watchlist updated" });
       closeDialog();
     },
     onError: (err: Error) => {
@@ -107,7 +159,7 @@ export default function UniversesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/platform/universes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/platform/context"] });
-      toast({ title: "Universe deleted" });
+      toast({ title: "Watchlist deleted" });
       setDeleteTarget(null);
     },
     onError: (err: Error) => {
@@ -138,7 +190,7 @@ export default function UniversesPage() {
       setFormTickers(detail.symbols.join(", "));
       setDialogOpen(true);
     } catch {
-      toast({ title: "Failed to load universe details", variant: "destructive" });
+      toast({ title: "Failed to load watchlist details", variant: "destructive" });
     }
   }
 
@@ -186,6 +238,13 @@ export default function UniversesPage() {
     }
   }
 
+  function handleAddSymbol() {
+    if (!defaultWatchlist) return;
+    const sym = newSymbol.trim().toUpperCase();
+    if (!sym || sym.length > 10) return;
+    addSymbolMutation.mutate({ watchlistId: defaultWatchlist.id, symbol: sym });
+  }
+
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   return (
@@ -200,34 +259,131 @@ export default function UniversesPage() {
           <ArrowLeft />
         </Button>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold" data-testid="text-page-title">Ticker Universes</h1>
-          <p className="text-sm text-muted-foreground">Manage custom symbol lists for scanning and analysis</p>
+          <h1 className="text-xl font-semibold" data-testid="text-page-title">Watchlists</h1>
+          <p className="text-sm text-muted-foreground">Manage symbol lists for scanning and analysis</p>
         </div>
         <Button onClick={openCreate} data-testid="button-create-universe">
           <Plus className="mr-1 h-4 w-4" />
-          New Universe
+          New Watchlist
         </Button>
       </div>
 
+      {/* Default Watchlist card */}
+      <Card data-testid="card-default-watchlist">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium flex items-center gap-2">
+            <Star className="h-4 w-4 text-primary" />
+            Default Watchlist
+            {defaultWatchlist && (
+              <Badge variant="secondary" className="ml-1" data-testid="badge-default-name">
+                {defaultWatchlist.name}
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {watchlistsLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : !defaultWatchlist ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-muted-foreground mb-3">No default watchlist yet.</p>
+              <Button
+                size="sm"
+                onClick={() => createDefaultMutation.mutate()}
+                disabled={createDefaultMutation.isPending}
+                data-testid="button-create-default-watchlist"
+              >
+                {createDefaultMutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+                Create Default Watchlist
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2 min-h-[2rem]" data-testid="list-default-symbols">
+                {(defaultWatchlist.symbols ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No symbols yet. Add one below.</p>
+                ) : (
+                  (defaultWatchlist.symbols ?? []).map((sym) => (
+                    <Badge
+                      key={sym}
+                      variant="secondary"
+                      className="gap-1 pl-2 pr-1 py-1 text-sm"
+                      data-testid={`badge-symbol-${sym}`}
+                    >
+                      {sym}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 hover:bg-destructive/20"
+                        onClick={() =>
+                          removeSymbolMutation.mutate({
+                            watchlistId: defaultWatchlist.id,
+                            symbol: sym,
+                          })
+                        }
+                        data-testid={`button-remove-symbol-${sym}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Add ticker (e.g. AAPL)"
+                  value={newSymbol}
+                  onChange={(e) => setNewSymbol(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSymbol();
+                    }
+                  }}
+                  className="max-w-[220px]"
+                  maxLength={10}
+                  data-testid="input-add-symbol"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleAddSymbol}
+                  disabled={!newSymbol.trim() || addSymbolMutation.isPending}
+                  data-testid="button-add-symbol"
+                >
+                  {addSymbolMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Custom watchlists table */}
       {isLoading ? (
         <div className="space-y-3">
-          <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
         </div>
       ) : !universes || universes.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <Globe className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground mb-4">No universes yet. Create one to get started.</p>
+          <CardContent className="py-10 text-center">
+            <List className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground mb-4">No additional watchlists yet. Create one to organize symbols for scanning.</p>
             <Button onClick={openCreate} data-testid="button-create-empty">
               <Plus className="mr-1 h-4 w-4" />
-              Create Universe
+              Create Watchlist
             </Button>
           </CardContent>
         </Card>
       ) : (
         <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Custom Watchlists</CardTitle>
+          </CardHeader>
           <Table>
             <TableHeader>
               <TableRow>
@@ -281,12 +437,12 @@ export default function UniversesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle data-testid="text-dialog-title">
-              {editingUniverse ? "Edit Universe" : "Create Universe"}
+              {editingUniverse ? "Edit Watchlist" : "Create Watchlist"}
             </DialogTitle>
             <DialogDescription>
               {editingUniverse
-                ? "Update the name and tickers for this universe."
-                : "Give your universe a name and add tickers separated by commas."}
+                ? "Update the name and tickers for this watchlist."
+                : "Give your watchlist a name and add tickers separated by commas."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -294,7 +450,7 @@ export default function UniversesPage() {
               <Label htmlFor="universe-name">Name</Label>
               <Input
                 id="universe-name"
-                placeholder="e.g. My Watchlist"
+                placeholder="e.g. Tech Leaders"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 data-testid="input-universe-name"
@@ -339,7 +495,7 @@ export default function UniversesPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Universe</AlertDialogTitle>
+            <AlertDialogTitle>Delete Watchlist</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{deleteTarget?.name}"? This action cannot be undone.
             </AlertDialogDescription>

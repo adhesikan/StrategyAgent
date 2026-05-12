@@ -141,7 +141,7 @@ export function SmartPanel() {
     };
   } else if (!hasUniverses) {
     nextAction = {
-      label: "Create Universe",
+      label: "Create Watchlist",
       description: "Build a custom watchlist to scan",
       href: "/settings/universes",
       icon: Target,

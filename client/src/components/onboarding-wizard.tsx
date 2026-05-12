@@ -283,7 +283,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
           <DialogDescription data-testid="text-wizard-description">
             {step === TOTAL_STEPS - 1
               ? (isEditing ? "Your updated preferences have been saved." : "Your workspace is configured and ready to go.")
-              : `Step ${step + 1} of ${TOTAL_STEPS - 1} — ${isEditing ? "Update your preferences" : "Let's personalize your experience"}`}
+              : `Step ${step + 1} of ${TOTAL_STEPS - 1} — ${isEditing ? "Update your preferences" : "Let's set up your workspace"}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -586,7 +586,7 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                 <p className="text-sm text-muted-foreground">
                   {isEditing
                     ? "Your preferences have been updated. Changes take effect immediately."
-                    : "Your workspace is personalized and ready. Start exploring opportunities now."}
+                    : "Your workspace is ready. Start exploring opportunities now."}
                 </p>
               </div>
               <Button onClick={handleFinish} className="gap-2" data-testid="button-start-exploring">

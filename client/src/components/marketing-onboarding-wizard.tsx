@@ -144,7 +144,7 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
       <DialogContent className="max-w-lg" data-testid="dialog-marketing-onboarding">
         <DialogHeader>
           <DialogTitle data-testid="text-mw-title">
-            {step === TOTAL_STEPS - 1 ? "Your first AI setup" : "Personalize your trial"}
+            {step === TOTAL_STEPS - 1 ? "Your first AI setup" : "Set up your trial"}
           </DialogTitle>
           <DialogDescription data-testid="text-mw-description">
             {step === TOTAL_STEPS - 1

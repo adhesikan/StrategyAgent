@@ -151,19 +151,6 @@ export default function GoalModePage() {
         emptyText="Add symbols to your watchlist to see ideas here."
       />
 
-      {!prefs && !wizardOpen && (
-        <Card data-testid="card-empty-prefs">
-          <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-3">
-            <div className="text-sm text-muted-foreground text-center md:text-left">
-              Want ideas tailored to your capital, risk, and goals? Take a 1-minute questionnaire.
-            </div>
-            <Button variant="outline" onClick={() => setWizardOpen(true)} data-testid="button-open-wizard">
-              Personalize my ideas
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {prefs && (
         <>
           <div className="flex items-center justify-between">

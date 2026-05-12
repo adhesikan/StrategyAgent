@@ -74,7 +74,7 @@ export function PersonaSelector({ open, onComplete }: PersonaSelectorProps) {
       await setPersona(selected);
       toast({
         title: "Trading style saved",
-        description: `We'll personalize your experience for ${OPTIONS.find((o) => o.id === selected)?.title}.`,
+        description: `Trading style set to ${OPTIONS.find((o) => o.id === selected)?.title}.`,
       });
       onComplete();
     } catch (error) {

@@ -257,7 +257,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
       queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/system-profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding-state"] });
-      toast({ title: "Trading System Active", description: "Your personalized system is ready to go." });
+      toast({ title: "Trading System Active", description: "Your trading system is ready to go." });
       onComplete();
     },
     onError: () => {
@@ -315,7 +315,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
           </DialogTitle>
           <DialogDescription>
             {step === 1
-              ? "Set up your personalized trading system in a few quick steps"
+              ? "Set up your trading system in a few quick steps"
               : `Step ${step} of ${totalSteps}`}
           </DialogDescription>
         </DialogHeader>
@@ -500,7 +500,7 @@ export function TradingReadinessWizard({ open, onComplete, onClose }: TradingRea
               <div>
                 <h3 className="text-lg font-semibold mb-1">Your Trading Profile</h3>
                 <p className="text-sm text-muted-foreground">
-                  Based on your answers, here's your personalized configuration.
+                  Based on your answers, here's your configuration.
                 </p>
               </div>
 

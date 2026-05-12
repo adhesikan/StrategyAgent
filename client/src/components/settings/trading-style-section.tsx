@@ -73,7 +73,7 @@ export function TradingStyleSection() {
       <CardHeader>
         <CardTitle className="text-base font-medium">My Trading Style</CardTitle>
         <CardDescription>
-          We use this to personalize your home page, prompts, and recommended ideas. You can change it anytime.
+          We use this to tune your home page, prompts, and surfaced ideas. You can change it anytime.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

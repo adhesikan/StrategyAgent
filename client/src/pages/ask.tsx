@@ -12,6 +12,26 @@ import { ComplianceFooter } from "@/components/trading-shell";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+interface AskPick {
+  id: string;
+  symbol: string;
+  strategyLabel: string;
+  bias: string;
+  confidence: number;
+  grade: string;
+  thesis: string;
+  mainReason: string;
+  mainRisk: string;
+  entry: number;
+  stop: number;
+  target: number;
+  maxLoss: number;
+  maxGain: number | null;
+  rewardRisk: number;
+  riskLabel: string;
+  dataMode: string;
+}
+
 interface AskResponse {
   question: string;
   intent: string;
@@ -22,6 +42,7 @@ interface AskResponse {
   keyPoints: string[];
   riskNote: string;
   confidence: "low" | "medium" | "high";
+  picks?: AskPick[];
   suggestions: { label: string; href: string }[];
   source: "openai" | "rule_based";
   disclaimer: string;
@@ -212,6 +233,37 @@ export default function AskPage() {
               )}
             </CardContent>
           </Card>
+
+          {data.picks && data.picks.length > 0 && (
+            <Card data-testid="card-ask-picks">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Top defined-risk picks</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {data.picks.map((p) => (
+                  <Link key={p.id} href={`/best-trade`}>
+                    <div className="rounded-md border border-border/60 p-3 hover-elevate cursor-pointer space-y-1.5" data-testid={`card-ask-pick-${p.symbol}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">{p.symbol}</span>
+                          <Badge variant="outline" className="text-[10px]">{p.strategyLabel}</Badge>
+                          <Badge variant="outline" className="text-[10px] capitalize">{p.bias}</Badge>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px] tabular-nums">{p.confidence}% · Grade {p.grade}</Badge>
+                          <Badge variant="outline" className="text-[10px]">{p.riskLabel} risk</Badge>
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Entry ${p.entry.toFixed(2)} · Stop ${p.stop.toFixed(2)} · Target ${p.target.toFixed(2)} · R/R {p.rewardRisk.toFixed(2)}:1 · Max loss ${p.maxLoss.toLocaleString()}
+                      </div>
+                      <div className="text-xs">{p.thesis} {p.mainReason}</div>
+                    </div>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {data.suggestions.length > 0 && (
             <Card data-testid="card-ask-suggestions">

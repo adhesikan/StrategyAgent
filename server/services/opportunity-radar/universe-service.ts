@@ -9,7 +9,7 @@
  */
 
 import { storage } from "../../storage";
-import { DOW_30, NASDAQ_100, SP_500 } from "../../symbol-universes";
+import { DOW_30, NASDAQ_100, SP_100, SP_500 } from "../../symbol-universes";
 
 export const FALLBACK_DEMO_SYMBOLS = [
   "AAPL",
@@ -33,6 +33,7 @@ export type RadarUniverseId =
   | "high_volume"
   | "options_liquid"
   | "nasdaq_100"
+  | "sp_100"
   | "sp_500"
   | "custom";
 
@@ -44,6 +45,7 @@ export type UniverseSource =
   | "high_volume"
   | "options_liquid"
   | "nasdaq_100"
+  | "sp_100"
   | "sp_500";
 
 export interface UniverseRequest {
@@ -66,6 +68,7 @@ const SOURCE_LABELS: Record<UniverseSource, string> = {
   high_volume: "High Volume",
   options_liquid: "Options Liquid",
   nasdaq_100: "Nasdaq 100",
+  sp_100: "S&P 100",
   sp_500: "S&P 500",
 };
 
@@ -99,6 +102,8 @@ export async function resolveUniverseWithMeta(req: UniverseRequest): Promise<Res
       return { symbols: normalize(OPTIONS_LIQUID), source: "options_liquid", label: SOURCE_LABELS.options_liquid };
     case "nasdaq_100":
       return { symbols: normalize(NASDAQ_100), source: "nasdaq_100", label: SOURCE_LABELS.nasdaq_100 };
+    case "sp_100":
+      return { symbols: normalize(SP_100), source: "sp_100", label: SOURCE_LABELS.sp_100 };
     case "sp_500":
       return { symbols: normalize(SP_500), source: "sp_500", label: SOURCE_LABELS.sp_500 };
     case "custom":

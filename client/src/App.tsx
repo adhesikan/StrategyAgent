@@ -65,6 +65,7 @@ import PricingPage from "@/pages/pricing";
 import BillingSuccessPage from "@/pages/billing-success";
 import BillingCancelPage from "@/pages/billing-cancel";
 import AskPage from "@/pages/ask";
+import BestTradePage from "@/pages/best-trade";
 import { Redirect } from "wouter";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
@@ -87,6 +88,7 @@ function AppRouter() {
     <Switch>
       <Route path="/home" component={HomeV2} />
       <Route path="/ask" component={AskPage} />
+      <Route path="/best-trade" component={BestTradePage} />
       <Route path="/scanner" component={StrategyScannerPage} />
       <Route path="/trade/:ticker" component={TradeDetailPage} />
       <Route path="/instatrade" component={InstaTradePage} />

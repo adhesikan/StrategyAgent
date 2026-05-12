@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { refreshSentimentForSymbols, isOpenAiConfigured } from "../services/news";
 import { getMarketSnapshot, type MarketSnapshot } from "../services/market-data";
+import { findBestTrades, type BestTradePick } from "../services/best-trade-finder";
 
 const askSchema = z.object({
   question: z.string().trim().min(1).max(500),
@@ -57,8 +58,15 @@ function extractTickers(text: string, max = 3): string[] {
   return Array.from(found);
 }
 
-function classifyIntent(q: string): "income" | "growth" | "news" | "trade-idea" | "general" {
+function classifyIntent(q: string): "best-trade" | "income" | "growth" | "news" | "trade-idea" | "general" {
   const lower = q.toLowerCase();
+  // "best trade" intent must be checked first — it's the highest-value action
+  // and the phrasing overlaps with several others.
+  if (
+    /(best (trade|stock|option|setup|pick)s?)|(find (me )?(a |the )?(best )?trade)|(top (pick|trade|setup)s?)|(what should i (trade|buy) (now|today))|(high[- ]?probability)/.test(lower)
+  ) {
+    return "best-trade";
+  }
   if (/(income|covered call|cash[- ]secured|premium|dividend|monthly cash|weekly income)/.test(lower)) return "income";
   if (/(grow|growth|long[- ]?term|nest egg|retire|portfolio|compound|build wealth)/.test(lower)) return "growth";
   if (/(why|news|catalyst|sentiment|moving|happening|announce|earnings|fed)/.test(lower)) return "news";
@@ -66,9 +74,28 @@ function classifyIntent(q: string): "income" | "growth" | "news" | "trade-idea" 
   return "general";
 }
 
+// Extracts a universe hint from a free-form question — matches the same
+// universe choices offered on the Best Trade page so chat invocation is
+// consistent with explicit feature use.
+function detectUniverseHint(lower: string): "watchlist" | "sp_100" | "sp_500" | "nasdaq_100" | "high_volume" | "options_liquid" | "large_cap" | null {
+  if (/\bwatchlist\b/.test(lower)) return "watchlist";
+  if (/\bs\s*&?\s*p\s*-?\s*100\b|\bsp[\s-]?100\b|\boex\b/.test(lower)) return "sp_100";
+  if (/\bs\s*&?\s*p\s*-?\s*500\b|\bsp[\s-]?500\b/.test(lower)) return "sp_500";
+  if (/\bnasdaq[\s-]?100\b|\bndx\b|\bqqq\b/.test(lower)) return "nasdaq_100";
+  if (/\bhigh[\s-]?volume\b|\bmost active\b|\btop volume\b/.test(lower)) return "high_volume";
+  if (/\boptions?[\s-]?liquid\b|\bliquid options?\b/.test(lower)) return "options_liquid";
+  if (/\bdow\s*30\b|\bdjia\b|\bblue[\s-]?chips?\b/.test(lower)) return "large_cap";
+  return null;
+}
+
 function suggestionsForIntent(intent: ReturnType<typeof classifyIntent>, tickers: string[]): { label: string; href: string }[] {
   const t = tickers[0];
   switch (intent) {
+    case "best-trade":
+      return [
+        { label: "Open Find My Best Trade", href: "/best-trade" },
+        { label: "See ranked opportunities", href: "/opportunity-radar" },
+      ];
     case "income":
       return [
         { label: "Open Income Mode", href: "/income-mode" },
@@ -312,9 +339,63 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       const tickers = extractTickers(question);
       const ctx = await buildContext(userId, question, intent, tickers);
 
+      // Best-trade intent: scan defined-risk candidates and surface picks
+      // alongside the AI answer so the chat result feels actionable. Detect
+      // universe hints in the question so chat invocation matches the same
+      // user-selectable universe behavior as the main feature.
+      let picks: BestTradePick[] = [];
+      let bestTradeMeta: { universeLabel: string; dataMode: "live" | "simulated" | "mixed"; brokerConnected: boolean } | null = null;
+      if (intent === "best-trade") {
+        try {
+          const lower = question.toLowerCase();
+          const hintedUniverse = detectUniverseHint(lower);
+          const useCustom = tickers.length > 0 && !hintedUniverse;
+          const result = await findBestTrades(userId, {
+            universe: useCustom ? "custom" : (hintedUniverse ?? "watchlist"),
+            customSymbols: useCustom ? tickers : undefined,
+            limit: 3,
+          });
+          picks = result.picks;
+          bestTradeMeta = {
+            universeLabel: result.universeLabel,
+            dataMode: result.dataMode,
+            brokerConnected: result.brokerConnected,
+          };
+        } catch (err) {
+          console.warn("[ask] best-trade scan failed:", err);
+        }
+      }
+
       let answer = await callOpenAi(question, ctx);
       const source: "openai" | "rule_based" = answer ? "openai" : "rule_based";
       if (!answer) answer = ruleBasedAnswer(question, intent, ctx);
+
+      // For best-trade intent, override the headline/answer when picks exist
+      // so the chat directly reflects what was found.
+      if (intent === "best-trade" && picks.length > 0 && bestTradeMeta) {
+        const top = picks[0];
+        const dataLabel =
+          bestTradeMeta.dataMode === "live"
+            ? "live broker data"
+            : bestTradeMeta.dataMode === "mixed"
+              ? "a mix of live broker data and simulated examples"
+              : "simulated examples";
+        answer = {
+          ...answer,
+          headline: `Top defined-risk pick: ${top.symbol} (${top.strategyLabel}, ${top.confidence}% confidence)`,
+          answer: `Scanned ${bestTradeMeta.universeLabel} using ${dataLabel} and ranked defined-risk candidates only (no naked long calls/puts). The top pick is ${top.symbol} — ${top.thesis} ${top.mainReason}`,
+          riskNote: top.mainRisk,
+          confidence: top.confidence >= 80 ? "high" : top.confidence >= 65 ? "medium" : "low",
+        };
+      } else if (intent === "best-trade" && picks.length === 0) {
+        const where = bestTradeMeta?.universeLabel ?? "your watchlist";
+        answer = {
+          ...answer,
+          headline: "No defined-risk picks meet the threshold right now.",
+          answer: `I scanned ${where} for defined-risk setups (stocks with stops, debit spreads, covered calls, cash-secured puts) and nothing crossed the 65% confidence floor. Open Find My Best Trade to broaden the universe (S&P 100, Nasdaq 100, high-volume names) or lower the confidence threshold.`,
+          confidence: "low",
+        };
+      }
 
       res.json({
         question,
@@ -322,6 +403,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         tickers,
         brokerConnected: ctx.brokerConnected,
         ...answer,
+        picks,
         suggestions: suggestionsForIntent(intent, tickers),
         source,
         disclaimer: "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",

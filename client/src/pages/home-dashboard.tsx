@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useLocation } from "wouter";
-import { Search, Sparkles, ArrowRight } from "lucide-react";
+import { Search, Sparkles, ArrowRight, Target } from "lucide-react";
 import { HomeActionCard, ComplianceFooter } from "@/components/trading-shell";
 import { QuickPromptBar } from "@/components/home/quick-prompt-bar";
 import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
@@ -73,12 +73,12 @@ export default function HomeDashboard() {
               onClick={() => navigate("/trade-finder")}
             />
             <HomeActionCard
-              title="Ask AI"
-              subtitle="Ask any market question. Live broker quotes, computed indicators, and news sentiment power every answer."
-              icon={Sparkles}
-              accent="blue"
-              testId="card-action-ask"
-              onClick={() => navigate("/ask")}
+              title="Find My Best Trade"
+              subtitle="Scan your watchlist or major indexes for the highest-confidence defined-risk trade right now — no naked long calls or puts."
+              icon={Target}
+              accent="emerald"
+              testId="card-action-best-trade"
+              onClick={() => navigate("/best-trade")}
             />
           </div>
         </div>

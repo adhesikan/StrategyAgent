@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info } from "lucide-react";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
 
 interface BrokerAccount {
@@ -14,6 +14,14 @@ interface BrokerAccount {
   buyingPower: number;
   equity: number;
   currency: string;
+}
+
+interface QuoteResponse {
+  symbol: string;
+  last: number;
+  volume: number;
+  change: number;
+  changePercent: number;
 }
 
 interface Leg {
@@ -49,218 +57,289 @@ interface TradePlan {
   steps: string[];
 }
 
-function buildPlan(type: TradeType, ticker: string, strategy: string): TradePlan {
-  const expiry = "Jun 6";
+// Round a price to a sensible option-strike increment based on the underlying.
+function roundStrike(price: number): number {
+  if (price >= 200) return Math.round(price / 5) * 5;
+  if (price >= 50) return Math.round(price);
+  if (price >= 10) return Math.round(price * 2) / 2; // half-dollar
+  return Math.round(price * 2) / 2;
+}
+
+// Pick a near-month expiry label ~30-45 days out.
+function defaultExpiryLabel(now: Date = new Date()): string {
+  const target = new Date(now);
+  target.setDate(target.getDate() + 35);
+  return target.toLocaleString("en-US", { month: "short", day: "numeric" });
+}
+
+function buildPlan(type: TradeType, ticker: string, price: number): TradePlan {
+  const expiry = defaultExpiryLabel();
+  const p = Math.max(price, 1);
+
   switch (type) {
-    case "stock":
+    case "stock": {
+      const stop = +(p * 0.95).toFixed(2);
+      const target = +(p * 1.15).toFixed(2);
+      const positionSize = 100;
+      const cost = +(p * positionSize).toFixed(2);
+      const lossDollars = +((p - stop) * positionSize).toFixed(0);
+      const gainDollars = +((target - p) * positionSize).toFixed(0);
       return {
         name: "Long Stock",
         legs: [
-          { side: "BUY", qty: 100, desc: `${ticker} shares @ $90.00`, delta: 1, price: -90 },
+          { side: "BUY", qty: positionSize, desc: `${ticker} shares @ ~$${p.toFixed(2)}`, delta: 1, price: -p },
         ],
-        netLabel: "Total cost",
-        netValue: 9000,
-        netPerShare: -90,
-        winProb: "62%",
+        netLabel: "Total cost (approx.)",
+        netValue: cost,
+        netPerShare: -p,
+        winProb: "—",
         maxProfit: "Unlimited",
-        maxLoss: "$1,500",
-        breakEven: "$90.00",
-        payoff: { breakeven: [90, 200], maxUp: 1500, maxDown: -1500 },
+        maxLoss: `~$${lossDollars.toLocaleString()} (to stop)`,
+        breakEven: `$${p.toFixed(2)}`,
+        payoff: { breakeven: [p, p * 1.5], maxUp: gainDollars, maxDown: -lossDollars },
         reasons: [
           "Strong relative strength vs sector",
-          "Volume 2.4× average — institutional interest",
+          "Volume above average — interest building",
           "Holding above the 20-day moving average",
         ],
         cautions: ["Capital at risk = full position size minus stop"],
         exitPlan: [
-          "Take profit at +15% ($103.50)",
-          "Stop loss at -5% ($85.50)",
+          `Take profit at +15% (~$${target.toFixed(2)})`,
+          `Stop loss at -5% (~$${stop.toFixed(2)})`,
           "Trail stop to break-even after +5%",
         ],
         steps: [
           `Open broker order ticket for ${ticker}`,
-          "Choose: Buy 100 shares",
-          "Order type: Limit at $90.00",
-          "Set stop at $85.50, target at $103.50 (bracket)",
+          `Choose: Buy ${positionSize} shares`,
+          `Order type: Limit near $${p.toFixed(2)}`,
+          `Set stop at $${stop.toFixed(2)}, target at $${target.toFixed(2)} (bracket)`,
           "Submit",
         ],
       };
-    case "long-call":
+    }
+    case "long-call": {
+      const strike = roundStrike(p * 1.02); // slightly OTM
+      const debit = +(p * 0.025).toFixed(2); // ~2.5% of underlying — rough placeholder
+      const breakEven = +(strike + debit).toFixed(2);
+      const cost = +(debit * 100).toFixed(0);
       return {
         name: "Long Call",
         legs: [
-          { side: "BUY", qty: 1, desc: `$92 call · ${expiry}`, delta: 0.45, price: -2.10 },
+          { side: "BUY", qty: 1, desc: `$${strike} call · ${expiry}`, delta: 0.45, price: -debit },
         ],
-        netLabel: "Net debit paid",
-        netValue: -210,
-        netPerShare: -2.10,
-        winProb: "48%",
+        netLabel: "Net debit paid (estimate)",
+        netValue: -cost,
+        netPerShare: -debit,
+        winProb: "≈45–50%",
         maxProfit: "Unlimited",
-        maxLoss: "$210",
-        breakEven: "$94.10",
-        payoff: { breakeven: [94, 200], maxUp: 600, maxDown: -210 },
+        maxLoss: `$${cost.toLocaleString()}`,
+        breakEven: `$${breakEven.toFixed(2)}`,
+        payoff: { breakeven: [breakEven, breakEven * 1.4], maxUp: cost * 3, maxDown: -cost },
         reasons: [
           "Bullish bias from price action + volume",
-          "IV rank below 50 — premium isn't expensive",
+          "IV rank moderate — premium not extreme",
           "Defined risk = full premium paid",
         ],
-        cautions: ["Theta decay accelerates inside 21 DTE"],
+        cautions: [
+          "Theta decay accelerates inside 21 DTE",
+          `Estimate only — confirm actual premium and Δ in your broker chain near $${strike}`,
+        ],
         exitPlan: [
-          "Take profit at +75% (~$3.70)",
-          "Stop loss at -50% of premium (~$1.05)",
+          "Take profit at +75% of premium",
+          "Stop loss at -50% of premium",
           "Close 21 days before expiry to avoid gamma risk",
         ],
         steps: [
           `Open ${ticker} options chain`,
           `Select expiry: ${expiry}`,
-          "Buy 1 call at strike $92",
-          "Order type: Limit at $2.10 debit",
+          `Buy 1 call near strike $${strike}`,
+          `Order type: Limit near $${debit.toFixed(2)} debit`,
           "Submit single-leg order",
         ],
       };
-    case "long-put":
+    }
+    case "long-put": {
+      const strike = roundStrike(p * 0.98); // slightly OTM
+      const debit = +(p * 0.024).toFixed(2);
+      const breakEven = +(strike - debit).toFixed(2);
+      const cost = +(debit * 100).toFixed(0);
       return {
         name: "Long Put",
         legs: [
-          { side: "BUY", qty: 1, desc: `$88 put · ${expiry}`, delta: -0.42, price: -1.95 },
+          { side: "BUY", qty: 1, desc: `$${strike} put · ${expiry}`, delta: -0.42, price: -debit },
         ],
-        netLabel: "Net debit paid",
-        netValue: -195,
-        netPerShare: -1.95,
-        winProb: "46%",
-        maxProfit: "$8,605 (if → $0)",
-        maxLoss: "$195",
-        breakEven: "$86.05",
-        payoff: { breakeven: [80, 86], maxUp: 600, maxDown: -195 },
+        netLabel: "Net debit paid (estimate)",
+        netValue: -cost,
+        netPerShare: -debit,
+        winProb: "≈42–48%",
+        maxProfit: `$${(strike * 100 - cost).toLocaleString()} (if → $0)`,
+        maxLoss: `$${cost.toLocaleString()}`,
+        breakEven: `$${breakEven.toFixed(2)}`,
+        payoff: { breakeven: [breakEven * 0.6, breakEven], maxUp: cost * 3, maxDown: -cost },
         reasons: [
           "Bearish bias — broke key support",
           "IV rank moderate — premium reasonable",
           "Defined risk = full premium paid",
         ],
-        cautions: ["Theta decay accelerates inside 21 DTE"],
+        cautions: [
+          "Theta decay accelerates inside 21 DTE",
+          `Estimate only — confirm actual premium and Δ in your broker chain near $${strike}`,
+        ],
         exitPlan: [
-          "Take profit at +75% (~$3.40)",
-          "Stop loss at -50% of premium (~$0.97)",
+          "Take profit at +75% of premium",
+          "Stop loss at -50% of premium",
           "Close 21 days before expiry to avoid gamma risk",
         ],
         steps: [
           `Open ${ticker} options chain`,
           `Select expiry: ${expiry}`,
-          "Buy 1 put at strike $88",
-          "Order type: Limit at $1.95 debit",
+          `Buy 1 put near strike $${strike}`,
+          `Order type: Limit near $${debit.toFixed(2)} debit`,
           "Submit single-leg order",
         ],
       };
-    case "short-premium":
+    }
+    case "short-premium": {
+      const strike = roundStrike(p * 0.93); // ~7% OTM put
+      const credit = +(p * 0.012).toFixed(2);
+      const breakEven = +(strike - credit).toFixed(2);
+      const creditDollars = +(credit * 100).toFixed(0);
+      const collateral = +(strike * 100).toFixed(0);
       return {
         name: "Cash-Secured Put",
         legs: [
-          { side: "SELL", qty: 1, desc: `$85 put · ${expiry}`, delta: -0.30, price: 1.10 },
+          { side: "SELL", qty: 1, desc: `$${strike} put · ${expiry}`, delta: -0.30, price: credit },
         ],
-        netLabel: "Net credit received",
-        netValue: 110,
-        netPerShare: 1.10,
-        winProb: "70%",
-        maxProfit: "$110",
-        maxLoss: "$8,390 (assignment to $0)",
-        breakEven: "$83.90",
-        payoff: { breakeven: [83.9, 200], maxUp: 110, maxDown: -8390 },
+        netLabel: "Net credit received (estimate)",
+        netValue: creditDollars,
+        netPerShare: credit,
+        winProb: "≈70%",
+        maxProfit: `$${creditDollars.toLocaleString()}`,
+        maxLoss: `$${(collateral - creditDollars).toLocaleString()} (assignment to $0)`,
+        breakEven: `$${breakEven.toFixed(2)}`,
+        payoff: { breakeven: [breakEven, breakEven * 1.6], maxUp: creditDollars, maxDown: -(collateral - creditDollars) },
         reasons: [
           "Selling premium when IV is elevated",
           "Strike below key support — comfortable assignment level",
           "Probability of profit ~70%",
         ],
         cautions: [
-          "Requires cash to back the put ($8,500 buying power)",
+          `Requires cash to back the put (~$${collateral.toLocaleString()} buying power)`,
           "Assignment risk if price falls below strike",
+          `Estimate only — confirm actual credit in your broker chain near $${strike}`,
         ],
         exitPlan: [
-          "Take profit at 50% of max credit ($0.55)",
+          "Take profit at 50% of max credit",
           "Roll down/out if tested at short strike",
-          "Accept assignment if you'd own the stock at $83.90",
+          `Accept assignment if you'd own the stock at $${breakEven.toFixed(2)}`,
         ],
         steps: [
           `Open ${ticker} options chain`,
           `Select expiry: ${expiry}`,
-          "Sell 1 put at strike $85",
-          "Order type: Limit at $1.10 credit",
+          `Sell 1 put near strike $${strike}`,
+          `Order type: Limit near $${credit.toFixed(2)} credit`,
           "Confirm cash collateral and submit",
         ],
       };
-    case "vertical":
+    }
+    case "vertical": {
+      const longK = roundStrike(p);
+      const shortK = roundStrike(p * 1.06);
+      const debit = +(p * 0.018).toFixed(2);
+      const width = shortK - longK;
+      const maxGain = +((width - debit) * 100).toFixed(0);
+      const maxLoss = +(debit * 100).toFixed(0);
+      const breakEven = +(longK + debit).toFixed(2);
       return {
         name: "Bull Call Spread",
         legs: [
-          { side: "BUY",  qty: 1, desc: `$90 call · ${expiry}`, delta: 0.52, price: -2.80 },
-          { side: "SELL", qty: 1, desc: `$95 call · ${expiry}`, delta: 0.28, price: 1.20 },
+          { side: "BUY",  qty: 1, desc: `$${longK} call · ${expiry}`, delta: 0.52, price: -(debit + width * 0.4) },
+          { side: "SELL", qty: 1, desc: `$${shortK} call · ${expiry}`, delta: 0.28, price: width * 0.4 },
         ],
-        netLabel: "Net debit paid",
-        netValue: -160,
-        netPerShare: -1.60,
-        winProb: "58%",
-        maxProfit: "$340",
-        maxLoss: "$160",
-        breakEven: "$91.60",
-        payoff: { breakeven: [91.6, 95], maxUp: 340, maxDown: -160 },
+        netLabel: "Net debit paid (estimate)",
+        netValue: -maxLoss,
+        netPerShare: -debit,
+        winProb: "≈55–60%",
+        maxProfit: `$${maxGain.toLocaleString()}`,
+        maxLoss: `$${maxLoss.toLocaleString()}`,
+        breakEven: `$${breakEven.toFixed(2)}`,
+        payoff: { breakeven: [breakEven, shortK], maxUp: maxGain, maxDown: -maxLoss },
         reasons: [
           "Defined risk and defined reward",
           "Cheaper than buying the call outright",
-          "Good R:R of ~2:1",
+          `R:R ≈ ${(maxGain / Math.max(maxLoss, 1)).toFixed(1)}:1`,
         ],
-        cautions: ["Caps upside at the short strike"],
+        cautions: [
+          "Caps upside at the short strike",
+          `Estimate only — confirm actual fill in your broker chain (${longK}/${shortK})`,
+        ],
         exitPlan: [
-          "Take profit at 75% of max ($2.55 spread value)",
-          "Stop loss at 50% of debit (~$0.80)",
+          "Take profit at 75% of max",
+          "Stop loss at 50% of debit",
           "Close 14-21 days before expiry",
         ],
         steps: [
           `Open ${ticker} options chain`,
           `Select expiry: ${expiry}`,
-          "Buy 1 call at $90",
-          "Sell 1 call at $95",
-          "Order type: Limit at $1.60 debit",
+          `Buy 1 call at $${longK}`,
+          `Sell 1 call at $${shortK}`,
+          `Order type: Limit near $${debit.toFixed(2)} debit`,
           "Submit as a single multi-leg combo order",
         ],
       };
+    }
     case "complex":
-    default:
+    default: {
+      const callShort = roundStrike(p * 1.05);
+      const callLong = roundStrike(p * 1.10);
+      const putShort = roundStrike(p * 0.95);
+      const putLong = roundStrike(p * 0.90);
+      const credit = +(p * 0.012).toFixed(2);
+      const callWidth = callLong - callShort;
+      const putWidth = putShort - putLong;
+      const maxLossDollars = +((Math.max(callWidth, putWidth) - credit) * 100).toFixed(0);
+      const creditDollars = +(credit * 100).toFixed(0);
       return {
         name: "Iron Condor",
         legs: [
-          { side: "SELL", qty: 1, desc: `$94 call · ${expiry}`, delta: 0.16, price: 1.20 },
-          { side: "BUY",  qty: 1, desc: `$97 call · ${expiry}`, delta: 0.07, price: -0.45 },
-          { side: "SELL", qty: 1, desc: `$84 put · ${expiry}`,  delta: -0.16, price: 1.05 },
-          { side: "BUY",  qty: 1, desc: `$81 put · ${expiry}`,  delta: -0.07, price: -0.40 },
+          { side: "SELL", qty: 1, desc: `$${callShort} call · ${expiry}`, delta: 0.16, price: credit * 0.6 },
+          { side: "BUY",  qty: 1, desc: `$${callLong} call · ${expiry}`, delta: 0.07, price: -credit * 0.25 },
+          { side: "SELL", qty: 1, desc: `$${putShort} put · ${expiry}`,  delta: -0.16, price: credit * 0.6 },
+          { side: "BUY",  qty: 1, desc: `$${putLong} put · ${expiry}`,  delta: -0.07, price: -credit * 0.25 },
         ],
-        netLabel: "Net credit received",
-        netValue: 140,
-        netPerShare: 1.40,
-        winProb: "71%",
-        maxProfit: "$140",
-        maxLoss: "$160",
-        breakEven: "$82.60 / $95.40",
-        payoff: { breakeven: [84, 94], maxUp: 140, maxDown: -160 },
+        netLabel: "Net credit received (estimate)",
+        netValue: creditDollars,
+        netPerShare: credit,
+        winProb: "≈70%",
+        maxProfit: `$${creditDollars.toLocaleString()}`,
+        maxLoss: `$${maxLossDollars.toLocaleString()}`,
+        breakEven: `$${(putShort - credit).toFixed(2)} / $${(callShort + credit).toFixed(2)}`,
+        payoff: { breakeven: [putShort, callShort], maxUp: creditDollars, maxDown: -maxLossDollars },
         reasons: [
-          "IV rank at 78th percentile — premiums elevated",
+          "IV rank elevated — premiums richer",
           "Tight trading range past 30 days",
-          "Risk fully defined — max loss is $160",
+          `Risk fully defined — max loss ~$${maxLossDollars.toLocaleString()}`,
         ],
-        cautions: ["No earnings in next 30 days — clean window"],
+        cautions: [
+          "Verify no earnings inside expiry window",
+          `Estimate only — confirm actual fills in your broker chain (${putLong}/${putShort}/${callShort}/${callLong})`,
+        ],
         exitPlan: [
-          "Take profit at 50% of max credit ($0.70)",
-          "Stop loss if debit hits $2.80 (2× credit)",
-          "Manage if any short strike delta exceeds 0.30",
+          "Take profit at 50% of max credit",
+          "Stop loss if debit hits 2× credit",
+          "Manage if any short-strike delta exceeds 0.30",
           "Close 21 days before expiry",
         ],
         steps: [
           `Open ${ticker} options chain`,
           `Select expiry: ${expiry}`,
-          "Sell 1 call at $94, Buy 1 call at $97",
-          "Sell 1 put at $84, Buy 1 put at $81",
-          "Order type: Limit at $1.40 credit",
+          `Sell 1 call at $${callShort}, Buy 1 call at $${callLong}`,
+          `Sell 1 put at $${putShort}, Buy 1 put at $${putLong}`,
+          `Order type: Limit near $${credit.toFixed(2)} credit`,
           "Submit as a single multi-leg combo order",
         ],
       };
+    }
   }
 }
 
@@ -322,16 +401,58 @@ const TYPE_LABELS: Record<TradeType, string> = {
   "complex": "Complex (multi-leg)",
 };
 
+// Map a TradeType to its strategy slug so the subtitle stays consistent.
+const TYPE_TO_STRATEGY: Record<TradeType, string> = {
+  "stock": "long-stock",
+  "long-call": "long-call",
+  "long-put": "long-put",
+  "short-premium": "cash-secured-put",
+  "vertical": "bull-call-spread",
+  "complex": "iron-condor",
+};
+
+function normalizeStrategyForType(strategyParam: string | null, type: TradeType): string {
+  const fallback = TYPE_TO_STRATEGY[type];
+  if (!strategyParam) return fallback;
+  // Strategies that match the trade type are fine — otherwise fall back so we
+  // never show "long call" with an "iron-condor" subtitle.
+  const compat: Record<TradeType, string[]> = {
+    "stock": ["long-stock", "stock", "swing", "breakout", "momentum", "vcp"],
+    "long-call": ["long-call", "bullish", "momentum", "breakout"],
+    "long-put": ["long-put", "bearish"],
+    "short-premium": ["cash-secured-put", "csp", "covered-call", "wheel"],
+    "vertical": ["bull-call-spread", "bear-put-spread", "vertical", "debit-spread", "credit-spread"],
+    "complex": ["iron-condor", "iron-butterfly", "strangle", "straddle", "calendar"],
+  };
+  const allowed = compat[type] ?? [];
+  return allowed.some((a) => strategyParam.toLowerCase().includes(a)) ? strategyParam : fallback;
+}
+
 export default function TradeDetailPage() {
   const params = useParams<{ ticker: string }>();
   const search = useSearch();
   const [, navigate] = useLocation();
   const sp = new URLSearchParams(search);
-  const strategy = sp.get("strategy") || "iron-condor";
-  const type = (sp.get("type") || "complex") as TradeType;
-  const ticker = (params.ticker || "XLE").toUpperCase();
+  const rawStrategy = sp.get("strategy");
+  const type = (sp.get("type") || "stock") as TradeType;
+  const ticker = (params.ticker || "AAPL").toUpperCase();
+  const strategy = normalizeStrategyForType(rawStrategy, type);
 
-  const plan = useMemo(() => buildPlan(type, ticker, strategy), [type, ticker, strategy]);
+  const { data: quote, isLoading: quoteLoading, isError: quoteError } = useQuery<QuoteResponse>({
+    queryKey: ["/api/broker/quote", ticker],
+    queryFn: async () => {
+      const res = await fetch(`/api/broker/quote/${ticker}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Quote ${res.status}`);
+      return res.json();
+    },
+    retry: false,
+  });
+
+  const livePrice = quote?.last ?? null;
+  const fallbackPrice = 100;
+  const planPrice = livePrice ?? fallbackPrice;
+
+  const plan = useMemo(() => buildPlan(type, ticker, planPrice), [type, ticker, planPrice]);
   const score = 94;
 
   const [ticketOpen, setTicketOpen] = useState(false);
@@ -343,13 +464,13 @@ export default function TradeDetailPage() {
 
   const scanResult = {
     ticker,
-    price: 90,
-    resistance: 97,
-    stopLoss: 84,
+    price: planPrice,
+    resistance: +(planPrice * 1.08).toFixed(2),
+    stopLoss: +(planPrice * 0.94).toFixed(2),
     stage: "BREAKOUT",
     patternScore: score,
     rvol: 1.4,
-    prefillTarget: 84,
+    prefillTarget: +(planPrice * 0.94).toFixed(2),
     prefillQuantity: type === "stock" ? 100 : 1,
   };
 
@@ -378,6 +499,14 @@ export default function TradeDetailPage() {
                 <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                   {TYPE_LABELS[type]}
                 </Badge>
+                {livePrice != null && (
+                  <span className="text-xs text-muted-foreground" data-testid="text-live-price">
+                    Last: <span className="text-foreground font-medium">${livePrice.toFixed(2)}</span>
+                  </span>
+                )}
+                {quoteLoading && (
+                  <span className="text-xs text-muted-foreground">Fetching live price…</span>
+                )}
               </div>
             </div>
           </div>
@@ -385,6 +514,33 @@ export default function TradeDetailPage() {
             Score: {score}/100
           </Badge>
         </div>
+
+        {(quoteError || livePrice == null) && !quoteLoading && (
+          <Card className="p-3 border-amber-300 bg-amber-50 dark:bg-amber-950/20" data-testid="banner-no-live-price">
+            <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                No live broker quote available for {ticker}. Strikes and prices below are
+                <strong> illustrative only</strong> — connect your broker (Tradier or TradeStation)
+                to compute strikes from the current market price, and always confirm actual prices
+                in your broker's option chain before placing any order.
+              </p>
+            </div>
+          </Card>
+        )}
+
+        {livePrice != null && type !== "stock" && (
+          <Card className="p-3 border-sky-300 bg-sky-50 dark:bg-sky-950/20" data-testid="banner-estimate-disclaimer">
+            <div className="flex items-start gap-2 text-xs text-sky-900 dark:text-sky-200">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                Strikes and premiums shown are <strong>estimates</strong> derived from the current
+                price (${livePrice.toFixed(2)}). Always confirm the actual chain quotes (bid/ask, IV,
+                delta, OI) in your broker before submitting.
+              </p>
+            </div>
+          </Card>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricTile label="Win probability" value={plan.winProb} testId="metric-win-prob" />
@@ -433,10 +589,10 @@ export default function TradeDetailPage() {
             <PayoffDiagram payoff={plan.payoff} />
             <div className="text-xs text-muted-foreground mt-2 text-center">
               {type === "stock" || type === "long-call"
-                ? `Profitable above $${plan.payoff.breakeven[0]}`
+                ? `Profitable above $${plan.payoff.breakeven[0].toFixed(2)}`
                 : type === "long-put"
-                ? `Profitable below $${plan.payoff.breakeven[1]}`
-                : `Profit zone (green) between $${plan.payoff.breakeven[0]} and $${plan.payoff.breakeven[1]}`}
+                ? `Profitable below $${plan.payoff.breakeven[1].toFixed(2)}`
+                : `Profit zone (green) between $${plan.payoff.breakeven[0].toFixed(2)} and $${plan.payoff.breakeven[1].toFixed(2)}`}
             </div>
           </Card>
         </div>

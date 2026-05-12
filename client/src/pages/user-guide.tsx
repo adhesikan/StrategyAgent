@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   BookOpen, Home, TrendingUp, DollarSign, BarChart3, Newspaper, Radar,
   Zap, ShieldCheck, Briefcase, Settings as SettingsIcon, FileText, HelpCircle,
-  Search, Sparkles, AlertTriangle, CheckCircle2, ChevronRight, Moon,
+  Search, Sparkles, AlertTriangle, CheckCircle2, ChevronRight, Moon, Rocket,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,11 +23,52 @@ type Section = {
 
 const SECTIONS: Section[] = [
   {
+    id: "whats-new",
+    title: "What's New",
+    icon: Rocket,
+    summary: "Recent updates: scan-source picker, full Income order ticket, starter watchlist, and more.",
+    keywords: ["changelog", "updates", "release", "new"],
+    body: (
+      <>
+        <p className="text-sm text-muted-foreground">Latest improvements you'll see across the app:</p>
+        <ul className="list-disc pl-5 space-y-2 mt-3">
+          <li>
+            <strong>"Scan from" picker on Home.</strong> The "Today's Ideas For You" section now has an
+            inline selector so you can choose the universe each tab scans — <em>My Watchlist, Dow 30,
+            Nasdaq 100, S&amp;P 500, High Volume, Options Liquid,</em> or <em>Custom symbols</em>. Your
+            choice is saved as a preference and persists across sessions. See the{" "}
+            <Link href="/guide#home" className="underline">Home</Link> section.
+          </li>
+          <li>
+            <strong>Full InstaTrade™ order review on Income.</strong> The Income mode "Review Details"
+            and "Prepare Order" buttons now open the same order-review modal used by Grow — with
+            broker-aware button labels (Paper Trade vs. Send to Broker) and the required acknowledgment
+            checkbox. See <Link href="/guide#income" className="underline">Generate Income</Link>.
+          </li>
+          <li>
+            <strong>Starter Watchlist auto-seeded for new accounts.</strong> Every new user gets a
+            10-symbol starter list (AAPL, MSFT, NVDA, AMD, TSLA, META, AMZN, GOOGL, MU, PLTR) so the
+            scanners and Markets pages have something to work with on day one.
+          </li>
+          <li>
+            <strong>Universe source chip on Top Opportunities.</strong> The Radar now shows which
+            symbol set it scanned (your watchlist, a fallback, a major index, or your custom list) and
+            highlights it in amber when a fallback was used so you know to build your watchlist.
+          </li>
+          <li>
+            <strong>Single Pro plan with 14-day free trial.</strong> Pricing has been simplified to one
+            plan — <strong>VCP Trader AI Pro at $99/month</strong>, with a 14-day free trial.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
     id: "getting-started",
     title: "Getting Started",
     icon: Sparkles,
-    summary: "Set up your account, pick a mode, and decide between paper and live data.",
-    keywords: ["onboarding", "setup", "first time", "new"],
+    summary: "Set up your account, pick a mode, and start your 14-day free trial.",
+    keywords: ["onboarding", "setup", "first time", "new", "trial", "pro plan", "pricing"],
     body: (
       <>
         <p>
@@ -36,34 +77,66 @@ const SECTIONS: Section[] = [
           You stay in control — no autonomous trading.
         </p>
         <ol className="list-decimal pl-5 space-y-2 mt-3">
+          <li><strong>Start your free trial.</strong> There's one plan — <strong>Pro at $99/month with a 14-day free trial</strong>. You can cancel anytime from the Stripe billing portal.</li>
+          <li><strong>Complete the persona wizard.</strong> A short 7-step questionnaire computes your trader persona (buyer / seller / complex / learner), suggests a strategy bundle, and seeds safety limits like max risk per trade and max daily loss.</li>
           <li><strong>Pick a starting mode</strong> from the sidebar: Home (overview), Grow (growth ideas), Income (covered calls / CSPs), Trade (plain-English builder), or Markets (news + sentiment).</li>
           <li><strong>Set your limits</strong> in <Link href="/settings/risk-profile" className="underline">My Limits</Link> — minimum grade, max risk per trade, allowed instruments. These limits are enforced when you prepare an order.</li>
-          <li><strong>Connect a broker</strong> in <Link href="/settings" className="underline">Settings → Connect Your Broker</Link> (Tradier, TradeStation, or SnapTrade) for live quotes and order routing. Without a broker you can still browse ideas in simulated mode.</li>
-          <li><strong>Try paper mode first</strong> — every preparation flow can be marked as paper so you can practice without risking capital.</li>
+          <li><strong>Connect a broker</strong> in <Link href="/settings" className="underline">Settings → Connect Your Broker</Link> (Tradier or TradeStation, both via OAuth; SnapTrade also supported) for live quotes and order routing. Without a broker you can still browse ideas with simulated examples.</li>
+          <li><strong>Try paper mode first.</strong> Connect a broker sandbox account to practice with realistic order routing before going live.</li>
         </ol>
+        <p className="mt-3 text-sm text-muted-foreground">
+          New accounts are seeded with a 10-symbol Starter Watchlist so Home, Markets, and the scanners
+          have something to show before you build your own list.
+        </p>
       </>
     ),
   },
   {
     id: "home",
-    title: "Home / Agent",
+    title: "Home Dashboard",
     icon: Home,
-    summary: "Your dashboard. Type a prompt, see today's AI ideas, and check market status.",
+    summary: "Daily ideas, market snapshot, and a scan-source picker that controls every tab.",
+    keywords: ["dashboard", "today's ideas", "scan from", "universe", "watchlist", "dow", "nasdaq", "sp500"],
     body: (
       <>
         <p>
           The <Link href="/home" className="underline">Home</Link> page is your daily starting point.
-          It shows the broker connection state, market open/closed, a Today's AI Snapshot panel, and
-          quick chips for common requests.
+          It shows the broker connection state, market open/closed, an AI snapshot panel, and the
+          "Today's Ideas For You" board with tabs for All, Stocks, Options, Income, Watchlist, and
+          Market Alerts.
         </p>
-        <h4 className="font-semibold mt-3">What you can do:</h4>
+
+        <h4 className="font-semibold mt-3">"Scan from" picker</h4>
+        <p>
+          In the top-right of the Today's Ideas section there's a <strong>Scan from</strong> dropdown.
+          It controls the symbol universe used by every tab. Your selection is saved to your account,
+          so it sticks across devices and sessions.
+        </p>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li><strong>Auto (recommended)</strong> — uses your watchlist with smart fallbacks if the watchlist is empty or returns nothing.</li>
+          <li><strong>My Watchlist</strong> — only the symbols you've saved.</li>
+          <li><strong>Dow 30</strong> — 30 blue-chip stocks.</li>
+          <li><strong>Nasdaq 100</strong> — top 100 Nasdaq names.</li>
+          <li><strong>S&amp;P 500</strong> — top 500 US stocks (sampled to keep scans fast).</li>
+          <li><strong>High Volume</strong> — most-traded liquid names.</li>
+          <li><strong>Options Liquid</strong> — best names for option ideas (tight spreads, deep open interest).</li>
+          <li><strong>Custom symbols…</strong> — opens an inline input where you type your own list (e.g. <code>AAPL, MSFT, NVDA</code>) and click Apply. Up to 30 tickers, comma-separated.</li>
+        </ul>
+        <p className="mt-2 text-sm text-muted-foreground">
+          When you pin a specific universe, the scanner respects your choice and won't silently widen
+          to a different list — so an empty tab really means nothing in your selected universe meets
+          the filter for that tab. Switch to Auto to let the system pick a fallback.
+        </p>
+
+        <h4 className="font-semibold mt-3">Other things on Home</h4>
         <ul className="list-disc pl-5 space-y-1">
           <li>Type a request like "income ideas this week" or "why is NVDA moving?" — the prompt bar routes you to the right tool.</li>
           <li>Tap a popular chip to jump straight into Grow, Income, Trade, or Markets.</li>
           <li>Review the AI snapshot for market tone, top growth, top income, and watchlist risk.</li>
+          <li>A "Simulated data" badge appears when you don't have a broker connected and we're using example quotes.</li>
         </ul>
         <p className="mt-3 text-sm text-muted-foreground">
-          Everything you see is informational — no order is sent until you explicitly review and confirm it.
+          Everything on this screen is informational — no order is sent until you explicitly review and confirm it.
         </p>
       </>
     ),
@@ -93,7 +166,7 @@ const SECTIONS: Section[] = [
     id: "income",
     title: "Generate Income",
     icon: DollarSign,
-    summary: "Covered calls, cash-secured puts, and defined-risk income strategies.",
+    summary: "Covered calls, cash-secured puts, defined-risk income — with full InstaTrade™ review.",
     body: (
       <>
         <p>
@@ -105,6 +178,17 @@ const SECTIONS: Section[] = [
           <li>Each idea includes strike, expiration, breakeven, max loss, premium, and assignment risk.</li>
           <li>The instrument picker can offer a debit-spread alternative if your preferences require defined risk.</li>
           <li>Liquidity guardrails (min open interest, max bid/ask spread) are checked before you can submit.</li>
+        </ul>
+        <h4 className="font-semibold mt-3">Reviewing &amp; preparing an order</h4>
+        <p>
+          Both <strong>Review Details</strong> and <strong>Prepare Order</strong> on each idea card open
+          the full order-review modal — the same one used in Grow. You'll see strategy, capital
+          required, max loss, and a required acknowledgment checkbox before you can submit.
+        </p>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li><strong>Broker connected (live)</strong> — the action button reads <em>Send to Broker via InstaTrade™</em>.</li>
+          <li><strong>Broker connected (sandbox)</strong> — the button reads <em>Paper Trade</em>.</li>
+          <li><strong>No broker connected</strong> — the button is disabled and prompts you to connect one.</li>
         </ul>
       </>
     ),
@@ -176,6 +260,14 @@ const SECTIONS: Section[] = [
           <li><strong>Basic:</strong> strategy, bias, max loss, min grade, time horizon, universe.</li>
           <li><strong>Advanced:</strong> minimum option volume, avoid earnings days, min reward/risk, liquidity floors.</li>
         </ul>
+        <h4 className="font-semibold mt-3">Universe source chip</h4>
+        <p>
+          A chip at the top of the page shows which symbol set the radar actually scanned —
+          <em> My Watchlist</em>, <em>Large Cap (Dow 30)</em>, <em>High Volume</em>, <em>Options
+          Liquid</em>, <em>Nasdaq 100</em>, <em>S&amp;P 500</em>, or <em>Custom</em>. If your watchlist
+          was empty and the system fell back to a starter list, the chip turns amber so you know to
+          build your watchlist for personalized results.
+        </p>
         <p className="mt-3">
           Each card has a "View Why" drawer showing the factor breakdown and a Review Scenario modal
           that mirrors the standard order review acknowledgment before any paper trade or live order.
@@ -447,6 +539,18 @@ const SECTIONS: Section[] = [
           <div>
             <dt className="font-semibold">Can I cancel my subscription?</dt>
             <dd className="text-muted-foreground">Yes — manage your plan from <Link href="/pricing" className="underline">Pricing</Link> or via the Stripe billing portal.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold">How much does it cost? Is there a trial?</dt>
+            <dd className="text-muted-foreground">There's one plan — <strong>VCP Trader AI Pro at $99/month</strong> with a <strong>14-day free trial</strong>. No charge until the trial ends; cancel anytime.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold">Why is my "Today's Ideas" tab empty?</dt>
+            <dd className="text-muted-foreground">The filters for that tab didn't surface anything in the universe you selected. Try the <em>Scan from</em> picker on Home to switch to Dow 30, Nasdaq 100, S&amp;P 500, or a custom list — or go back to <em>Auto</em> to let the system fall back to a broader set.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold">Can I scan a custom list of stocks?</dt>
+            <dd className="text-muted-foreground">Yes. On Home, choose <em>Custom symbols…</em> in the Scan from picker, type a comma-separated list (up to 30 tickers), and click Apply. The choice is saved to your account.</dd>
           </div>
         </dl>
       </>

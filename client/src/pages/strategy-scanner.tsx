@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
+import { useMutation } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
 import {
   Sheet,
   SheetContent,
@@ -506,26 +509,178 @@ interface ScanResult {
   reason: string;
 }
 
-const MOCK_RESULTS: ScanResult[] = [
-  { ticker: "NVDA", name: "Nvidia Corp", score: 96, winProb: 74, reason: "Vol 3.8× avg · Breaking resistance" },
-  { ticker: "META", name: "Meta Platforms", score: 89, winProb: 69, reason: "Vol 2.9× avg · News catalyst" },
-  { ticker: "AMD",  name: "Advanced Micro Devices", score: 85, winProb: 67, reason: "Sector momentum · Holds key MA" },
-  { ticker: "MU",   name: "Micron Technology", score: 82, winProb: 65, reason: "Earnings tailwind · Above 50MA" },
-  { ticker: "TSLA", name: "Tesla", score: 78, winProb: 62, reason: "Vol 2.1× avg · Breaking range" },
-  { ticker: "GOOGL", name: "Alphabet", score: 76, winProb: 61, reason: "Strong relative strength" },
-  { ticker: "MSFT", name: "Microsoft", score: 74, winProb: 60, reason: "Tight base · Holds 20MA" },
-  { ticker: "PLTR", name: "Palantir", score: 71, winProb: 59, reason: "Trending up · Volume confirms" },
-  { ticker: "AAPL", name: "Apple", score: 68, winProb: 57, reason: "Range break · Volume stable" },
-  { ticker: "CRWD", name: "CrowdStrike", score: 65, winProb: 55, reason: "Holding key support" },
+// Maps the UI strategy card → the backend StrategyType the live scan accepts.
+const STRATEGY_BACKEND_MAP: Record<string, string> = {
+  "momentum-breakout": "VCP",
+  "power-breakout": "VCP_MULTIDAY",
+  "open-drive-5m": "ORB5",
+  "open-drive-15m": "ORB15",
+  "volume-surge": "HIGH_RVOL",
+  "gap-force": "GAP_AND_GO",
+  "precision-pullback": "CLASSIC_PULLBACK",
+  "trend-pilot": "TREND_CONTINUATION",
+  "institutional-reclaim": "VWAP_RECLAIM",
+  "pressure-break": "VOLATILITY_SQUEEZE",
+  "iv-crush": "VOLATILITY_SQUEEZE",
+  "iron-condor": "VOLATILITY_SQUEEZE",
+  "downtrend-reversal": "CLASSIC_PULLBACK",
+};
+
+// Universe used to seed per-strategy fallback results when no broker is connected.
+const UNIVERSE: { ticker: string; name: string }[] = [
+  { ticker: "NVDA", name: "Nvidia Corp" },
+  { ticker: "META", name: "Meta Platforms" },
+  { ticker: "AMD", name: "Advanced Micro Devices" },
+  { ticker: "MU", name: "Micron Technology" },
+  { ticker: "TSLA", name: "Tesla" },
+  { ticker: "GOOGL", name: "Alphabet" },
+  { ticker: "MSFT", name: "Microsoft" },
+  { ticker: "PLTR", name: "Palantir" },
+  { ticker: "AAPL", name: "Apple" },
+  { ticker: "CRWD", name: "CrowdStrike" },
+  { ticker: "AVGO", name: "Broadcom" },
+  { ticker: "AMZN", name: "Amazon" },
+  { ticker: "NFLX", name: "Netflix" },
+  { ticker: "SHOP", name: "Shopify" },
+  { ticker: "SMCI", name: "Super Micro Computer" },
+  { ticker: "COIN", name: "Coinbase" },
+  { ticker: "UBER", name: "Uber" },
+  { ticker: "ARM", name: "Arm Holdings" },
+  { ticker: "ORCL", name: "Oracle" },
+  { ticker: "QCOM", name: "Qualcomm" },
+  { ticker: "MRVL", name: "Marvell Technology" },
+  { ticker: "ADBE", name: "Adobe" },
+  { ticker: "DIS", name: "Disney" },
+  { ticker: "BA", name: "Boeing" },
+  { ticker: "XOM", name: "Exxon Mobil" },
+  { ticker: "JPM", name: "JPMorgan Chase" },
 ];
+
+function strategyReason(strategyId: string): string {
+  switch (strategyId) {
+    case "momentum-breakout": return "EMA9 > EMA21 · ATR contracting";
+    case "power-breakout": return "Multi-week VCP base · pivot reclaim";
+    case "open-drive-5m": return "5m ORB break · vol 1.6× avg";
+    case "open-drive-15m": return "15m ORB break · holding above";
+    case "volume-surge": return "RVOL 2.4× · tight base";
+    case "gap-force": return "Gap +3.2% · holding VWAP";
+    case "precision-pullback": return "Pullback to EMA9 · bounce";
+    case "trend-pilot": return "EMAs stacked 9>21>50 · weekly up";
+    case "institutional-reclaim": return "VWAP reclaim on volume";
+    case "pressure-break": return "BB inside Keltner · squeeze fired";
+    case "iv-crush": return "IV rank 78 · earnings premium";
+    case "iron-condor": return "Range-bound 30d · IV rank 64";
+    case "downtrend-reversal": return "Below 50MA · RSI 36";
+    default: return "Pattern conditions met";
+  }
+}
+
+// Deterministic FNV-1a-ish hash, stable per strategyId.
+function seedFromString(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function mulberry32(seed: number) {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function timeAgo(d: Date): string {
+  const sec = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return `updated ${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `updated ${min}m ago`;
+  const hr = Math.floor(min / 60);
+  return `updated ${hr}h ago`;
+}
+
+function generateFallbackResults(strategyId: string, count = 7): ScanResult[] {
+  const rand = mulberry32(seedFromString(strategyId));
+  const pool = UNIVERSE.slice();
+  // Fisher-Yates shuffle with seeded RNG.
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const reason = strategyReason(strategyId);
+  return pool.slice(0, count).map((p, idx) => {
+    const score = Math.round(95 - idx * 3 - rand() * 4);
+    const winProb = Math.max(45, Math.min(80, Math.round(score * 0.72 + rand() * 6)));
+    return { ticker: p.ticker, name: p.name, score, winProb, reason };
+  });
+}
+
+interface ScanResponseMeta {
+  isLive: boolean;
+  provider?: string;
+  symbolsRequested?: number;
+  symbolsReturned?: number;
+  scanTimeMs?: number;
+  marketSession?: string;
+  source: "live" | "fallback";
+  error?: string;
+}
 
 export default function StrategyScannerPage() {
   const [, navigate] = useLocation();
+  const { isConnected } = useBrokerStatus();
   const [filter, setFilter] = useState<"All" | StrategyCategory>("All");
   const [tradeTypes, setTradeTypes] = useState<TradeType[]>(TRADE_TYPES.map((t) => t.id));
   const [selected, setSelected] = useState<Strategy>(STRATEGIES[0]);
-  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState<ScanResult[]>(() => generateFallbackResults(STRATEGIES[0].id));
+  const [meta, setMeta] = useState<ScanResponseMeta>({ isLive: false, source: "fallback" });
+  const [lastScanAt, setLastScanAt] = useState<Date>(new Date());
   const [guideStrategy, setGuideStrategy] = useState<Strategy | null>(null);
+
+  const scanMutation = useMutation<{ results: ScanResult[]; meta: ScanResponseMeta }, Error, Strategy>({
+    mutationFn: async (s: Strategy) => {
+      const backendStrategy = STRATEGY_BACKEND_MAP[s.id] || "VCP";
+      if (!isConnected) {
+        return {
+          results: generateFallbackResults(s.id),
+          meta: { isLive: false, source: "fallback" },
+        };
+      }
+      try {
+        const res = await apiRequest("POST", "/api/scan/live", { strategy: backendStrategy });
+        const data = await res.json();
+        const mapped: ScanResult[] = (data.results || []).slice(0, 12).map((r: any) => ({
+          ticker: r.ticker,
+          name: r.companyName || r.name || r.ticker,
+          score: Math.round((r.confidence ?? r.score ?? 50) * (r.confidence != null && r.confidence <= 1 ? 100 : 1)),
+          winProb: Math.round(r.winProbability != null ? r.winProbability * 100 : Math.min(80, Math.max(45, (r.confidence ?? 0.6) * 90))),
+          reason: r.reason || r.description || strategyReason(s.id),
+        }));
+        if (mapped.length === 0) {
+          return {
+            results: generateFallbackResults(s.id),
+            meta: { ...data.metadata, isLive: false, source: "fallback", error: "Live scan returned 0 matches — showing illustrative results." },
+          };
+        }
+        return { results: mapped, meta: { ...data.metadata, source: "live" } };
+      } catch (err: any) {
+        return {
+          results: generateFallbackResults(s.id),
+          meta: { isLive: false, source: "fallback", error: err?.message || "Live scan failed — showing illustrative results." },
+        };
+      }
+    },
+    onSuccess: ({ results: r, meta: m }) => {
+      setResults(r);
+      setMeta(m);
+      setLastScanAt(new Date());
+    },
+  });
+  const running = scanMutation.isPending;
 
   useEffect(() => {
     try {
@@ -556,14 +711,16 @@ export default function StrategyScannerPage() {
 
   useEffect(() => {
     if (filtered.length > 0 && !filtered.find((s) => s.id === selected.id)) {
-      setSelected(filtered[0]);
+      const first = filtered[0];
+      setSelected(first);
+      scanMutation.mutate(first);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, selected.id]);
 
   const select = (s: Strategy) => {
     setSelected(s);
-    setRunning(true);
-    setTimeout(() => setRunning(false), 700);
+    scanMutation.mutate(s);
   };
 
   const preferredType = (s: Strategy): TradeType => {
@@ -746,12 +903,42 @@ export default function StrategyScannerPage() {
                 {selected.name} results · as <span className="text-muted-foreground">{TRADE_TYPES.find((t) => t.id === preferredType(selected))?.short}</span>
               </span>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {MOCK_RESULTS.length} matches · updated 12s ago
-            </span>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  meta.source === "live"
+                    ? "text-[10px] text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
+                    : "text-[10px] text-amber-300 border-amber-500/40 bg-amber-500/10"
+                }
+                data-testid="badge-scan-source"
+              >
+                {meta.source === "live" ? `Live · ${meta.provider ?? "broker"}` : "Illustrative"}
+              </Badge>
+              <span className="text-xs text-muted-foreground" data-testid="text-scan-meta">
+                {results.length} matches · {timeAgo(lastScanAt)}
+              </span>
+            </div>
           </div>
+          {meta.source === "fallback" && (
+            <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-100/90 flex items-start gap-2" data-testid="banner-scan-fallback">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                {meta.error
+                  ? meta.error
+                  : isConnected
+                  ? "Live scan returned no matches for this strategy — showing illustrative examples seeded by strategy."
+                  : "No broker connected. Showing illustrative examples that vary per strategy. Connect Tradier or TradeStation for live scan results."}
+              </div>
+            </div>
+          )}
           <div className="divide-y">
-            {MOCK_RESULTS.map((r) => (
+            {running && results.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground flex items-center justify-center gap-2" data-testid="state-scan-loading">
+                <Loader2 className="h-4 w-4 animate-spin" /> Running {selected.name} scan…
+              </div>
+            ) : null}
+            {results.map((r) => (
               <div
                 key={r.ticker}
                 className="grid grid-cols-12 items-center gap-3 py-3"

@@ -3,7 +3,12 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { refreshSentimentForSymbols, isOpenAiConfigured } from "../services/news";
 import { getMarketSnapshot, type MarketSnapshot } from "../services/market-data";
-import { findBestTrades, type BestTradePick } from "../services/best-trade-finder";
+import {
+  findBestTrades,
+  findBestTradesForSymbol,
+  type BestTradePick,
+  type BestTradeForSymbolResult,
+} from "../services/best-trade-finder";
 
 const askSchema = z.object({
   question: z.string().trim().min(1).max(500),
@@ -92,10 +97,16 @@ function suggestionsForIntent(intent: ReturnType<typeof classifyIntent>, tickers
   const t = tickers[0];
   switch (intent) {
     case "best-trade":
-      return [
-        { label: "Open Find My Best Trade", href: "/best-trade" },
-        { label: "See ranked opportunities", href: "/opportunity-radar" },
-      ];
+      return t
+        ? [
+            { label: `Build a ticket for ${t}`, href: `/trade/${t}` },
+            { label: `Open ${t} chart`, href: `/charts/${t}` },
+            { label: "See ranked opportunities", href: "/opportunity-radar" },
+          ]
+        : [
+            { label: "See ranked opportunities", href: "/opportunity-radar" },
+            { label: "Open Trade Builder", href: "/trade-finder" },
+          ];
     case "income":
       return [
         { label: "Open Income Mode", href: "/income-mode" },
@@ -339,28 +350,58 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       const tickers = extractTickers(question);
       const ctx = await buildContext(userId, question, intent, tickers);
 
-      // Best-trade intent: scan defined-risk candidates and surface picks
-      // alongside the AI answer so the chat result feels actionable. Detect
-      // universe hints in the question so chat invocation matches the same
-      // user-selectable universe behavior as the main feature.
+      // Best-trade intent. Two paths:
+      //   1) A ticker is mentioned → run the per-symbol finder. It uses
+      //      broker data + news + AI sentiment + built-in strategies to
+      //      determine bias, then returns ONE best stock trade and ONE
+      //      best defined-risk option trade.
+      //   2) No ticker → fall back to a watchlist/universe scan and
+      //      return the top defined-risk picks.
       let picks: BestTradePick[] = [];
-      let bestTradeMeta: { universeLabel: string; dataMode: "live" | "simulated" | "mixed"; brokerConnected: boolean } | null = null;
+      let bestTradeMeta: {
+        scope: "symbol" | "universe";
+        label: string;
+        dataMode: "live" | "simulated" | "mixed";
+        brokerConnected: boolean;
+        bias?: "bullish" | "bearish" | "neutral";
+        biasReason?: string;
+        stockPick?: BestTradePick | null;
+        optionPick?: BestTradePick | null;
+      } | null = null;
       if (intent === "best-trade") {
         try {
-          const lower = question.toLowerCase();
-          const hintedUniverse = detectUniverseHint(lower);
-          const useCustom = tickers.length > 0 && !hintedUniverse;
-          const result = await findBestTrades(userId, {
-            universe: useCustom ? "custom" : (hintedUniverse ?? "watchlist"),
-            customSymbols: useCustom ? tickers : undefined,
-            limit: 3,
-          });
-          picks = result.picks;
-          bestTradeMeta = {
-            universeLabel: result.universeLabel,
-            dataMode: result.dataMode,
-            brokerConnected: result.brokerConnected,
-          };
+          if (tickers.length > 0) {
+            const sym = tickers[0];
+            const result: BestTradeForSymbolResult = await findBestTradesForSymbol(userId, sym);
+            const ordered: BestTradePick[] = [];
+            if (result.stockPick) ordered.push(result.stockPick);
+            if (result.optionPick) ordered.push(result.optionPick);
+            picks = ordered;
+            bestTradeMeta = {
+              scope: "symbol",
+              label: sym,
+              dataMode: result.dataMode,
+              brokerConnected: result.brokerConnected,
+              bias: result.bias,
+              biasReason: result.biasReason,
+              stockPick: result.stockPick,
+              optionPick: result.optionPick,
+            };
+          } else {
+            const lower = question.toLowerCase();
+            const hintedUniverse = detectUniverseHint(lower);
+            const result = await findBestTrades(userId, {
+              universe: hintedUniverse ?? "watchlist",
+              limit: 3,
+            });
+            picks = result.picks;
+            bestTradeMeta = {
+              scope: "universe",
+              label: result.universeLabel,
+              dataMode: result.dataMode,
+              brokerConnected: result.brokerConnected,
+            };
+          }
         } catch (err) {
           console.warn("[ask] best-trade scan failed:", err);
         }
@@ -370,31 +411,70 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       const source: "openai" | "rule_based" = answer ? "openai" : "rule_based";
       if (!answer) answer = ruleBasedAnswer(question, intent, ctx);
 
-      // For best-trade intent, override the headline/answer when picks exist
-      // so the chat directly reflects what was found.
-      if (intent === "best-trade" && picks.length > 0 && bestTradeMeta) {
-        const top = picks[0];
+      // For best-trade intent, override the headline/answer to reflect
+      // the actual picks (or lack thereof).
+      if (intent === "best-trade" && bestTradeMeta) {
         const dataLabel =
           bestTradeMeta.dataMode === "live"
             ? "live broker data"
             : bestTradeMeta.dataMode === "mixed"
               ? "a mix of live broker data and simulated examples"
               : "simulated examples";
-        answer = {
-          ...answer,
-          headline: `Top defined-risk pick: ${top.symbol} (${top.strategyLabel}, ${top.confidence}% confidence)`,
-          answer: `Scanned ${bestTradeMeta.universeLabel} using ${dataLabel} and ranked defined-risk candidates only (no naked long calls/puts). The top pick is ${top.symbol} — ${top.thesis} ${top.mainReason}`,
-          riskNote: top.mainRisk,
-          confidence: top.confidence >= 80 ? "high" : top.confidence >= 65 ? "medium" : "low",
-        };
-      } else if (intent === "best-trade" && picks.length === 0) {
-        const where = bestTradeMeta?.universeLabel ?? "your watchlist";
-        answer = {
-          ...answer,
-          headline: "No defined-risk picks meet the threshold right now.",
-          answer: `I scanned ${where} for defined-risk setups (stocks with stops, debit spreads, covered calls, cash-secured puts) and nothing crossed the 65% confidence floor. Open Find My Best Trade to broaden the universe (S&P 100, Nasdaq 100, high-volume names) or lower the confidence threshold.`,
-          confidence: "low",
-        };
+
+        if (bestTradeMeta.scope === "symbol") {
+          const sym = bestTradeMeta.label;
+          const stock = bestTradeMeta.stockPick ?? null;
+          const opt = bestTradeMeta.optionPick ?? null;
+          const biasText = bestTradeMeta.bias ?? "neutral";
+          if (stock || opt) {
+            const parts: string[] = [];
+            if (stock) {
+              parts.push(
+                `Best stock trade: ${stock.strategyLabel} (${stock.confidence}% confidence, R/R ${stock.rewardRisk.toFixed(2)}:1, max loss $${stock.maxLoss.toLocaleString()}).`,
+              );
+            }
+            if (opt) {
+              parts.push(
+                `Best option trade: ${opt.strategyLabel} (${opt.confidence}% confidence, max loss $${opt.maxLoss.toLocaleString()}${opt.expiration ? `, expires ${opt.expiration}` : ""}).`,
+              );
+            }
+            const top = stock ?? opt!;
+            answer = {
+              ...answer,
+              headline: `${sym} looks ${biasText} — here are the best stock and option trades.`,
+              answer: `Using ${dataLabel}, news headlines, and AI sentiment, ${sym} is reading ${biasText}. ${bestTradeMeta.biasReason ?? ""}\n\n${parts.join("\n")}\n\nReview both before acting — nothing is sent to your broker without your explicit approval.`,
+              riskNote: top.mainRisk,
+              confidence: top.confidence >= 80 ? "high" : top.confidence >= 65 ? "medium" : "low",
+            };
+          } else {
+            answer = {
+              ...answer,
+              headline: `No qualifying trade on ${sym} right now.`,
+              answer: `I scanned ${sym} using ${dataLabel} plus news and AI sentiment. The combined signals didn't produce a stock or defined-risk option setup that meets the minimum grade. Try again later or check the chart and news directly.`,
+              confidence: "low",
+            };
+          }
+        } else {
+          // Universe scan (no specific ticker mentioned).
+          const where = bestTradeMeta.label;
+          if (picks.length > 0) {
+            const top = picks[0];
+            answer = {
+              ...answer,
+              headline: `Top defined-risk pick across ${where}: ${top.symbol} (${top.strategyLabel}, ${top.confidence}% confidence)`,
+              answer: `Scanned ${where} using ${dataLabel} and ranked defined-risk candidates only (no naked long calls/puts). Top pick is ${top.symbol} — ${top.thesis} ${top.mainReason}\n\nAsk about a specific ticker (e.g. "Find a high-probability trade on NVDA") to get one stock + one option trade with bias analysis.`,
+              riskNote: top.mainRisk,
+              confidence: top.confidence >= 80 ? "high" : top.confidence >= 65 ? "medium" : "low",
+            };
+          } else {
+            answer = {
+              ...answer,
+              headline: "No defined-risk picks meet the threshold right now.",
+              answer: `I scanned ${where} for defined-risk setups (stocks with stops, debit spreads, covered calls, cash-secured puts) and nothing crossed the confidence floor. Try asking about a specific ticker (e.g. "best trade on AAPL").`,
+              confidence: "low",
+            };
+          }
+        }
       }
 
       res.json({

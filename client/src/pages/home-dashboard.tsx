@@ -73,12 +73,12 @@ export default function HomeDashboard() {
               onClick={() => navigate("/trade-finder")}
             />
             <HomeActionCard
-              title="Find My Best Trade"
-              subtitle="Scan your watchlist or major indexes for the highest-confidence defined-risk trade right now — no naked long calls or puts."
+              title="Ask: Best trade on a ticker"
+              subtitle="Ask AI in plain English — e.g. 'Find a high-probability trade on NVDA'. Get one stock and one defined-risk option trade with bias from broker data, news, and AI sentiment."
               icon={Target}
               accent="emerald"
-              testId="card-action-best-trade"
-              onClick={() => navigate("/best-trade")}
+              testId="card-action-ask-best-trade"
+              onClick={() => navigate("/ask?q=" + encodeURIComponent("Find a high-probability trade on NVDA"))}
             />
           </div>
         </div>

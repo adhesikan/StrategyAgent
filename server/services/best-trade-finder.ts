@@ -197,6 +197,106 @@ export async function findBestTrades(
   };
 }
 
+/**
+ * Per-symbol "best trade" — used by Ask AI when the user asks about a
+ * specific ticker (e.g. "Find a high-probability trade on NVDA").
+ *
+ * Runs all built-in strategies on that one symbol using live broker data,
+ * news sentiment, and computed indicators, then returns ONE best stock
+ * trade and ONE best defined-risk option trade. Bias is taken from each
+ * pick (computed by the strategy engine off price action + news +
+ * sentiment).
+ */
+export interface BestTradeForSymbolResult {
+  symbol: string;
+  companyName?: string;
+  bias: "bullish" | "bearish" | "neutral";
+  biasReason: string;
+  stockPick: BestTradePick | null;
+  optionPick: BestTradePick | null;
+  brokerConnected: boolean;
+  dataMode: "live" | "simulated" | "mixed";
+  asOf: string;
+  notes: string[];
+  disclaimer: string;
+}
+
+const OPTION_STRATEGIES: ReadonlySet<CandidateScenario["strategyType"]> = new Set([
+  "debit_spread",
+  "covered_call",
+  "cash_secured_put",
+]);
+
+function pickBest(
+  candidates: CandidateScenario[],
+  predicate: (c: CandidateScenario) => boolean,
+): CandidateScenario | null {
+  const filtered = candidates.filter(predicate);
+  if (filtered.length === 0) return null;
+  filtered.sort((a, b) => {
+    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
+    return (b.rewardRisk ?? 0) - (a.rewardRisk ?? 0);
+  });
+  return filtered[0];
+}
+
+export async function findBestTradesForSymbol(
+  userId: string,
+  symbol: string,
+): Promise<BestTradeForSymbolResult> {
+  const sym = symbol.trim().toUpperCase();
+
+  const radar = await generateCandidateScenarios(userId, {
+    strategyType: "any",
+    bias: "any",
+    universe: "custom",
+    customSymbols: [sym],
+    minGrade: "C",
+  });
+
+  const stockCandidate = pickBest(radar.candidates, (c) => c.strategyType === "stock_swing");
+  const optionCandidate = pickBest(radar.candidates, (c) => OPTION_STRATEGIES.has(c.strategyType));
+
+  // Determine the dominant bias from the highest-scoring candidate of any
+  // type (defined-risk preferred). This reflects whether the combined
+  // signals (technicals + news + sentiment) lean bullish, bearish, or
+  // neutral on this symbol right now.
+  const ranked = [...radar.candidates].sort((a, b) => b.finalScore - a.finalScore);
+  const top = ranked[0] ?? null;
+  const bias: "bullish" | "bearish" | "neutral" = top?.bias ?? "neutral";
+  const biasReason = top
+    ? `${top.thesis} ${top.mainReason}`.trim()
+    : `No clear directional signal on ${sym} right now from price action, news, or sentiment.`;
+
+  const notes: string[] = [...radar.notes];
+  if (!stockCandidate && !optionCandidate) {
+    notes.push(
+      `No qualifying setups for ${sym} right now. The strategies didn't find a stock or defined-risk option trade that meets the minimum grade.`,
+    );
+  } else {
+    if (!stockCandidate) {
+      notes.push(`No stock swing setup qualified for ${sym} — only an option setup passed the filters.`);
+    }
+    if (!optionCandidate) {
+      notes.push(`No defined-risk option setup qualified for ${sym} — only a stock setup passed the filters.`);
+    }
+  }
+
+  return {
+    symbol: sym,
+    companyName: top?.companyName,
+    bias,
+    biasReason,
+    stockPick: stockCandidate ? toPick(stockCandidate) : null,
+    optionPick: optionCandidate ? toPick(optionCandidate) : null,
+    brokerConnected: radar.brokerConnected,
+    dataMode: radar.dataMode,
+    asOf: radar.lastRefresh,
+    notes,
+    disclaimer: DISCLAIMER,
+  };
+}
+
 export const BEST_TRADE_UNIVERSES: { id: RadarUniverseId; label: string; description: string }[] = [
   { id: "watchlist", label: "My Watchlist", description: "Symbols you've saved" },
   { id: "sp_100", label: "S&P 100", description: "Largest 100 U.S. companies (OEX)" },

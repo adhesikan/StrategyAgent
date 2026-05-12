@@ -241,7 +241,7 @@ export default function AskPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 {data.picks.map((p) => (
-                  <Link key={p.id} href={`/best-trade`}>
+                  <Link key={p.id} href={`/trade/${p.symbol}`}>
                     <div className="rounded-md border border-border/60 p-3 hover-elevate cursor-pointer space-y-1.5" data-testid={`card-ask-pick-${p.symbol}`}>
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2">

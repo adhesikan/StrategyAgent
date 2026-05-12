@@ -8,10 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { CandidateScenarioCard, OrderReviewModal, type CandidateScenario } from "@/components/goal-mode-shell";
-import { useQuery } from "@tanstack/react-query";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
 import { HelpLink } from "@/components/help-link";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type IncomeUniverseId = "watchlist" | "large_cap" | "high_volume" | "options_liquid" | "custom";
 
 const INCOME_IDEAS: CandidateScenario[] = [
   {
@@ -63,7 +72,8 @@ export default function IncomeModePage() {
   const [capital, setCapital] = useState("25000");
   const [target, setTarget] = useState("500");
   const [maxRisk, setMaxRisk] = useState("200");
-  const [tickers, setTickers] = useState("AAPL, MSFT, KO, SPY");
+  const [universe, setUniverse] = useState<IncomeUniverseId>("watchlist");
+  const [customTickers, setCustomTickers] = useState("AAPL, MSFT, KO, SPY");
   const [avoidEarnings, setAvoidEarnings] = useState(true);
   const [minVolume, setMinVolume] = useState("100");
   const [minOI, setMinOI] = useState("500");
@@ -72,10 +82,7 @@ export default function IncomeModePage() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
 
-  const { data: brokerStatus } = useQuery<{ isConnected?: boolean }>({
-    queryKey: ["/api/broker/connection"],
-  });
-  const brokerConnected = !!brokerStatus?.isConnected;
+  const { isConnected: brokerConnected } = useBrokerStatus();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,14 +171,30 @@ export default function IncomeModePage() {
               />
             </Field>
             <Field id="tickers" label="Preferred tickers / watchlist">
-              <Input
-                id="tickers"
-                value={tickers}
-                onChange={(e) => setTickers(e.target.value)}
-                placeholder="AAPL, MSFT, ..."
-                data-testid="input-tickers"
-              />
+              <Select value={universe} onValueChange={(v) => setUniverse(v as IncomeUniverseId)}>
+                <SelectTrigger id="tickers" data-testid="select-tickers">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="watchlist">Watchlist</SelectItem>
+                  <SelectItem value="large_cap">Large cap</SelectItem>
+                  <SelectItem value="high_volume">High volume</SelectItem>
+                  <SelectItem value="options_liquid">Options liquid</SelectItem>
+                  <SelectItem value="custom">Custom symbols</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
+            {universe === "custom" && (
+              <Field id="custom-tickers" label="Custom symbols (comma-separated)">
+                <Input
+                  id="custom-tickers"
+                  value={customTickers}
+                  onChange={(e) => setCustomTickers(e.target.value)}
+                  placeholder="AAPL, MSFT, NVDA"
+                  data-testid="input-custom-tickers"
+                />
+              </Field>
+            )}
 
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field id="vol" label="Min option volume">
@@ -260,7 +283,6 @@ export default function IncomeModePage() {
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
         scenario={activeScenario}
-        brokerConnected={brokerConnected}
         onSend={handleSend}
       />
     </div>

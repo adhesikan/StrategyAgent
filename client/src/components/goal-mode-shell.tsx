@@ -550,11 +550,15 @@ interface OrderReviewModalProps {
   open: boolean;
   onClose: () => void;
   scenario: CandidateScenario | null;
-  brokerConnected: boolean;
+  /** @deprecated Read live status from useBrokerStatus() — prop is ignored. */
+  brokerConnected?: boolean;
   onSend: () => void;
 }
 
-export function OrderReviewModal({ open, onClose, scenario, brokerConnected, onSend }: OrderReviewModalProps) {
+export function OrderReviewModal({ open, onClose, scenario, onSend }: OrderReviewModalProps) {
+  // Always read live broker status from the shared hook so the submit button
+  // reflects the actual connection state shown in BrokerStatusStrip.
+  const { isConnected: brokerConnected } = useBrokerStatus();
   const [acknowledged, setAcknowledged] = useState(false);
 
   if (!scenario) return null;

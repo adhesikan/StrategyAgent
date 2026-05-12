@@ -15,6 +15,7 @@ import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell"
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { Target, RotateCcw } from "lucide-react";
 import { HelpLink } from "@/components/help-link";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
 
 const MOCK_SCENARIOS: CandidateScenario[] = [
   {
@@ -68,6 +69,7 @@ export default function GoalModePage() {
   const [prefs, setPrefs] = useState<GoalModePrefs | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
+  const { isConnected: brokerConnected } = useBrokerStatus();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -91,7 +93,7 @@ export default function GoalModePage() {
   const handleSend = () => {
     if (!activeScenario) return;
     toast({
-      title: prefs?.brokerConnected ? "Order sent" : "Simulated order placed",
+      title: brokerConnected ? "Order sent" : "Simulated order placed",
       description: `${activeScenario.ticker} ${activeScenario.strategyType} submitted for review.`,
     });
   };
@@ -194,7 +196,6 @@ export default function GoalModePage() {
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
         scenario={activeScenario}
-        brokerConnected={!!prefs?.brokerConnected}
         onSend={handleSend}
       />
     </div>

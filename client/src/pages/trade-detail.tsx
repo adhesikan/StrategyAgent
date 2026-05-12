@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2 } from "lucide-react";
+import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2, AlertCircle } from "lucide-react";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import {
   Sheet,
@@ -36,6 +36,30 @@ interface QuoteResponse {
   volume: number;
   change: number;
   changePercent: number;
+}
+
+interface OptionContract {
+  symbol: string;
+  strike: number;
+  optionType: "call" | "put";
+  expiration: string;
+  bid: number;
+  ask: number;
+  last: number;
+  volume: number;
+  openInterest: number;
+  greeks?: {
+    delta: number;
+    gamma: number;
+    theta: number;
+    vega: number;
+    mid_iv: number;
+  };
+}
+
+function fmtMoney(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return "—";
+  return `$${n.toFixed(2)}`;
 }
 
 interface Leg {
@@ -483,24 +507,110 @@ export default function TradeDetailPage() {
 
   const isOptionType = type !== "stock";
 
-  // Convert TradePlan legs into the API shape used by /api/trade/place-option.
-  const apiLegs = useMemo(() => {
-    if (!isOptionType) return [];
+  // ─── Live option chain (broker feed) ────────────────────────────────
+  const expirationsQuery = useQuery<{ symbol: string; expirations: string[] }>({
+    queryKey: ["/api/broker/options/expirations", ticker],
+    enabled: optionTicketOpen && isOptionType,
+    retry: false,
+  });
+
+  // Pick the broker expiration closest to ~35 DTE (the plan's default).
+  const chosenExpiration = useMemo(() => {
+    const exps = expirationsQuery.data?.expirations || [];
+    if (exps.length === 0) return "";
+    const target = new Date();
+    target.setDate(target.getDate() + 35);
+    let best = exps[0];
+    let bestDiff = Infinity;
+    for (const e of exps) {
+      const d = new Date(e);
+      if (isNaN(d.getTime())) continue;
+      const diff = Math.abs(d.getTime() - target.getTime());
+      if (diff < bestDiff) { best = e; bestDiff = diff; }
+    }
+    return best;
+  }, [expirationsQuery.data]);
+
+  const chainQuery = useQuery<{ symbol: string; expiration: string; contracts: OptionContract[] }>({
+    queryKey: ["/api/broker/options/chain", ticker, chosenExpiration],
+    enabled: optionTicketOpen && isOptionType && !!chosenExpiration,
+    retry: false,
+  });
+
+  const chainAvailable = !!chainQuery.data?.contracts?.length;
+  const chainError = expirationsQuery.isError || chainQuery.isError;
+
+  // Each plan leg matched to the closest live broker contract (when chain is loaded).
+  const enrichedLegs = useMemo(() => {
+    if (!isOptionType) return [] as Array<{
+      side: "BUY" | "SELL";
+      qty: number;
+      desc: string;
+      planStrike: number | null;
+      optionType: "call" | "put" | null;
+      planDelta: number;
+      planPrice: number;
+      contract: OptionContract | null;
+    }>;
+    const contracts = chainQuery.data?.contracts || [];
     return plan.legs.map((leg) => {
       const m = leg.desc.match(/\$(\d+(?:\.\d+)?)\s+(call|put)/i);
-      const strike = m ? parseFloat(m[1]) : null;
+      const planStrike = m ? parseFloat(m[1]) : null;
       const optionType = m ? (m[2].toLowerCase() as "call" | "put") : null;
+      let contract: OptionContract | null = null;
+      if (planStrike != null && optionType) {
+        const candidates = contracts.filter((c) => c.optionType === optionType);
+        let bestDiff = Infinity;
+        for (const c of candidates) {
+          const diff = Math.abs(c.strike - planStrike);
+          if (diff < bestDiff) { bestDiff = diff; contract = c; }
+        }
+      }
       return {
-        side: leg.side === "BUY" ? "buy" : "sell",
-        quantity: leg.qty,
-        strike,
+        side: leg.side,
+        qty: leg.qty,
+        desc: leg.desc,
+        planStrike,
         optionType,
-        expiry: defaultExpiryLabel(),
-        estimatedPremium: Math.abs(leg.price),
-        delta: leg.delta,
+        planDelta: leg.delta,
+        planPrice: leg.price,
+        contract,
       };
     });
-  }, [plan.legs, isOptionType]);
+  }, [plan.legs, isOptionType, chainQuery.data]);
+
+  // Live mid-premium per contract (sum of legs, BUY = debit, SELL = credit).
+  const liveNetPerShare = useMemo(() => {
+    if (!enrichedLegs.length || !chainAvailable) return null;
+    let net = 0;
+    let allMatched = true;
+    for (const l of enrichedLegs) {
+      const c = l.contract;
+      if (!c) { allMatched = false; break; }
+      const mid = (c.bid + c.ask) / 2;
+      if (!isFinite(mid) || mid <= 0) { allMatched = false; break; }
+      net += (l.side === "BUY" ? -mid : mid) * l.qty;
+    }
+    return allMatched ? net : null;
+  }, [enrichedLegs, chainAvailable]);
+
+  // Convert enriched legs into the API shape used by /api/trade/place-option.
+  // Prefers live broker strike/expiration/premium when available.
+  const apiLegs = useMemo(() => {
+    if (!isOptionType) return [];
+    return enrichedLegs.map((l) => ({
+      side: l.side === "BUY" ? "buy" : "sell",
+      quantity: l.qty,
+      strike: l.contract?.strike ?? l.planStrike,
+      optionType: l.optionType,
+      expiry: l.contract?.expiration || chosenExpiration || defaultExpiryLabel(),
+      optionSymbol: l.contract?.symbol,
+      estimatedPremium: l.contract
+        ? (l.contract.bid + l.contract.ask) / 2
+        : Math.abs(l.planPrice),
+      delta: l.contract?.greeks?.delta ?? l.planDelta,
+    }));
+  }, [enrichedLegs, isOptionType, chosenExpiration]);
 
   // Map plan name → instrumentType the server expects.
   const instrumentType = useMemo(() => {
@@ -545,9 +655,12 @@ export default function TradeDetailPage() {
     },
   });
 
-  const netPerContract = Math.abs(plan.netPerShare) * 100;
+  // Prefer live broker mid-price; fall back to plan estimate.
+  const effectiveNetPerShare = liveNetPerShare ?? plan.netPerShare;
+  const netPerContract = Math.abs(effectiveNetPerShare) * 100;
   const totalNet = netPerContract * contractQty;
-  const isCredit = plan.netValue > 0;
+  const isCredit = effectiveNetPerShare > 0;
+  const usingLiveChain = liveNetPerShare != null;
 
   const scanResult = {
     ticker,
@@ -766,32 +879,107 @@ export default function TradeDetailPage() {
           </SheetHeader>
 
           <div className="mt-4 space-y-4">
-            <Card className="p-3 space-y-2 bg-muted/30">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Order legs
-              </div>
-              {plan.legs.map((leg, i) => (
-                <div key={i} className="flex items-center justify-between text-sm" data-testid={`option-leg-${i}`}>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={
-                        leg.side === "SELL"
-                          ? "bg-amber-50 text-amber-800 border-amber-200"
-                          : "bg-emerald-50 text-emerald-800 border-emerald-200"
-                      }
-                    >
-                      {leg.side} {leg.qty * contractQty}
-                    </Badge>
-                    <span>{leg.desc}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">Δ {leg.delta.toFixed(2)}</span>
+            <Card className="p-3 space-y-3 bg-muted/30">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Order legs
                 </div>
-              ))}
-              <div className="pt-2 border-t flex justify-between text-xs text-muted-foreground">
-                <span>{isCredit ? "Net credit" : "Net debit"} (est.)</span>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {(expirationsQuery.isFetching || chainQuery.isFetching) && !chainError ? (
+                    <span className="flex items-center gap-1 text-muted-foreground" data-testid="badge-chain-loading">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading broker chain
+                    </span>
+                  ) : usingLiveChain ? (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900" data-testid="badge-chain-live">
+                      Live broker chain · {chosenExpiration}
+                    </Badge>
+                  ) : chainError ? (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200" data-testid="badge-chain-unavailable">
+                      Broker chain unavailable
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                      Estimates only
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {enrichedLegs.map((leg, i) => {
+                const c = leg.contract;
+                const mid = c ? (c.bid + c.ask) / 2 : null;
+                return (
+                  <div key={i} className="space-y-1.5 rounded border bg-background/50 px-2 py-1.5" data-testid={`option-leg-${i}`}>
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            leg.side === "SELL"
+                              ? "bg-amber-50 text-amber-800 border-amber-200"
+                              : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                          }
+                        >
+                          {leg.side} {leg.qty * contractQty}
+                        </Badge>
+                        <span className="font-mono text-xs">
+                          {c
+                            ? `$${c.strike.toFixed(2)} ${c.optionType} · ${c.expiration}`
+                            : leg.desc}
+                        </span>
+                      </div>
+                      {c ? (
+                        <span className="text-[10px] text-muted-foreground">live</span>
+                      ) : (
+                        <span className="text-[10px] text-amber-700">est</span>
+                      )}
+                    </div>
+
+                    {/* Live greeks/quote row */}
+                    <div className="grid grid-cols-5 gap-1 text-[10px] font-mono text-muted-foreground" data-testid={`option-leg-${i}-data`}>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">Bid</div>
+                        <div className="text-foreground">{c ? fmtMoney(c.bid) : "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">Ask</div>
+                        <div className="text-foreground">{c ? fmtMoney(c.ask) : "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">Δ</div>
+                        <div className="text-foreground">{c?.greeks ? c.greeks.delta.toFixed(2) : leg.planDelta.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">IV</div>
+                        <div className="text-foreground">
+                          {c?.greeks ? `${(c.greeks.mid_iv * 100).toFixed(0)}%` : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">OI</div>
+                        <div className="text-foreground">{c ? c.openInterest.toLocaleString() : "—"}</div>
+                      </div>
+                    </div>
+
+                    {mid != null && (
+                      <div className="text-[10px] text-muted-foreground">
+                        Mid: <span className="font-mono text-foreground">{fmtMoney(mid)}</span>
+                        {" · "}Spread: <span className="font-mono text-foreground">{fmtMoney((c!.ask - c!.bid))}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <div className="pt-2 border-t flex justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {isCredit ? "Net credit" : "Net debit"}{" "}
+                  <span className="text-[10px]">
+                    ({usingLiveChain ? "live mid" : "est."})
+                  </span>
+                </span>
                 <span className={isCredit ? "text-emerald-700 font-medium" : "text-rose-700 font-medium"}>
-                  {isCredit ? "+" : "-"}${Math.abs(plan.netPerShare).toFixed(2)} × 100 = ${netPerContract.toFixed(0)} / contract
+                  {isCredit ? "+" : "-"}${Math.abs(effectiveNetPerShare).toFixed(2)} × 100 = ${netPerContract.toFixed(0)} / contract
                 </span>
               </div>
             </Card>
@@ -831,16 +1019,34 @@ export default function TradeDetailPage() {
               </p>
             </div>
 
-            <div className="rounded-md border p-3 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
-              <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                <p>
-                  Strikes ({apiLegs.map((l) => `$${l.strike}`).join(" / ")}) and premiums are estimates.
-                  Confirm bid/ask, IV, delta and OI in your broker's chain. Options trading involves
-                  significant risk including total loss of premium.
-                </p>
+            {usingLiveChain ? (
+              <div className="rounded-md border p-3 bg-sky-50 dark:bg-sky-950/20 border-sky-200 dark:border-sky-900">
+                <div className="flex items-start gap-2 text-xs text-sky-900 dark:text-sky-200">
+                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>
+                    Live bid/ask, Δ, IV and OI shown above are pulled from your broker's option chain.
+                    Quotes can move before fill. Options trading involves significant risk including
+                    total loss of premium.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-md border p-3 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
+                <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+                  {chainError ? (
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  )}
+                  <p>
+                    {chainError
+                      ? "We couldn't reach your broker's option chain right now — strikes and premiums shown are estimates only. Confirm bid/ask, IV, delta and OI in your broker before submitting. "
+                      : `Strikes (${apiLegs.map((l) => `$${l.strike}`).join(" / ")}) and premiums are estimates. Confirm bid/ask, IV, delta and OI in your broker's chain. `}
+                    Options trading involves significant risk including total loss of premium.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {plan.legs.length > 1 && (
               <div

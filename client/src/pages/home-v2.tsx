@@ -194,15 +194,16 @@ const PLACEHOLDERS = [
   "Show lower-risk swing trades",
 ];
 
-const TABS: { value: string; label: string; bucket: string }[] = [
-  { value: "all", label: "All", bucket: "all" },
-  { value: "grow", label: "Grow", bucket: "stocks" },
-  { value: "income", label: "Income", bucket: "income" },
-  { value: "trade", label: "Trade", bucket: "all" },
-  { value: "stocks", label: "Stocks", bucket: "stocks" },
-  { value: "options", label: "Options", bucket: "options" },
-  { value: "watchlist", label: "Watchlist", bucket: "watchlist" },
-  { value: "alerts", label: "Market Alerts", bucket: "alerts" },
+// Simplified taxonomy: previous Grow/Stocks both queried the "stocks"
+// bucket and Income/Options overlapped (income strategies are
+// option-based). Collapsed to four meaningful tabs so users see
+// distinct results, not duplicates.
+const TABS: { value: string; label: string; bucket: string; hint: string }[] = [
+  { value: "all", label: "All", bucket: "all", hint: "Top ideas across stocks and options" },
+  { value: "stocks", label: "Stocks", bucket: "stocks", hint: "Stock swing setups (growth and trend)" },
+  { value: "options", label: "Options", bucket: "options", hint: "Defined-risk options — directional and income" },
+  { value: "watchlist", label: "Watchlist", bucket: "watchlist", hint: "Ideas only on your watchlist symbols" },
+  { value: "alerts", label: "Market Alerts", bucket: "alerts", hint: "Heads-up notices on market events" },
 ];
 
 function routeFor(prompt: string): string {

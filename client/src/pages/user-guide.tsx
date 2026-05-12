@@ -102,7 +102,7 @@ const SECTIONS: Section[] = [
         <p>
           The <Link href="/home" className="underline">Home</Link> page is your daily starting point.
           It shows the broker connection state, market open/closed, an AI snapshot panel, and the
-          "Today's Ideas For You" board with tabs for All, Stocks, Options, Income, Watchlist, and
+          "Today's Ideas For You" board with tabs for All, Stocks, Options, Watchlist, and
           Market Alerts.
         </p>
 

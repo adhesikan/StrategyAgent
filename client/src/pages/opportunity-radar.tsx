@@ -221,7 +221,7 @@ interface RadarFilters {
 const DEFAULT_FILTERS: RadarFilters = {
   strategyType: "any",
   bias: "any",
-  maxLoss: 200,
+  maxLoss: 2000,
   minGrade: "C",
   timeHorizon: "1_4w",
   universe: "watchlist",
@@ -483,6 +483,20 @@ function BrokerStatusCard({
         {isLoading && (
           <div className="text-xs text-muted-foreground mt-3" data-testid="text-status-loading">
             Scanning market data, sentiment, liquidity, and your limits…
+          </div>
+        )}
+        {data?.notes && data.notes.length > 0 && (
+          <div className="mt-3 space-y-1.5" data-testid="list-radar-notes">
+            {data.notes.map((n, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 text-xs text-muted-foreground border border-border/60 rounded-md px-2 py-1.5"
+                data-testid={`note-radar-${i}`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                <span>{n}</span>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>

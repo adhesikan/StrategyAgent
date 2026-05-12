@@ -765,9 +765,10 @@ export async function generateCandidateScenarios(
   const requestedStrategy = filters.strategyType ?? "any";
   const requestedBias = filters.bias ?? "any";
 
-  let candidates: CandidateScenario[] = [];
-  let hidden = 0;
-
+  // Build all scenarios first, then apply guardrails — keep the raw set so we can
+  // gracefully relax filters if everything gets filtered out (common in simulated
+  // mode where high-priced majors blow past low maxLoss defaults).
+  const allScenarios: CandidateScenario[] = [];
   enriched.forEach((e, idx) => {
     const strategy = pickStrategyForSymbol(e.quote.symbol, requestedStrategy);
     const bias = pickBiasForSymbol(e.quote.symbol, requestedBias, strategy);
@@ -775,11 +776,43 @@ export async function generateCandidateScenarios(
     const sentimentBlock = adaptSnapshotToRadar(snapMeta?.snapshot ?? null, bias, {
       fresh: snapMeta?.fresh ?? false,
     });
-    const c = buildScenarioFromEnriched(e, strategy, bias, ctx, filters, idx + 1, defaultMLAdapter, sentimentBlock);
+    allScenarios.push(
+      buildScenarioFromEnriched(e, strategy, bias, ctx, filters, idx + 1, defaultMLAdapter, sentimentBlock),
+    );
+  });
+
+  let candidates: CandidateScenario[] = [];
+  let hidden = 0;
+  for (const c of allScenarios) {
     const verdict = applyGuardrails(c, filters, ctx);
     if (verdict.keep) candidates.push(c);
     else hidden += 1;
-  });
+  }
+
+  const relaxedNotes: string[] = [];
+
+  // Fallback: if strict guardrails wiped everything, relax the most common cause
+  // (max-loss limit and minGrade) and surface the top-N by score.
+  // IMPORTANT: only relax in simulated mode. For live/mixed (broker connected)
+  // we must keep account-aware guardrails (buying power, max-loss limit) intact.
+  if (candidates.length === 0 && allScenarios.length > 0 && ctx.dataMode === "simulated") {
+    const relaxedFilters: RadarFilters = {
+      ...filters,
+      maxLoss: undefined,
+      minGrade: undefined,
+      minRewardRisk: undefined,
+    };
+    const relaxedCtx: UserContext = { ...ctx, userMaxLossLimit: Number.POSITIVE_INFINITY };
+    for (const c of allScenarios) {
+      const verdict = applyGuardrails(c, relaxedFilters, relaxedCtx);
+      if (verdict.keep) candidates.push(c);
+    }
+    if (candidates.length > 0) {
+      relaxedNotes.push(
+        `No candidates fit your strict filters (max loss $${ctx.userMaxLossLimit}, min grade ${filters.minGrade ?? "C"}). Showing top scenarios with those gates relaxed — review max loss carefully before any action. (Simulated mode only.)`,
+      );
+    }
+  }
 
   // Sort by final score descending and re-rank
   candidates.sort((a, b) => b.finalScore - a.finalScore);
@@ -813,6 +846,7 @@ export async function generateCandidateScenarios(
               ? "Simulated data mode — your broker returned no live quotes for this universe. Try a different universe or reconnect."
               : "Simulated data mode — connect a broker for live quotes and account-aware risk checks.",
       sentimentNote,
+      ...relaxedNotes,
     ],
   };
 }

@@ -90,11 +90,9 @@ const TABS: { value: string; label: string; bucket: string }[] = [
 ];
 
 function routeFor(prompt: string): string {
-  const p = prompt.toLowerCase();
-  if (/grow|growth|long.term|invest/.test(p)) return "/goal-mode";
-  if (/income|premium|cover|cash.?secured|csp|wheel|dividend/.test(p)) return "/income-mode";
-  if (/why|moving|news|sentiment|catalyst|earnings/.test(p)) return "/market-intel";
-  return `/trade-finder?q=${encodeURIComponent(prompt.trim())}`;
+  const trimmed = prompt.trim();
+  if (!trimmed) return "/ask";
+  return `/ask?q=${encodeURIComponent(trimmed)}`;
 }
 
 export default function HomeV2() {

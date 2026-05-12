@@ -11,26 +11,8 @@ const PLACEHOLDERS = [
 
 function routeForPrompt(raw: string): string {
   const prompt = raw.trim();
-  if (!prompt) return "/trade-finder";
-  const lower = prompt.toLowerCase();
-  const encoded = encodeURIComponent(prompt);
-
-  // "Why is X moving" / "what's happening with X"
-  const whyMatch = lower.match(/(?:why\s+is|what(?:'s| is) (?:happening with|going on with))\s+([a-z0-9.\-]+)/i);
-  if (whyMatch && whyMatch[1]) {
-    return `/market-intel?symbol=${encodeURIComponent(whyMatch[1].toUpperCase())}`;
-  }
-
-  if (/(income|covered call|cash[- ]secured|premium|dividend|monthly)/.test(lower)) {
-    return `/income-mode?prompt=${encoded}`;
-  }
-  if (/(grow|growth|long[- ]?term|nest egg|retire|portfolio|compound)/.test(lower)) {
-    return `/goal-mode?prompt=${encoded}`;
-  }
-  if (/(news|catalyst|sentiment|market|why|moving)/.test(lower)) {
-    return `/market-intel?prompt=${encoded}`;
-  }
-  return `/trade-finder?prompt=${encoded}`;
+  if (!prompt) return "/ask";
+  return `/ask?q=${encodeURIComponent(prompt)}`;
 }
 
 export function QuickPromptBar() {

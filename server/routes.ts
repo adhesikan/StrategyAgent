@@ -50,6 +50,7 @@ import { registerOpportunityRadarRoutes } from "./routes/opportunity-radar";
 import { registerNewsSentimentRoutes } from "./routes/news-sentiment";
 import { registerHomeSnapshotRoutes } from "./routes/home-snapshot";
 import { registerDailyIdeasRoutes } from "./routes/daily-ideas";
+import { registerAskRoutes } from "./routes/ask";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -164,6 +165,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
   registerHomeSnapshotRoutes(app, isAuthenticated);
   registerDailyIdeasRoutes(app, isAuthenticated);
+  registerAskRoutes(app, isAuthenticated);
   registerBillingRoutes(app, isAuthenticated);
 
   startFuturesWorker().then(async () => {

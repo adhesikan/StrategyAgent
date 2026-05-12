@@ -299,38 +299,84 @@ export function TradeTicket({
             </div>
 
             {candidate.legs.length > 1 && (
-              <div className="space-y-1 p-2 rounded-md bg-muted/50">
-                <p className="text-xs font-medium text-muted-foreground">Legs:</p>
+              <div className="space-y-2 p-2 rounded-md bg-muted/50" data-testid="option-legs-list">
+                <p className="text-xs font-medium text-muted-foreground">Legs (live broker chain)</p>
                 {candidate.legs.map((leg, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <Badge variant="outline" className="text-xs capitalize">{leg.side}</Badge>
-                    <span className="font-mono">${leg.strike} {leg.optionType}</span>
-                    <span className="text-muted-foreground">{leg.expiration}</span>
+                  <div key={i} className="space-y-1 rounded border bg-background/50 px-2 py-1.5" data-testid={`option-leg-row-${i}`}>
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs capitalize">{leg.side}</Badge>
+                        <span className="font-mono">${leg.strike} {leg.optionType}</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{leg.expiration}</span>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1 text-[10px] font-mono text-muted-foreground">
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">Bid</div>
+                        <div className="text-foreground">${leg.bid.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">Ask</div>
+                        <div className="text-foreground">${leg.ask.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">Δ</div>
+                        <div className="text-foreground">{leg.delta.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">IV</div>
+                        <div className="text-foreground">{leg.impliedVol.toFixed(0)}%</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase opacity-70">OI</div>
+                        <div className="text-foreground">{leg.openInterest.toLocaleString()}</div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {preview && (
-              <div className="grid grid-cols-4 gap-1.5 text-xs p-2 rounded-md bg-muted/30">
+            {/* Live quote + greeks for the (single-leg or primary) contract */}
+            <div className="space-y-1.5 p-2 rounded-md bg-muted/30" data-testid="option-quote-grid">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Live broker chain</p>
+              <div className="grid grid-cols-4 gap-1.5 text-xs">
                 <div className="text-center">
-                  <span className="text-muted-foreground block">Bid</span>
-                  <span className="font-mono font-medium">${preview.bid.toFixed(2)}</span>
+                  <span className="text-muted-foreground block text-[10px] uppercase">Bid</span>
+                  <span className="font-mono font-medium">${(preview?.bid ?? candidate.bid).toFixed(2)}</span>
                 </div>
                 <div className="text-center">
-                  <span className="text-muted-foreground block">Ask</span>
-                  <span className="font-mono font-medium">${preview.ask.toFixed(2)}</span>
+                  <span className="text-muted-foreground block text-[10px] uppercase">Ask</span>
+                  <span className="font-mono font-medium">${(preview?.ask ?? candidate.ask).toFixed(2)}</span>
                 </div>
                 <div className="text-center">
-                  <span className="text-muted-foreground block">Mid</span>
-                  <span className="font-mono font-medium">${preview.mid.toFixed(2)}</span>
+                  <span className="text-muted-foreground block text-[10px] uppercase">Mid</span>
+                  <span className="font-mono font-medium">${(preview?.mid ?? candidate.mid).toFixed(2)}</span>
                 </div>
                 <div className="text-center">
-                  <span className="text-muted-foreground block">Last</span>
-                  <span className="font-mono font-medium">${preview.last.toFixed(2)}</span>
+                  <span className="text-muted-foreground block text-[10px] uppercase">Last</span>
+                  <span className="font-mono font-medium">${(preview?.last ?? candidate.mid).toFixed(2)}</span>
                 </div>
               </div>
-            )}
+              <div className="grid grid-cols-4 gap-1.5 text-xs pt-1 border-t border-border/40">
+                <div className="text-center">
+                  <span className="text-muted-foreground block text-[10px] uppercase">Δ</span>
+                  <span className="font-mono font-medium">{candidate.delta.toFixed(2)}</span>
+                </div>
+                <div className="text-center">
+                  <span className="text-muted-foreground block text-[10px] uppercase">θ</span>
+                  <span className="font-mono font-medium">{candidate.theta.toFixed(3)}</span>
+                </div>
+                <div className="text-center">
+                  <span className="text-muted-foreground block text-[10px] uppercase">IV</span>
+                  <span className="font-mono font-medium">{candidate.impliedVol.toFixed(0)}%</span>
+                </div>
+                <div className="text-center">
+                  <span className="text-muted-foreground block text-[10px] uppercase">OI / Vol</span>
+                  <span className="font-mono font-medium">{candidate.openInterest.toLocaleString()} / {candidate.volume.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
 
             <Separator />
 

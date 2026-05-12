@@ -210,18 +210,34 @@ export async function getIncomeIdeas(userId: string): Promise<DailyIdeasResult> 
   const cc = await runScan(userId, { strategyType: "covered_call", minGrade: "C" }, "income");
   const csp = await runScan(userId, { strategyType: "cash_secured_put", minGrade: "C" }, "income");
   const merged = [...cc.ideas, ...csp.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
-  return { ...cc, ideas: merged };
+  if (merged.length > 0) return { ...cc, ideas: merged };
+  // Fallback to high-volume universe so the tab isn't blank for empty watchlists.
+  const ccBroad = await runScan(userId, { strategyType: "covered_call", universe: "high_volume", minGrade: "C" }, "income");
+  const cspBroad = await runScan(userId, { strategyType: "cash_secured_put", universe: "high_volume", minGrade: "C" }, "income");
+  const broad = [...ccBroad.ideas, ...cspBroad.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
+  return { ...ccBroad, ideas: broad };
 }
 
 export async function getStockIdeas(userId: string): Promise<DailyIdeasResult> {
-  return runScan(userId, { strategyType: "stock_swing", minGrade: "C" });
+  // Default universe is the user's watchlist. If that yields nothing (empty
+  // watchlist, all symbols filtered out, etc.) fall back to high-volume liquid
+  // names so the Stocks tab isn't blank for a connected user.
+  const r = await runScan(userId, { strategyType: "stock_swing", minGrade: "C" });
+  if (r.ideas.length > 0) return r;
+  return runScan(userId, { strategyType: "stock_swing", universe: "high_volume", minGrade: "C" });
 }
 
 export async function getOptionIdeas(userId: string): Promise<DailyIdeasResult> {
   const types: StrategyType[] = ["long_call", "long_put", "debit_spread"];
   const results = await Promise.all(types.map((t) => runScan(userId, { strategyType: t, minGrade: "C" })));
   const ideas = results.flatMap((r) => r.ideas).sort((a, b) => b.score - a.score).slice(0, 12);
-  return { ...results[0], ideas };
+  if (ideas.length > 0) return { ...results[0], ideas };
+  // Fallback to high-volume universe if watchlist scan was empty.
+  const broad = await Promise.all(
+    types.map((t) => runScan(userId, { strategyType: t, universe: "high_volume", minGrade: "C" })),
+  );
+  const broadIdeas = broad.flatMap((r) => r.ideas).sort((a, b) => b.score - a.score).slice(0, 12);
+  return { ...broad[0], ideas: broadIdeas };
 }
 
 export async function getWatchlistAlerts(userId: string): Promise<DailyIdeasResult> {

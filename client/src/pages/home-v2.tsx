@@ -245,9 +245,11 @@ export default function HomeV2() {
                       <Button size="sm" variant="outline" onClick={() => navigate("/settings/universes")} data-testid="button-empty-build-watchlist">
                         Build watchlist
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => navigate("/settings")} data-testid="button-empty-connect-broker">
-                        Connect broker
-                      </Button>
+                      {ideasResp?.brokerConnected === false && (
+                        <Button size="sm" variant="outline" onClick={() => navigate("/settings")} data-testid="button-empty-connect-broker">
+                          Connect broker
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")} data-testid="button-empty-open-radar">
                         Open Opportunity Radar
                       </Button>

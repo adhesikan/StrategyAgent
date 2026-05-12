@@ -80,13 +80,6 @@ export function DailyIdeaCard({ idea }: Props) {
   const { toast } = useToast();
   const [learnOpen, setLearnOpen] = useState(false);
 
-  const handlePaper = () => {
-    toast({
-      title: "Paper trade queued",
-      description: `${idea.symbol} ${INSTRUMENT_LABEL[idea.instrumentType]} added to your simulated account for review.`,
-    });
-  };
-
   const handleReview = () => {
     const typeMap: Record<DailyIdea["instrumentType"], string> = {
       stock: "stock",
@@ -163,14 +156,6 @@ export function DailyIdeaCard({ idea }: Props) {
             <Info className="h-3.5 w-3.5 mr-1" />
             Learn more
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePaper}
-            data-testid={`button-paper-${idea.id}`}
-          >
-            Paper
-          </Button>
           <Button size="sm" onClick={handleReview} data-testid={`button-review-${idea.id}`}>
             Review <ArrowRight className="h-3.5 w-3.5 ml-1" />
           </Button>
@@ -231,9 +216,6 @@ export function DailyIdeaCard({ idea }: Props) {
             </Section>
 
             <div className="flex gap-2 pt-2 border-t">
-              <Button variant="outline" className="flex-1" onClick={handlePaper}>
-                Paper trade
-              </Button>
               <Button className="flex-1" onClick={handleReview}>
                 Review setup
               </Button>

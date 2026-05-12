@@ -459,7 +459,6 @@ export interface CandidateScenario {
 interface CandidateScenarioCardProps {
   scenario: CandidateScenario;
   onReview: () => void;
-  onPaperTrade: () => void;
   onPrepareOrder: () => void;
 }
 
@@ -470,7 +469,7 @@ const GRADE_COLORS: Record<string, string> = {
   C: "bg-amber-500/15 text-amber-400 border-amber-500/30",
 };
 
-export function CandidateScenarioCard({ scenario, onReview, onPaperTrade, onPrepareOrder }: CandidateScenarioCardProps) {
+export function CandidateScenarioCard({ scenario, onReview, onPrepareOrder }: CandidateScenarioCardProps) {
   return (
     <Card
       data-testid={`card-scenario-${scenario.id}`}
@@ -528,9 +527,6 @@ export function CandidateScenarioCard({ scenario, onReview, onPaperTrade, onPrep
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
           <Button size="sm" variant="outline" onClick={onReview} data-testid={`button-review-${scenario.id}`}>
             Review Details
-          </Button>
-          <Button size="sm" variant="outline" onClick={onPaperTrade} data-testid={`button-paper-${scenario.id}`}>
-            Paper Trade
           </Button>
           <Button size="sm" onClick={onPrepareOrder} data-testid={`button-prepare-${scenario.id}`}>
             Prepare Order

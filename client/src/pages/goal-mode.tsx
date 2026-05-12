@@ -83,13 +83,6 @@ export default function GoalModePage() {
     toast({ title: `${s.ticker} details`, description: s.why });
   };
 
-  const handlePaperTrade = (s: CandidateScenario) => {
-    toast({
-      title: "Paper trade queued",
-      description: `${s.ticker} ${s.strategyType} added to your paper account.`,
-    });
-  };
-
   const handlePrepareOrder = (s: CandidateScenario) => {
     setActiveScenario(s);
     setReviewOpen(true);
@@ -181,7 +174,6 @@ export default function GoalModePage() {
                   key={s.id}
                   scenario={s}
                   onReview={() => handleReview(s)}
-                  onPaperTrade={() => handlePaperTrade(s)}
                   onPrepareOrder={() => handlePrepareOrder(s)}
                 />
               ))}

@@ -221,7 +221,6 @@ export default function IncomeModePage() {
                 key={s.id}
                 scenario={s}
                 onReview={() => toast({ title: `${s.ticker} details`, description: s.why })}
-                onPaperTrade={() => toast({ title: "Paper trade queued", description: `${s.ticker} ${s.strategyType}` })}
                 onPrepareOrder={() => toast({ title: "Order review required", description: "Use Goal Mode for full review modal." })}
               />
             ))}

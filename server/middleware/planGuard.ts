@@ -1,20 +1,38 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { canAccessFeature, getRequiredPlan, getPlan, type FeatureKey } from "@shared/plans";
 import { getUserPlanRecord, resetDailyAnalysesIfNeeded, incrementDailyAnalyses } from "../services/billing/userPlan";
+import { authStorage } from "../replit_integrations/auth/storage";
+import { UserRole } from "@shared/schema";
 
 interface SessionRequest extends Request {
   session: Request["session"] & { userId?: string };
 }
 
 /**
+ * Admins bypass all plan/quota gates. Returns true on lookup failure to fail-closed
+ * for non-admins (the caller still applies the normal plan check).
+ */
+async function isAdminUser(userId: string): Promise<boolean> {
+  try {
+    const user = await authStorage.getUser(userId);
+    return user?.role === UserRole.ADMIN;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Hard gate: blocks the request unless the user's plan includes the given feature.
- * Returns 402 Payment Required with structured upgrade info.
+ * Returns 402 Payment Required with structured upgrade info. Admins are exempt.
  */
 export function requireFeature(feature: FeatureKey): RequestHandler {
   return async (req: SessionRequest, res: Response, next: NextFunction) => {
     try {
       const userId = req.session?.userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      // Admins bypass all plan gates.
+      if (await isAdminUser(userId)) return next();
 
       const record = await getUserPlanRecord(userId);
       const planId = record?.planId ?? "free";
@@ -46,6 +64,9 @@ export function checkAnalysisQuota(): RequestHandler {
     try {
       const userId = req.session?.userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      // Admins bypass daily quotas.
+      if (await isAdminUser(userId)) return next();
 
       const record = await resetDailyAnalysesIfNeeded(userId);
       const planId = record?.planId ?? "free";

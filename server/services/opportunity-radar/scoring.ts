@@ -236,7 +236,7 @@ export function gradeScore(finalScore: number): Grade | null {
   if (finalScore >= 90) return "A+";
   if (finalScore >= 80) return "A";
   if (finalScore >= 70) return "B";
-  if (finalScore >= 60) return "C";
+  if (finalScore >= 50) return "C";
   return null;
 }
 

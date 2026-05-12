@@ -695,18 +695,21 @@ async function enrichWithMarketData(symbols: string[], userId: string, ctx: User
 function applyGuardrails(
   c: CandidateScenario,
   _filters: RadarFilters,
-  ctx: UserContext,
+  _ctx: UserContext,
 ): { keep: boolean; reason?: string } {
   // User-tunable filters (maxLoss, minGrade, liquidity floors, R/R, holdings, earnings) are
   // intentionally NOT applied server-side — the client filters the visible result list after
   // the scan returns so users can retune filters without rescanning.
-  // Server-side gates are intrinsic-only:
-  //   - buying-power affordability (when broker-connected)
-  //   - a minimum quality floor (score < 60 ≈ below grade C)
-  if (ctx.buyingPower != null && c.capitalRequired > ctx.buyingPower) {
-    return { keep: false, reason: "exceeds buying power" };
-  }
-  if (c.finalScore < 60) return { keep: false, reason: "below default grade C" };
+  //
+  // Server-side gate is intrinsic-only:
+  //   - a minimum quality floor (score < 50)
+  //
+  // Buying-power affordability is NOT a server-side gate. Radar is a review/preview
+  // surface — users with low buying power should still see candidate scenarios so they
+  // can learn from them or adjust position sizing. Affordability is enforced at order
+  // placement by the execution-guardrails service, and the candidate card surfaces
+  // capitalRequired vs buyingPower so users can judge for themselves.
+  if (c.finalScore < 50) return { keep: false, reason: "below minimum quality floor" };
   return { keep: true };
 }
 

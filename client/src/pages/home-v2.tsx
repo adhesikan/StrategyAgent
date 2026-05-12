@@ -361,13 +361,22 @@ export default function HomeV2() {
           )}
           <Tabs value={tab} onValueChange={setTab}>
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
-                {TABS.map((t) => (
-                  <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>
-                    {t.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+              <TooltipProvider delayDuration={150}>
+                <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
+                  {TABS.map((t) => (
+                    <Tooltip key={t.value}>
+                      <TooltipTrigger asChild>
+                        <TabsTrigger value={t.value} data-testid={`tab-${t.value}`}>
+                          {t.label}
+                        </TabsTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[240px] text-xs leading-snug">
+                        {t.hint}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </TabsList>
+              </TooltipProvider>
               {ideasResp && ideasResp.ideas.length > 0 && (
                 <ViewToggle value={ideasView} onChange={setIdeasView} testId="view-toggle-ideas" />
               )}

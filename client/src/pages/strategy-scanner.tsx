@@ -8,6 +8,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -509,6 +512,26 @@ interface ScanResult {
   score: number;
   winProb: number;
   reason: string;
+  rvol?: number | null;
+  changePercent?: number | null;
+  stage?: string | null;
+  price?: number | null;
+}
+
+type SortKey = "score" | "winProb" | "ticker" | "rvol";
+
+function buildLiveReason(r: any, fallback: string): string {
+  const parts: string[] = [];
+  if (typeof r.rvol === "number" && r.rvol > 0) parts.push(`RVOL ${r.rvol.toFixed(1)}×`);
+  if (typeof r.changePercent === "number") {
+    const sign = r.changePercent >= 0 ? "+" : "";
+    parts.push(`${sign}${r.changePercent.toFixed(2)}%`);
+  }
+  if (r.stage && typeof r.stage === "string") {
+    const pretty = r.stage.replace(/_/g, " ").toLowerCase();
+    parts.push(pretty);
+  }
+  return parts.length ? parts.join(" · ") : fallback;
 }
 
 // Maps the UI strategy card → the backend StrategyType the live scan accepts.
@@ -642,6 +665,31 @@ export default function StrategyScannerPage() {
   const [meta, setMeta] = useState<ScanResponseMeta>({ isLive: false, source: "fallback" });
   const [lastScanAt, setLastScanAt] = useState<Date>(new Date());
   const [guideStrategy, setGuideStrategy] = useState<Strategy | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("score");
+
+  const visibleResults = useMemo(() => {
+    const q = search.trim().toUpperCase();
+    const filtered = q
+      ? results.filter(
+          (r) => r.ticker.toUpperCase().includes(q) || r.name.toUpperCase().includes(q),
+        )
+      : results.slice();
+    filtered.sort((a, b) => {
+      switch (sortKey) {
+        case "winProb":
+          return b.winProb - a.winProb;
+        case "ticker":
+          return a.ticker.localeCompare(b.ticker);
+        case "rvol":
+          return (b.rvol ?? 0) - (a.rvol ?? 0);
+        case "score":
+        default:
+          return b.score - a.score;
+      }
+    });
+    return filtered.slice(0, 50);
+  }, [results, search, sortKey]);
 
   const scanMutation = useMutation<{ results: ScanResult[]; meta: ScanResponseMeta }, Error, Strategy>({
     mutationFn: async (s: Strategy) => {
@@ -655,13 +703,38 @@ export default function StrategyScannerPage() {
       try {
         const res = await apiRequest("POST", "/api/scan/live", { strategy: backendStrategy });
         const data = await res.json();
-        const mapped: ScanResult[] = (data.results || []).slice(0, 12).map((r: any) => ({
-          ticker: r.ticker,
-          name: r.companyName || r.name || r.ticker,
-          score: Math.round((r.confidence ?? r.score ?? 50) * (r.confidence != null && r.confidence <= 1 ? 100 : 1)),
-          winProb: Math.round(r.winProbability != null ? r.winProbability * 100 : Math.min(80, Math.max(45, (r.confidence ?? 0.6) * 90))),
-          reason: r.reason || r.description || strategyReason(s.id),
-        }));
+        const mapped: ScanResult[] = (data.results || []).map((r: any) => {
+          // Server (broker-service.quotesToScanResults) returns patternScore (0-100).
+          // Older callers may send confidence (0-1) or score directly.
+          const rawScore =
+            typeof r.patternScore === "number"
+              ? r.patternScore
+              : typeof r.score === "number"
+              ? r.score
+              : typeof r.confidence === "number"
+              ? r.confidence <= 1
+                ? r.confidence * 100
+                : r.confidence
+              : 50;
+          const score = Math.round(Math.max(0, Math.min(100, rawScore)));
+          // Derive winProb from score if the server didn't supply one:
+          // map 50→50, 75→65, 95→78 (capped 45..82).
+          const winProb =
+            typeof r.winProbability === "number"
+              ? Math.round(r.winProbability * 100)
+              : Math.round(Math.max(45, Math.min(82, 45 + (score - 50) * 0.7)));
+          return {
+            ticker: r.ticker,
+            name: r.companyName || r.name || r.ticker,
+            score,
+            winProb,
+            reason: r.reason || r.description || buildLiveReason(r, strategyReason(s.id)),
+            rvol: typeof r.rvol === "number" ? r.rvol : null,
+            changePercent: typeof r.changePercent === "number" ? r.changePercent : null,
+            stage: typeof r.stage === "string" ? r.stage : null,
+            price: typeof r.price === "number" ? r.price : null,
+          };
+        });
         if (mapped.length === 0) {
           return {
             results: generateFallbackResults(s.id),
@@ -935,9 +1008,33 @@ export default function StrategyScannerPage() {
                 {meta.source === "live" ? `Live · ${meta.provider ?? "broker"}` : "Illustrative"}
               </Badge>
               <span className="text-xs text-muted-foreground" data-testid="text-scan-meta">
-                {results.length} matches · {timeAgo(lastScanAt)}
+                {visibleResults.length}
+                {visibleResults.length !== results.length ? ` of ${results.length}` : ""} matches · {timeAgo(lastScanAt)}
               </span>
             </div>
+          </div>
+          <div className="mb-3 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center" data-testid="bar-scan-controls">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search ticker or name…"
+                className="h-8 pl-8 text-xs"
+                data-testid="input-scan-search"
+              />
+            </div>
+            <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+              <SelectTrigger className="h-8 w-full sm:w-[180px] text-xs" data-testid="select-scan-sort">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score" data-testid="sort-option-score">Sort: Score (high → low)</SelectItem>
+                <SelectItem value="winProb" data-testid="sort-option-winprob">Sort: Win prob (high → low)</SelectItem>
+                <SelectItem value="rvol" data-testid="sort-option-rvol">Sort: RVOL (high → low)</SelectItem>
+                <SelectItem value="ticker" data-testid="sort-option-ticker">Sort: Ticker (A → Z)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           {meta.source === "fallback" && (
             <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-100/90 flex items-start gap-2" data-testid="banner-scan-fallback">
@@ -957,7 +1054,12 @@ export default function StrategyScannerPage() {
                 <Loader2 className="h-4 w-4 animate-spin" /> Running {selected.name} scan…
               </div>
             ) : null}
-            {results.map((r) => (
+            {!running && visibleResults.length === 0 && results.length > 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground" data-testid="state-scan-no-search-match">
+                No matches for "{search}". Clear the search to see all {results.length} results.
+              </div>
+            ) : null}
+            {visibleResults.map((r) => (
               <div
                 key={r.ticker}
                 className="grid grid-cols-12 items-center gap-3 py-3"

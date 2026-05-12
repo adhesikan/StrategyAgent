@@ -673,6 +673,16 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
     const highPrice = quote.high && quote.high > 0 ? quote.high : quote.last;
     const resistance = highPrice * 1.02;
     const stopLoss = quote.last * 0.93;
+    const safeChangePct = Number.isFinite(quote.changePercent) ? quote.changePercent : 0;
+    const rvol = quote.avgVolume && quote.avgVolume > 0 ? quote.volume / quote.avgVolume : 1;
+    // Per-quote pattern score so non-classified bullish results aren't all flat 50:
+    // baseline 50 + RVOL signal + momentum signal + stage bump, clamped 50..95.
+    const rvolBoost = Math.max(0, Math.min(22, (rvol - 1) * 12));
+    const momentumBoost = Math.max(0, Math.min(18, safeChangePct * 2.5));
+    const stageBoost = stage === "BREAKOUT" ? 8 : stage === "IN_ENTRY_ZONE" ? 4 : 0;
+    const derivedScore = Math.round(
+      Math.max(50, Math.min(95, 50 + rvolBoost + momentumBoost + stageBoost)),
+    );
 
     results.push({
       id: randomUUID(),
@@ -684,11 +694,11 @@ export function quotesToScanResults(quotes: QuoteData[], strategy: string = Stra
       changePercent: Number(quote.changePercent.toFixed(2)),
       volume: quote.volume,
       avgVolume: quote.avgVolume || null,
-      rvol: quote.avgVolume ? Number((quote.volume / quote.avgVolume).toFixed(2)) : null,
+      rvol: quote.avgVolume ? Number(rvol.toFixed(2)) : null,
       stage,
       resistance: Number(resistance.toFixed(2)),
       stopLoss: Number(stopLoss.toFixed(2)),
-      patternScore: 50,
+      patternScore: derivedScore,
       ema9: Number((quote.last * 0.99).toFixed(2)),
       ema21: Number((quote.last * 0.97).toFixed(2)),
       atr: Number((quote.last * 0.02).toFixed(2)),

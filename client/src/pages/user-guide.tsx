@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   BookOpen, Home, TrendingUp, DollarSign, BarChart3, Newspaper, Radar,
   Zap, ShieldCheck, Briefcase, Settings as SettingsIcon, FileText, HelpCircle,
-  Search, Sparkles, AlertTriangle, CheckCircle2, ChevronRight,
+  Search, Sparkles, AlertTriangle, CheckCircle2, ChevronRight, Moon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -200,10 +200,64 @@ const SECTIONS: Section[] = [
           <li>Advanced mode: bracket orders (entry + stop + target) and Risk Controls exit plan.</li>
           <li>Paper mode is supported via the broker sandbox.</li>
           <li>Live orders require a connected broker (Tradier, TradeStation, or SnapTrade).</li>
+          <li>
+            Outside regular hours, a <strong>Pre-Market / After-Hours</strong> toggle appears on the
+            ticket — see the <Link href="/guide#extended-hours" className="underline">Pre-Market &amp; After-Hours</Link>{" "}
+            section.
+          </li>
         </ul>
         <p className="mt-3 text-sm text-muted-foreground">
           The "Review with InstaTrade™" button on any setup card opens the same review flow with the
           fields pre-filled.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "extended-hours",
+    title: "Pre-Market & After-Hours Trading",
+    icon: Moon,
+    summary: "Place limit orders outside regular hours, see live extended-session prices, and understand the risks.",
+    keywords: [
+      "pre-market", "premarket", "after-hours", "afterhours", "extended hours",
+      "extended session", "overnight", "early trading", "late trading",
+    ],
+    body: (
+      <>
+        <p>
+          VCP Trader AI supports US extended trading sessions in addition to regular hours.
+          The market badge in the app header shows which session is active right now:
+        </p>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li><strong className="text-blue-400">Pre-Market</strong> — 4:00 AM – 9:30 AM ET (weekdays).</li>
+          <li><strong className="text-emerald-400">Market Open</strong> — 9:30 AM – 4:00 PM ET (regular session).</li>
+          <li><strong className="text-orange-400">After-Hours</strong> — 4:00 PM – 8:00 PM ET (weekdays).</li>
+          <li><strong className="text-muted-foreground">Market Closed</strong> — outside the windows above, weekends, and US market holidays.</li>
+        </ul>
+
+        <h4 className="font-semibold mt-4">How to place a pre-market or after-hours order</h4>
+        <ol className="list-decimal pl-5 space-y-1 mt-2">
+          <li>Open the <Link href="/instatrade" className="underline">InstaTrade™ ticket</Link> on any stock during a pre-market or after-hours window.</li>
+          <li>Toggle on the blue <strong>Pre-Market Session</strong> or <strong>After-Hours Session</strong> switch on the ticket.</li>
+          <li>The ticket auto-switches to <strong>Limit</strong> order type and disables bracket exits — both required by the brokers.</li>
+          <li>Set your limit price (use the Current / Resistance / ±$0.05 chips to nudge it).</li>
+          <li>Review the order and tap <strong>Send Pre-Market Order</strong> or <strong>Send After-Hours Order</strong>.</li>
+        </ol>
+
+        <h4 className="font-semibold mt-4">Important things to know</h4>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li><strong>Limit orders only.</strong> Pre/after sessions don't accept market orders. The ticket enforces this.</li>
+          <li><strong>No bracket exits.</strong> OCO/OTOCO bracket orders aren't available in extended sessions. Submit your entry first; managed exits resume at the next regular session.</li>
+          <li><strong>Wider spreads &amp; thinner volume.</strong> Bid/ask gaps can be much larger than during the regular session, so fills aren't guaranteed and the price you see may move sharply.</li>
+          <li><strong>Broker support.</strong> Tradier supports pre-market and after-hours routing today. TradeStation accounts will get a clear error message until extended-hours mapping is added.</li>
+          <li><strong>Volume &amp; RVOL filters relax automatically.</strong> Scanners loosen volume thresholds outside regular hours since extended-session volume is naturally light.</li>
+          <li><strong>Risk Controls still apply.</strong> All My Limits checks (allowed instruments, min score, R:R, max risk per trade) run on extended-hours orders too.</li>
+          <li><strong>Exit Protection runs through 8:00 PM ET.</strong> Managed option exits stay active across both extended sessions, using marketable limit orders at the current mid (instead of market) so they comply with broker rules.</li>
+        </ul>
+
+        <p className="mt-3 text-sm text-muted-foreground">
+          When the market is fully closed (between 8:00 PM and 4:00 AM ET, weekends, or holidays) the
+          extended-hours toggle is hidden and order submission is disabled until the next session opens.
         </p>
       </>
     ),

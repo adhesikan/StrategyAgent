@@ -29,6 +29,7 @@ import {
   Moon,
 } from "lucide-react";
 import { getMarketSessionInfo } from "@shared/market-session";
+import { HelpLink } from "@/components/help-link";
 
 interface ScanResultData {
   ticker: string;
@@ -494,6 +495,7 @@ export function StockTradeTicket({
                   Limit orders only — bracket exits aren't allowed and will be skipped.
                   Spreads are wider and fills aren't guaranteed.
                 </p>
+                <HelpLink section="extended-hours" label="Learn about pre-market & after-hours" variant="inline" />
               </div>
             )}
 

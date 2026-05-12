@@ -104,11 +104,24 @@ function classifyCategory(strategy: CandidateScenario["strategyType"]): DailyIde
 }
 
 function classifyRisk(c: CandidateScenario): DailyIdeaRisk {
+  // Long single-leg options can lose 100% of premium quickly — always high.
   if (c.strategyType === "long_call" || c.strategyType === "long_put") return "high";
-  if (c.strategyType === "covered_call" || c.strategyType === "cash_secured_put" || c.strategyType === "debit_spread") {
+
+  // Defined-risk spreads cap loss at the debit paid. Treat small-debit, well-graded
+  // spreads as low so the home feed isn't dominated by medium/high.
+  if (c.strategyType === "debit_spread") {
+    if (c.maxLoss <= 250 || c.finalScore >= 75) return "low";
     return "medium";
   }
-  return c.finalScore >= 75 ? "low" : "medium";
+
+  // Income strategies: covered calls and cash-secured puts are conservative when
+  // the underlying is well-graded.
+  if (c.strategyType === "covered_call" || c.strategyType === "cash_secured_put") {
+    return c.finalScore >= 70 ? "low" : "medium";
+  }
+
+  // Stock swing: lower the threshold so high-quality A/A+ ideas show as low.
+  return c.finalScore >= 70 ? "low" : "medium";
 }
 
 function buildSimpleTitle(c: CandidateScenario): string {

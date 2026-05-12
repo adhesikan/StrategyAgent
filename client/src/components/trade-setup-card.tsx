@@ -258,6 +258,31 @@ function InstrumentBlock({
   );
 }
 
+function DataSourceBadge({ dataSource }: { dataSource?: string }) {
+  if (!dataSource) return null;
+  const isLive = dataSource === "broker" || dataSource.toLowerCase().startsWith("live");
+  if (isLive) {
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] px-1.5 py-0 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        data-testid="badge-data-source"
+      >
+        ● Live broker data
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="text-[10px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      data-testid="badge-data-source"
+    >
+      Simulated data
+    </Badge>
+  );
+}
+
 export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onReviewSetup }: TradeSetupCardProps) {
   const [expandedReasoning, setExpandedReasoning] = useState(false);
   const [expandedInvalidation, setExpandedInvalidation] = useState(false);
@@ -300,6 +325,7 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
           <div className="flex flex-col gap-1.5 items-end">
             <GradeBadge probability={setup.probability} />
             {!setup.probability && <ScoreBadge score={setup.modelScore} />}
+            <DataSourceBadge dataSource={setup.dataSource} />
           </div>
         </div>
       </CardHeader>

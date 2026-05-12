@@ -146,7 +146,24 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
 
       // Phase 2: Instrument selection (uses user prefs + options eval)
       const prefs = (await storage.getUserTradePreferences(userId)) || {};
-      const instrument = selectInstrument({ setup, probability, prefs });
+      // If user explicitly chose Asset Type = Option in the builder, exclude
+      // the stock candidate AND ensure at least one option vehicle that matches
+      // the bias is enabled so the selector cannot fall back to "stock". We
+      // force-enable the directional single-leg matching the bias plus debit
+      // spreads (defined-risk fallback), without persisting these overrides.
+      let selectorPrefs: any = prefs;
+      if (parsed.assetType === "option") {
+        const isBearish = setup.bias === "bearish";
+        selectorPrefs = {
+          ...prefs,
+          allowStocks: false,
+          allowLongCalls: isBearish ? prefs.allowLongCalls : true,
+          allowLongPuts: isBearish ? true : prefs.allowLongPuts,
+          allowDebitSpreads: true,
+          definedRiskOnly: false,
+        };
+      }
+      const instrument = selectInstrument({ setup, probability, prefs: selectorPrefs });
 
       // Persist setup history
       const persisted = await storage.createTradeSetupHistory({

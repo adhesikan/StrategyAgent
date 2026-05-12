@@ -7,7 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
-import { CandidateScenarioCard, type CandidateScenario } from "@/components/goal-mode-shell";
+import { CandidateScenarioCard, OrderReviewModal, type CandidateScenario } from "@/components/goal-mode-shell";
+import { useQuery } from "@tanstack/react-query";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
 import { HelpLink } from "@/components/help-link";
@@ -68,10 +69,35 @@ export default function IncomeModePage() {
   const [minOI, setMinOI] = useState("500");
   const [maxSpread, setMaxSpread] = useState("0.10");
   const [showIdeas, setShowIdeas] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
+
+  const { data: brokerStatus } = useQuery<{ isConnected?: boolean }>({
+    queryKey: ["/api/broker/connection"],
+  });
+  const brokerConnected = !!brokerStatus?.isConnected;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setShowIdeas(true);
+  };
+
+  const handleReview = (s: CandidateScenario) => {
+    setActiveScenario(s);
+    setReviewOpen(true);
+  };
+
+  const handlePrepareOrder = (s: CandidateScenario) => {
+    setActiveScenario(s);
+    setReviewOpen(true);
+  };
+
+  const handleSend = () => {
+    if (!activeScenario) return;
+    toast({
+      title: brokerConnected ? "Sent to broker via InstaTrade™" : "Simulated order placed",
+      description: `${activeScenario.ticker} ${activeScenario.strategyType} submitted for review.`,
+    });
   };
 
   return (
@@ -220,8 +246,8 @@ export default function IncomeModePage() {
               <CandidateScenarioCard
                 key={s.id}
                 scenario={s}
-                onReview={() => toast({ title: `${s.ticker} details`, description: s.why })}
-                onPrepareOrder={() => toast({ title: "Order review required", description: "Use Goal Mode for full review modal." })}
+                onReview={() => handleReview(s)}
+                onPrepareOrder={() => handlePrepareOrder(s)}
               />
             ))}
           </div>
@@ -229,6 +255,14 @@ export default function IncomeModePage() {
       )}
 
       <ComplianceFooter />
+
+      <OrderReviewModal
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        scenario={activeScenario}
+        brokerConnected={brokerConnected}
+        onSend={handleSend}
+      />
     </div>
   );
 }

@@ -2025,6 +2025,11 @@ export const sessionAuditEvents = pgTable("session_audit_events", {
   deviceType: text("device_type"),
   browser: text("browser"),
   os: text("os"),
+  country: text("country"),
+  region: text("region"),
+  city: text("city"),
+  referrer: text("referrer"),
+  path: text("path"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertSessionAuditEventSchema = createInsertSchema(sessionAuditEvents).omit({ id: true, createdAt: true });

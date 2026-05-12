@@ -46,7 +46,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 import logoUrl from "@assets/ChatGPT_Image_Jan_1,_2026,_01_38_07_PM_1767292703801.png";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
 import { MarketingOnboardingWizard } from "@/components/marketing-onboarding-wizard";
 
@@ -1172,6 +1172,30 @@ function LandingFooter() {
 export default function HomePage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const openWizard = () => setWizardOpen(true);
+
+  useEffect(() => {
+    const KEY = "sa.landingViewLogged";
+    try {
+      if (sessionStorage.getItem(KEY)) return;
+      sessionStorage.setItem(KEY, "1");
+    } catch {
+      // sessionStorage may be blocked; still log once per page load
+    }
+    const payload = {
+      eventType: "landing_view",
+      path: window.location.pathname + window.location.search,
+      referrer: document.referrer || null,
+    };
+    fetch("/api/audit/page-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include",
+      keepalive: true,
+    }).catch(() => {
+      // analytics must never break the UI
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">

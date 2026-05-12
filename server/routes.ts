@@ -7737,6 +7737,104 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // Public: log landing-page (and other public page) views with IP + geo.
+  // Fires once per browser session (client-side dedupe).
+  // In-memory token bucket per IP — protects the table from spam since the
+  // endpoint is unauthenticated. 30 requests / 10 min per IP is more than
+  // enough for legitimate page navigation but blocks floods.
+  const pageViewRate = new Map<string, { count: number; resetAt: number }>();
+  const PAGE_VIEW_LIMIT = 30;
+  const PAGE_VIEW_WINDOW_MS = 10 * 60 * 1000;
+  app.post("/api/audit/page-view", async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sessionAuditEvents } = await import("@shared/schema");
+      const { lookupGeo } = await import("./services/audit/geo-lookup");
+
+      const ua = (req.headers["user-agent"] as string | undefined) || "";
+      // Express's req.ip respects the configured `trust proxy` setting.
+      const ip = req.ip || "unknown";
+
+      const now = Date.now();
+      const bucket = pageViewRate.get(ip);
+      if (bucket && bucket.resetAt > now) {
+        if (bucket.count >= PAGE_VIEW_LIMIT) {
+          return res.status(429).json({ error: "rate limited" });
+        }
+        bucket.count += 1;
+      } else {
+        pageViewRate.set(ip, { count: 1, resetAt: now + PAGE_VIEW_WINDOW_MS });
+      }
+      // Opportunistic cleanup so the map doesn't grow unbounded.
+      if (pageViewRate.size > 5000) {
+        for (const [k, v] of pageViewRate) if (v.resetAt <= now) pageViewRate.delete(k);
+      }
+
+      // Lightweight UA parsing (mirrors auth/routes.ts parseUserAgent)
+      let browser = "Unknown", os = "Unknown", deviceType = "Desktop";
+      const matchers: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
+        [/Edg\/(\d+)/, (m) => `Edge ${m[1]}`],
+        [/OPR\/(\d+)/, (m) => `Opera ${m[1]}`],
+        [/Firefox\/(\d+)/, (m) => `Firefox ${m[1]}`],
+        [/Chrome\/(\d+)/, (m) => `Chrome ${m[1]}`],
+        [/Version\/(\d+).*Safari/, (m) => `Safari ${m[1]}`],
+        [/Safari\/(\d+)/, (m) => `Safari ${m[1]}`],
+      ];
+      for (const [re, fmt] of matchers) {
+        const m = ua.match(re); if (m) { browser = fmt(m); break; }
+      }
+      if (/Windows NT 10/.test(ua)) os = "Windows 10/11";
+      else if (/Windows NT/.test(ua)) os = "Windows";
+      else if (/Mac OS X/.test(ua)) os = "macOS";
+      else if (/Android/.test(ua)) os = "Android";
+      else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
+      else if (/Linux/.test(ua)) os = "Linux";
+      if (/iPad|Tablet/i.test(ua)) deviceType = "Tablet";
+      else if (/Mobile|iPhone|Android/i.test(ua)) deviceType = "Mobile";
+
+      const body = (req.body || {}) as { path?: string; referrer?: string; eventType?: string };
+      const path = typeof body.path === "string" ? body.path.slice(0, 500) : null;
+      const referrer = typeof body.referrer === "string" ? body.referrer.slice(0, 500) : null;
+      const eventType =
+        body.eventType === "landing_view" || body.eventType === "page_view"
+          ? body.eventType
+          : "landing_view";
+
+      // Authenticated viewer (if any) — best effort, no failure if not logged in.
+      const userId = (req as any).user?.id || (req as any).user?.claims?.sub || null;
+      const email = (req as any).user?.email || null;
+
+      // Respond immediately; geo lookup + insert run in background.
+      res.status(202).json({ ok: true });
+
+      (async () => {
+        try {
+          const geo = await lookupGeo(ip);
+          await db.insert(sessionAuditEvents).values({
+            userId,
+            email,
+            eventType,
+            ipAddress: ip,
+            userAgent: ua.slice(0, 500),
+            browser,
+            os,
+            deviceType,
+            country: geo.country,
+            region: geo.region,
+            city: geo.city,
+            referrer,
+            path,
+          });
+        } catch (err: any) {
+          console.error("[Audit] page-view insert failed:", err.message);
+        }
+      })();
+    } catch (error: any) {
+      console.error("[Audit] page-view handler error:", error.message);
+      if (!res.headersSent) res.status(500).json({ error: "audit failed" });
+    }
+  });
+
   app.get("/api/admin/sessions", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { db } = await import("./db");

@@ -18,6 +18,8 @@ import {
   RefreshCw,
   Smartphone,
   Monitor,
+  MapPin,
+  Globe,
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 
@@ -31,6 +33,11 @@ interface SessionEvent {
   deviceType: string | null;
   browser: string | null;
   os: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  referrer: string | null;
+  path: string | null;
   createdAt: string;
 }
 
@@ -124,6 +131,8 @@ export default function AdminSessionsPage() {
                   <SelectItem value="login">Login</SelectItem>
                   <SelectItem value="logout">Logout</SelectItem>
                   <SelectItem value="register">Register</SelectItem>
+                  <SelectItem value="landing_view">Landing View</SelectItem>
+                  <SelectItem value="page_view">Page View</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -137,6 +146,7 @@ export default function AdminSessionsPage() {
                   <TableHead>Event</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>IP Address</TableHead>
+                  <TableHead>Location</TableHead>
                   <TableHead>Device</TableHead>
                   <TableHead>Browser / OS</TableHead>
                   <TableHead className="text-right">Time</TableHead>
@@ -156,7 +166,7 @@ export default function AdminSessionsPage() {
                 )}
                 {!isLoading && data?.events.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No session events match your filters.
                     </TableCell>
                   </TableRow>
@@ -167,10 +177,13 @@ export default function AdminSessionsPage() {
                       <EventBadge type={evt.eventType} />
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      <div className="text-muted-foreground">{(evt.userId || "").slice(0, 8) || "-"}...</div>
-                      <div className="font-sans text-foreground">{evt.email || "(unknown)"}</div>
+                      <div className="text-muted-foreground">{(evt.userId || "").slice(0, 8) || (evt.eventType === "landing_view" || evt.eventType === "page_view" ? "anon" : "-")}{evt.userId ? "..." : ""}</div>
+                      <div className="font-sans text-foreground">{evt.email || (evt.eventType === "landing_view" || evt.eventType === "page_view" ? "(visitor)" : "(unknown)")}</div>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{evt.ipAddress || "-"}</TableCell>
+                    <TableCell className="font-mono text-xs" data-testid={`text-ip-${evt.id}`}>{evt.ipAddress || "-"}</TableCell>
+                    <TableCell className="text-xs" data-testid={`text-geo-${evt.id}`}>
+                      <LocationCell country={evt.country} region={evt.region} city={evt.city} />
+                    </TableCell>
                     <TableCell>
                       <DeviceCell type={evt.deviceType} />
                     </TableCell>
@@ -248,7 +261,39 @@ function EventBadge({ type }: { type: string }) {
       </Badge>
     );
   }
+  if (type === "landing_view") {
+    return (
+      <Badge variant="outline" className="gap-1">
+        <Globe className="h-3 w-3" />
+        landing
+      </Badge>
+    );
+  }
+  if (type === "page_view") {
+    return (
+      <Badge variant="outline" className="gap-1">
+        <Eye className="h-3 w-3" />
+        page view
+      </Badge>
+    );
+  }
   return <Badge variant="outline">{type}</Badge>;
+}
+
+function LocationCell({ country, region, city }: { country: string | null; region: string | null; city: string | null }) {
+  if (!country && !region && !city) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  const top = [city, region].filter(Boolean).join(", ");
+  return (
+    <span className="inline-flex items-start gap-1.5">
+      <MapPin className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+      <span>
+        {top && <div>{top}</div>}
+        <div className="text-muted-foreground">{country || ""}</div>
+      </span>
+    </span>
+  );
 }
 
 function DeviceCell({ type }: { type: string | null }) {

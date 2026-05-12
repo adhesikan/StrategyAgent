@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sparkles, ArrowLeft, AlertTriangle, Target, ShieldCheck, TrendingUp, Activity, Loader2 } from "lucide-react";
+import { Sparkles, ArrowLeft, AlertTriangle, Target, ShieldCheck, TrendingUp, Activity, Loader2, ArrowRight } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { ComplianceFooter } from "@/components/trading-shell";
+import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 
 type UniverseId = "watchlist" | "large_cap" | "high_volume" | "options_liquid" | "nasdaq_100" | "sp_100" | "sp_500" | "custom";
 
@@ -81,6 +82,7 @@ export default function BestTradePage() {
   const [customSymbols, setCustomSymbols] = useState("");
   const [minConfidence, setMinConfidence] = useState(65);
   const [maxLoss, setMaxLoss] = useState<string>("500");
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
 
   const universesQuery = useQuery<UniverseOption[]>({
     queryKey: ["/api/best-trade/universes"],
@@ -264,13 +266,18 @@ export default function BestTradePage() {
 
       {data && !isLoading && (
         <>
-          <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground" data-testid="text-best-trade-meta">
-            <Badge variant="outline" className="text-[10px]">
-              <Activity className="h-3 w-3 mr-1" />
-              {data.dataMode === "live" ? "Live broker data" : data.dataMode === "mixed" ? "Mixed data" : "Simulated examples"}
-            </Badge>
-            <span>· Scanned {data.universeSize} symbols in {data.universeLabel}</span>
-            <span>· {data.picks.length} pick{data.picks.length === 1 ? "" : "s"}</span>
+          <div className="flex items-center justify-between gap-2 flex-wrap" data-testid="text-best-trade-meta">
+            <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+              <Badge variant="outline" className="text-[10px]">
+                <Activity className="h-3 w-3 mr-1" />
+                {data.dataMode === "live" ? "Live broker data" : data.dataMode === "mixed" ? "Mixed data" : "Simulated examples"}
+              </Badge>
+              <span>· Scanned {data.universeSize} symbols in {data.universeLabel}</span>
+              <span>· {data.picks.length} pick{data.picks.length === 1 ? "" : "s"}</span>
+            </div>
+            {data.picks.length > 0 && (
+              <ViewToggle value={viewMode} onChange={setViewMode} testId="view-toggle-best-trade" />
+            )}
           </div>
 
           {data.notes.length > 0 && (
@@ -294,11 +301,19 @@ export default function BestTradePage() {
             </Card>
           )}
 
-          <div className="space-y-3" data-testid="list-best-trade-picks">
-            {data.picks.map((pick) => (
-              <PickCard key={pick.id} pick={pick} />
-            ))}
-          </div>
+          {viewMode === "card" ? (
+            <div className="space-y-3" data-testid="list-best-trade-picks">
+              {data.picks.map((pick) => (
+                <PickCard key={pick.id} pick={pick} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2" data-testid="list-best-trade-picks">
+              {data.picks.map((pick) => (
+                <PickRow key={pick.id} pick={pick} />
+              ))}
+            </div>
+          )}
 
           <p className="text-[11px] text-muted-foreground" data-testid="text-best-trade-disclaimer">
             {data.disclaimer}
@@ -392,6 +407,43 @@ function PickCard({ pick }: { pick: BestTradePick }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PickRow({ pick }: { pick: BestTradePick }) {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2.5 hover-elevate"
+      data-testid={`row-pick-${pick.symbol}`}
+    >
+      <div className="flex items-center gap-2 min-w-[140px]">
+        <span className="text-base font-bold" data-testid={`row-pick-symbol-${pick.symbol}`}>{pick.symbol}</span>
+        <Badge className={`text-[10px] font-semibold ${GRADE_COLORS[pick.grade]}`} data-testid={`row-pick-grade-${pick.symbol}`}>
+          {pick.grade}
+        </Badge>
+      </div>
+      <Badge variant="outline" className="text-[10px]">{pick.strategyLabel}</Badge>
+      <Badge variant="outline" className="text-[10px] capitalize">{pick.bias}</Badge>
+      <Badge variant="outline" className={`text-[10px] ${RISK_COLORS[pick.riskLabel]}`}>{pick.riskLabel} risk</Badge>
+      <Badge variant="outline" className="text-[10px] tabular-nums" data-testid={`row-pick-confidence-${pick.symbol}`}>
+        {pick.confidence}%
+      </Badge>
+      <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span><span className="text-muted-foreground">Entry: </span><span className="font-semibold tabular-nums">${pick.entry.toFixed(2)}</span></span>
+        <span><span className="text-muted-foreground">Max loss: </span><span className="font-semibold tabular-nums text-rose-300">${pick.maxLoss.toLocaleString()}</span></span>
+        <span><span className="text-muted-foreground">R/R: </span><span className="font-semibold tabular-nums">{pick.rewardRisk.toFixed(2)}:1</span></span>
+      </div>
+      <div className="flex gap-2">
+        <Link href={`/trade/${pick.symbol}`}>
+          <Button size="sm" variant="outline" data-testid={`row-pick-detail-${pick.symbol}`}>Detail</Button>
+        </Link>
+        <Link href={`/trade-finder?symbol=${pick.symbol}`}>
+          <Button size="sm" data-testid={`row-pick-build-${pick.symbol}`}>
+            Build <ArrowRight className="h-3.5 w-3.5 ml-1" />
+          </Button>
+        </Link>
+      </div>
+    </div>
   );
 }
 

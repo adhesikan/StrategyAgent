@@ -23,7 +23,8 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
-import { DailyIdeaCard, type DailyIdea } from "@/components/daily-idea-card";
+import { DailyIdeaCard, DailyIdeaRow, type DailyIdea } from "@/components/daily-idea-card";
+import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -215,6 +216,7 @@ export default function HomeV2() {
   const { user } = useAuth();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("all");
+  const [ideasView, setIdeasView] = useState<ViewMode>("card");
   const { toast } = useToast();
   const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
   const [customDraft, setCustomDraft] = useState("");
@@ -357,13 +359,18 @@ export default function HomeV2() {
             </div>
           )}
           <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
-              {TABS.map((t) => (
-                <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>
-                  {t.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
+                {TABS.map((t) => (
+                  <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>
+                    {t.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {ideasResp && ideasResp.ideas.length > 0 && (
+                <ViewToggle value={ideasView} onChange={setIdeasView} testId="view-toggle-ideas" />
+              )}
+            </div>
             {TABS.map((t) => (
               <TabsContent key={t.value} value={t.value} className="mt-4">
                 {ideasLoading ? (
@@ -373,11 +380,19 @@ export default function HomeV2() {
                     ))}
                   </div>
                 ) : ideasResp && ideasResp.ideas.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {ideasResp.ideas.slice(0, 9).map((idea) => (
-                      <DailyIdeaCard key={idea.id} idea={idea} />
-                    ))}
-                  </div>
+                  ideasView === "card" ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {ideasResp.ideas.slice(0, 9).map((idea) => (
+                        <DailyIdeaCard key={idea.id} idea={idea} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {ideasResp.ideas.slice(0, 9).map((idea) => (
+                        <DailyIdeaRow key={idea.id} idea={idea} />
+                      ))}
+                    </div>
+                  )
                 ) : (
                   <Card className="p-6 space-y-3" data-testid="text-no-ideas">
                     <div className="flex items-start gap-2 text-sm">

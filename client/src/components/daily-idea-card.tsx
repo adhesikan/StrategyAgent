@@ -227,6 +227,59 @@ export function DailyIdeaCard({ idea }: Props) {
   );
 }
 
+export function DailyIdeaRow({ idea }: Props) {
+  const [, navigate] = useLocation();
+
+  const handleReview = () => {
+    const typeMap: Record<DailyIdea["instrumentType"], string> = {
+      stock: "stock",
+      long_call: "long-call",
+      long_put: "long-put",
+      spread: "vertical",
+      covered_call: "short-premium",
+      cash_secured_put: "short-premium",
+    };
+    navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}`);
+  };
+
+  return (
+    <div
+      data-testid={`row-daily-idea-${idea.id}`}
+      className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2.5 hover-elevate"
+    >
+      <div className="flex items-center gap-2 min-w-[140px]">
+        <span className="text-base font-bold" data-testid={`row-symbol-${idea.id}`}>{idea.symbol}</span>
+        <Badge variant="outline" className="text-[10px] font-semibold" data-testid={`row-grade-${idea.id}`}>
+          {idea.grade}
+        </Badge>
+      </div>
+      <Badge variant="outline" className={`text-[10px] ${CATEGORY_TONE[idea.category]}`}>
+        {CATEGORY_LABEL[idea.category]}
+      </Badge>
+      <Badge variant="outline" className="text-[10px]">
+        {INSTRUMENT_LABEL[idea.instrumentType]}
+      </Badge>
+      <Badge variant="outline" className={`text-[10px] capitalize ${RISK_TONE[idea.riskLevel]}`}>
+        {idea.riskLevel} risk
+      </Badge>
+      <span className="text-xs text-muted-foreground hidden md:inline truncate max-w-[260px]">{idea.title}</span>
+      <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span>
+          <span className="text-muted-foreground">Max risk: </span>
+          <span className="font-semibold">${idea.maxRisk.toLocaleString()}</span>
+        </span>
+        <span>
+          <span className="text-muted-foreground">Cap: </span>
+          <span className="font-semibold">{idea.capitalNeeded > 0 ? `$${idea.capitalNeeded.toLocaleString()}` : "—"}</span>
+        </span>
+      </div>
+      <Button size="sm" onClick={handleReview} data-testid={`row-review-${idea.id}`}>
+        Review <ArrowRight className="h-3.5 w-3.5 ml-1" />
+      </Button>
+    </div>
+  );
+}
+
 function Stat({
   icon: Icon,
   label,

@@ -14,7 +14,8 @@ import {
 } from "@/components/goal-mode-shell";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
-import { Target, RotateCcw, LayoutGrid, List } from "lucide-react";
+import { Target, RotateCcw } from "lucide-react";
+import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { HowToUseSection } from "@/components/how-to-use-section";
@@ -72,7 +73,7 @@ export default function GoalModePage() {
   const [prefs, setPrefs] = useState<GoalModePrefs | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
-  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
   const { isConnected: brokerConnected } = useBrokerStatus();
 
   useEffect(() => {
@@ -185,28 +186,7 @@ export default function GoalModePage() {
           <div>
             <div className="flex items-center justify-between mb-3 gap-3">
               <h2 className="text-lg font-semibold">Candidate Scenarios</h2>
-              <div className="flex items-center border rounded-md" data-testid="view-toggle-grow">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn("rounded-r-none h-8 w-8", viewMode === "card" && "bg-muted")}
-                  onClick={() => setViewMode("card")}
-                  aria-label="Card view"
-                  data-testid="button-view-card"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn("rounded-l-none h-8 w-8", viewMode === "list" && "bg-muted")}
-                  onClick={() => setViewMode("list")}
-                  aria-label="List view"
-                  data-testid="button-view-list"
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </div>
+              <ViewToggle value={viewMode} onChange={setViewMode} testId="view-toggle-grow" />
             </div>
             {viewMode === "card" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { CandidateScenarioCard, CandidateScenarioRow, OrderReviewModal, type CandidateScenario } from "@/components/goal-mode-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
-import { DollarSign, AlertTriangle, Sparkles, LayoutGrid, List } from "lucide-react";
+import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
+import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { HowToUseSection } from "@/components/how-to-use-section";
@@ -83,7 +84,7 @@ export default function IncomeModePage() {
   const [showIdeas, setShowIdeas] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
-  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
 
   const { isConnected: brokerConnected } = useBrokerStatus();
 
@@ -277,28 +278,7 @@ export default function IncomeModePage() {
               <Badge variant="outline" className="text-xs">
                 ${target}/mo target on ${parseInt(capital, 10).toLocaleString()} capital
               </Badge>
-              <div className="flex items-center border rounded-md" data-testid="view-toggle-income">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn("rounded-r-none h-8 w-8", viewMode === "card" && "bg-muted")}
-                  onClick={() => setViewMode("card")}
-                  aria-label="Card view"
-                  data-testid="button-view-card"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn("rounded-l-none h-8 w-8", viewMode === "list" && "bg-muted")}
-                  onClick={() => setViewMode("list")}
-                  aria-label="List view"
-                  data-testid="button-view-list"
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </div>
+              <ViewToggle value={viewMode} onChange={setViewMode} testId="view-toggle-income" />
             </div>
           </div>
           {viewMode === "card" ? (

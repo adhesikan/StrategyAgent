@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
-import { DailyIdeaCard, type DailyIdea } from "@/components/daily-idea-card";
+import { DailyIdeaCard, DailyIdeaRow, type DailyIdea } from "@/components/daily-idea-card";
+import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 
 interface IdeasResponse {
   ideas: DailyIdea[];
@@ -24,6 +26,7 @@ interface Props {
 }
 
 export function DailyIdeasSection({ bucket, title, subtitle, limit = 6, emptyText }: Props) {
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
   const { data, isLoading } = useQuery<IdeasResponse>({
     queryKey: ["/api/daily-ideas", { bucket }],
     queryFn: async () => {
@@ -43,9 +46,14 @@ export function DailyIdeasSection({ bucket, title, subtitle, limit = 6, emptyTex
           </h2>
           {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
-        {data?.dataMode === "simulated" && (
-          <Badge variant="outline" className="text-[10px]">Simulated data</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {data?.dataMode === "simulated" && (
+            <Badge variant="outline" className="text-[10px]">Simulated data</Badge>
+          )}
+          {data && data.ideas.length > 0 && (
+            <ViewToggle value={viewMode} onChange={setViewMode} testId={`view-toggle-${bucket}`} />
+          )}
+        </div>
       </div>
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -54,11 +62,19 @@ export function DailyIdeasSection({ bucket, title, subtitle, limit = 6, emptyTex
           ))}
         </div>
       ) : data && data.ideas.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {data.ideas.slice(0, limit).map((idea) => (
-            <DailyIdeaCard key={idea.id} idea={idea} />
-          ))}
-        </div>
+        viewMode === "card" ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {data.ideas.slice(0, limit).map((idea) => (
+              <DailyIdeaCard key={idea.id} idea={idea} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.ideas.slice(0, limit).map((idea) => (
+              <DailyIdeaRow key={idea.id} idea={idea} />
+            ))}
+          </div>
+        )
       ) : (
         <Card className="p-6 text-center text-sm text-muted-foreground">
           {emptyText ?? "No ideas in this category right now."}

@@ -32,6 +32,29 @@ interface AskPick {
   dataMode: string;
 }
 
+interface AskTradeDetail {
+  symbol: string;
+  strategy: "cash_secured_put" | "covered_call";
+  strategyLabel: string;
+  bias: string;
+  spot: number;
+  strike: number;
+  optionType: "put" | "call";
+  expiry: string;
+  dte: number;
+  premiumPerShare: number;
+  premiumPerContract: number;
+  collateralPerContract: number;
+  upsideCapPerContract: number | null;
+  maxProfitPerContract: number;
+  maxLossPerContract: number;
+  breakeven: number;
+  delta: number;
+  reasons: string[];
+  warnings: string[];
+  dataMode: "live" | "simulated";
+}
+
 interface AskResponse {
   question: string;
   intent: string;
@@ -43,6 +66,7 @@ interface AskResponse {
   riskNote: string;
   confidence: "low" | "medium" | "high";
   picks?: AskPick[];
+  tradeDetail?: AskTradeDetail | null;
   suggestions: { label: string; href: string }[];
   source: "openai" | "rule_based";
   disclaimer: string;
@@ -233,6 +257,111 @@ export default function AskPage() {
               )}
             </CardContent>
           </Card>
+
+          {data.tradeDetail && (
+            <Card data-testid="card-ask-trade-detail" className="border-emerald-500/30 bg-emerald-500/[0.03]">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    Suggested ticket
+                    <Badge variant="outline" className="text-[10px]" data-testid="badge-trade-detail-strategy">
+                      {data.tradeDetail.strategyLabel}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px] capitalize">{data.tradeDetail.symbol}</Badge>
+                  </CardTitle>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${data.tradeDetail.dataMode === "live" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : "text-amber-300 border-amber-500/40 bg-amber-500/10"}`}
+                    data-testid="badge-trade-detail-mode"
+                  >
+                    {data.tradeDetail.dataMode === "live" ? "Live quote" : "Simulated"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Strike</div>
+                    <div className="font-mono text-base text-foreground" data-testid="text-trade-detail-strike">
+                      ${data.tradeDetail.strike.toFixed(2)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground capitalize">
+                      {data.tradeDetail.optionType} · ~{Math.round(Math.abs(data.tradeDetail.delta) * 100)} delta
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Expiry</div>
+                    <div className="font-mono text-base text-foreground" data-testid="text-trade-detail-expiry">
+                      {data.tradeDetail.expiry}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">{data.tradeDetail.dte} days out</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Premium / contract</div>
+                    <div className="font-mono text-base text-emerald-300" data-testid="text-trade-detail-premium">
+                      +${data.tradeDetail.premiumPerContract.toFixed(0)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      ${data.tradeDetail.premiumPerShare.toFixed(2)} / share
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">
+                      {data.tradeDetail.strategy === "cash_secured_put" ? "Collateral" : "Max if assigned"}
+                    </div>
+                    <div className="font-mono text-base text-foreground" data-testid="text-trade-detail-collateral">
+                      ${(data.tradeDetail.strategy === "cash_secured_put"
+                        ? data.tradeDetail.collateralPerContract
+                        : (data.tradeDetail.upsideCapPerContract ?? 0)).toFixed(0)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {data.tradeDetail.strategy === "cash_secured_put"
+                        ? `Breakeven $${data.tradeDetail.breakeven.toFixed(2)}`
+                        : `Capped at $${data.tradeDetail.strike} strike`}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs pt-1 border-t border-border/40">
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Max profit / contract</div>
+                    <div className="font-mono text-sm text-emerald-300" data-testid="text-trade-detail-max-profit">
+                      ${data.tradeDetail.maxProfitPerContract.toFixed(0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Max loss / contract</div>
+                    <div className="font-mono text-sm text-rose-300" data-testid="text-trade-detail-max-loss">
+                      ${data.tradeDetail.maxLossPerContract.toFixed(0)}
+                    </div>
+                  </div>
+                </div>
+
+                {data.tradeDetail.warnings.length > 0 && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] space-y-1">
+                    {data.tradeDetail.warnings.map((w, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-amber-100/90" data-testid={`text-trade-detail-warning-${i}`}>
+                        <AlertTriangle className="h-3 w-3 text-amber-400 mt-0.5 shrink-0" />
+                        <span>{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Link href={`/trade/${data.tradeDetail.symbol}`}>
+                    <Button size="sm" className="gap-1" data-testid="button-trade-detail-open-ticket">
+                      Open ticket
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
+                  <span className="text-[10px] text-muted-foreground">
+                    Strikes/premium are approximate — confirm in your broker before sending.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {data.picks && data.picks.length > 0 && (
             <Card data-testid="card-ask-picks">

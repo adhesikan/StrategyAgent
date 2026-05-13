@@ -9,6 +9,127 @@ import {
   type BestTradePick,
   type BestTradeForSymbolResult,
 } from "../services/best-trade-finder";
+import { parsePrompt } from "../agent/prompt-interpreter";
+import { selectInstrument } from "../services/instrument-selector";
+import { scoreSetup } from "../services/probability-engine";
+import type { TradeSetup } from "../agent/strategy-engine";
+import type { OptionPlan } from "../services/options-evaluator";
+
+// Compact, human-readable trade ticket returned alongside the AI prose so
+// users see real strikes/expiry/credit instead of a vague suggestion. Every
+// number comes from the live snapshot price + the deterministic option-plan
+// builders — we never invent strikes.
+export interface AskTradeDetail {
+  symbol: string;
+  strategy: "cash_secured_put" | "covered_call";
+  strategyLabel: string;
+  bias: "bullish" | "bearish" | "neutral";
+  spot: number;
+  strike: number;
+  optionType: "put" | "call";
+  expiry: string;
+  dte: number;
+  premiumPerShare: number; // credit collected per share
+  premiumPerContract: number; // credit per 100-share contract
+  collateralPerContract: number; // CSP only: cash collateral required per contract
+  upsideCapPerContract: number | null; // CC only: max proceeds at assignment = (strike + premium) * 100
+  maxProfitPerContract: number;
+  maxLossPerContract: number;
+  breakeven: number;
+  delta: number;
+  reasons: string[];
+  warnings: string[];
+  dataMode: "live" | "simulated";
+}
+
+function buildIncomeTradeDetail(
+  symbol: string,
+  livePrice: number | null,
+  incomeIntent: "wheel" | "cash_secured_put" | "covered_call",
+): AskTradeDetail | null {
+  // We need a real spot to build a meaningful plan. If we don't have a live
+  // quote, fall back to a simulated price baseline so the preview still shows
+  // realistic shape — clearly marked as simulated.
+  const spot = livePrice && livePrice > 0 ? livePrice : 100;
+  const dataMode: "live" | "simulated" = livePrice && livePrice > 0 ? "live" : "simulated";
+
+  // Wheel + (default) put → CSP. Wheel + call-only would be CC (handled when
+  // the prompt interpreter pinned to "covered_call").
+  const wantedStrategy: "cash_secured_put" | "covered_call" =
+    incomeIntent === "covered_call" ? "covered_call" : "cash_secured_put";
+
+  // Minimal TradeSetup so the existing selector machinery works unchanged.
+  const setup: TradeSetup = {
+    id: `ask_${Date.now()}`,
+    symbol,
+    assetType: "option",
+    strategyName: wantedStrategy === "cash_secured_put" ? "Cash-Secured Put (Wheel)" : "Covered Call (Wheel)",
+    timeframe: "1D",
+    setupType: "income",
+    bias: "neutral",
+    entry: spot,
+    stop: spot * 0.95,
+    targets: [spot * 1.02, spot * 1.05],
+    rewardRisk: null,
+    modelScore: null,
+    reasoning: [],
+    invalidation: [],
+    metrics: { currentPrice: spot },
+    dataSource: dataMode === "live" ? "live broker quote" : "simulated price baseline",
+    generatedAt: new Date().toISOString(),
+  };
+
+  const probability = scoreSetup({ setup });
+  const recommendation = selectInstrument({
+    setup,
+    probability,
+    prefs: {},
+    incomeIntent,
+  });
+
+  const plan: OptionPlan | undefined = recommendation.recommendedPlan;
+  if (!plan || plan.legs.length === 0) return null;
+  if (plan.strategyType !== "cash_secured_put" && plan.strategyType !== "covered_call") return null;
+
+  const leg = plan.legs[0];
+  // Credit trades expose the premium as a negative netDebit.
+  const credit = Math.abs(plan.netDebit);
+  // CSP: cash you must keep aside (strike × 100, minus the premium credited).
+  // CC : the 100 shares are the collateral, not cash — we report 0 here and
+  // surface upsideCapPerContract instead, which is the actually meaningful
+  // ceiling for a covered call.
+  const collateral = plan.strategyType === "cash_secured_put"
+    ? leg.strike * 100 - credit * 100
+    : 0;
+  // Total proceeds if assigned on a covered call = (strike + premium) * 100.
+  // This is the real "upside cap" — what you walk away with per contract.
+  const upsideCap = plan.strategyType === "covered_call"
+    ? parseFloat(((leg.strike + credit) * 100).toFixed(2))
+    : null;
+
+  return {
+    symbol,
+    strategy: plan.strategyType,
+    strategyLabel: plan.strategyType === "cash_secured_put" ? "Cash-secured put" : "Covered call",
+    bias: setup.bias,
+    spot: parseFloat(spot.toFixed(2)),
+    strike: leg.strike,
+    optionType: leg.type,
+    expiry: plan.expiry,
+    dte: plan.dte,
+    premiumPerShare: parseFloat(credit.toFixed(2)),
+    premiumPerContract: parseFloat((credit * 100).toFixed(2)),
+    collateralPerContract: parseFloat(collateral.toFixed(2)),
+    upsideCapPerContract: upsideCap,
+    maxProfitPerContract: parseFloat((plan.maxProfit * 100).toFixed(2)),
+    maxLossPerContract: parseFloat((plan.maxLoss * 100).toFixed(2)),
+    breakeven: plan.breakeven,
+    delta: leg.delta,
+    reasons: plan.reasons,
+    warnings: plan.warnings,
+    dataMode,
+  };
+}
 
 const askSchema = z.object({
   question: z.string().trim().min(1).max(500),
@@ -350,6 +471,21 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       const tickers = extractTickers(question);
       const ctx = await buildContext(userId, question, intent, tickers);
 
+      // Wheel / income / CSP / covered-call ask + a ticker → build a real
+      // option ticket (strike, expiry, credit, max profit/loss) so the
+      // response is actionable instead of generic prose.
+      let tradeDetail: AskTradeDetail | null = null;
+      try {
+        const parsedPrompt = parsePrompt(question);
+        if (parsedPrompt.incomeIntent && tickers.length > 0) {
+          const sym = tickers[0];
+          const live = ctx.tickers.find((t) => t.symbol === sym)?.last ?? null;
+          tradeDetail = buildIncomeTradeDetail(sym, live, parsedPrompt.incomeIntent);
+        }
+      } catch (err) {
+        console.warn("[ask] trade detail build failed:", err);
+      }
+
       // Best-trade intent. Two paths:
       //   1) A ticker is mentioned → run the per-symbol finder. It uses
       //      broker data + news + AI sentiment + built-in strategies to
@@ -477,6 +613,45 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         }
       }
 
+      // When we built a concrete trade ticket, override the AI prose so the
+      // top-line answer reflects the real strikes/credit instead of vague
+      // "consider selling a put" language.
+      if (tradeDetail) {
+        const td = tradeDetail;
+        const isCsp = td.strategy === "cash_secured_put";
+        const verbAction = isCsp ? "Sell" : "Sell";
+        const headline = isCsp
+          ? `${td.symbol} wheel — sell the $${td.strike} put expiring ${td.expiry}`
+          : `${td.symbol} wheel — sell the $${td.strike} call expiring ${td.expiry}`;
+        const sentenceData = td.dataMode === "live"
+          ? `${td.symbol} is at $${td.spot.toFixed(2)}.`
+          : `Using a simulated price baseline of $${td.spot.toFixed(2)} (no live quote available).`;
+        const sentencePlan = isCsp
+          ? `${verbAction} 1× ${td.expiry} ${td.symbol} $${td.strike} put for about $${td.premiumPerShare.toFixed(2)} per share — roughly $${td.premiumPerContract.toFixed(0)} credit per contract. Cash collateral required: about $${td.collateralPerContract.toFixed(0)}.`
+          : `${verbAction} 1× ${td.expiry} ${td.symbol} $${td.strike} call against 100 shares you own for about $${td.premiumPerShare.toFixed(2)} per share — roughly $${td.premiumPerContract.toFixed(0)} credit per contract.`;
+        const sentenceOutcome = isCsp
+          ? `If ${td.symbol} stays above $${td.strike} by expiry, you keep the $${td.premiumPerContract.toFixed(0)} premium. If it drops below, you're assigned 100 shares at $${td.strike} (effective cost basis ~$${td.breakeven.toFixed(2)}) — a typical wheel entry.`
+          : `If ${td.symbol} stays below $${td.strike} by expiry, you keep the $${td.premiumPerContract.toFixed(0)} premium. If it closes above, your shares are called away at $${td.strike}.`;
+        answer = {
+          ...answer,
+          headline,
+          answer: `${sentenceData}\n\n${sentencePlan}\n\n${sentenceOutcome}`,
+          keyPoints: [
+            `Strike: $${td.strike} ${td.optionType} (~${Math.round(Math.abs(td.delta) * 100)} delta)`,
+            `Expiry: ${td.expiry} (${td.dte} days)`,
+            `Premium: ~$${td.premiumPerContract.toFixed(0)} per contract`,
+            isCsp
+              ? `Collateral: ~$${td.collateralPerContract.toFixed(0)} per contract`
+              : `Max proceeds if assigned: ~$${(td.upsideCapPerContract ?? 0).toFixed(0)} per contract (capped at $${td.strike})`,
+            `Breakeven: $${td.breakeven.toFixed(2)}`,
+          ],
+          riskNote: isCsp
+            ? `If ${td.symbol} drops well below $${td.strike}, you're still obligated to buy at the strike. Max loss per contract is about $${td.maxLossPerContract.toFixed(0)} (stock to $0). Premium is approximate — confirm in your broker.`
+            : `Premium offsets some downside but does not protect against a meaningful drop in the shares. Max loss per contract is about $${td.maxLossPerContract.toFixed(0)}. Premium is approximate — confirm in your broker.`,
+          confidence: "medium",
+        };
+      }
+
       res.json({
         question,
         intent,
@@ -484,6 +659,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         brokerConnected: ctx.brokerConnected,
         ...answer,
         picks,
+        tradeDetail,
         suggestions: suggestionsForIntent(intent, tickers),
         source,
         disclaimer: "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",

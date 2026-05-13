@@ -39,6 +39,13 @@ export interface DailyIdea {
   riskLevel: "low" | "medium" | "high";
   grade: string;
   score: number;
+  gradeFactors?: {
+    technical: number;
+    momentum: number;
+    sentiment: number;
+    liquidity: number;
+    risk: number;
+  };
   maxRisk: number;
   capitalNeeded: number;
   potentialReward: number | null;
@@ -99,8 +106,63 @@ const RISK_TIP: Record<DailyIdea["riskLevel"], string> = {
   high: "Elevated volatility, undefined risk, or large notional exposure. Size carefully and consider defined-risk alternatives.",
 };
 
-const GRADE_TIP =
-  "Composite grade A+ / A / B / C from a 5-factor score (technical 30%, real-time price action 25%, news sentiment 15%, analyst 15%, risk 15%). Higher grades signal more factors agreeing — not a price target.";
+// Weights mirror computeFinalScore() in server/services/opportunity-radar/scoring.ts
+const GRADE_WEIGHTS = {
+  technical: 28,
+  momentum: 20,
+  sentiment: 22,
+  liquidity: 15,
+  risk: 15,
+} as const;
+
+const GRADE_BAND_LABEL = (grade: string): string => {
+  switch (grade) {
+    case "A+":
+      return "A+ (composite ≥ 90 — strongest agreement across factors)";
+    case "A":
+      return "A (composite 80–89 — strong agreement)";
+    case "B":
+      return "B (composite 70–79 — moderate agreement, watch the weaker factors)";
+    case "C":
+      return "C (composite 50–69 — mixed signals; one or more factors are weak)";
+    default:
+      return `${grade} (below the standard quality bands)`;
+  }
+};
+
+function GradeExplainer({ idea }: { idea: DailyIdea }) {
+  const f = idea.gradeFactors;
+  return (
+    <div className="space-y-1.5">
+      <div className="font-semibold">
+        Grade {idea.grade} · score {idea.score}
+      </div>
+      <div className="text-muted-foreground">{GRADE_BAND_LABEL(idea.grade)}</div>
+      {f ? (
+        <>
+          <div className="text-muted-foreground pt-1">
+            How this idea's composite was built (each factor 0–100, then weighted):
+          </div>
+          <ul className="space-y-0.5">
+            <li>Technical {f.technical} × {GRADE_WEIGHTS.technical}%</li>
+            <li>Momentum {f.momentum} × {GRADE_WEIGHTS.momentum}%</li>
+            <li>News sentiment {f.sentiment} × {GRADE_WEIGHTS.sentiment}%</li>
+            <li>Liquidity {f.liquidity} × {GRADE_WEIGHTS.liquidity}%</li>
+            <li>Risk fit {f.risk} × {GRADE_WEIGHTS.risk}%</li>
+          </ul>
+          <div className="text-muted-foreground pt-1">
+            Higher = more factors agree. Not a price target — review before acting.
+          </div>
+        </>
+      ) : (
+        <div className="text-muted-foreground">
+          Composite of technical, momentum, news sentiment, liquidity and risk-fit.
+          Higher grades mean more factors agree — not a price target.
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   idea: DailyIdea;
@@ -176,8 +238,8 @@ export function DailyIdeaCard({ idea }: Props) {
                 {idea.grade}
               </Badge>
             </TooltipTrigger>
-            <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
-              <strong>Grade {idea.grade} · score {idea.score}.</strong> {GRADE_TIP}
+            <TooltipContent side="left" className="max-w-[300px] text-xs leading-snug">
+              <GradeExplainer idea={idea} />
             </TooltipContent>
           </Tooltip>
         </div>
@@ -346,8 +408,8 @@ export function DailyIdeaRow({ idea }: Props) {
               {idea.grade}
             </Badge>
           </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-[280px] text-xs leading-snug">
-            <strong>Grade {idea.grade} · score {idea.score}.</strong> {GRADE_TIP}
+          <TooltipContent side="top" className="max-w-[300px] text-xs leading-snug">
+            <GradeExplainer idea={idea} />
           </TooltipContent>
         </Tooltip>
       </div>

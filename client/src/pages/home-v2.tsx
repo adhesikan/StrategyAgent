@@ -198,6 +198,43 @@ const PLACEHOLDERS = [
 // bucket and Income/Options overlapped (income strategies are
 // option-based). Collapsed to four meaningful tabs so users see
 // distinct results, not duplicates.
+type SortKey = "grade" | "score" | "risk_low" | "risk_high" | "symbol";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "grade", label: "Best grade" },
+  { value: "score", label: "Highest score" },
+  { value: "risk_low", label: "Lowest max risk" },
+  { value: "risk_high", label: "Highest max risk" },
+  { value: "symbol", label: "Symbol A→Z" },
+];
+
+// Higher = better. A+ > A > B > C > anything else.
+const GRADE_RANK: Record<string, number> = { "A+": 4, A: 3, B: 2, C: 1 };
+
+function sortIdeas<T extends { grade: string; score: number; maxRisk: number; symbol: string }>(
+  ideas: T[],
+  key: SortKey,
+): T[] {
+  const arr = ideas.slice();
+  arr.sort((a, b) => {
+    switch (key) {
+      case "grade": {
+        const diff = (GRADE_RANK[b.grade] ?? 0) - (GRADE_RANK[a.grade] ?? 0);
+        return diff !== 0 ? diff : b.score - a.score;
+      }
+      case "score":
+        return b.score - a.score;
+      case "risk_low":
+        return a.maxRisk - b.maxRisk;
+      case "risk_high":
+        return b.maxRisk - a.maxRisk;
+      case "symbol":
+        return a.symbol.localeCompare(b.symbol);
+    }
+  });
+  return arr;
+}
+
 const TABS: { value: string; label: string; bucket: string; hint: string }[] = [
   { value: "all", label: "All", bucket: "all", hint: "Top ideas across stocks and options" },
   { value: "stocks", label: "Stocks", bucket: "stocks", hint: "Stock swing setups (growth and trend)" },
@@ -218,6 +255,7 @@ export default function HomeV2() {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("all");
   const [ideasView, setIdeasView] = useState<ViewMode>("card");
+  const [sortBy, setSortBy] = useState<SortKey>("grade");
   const { toast } = useToast();
   const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
   const [customDraft, setCustomDraft] = useState("");
@@ -305,6 +343,19 @@ export default function HomeV2() {
               {ideasResp?.dataMode === "simulated" && (
                 <Badge variant="outline" className="text-[10px]" data-testid="badge-simulated">Simulated data</Badge>
               )}
+              <span className="text-xs text-muted-foreground hidden sm:inline">Sort by</span>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
+                <SelectTrigger className="h-8 w-[150px] text-xs" data-testid="select-ideas-sort">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} data-testid={`option-sort-${opt.value}`}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <span className="text-xs text-muted-foreground hidden sm:inline">Scan from</span>
               <Select
                 value={scanPrefs.universe}
@@ -390,19 +441,22 @@ export default function HomeV2() {
                     ))}
                   </div>
                 ) : ideasResp && ideasResp.ideas.length > 0 ? (
-                  ideasView === "card" ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {ideasResp.ideas.slice(0, 9).map((idea) => (
-                        <DailyIdeaCard key={idea.id} idea={idea} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {ideasResp.ideas.slice(0, 9).map((idea) => (
-                        <DailyIdeaRow key={idea.id} idea={idea} />
-                      ))}
-                    </div>
-                  )
+                  (() => {
+                    const visible = sortIdeas(ideasResp.ideas.slice(0, 9), sortBy);
+                    return ideasView === "card" ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {visible.map((idea) => (
+                          <DailyIdeaCard key={idea.id} idea={idea} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {visible.map((idea) => (
+                          <DailyIdeaRow key={idea.id} idea={idea} />
+                        ))}
+                      </div>
+                    );
+                  })()
                 ) : (
                   <Card className="p-6 space-y-3" data-testid="text-no-ideas">
                     <div className="flex items-start gap-2 text-sm">

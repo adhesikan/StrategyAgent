@@ -56,6 +56,15 @@ export interface DailyIdea {
   riskLevel: DailyIdeaRisk;
   grade: string;
   score: number;
+  // Per-idea breakdown of the 5-factor composite that produced `score` and `grade`.
+  // Weights mirror computeFinalScore() in opportunity-radar/scoring.ts.
+  gradeFactors: {
+    technical: number;
+    momentum: number;
+    sentiment: number;
+    liquidity: number;
+    risk: number;
+  };
   maxRisk: number;
   capitalNeeded: number;
   potentialReward: number | null;
@@ -205,6 +214,13 @@ function toDailyIdea(c: CandidateScenario, userId: string, brokerConnected: bool
     riskLevel: classifyRisk(c),
     grade: c.finalGrade,
     score: c.finalScore,
+    gradeFactors: {
+      technical: Math.round(c.technicalScore),
+      momentum: Math.round(c.momentumScore),
+      sentiment: Math.round(c.sentimentScore),
+      liquidity: Math.round(c.liquidityScore),
+      risk: Math.round(c.riskScore),
+    },
     maxRisk: Math.round(c.maxLoss),
     capitalNeeded: Math.round(c.capitalRequired),
     potentialReward: c.maxGain != null ? Math.round(c.maxGain) : null,

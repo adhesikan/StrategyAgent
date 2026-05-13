@@ -459,7 +459,7 @@ export default function HomeV2() {
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
-                    <h3 className="text-sm font-semibold">Top 3 Picks to Act On</h3>
+                    <h3 className="text-sm font-semibold">Top 3 Picks for Your Review</h3>
                     <span className="text-[11px] text-muted-foreground">
                       Highest-ranked by{" "}
                       {sortBy === "grade"
@@ -527,7 +527,7 @@ export default function HomeV2() {
                 ) : ideasResp && ideasResp.ideas.length > 0 ? (
                   (() => {
                     // When ≥ 3 ideas exist, the first 3 are featured above as
-                    // "Top Picks to Act On" — skip them here. With < 3 ideas
+                    // "Top Picks for Your Review" — skip them here. With < 3 ideas
                     // the featured row is hidden, so show everything.
                     const sorted = sortIdeas(ideasResp.ideas, sortBy);
                     const visible = sorted.length >= 3 ? sorted.slice(3, 12) : sorted;

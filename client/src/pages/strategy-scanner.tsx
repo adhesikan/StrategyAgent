@@ -71,7 +71,6 @@ interface Strategy {
   desc: string;
   conditions: string;
   timeframe: string;
-  winRate: number;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
   supports: TradeType[];
@@ -93,7 +92,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Intraday contraction breakouts with trend and volume confirmation.",
     conditions: "EMA9 > EMA21 · ATR contracting",
     timeframe: "Intraday",
-    winRate: 68,
     icon: Zap,
     color: "bg-violet-100 text-violet-700",
     supports: ["stock", "long-call", "vertical"],
@@ -125,7 +123,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Multi-day VCP bases (T1/T2/T3) breaking out for swing & position trades.",
     conditions: "Multi-day VCP · 30+ days history",
     timeframe: "Daily",
-    winRate: 72,
     icon: Layers,
     color: "bg-violet-100 text-violet-700",
     supports: ["stock", "long-call", "vertical"],
@@ -157,7 +154,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Five-minute opening range breakouts with volume expansion.",
     conditions: "ORB 5m + volume",
     timeframe: "5-min",
-    winRate: 62,
     icon: Sun,
     color: "bg-sky-100 text-sky-700",
     supports: ["stock", "long-call", "long-put"],
@@ -188,7 +184,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Fifteen-minute opening range breakouts — slower, more reliable.",
     conditions: "ORB 15m + volume",
     timeframe: "15-min",
-    winRate: 66,
     icon: Compass,
     color: "bg-sky-100 text-sky-700",
     supports: ["stock", "long-call", "long-put"],
@@ -220,7 +215,6 @@ const STRATEGIES: Strategy[] = [
     desc: "High relative-volume breakouts from tight consolidations.",
     conditions: "RVOL > 2× · Tight base",
     timeframe: "Daily",
-    winRate: 70,
     icon: Activity,
     color: "bg-violet-100 text-violet-700",
     supports: ["stock", "long-call", "vertical"],
@@ -252,7 +246,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Pre-market gap-up names that hold their open and continue trending.",
     conditions: "Gap > 3% · Holds VWAP",
     timeframe: "Intraday",
-    winRate: 64,
     icon: Gauge,
     color: "bg-violet-100 text-violet-700",
     supports: ["stock", "long-call"],
@@ -285,7 +278,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Shallow pullbacks in an uptrend offering tight-risk re-entries.",
     conditions: "Pullback to EMA 9/21",
     timeframe: "Daily",
-    winRate: 71,
     icon: TrendingUp,
     color: "bg-emerald-100 text-emerald-700",
     supports: ["stock", "long-call", "vertical"],
@@ -317,7 +309,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Long-term uptrends with orderly pullbacks to MA structure.",
     conditions: "EMAs stacked 9>21>50",
     timeframe: "Weekly",
-    winRate: 73,
     icon: LineChart,
     color: "bg-emerald-100 text-emerald-700",
     supports: ["stock", "long-call", "short-premium"],
@@ -349,7 +340,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Intraday VWAP reclaims signaling pro accumulation.",
     conditions: "Reclaim VWAP + volume",
     timeframe: "15-min",
-    winRate: 65,
     icon: Crosshair,
     color: "bg-emerald-100 text-emerald-700",
     supports: ["stock", "long-call"],
@@ -382,7 +372,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Bollinger/Keltner squeeze setups — catching the expansion.",
     conditions: "BB inside Keltner",
     timeframe: "Daily",
-    winRate: 67,
     icon: Sparkles,
     color: "bg-amber-100 text-amber-700",
     supports: ["stock", "long-call", "long-put", "vertical"],
@@ -415,7 +404,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Sell premium when implied vol is rich and likely to fall.",
     conditions: "IV rank > 70",
     timeframe: "Weekly",
-    winRate: 76,
     icon: Sparkles,
     color: "bg-amber-100 text-amber-700",
     supports: ["short-premium", "vertical", "complex"],
@@ -446,7 +434,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Range-bound names with elevated IV — defined-risk credit setup.",
     conditions: "Range-bound · IV rank > 60",
     timeframe: "Monthly",
-    winRate: 78,
     icon: Target,
     color: "bg-amber-100 text-amber-700",
     supports: ["complex", "vertical"],
@@ -477,7 +464,6 @@ const STRATEGIES: Strategy[] = [
     desc: "Weakening downtrends with bearish momentum cooling — long-put setups.",
     conditions: "Below 50MA · RSI < 40",
     timeframe: "Daily",
-    winRate: 62,
     icon: CandlestickChart,
     color: "bg-rose-100 text-rose-700",
     supports: ["long-put", "vertical"],
@@ -963,21 +949,7 @@ export default function StrategyScannerPage() {
                       );
                     })}
                   </div>
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className="text-[11px] text-muted-foreground inline-flex items-center gap-1 cursor-help"
-                          data-testid={`text-illustrative-winrate-${s.id}`}
-                        >
-                          <Info className="h-3 w-3" />
-                          Illustrative · ~{s.winRate}%
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
-                        Reference number from the strategy's published research band — not a verified backtest of your account or current market conditions. A historical backtest engine isn't wired up yet, so treat this as illustrative only.
-                      </TooltipContent>
-                    </Tooltip>
+                  <div className="flex items-center justify-end mt-4 pt-3 border-t">
                     <Button
                       size="sm"
                       variant={isSelected ? "default" : "outline"}
@@ -1135,7 +1107,7 @@ export default function StrategyScannerPage() {
                   <div>
                     <SheetTitle data-testid="text-guide-title">{guideStrategy.name}</SheetTitle>
                     <SheetDescription>
-                      {guideStrategy.category} · {guideStrategy.timeframe} · {guideStrategy.winRate}% hist. win rate
+                      {guideStrategy.category} · {guideStrategy.timeframe}
                     </SheetDescription>
                   </div>
                 </div>

@@ -9,6 +9,13 @@ export interface ParsedRequest {
   bias: "bullish" | "bearish" | "neutral" | null;
   rewardRiskMin: number | null;
   customStrategyId: string | null;
+  /**
+   * Income / wheel-style intent. When set, downstream selectors must prefer
+   * cash-secured puts and/or covered calls over directional debit options of
+   * the same option type. "wheel" = both legs of the wheel are acceptable;
+   * the more specific values pin to one leg.
+   */
+  incomeIntent: "wheel" | "cash_secured_put" | "covered_call" | null;
   raw: string;
 }
 
@@ -119,8 +126,46 @@ export function parsePrompt(prompt: string): ParsedRequest {
     bias: null,
     rewardRiskMin: null,
     customStrategyId: null,
+    incomeIntent: null,
     raw: prompt,
   };
+
+  // Detect income / wheel intent BEFORE bias inference. The wheel strategy
+  // sells a put (CSP) when neutral-to-bullish, then sells a call (CC) once
+  // assigned. So the word "put" inside a wheel/income/CSP context must NOT
+  // cascade into a bearish bias — that would lead the instrument selector to
+  // pick a bear put spread, which is the opposite trade.
+  const mentionsWheel = /\bwheel\b/.test(lower);
+  const mentionsCsp = /\bcash[\s-]?secured\s+put\b|\bcsp\b/.test(lower);
+  const mentionsCoveredCall = /\bcovered\s+call\b|\bcc\b(?!\w)/.test(lower);
+  // Narrow: only treat as income intent when the prompt explicitly invokes the
+  // income / premium-selling concept. We deliberately do NOT match generic
+  // "sell put" / "sell call" — those phrases are common in directional /
+  // credit-spread prompts ("sell put spread on TSLA") and would otherwise
+  // hijack the selector into a CSP recommendation.
+  const mentionsIncome = /\b(?:income|premium\s+selling|monthly\s+income|weekly\s+income)\b/.test(lower);
+
+  if (mentionsWheel) {
+    if (mentionsCoveredCall && !mentionsCsp) result.incomeIntent = "covered_call";
+    else if (mentionsCsp && !mentionsCoveredCall) result.incomeIntent = "cash_secured_put";
+    // "find a put trade for a wheel strategy" → wheel + put → CSP leg
+    else if (lower.includes("put") && !lower.includes("call")) result.incomeIntent = "cash_secured_put";
+    else if (lower.includes("call") && !lower.includes("put")) result.incomeIntent = "covered_call";
+    else result.incomeIntent = "wheel";
+  } else if (mentionsCsp) {
+    result.incomeIntent = "cash_secured_put";
+  } else if (mentionsCoveredCall) {
+    result.incomeIntent = "covered_call";
+  } else if (mentionsIncome && lower.includes("put")) {
+    result.incomeIntent = "cash_secured_put";
+  } else if (mentionsIncome && lower.includes("call")) {
+    result.incomeIntent = "covered_call";
+  }
+
+  // An income/wheel ask is implicitly an option ticket.
+  if (result.incomeIntent) {
+    result.assetType = "option";
+  }
 
   const sortedKeys = Object.keys(STRATEGY_MAP).sort((a, b) => b.length - a.length);
   for (const key of sortedKeys) {
@@ -158,7 +203,14 @@ export function parsePrompt(prompt: string): ParsedRequest {
     }
   }
 
-  if (lower.includes("bullish") || lower.includes("long") || lower.includes("buy")) {
+  // Bias inference. NOTE: we deliberately do not infer bias from the words
+  // "put" or "call" alone — they describe the option type, not the direction
+  // (a cash-secured put is bullish-to-neutral, a covered call is neutral). If
+  // an income/wheel intent was detected, force the bias to neutral so the
+  // downstream selector cannot pick a directional debit play.
+  if (result.incomeIntent) {
+    result.bias = "neutral";
+  } else if (lower.includes("bullish") || lower.includes("long") || lower.includes("buy")) {
     result.bias = "bullish";
   } else if (lower.includes("bearish") || lower.includes("short") || lower.includes("sell")) {
     result.bias = "bearish";

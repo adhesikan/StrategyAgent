@@ -42,6 +42,12 @@ function isInstrumentAllowed(type: InstrumentType, prefs: Partial<UserTradePrefe
     case "long_put": return (prefs.allowLongPuts ?? true) && !(prefs.definedRiskOnly ?? false);
     case "bull_call_spread":
     case "bear_put_spread": return prefs.allowDebitSpreads ?? true;
+    // CSP / CC are explicit income-style trades. The user opted into them by
+    // asking for a wheel/income trade, so we don't gate behind the directional
+    // option toggles. (definedRiskOnly does not apply — both have well-defined
+    // collateral / share-backed risk profiles.)
+    case "cash_secured_put":
+    case "covered_call": return true;
   }
 }
 

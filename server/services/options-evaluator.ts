@@ -1,6 +1,12 @@
 import type { TradeSetup } from "../agent/strategy-engine";
 
-export type OptionStrategyType = "long_call" | "long_put" | "bull_call_spread" | "bear_put_spread";
+export type OptionStrategyType =
+  | "long_call"
+  | "long_put"
+  | "bull_call_spread"
+  | "bear_put_spread"
+  | "cash_secured_put"
+  | "covered_call";
 
 export interface OptionLeg {
   strike: number;
@@ -239,11 +245,93 @@ export function buildBearPutSpread(setup: TradeSetup, ctx: OptionsContext = {}):
   };
 }
 
+// Sells one OTM put (~delta -0.30) with cash reserved to buy 100 shares if
+// assigned. Income/wheel-style — a *credit* trade, not a debit. We expose the
+// premium as a negative netDebit so downstream code that already understands
+// "negative debit = credit" works without a schema change.
+export function buildCashSecuredPutPlan(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
+  const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
+  const { expiry, dte } = pickExpiry(35);
+  // Target ~5% OTM put — a typical wheel CSP entry, well below the spot.
+  const strike = roundStrike(spot * 0.95);
+  const leg = buildLeg(strike, "put", spot, dte, iv, "short");
+  const credit = leg.mid;
+  const netDebit = parseFloat((-credit).toFixed(2));
+  const breakeven = parseFloat((strike - credit).toFixed(2));
+  const maxProfit = credit; // keep premium if put expires worthless
+  const maxLoss = parseFloat(Math.max(0, strike - credit).toFixed(2)); // assigned at strike, stock to $0 worst case
+  const sui = suitabilityScore([leg]);
+  const reasons = [
+    "Income trade — collect premium up front",
+    `Sell ${strike} put (~${(Math.abs(leg.delta) * 100).toFixed(0)} delta), ~${dte}d to expiry`,
+    `Cash collateral required: ~$${(strike * 100).toFixed(0)} per contract`,
+    "If assigned, you buy 100 shares at the strike — typical wheel entry",
+  ];
+  if (ctx.earningsBeforeExpiry) sui.warnings.push("Earnings before expiry — assignment risk if stock drops on the print");
+  return {
+    strategyType: "cash_secured_put",
+    symbol: setup.symbol,
+    expiry,
+    dte,
+    legs: [leg],
+    netDebit,
+    maxProfit,
+    maxLoss,
+    breakeven,
+    suitabilityScore: sui.score,
+    warnings: sui.warnings,
+    reasons,
+  };
+}
+
+// Sells one OTM call (~delta 0.30) against 100 shares the user already owns.
+// Income/wheel-style — also a *credit* trade, exposed as negative netDebit.
+export function buildCoveredCallPlan(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
+  const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
+  const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
+  const { expiry, dte } = pickExpiry(35);
+  const strike = roundStrike(spot * 1.05);
+  const leg = buildLeg(strike, "call", spot, dte, iv, "short");
+  const credit = leg.mid;
+  const netDebit = parseFloat((-credit).toFixed(2));
+  // Max profit = appreciation up to strike + premium; max loss approximates
+  // shares-only downside minus premium cushion (we don't know cost basis here
+  // so we assume entry at current spot).
+  const maxProfit = parseFloat((Math.max(0, strike - spot) + credit).toFixed(2));
+  const maxLoss = parseFloat(Math.max(0, spot - credit).toFixed(2));
+  const breakeven = parseFloat((spot - credit).toFixed(2));
+  const sui = suitabilityScore([leg]);
+  const reasons = [
+    "Income trade — collect premium against shares you own",
+    `Sell ${strike} call (~${(leg.delta * 100).toFixed(0)} delta), ~${dte}d to expiry`,
+    `Upside capped at the ${strike} strike; premium offsets some downside`,
+    "If assigned, your shares are called away at the strike",
+  ];
+  if (ctx.earningsBeforeExpiry) sui.warnings.push("Earnings before expiry — premium may be inflated, assignment risk on a beat");
+  return {
+    strategyType: "covered_call",
+    symbol: setup.symbol,
+    expiry,
+    dte,
+    legs: [leg],
+    netDebit,
+    maxProfit,
+    maxLoss,
+    breakeven,
+    suitabilityScore: sui.score,
+    warnings: sui.warnings,
+    reasons,
+  };
+}
+
 export function buildOptionPlan(strategyType: OptionStrategyType, setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
   switch (strategyType) {
     case "long_call": return buildLongCallPlan(setup, ctx);
     case "long_put": return buildLongPutPlan(setup, ctx);
     case "bull_call_spread": return buildBullCallSpread(setup, ctx);
     case "bear_put_spread": return buildBearPutSpread(setup, ctx);
+    case "cash_secured_put": return buildCashSecuredPutPlan(setup, ctx);
+    case "covered_call": return buildCoveredCallPlan(setup, ctx);
   }
 }

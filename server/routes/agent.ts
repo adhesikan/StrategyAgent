@@ -163,7 +163,12 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
           definedRiskOnly: false,
         };
       }
-      const instrument = selectInstrument({ setup, probability, prefs: selectorPrefs });
+      const instrument = selectInstrument({
+        setup,
+        probability,
+        prefs: selectorPrefs,
+        incomeIntent: parsed.incomeIntent,
+      });
 
       // Persist setup history
       const persisted = await storage.createTradeSetupHistory({
@@ -211,21 +216,26 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
           if (!plan) continue;
           const longLeg = plan.legs.find((l) => l.side === "long");
           const shortLeg = plan.legs.find((l) => l.side === "short");
+          // For credit/income plans (CSP, CC) there is no long leg — fall
+          // back to the short leg as the primary so the persisted record has
+          // a real strike and the correct option type instead of strikeLong=0
+          // and a defaulted "put" type for covered calls.
+          const primaryLeg = longLeg ?? shortLeg ?? plan.legs[0];
           await storage.createOptionCandidate({
             setupId: persisted.id,
             symbol: plan.symbol,
             expiry: plan.expiry,
-            strikeLong: longLeg?.strike ?? 0,
-            strikeShort: shortLeg?.strike ?? null,
-            optionType: longLeg?.type === "call" ? "call" : "put",
+            strikeLong: primaryLeg?.strike ?? 0,
+            strikeShort: longLeg && shortLeg ? shortLeg.strike : null,
+            optionType: primaryLeg?.type === "call" ? "call" : "put",
             strategyType: plan.strategyType,
-            delta: longLeg?.delta ?? null,
-            iv: longLeg?.iv ?? null,
-            bid: longLeg?.bid ?? null,
-            ask: longLeg?.ask ?? null,
-            mid: longLeg?.mid ?? null,
-            openInterest: longLeg?.openInterest ?? null,
-            volume: longLeg?.volume ?? null,
+            delta: primaryLeg?.delta ?? null,
+            iv: primaryLeg?.iv ?? null,
+            bid: primaryLeg?.bid ?? null,
+            ask: primaryLeg?.ask ?? null,
+            mid: primaryLeg?.mid ?? null,
+            openInterest: primaryLeg?.openInterest ?? null,
+            volume: primaryLeg?.volume ?? null,
             maxProfit: plan.maxProfit,
             maxLoss: plan.maxLoss,
             breakeven: plan.breakeven,

@@ -3,7 +3,19 @@ import type { ProbabilityResult } from "./probability-engine";
 import type { UserTradePreferences } from "@shared/schema";
 import { buildOptionPlan, type OptionPlan, type OptionStrategyType, type OptionsContext } from "./options-evaluator";
 
-export type InstrumentType = "stock" | "long_call" | "long_put" | "bull_call_spread" | "bear_put_spread";
+export type InstrumentType =
+  | "stock"
+  | "long_call"
+  | "long_put"
+  | "bull_call_spread"
+  | "bear_put_spread"
+  | "cash_secured_put"
+  | "covered_call";
+
+// Income / wheel-style intent surfaced by the prompt interpreter. When set,
+// the selector prefers premium-collection vehicles (CSP / CC) over directional
+// debit plays for the matching option type.
+export type IncomeIntent = "wheel" | "cash_secured_put" | "covered_call" | null;
 
 export interface InstrumentRecommendation {
   recommended: InstrumentType;
@@ -20,6 +32,14 @@ export interface SelectorInput {
   probability: ProbabilityResult;
   prefs: Partial<UserTradePreferences>;
   optionsContext?: OptionsContext;
+  /**
+   * Optional income/wheel hint from the prompt interpreter. When set, premium-
+   * collection vehicles (CSP / CC) are added to the candidate pool and given
+   * priority over the directional debit options that share the same option
+   * type — this prevents "find a put trade for a wheel strategy" from being
+   * answered with a bear put spread.
+   */
+  incomeIntent?: IncomeIntent;
 }
 
 const DEFAULT_PREFS: Partial<UserTradePreferences> = {
@@ -40,6 +60,13 @@ function isAllowed(type: InstrumentType, prefs: Partial<UserTradePreferences>): 
     case "long_put": return prefs.allowLongPuts ?? true;
     case "bull_call_spread":
     case "bear_put_spread": return prefs.allowDebitSpreads ?? true;
+    // CSP and CC are income-style trades. They are not directional debit
+    // spreads, so we don't gate them behind allowDebitSpreads — the prompt
+    // explicitly asked for a wheel/income trade. When the user has an
+    // explicit Income flag we'd honour it, but the schema doesn't have one
+    // yet, so default to allowed.
+    case "cash_secured_put":
+    case "covered_call": return true;
   }
 }
 
@@ -51,7 +78,7 @@ function scoreOptionVehicle(plan: OptionPlan, probability: ProbabilityResult): n
 
 export function selectInstrument(input: SelectorInput): InstrumentRecommendation {
   const prefs = { ...DEFAULT_PREFS, ...input.prefs };
-  const { setup, probability, optionsContext } = input;
+  const { setup, probability, optionsContext, incomeIntent } = input;
   const reasons: string[] = [];
   const tradeoffs: string[] = [];
 
@@ -62,6 +89,72 @@ export function selectInstrument(input: SelectorInput): InstrumentRecommendation
 
   // Build candidate plans (cheap, mock-data backed)
   const candidates: { type: InstrumentType; plan?: OptionPlan; score: number; why: string[]; tradeoff: string[] }[] = [];
+
+  // Income / wheel intent: build CSP and/or CC explicitly and skip the
+  // directional debit candidates entirely. A CSP is naturally suited to a
+  // neutral-to-bullish view; a CC to a neutral-to-mildly-bullish view. Both
+  // are *credit* trades, fundamentally different from a long put or a debit
+  // put spread, so we must not let those win for a wheel-style request.
+  if (incomeIntent) {
+    const wantsPut = incomeIntent === "cash_secured_put" || incomeIntent === "wheel";
+    const wantsCall = incomeIntent === "covered_call" || incomeIntent === "wheel";
+
+    if (wantsPut && isAllowed("cash_secured_put", prefs)) {
+      const plan = buildOptionPlan("cash_secured_put", setup, optionsContext);
+      candidates.push({
+        type: "cash_secured_put",
+        plan,
+        score: scoreOptionVehicle(plan, probability) + 10,
+        why: [
+          "Wheel-style income trade — collect premium up front",
+          `Sells one ${plan.legs[0]?.strike} put expiring ~${plan.dte}d out`,
+          "If assigned, you buy 100 shares at the strike (typical wheel entry)",
+        ],
+        tradeoff: [
+          "Capital tied up as cash collateral until expiry or assignment",
+          "Obligated to buy shares at the strike if the stock falls below it",
+        ],
+      });
+    }
+    if (wantsCall && isAllowed("covered_call", prefs)) {
+      const plan = buildOptionPlan("covered_call", setup, optionsContext);
+      candidates.push({
+        type: "covered_call",
+        plan,
+        score: scoreOptionVehicle(plan, probability) + 10,
+        why: [
+          "Wheel-style income trade — collect premium on shares you own",
+          `Sells one ${plan.legs[0]?.strike} call expiring ~${plan.dte}d out`,
+          "Premium offsets some downside; upside capped at the strike",
+        ],
+        tradeoff: [
+          "Caps your upside above the strike",
+          "Premium does not protect against a meaningful drop in the shares",
+        ],
+      });
+    }
+
+    // If we built at least one income candidate, return it directly — we do
+    // not want to mix in a long_put / bear_put_spread for a wheel request.
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.score - a.score);
+      const best = candidates[0];
+      const alt = candidates.find((c) => c.type !== best.type) ?? null;
+      reasons.push(...best.why);
+      tradeoffs.push(...best.tradeoff);
+      reasons.push(`Probability score ${conviction} (${grade})`);
+      return {
+        recommended: best.type,
+        alternative: alt?.type ?? null,
+        recommendedPlan: best.plan,
+        alternativePlan: alt?.plan,
+        vehicleScore: best.score,
+        reasons: reasons.slice(0, 5),
+        tradeoffs: tradeoffs.slice(0, 4),
+      };
+    }
+    // Otherwise fall through to the standard selection below.
+  }
 
   // Stock candidate
   if (isAllowed("stock", prefs)) {

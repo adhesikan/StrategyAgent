@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { SaveToWatchlistDialog } from "@/components/save-to-watchlist-dialog";
+import { getStrategyByTradeType } from "@shared/strategy-catalog";
 
 interface BrokerAccount {
   id: string;
@@ -798,6 +799,44 @@ export default function TradeDetailPage() {
             </div>
           </Card>
         </div>
+
+        {(() => {
+          const strat = getStrategyByTradeType(type, rawStrategy);
+          return (
+            <Card className="p-5 border-violet-300/60 bg-violet-50/40 dark:bg-violet-950/10" data-testid="card-strategy-info">
+              <div className="flex items-start gap-3">
+                <div className="h-9 w-9 rounded-md bg-violet-600/10 text-violet-700 dark:text-violet-300 flex items-center justify-center shrink-0">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[10px] uppercase tracking-wide text-violet-700 dark:text-violet-300 font-semibold">
+                      Strategy used
+                    </span>
+                    <h2 className="text-base font-semibold" data-testid="text-strategy-name">{strat.name}</h2>
+                  </div>
+                  <p className="text-sm text-muted-foreground italic mt-0.5" data-testid="text-strategy-tagline">
+                    {strat.tagline}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-sm">
+                    <div data-testid="block-strategy-how">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">How it works</div>
+                      <p className="leading-snug">{strat.howItWorks}</p>
+                    </div>
+                    <div data-testid="block-strategy-when">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">When it works best</div>
+                      <p className="leading-snug">{strat.whenItWorks}</p>
+                    </div>
+                    <div data-testid="block-strategy-risks">
+                      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Main risks</div>
+                      <p className="leading-snug">{strat.mainRisks}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          );
+        })()}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="p-5">

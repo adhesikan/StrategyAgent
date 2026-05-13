@@ -27,8 +27,10 @@ import {
   Percent,
   TrendingDown,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getStrategyByInstrumentType, getStrategyKeyByInstrumentType, STRATEGY_KEY_TO_SLUG } from "@shared/strategy-catalog";
 
 export interface DailyIdea {
   id: string;
@@ -294,7 +296,8 @@ export function DailyIdeaCard({ idea }: Props) {
       covered_call: "short-premium",
       cash_secured_put: "short-premium",
     };
-    navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}`);
+    const slug = STRATEGY_KEY_TO_SLUG[getStrategyKeyByInstrumentType(idea.instrumentType)];
+    navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}&strategy=${slug}`);
   };
 
   const capitalTip =
@@ -367,6 +370,30 @@ export function DailyIdeaCard({ idea }: Props) {
           </div>
           <p className="text-sm font-medium mt-1 leading-snug">{idea.title}</p>
           <p className="text-xs text-muted-foreground mt-1 leading-snug">{idea.simpleSummary}</p>
+          {(() => {
+            const strat = getStrategyByInstrumentType(idea.instrumentType);
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="mt-1.5 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-violet-700 dark:text-violet-300 hover:underline cursor-help"
+                    data-testid={`strategy-name-${idea.id}`}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Strategy: <span className="font-semibold normal-case tracking-normal">{strat.name}</span>
+                    <Info className="h-3 w-3 opacity-70" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[320px] text-xs leading-snug space-y-1.5">
+                  <div className="font-semibold text-foreground">{strat.name}</div>
+                  <div className="text-muted-foreground italic">{strat.tagline}</div>
+                  <div><span className="font-medium">How it works: </span>{strat.howItWorks}</div>
+                  <div><span className="font-medium">Best when: </span>{strat.whenItWorks}</div>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-[11px]">
@@ -638,7 +665,8 @@ export function DailyIdeaRow({ idea }: Props) {
       covered_call: "short-premium",
       cash_secured_put: "short-premium",
     };
-    navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}`);
+    const slug = STRATEGY_KEY_TO_SLUG[getStrategyKeyByInstrumentType(idea.instrumentType)];
+    navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}&strategy=${slug}`);
   };
 
   const capitalTip =

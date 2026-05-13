@@ -89,6 +89,7 @@ export interface CandidateScenario {
   capitalRequired: number;
   expiration: string | null;
   strikes: string | null;
+  underlyingPrice: number;
   rewardRisk: number;
   timeHorizon: TimeHorizon;
   factors: {
@@ -528,6 +529,7 @@ function buildScenarioFromEnriched(
     capitalRequired,
     expiration,
     strikes,
+    underlyingPrice: price,
     rewardRisk,
     timeHorizon: filters.timeHorizon ?? "1_4w",
     factors: {

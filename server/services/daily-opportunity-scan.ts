@@ -16,6 +16,8 @@ import {
   type StrategyType,
 } from "./opportunity-radar/radar-service";
 import type { RadarUniverseId } from "./opportunity-radar/universe-service";
+import { getOptionExpirations, getOptionChain } from "../broker";
+import type { OptionChainContract } from "../broker/providers/tradier";
 
 export interface ScanOverrides {
   universe?: RadarUniverseId;
@@ -43,6 +45,21 @@ export type DailyIdeaInstrument =
   | "cash_secured_put";
 export type DailyIdeaRisk = "low" | "medium" | "high";
 
+export interface DailyIdeaEntryStrikes {
+  // Human-readable expiration label (e.g. "Jun 17, 2026").
+  expiration: string;
+  // Where the strikes came from. "broker" = snapped to a real option chain
+  // returned by the user's connected broker. "computed" reserved for a future
+  // fallback; we currently only emit this object when source === "broker".
+  source: "broker";
+  legs: Array<{
+    optionType: "call" | "put";
+    strike: number;
+    // Position relative to the live underlying at scan time.
+    label: "ATM" | "OTM" | "ITM";
+  }>;
+}
+
 export interface DailyIdea {
   id: string;
   userId: string;
@@ -50,6 +67,15 @@ export interface DailyIdea {
   companyName?: string;
   category: DailyIdeaCategory;
   instrumentType: DailyIdeaInstrument;
+  // Direction inferred by the strategy engine. Used to resolve call-vs-put
+  // for spreads on the entry-plan card.
+  bias?: "bullish" | "bearish" | "neutral";
+  // Real broker option-chain strikes, attached only when a broker connection
+  // is available and the chain returned data for the chosen expiration.
+  entryStrikes?: DailyIdeaEntryStrikes;
+  // Live underlying price captured at scan time. Used by the strike-snapping
+  // post-process to label moneyness correctly. Not surfaced on the card.
+  underlyingPrice?: number;
   title: string;
   simpleSummary: string;
   whyItAppeared: string;
@@ -204,6 +230,8 @@ function toDailyIdea(c: CandidateScenario, userId: string, brokerConnected: bool
     companyName: c.companyName,
     category: category ?? classifyCategory(c.strategyType),
     instrumentType: classifyInstrument(c.strategyType),
+    bias: c.bias,
+    underlyingPrice: c.underlyingPrice,
     title: isAlert ? buildAlertTitle(c) : buildSimpleTitle(c),
     simpleSummary: isAlert ? buildAlertSummary(c) : buildSimpleSummary(c),
     whyItAppeared: isAlert
@@ -271,6 +299,240 @@ async function runScan(userId: string, filters: RadarFilters, category?: DailyId
   return promise;
 }
 
+// ---------- Broker option-chain enrichment ----------
+// For option ideas where the user has a connected broker, snap the
+// computed-from-price strikes onto the nearest real strikes from the live
+// option chain. We never invent or fall back to fake strikes — if the chain
+// fetch fails for any reason the card silently keeps its generic
+// "ATM/slight-OTM call · 30–45 DTE" copy.
+
+const STRIKE_FETCH_SYMBOL_LIMIT = 8;
+const STRIKE_FETCH_TIMEOUT_MS = 4000;
+const TARGET_DTE_DAYS = 35;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+function pickClosestExpiration(expirations: string[], targetDays: number): string | null {
+  if (expirations.length === 0) return null;
+  const targetMs = Date.now() + targetDays * 86_400_000;
+  let best = expirations[0];
+  let bestDelta = Math.abs(new Date(best).getTime() - targetMs);
+  for (const e of expirations.slice(1)) {
+    const d = Math.abs(new Date(e).getTime() - targetMs);
+    if (d < bestDelta) {
+      best = e;
+      bestDelta = d;
+    }
+  }
+  return best;
+}
+
+function formatExpiration(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function nearestStrike(strikes: number[], target: number): number | null {
+  if (strikes.length === 0) return null;
+  return strikes.reduce((best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best));
+}
+
+function classifyMoneyness(
+  strike: number,
+  underlying: number,
+  optionType: "call" | "put",
+): "ATM" | "OTM" | "ITM" {
+  const tolerance = Math.max(0.5, underlying * 0.005); // ~0.5% band counts as ATM
+  if (Math.abs(strike - underlying) <= tolerance) return "ATM";
+  if (optionType === "call") return strike > underlying ? "OTM" : "ITM";
+  return strike < underlying ? "OTM" : "ITM";
+}
+
+function buildEntryStrikes(
+  idea: DailyIdea,
+  underlying: number,
+  expiration: string,
+  chain: OptionChainContract[],
+): DailyIdeaEntryStrikes | null {
+  const calls = chain.filter((c) => c.optionType === "call").map((c) => c.strike).sort((a, b) => a - b);
+  const puts = chain.filter((c) => c.optionType === "put").map((c) => c.strike).sort((a, b) => a - b);
+  const expLabel = formatExpiration(expiration);
+
+  const atmCallNearUnderlying = nearestStrike(calls, underlying);
+  const atmPutNearUnderlying = nearestStrike(puts, underlying);
+
+  switch (idea.instrumentType) {
+    case "long_call": {
+      if (atmCallNearUnderlying == null) return null;
+      return {
+        expiration: expLabel,
+        source: "broker",
+        legs: [
+          {
+            optionType: "call",
+            strike: atmCallNearUnderlying,
+            label: classifyMoneyness(atmCallNearUnderlying, underlying, "call"),
+          },
+        ],
+      };
+    }
+    case "long_put": {
+      if (atmPutNearUnderlying == null) return null;
+      return {
+        expiration: expLabel,
+        source: "broker",
+        legs: [
+          {
+            optionType: "put",
+            strike: atmPutNearUnderlying,
+            label: classifyMoneyness(atmPutNearUnderlying, underlying, "put"),
+          },
+        ],
+      };
+    }
+    case "spread": {
+      // Bullish call debit: long ATM call, short next-strike-up.
+      // Bearish put debit: long ATM put, short next-strike-down.
+      const isBearish = idea.bias === "bearish";
+      const series = isBearish ? puts : calls;
+      const atm = isBearish ? atmPutNearUnderlying : atmCallNearUnderlying;
+      if (atm == null) return null;
+      const idx = series.indexOf(atm);
+      const shortK = isBearish ? series[idx - 1] : series[idx + 1];
+      if (shortK == null || shortK === atm) return null;
+      const optionType = isBearish ? "put" : "call";
+      return {
+        expiration: expLabel,
+        source: "broker",
+        legs: [
+          { optionType, strike: atm, label: classifyMoneyness(atm, underlying, optionType) },
+          { optionType, strike: shortK, label: classifyMoneyness(shortK, underlying, optionType) },
+        ],
+      };
+    }
+    case "covered_call": {
+      // Sell ~1 strike OTM call against shares.
+      if (atmCallNearUnderlying == null) return null;
+      const idx = calls.indexOf(atmCallNearUnderlying);
+      const otm = calls[idx + 1] ?? atmCallNearUnderlying;
+      return {
+        expiration: expLabel,
+        source: "broker",
+        legs: [
+          { optionType: "call", strike: otm, label: classifyMoneyness(otm, underlying, "call") },
+        ],
+      };
+    }
+    case "cash_secured_put": {
+      // Sell ~1 strike OTM put.
+      if (atmPutNearUnderlying == null) return null;
+      const idx = puts.indexOf(atmPutNearUnderlying);
+      const otm = puts[idx - 1] ?? atmPutNearUnderlying;
+      return {
+        expiration: expLabel,
+        source: "broker",
+        legs: [
+          { optionType: "put", strike: otm, label: classifyMoneyness(otm, underlying, "put") },
+        ],
+      };
+    }
+    case "stock":
+      return null;
+  }
+}
+
+// In-process cache keyed by user+symbol → resolved chain enrichment input.
+// TTL is short to mirror the scan cache; this only saves repeat work within a
+// single page load that hits multiple buckets.
+type ChainCacheEntry = {
+  expires: number;
+  expiration: string | null;
+  chain: OptionChainContract[];
+};
+const chainCache = new Map<string, ChainCacheEntry>();
+const CHAIN_TTL_MS = 60_000;
+
+async function fetchChainForSymbol(
+  userId: string,
+  symbol: string,
+): Promise<{ expiration: string; chain: OptionChainContract[] } | null> {
+  const key = `${userId}::${symbol}`;
+  const cached = chainCache.get(key);
+  const now = Date.now();
+  if (cached && cached.expires > now) {
+    if (!cached.expiration || cached.chain.length === 0) return null;
+    return { expiration: cached.expiration, chain: cached.chain };
+  }
+  try {
+    const expirations = await withTimeout(getOptionExpirations(userId, symbol), STRIKE_FETCH_TIMEOUT_MS);
+    const exp = pickClosestExpiration(expirations, TARGET_DTE_DAYS);
+    if (!exp) {
+      chainCache.set(key, { expires: now + CHAIN_TTL_MS, expiration: null, chain: [] });
+      return null;
+    }
+    const chain = await withTimeout(getOptionChain(userId, symbol, exp), STRIKE_FETCH_TIMEOUT_MS);
+    chainCache.set(key, { expires: now + CHAIN_TTL_MS, expiration: exp, chain });
+    if (chain.length === 0) return null;
+    return { expiration: exp, chain };
+  } catch {
+    chainCache.set(key, { expires: now + CHAIN_TTL_MS, expiration: null, chain: [] });
+    return null;
+  }
+}
+
+async function attachBrokerStrikes(userId: string, ideas: DailyIdea[]): Promise<void> {
+  // Only ideas with a real broker connection AND an option leg are eligible.
+  const eligible = ideas.filter(
+    (i) => i.brokerConnected && i.instrumentType !== "stock" && !i.entryStrikes,
+  );
+  if (eligible.length === 0) return;
+
+  // Group by symbol and respect per-call symbol budget.
+  const bySymbol = new Map<string, DailyIdea[]>();
+  for (const idea of eligible) {
+    if (!bySymbol.has(idea.symbol)) bySymbol.set(idea.symbol, []);
+    bySymbol.get(idea.symbol)!.push(idea);
+  }
+  const symbols = Array.from(bySymbol.keys()).slice(0, STRIKE_FETCH_SYMBOL_LIMIT);
+
+  await Promise.all(
+    symbols.map(async (symbol) => {
+      const fetched = await fetchChainForSymbol(userId, symbol);
+      if (!fetched) return;
+      const group = bySymbol.get(symbol)!;
+      // Use the underlying price recorded on the first idea's source scenario
+      // (all ideas for this symbol in this scan share the same quote).
+      // We don't keep CandidateScenario on the DailyIdea, so reconstruct an
+      // approximate underlying from chain mid-strikes when missing — only used
+      // to label moneyness, not to pick strikes.
+      for (const idea of group) {
+        // Use the underlying price recorded at scan time. Median-strike fallback
+        // only kicks in if upstream forgot to populate it (defensive).
+        const allStrikes = fetched.chain.map((c) => c.strike).sort((a, b) => a - b);
+        const median = allStrikes[Math.floor(allStrikes.length / 2)] ?? 0;
+        const underlying = idea.underlyingPrice ?? median;
+        const built = buildEntryStrikes(idea, underlying, fetched.expiration, fetched.chain);
+        if (built) idea.entryStrikes = built;
+      }
+    }),
+  );
+}
+
 // ---------- Public API ----------
 
 // Quality-first helper: try B+ first, fall back to C only if no B-grade ideas surface.
@@ -283,6 +545,20 @@ async function scanQualityFirst(
   const high = await runScan(userId, withOverrides({ ...base, minGrade: "B" }, overrides), category);
   if (high.ideas.length > 0) return high;
   return runScan(userId, withOverrides({ ...base, minGrade: "C" }, overrides), category);
+}
+
+// Wraps a result with broker-chain strike enrichment when available. We do this
+// as the LAST step of every public scan helper so any callable surface (home
+// "all" tab, options-only tab, income tab, watchlist) gets real strikes when a
+// broker is connected. Failures are silent — the card simply omits the
+// strike-decorated label and shows the generic copy.
+async function withBrokerStrikes(
+  userId: string,
+  result: DailyIdeasResult,
+): Promise<DailyIdeasResult> {
+  if (!result.brokerConnected) return result;
+  await attachBrokerStrikes(userId, result.ideas);
+  return result;
 }
 
 export async function getDailyIdeasForUser(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
@@ -312,19 +588,19 @@ export async function getDailyIdeasForUser(userId: string, overrides?: ScanOverr
       : modes.every((m) => m === "simulated")
         ? "simulated"
         : "mixed";
-    return {
+    return withBrokerStrikes(userId, {
       ...stocks,
       ideas: merged.slice(0, 30),
       dataMode: combinedDataMode,
       brokerConnected: stocks.brokerConnected || options.brokerConnected,
-    };
+    });
   }
   // Fallback when both typed buckets are empty (e.g., a very narrow custom
   // universe that produced nothing). Keep the prior wide-net behavior.
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) {
     return stocks;
   }
-  return runScan(userId, { strategyType: "any", universe: "high_volume", minGrade: "C" });
+  return withBrokerStrikes(userId, await runScan(userId, { strategyType: "any", universe: "high_volume", minGrade: "C" }));
 }
 
 export async function getGrowthIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
@@ -335,12 +611,12 @@ export async function getIncomeIdeas(userId: string, overrides?: ScanOverrides):
   const cc = await scanQualityFirst(userId, { strategyType: "covered_call" }, overrides, "income");
   const csp = await scanQualityFirst(userId, { strategyType: "cash_secured_put" }, overrides, "income");
   const merged = [...cc.ideas, ...csp.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
-  if (merged.length > 0) return { ...cc, ideas: merged };
+  if (merged.length > 0) return withBrokerStrikes(userId, { ...cc, ideas: merged });
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return { ...cc, ideas: merged };
   const ccBroad = await runScan(userId, { strategyType: "covered_call", universe: "high_volume", minGrade: "C" }, "income");
   const cspBroad = await runScan(userId, { strategyType: "cash_secured_put", universe: "high_volume", minGrade: "C" }, "income");
   const broad = [...ccBroad.ideas, ...cspBroad.ideas].sort((a, b) => b.score - a.score).slice(0, 8);
-  return { ...ccBroad, ideas: broad };
+  return withBrokerStrikes(userId, { ...ccBroad, ideas: broad });
 }
 
 export async function getStockIdeas(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
@@ -354,13 +630,13 @@ export async function getOptionIdeas(userId: string, overrides?: ScanOverrides):
   const types: StrategyType[] = ["long_call", "long_put", "debit_spread"];
   const results = await Promise.all(types.map((t) => scanQualityFirst(userId, { strategyType: t }, overrides)));
   const ideas = results.flatMap((r) => r.ideas).sort((a, b) => b.score - a.score).slice(0, 12);
-  if (ideas.length > 0) return { ...results[0], ideas };
+  if (ideas.length > 0) return withBrokerStrikes(userId, { ...results[0], ideas });
   if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return { ...results[0], ideas };
   const broad = await Promise.all(
     types.map((t) => runScan(userId, { strategyType: t, universe: "high_volume", minGrade: "C" })),
   );
   const broadIdeas = broad.flatMap((r) => r.ideas).sort((a, b) => b.score - a.score).slice(0, 12);
-  return { ...broad[0], ideas: broadIdeas };
+  return withBrokerStrikes(userId, { ...broad[0], ideas: broadIdeas });
 }
 
 export async function getWatchlistAlerts(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
@@ -369,7 +645,7 @@ export async function getWatchlistAlerts(userId: string, overrides?: ScanOverrid
     ? { strategyType: "any", universe: "custom", customSymbols: overrides!.customSymbols }
     : { strategyType: "any", universe: "watchlist" };
   const r = await scanQualityFirst(userId, filters, undefined);
-  return { ...r, ideas: r.ideas.slice(0, 12) };
+  return withBrokerStrikes(userId, { ...r, ideas: r.ideas.slice(0, 12) });
 }
 
 export async function getMarketAlerts(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
@@ -414,7 +690,7 @@ export async function getMarketAlerts(userId: string, overrides?: ScanOverrides)
     })
     .slice(0, 8);
 
-  return { ...results[0], ideas: mixed };
+  return withBrokerStrikes(userId, { ...results[0], ideas: mixed });
 }
 
 export async function getMarketSnapshot(userId: string): Promise<DailyIdeasResult> {

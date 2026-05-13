@@ -56,6 +56,19 @@ export interface DailyIdea {
   sentimentLabel: string | null;
   brokerConnected: boolean;
   dataMode: "live" | "simulated" | "mixed";
+  bias?: "bullish" | "bearish" | "neutral";
+  // Real broker option-chain strikes attached server-side. Present only when a
+  // broker connection is available and the chain returned data — when absent,
+  // the card falls back to the generic "ATM/slight-OTM · 30–45 DTE" copy.
+  entryStrikes?: {
+    expiration: string;
+    source: "broker";
+    legs: Array<{
+      optionType: "call" | "put";
+      strike: number;
+      label: "ATM" | "OTM" | "ITM";
+    }>;
+  };
 }
 
 const CATEGORY_LABEL: Record<DailyIdea["category"], string> = {
@@ -428,25 +441,73 @@ export function DailyIdeaCard({ idea }: Props) {
                   Entry plan
                 </div>
                 <ul className="space-y-0.5 text-[11px] leading-snug" data-testid={`entry-legs-${idea.id}`}>
-                  {plan.entryLegs.map((leg, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <Badge
-                        variant="outline"
-                        className={
-                          "text-[9px] font-bold px-1.5 py-0 leading-tight shrink-0 " +
-                          (leg.side === "BUY"
-                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
-                            : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40")
-                        }
-                      >
-                        {leg.side} {leg.qty}
-                      </Badge>
-                      <span className="text-muted-foreground">{leg.desc}</span>
-                    </li>
-                  ))}
+                  {plan.entryLegs.map((leg, i) => {
+                    // When real broker chain strikes are attached, prefer them
+                    // over the generic "ATM/slight-OTM · 30–45 DTE" copy.
+                    // Stocks have no chain leg; spreads/CC/CSP have multiple
+                    // option legs whose order matches PLAN_PREVIEW.entryLegs.
+                    const chainLegs = idea.entryStrikes?.legs ?? [];
+                    let chainLeg: { optionType: "call" | "put"; strike: number; label: string } | undefined;
+                    if (idea.instrumentType === "covered_call") {
+                      // PLAN_PREVIEW has 2 legs (BUY shares, SELL OTM call); chain has 1 (the call).
+                      if (leg.side === "SELL") chainLeg = chainLegs[0];
+                    } else if (idea.instrumentType === "stock") {
+                      // No chain leg.
+                    } else {
+                      // Long call/put = 1 leg. Spread = 2 legs same order.
+                      chainLeg = chainLegs[i] ?? chainLegs[0];
+                    }
+                    return (
+                      <li key={i} className="flex items-start gap-2" data-testid={`entry-leg-${idea.id}-${i}`}>
+                        <Badge
+                          variant="outline"
+                          className={
+                            "text-[9px] font-bold px-1.5 py-0 leading-tight shrink-0 " +
+                            (leg.side === "BUY"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                              : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40")
+                          }
+                        >
+                          {leg.side} {leg.qty}
+                        </Badge>
+                        <span className="text-muted-foreground">
+                          {chainLeg ? (
+                            <>
+                              <span className="text-foreground font-medium">
+                                ${chainLeg.strike} {chainLeg.optionType}
+                              </span>
+                              <span className="ml-1 text-[10px] text-muted-foreground/80">
+                                ({chainLeg.label}) · {idea.entryStrikes!.expiration}
+                              </span>
+                            </>
+                          ) : (
+                            leg.desc
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
-                <div className="text-[10px] text-muted-foreground/80 mt-1">
-                  {plan.netLabel}
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <div className="text-[10px] text-muted-foreground/80">
+                    {plan.netLabel}
+                  </div>
+                  {idea.entryStrikes && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] px-1.5 py-0 leading-tight bg-primary/10 text-primary border-primary/30"
+                          data-testid={`badge-broker-chain-${idea.id}`}
+                        >
+                          Live chain
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[240px] text-xs leading-snug">
+                        Strikes and expiration above are pulled from your connected broker's live option chain — not derived from a generic 30–45 DTE estimate. Confirm bid/ask, IV, delta, and OI in your broker before submitting.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
               </div>
               <div>

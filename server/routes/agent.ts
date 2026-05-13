@@ -254,6 +254,29 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
     res.json(getBuiltInStrategies());
   });
 
+  // Best Picks Right Now — returns one stock, one single-leg option, and one
+  // defined-risk spread idea using the same live-broker + news + sentiment
+  // pipeline that powers the rest of the app.
+  app.get("/api/agent/best-picks", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { findThreeIdeaPicks } = await import("../services/best-trade-finder");
+      const universeRaw = typeof req.query.universe === "string" ? req.query.universe : undefined;
+      const customRaw = typeof req.query.customSymbols === "string" ? req.query.customSymbols : undefined;
+      const customSymbols = customRaw
+        ? customRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 30)
+        : undefined;
+      const result = await findThreeIdeaPicks(userId, {
+        universe: universeRaw as any,
+        customSymbols,
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[agent/best-picks] error:", err);
+      res.status(500).json({ error: err.message || "Failed to load best picks" });
+    }
+  });
+
   app.get("/api/agent/setups", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;

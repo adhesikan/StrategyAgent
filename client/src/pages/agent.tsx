@@ -83,7 +83,50 @@ import {
   Activity,
   Gauge,
   Layers,
+  Lightbulb,
+  Wifi,
+  WifiOff,
+  ArrowRight,
 } from "lucide-react";
+
+interface BestTradePick {
+  id: string;
+  symbol: string;
+  companyName?: string;
+  strategyType: string;
+  strategyLabel: string;
+  bias: "bullish" | "bearish" | "neutral";
+  confidence: number;
+  grade: string;
+  thesis: string;
+  mainReason: string;
+  mainRisk: string;
+  entry: number;
+  stop: number;
+  target: number;
+  maxLoss: number;
+  maxGain: number | null;
+  rewardRisk: number;
+  expiration: string | null;
+  strikes: string | null;
+  isOptions: boolean;
+  liquidity: "High" | "Medium" | "Low";
+  riskLabel: "Low" | "Medium" | "High";
+}
+
+interface BestPicksResponse {
+  stockPick: BestTradePick | null;
+  singleLegOptionPick: BestTradePick | null;
+  spreadPick: BestTradePick | null;
+  brokerConnected: boolean;
+  dataMode: "live" | "simulated" | "mixed";
+  liveQuoteCount: number | null;
+  universeLabel: string;
+  universeSize: number;
+  asOf: string;
+  notes: string[];
+  disclaimer: string;
+}
 
 interface BuiltInStrategy {
   id: string;
@@ -183,6 +226,8 @@ export default function AgentPage() {
   const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
 
   const [conditionsOpen, setConditionsOpen] = useState(false);
+  const [howToOpen, setHowToOpen] = useState(false);
+  const [bestPicksEnabled, setBestPicksEnabled] = useState(false);
   const [activeConditions, setActiveConditions] = useState<Map<string, ActiveCondition>>(new Map());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newCondition, setNewCondition] = useState({
@@ -301,6 +346,12 @@ export default function AgentPage() {
       if (changed) setActiveConditions(map);
     }
   }, [userConditions]);
+
+  const bestPicksQuery = useQuery<BestPicksResponse>({
+    queryKey: ["/api/agent/best-picks"],
+    enabled: bestPicksEnabled,
+    staleTime: 60_000,
+  });
 
   const generateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -519,6 +570,181 @@ export default function AgentPage() {
           </Button>
         )}
       </div>
+
+      <Collapsible open={howToOpen} onOpenChange={setHowToOpen}>
+        <Card data-testid="card-how-to-use">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover-elevate"
+              data-testid="button-toggle-how-to-use"
+            >
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-400" />
+                <span className="text-sm font-medium">How to use Advanced Trade Builder</span>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${howToOpen ? "rotate-180" : ""}`} />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-4 pb-4 pt-1 space-y-3 text-sm text-muted-foreground">
+              <ol className="list-decimal list-inside space-y-1.5 marker:text-primary">
+                <li>
+                  <span className="text-foreground font-medium">Describe your setup</span> in plain English (e.g. "Give me a 15-minute ORB on TSLA") or pick one of the suggested chips.
+                </li>
+                <li>
+                  <span className="text-foreground font-medium">Optionally lock in</span> a Symbol, Asset Type, Strategy, or Timeframe. Leave them blank to let the engine choose from your prompt.
+                </li>
+                <li>
+                  <span className="text-foreground font-medium">Add Analysis Conditions</span> (volume, trend, momentum, risk, etc.) to require the setup to pass specific filters.
+                </li>
+                <li>
+                  <span className="text-foreground font-medium">Hit Generate Setup</span> — the engine pulls live broker quotes (when connected), runs technicals, news headlines, and OpenAI-powered sentiment, then returns a single broker-ready scenario with grade, R/R, entry, stop, and target.
+                </li>
+                <li>
+                  <span className="text-foreground font-medium">Or use Best Picks Right Now</span> below to get one stock idea, one single-leg option idea, and one defined-risk spread idea — all from the same live data pipeline.
+                </li>
+                <li>
+                  <span className="text-foreground font-medium">Review &amp; send via InstaTrade™</span> — nothing is placed without your explicit acknowledgment.
+                </li>
+              </ol>
+              <div className="rounded-md border border-border bg-muted/30 p-2.5 text-xs">
+                <span className="font-medium text-foreground">Data source: </span>
+                {isConnected
+                  ? "Broker connected — the engine requests live quotes from your broker; per-scan results show whether each symbol came back live, mixed, or simulated. Account-aware sizing and risk checks are active."
+                  : "No broker connected — running on simulated examples. Connect a broker for live quotes and account-aware risk checks."}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      <Card data-testid="card-best-picks">
+        <CardContent className="pt-5 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-semibold">Best Picks Right Now</h2>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                One stock idea, one single-leg option idea, and one defined-risk spread idea —
+                {bestPicksQuery.data
+                  ? bestPicksQuery.data.dataMode === "live"
+                    ? " from live broker quotes plus news + OpenAI sentiment."
+                    : bestPicksQuery.data.dataMode === "mixed"
+                      ? " from a mix of live broker quotes and simulated fallbacks, plus news + OpenAI sentiment."
+                      : bestPicksQuery.data.brokerConnected
+                        ? " from simulated quotes (your broker returned no live data for this universe), plus news + OpenAI sentiment."
+                        : " from simulated examples (no broker connected), plus news + OpenAI sentiment."
+                  : isConnected
+                    ? " uses live broker quotes when your broker returns them, plus news + OpenAI sentiment."
+                    : " uses simulated examples until you connect a broker, plus news + OpenAI sentiment."}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant={bestPicksQuery.data ? "outline" : "default"}
+              onClick={() => {
+                if (!bestPicksEnabled) setBestPicksEnabled(true);
+                else bestPicksQuery.refetch();
+              }}
+              disabled={bestPicksQuery.isFetching}
+              data-testid="button-find-best-picks"
+            >
+              {bestPicksQuery.isFetching ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Scanning…</>
+              ) : bestPicksQuery.data ? (
+                <><RefreshCw className="h-3.5 w-3.5 mr-1.5" />Rescan</>
+              ) : (
+                <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Find Best Picks</>
+              )}
+            </Button>
+          </div>
+
+          {bestPicksQuery.data && (
+            <div className="flex items-center gap-2 flex-wrap text-[11px]">
+              <Badge
+                variant="outline"
+                className={
+                  bestPicksQuery.data.dataMode === "live"
+                    ? "bg-green-500/10 text-green-400 border-green-500/30"
+                    : bestPicksQuery.data.dataMode === "mixed"
+                      ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                      : "bg-muted text-muted-foreground"
+                }
+                data-testid="badge-best-picks-data-mode"
+              >
+                {bestPicksQuery.data.brokerConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+                {bestPicksQuery.data.dataMode === "live"
+                  ? "Live Broker Data"
+                  : bestPicksQuery.data.dataMode === "mixed"
+                    ? "Mixed (live + simulated)"
+                    : bestPicksQuery.data.brokerConnected
+                      ? "Broker connected · simulated fallback"
+                      : "Simulated Examples"}
+              </Badge>
+              <span className="text-muted-foreground">
+                Universe: <span className="text-foreground">{bestPicksQuery.data.universeLabel}</span> ({bestPicksQuery.data.universeSize} symbols)
+                {typeof bestPicksQuery.data.liveQuoteCount === "number" && bestPicksQuery.data.liveQuoteCount > 0 &&
+                  ` · ${bestPicksQuery.data.liveQuoteCount} live quotes`}
+              </span>
+            </div>
+          )}
+
+          {bestPicksQuery.isFetching && !bestPicksQuery.data && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-44 rounded-md border border-border bg-muted/20 animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {bestPicksQuery.data && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <BestPickCard
+                  label="Stock Idea"
+                  pick={bestPicksQuery.data.stockPick}
+                  emptyHint="No stock swing setup met the quality floor."
+                  onReview={(p) => navigate(`/trade/${p.symbol}?type=stock`)}
+                />
+                <BestPickCard
+                  label="Single-Leg Option Idea"
+                  pick={bestPicksQuery.data.singleLegOptionPick}
+                  emptyHint="No long call / long put setup met the quality floor."
+                  onReview={(p) => navigate(`/trade/${p.symbol}?type=${p.strategyType === "long_put" ? "long-put" : "long-call"}&bias=${p.bias}`)}
+                />
+                <BestPickCard
+                  label="Defined-Risk Spread Idea"
+                  pick={bestPicksQuery.data.spreadPick}
+                  emptyHint="No defined-risk spread met the quality floor."
+                  onReview={(p) => navigate(`/trade/${p.symbol}?type=vertical&bias=${p.bias}`)}
+                />
+              </div>
+              {bestPicksQuery.data.notes.length > 0 && (
+                <ul className="text-[11px] text-muted-foreground space-y-1 pt-1">
+                  {bestPicksQuery.data.notes.map((n, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-muted-foreground/60">•</span>
+                      <span>{n}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[10px] text-muted-foreground/80 italic pt-1 border-t">
+                {bestPicksQuery.data.disclaimer}
+              </p>
+            </>
+          )}
+
+          {bestPicksQuery.error && !bestPicksQuery.data && (
+            <p className="text-xs text-red-400" data-testid="text-best-picks-error">
+              Couldn't load best picks. Try again in a moment.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-primary/20 bg-card/80" data-testid="card-agent-input">
         <CardContent className="pt-5 space-y-4">
@@ -1074,6 +1300,105 @@ export default function AgentPage() {
         selectedAccount={selectedAccount}
         onAccountChange={setSelectedAccount}
       />
+    </div>
+  );
+}
+
+function BestPickCard({
+  label,
+  pick,
+  emptyHint,
+  onReview,
+}: {
+  label: string;
+  pick: BestTradePick | null;
+  emptyHint: string;
+  onReview: (pick: BestTradePick) => void;
+}) {
+  const testIdSuffix = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  if (!pick) {
+    return (
+      <div
+        className="rounded-md border border-dashed border-border p-3 flex flex-col"
+        data-testid={`card-best-pick-empty-${testIdSuffix}`}
+      >
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+        <p className="text-xs text-muted-foreground flex-1">{emptyHint}</p>
+      </div>
+    );
+  }
+  const gradeColor =
+    pick.grade.startsWith("A")
+      ? "bg-green-500/15 text-green-400 border-green-500/30"
+      : pick.grade === "B"
+        ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+        : "bg-amber-500/15 text-amber-400 border-amber-500/30";
+  const biasColor =
+    pick.bias === "bullish"
+      ? "text-green-400"
+      : pick.bias === "bearish"
+        ? "text-red-400"
+        : "text-muted-foreground";
+  return (
+    <div
+      className="rounded-md border border-border bg-card p-3 flex flex-col gap-2 hover-elevate"
+      data-testid={`card-best-pick-${testIdSuffix}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+        <Badge variant="outline" className={`text-[10px] ${gradeColor}`}>{pick.grade} · {pick.confidence}</Badge>
+      </div>
+      <div className="flex items-baseline justify-between gap-2">
+        <div>
+          <p className="text-base font-semibold leading-tight" data-testid={`text-best-pick-symbol-${testIdSuffix}`}>{pick.symbol}</p>
+          <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{pick.companyName ?? pick.strategyLabel}</p>
+        </div>
+        <p className={`text-[10px] uppercase font-medium ${biasColor}`}>{pick.bias}</p>
+      </div>
+      <p className="text-xs text-foreground/90 line-clamp-3">{pick.thesis}</p>
+      <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground border-t border-border pt-2">
+        <div>
+          <p className="uppercase">Entry</p>
+          <p className="text-foreground font-medium">${pick.entry.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="uppercase">Stop</p>
+          <p className="text-foreground font-medium">${pick.stop.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="uppercase">Target</p>
+          <p className="text-foreground font-medium">${pick.target.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="uppercase">Max Loss</p>
+          <p className="text-foreground font-medium">${pick.maxLoss.toFixed(0)}</p>
+        </div>
+        <div>
+          <p className="uppercase">R/R</p>
+          <p className="text-foreground font-medium">{pick.rewardRisk.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="uppercase">Liquidity</p>
+          <p className="text-foreground font-medium">{pick.liquidity}</p>
+        </div>
+      </div>
+      {(pick.expiration || pick.strikes) && (
+        <p className="text-[10px] text-muted-foreground">
+          {pick.strikes && <span>Strikes: <span className="text-foreground">{pick.strikes}</span></span>}
+          {pick.strikes && pick.expiration && <span> · </span>}
+          {pick.expiration && <span>Exp: <span className="text-foreground">{pick.expiration}</span></span>}
+        </p>
+      )}
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-auto h-7 text-xs"
+        onClick={() => onReview(pick)}
+        data-testid={`button-review-best-pick-${testIdSuffix}`}
+      >
+        Review Setup
+        <ArrowRight className="h-3 w-3 ml-1" />
+      </Button>
     </div>
   );
 }

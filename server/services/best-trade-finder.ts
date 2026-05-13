@@ -297,6 +297,134 @@ export async function findBestTradesForSymbol(
   };
 }
 
+/**
+ * Three-idea picker — for the Advanced Trade Builder "Best Picks Right Now"
+ * section. Returns ONE stock idea + ONE single-leg option idea + ONE
+ * defined-risk spread idea, each pulled from the same live-broker / news /
+ * sentiment scan that powers the rest of the app.
+ *
+ * Each strategy type is requested explicitly because radar's deterministic
+ * symbol→strategy picker only emits one strategy per symbol per scan; without
+ * the explicit request we'd usually be missing one of the three types.
+ */
+export interface ThreeIdeaPicks {
+  stockPick: BestTradePick | null;
+  singleLegOptionPick: BestTradePick | null;
+  spreadPick: BestTradePick | null;
+  brokerConnected: boolean;
+  dataMode: "live" | "simulated" | "mixed";
+  liveQuoteCount: number | null;
+  universeLabel: string;
+  universeSize: number;
+  asOf: string;
+  notes: string[];
+  disclaimer: string;
+}
+
+export async function findThreeIdeaPicks(
+  userId: string,
+  opts: { universe?: RadarUniverseId; customSymbols?: string[] } = {},
+): Promise<ThreeIdeaPicks> {
+  const universe: RadarUniverseId =
+    (opts.customSymbols?.length ?? 0) > 0
+      ? "custom"
+      : (opts.universe ?? "watchlist");
+
+  const baseFilters: Omit<RadarFilters, "strategyType"> = {
+    bias: "any",
+    universe,
+    customSymbols: opts.customSymbols,
+    minGrade: "C",
+  };
+
+  // Run the three scans in parallel — each one targets a single strategy
+  // family so we always get a representative pick of that type when one
+  // exists in the current universe.
+  const [stockResult, longResult, spreadResult] = await Promise.all([
+    generateCandidateScenarios(userId, { ...baseFilters, strategyType: "stock_swing" }),
+    // long_call OR long_put — radar's pickStrategyForSymbol only honors
+    // explicit single values, so request long_call here and merge with a
+    // long_put scan to let news/sentiment-driven bearish setups compete.
+    Promise.all([
+      generateCandidateScenarios(userId, { ...baseFilters, strategyType: "long_call" }),
+      generateCandidateScenarios(userId, { ...baseFilters, strategyType: "long_put" }),
+    ]).then(([calls, puts]) => ({
+      ...calls,
+      candidates: [...calls.candidates, ...puts.candidates].sort(
+        (a, b) => b.finalScore - a.finalScore,
+      ),
+    })),
+    // Constrain spread scan to bullish bias — the review surface
+    // (`/trade/:ticker?type=vertical`) renders defined-risk debit spreads
+    // as a bull call spread. Pulling a bearish debit spread here would
+    // misrepresent the pick once the user clicks Review.
+    generateCandidateScenarios(userId, { ...baseFilters, strategyType: "debit_spread", bias: "bullish" }),
+  ]);
+
+  const stockBest = pickBest(stockResult.candidates, (c) => c.strategyType === "stock_swing");
+  const longBest = pickBest(
+    longResult.candidates,
+    (c) => c.strategyType === "long_call" || c.strategyType === "long_put",
+  );
+  const spreadBest = pickBest(spreadResult.candidates, (c) => c.strategyType === "debit_spread");
+
+  // Aggregate broker / data-mode metadata across all three scans rather
+  // than trusting one — broker connection is shared, but liveQuoteCount and
+  // dataMode are per-scan because each scan resolves its own universe.
+  const allResults = [stockResult, longResult as any, spreadResult];
+  const brokerConnected = allResults.some((r) => r.brokerConnected);
+  const modes = allResults.map((r) => r.dataMode);
+  const dataMode: "live" | "simulated" | "mixed" = modes.every((m) => m === "live")
+    ? "live"
+    : modes.every((m) => m === "simulated")
+      ? "simulated"
+      : "mixed";
+  const liveQuoteCount = allResults.reduce(
+    (sum, r) => sum + (typeof r.liveQuoteCount === "number" ? r.liveQuoteCount : 0),
+    0,
+  );
+
+  const notes: string[] = [];
+  if (brokerConnected) {
+    notes.push(
+      dataMode === "live"
+        ? "Using live broker quotes for price action, plus news headlines and OpenAI sentiment analysis."
+        : dataMode === "mixed"
+          ? "Partial live broker data — some symbols fell back to simulated quotes. News/sentiment still applied."
+          : "Broker connected but it returned no live quotes for this universe — running on simulated quotes.",
+    );
+  } else {
+    notes.push(
+      "No broker connected — these are simulated examples for learning. Connect a broker for live quotes and account-aware sizing.",
+    );
+  }
+  if (!stockBest) notes.push("No stock swing setup met the minimum quality floor right now.");
+  if (!longBest) notes.push("No single-leg option (long call or long put) setup met the minimum quality floor right now.");
+  if (!spreadBest) {
+    notes.push("No defined-risk spread setup met the minimum quality floor right now.");
+  } else if (spreadBest.strategyType === "debit_spread") {
+    // Be explicit — the engine produces debit spreads today. Credit spreads
+    // (bull put / bear call) will surface here once the radar adds them.
+    notes.push(
+      "Spread shown is a defined-risk debit spread. Credit spreads will appear here when produced by the scoring engine.",
+    );
+  }
+
+  return {
+    stockPick: stockBest ? toPick(stockBest) : null,
+    singleLegOptionPick: longBest ? toPick(longBest) : null,
+    spreadPick: spreadBest ? toPick(spreadBest) : null,
+    brokerConnected,
+    dataMode,
+    liveQuoteCount,
+    universeLabel: stockResult.universeLabel,
+    universeSize: stockResult.universeSize,
+    asOf: stockResult.lastRefresh,
+    notes,
+    disclaimer: DISCLAIMER,
+  };
+}
+
 export const BEST_TRADE_UNIVERSES: { id: RadarUniverseId; label: string; description: string }[] = [
   { id: "watchlist", label: "My Watchlist", description: "Symbols you've saved" },
   { id: "sp_100", label: "S&P 100", description: "Largest 100 U.S. companies (OEX)" },

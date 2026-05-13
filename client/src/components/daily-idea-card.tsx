@@ -24,6 +24,9 @@ import {
   Info,
   ShieldCheck,
   ArrowRight,
+  Percent,
+  TrendingDown,
+  CheckCircle2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -98,6 +101,70 @@ const INSTRUMENT_TIP: Record<DailyIdea["instrumentType"], string> = {
   spread: "Vertical spread: buy one option and sell another at a different strike. Caps both risk and reward.",
   covered_call: "Sell a call against shares you own. Collects premium; upside capped above the strike.",
   cash_secured_put: "Sell a put while holding cash to buy the shares if assigned. Collects premium; obligated to buy at the strike.",
+};
+
+// Qualitative trade-plan preview keyed by instrument. These mirror the
+// per-type bands in client/src/pages/trade-detail.tsx → buildPlan(). They
+// are price-independent on purpose so the card doesn't have to invent a
+// fake live quote — full $-precise estimates appear on the detail page.
+const PLAN_PREVIEW: Record<
+  DailyIdea["instrumentType"],
+  { winProb: string; maxProfit: string; exitPlan: string[] }
+> = {
+  stock: {
+    winProb: "—",
+    maxProfit: "Open-ended",
+    exitPlan: [
+      "Take profit near +15%",
+      "Stop loss near -5%",
+      "Trail stop to break-even after +5%",
+    ],
+  },
+  long_call: {
+    winProb: "≈45–50%",
+    maxProfit: "Open-ended",
+    exitPlan: [
+      "Take profit at +75% of premium",
+      "Stop loss at -50% of premium",
+      "Close 21 days before expiry",
+    ],
+  },
+  long_put: {
+    winProb: "≈42–48%",
+    maxProfit: "Large if stock falls sharply",
+    exitPlan: [
+      "Take profit at +75% of premium",
+      "Stop loss at -50% of premium",
+      "Close 21 days before expiry",
+    ],
+  },
+  spread: {
+    winProb: "≈55–60%",
+    maxProfit: "Capped (defined)",
+    exitPlan: [
+      "Take profit at 75% of max gain",
+      "Stop loss at 50% of debit",
+      "Close 14–21 days before expiry",
+    ],
+  },
+  covered_call: {
+    winProb: "≈65–70%",
+    maxProfit: "Premium + (strike − cost basis)",
+    exitPlan: [
+      "Let it expire if OTM",
+      "Buy to close at 50% of premium collected",
+      "Roll up/out if challenged near expiry",
+    ],
+  },
+  cash_secured_put: {
+    winProb: "≈65–70%",
+    maxProfit: "Net credit collected",
+    exitPlan: [
+      "Buy to close at 50% of premium collected",
+      "Roll out if challenged",
+      "Accept assignment if you'd own at strike",
+    ],
+  },
 };
 
 const RISK_TIP: Record<DailyIdea["riskLevel"], string> = {
@@ -267,7 +334,7 @@ export function DailyIdeaCard({ idea }: Props) {
           />
           <Stat
             icon={AlertTriangle}
-            label="Max risk"
+            label="Max loss"
             value={`$${idea.maxRisk.toLocaleString()}`}
             tip="The most you can lose on this single position if the stop is hit (stock) or the option expires worthless (defined-risk option). Capped by your per-trade max-risk limit in My Limits."
           />
@@ -278,6 +345,71 @@ export function DailyIdeaCard({ idea }: Props) {
             tip={capitalTip}
           />
         </div>
+
+        {(() => {
+          const plan = PLAN_PREVIEW[idea.instrumentType];
+          const rr =
+            idea.potentialReward != null && idea.maxRisk > 0
+              ? `${(idea.potentialReward / idea.maxRisk).toFixed(1)}:1`
+              : null;
+          const maxProfitDisplay =
+            idea.potentialReward != null
+              ? `$${idea.potentialReward.toLocaleString()}`
+              : plan.maxProfit;
+          return (
+            <div className="rounded-md border bg-muted/20 p-2.5 space-y-2" data-testid={`plan-preview-${idea.id}`}>
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <Stat
+                  icon={Percent}
+                  label="Win prob"
+                  value={plan.winProb}
+                  tip={
+                    plan.winProb === "—"
+                      ? "Stocks don't carry a built-in win-probability estimate the way defined-risk option structures do — the exit plan and stop define the trade math instead."
+                      : `Reference probability band for ${INSTRUMENT_LABEL[idea.instrumentType]} structures based on typical strike/expiry choices. Estimate only — actual fill depends on the live option chain (bid/ask, IV, delta, OI).`
+                  }
+                />
+                <Stat
+                  icon={TrendingUp}
+                  label="Max profit"
+                  value={maxProfitDisplay}
+                  tip={
+                    idea.potentialReward != null
+                      ? "Estimated max gain for this idea using the strategy's default targets. Confirm in your broker before placing the order."
+                      : `Profit shape for ${INSTRUMENT_LABEL[idea.instrumentType]} positions. Defined-risk structures cap gains at the spread width minus cost; long-premium positions are open-ended.`
+                  }
+                />
+                <Stat
+                  icon={Target}
+                  label="R : R"
+                  value={rr ?? "—"}
+                  tip={
+                    rr
+                      ? "Reward-to-risk ratio = max profit ÷ max loss. A 2:1 means the target gain is twice the planned loss."
+                      : "Reward-to-risk needs both a target and a stop. Open the detail page for the full payoff diagram and break-even prices."
+                  }
+                />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Exit plan
+                </div>
+                <ol className="space-y-0.5 text-[11px] text-muted-foreground leading-snug list-decimal list-inside marker:text-primary/60">
+                  {plan.exitPlan.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+              <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground/80 leading-snug border-t pt-1.5">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
+                  Estimates only — strikes, premiums, and break-evens shown on the detail page are derived from the current price. Always confirm the live option chain (bid/ask, IV, delta, OI) in your broker before submitting.
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
         <Tooltip>
           <TooltipTrigger asChild>

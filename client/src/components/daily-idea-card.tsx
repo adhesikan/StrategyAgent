@@ -107,7 +107,7 @@ const RISK_TIP: Record<DailyIdea["riskLevel"], string> = {
 };
 
 // Weights mirror computeFinalScore() in server/services/opportunity-radar/scoring.ts
-const GRADE_WEIGHTS = {
+export const GRADE_WEIGHTS = {
   technical: 28,
   momentum: 20,
   sentiment: 22,

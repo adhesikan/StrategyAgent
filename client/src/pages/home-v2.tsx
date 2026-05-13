@@ -23,7 +23,7 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
-import { DailyIdeaCard, DailyIdeaRow, type DailyIdea } from "@/components/daily-idea-card";
+import { DailyIdeaCard, DailyIdeaRow, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
 import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -338,6 +338,42 @@ export default function HomeV2() {
             <h2 className="text-base font-semibold flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
               Today's Ideas For You
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      data-testid="button-grading-help"
+                      aria-label="How grades are calculated"
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="start" className="max-w-sm text-xs space-y-2">
+                    <p className="font-semibold text-sm">How grades are calculated</p>
+                    <p className="text-muted-foreground">
+                      Each idea gets a 0–100 composite score from five weighted factors, then bucketed into a letter grade:
+                    </p>
+                    <ul className="space-y-0.5 pl-3 list-disc marker:text-primary/60">
+                      <li>Technical setup — {GRADE_WEIGHTS.technical}%</li>
+                      <li>Momentum — {GRADE_WEIGHTS.momentum}%</li>
+                      <li>News sentiment — {GRADE_WEIGHTS.sentiment}%</li>
+                      <li>Liquidity — {GRADE_WEIGHTS.liquidity}%</li>
+                      <li>Risk fit — {GRADE_WEIGHTS.risk}%</li>
+                    </ul>
+                    <div className="text-muted-foreground space-y-0.5 pt-1 border-t">
+                      <p><span className="text-foreground font-medium">A+</span> ≥ 90 · strongest agreement</p>
+                      <p><span className="text-foreground font-medium">A</span> 80–89 · strong agreement</p>
+                      <p><span className="text-foreground font-medium">B</span> 70–79 · moderate agreement</p>
+                      <p><span className="text-foreground font-medium">C</span> 50–69 · mixed signals — most ideas land here on quiet days</p>
+                    </div>
+                    <p className="text-muted-foreground italic pt-1 border-t">
+                      Hover any idea's grade badge for the per-factor breakdown. Higher = more factors agree, not a price target.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </h2>
             <div className="flex items-center gap-2">
               {ideasResp?.dataMode === "simulated" && (

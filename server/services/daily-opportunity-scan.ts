@@ -286,11 +286,44 @@ async function scanQualityFirst(
 }
 
 export async function getDailyIdeasForUser(userId: string, overrides?: ScanOverrides): Promise<DailyIdeasResult> {
-  const r = await scanQualityFirst(userId, { strategyType: "any", timeHorizon: "1_4w" }, overrides);
-  if (r.ideas.length > 0) return r;
-  const broad = await scanQualityFirst(userId, { strategyType: "any" }, overrides);
-  if (broad.ideas.length > 0) return broad;
-  if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) return broad;
+  // "All" must be a true union of the typed buckets — radar's
+  // pickStrategyForSymbol assigns ONE strategy per symbol when called with
+  // strategyType: "any", so a single "any" scan returns fewer ideas than the
+  // Stocks tab (which forces every symbol to be a stock_swing). Union the
+  // typed buckets and dedupe by id so All is always >= each sub-tab.
+  const [stocks, options] = await Promise.all([
+    getStockIdeas(userId, overrides),
+    getOptionIdeas(userId, overrides),
+  ]);
+  const seen = new Set<string>();
+  const merged: DailyIdea[] = [];
+  for (const idea of [...stocks.ideas, ...options.ideas]) {
+    if (seen.has(idea.id)) continue;
+    seen.add(idea.id);
+    merged.push(idea);
+  }
+  merged.sort((a, b) => b.score - a.score);
+  if (merged.length > 0) {
+    // Combine top-level metadata honestly across both scans rather than
+    // inheriting from one. dataMode follows the union (live ∪ simulated → mixed).
+    const modes = [stocks.dataMode, options.dataMode];
+    const combinedDataMode: typeof stocks.dataMode = modes.every((m) => m === "live")
+      ? "live"
+      : modes.every((m) => m === "simulated")
+        ? "simulated"
+        : "mixed";
+    return {
+      ...stocks,
+      ideas: merged.slice(0, 30),
+      dataMode: combinedDataMode,
+      brokerConnected: stocks.brokerConnected || options.brokerConnected,
+    };
+  }
+  // Fallback when both typed buckets are empty (e.g., a very narrow custom
+  // universe that produced nothing). Keep the prior wide-net behavior.
+  if (overrides?.universe || (overrides?.customSymbols?.length ?? 0) > 0) {
+    return stocks;
+  }
   return runScan(userId, { strategyType: "any", universe: "high_volume", minGrade: "C" });
 }
 

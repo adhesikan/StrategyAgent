@@ -211,6 +211,28 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 // Higher = better. A+ > A > B > C > anything else.
 const GRADE_RANK: Record<string, number> = { "A+": 4, A: 3, B: 2, C: 1 };
 
+type InstrumentFilter = "all" | "stock" | "long_options" | "defined_risk";
+
+const INSTRUMENT_FILTERS: { value: InstrumentFilter; label: string; hint: string }[] = [
+  { value: "all", label: "All", hint: "Stocks plus every options structure." },
+  { value: "stock", label: "Stocks only", hint: "Long-share swing setups (no options)." },
+  { value: "long_options", label: "Long options", hint: "Long calls and long puts — single-leg, premium-paid, defined-risk-by-premium." },
+  { value: "defined_risk", label: "Defined-risk options", hint: "Vertical spreads, covered calls, and cash-secured puts — every position has a known max loss." },
+];
+
+function matchesInstrumentFilter(t: DailyIdea["instrumentType"], f: InstrumentFilter): boolean {
+  switch (f) {
+    case "all":
+      return true;
+    case "stock":
+      return t === "stock";
+    case "long_options":
+      return t === "long_call" || t === "long_put";
+    case "defined_risk":
+      return t === "spread" || t === "covered_call" || t === "cash_secured_put";
+  }
+}
+
 function sortIdeas<T extends { grade: string; score: number; maxRisk: number; symbol: string }>(
   ideas: T[],
   key: SortKey,
@@ -256,6 +278,7 @@ export default function HomeV2() {
   const [tab, setTab] = useState("all");
   const [ideasView, setIdeasView] = useState<ViewMode>("card");
   const [sortBy, setSortBy] = useState<SortKey>("grade");
+  const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>("all");
   const { toast } = useToast();
   const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
   const [customDraft, setCustomDraft] = useState("");
@@ -446,8 +469,57 @@ export default function HomeV2() {
               <span className="text-muted-foreground">Comma-separated, up to 30 tickers.</span>
             </div>
           )}
-          {ideasResp && ideasResp.ideas.length >= 3 && (() => {
-            const top3 = sortIdeas(ideasResp.ideas, sortBy).slice(0, 3);
+          {ideasResp && ideasResp.ideas.length > 0 && (() => {
+            const activeFilter = INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!;
+            const filteredCount = ideasResp.ideas.filter((i) =>
+              matchesInstrumentFilter(i.instrumentType, instrumentFilter),
+            ).length;
+            return (
+              <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="filter-instrument">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground mr-1">Show</span>
+                <TooltipProvider delayDuration={150}>
+                  {INSTRUMENT_FILTERS.map((f) => {
+                    const active = instrumentFilter === f.value;
+                    return (
+                      <Tooltip key={f.value}>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => setInstrumentFilter(f.value)}
+                            data-testid={`filter-instrument-${f.value}`}
+                            className={cn(
+                              "px-3 py-1 rounded-full text-xs transition-colors border",
+                              active
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-muted/40 hover:bg-muted text-foreground/80 border-border",
+                            )}
+                          >
+                            {f.label}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-snug">
+                          {f.hint}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </TooltipProvider>
+                <span className="text-[11px] text-muted-foreground ml-1" data-testid="text-instrument-filter-count">
+                  {filteredCount} of {ideasResp.ideas.length} match "{activeFilter.label}"
+                </span>
+              </div>
+            );
+          })()}
+          {(() => {
+            const filteredIdeas = ideasResp
+              ? ideasResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
+              : [];
+            return filteredIdeas.length >= 3;
+          })() && (() => {
+            const filteredIdeas = ideasResp!.ideas.filter((i) =>
+              matchesInstrumentFilter(i.instrumentType, instrumentFilter),
+            );
+            const top3 = sortIdeas(filteredIdeas, sortBy).slice(0, 3);
             const rankBadge = (i: number) =>
               i === 0
                 ? "bg-amber-500/15 text-amber-400 border-amber-500/40"
@@ -526,10 +598,21 @@ export default function HomeV2() {
                   </div>
                 ) : ideasResp && ideasResp.ideas.length > 0 ? (
                   (() => {
-                    // When ≥ 3 ideas exist, the first 3 are featured above as
-                    // "Top Picks for Your Review" — skip them here. With < 3 ideas
-                    // the featured row is hidden, so show everything.
-                    const sorted = sortIdeas(ideasResp.ideas, sortBy);
+                    // When ≥ 3 ideas (after instrument filter) exist, the first
+                    // 3 are featured above as "Top Picks for Your Review" — skip
+                    // them here. With < 3 the featured row is hidden, so show
+                    // everything that matches the filter.
+                    const filteredIdeas = ideasResp.ideas.filter((i) =>
+                      matchesInstrumentFilter(i.instrumentType, instrumentFilter),
+                    );
+                    if (filteredIdeas.length === 0) {
+                      return (
+                        <div className="text-sm text-muted-foreground py-6 text-center" data-testid="text-no-ideas-for-filter">
+                          No ideas match the "{INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!.label}" filter in this tab. Try a different filter or tab.
+                        </div>
+                      );
+                    }
+                    const sorted = sortIdeas(filteredIdeas, sortBy);
                     const visible = sorted.length >= 3 ? sorted.slice(3, 12) : sorted;
                     if (visible.length === 0) return null;
                     return ideasView === "card" ? (

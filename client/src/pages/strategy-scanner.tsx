@@ -964,7 +964,20 @@ export default function StrategyScannerPage() {
                     })}
                   </div>
                   <div className="flex items-center justify-between mt-4 pt-3 border-t">
-                    <span className="text-[11px] text-muted-foreground">{s.winRate}% hist. win rate</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className="text-[11px] text-muted-foreground inline-flex items-center gap-1 cursor-help"
+                          data-testid={`text-illustrative-winrate-${s.id}`}
+                        >
+                          <Info className="h-3 w-3" />
+                          Illustrative · ~{s.winRate}%
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
+                        Reference number from the strategy's published research band — not a verified backtest of your account or current market conditions. A historical backtest engine isn't wired up yet, so treat this as illustrative only.
+                      </TooltipContent>
+                    </Tooltip>
                     <Button
                       size="sm"
                       variant={isSelected ? "default" : "outline"}
@@ -992,8 +1005,23 @@ export default function StrategyScannerPage() {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
               <span className="text-sm font-medium" data-testid="text-results-strategy">
-                {selected.name} results · as <span className="text-muted-foreground">{TRADE_TYPES.find((t) => t.id === preferredType(selected))?.short}</span>
+                {selected.name} results
               </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] gap-1 cursor-help"
+                    data-testid="badge-results-vehicle"
+                  >
+                    <Info className="h-3 w-3" />
+                    Underlying · vehicle: {TRADE_TYPES.find((t) => t.id === preferredType(selected))?.short}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[300px] text-xs leading-snug">
+                  The scan returns the underlying equities matching this pattern. Your selected trade type ({TRADE_TYPES.find((t) => t.id === preferredType(selected))?.short}) is the order vehicle that will be preselected when you click <span className="font-medium">View</span> — that's where the specific option contract or share order is built.
+                </TooltipContent>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-2">
               <Badge

@@ -107,13 +107,27 @@ const INSTRUMENT_TIP: Record<DailyIdea["instrumentType"], string> = {
 // per-type bands in client/src/pages/trade-detail.tsx → buildPlan(). They
 // are price-independent on purpose so the card doesn't have to invent a
 // fake live quote — full $-precise estimates appear on the detail page.
+interface EntryLeg {
+  side: "BUY" | "SELL";
+  qty: string;
+  desc: string;
+}
+
 const PLAN_PREVIEW: Record<
   DailyIdea["instrumentType"],
-  { winProb: string; maxProfit: string; exitPlan: string[] }
+  {
+    winProb: string;
+    maxProfit: string;
+    exitPlan: string[];
+    entryLegs: EntryLeg[];
+    netLabel: string;
+  }
 > = {
   stock: {
     winProb: "—",
     maxProfit: "Open-ended",
+    entryLegs: [{ side: "BUY", qty: "100", desc: "shares · limit near current price" }],
+    netLabel: "Total cost ≈ price × shares",
     exitPlan: [
       "Take profit near +15%",
       "Stop loss near -5%",
@@ -123,6 +137,8 @@ const PLAN_PREVIEW: Record<
   long_call: {
     winProb: "≈45–50%",
     maxProfit: "Open-ended",
+    entryLegs: [{ side: "BUY", qty: "1", desc: "ATM/slight-OTM call · 30–45 DTE" }],
+    netLabel: "Net debit (premium paid)",
     exitPlan: [
       "Take profit at +75% of premium",
       "Stop loss at -50% of premium",
@@ -132,6 +148,8 @@ const PLAN_PREVIEW: Record<
   long_put: {
     winProb: "≈42–48%",
     maxProfit: "Large if stock falls sharply",
+    entryLegs: [{ side: "BUY", qty: "1", desc: "ATM/slight-OTM put · 30–45 DTE" }],
+    netLabel: "Net debit (premium paid)",
     exitPlan: [
       "Take profit at +75% of premium",
       "Stop loss at -50% of premium",
@@ -141,6 +159,11 @@ const PLAN_PREVIEW: Record<
   spread: {
     winProb: "≈55–60%",
     maxProfit: "Capped (defined)",
+    entryLegs: [
+      { side: "BUY", qty: "1", desc: "long leg · ATM strike · 30–45 DTE" },
+      { side: "SELL", qty: "1", desc: "short leg · 1 strike OTM · same expiry" },
+    ],
+    netLabel: "Net debit (long premium − short premium)",
     exitPlan: [
       "Take profit at 75% of max gain",
       "Stop loss at 50% of debit",
@@ -150,6 +173,11 @@ const PLAN_PREVIEW: Record<
   covered_call: {
     winProb: "≈65–70%",
     maxProfit: "Premium + (strike − cost basis)",
+    entryLegs: [
+      { side: "BUY", qty: "100", desc: "shares (or use existing lot)" },
+      { side: "SELL", qty: "1", desc: "OTM call against shares · 30–45 DTE" },
+    ],
+    netLabel: "Net credit (premium received)",
     exitPlan: [
       "Let it expire if OTM",
       "Buy to close at 50% of premium collected",
@@ -159,6 +187,10 @@ const PLAN_PREVIEW: Record<
   cash_secured_put: {
     winProb: "≈65–70%",
     maxProfit: "Net credit collected",
+    entryLegs: [
+      { side: "SELL", qty: "1", desc: "OTM put · 30–45 DTE · cash collateral set aside" },
+    ],
+    netLabel: "Net credit (premium received)",
     exitPlan: [
       "Buy to close at 50% of premium collected",
       "Roll out if challenged",
@@ -389,6 +421,33 @@ export function DailyIdeaCard({ idea }: Props) {
                       : "Reward-to-risk needs both a target and a stop. Open the detail page for the full payoff diagram and break-even prices."
                   }
                 />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  <ArrowRight className="h-3 w-3" />
+                  Entry plan
+                </div>
+                <ul className="space-y-0.5 text-[11px] leading-snug" data-testid={`entry-legs-${idea.id}`}>
+                  {plan.entryLegs.map((leg, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Badge
+                        variant="outline"
+                        className={
+                          "text-[9px] font-bold px-1.5 py-0 leading-tight shrink-0 " +
+                          (leg.side === "BUY"
+                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                            : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40")
+                        }
+                      >
+                        {leg.side} {leg.qty}
+                      </Badge>
+                      <span className="text-muted-foreground">{leg.desc}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] text-muted-foreground/80 mt-1">
+                  {plan.netLabel}
+                </div>
               </div>
               <div>
                 <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">

@@ -446,6 +446,54 @@ export default function HomeV2() {
               <span className="text-muted-foreground">Comma-separated, up to 30 tickers.</span>
             </div>
           )}
+          {ideasResp && ideasResp.ideas.length >= 3 && (() => {
+            const top3 = sortIdeas(ideasResp.ideas, sortBy).slice(0, 3);
+            const rankBadge = (i: number) =>
+              i === 0
+                ? "bg-amber-500/15 text-amber-400 border-amber-500/40"
+                : i === 1
+                  ? "bg-zinc-400/15 text-zinc-300 border-zinc-400/40"
+                  : "bg-orange-700/15 text-orange-400 border-orange-700/40";
+            return (
+              <div className="mb-5 rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card p-4" data-testid="section-top-picks">
+                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold">Top 3 Picks to Act On</h3>
+                    <span className="text-[11px] text-muted-foreground">
+                      Highest-ranked by{" "}
+                      {sortBy === "grade"
+                        ? "grade + score"
+                        : sortBy === "score"
+                          ? "composite score"
+                          : sortBy === "risk_low"
+                            ? "lowest risk"
+                            : sortBy === "risk_high"
+                              ? "highest reward setup"
+                              : "symbol"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">Nothing is sent without your approval.</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {top3.map((idea, i) => (
+                    <div key={idea.id} className="relative" data-testid={`top-pick-${i + 1}`}>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "absolute -top-2 -left-2 z-10 text-[10px] font-bold px-1.5 py-0.5 shadow-sm",
+                          rankBadge(i),
+                        )}
+                      >
+                        #{i + 1}
+                      </Badge>
+                      <DailyIdeaCard idea={idea} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <Tabs value={tab} onValueChange={setTab}>
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <TooltipProvider delayDuration={150}>
@@ -478,7 +526,12 @@ export default function HomeV2() {
                   </div>
                 ) : ideasResp && ideasResp.ideas.length > 0 ? (
                   (() => {
-                    const visible = sortIdeas(ideasResp.ideas.slice(0, 9), sortBy);
+                    // When ≥ 3 ideas exist, the first 3 are featured above as
+                    // "Top Picks to Act On" — skip them here. With < 3 ideas
+                    // the featured row is hidden, so show everything.
+                    const sorted = sortIdeas(ideasResp.ideas, sortBy);
+                    const visible = sorted.length >= 3 ? sorted.slice(3, 12) : sorted;
+                    if (visible.length === 0) return null;
                     return ideasView === "card" ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {visible.map((idea) => (

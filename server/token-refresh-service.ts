@@ -1,6 +1,9 @@
 import { storage } from "./storage";
 
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+// Sweep frequently so a token never silently expires between cycles. The
+// per-user check is cheap (a single DB read) and only POSTs to the broker
+// when the token is within the expiry buffer.
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const TOKEN_EXPIRY_BUFFER_MS = 2 * 60 * 60 * 1000;
 
 async function refreshTradierToken(userId: string, refreshToken: string): Promise<boolean> {
@@ -114,6 +117,43 @@ async function refreshTradeStationToken(userId: string, refreshToken: string): P
   }
 }
 
+// Per-user in-flight dedupe so concurrent /api/broker/ping calls (multiple
+// tabs, the 1s heartbeat, parallel queries) share a single refresh attempt
+// instead of each posting to the broker in parallel.
+const inFlightRefresh = new Map<string, Promise<boolean>>();
+
+// Exposed so other code paths (e.g. /api/broker/ping when a live call returns
+// 401 mid-session) can attempt a refresh on demand instead of waiting for the
+// background sweep. Returns true on success, false otherwise.
+export async function refreshUserBrokerToken(userId: string): Promise<boolean> {
+  const existing = inFlightRefresh.get(userId);
+  if (existing) return existing;
+
+  const work = (async () => {
+    try {
+      const fullConnection = await storage.getBrokerConnectionWithToken(userId);
+      if (!fullConnection?.refreshToken) return false;
+      if (fullConnection.provider === "tradier") {
+        return await refreshTradierToken(userId, fullConnection.refreshToken);
+      }
+      if (fullConnection.provider === "tradestation") {
+        return await refreshTradeStationToken(userId, fullConnection.refreshToken);
+      }
+      return false;
+    } catch (err) {
+      console.error(`[TokenRefresh] On-demand refresh failed for user ${userId}:`, err);
+      return false;
+    }
+  })();
+
+  inFlightRefresh.set(userId, work);
+  try {
+    return await work;
+  } finally {
+    inFlightRefresh.delete(userId);
+  }
+}
+
 async function checkAndRefreshTokens(): Promise<void> {
   try {
     const connections = await storage.getAutoReconnectConnections();
@@ -150,7 +190,7 @@ async function checkAndRefreshTokens(): Promise<void> {
 }
 
 export function startTokenRefreshService(): void {
-  console.log("[TokenRefresh] Token refresh service started (checking every 30 minutes)");
+  console.log(`[TokenRefresh] Token refresh service started (checking every ${REFRESH_INTERVAL_MS / 60000} minutes)`);
   setInterval(checkAndRefreshTokens, REFRESH_INTERVAL_MS);
   setTimeout(checkAndRefreshTokens, 10000);
 }

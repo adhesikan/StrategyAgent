@@ -28,6 +28,8 @@ import {
   TrendingDown,
   CheckCircle2,
   Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getStrategyByInstrumentType, getStrategyKeyByInstrumentType, STRATEGY_KEY_TO_SLUG } from "@shared/strategy-catalog";
@@ -286,6 +288,10 @@ export function DailyIdeaCard({ idea }: Props) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [learnOpen, setLearnOpen] = useState(false);
+  // Plan details (Win prob / Max profit / R:R, Entry plan, Exit plan) start
+  // collapsed so the card stays scannable. Users expand only when they want
+  // the deeper view.
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const handleReview = () => {
     const typeMap: Record<DailyIdea["instrumentType"], string> = {
@@ -429,7 +435,22 @@ export function DailyIdeaCard({ idea }: Props) {
               ? `$${idea.potentialReward.toLocaleString()}`
               : plan.maxProfit;
           return (
-            <div className="rounded-md border bg-muted/20 p-2.5 space-y-2" data-testid={`plan-preview-${idea.id}`}>
+            <div className="rounded-md border bg-muted/20" data-testid={`plan-preview-${idea.id}`}>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen((v) => !v)}
+                className="flex items-center justify-between w-full px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid={`button-toggle-plan-${idea.id}`}
+                aria-expanded={detailsOpen}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ArrowRight className="h-3 w-3" />
+                  {detailsOpen ? "Hide plan details" : "Show entry & exit plan"}
+                </span>
+                {detailsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              {detailsOpen && (
+              <div className="px-2.5 pb-2.5 pt-0 space-y-2 border-t">
               <div className="grid grid-cols-3 gap-2 text-[11px]">
                 <Stat
                   icon={Percent}
@@ -554,6 +575,8 @@ export function DailyIdeaCard({ idea }: Props) {
                   Estimates only — strikes, premiums, and break-evens shown on the detail page are derived from the current price. Always confirm the live option chain (bid/ask, IV, delta, OI) in your broker before submitting.
                 </span>
               </div>
+              </div>
+              )}
             </div>
           );
         })()}

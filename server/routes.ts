@@ -1880,36 +1880,65 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const brokerService = await import("./broker/index");
-      const health = await brokerService.getTokenHealth(userId);
-      if (health.status === "expired") {
-        const result = { ok: false, reason: "expired", provider: health.provider, checkedAt: Date.now() };
-        brokerPingCache.set(userId, result);
-        return res.json(result);
-      }
+      const { refreshUserBrokerToken } = await import("./token-refresh-service");
 
-      let liveOk = false;
-      try {
-        if (connection.provider === "tradier" && connection.accessToken) {
-          const liveRes = await fetch("https://api.tradier.com/v1/user/profile", {
-            headers: { "Authorization": `Bearer ${connection.accessToken}`, "Accept": "application/json" },
-          });
-          liveOk = liveRes.ok;
-        } else if (connection.provider === "tradestation" && connection.accessToken) {
-          const tsBase = getTradeStationBaseUrl(connection.simMode);
-          const liveRes = await fetch(`${tsBase}/brokerage/accounts`, {
-            headers: { "Authorization": `Bearer ${connection.accessToken}` },
-          });
-          liveOk = liveRes.ok;
-        } else {
-          liveOk = health.status === "valid" || health.status === "expiring";
+      // Pull the live token once so we can attempt a single on-demand refresh
+      // (and re-check) without losing the user's session. Without this, a
+      // token that expires between background sweeps would surface the
+      // "Please reconnect" banner even though the refresh token is still
+      // valid.
+      let activeConnection = connection;
+      let health = await brokerService.getTokenHealth(userId);
+
+      const tryLiveCheck = async (
+        conn: typeof activeConnection,
+      ): Promise<boolean> => {
+        try {
+          if (conn.provider === "tradier" && conn.accessToken) {
+            const liveRes = await fetch("https://api.tradier.com/v1/user/profile", {
+              headers: { "Authorization": `Bearer ${conn.accessToken}`, "Accept": "application/json" },
+            });
+            return liveRes.ok;
+          }
+          if (conn.provider === "tradestation" && conn.accessToken) {
+            const tsBase = getTradeStationBaseUrl(conn.simMode);
+            const liveRes = await fetch(`${tsBase}/brokerage/accounts`, {
+              headers: { "Authorization": `Bearer ${conn.accessToken}` },
+            });
+            return liveRes.ok;
+          }
+          return health.status === "valid" || health.status === "expiring";
+        } catch {
+          return false;
         }
-      } catch {
-        liveOk = false;
+      };
+
+      let liveOk = health.status === "expired" ? false : await tryLiveCheck(activeConnection);
+
+      // If either the static health says expired OR the live probe failed,
+      // attempt one on-demand refresh and re-probe before reporting the
+      // connection lost. This is what makes the broker session feel
+      // persistent across long sessions.
+      if (!liveOk) {
+        const refreshed = await refreshUserBrokerToken(userId);
+        if (refreshed) {
+          const updated = await storage.getBrokerConnectionWithToken(userId);
+          if (updated && updated.isConnected) {
+            activeConnection = updated;
+            health = await brokerService.getTokenHealth(userId);
+            liveOk = await tryLiveCheck(activeConnection);
+          }
+        }
       }
 
       const result = liveOk
         ? { ok: true, provider: health.provider, checkedAt: Date.now() }
-        : { ok: false, reason: "access_failed", provider: health.provider, checkedAt: Date.now() };
+        : {
+            ok: false,
+            reason: health.status === "expired" ? "expired" : "access_failed",
+            provider: health.provider,
+            checkedAt: Date.now(),
+          };
       brokerPingCache.set(userId, result);
       return res.json(result);
     } catch (error) {

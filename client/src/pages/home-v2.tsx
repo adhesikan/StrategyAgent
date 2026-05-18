@@ -79,13 +79,28 @@ const TONE_CLASS: Record<string, string> = {
   defensive: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
+interface DailyMarketRegime {
+  label: string;
+  tone: "bullish" | "bearish" | "mixed" | "low_vol" | "high_vol";
+  hint: string;
+}
+
 interface IdeasResponse {
   ideas: DailyIdea[];
   brokerConnected: boolean;
   dataMode: "live" | "simulated" | "mixed";
+  marketRegime?: DailyMarketRegime;
   asOf: string;
   disclaimer: string;
 }
+
+const REGIME_TONE: Record<DailyMarketRegime["tone"], string> = {
+  bullish: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  bearish: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30",
+  mixed: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  low_vol: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30",
+  high_vol: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30",
+};
 
 type ScanUniverseId =
   | "default"
@@ -379,6 +394,20 @@ export default function HomeV2() {
               ? "Loading today's ideas…"
               : `${ideasResp?.ideas.length ?? 0} ${(ideasResp?.ideas.length ?? 0) === 1 ? "idea" : "ideas"} ready to review — nothing sent without your approval.`}
           </p>
+          {ideasResp?.marketRegime && (
+            <div
+              className={cn(
+                "mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs",
+                REGIME_TONE[ideasResp.marketRegime.tone],
+              )}
+              data-testid="banner-market-regime"
+            >
+              <span className="font-semibold" data-testid="text-market-regime-label">
+                Market Environment: {ideasResp.marketRegime.label}
+              </span>
+              <span className="opacity-80 hidden sm:inline">— {ideasResp.marketRegime.hint}</span>
+            </div>
+          )}
         </div>
 
         <section>

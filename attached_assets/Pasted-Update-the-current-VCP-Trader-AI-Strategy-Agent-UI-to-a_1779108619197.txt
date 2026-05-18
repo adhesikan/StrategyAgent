@@ -1,0 +1,184 @@
+Update the current VCP Trader AI / Strategy Agent UI to add the new AI Volatility Intelligence module without making the dashboard more complex or intimidating.
+
+Goal:
+Keep the current clean “Ideas” dashboard simple and trader-friendly. Add Bollinger Band / RVOL / trend / market-regime intelligence through progressive disclosure, not by adding large tables or too many metrics.
+
+Do not redesign the whole app. Make targeted UI and data-model updates only.
+
+Main UI changes:
+
+1. Keep the existing Ideas page structure
+- Preserve the current top navigation, Simple/Advanced toggle, market universe filter, setup cards, and “Review Setup” flow.
+- Do not add a new crowded dashboard.
+- Do not show raw technical indicator values on the main cards by default.
+
+2. Add simple signal pills to each opportunity card
+Add a compact row of human-readable signal pills under the setup description.
+
+Example pills:
+- Volatility Squeeze
+- RVOL Surge
+- Trend Aligned
+- Breakout Forming
+- Market Confirmed
+- Watchlist Match
+
+Use plain-language labels instead of technical jargon.
+
+Avoid labels like:
+- BB Width Percentile
+- Standard Deviation Expansion
+- ATR Compression Factor
+
+Use friendly wording:
+- “Volatility tightening”
+- “Strong participation”
+- “Momentum improving”
+- “Trend aligned”
+
+3. Improve the confidence badge
+Current badge says something like “75% Setup Match.”
+
+Keep this, but add one short reason below or beside it.
+
+Example:
+- 75% Setup Match
+- Volatility expansion setup
+
+Other examples:
+- Strong breakout conditions
+- Pullback near support
+- Momentum continuation
+- Early squeeze setup
+
+4. Add a small market condition banner
+Near the top of the Ideas page, add a small non-intrusive market regime summary.
+
+Example:
+“Market Environment: Bullish Momentum — breakout setups are favored today.”
+
+Other possible states:
+- Bullish Momentum
+- Choppy / Mixed
+- Risk-Off
+- Low Volatility
+- High Volatility
+- Rangebound
+
+Keep it compact. Do not make this a large panel.
+
+5. Add progressive disclosure inside “Advanced details”
+The main cards should stay simple. Put all deeper metrics inside the existing “Advanced details” expandable area.
+
+Advanced details may include:
+- Bollinger squeeze status
+- Band width percentile
+- RVOL
+- Trend alignment
+- Multi-timeframe confirmation
+- Market regime alignment
+- Liquidity check
+- Risk/reward check
+- False-breakout warning
+- Suggested stop area
+- Suggested target area
+
+Format this as a clean two-column or compact checklist, not a dense table.
+
+6. Add a setup explanation section in Advanced details
+Inside the expanded section, include a short AI-style explanation:
+
+Example:
+“AI read: AAPL is showing volatility compression with improving momentum and above-average participation. The setup is stronger while price remains above the short-term trend line. Risk increases if volume fades or price rejects near resistance.”
+
+Make this informational only. Do not use wording like “Buy now” or “Guaranteed trade.”
+
+7. Add simple setup categories
+Each idea should have one setup category:
+- Volatility Expansion
+- Momentum Continuation
+- Pullback Setup
+- Mean Reversion
+- Breakout Setup
+- Options Opportunity
+
+Use these categories to help the trader understand the idea quickly.
+
+8. Keep the Simple / Advanced view behavior
+Simple mode:
+- Symbol
+- company name
+- setup type
+- short plain-English explanation
+- estimated cost or risk
+- confidence badge
+- signal pills
+- Review Setup button
+- Add to Watchlist button
+
+Advanced mode:
+- everything in Simple mode
+- expanded technical details available
+- optional mini chart if already supported
+- risk/reward details
+- multi-timeframe confirmation
+
+9. Add data model support
+Extend the opportunity/setup object to support these fields:
+
+signalPills: string[]
+setupCategory: string
+confidenceReason: string
+marketRegime: string
+aiRead: string
+advancedMetrics: {
+  squeezeStatus?: string
+  bandWidthPercentile?: number
+  rvol?: number
+  trendAlignment?: string
+  timeframeConfirmation?: string[]
+  liquidityStatus?: string
+  riskReward?: string
+  falseBreakoutRisk?: string
+  stopArea?: string
+  targetArea?: string
+}
+
+Use mock/sample values where real data is not yet available.
+
+10. Compliance-safe language
+Make sure all copy is educational/informational and user-controlled.
+
+Use wording like:
+- “Review setup”
+- “Potential setup”
+- “Estimated risk”
+- “AI-ranked idea”
+- “No order is placed without your approval”
+- “For informational purposes only”
+
+Avoid:
+- “Buy”
+- “Sell now”
+- “Guaranteed”
+- “Profit target guaranteed”
+- “Recommended trade”
+
+11. Visual design requirements
+- Keep dark theme consistent with current UI.
+- Keep cards clean and uncluttered.
+- Signal pills should be small, subtle, and readable.
+- Do not add too many colors.
+- Use existing design tokens/components where possible.
+- Maintain mobile responsiveness.
+- Do not break current filters, tabs, or Review Setup action.
+
+12. Acceptance criteria
+- Ideas dashboard still feels simple and approachable.
+- Each setup card has 3–5 plain-English signal pills.
+- Confidence badge includes a short reason.
+- Market regime banner appears near the top.
+- Advanced details show deeper Bollinger/RVOL/trend/risk metrics only after expansion.
+- No raw technical overload appears in Simple mode.
+- No compliance-problematic language is introduced.
+- Existing navigation and card actions continue to work.

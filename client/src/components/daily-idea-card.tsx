@@ -37,6 +37,19 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getStrategyByInstrumentType, getStrategyKeyByInstrumentType, STRATEGY_KEY_TO_SLUG } from "@shared/strategy-catalog";
 
+export interface DailyIdeaAdvancedMetrics {
+  squeezeStatus?: string;
+  bandWidthPercentile?: number;
+  rvol?: number;
+  trendAlignment?: string;
+  timeframeConfirmation?: string[];
+  liquidityStatus?: string;
+  riskReward?: string;
+  falseBreakoutRisk?: string;
+  stopArea?: string;
+  targetArea?: string;
+}
+
 export interface DailyIdea {
   id: string;
   symbol: string;
@@ -46,6 +59,12 @@ export interface DailyIdea {
   title: string;
   simpleSummary: string;
   whyItAppeared: string;
+  // AI Volatility Intelligence — optional so legacy callers/tests don't break.
+  setupCategory?: string;
+  confidenceReason?: string;
+  signalPills?: string[];
+  aiRead?: string;
+  advancedMetrics?: DailyIdeaAdvancedMetrics;
   riskLevel: "low" | "medium" | "high";
   grade: string;
   score: number;
@@ -843,33 +862,70 @@ export function SimpleIdeaCard({ idea }: Props) {
             <div className="text-xs text-muted-foreground truncate mt-0.5">{idea.companyName}</div>
           )}
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge
-              variant="outline"
-              className={`text-[11px] font-semibold whitespace-nowrap cursor-help ${conviction.tone}`}
-              data-testid={`simple-confidence-${idea.id}`}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className={`text-[11px] font-semibold whitespace-nowrap cursor-help ${conviction.tone}`}
+                data-testid={`simple-confidence-${idea.id}`}
+              >
+                {idea.score}% Setup Match
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
+              <div className="font-semibold mb-1">Setup Match · {conviction.label}</div>
+              <div className="text-muted-foreground">
+                A 0–100 score combining technical signals, momentum, news sentiment, options liquidity, and risk fit.
+                Higher = more factors agree on this setup. It's not a price target or a prediction of profit.
+              </div>
+            </TooltipContent>
+          </Tooltip>
+          {idea.confidenceReason && (
+            <span
+              className="text-[10px] text-muted-foreground text-right max-w-[140px] leading-tight"
+              data-testid={`simple-confidence-reason-${idea.id}`}
             >
-              {idea.score}% Setup Match
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
-            <div className="font-semibold mb-1">Setup Match · {conviction.label}</div>
-            <div className="text-muted-foreground">
-              A 0–100 score combining technical signals, momentum, news sentiment, options liquidity, and risk fit.
-              Higher = more factors agree on this setup. It's not a price target or a prediction of profit.
-            </div>
-          </TooltipContent>
-        </Tooltip>
+              {idea.confidenceReason}
+            </span>
+          )}
+        </div>
       </div>
 
       <div>
-        <div className="text-sm font-semibold" data-testid={`simple-setup-${idea.id}`}>
-          {setup}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-sm font-semibold" data-testid={`simple-setup-${idea.id}`}>
+            {setup}
+          </div>
+          {idea.setupCategory && (
+            <Badge
+              variant="outline"
+              className="text-[10px] font-normal bg-muted/40 border-border/60"
+              data-testid={`simple-category-${idea.id}`}
+            >
+              {idea.setupCategory}
+            </Badge>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-1.5 leading-snug">
           {idea.simpleSummary}
         </p>
+        {idea.signalPills && idea.signalPills.length > 0 && (
+          <div
+            className="mt-2 flex flex-wrap gap-1"
+            data-testid={`simple-pills-${idea.id}`}
+          >
+            {idea.signalPills.map((pill) => (
+              <span
+                key={pill}
+                className="text-[10px] px-2 py-0.5 rounded-full border border-border/60 bg-muted/30 text-muted-foreground"
+                data-testid={`simple-pill-${idea.id}-${pill.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {pill}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="text-sm">
@@ -940,6 +996,68 @@ export function SimpleIdeaCard({ idea }: Props) {
               <Detail label="Data mode" value={idea.dataMode === "simulated" ? "Simulated" : "Live"} />
               <Detail label="AI score" value={`${idea.score} / 100`} />
             </div>
+            {idea.advancedMetrics && (
+              <div className="border-t pt-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                  Estimated volatility & trend signals
+                </div>
+                <p className="text-[10px] text-muted-foreground/80 italic mb-1.5">
+                  Derived from the scan's composite factors — not real-time indicator readings. Confirm on a live chart.
+                </p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1" data-testid={`simple-metrics-${idea.id}`}>
+                  {idea.advancedMetrics.squeezeStatus && (
+                    <Detail label="Volatility squeeze (est.)" value={idea.advancedMetrics.squeezeStatus} />
+                  )}
+                  {typeof idea.advancedMetrics.bandWidthPercentile === "number" && (
+                    <Detail
+                      label="Range tightness (est.)"
+                      value={`${idea.advancedMetrics.bandWidthPercentile} / 100`}
+                    />
+                  )}
+                  {typeof idea.advancedMetrics.rvol === "number" && (
+                    <Detail label="Relative volume (est.)" value={`${idea.advancedMetrics.rvol.toFixed(2)}×`} />
+                  )}
+                  {idea.advancedMetrics.trendAlignment && (
+                    <Detail label="Trend alignment" value={idea.advancedMetrics.trendAlignment} />
+                  )}
+                  {idea.advancedMetrics.timeframeConfirmation && (
+                    <Detail
+                      label="Confirmed on"
+                      value={idea.advancedMetrics.timeframeConfirmation.join(" · ")}
+                    />
+                  )}
+                  {idea.advancedMetrics.liquidityStatus && (
+                    <Detail label="Liquidity" value={idea.advancedMetrics.liquidityStatus} />
+                  )}
+                  {idea.advancedMetrics.riskReward && (
+                    <Detail label="Risk / reward" value={idea.advancedMetrics.riskReward} />
+                  )}
+                  {idea.advancedMetrics.falseBreakoutRisk && (
+                    <Detail label="False-breakout risk" value={idea.advancedMetrics.falseBreakoutRisk} />
+                  )}
+                  {idea.advancedMetrics.stopArea && (
+                    <Detail label="Suggested stop area" value={idea.advancedMetrics.stopArea} />
+                  )}
+                  {idea.advancedMetrics.targetArea && (
+                    <Detail label="Suggested target area" value={idea.advancedMetrics.targetArea} />
+                  )}
+                </div>
+              </div>
+            )}
+            {idea.aiRead && (
+              <div className="border-t pt-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                  AI read
+                </div>
+                <p
+                  className="text-muted-foreground leading-snug"
+                  data-testid={`simple-ai-read-${idea.id}`}
+                >
+                  {idea.aiRead}
+                </p>
+              </div>
+            )}
             <div className="border-t pt-2">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
                 Why it appeared

@@ -26,6 +26,8 @@ import {
   Activity,
   AlertTriangle,
   Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { DailyIdeaCard, DailyIdeaRow, SimpleIdeaCard, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
 import { ViewToggle, type ViewMode } from "@/components/view-toggle";
@@ -294,6 +296,10 @@ export default function HomeV2() {
   const { user } = useAuth();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("all");
+  // Lower "More trade ideas" section is collapsed by default so the Top 3
+  // hero stays the focus — keeps the dashboard pointed and less intimidating
+  // when 9+ ideas would otherwise spill below the fold.
+  const [showMoreIdeas, setShowMoreIdeas] = useState(false);
   const [ideasView, setIdeasView] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "card";
     const v = window.localStorage.getItem("home.ideasView");
@@ -779,7 +785,73 @@ export default function HomeV2() {
               </div>
             );
           })()}
-          <Tabs value={tab} onValueChange={setTab}>
+          {(() => {
+            // The Top 3 hero only renders when ≥ 3 ideas pass the instrument
+            // filter. In that case we collapse the lower tabs section behind a
+            // single toggle so the dashboard stays pointed. When fewer than 3
+            // ideas exist (or the tab is empty), the hero is hidden and we
+            // ALWAYS keep the lower tabs visible — otherwise users would see
+            // nothing at all.
+            const totalFiltered = ideasResp
+              ? ideasResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter)).length
+              : 0;
+            const topThreeShown = totalFiltered >= 3;
+            // Expanded grid is capped at 9 cards (slice(3, 12)) so the badge
+            // shows what users will actually see, not the raw remainder.
+            const moreCount = Math.min(9, Math.max(0, totalFiltered - 3));
+            // Hide the toggle when there are no extras to browse AND the Top 3
+            // already covered every available idea — but only when we have a
+            // real response (don't suppress during loading).
+            if (topThreeShown && moreCount === 0 && !ideasLoading) return null;
+            // No Top 3 → render tabs directly without the collapse wrapper so
+            // any matching ideas / empty-state UI stays visible.
+            if (!topThreeShown) return null;
+            return (
+              <div className="mt-5">
+                <button
+                  type="button"
+                  onClick={() => setShowMoreIdeas((v) => !v)}
+                  className="w-full flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 hover:bg-card transition-colors px-4 py-2.5 text-left"
+                  data-testid="button-toggle-more-ideas"
+                  aria-expanded={showMoreIdeas}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium">More trade ideas</span>
+                    {moreCount > 0 && (
+                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5" data-testid="badge-more-ideas-count">
+                        {moreCount}
+                      </Badge>
+                    )}
+                    <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
+                      {showMoreIdeas ? "Browse by stocks, options, watchlist, alerts" : "Tap to browse the rest of today's setups"}
+                    </span>
+                  </div>
+                  {showMoreIdeas ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
+                </button>
+              </div>
+            );
+          })()}
+          {(() => {
+            // Decide whether to render the tabs block. We show it when:
+            //   - the Top 3 hero is hidden (totalFiltered < 3) so users always
+            //     see SOMETHING (matching cards or the empty-state Card), OR
+            //   - the user has explicitly expanded "More trade ideas" AND
+            //     there are actual extras to show. Without the extras gate, a
+            //     stale `showMoreIdeas=true` from a prior tab would leak the
+            //     empty tabs block onto a tab where the Top 3 already covers
+            //     everything.
+            const totalFiltered = ideasResp
+              ? ideasResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter)).length
+              : 0;
+            const topThreeShown = totalFiltered >= 3;
+            const hasExtras = totalFiltered - 3 > 0;
+            return !topThreeShown || (showMoreIdeas && hasExtras);
+          })() && (
+          <Tabs value={tab} onValueChange={setTab} className="mt-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <TooltipProvider delayDuration={150}>
                 <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
@@ -880,6 +952,7 @@ export default function HomeV2() {
               </TabsContent>
             ))}
           </Tabs>
+          )}
         </section>
 
         <section>

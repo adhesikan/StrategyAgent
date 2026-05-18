@@ -34,9 +34,11 @@ interface AskPick {
 
 interface AskTradeDetail {
   symbol: string;
-  strategy: "cash_secured_put" | "covered_call";
+  strategy: "cash_secured_put" | "covered_call" | "long_call" | "long_put";
   strategyLabel: string;
   bias: string;
+  signalAlignment?: "aligned" | "contrary" | "neutral";
+  signalAlignmentNote?: string;
   spot: number;
   strike: number;
   optionType: "put" | "call";
@@ -279,6 +281,25 @@ export default function AskPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                {(data.tradeDetail.strategy === "long_call" || data.tradeDetail.strategy === "long_put") && data.tradeDetail.signalAlignmentNote && (
+                  <div
+                    className={`rounded-md border p-2 text-[11px] flex items-start gap-1.5 ${
+                      data.tradeDetail.signalAlignment === "aligned"
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                        : data.tradeDetail.signalAlignment === "contrary"
+                          ? "border-rose-500/30 bg-rose-500/10 text-rose-100"
+                          : "border-amber-500/30 bg-amber-500/10 text-amber-100"
+                    }`}
+                    data-testid="text-trade-detail-alignment"
+                  >
+                    {data.tradeDetail.signalAlignment === "contrary" ? (
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                    ) : (
+                      <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                    )}
+                    <span>{data.tradeDetail.signalAlignmentNote}</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div>
                     <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Strike</div>
@@ -296,38 +317,80 @@ export default function AskPage() {
                     </div>
                     <div className="text-[10px] text-muted-foreground">{data.tradeDetail.dte} days out</div>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Premium / contract</div>
-                    <div className="font-mono text-base text-emerald-300" data-testid="text-trade-detail-premium">
-                      +${data.tradeDetail.premiumPerContract.toFixed(0)}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      ${data.tradeDetail.premiumPerShare.toFixed(2)} / share
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">
-                      {data.tradeDetail.strategy === "cash_secured_put" ? "Collateral" : "Max if assigned"}
-                    </div>
-                    <div className="font-mono text-base text-foreground" data-testid="text-trade-detail-collateral">
-                      ${(data.tradeDetail.strategy === "cash_secured_put"
-                        ? data.tradeDetail.collateralPerContract
-                        : (data.tradeDetail.upsideCapPerContract ?? 0)).toFixed(0)}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {data.tradeDetail.strategy === "cash_secured_put"
-                        ? `Breakeven $${data.tradeDetail.breakeven.toFixed(2)}`
-                        : `Capped at $${data.tradeDetail.strike} strike`}
-                    </div>
-                  </div>
+                  {(() => {
+                    const isDebit = data.tradeDetail.strategy === "long_call" || data.tradeDetail.strategy === "long_put";
+                    return (
+                      <div>
+                        <div className="text-muted-foreground uppercase tracking-wide text-[10px]">
+                          {isDebit ? "Debit / contract" : "Premium / contract"}
+                        </div>
+                        <div
+                          className={`font-mono text-base ${isDebit ? "text-rose-300" : "text-emerald-300"}`}
+                          data-testid="text-trade-detail-premium"
+                        >
+                          {isDebit ? "-" : "+"}${data.tradeDetail.premiumPerContract.toFixed(0)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          ${data.tradeDetail.premiumPerShare.toFixed(2)} / share
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const td = data.tradeDetail;
+                    const isCsp = td.strategy === "cash_secured_put";
+                    const isCc = td.strategy === "covered_call";
+                    const isDebit = td.strategy === "long_call" || td.strategy === "long_put";
+                    const label = isCsp ? "Collateral" : isCc ? "Max if assigned" : "Breakeven";
+                    const valueText = isCsp
+                      ? `$${td.collateralPerContract.toFixed(0)}`
+                      : isCc
+                        ? `$${(td.upsideCapPerContract ?? 0).toFixed(0)}`
+                        : `$${td.breakeven.toFixed(2)}`;
+                    const subText = isCsp
+                      ? `Breakeven $${td.breakeven.toFixed(2)}`
+                      : isCc
+                        ? `Capped at $${td.strike} strike`
+                        : isDebit
+                          ? `${td.strategy === "long_call" ? "Above" : "Below"} this at expiry = profit`
+                          : "";
+                    return (
+                      <div>
+                        <div className="text-muted-foreground uppercase tracking-wide text-[10px]">{label}</div>
+                        <div className="font-mono text-base text-foreground" data-testid="text-trade-detail-collateral">
+                          {valueText}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">{subText}</div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs pt-1 border-t border-border/40">
                   <div>
-                    <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Max profit / contract</div>
-                    <div className="font-mono text-sm text-emerald-300" data-testid="text-trade-detail-max-profit">
-                      ${data.tradeDetail.maxProfitPerContract.toFixed(0)}
-                    </div>
+                    {(() => {
+                      const td = data.tradeDetail;
+                      // Long calls have theoretically uncapped upside — labeling
+                      // the target-based estimate as "Max profit" is misleading.
+                      // Long puts have a real cap (strike - debit per share).
+                      const isLongCall = td.strategy === "long_call";
+                      const isLongPut = td.strategy === "long_put";
+                      const label = isLongCall || isLongPut ? "Est. profit at target" : "Max profit / contract";
+                      const sub = isLongCall
+                        ? "Long calls have no upper cap — gains keep building above the target."
+                        : isLongPut
+                          ? `Hard cap if stock → $0: $${((td.strike - td.premiumPerShare) * 100).toFixed(0)} / contract.`
+                          : null;
+                      return (
+                        <>
+                          <div className="text-muted-foreground uppercase tracking-wide text-[10px]">{label}</div>
+                          <div className="font-mono text-sm text-emerald-300" data-testid="text-trade-detail-max-profit">
+                            ${td.maxProfitPerContract.toFixed(0)}
+                          </div>
+                          {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div>
                     <div className="text-muted-foreground uppercase tracking-wide text-[10px]">Max loss / contract</div>

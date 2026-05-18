@@ -607,6 +607,27 @@ async function restoreBrokerConnections() {
     },
     () => {
       log(`serving on port ${port}`);
+      // Warm the Yahoo Finance daily-quote cache for the most-shown tickers
+      // so the dashboard and Opportunity Radar render with real reference
+      // prices on first paint for users without a broker connected.
+      import("./services/yahoo-finance-cache")
+        .then(({ warmYahooCache, DEFAULT_WARM_UNIVERSE }) => {
+          warmYahooCache(DEFAULT_WARM_UNIVERSE)
+            .then((n) =>
+              log(`yahoo-cache: warmed ${n} of ${DEFAULT_WARM_UNIVERSE.length} symbols`),
+            )
+            .catch(() => {});
+          // Refresh once a day in the background.
+          setInterval(
+            () => {
+              warmYahooCache(DEFAULT_WARM_UNIVERSE).catch(() => {});
+            },
+            24 * 60 * 60 * 1000,
+          );
+        })
+        .catch((err) => {
+          log(`yahoo-cache: dynamic import failed: ${(err as Error).message}`);
+        });
     },
   );
 })();

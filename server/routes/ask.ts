@@ -185,7 +185,17 @@ function detectGenericTradeAsk(lower: string): boolean {
   if (/\b(long\s+calls?|buy\s+(a\s+|the\s+|some\s+)?calls?|call\s+options?|long\s+puts?|buy\s+(a\s+|the\s+|some\s+)?puts?|put\s+options?)\b/.test(lower)) return false;
   // Generic option / trade asks. We require the prompt to be ASKING for a
   // trade — not just mentioning options in passing.
-  return /\b(option\s+(trade|play|idea|setup|strategy)|find\s+me\s+(a\s+|an\s+|the\s+|some\s+)?(good\s+|best\s+)?(option\s+)?trade|good\s+(option\s+)?trade|best\s+(option\s+)?trade|trade\s+idea|trade\s+setup|what\s+(option\s+)?trade|any\s+(option\s+)?trade|suggest\s+(a\s+|an\s+)?(option\s+)?trade|recommend\s+(a\s+|an\s+)?(option\s+)?trade)\b/.test(lower);
+  if (/\b(option\s+(trade|play|idea|setup|strategy)|find\s+me\s+(a\s+|an\s+|the\s+|some\s+)?(good\s+|best\s+)?(option\s+)?trade|good\s+(option\s+)?trade|best\s+(option\s+)?trade|trade\s+idea|trade\s+setup|what\s+(option\s+)?trade|any\s+(option\s+)?trade|suggest\s+(a\s+|an\s+)?(option\s+)?trade|recommend\s+(a\s+|an\s+)?(option\s+)?trade)\b/.test(lower)) {
+    return true;
+  }
+  // Expiry-shorthand asks like "find a 0 DTE trade on MU", "weekly trade on
+  // TSLA", "swing trade on NVDA", "play on AMD". These all imply the user
+  // wants a structured trade idea but don't specify direction. We REQUIRE an
+  // explicit ask verb so educational/definitional prompts like "what is the
+  // trade on MU price" or "explain 0 DTE" don't accidentally fire.
+  const askVerb = /\b(find|give\s+me|show\s+me|suggest|recommend|build|need|want|looking\s+for|what(?:'s|\s+is)?\s+(?:a|the|some)?\s*(?:good|best)?|any|good|best|consider)\b/;
+  if (!askVerb.test(lower)) return false;
+  return /\b((0|zero|same[-\s]?day|1|2|3|5|7)\s*dte\s+(trade|play|option|setup|idea)|(0|zero)\s*dte\b|weekly\s+(trade|play|option|setup)|swing\s+(trade|play|setup)|day\s+trade|short[-\s]?term\s+(trade|play|setup)|(play|trade|setup|idea)\s+(on|for|in)\s+[a-z]{1,5}|directional\s+(trade|play|bet)|bullish\s+(trade|play|setup)|bearish\s+(trade|play|setup))\b/.test(lower);
 }
 
 // Bull-call or bear-put debit spread ticket. Both legs come from the

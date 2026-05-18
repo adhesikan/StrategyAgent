@@ -492,7 +492,14 @@ export default function HomeV2() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {ideasResp?.dataMode === "simulated" && (
-                <Badge variant="outline" className="text-[10px]" data-testid="badge-simulated">Simulated data</Badge>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] border-blue-500/30 text-blue-300/90 bg-blue-500/5"
+                  title="Trial mode: example prices are anchored to free daily market closes from Yahoo Finance (with a Stooq fallback), refreshed once a day. Connect a broker for live data."
+                  data-testid="badge-simulated"
+                >
+                  Mock data · daily reference prices
+                </Badge>
               )}
               <span className="text-xs text-muted-foreground hidden sm:inline">Sort by</span>
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
@@ -950,7 +957,7 @@ export default function HomeV2() {
                         Build watchlist
                       </Button>
                       {ideasResp?.brokerConnected === false && (
-                        <Button size="sm" variant="outline" onClick={() => navigate("/settings")} data-testid="button-empty-connect-broker">
+                        <Button size="sm" variant="outline" onClick={() => navigate("/settings")} data-testid="button-empty-connect-broker" title="Currently showing example data anchored to Yahoo Finance daily closes. Connect a broker for live data.">
                           Connect broker
                         </Button>
                       )}

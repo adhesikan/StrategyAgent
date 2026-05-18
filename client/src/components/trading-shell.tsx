@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
-import { ShieldCheck, FlaskConical, Activity, Plug, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, FlaskConical, Activity, Plug, CheckCircle2, Database } from "lucide-react";
 import { Link } from "wouter";
 import { getMarketSessionInfo } from "@shared/market-session";
 import { OpenBrokerButton } from "@/components/open-broker-button";
@@ -134,6 +134,18 @@ export function BrokerStatusStrip() {
             <Activity className="h-3 w-3" />
             {sessionInfo.label}
           </Badge>
+
+          {!isConnected && (
+            <Badge
+              variant="outline"
+              title="Trial mode: example prices are anchored to free daily market closes from Yahoo Finance (with a Stooq fallback), refreshed once a day. Connect a broker to use live market data."
+              className="border-blue-500/30 text-blue-300/90 bg-blue-500/5 gap-1.5"
+              data-testid="pill-yahoo-reference"
+            >
+              <Database className="h-3 w-3" />
+              Mock data · daily reference prices
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>

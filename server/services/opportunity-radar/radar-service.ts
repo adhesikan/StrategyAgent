@@ -11,6 +11,7 @@
 
 import { storage } from "../../storage";
 import { fetchQuotesFromBroker, type QuoteData } from "../../broker-service";
+import { getCachedYahooQuote, getYahooQuote } from "../yahoo-finance-cache";
 import { getBrokerAccounts, getBrokerPositions } from "../../broker";
 import { resolveUniverseWithMeta, type RadarUniverseId, type UniverseSource } from "./universe-service";
 import { defaultMLAdapter, type MLAdapter } from "./ml-adapter";
@@ -193,6 +194,29 @@ function pickBiasForSymbol(sym: string, requested: Bias | "any" | undefined, str
 }
 
 function buildMockQuote(sym: string): QuoteData {
+  // Prefer the daily Yahoo Finance reference price (warmed once/day) so mock
+  // examples shown to trial users are anchored to real prior-day closes
+  // instead of a hash-based fake. Falls back to the deterministic hash if
+  // Yahoo hasn't returned a value for this symbol yet.
+  const ref = getCachedYahooQuote(sym);
+  if (ref && ref.regularMarketPrice > 0 && ref.previousClose > 0) {
+    const last = ref.regularMarketPrice;
+    const prevClose = ref.previousClose;
+    const volume = ref.volume > 0 ? ref.volume : 500_000;
+    return {
+      symbol: sym,
+      last: round2(last),
+      change: round2(last - prevClose),
+      changePercent: round2(((last - prevClose) / prevClose) * 100),
+      volume,
+      avgVolume: Math.round(volume * 0.85),
+      high: round2(ref.high),
+      low: round2(ref.low),
+      open: round2(prevClose * 1.001),
+      prevClose: round2(prevClose),
+    };
+  }
+
   const h = symbolHash(sym);
   const base = 25 + (h % 350);
   const drift = ((h % 700) - 350) / 100; // -3.5% .. +3.5%
@@ -201,6 +225,8 @@ function buildMockQuote(sym: string): QuoteData {
   const low = last * 0.97;
   const prevClose = last / (1 + drift / 100);
   const volume = 500_000 + (h % 9_500_000);
+  // Kick off a background fetch so subsequent calls can use the real price.
+  void getYahooQuote(sym);
   return {
     symbol: sym,
     last: round2(last),

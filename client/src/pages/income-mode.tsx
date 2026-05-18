@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,12 +10,23 @@ import { useToast } from "@/hooks/use-toast";
 import { BrokerStatusStrip, ComplianceFooter } from "@/components/trading-shell";
 import { CandidateScenarioCard, CandidateScenarioRow, OrderReviewModal, type CandidateScenario } from "@/components/goal-mode-shell";
 import { DailyIdeasSection } from "@/components/daily-ideas-section";
+import { OptionTradeTicket } from "@/components/option-trade-ticket";
+import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import { DollarSign, AlertTriangle, Sparkles } from "lucide-react";
 import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { HowToUseSection } from "@/components/how-to-use-section";
 import { cn } from "@/lib/utils";
+
+interface BrokerAccount {
+  id: string;
+  name: string;
+  type: string;
+  buyingPower: number;
+  equity: number;
+  currency: string;
+}
 import {
   Select,
   SelectContent,
@@ -86,7 +98,17 @@ export default function IncomeModePage() {
   const [activeScenario, setActiveScenario] = useState<CandidateScenario | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
 
+  const [optionTicketOpen, setOptionTicketOpen] = useState(false);
+  const [stockTicketOpen, setStockTicketOpen] = useState(false);
+  const [ticketSymbol, setTicketSymbol] = useState<string>("");
+  const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
+
   const { isConnected: brokerConnected } = useBrokerStatus();
+
+  const { data: brokerAccounts } = useQuery<BrokerAccount[]>({
+    queryKey: ["/api/broker/accounts"],
+    enabled: brokerConnected,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +122,18 @@ export default function IncomeModePage() {
 
   const handlePrepareOrder = (s: CandidateScenario) => {
     setActiveScenario(s);
-    setReviewOpen(true);
+    setTicketSymbol(s.ticker);
+    if (!selectedAccount && brokerAccounts && brokerAccounts.length > 0) {
+      setSelectedAccount(brokerAccounts[0]);
+    }
+    const t = s.strategyType.toLowerCase();
+    const mentionsOption = /(call|put|spread|condor|butterfly|straddle|strangle|option)/.test(t);
+    const isStockOnly = !mentionsOption && /(stock|equity|share)/.test(t);
+    if (isStockOnly) {
+      setStockTicketOpen(true);
+    } else {
+      setOptionTicketOpen(true);
+    }
   };
 
   const handleSend = () => {
@@ -314,6 +347,37 @@ export default function IncomeModePage() {
         onClose={() => setReviewOpen(false)}
         scenario={activeScenario}
         onSend={handleSend}
+      />
+
+      <OptionTradeTicket
+        open={optionTicketOpen}
+        onOpenChange={setOptionTicketOpen}
+        symbol={ticketSymbol}
+        onSymbolChange={setTicketSymbol}
+        brokerAccounts={brokerAccounts || []}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+      />
+
+      <StockTradeTicket
+        open={stockTicketOpen}
+        onOpenChange={setStockTicketOpen}
+        scanResult={
+          activeScenario && ticketSymbol
+            ? {
+                ticker: ticketSymbol,
+                price: 0,
+                resistance: null,
+                stopLoss: null,
+                stage: "ready",
+                patternScore: 0,
+              }
+            : null
+        }
+        brokerAccounts={brokerAccounts || []}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+        onSymbolChange={(sym) => setTicketSymbol(sym)}
       />
     </div>
   );

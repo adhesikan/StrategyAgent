@@ -476,6 +476,21 @@ const GRADE_COLORS: Record<string, string> = {
   C: "bg-amber-500/15 text-amber-400 border-amber-500/30",
 };
 
+function gradeExplanation(grade: CandidateScenario["probabilityGrade"]): string {
+  switch (grade) {
+    case "A+":
+      return "Grade A+: Strongest setup — high composite score across technicals, sentiment, liquidity, and risk. Historically the highest-conviction bucket. Still requires your review before any order is sent.";
+    case "A":
+      return "Grade A: Strong setup with clean alignment across most signals. High conviction, though not as strong as A+. Always confirm before sending.";
+    case "B":
+      return "Grade B: Acceptable setup — meets the core criteria but with weaker confirmation on one or two signals (volume, trend, or risk/reward). Trade smaller or wait for confirmation.";
+    case "C":
+      return "Grade C: Marginal setup — barely passes the screen. Consider skipping or using paper mode first. Below 60 we hide the idea entirely.";
+    default:
+      return "Composite grade from our scoring engine (technical + sentiment + momentum + liquidity + risk).";
+  }
+}
+
 export function CandidateScenarioCard({ scenario, onReview, onPrepareOrder }: CandidateScenarioCardProps) {
   return (
     <Card
@@ -498,9 +513,21 @@ export function CandidateScenarioCard({ scenario, onReview, onPrepareOrder }: Ca
               <span className="text-muted-foreground">{scenario.bias}</span>
             </div>
           </div>
-          <Badge className={`text-xs font-semibold ${GRADE_COLORS[scenario.probabilityGrade]}`} data-testid={`badge-grade-${scenario.id}`}>
-            Grade {scenario.probabilityGrade}
-          </Badge>
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  className={`text-xs font-semibold cursor-help ${GRADE_COLORS[scenario.probabilityGrade]}`}
+                  data-testid={`badge-grade-${scenario.id}`}
+                >
+                  Grade {scenario.probabilityGrade}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
+                {gradeExplanation(scenario.probabilityGrade)}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -587,9 +614,21 @@ export function CandidateScenarioRow({ scenario, onReview, onPrepareOrder }: Can
     >
       <div className="flex items-center gap-2 min-w-[150px]">
         <span className="text-base font-bold" data-testid={`row-ticker-${scenario.id}`}>{scenario.ticker}</span>
-        <Badge className={`text-[10px] font-semibold ${GRADE_COLORS[scenario.probabilityGrade]}`}>
-          {scenario.probabilityGrade}
-        </Badge>
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                className={`text-[10px] font-semibold cursor-help ${GRADE_COLORS[scenario.probabilityGrade]}`}
+                data-testid={`row-grade-${scenario.id}`}
+              >
+                {scenario.probabilityGrade}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[280px] text-xs leading-snug">
+              {gradeExplanation(scenario.probabilityGrade)}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       <Badge variant="outline" className="text-[10px]">{scenario.strategyType}</Badge>
       <span className="text-xs text-muted-foreground hidden sm:inline">{scenario.bias}</span>

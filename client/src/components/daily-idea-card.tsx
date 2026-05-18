@@ -865,13 +865,14 @@ export function SimpleIdeaCard({ idea }: Props) {
         <div className="flex flex-col items-end gap-1 shrink-0">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge
-                variant="outline"
-                className={`text-[11px] font-semibold whitespace-nowrap cursor-help ${conviction.tone}`}
-                data-testid={`simple-confidence-${idea.id}`}
-              >
-                {idea.score}% Setup Match
-              </Badge>
+              <span tabIndex={0} className="cursor-help inline-flex" data-testid={`simple-confidence-${idea.id}`}>
+                <Badge
+                  variant="outline"
+                  className={`text-[11px] font-semibold whitespace-nowrap ${conviction.tone}`}
+                >
+                  {idea.score}% Setup Match
+                </Badge>
+              </span>
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-[320px] text-xs leading-snug">
               <div className="font-semibold mb-1">

@@ -205,10 +205,9 @@ const PLACEHOLDERS = [
 type SortKey = "grade" | "score" | "risk_low" | "risk_high" | "symbol";
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "grade", label: "Best grade" },
-  { value: "score", label: "Highest score" },
-  { value: "risk_low", label: "Lowest max risk" },
-  { value: "risk_high", label: "Highest max risk" },
+  { value: "grade", label: "Best Setup Match" },
+  { value: "risk_low", label: "Lowest cost" },
+  { value: "risk_high", label: "Highest cost" },
   { value: "symbol", label: "Symbol A→Z" },
 ];
 

@@ -254,6 +254,25 @@ export function setupTypeLabel(idea: Pick<DailyIdea, "instrumentType">): string 
   }
 }
 
+// Tiny qualitative sizing hint so the estimated cost reads with context
+// ("~$351 · 1 contract") instead of as a bare number. Mirrors the entry-leg
+// shape in PLAN_PREVIEW but as a single user-facing string.
+export function sizingHint(instrumentType: DailyIdea["instrumentType"]): string {
+  switch (instrumentType) {
+    case "stock":
+      return "≈ 100 shares";
+    case "long_call":
+    case "long_put":
+      return "≈ 1 option contract";
+    case "spread":
+      return "≈ 1 spread (2 legs)";
+    case "covered_call":
+      return "≈ 100 shares + 1 short call";
+    case "cash_secured_put":
+      return "≈ 1 short put (cash held)";
+  }
+}
+
 interface Conviction {
   label: string;
   tone: string;
@@ -806,9 +825,11 @@ export function SimpleIdeaCard({ idea }: Props) {
   const conviction = convictionFromScore(idea.score);
   const setup = setupTypeLabel(idea);
   const estimatedCost = idea.capitalNeeded > 0 ? idea.capitalNeeded : idea.maxRisk;
+  const sizing = sizingHint(idea.instrumentType);
   const strategy = getStrategyByInstrumentType(idea.instrumentType);
 
   return (
+    <TooltipProvider delayDuration={200}>
     <Card
       className="p-5 hover-elevate border-border/60 bg-card/60 flex flex-col gap-4"
       data-testid={`card-simple-idea-${idea.id}`}
@@ -822,13 +843,24 @@ export function SimpleIdeaCard({ idea }: Props) {
             <div className="text-xs text-muted-foreground truncate mt-0.5">{idea.companyName}</div>
           )}
         </div>
-        <Badge
-          variant="outline"
-          className={`text-[11px] font-semibold whitespace-nowrap ${conviction.tone}`}
-          data-testid={`simple-confidence-${idea.id}`}
-        >
-          {idea.score}% Setup Match
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              variant="outline"
+              className={`text-[11px] font-semibold whitespace-nowrap cursor-help ${conviction.tone}`}
+              data-testid={`simple-confidence-${idea.id}`}
+            >
+              {idea.score}% Setup Match
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
+            <div className="font-semibold mb-1">Setup Match · {conviction.label}</div>
+            <div className="text-muted-foreground">
+              A 0–100 score combining technical signals, momentum, news sentiment, options liquidity, and risk fit.
+              Higher = more factors agree on this setup. It's not a price target or a prediction of profit.
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div>
@@ -841,10 +873,24 @@ export function SimpleIdeaCard({ idea }: Props) {
       </div>
 
       <div className="text-sm">
-        <span className="text-muted-foreground">Estimated cost: </span>
-        <span className="font-semibold" data-testid={`simple-cost-${idea.id}`}>
-          ~${estimatedCost.toLocaleString()}
-        </span>
+        <div>
+          <span className="text-muted-foreground">Estimated cost: </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="font-semibold cursor-help" data-testid={`simple-cost-${idea.id}`}>
+                ~${estimatedCost.toLocaleString()}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[280px] text-xs leading-snug">
+              {idea.capitalNeeded > 0
+                ? "Approximate cash to set aside for this position — share price × shares for stocks, or premium × contracts × 100 for options. Excludes commissions."
+                : "Defined-risk options idea: max loss equals the debit shown. No separate capital figure."}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-0.5" data-testid={`simple-sizing-${idea.id}`}>
+          {sizing}
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2">
@@ -939,6 +985,7 @@ export function SimpleIdeaCard({ idea }: Props) {
         )}
       </div>
     </Card>
+    </TooltipProvider>
   );
 }
 

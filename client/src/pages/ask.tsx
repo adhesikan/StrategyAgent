@@ -34,8 +34,15 @@ interface AskPick {
 
 interface AskTradeDetail {
   symbol: string;
-  strategy: "cash_secured_put" | "covered_call" | "long_call" | "long_put";
+  strategy:
+    | "cash_secured_put"
+    | "covered_call"
+    | "long_call"
+    | "long_put"
+    | "bull_call_spread"
+    | "bear_put_spread";
   strategyLabel: string;
+  legsLabel?: string | null;
   bias: string;
   signalAlignment?: "aligned" | "contrary" | "neutral";
   signalAlignmentNote?: string;
@@ -281,7 +288,7 @@ export default function AskPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {(data.tradeDetail.strategy === "long_call" || data.tradeDetail.strategy === "long_put") && data.tradeDetail.signalAlignmentNote && (
+                {(data.tradeDetail.strategy === "long_call" || data.tradeDetail.strategy === "long_put" || data.tradeDetail.strategy === "bull_call_spread" || data.tradeDetail.strategy === "bear_put_spread") && data.tradeDetail.signalAlignmentNote && (
                   <div
                     className={`rounded-md border p-2 text-[11px] flex items-start gap-1.5 ${
                       data.tradeDetail.signalAlignment === "aligned"
@@ -318,7 +325,8 @@ export default function AskPage() {
                     <div className="text-[10px] text-muted-foreground">{data.tradeDetail.dte} days out</div>
                   </div>
                   {(() => {
-                    const isDebit = data.tradeDetail.strategy === "long_call" || data.tradeDetail.strategy === "long_put";
+                    const s = data.tradeDetail.strategy;
+                    const isDebit = s === "long_call" || s === "long_put" || s === "bull_call_spread" || s === "bear_put_spread";
                     return (
                       <div>
                         <div className="text-muted-foreground uppercase tracking-wide text-[10px]">
@@ -340,7 +348,8 @@ export default function AskPage() {
                     const td = data.tradeDetail;
                     const isCsp = td.strategy === "cash_secured_put";
                     const isCc = td.strategy === "covered_call";
-                    const isDebit = td.strategy === "long_call" || td.strategy === "long_put";
+                    const isLong = td.strategy === "long_call" || td.strategy === "long_put";
+                    const isSpread = td.strategy === "bull_call_spread" || td.strategy === "bear_put_spread";
                     const label = isCsp ? "Collateral" : isCc ? "Max if assigned" : "Breakeven";
                     const valueText = isCsp
                       ? `$${td.collateralPerContract.toFixed(0)}`
@@ -351,9 +360,11 @@ export default function AskPage() {
                       ? `Breakeven $${td.breakeven.toFixed(2)}`
                       : isCc
                         ? `Capped at $${td.strike} strike`
-                        : isDebit
+                        : isLong
                           ? `${td.strategy === "long_call" ? "Above" : "Below"} this at expiry = profit`
-                          : "";
+                          : isSpread
+                            ? `${td.strategy === "bull_call_spread" ? "Above" : "Below"} this at expiry = profit`
+                            : "";
                     return (
                       <div>
                         <div className="text-muted-foreground uppercase tracking-wide text-[10px]">{label}</div>
@@ -366,6 +377,13 @@ export default function AskPage() {
                   })()}
                 </div>
 
+                {data.tradeDetail.legsLabel && (
+                  <div className="text-[11px] text-muted-foreground -mt-1" data-testid="text-trade-detail-legs">
+                    <span className="uppercase tracking-wide text-[10px] mr-1.5">Legs:</span>
+                    <span className="font-mono text-foreground">{data.tradeDetail.legsLabel}</span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 text-xs pt-1 border-t border-border/40">
                   <div>
                     {(() => {
@@ -373,6 +391,8 @@ export default function AskPage() {
                       // Long calls have theoretically uncapped upside — labeling
                       // the target-based estimate as "Max profit" is misleading.
                       // Long puts have a real cap (strike - debit per share).
+                      // Spreads (bull-call / bear-put) have a real hard cap
+                      // (width - debit) so "Max profit" is accurate.
                       const isLongCall = td.strategy === "long_call";
                       const isLongPut = td.strategy === "long_put";
                       const label = isLongCall || isLongPut ? "Est. profit at target" : "Max profit / contract";

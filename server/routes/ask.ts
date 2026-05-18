@@ -13,7 +13,7 @@ import { parsePrompt } from "../agent/prompt-interpreter";
 import { selectInstrument } from "../services/instrument-selector";
 import { scoreSetup } from "../services/probability-engine";
 import type { TradeSetup } from "../agent/strategy-engine";
-import { buildLongCallPlan, buildLongPutPlan, type OptionPlan } from "../services/options-evaluator";
+import { buildLongCallPlan, buildLongPutPlan, buildBullCallSpread, buildBearPutSpread, type OptionPlan } from "../services/options-evaluator";
 
 // Compact, human-readable trade ticket returned alongside the AI prose so
 // users see real strikes/expiry/credit instead of a vague suggestion. Every
@@ -21,11 +21,21 @@ import { buildLongCallPlan, buildLongPutPlan, type OptionPlan } from "../service
 // builders — we never invent strikes.
 export interface AskTradeDetail {
   symbol: string;
-  // Directional debit trades (long_call/long_put) are debits paid up front;
-  // CSP/CC are credit-collecting income trades. The frontend branches on
-  // strategy to render the right labels (Debit vs Credit, Breakeven box, etc).
-  strategy: "cash_secured_put" | "covered_call" | "long_call" | "long_put";
+  // Directional debit trades (long_call/long_put/bull_call_spread/bear_put_spread)
+  // are debits paid up front; CSP/CC are credit-collecting income trades. The
+  // frontend branches on strategy to render the right labels (Debit vs Credit,
+  // Breakeven box, legs summary for spreads, etc).
+  strategy:
+    | "cash_secured_put"
+    | "covered_call"
+    | "long_call"
+    | "long_put"
+    | "bull_call_spread"
+    | "bear_put_spread";
   strategyLabel: string;
+  // For multi-leg structures, a human-readable summary of the legs
+  // (e.g. "Long $100 / Short $105 call"). Single-leg tickets leave this null.
+  legsLabel?: string | null;
   bias: "bullish" | "bearish" | "neutral";
   // Whether the active signals on this symbol AGREE with the requested trade
   // direction. Set when the trade is built from a directional ask (long
@@ -124,6 +134,100 @@ function detectDirectionalOption(lower: string): "long_call" | "long_put" | null
   if (/\b(long\s+calls?|buy\s+(a\s+|the\s+|some\s+)?calls?|call\s+options?)\b/.test(lower)) return "long_call";
   if (/\b(long\s+puts?|buy\s+(a\s+|the\s+|some\s+)?puts?|put\s+options?)\b/.test(lower)) return "long_put";
   return null;
+}
+
+// Detect defined-risk debit-spread asks. Returns:
+//   - "bull_call_spread" for explicit bull-call-spread phrasings
+//   - "bear_put_spread" for explicit bear-put-spread phrasings
+//   - "debit_spread" when the user just says "debit spread" / "vertical" —
+//     direction is resolved later from the symbol's detected bias
+//   - null otherwise
+// We deliberately exclude credit spreads, iron condors, butterflies, strangles,
+// straddles, collars, calendars, and diagonals — those need different builders
+// we don't yet expose to Ask.
+// "bear call spread" and "bull put spread" are CREDIT verticals — selling
+// premium, not paying a debit. We do not yet expose builders for them in Ask,
+// so they must be rejected before the generic "call spread"/"put spread"
+// patterns below match (otherwise "bear call spread" would silently route to
+// bull_call_spread). Also rejects explicit credit spreads, iron condors,
+// butterflies, strangles, straddles, collars, calendars, and diagonals.
+const UNSUPPORTED_MULTI_LEG = /\b(credit\s+spread|bear\s+call\s+spread|bull\s+put\s+spread|call\s+credit\s+spread|put\s+credit\s+spread|iron|condor|butterfly|strangle|straddle|collar|calendar|diagonal)\b/;
+function detectSpreadIntent(lower: string): "bull_call_spread" | "bear_put_spread" | "debit_spread" | null {
+  if (UNSUPPORTED_MULTI_LEG.test(lower)) return null;
+  if (/\bbull\s+call\s+spread\b|\bcall\s+debit\s+spread\b/.test(lower)) return "bull_call_spread";
+  if (/\bbear\s+put\s+spread\b|\bput\s+debit\s+spread\b/.test(lower)) return "bear_put_spread";
+  // Generic "call spread" → bull; "put spread" → bear (debit spread default).
+  if (/\bcall\s+spread\b/.test(lower)) return "bull_call_spread";
+  if (/\bput\s+spread\b/.test(lower)) return "bear_put_spread";
+  // "debit spread" / "vertical spread" with no direction — resolve via bias later.
+  if (/\bdebit\s+spread\b|\bvertical(\s+spread)?\b/.test(lower)) return "debit_spread";
+  return null;
+}
+
+// Bull-call or bear-put debit spread ticket. Both legs come from the
+// deterministic option-plan builders so strikes/widths/debit/breakeven are
+// internally consistent — we never invent numbers.
+function buildSpreadTradeDetail(
+  symbol: string,
+  livePrice: number | null,
+  spread: "bull_call_spread" | "bear_put_spread",
+): AskTradeDetail {
+  const spot = livePrice && livePrice > 0 ? livePrice : 100;
+  const dataMode: "live" | "simulated" = livePrice && livePrice > 0 ? "live" : "simulated";
+  const bullish = spread === "bull_call_spread";
+
+  const setup: TradeSetup = {
+    id: `ask_${Date.now()}`,
+    symbol,
+    assetType: "option",
+    strategyName: bullish ? "Bull Call Spread" : "Bear Put Spread",
+    timeframe: "1D",
+    setupType: "trade",
+    bias: bullish ? "bullish" : "bearish",
+    entry: spot,
+    stop: bullish ? spot * 0.95 : spot * 1.05,
+    targets: bullish ? [spot * 1.05, spot * 1.08] : [spot * 0.95, spot * 0.92],
+    rewardRisk: null,
+    modelScore: null,
+    reasoning: [],
+    invalidation: [],
+    metrics: { currentPrice: spot },
+    dataSource: dataMode === "live" ? "live broker quote" : "simulated price baseline",
+    generatedAt: new Date().toISOString(),
+  };
+
+  const plan: OptionPlan = bullish ? buildBullCallSpread(setup) : buildBearPutSpread(setup);
+  const longLeg = plan.legs.find((l) => l.side === "long") ?? plan.legs[0];
+  const shortLeg = plan.legs.find((l) => l.side === "short") ?? plan.legs[1];
+  const debit = Math.abs(plan.netDebit);
+  const legType = longLeg.type;
+  const legsLabel = `Long $${longLeg.strike} / Short $${shortLeg.strike} ${legType}`;
+
+  return {
+    symbol,
+    strategy: spread,
+    strategyLabel: bullish ? "Bull call spread" : "Bear put spread",
+    legsLabel,
+    bias: setup.bias,
+    spot: parseFloat(spot.toFixed(2)),
+    // Headline strike = the long leg (the one you buy). The shortLeg lives in
+    // legsLabel so the user sees both.
+    strike: longLeg.strike,
+    optionType: legType,
+    expiry: plan.expiry,
+    dte: plan.dte,
+    premiumPerShare: parseFloat(debit.toFixed(2)),
+    premiumPerContract: parseFloat((debit * 100).toFixed(2)),
+    collateralPerContract: 0,
+    upsideCapPerContract: null,
+    maxProfitPerContract: parseFloat((plan.maxProfit * 100).toFixed(2)),
+    maxLossPerContract: parseFloat((plan.maxLoss * 100).toFixed(2)),
+    breakeven: plan.breakeven,
+    delta: longLeg.delta,
+    reasons: plan.reasons,
+    warnings: plan.warnings,
+    dataMode,
+  };
 }
 
 function buildIncomeTradeDetail(
@@ -559,23 +663,31 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // option ticket (strike, expiry, credit, max profit/loss) so the
       // response is actionable instead of generic prose.
       let tradeDetail: AskTradeDetail | null = null;
-      // For directional long_call/long_put asks we also run a bias check so
-      // we can tell the user whether the signals AGREE with their intent.
-      let directionalBias: { direction: "long_call" | "long_put"; bias: "bullish" | "bearish" | "neutral"; biasReason: string } | null = null;
+      // For directional debit asks (long_call/long_put/bull_call_spread/
+      // bear_put_spread) we run a bias check so we can tell the user whether
+      // the signals AGREE with their intent.
+      type DirectionalKind = "long_call" | "long_put" | "bull_call_spread" | "bear_put_spread";
+      let directionalBias: { direction: DirectionalKind; bias: "bullish" | "bearish" | "neutral"; biasReason: string } | null = null;
       try {
         const parsedPrompt = parsePrompt(question);
+        const lower = question.toLowerCase();
         if (parsedPrompt.incomeIntent && tickers.length > 0) {
           const sym = tickers[0];
           const live = ctx.tickers.find((t) => t.symbol === sym)?.last ?? null;
           tradeDetail = buildIncomeTradeDetail(sym, live, parsedPrompt.incomeIntent);
-        } else {
-          const dir = detectDirectionalOption(question.toLowerCase());
-          if (dir && tickers.length > 0) {
+        } else if (tickers.length > 0) {
+          // Resolve which debit structure was asked for. Order: explicit spread
+          // wording first (since "call spread" contains "call"), then
+          // single-leg long-call/long-put.
+          const spreadAsk = detectSpreadIntent(lower);
+          const dirAsk = !spreadAsk ? detectDirectionalOption(lower) : null;
+          if (spreadAsk || dirAsk) {
             const sym = tickers[0];
             const live = ctx.tickers.find((t) => t.symbol === sym)?.last ?? null;
             // Determine bias from the same scan engine the rest of the app
             // uses (price action + news + AI sentiment). This is what makes
-            // the answer respect "if bullish" qualifiers in the prompt.
+            // the answer respect "if bullish/bearish" qualifiers AND resolves
+            // ambiguous "debit spread" asks to bull-call vs bear-put.
             let biasMeta: { bias: "bullish" | "bearish" | "neutral"; biasReason: string } = {
               bias: "neutral",
               biasReason: `No clear directional signal on ${sym} right now from price action, news, or sentiment.`,
@@ -586,18 +698,38 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
             } catch (err) {
               console.warn("[ask] directional bias check failed:", err);
             }
-            const td = buildDirectionalTradeDetail(sym, live, dir);
-            const wantBullish = dir === "long_call";
+
+            // Resolve "debit_spread" (no direction in prompt) using the bias.
+            // If the bias is neutral, default to bull-call so we still return
+            // a concrete ticket — the alignment banner will flag it as speculative.
+            let resolvedKind: DirectionalKind;
+            if (spreadAsk === "debit_spread") {
+              resolvedKind = biasMeta.bias === "bearish" ? "bear_put_spread" : "bull_call_spread";
+            } else if (spreadAsk) {
+              resolvedKind = spreadAsk;
+            } else {
+              resolvedKind = dirAsk!;
+            }
+
+            const td = resolvedKind === "bull_call_spread" || resolvedKind === "bear_put_spread"
+              ? buildSpreadTradeDetail(sym, live, resolvedKind)
+              : buildDirectionalTradeDetail(sym, live, resolvedKind);
+
+            const wantBullish = resolvedKind === "long_call" || resolvedKind === "bull_call_spread";
             const matches = (wantBullish && biasMeta.bias === "bullish") || (!wantBullish && biasMeta.bias === "bearish");
             const contrary = (wantBullish && biasMeta.bias === "bearish") || (!wantBullish && biasMeta.bias === "bullish");
+            const dirLabel = td.strategyLabel.toLowerCase();
+            const oppositeLabel = wantBullish
+              ? (resolvedKind === "long_call" ? "long put" : "bear put spread")
+              : (resolvedKind === "long_put" ? "long call" : "bull call spread");
             td.signalAlignment = matches ? "aligned" : contrary ? "contrary" : "neutral";
             td.signalAlignmentNote = matches
-              ? `Signals on ${sym} are ${biasMeta.bias} — they support a ${wantBullish ? "long call" : "long put"}.`
+              ? `Signals on ${sym} are ${biasMeta.bias} — they support a ${dirLabel}.`
               : contrary
-                ? `Signals on ${sym} are ${biasMeta.bias} — the OPPOSITE of a ${wantBullish ? "long call" : "long put"}. Consider a ${wantBullish ? "long put" : "long call"} instead, or wait for the bias to shift.`
-                : `Signals on ${sym} are neutral right now — a directional ${wantBullish ? "long call" : "long put"} is speculative until the bias confirms.`;
+                ? `Signals on ${sym} are ${biasMeta.bias} — the OPPOSITE of a ${dirLabel}. Consider a ${oppositeLabel} instead, or wait for the bias to shift.`
+                : `Signals on ${sym} are neutral right now — a directional ${dirLabel} is speculative until the bias confirms.`;
             tradeDetail = td;
-            directionalBias = { direction: dir, ...biasMeta };
+            directionalBias = { direction: resolvedKind, ...biasMeta };
           }
         }
       } catch (err) {
@@ -731,13 +863,20 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         }
       }
 
-      // Directional debit ticket (long call / long put) — override the AI
-      // prose with bias-aware language and concrete strikes/debit.
-      if (tradeDetail && (tradeDetail.strategy === "long_call" || tradeDetail.strategy === "long_put") && directionalBias) {
+      // Directional debit ticket (long call / long put / bull-call or bear-put
+      // spread) — override the AI prose with bias-aware language and concrete
+      // strikes/debit.
+      const isDirectionalDebit = tradeDetail
+        && (tradeDetail.strategy === "long_call"
+          || tradeDetail.strategy === "long_put"
+          || tradeDetail.strategy === "bull_call_spread"
+          || tradeDetail.strategy === "bear_put_spread");
+      if (tradeDetail && isDirectionalDebit && directionalBias) {
         const td = tradeDetail;
-        const isCall = td.strategy === "long_call";
-        const wantWord = isCall ? "bullish" : "bearish";
-        const dirLabel = isCall ? "long call" : "long put";
+        const isSpread = td.strategy === "bull_call_spread" || td.strategy === "bear_put_spread";
+        const isBullishKind = td.strategy === "long_call" || td.strategy === "bull_call_spread";
+        const wantWord = isBullishKind ? "bullish" : "bearish";
+        const dirLabel = td.strategyLabel.toLowerCase();
         const sentenceData = td.dataMode === "live"
           ? `${td.symbol} is at $${td.spot.toFixed(2)}.`
           : `Using a simulated price baseline of $${td.spot.toFixed(2)} (no live quote available).`;
@@ -748,9 +887,14 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           : contrary
             ? `Heads-up: signals on ${td.symbol} are reading ${directionalBias.bias} — the OPPOSITE of a ${dirLabel}. ${directionalBias.biasReason} I'm still showing the ${dirLabel} ticket below since you asked, but the current evidence does not back it.`
             : `Signals on ${td.symbol} are neutral right now — no clear ${wantWord} confirmation. ${directionalBias.biasReason} A ${dirLabel} here is speculative until the bias confirms.`;
-        const planSentence = `Buy 1× ${td.expiry} ${td.symbol} $${td.strike} ${td.optionType} for about $${td.premiumPerShare.toFixed(2)} per share — roughly $${td.premiumPerContract.toFixed(0)} debit per contract. Max loss is the debit paid ($${td.maxLossPerContract.toFixed(0)} per contract). Breakeven at expiry: $${td.breakeven.toFixed(2)}.`;
+        const planSentence = isSpread
+          ? `Open 1× ${td.expiry} ${td.symbol} ${td.legsLabel} for about $${td.premiumPerShare.toFixed(2)} debit per share — roughly $${td.premiumPerContract.toFixed(0)} per contract. Max loss is the debit paid ($${td.maxLossPerContract.toFixed(0)} per contract). Max profit at expiry: $${td.maxProfitPerContract.toFixed(0)} per contract. Breakeven: $${td.breakeven.toFixed(2)}.`
+          : `Buy 1× ${td.expiry} ${td.symbol} $${td.strike} ${td.optionType} for about $${td.premiumPerShare.toFixed(2)} per share — roughly $${td.premiumPerContract.toFixed(0)} debit per contract. Max loss is the debit paid ($${td.maxLossPerContract.toFixed(0)} per contract). Breakeven at expiry: $${td.breakeven.toFixed(2)}.`;
+        const headlineCore = isSpread
+          ? `${td.strategyLabel.toLowerCase()} ${td.legsLabel ?? ""} expiring ${td.expiry}`
+          : `buy the $${td.strike} ${td.optionType} expiring ${td.expiry}`;
         const headline = aligned
-          ? `${td.symbol} looks ${directionalBias.bias} — buy the $${td.strike} ${td.optionType} expiring ${td.expiry}`
+          ? `${td.symbol} looks ${directionalBias.bias} — ${headlineCore}`
           : contrary
             ? `${td.symbol} signals are ${directionalBias.bias} — a ${dirLabel} is contrary to the read`
             : `${td.symbol} bias is unclear — speculative ${dirLabel} ticket below`;
@@ -760,13 +904,19 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           answer: `${sentenceData}\n\n${biasSentence}\n\n${planSentence}`,
           keyPoints: [
             `Bias read: ${directionalBias.bias} (${td.signalAlignment === "aligned" ? "supports" : td.signalAlignment === "contrary" ? "contradicts" : "neutral on"} this ${dirLabel})`,
-            `Strike: $${td.strike} ${td.optionType} (~${Math.round(Math.abs(td.delta) * 100)} delta)`,
-            `Expiry: ${td.expiry} (${td.dte} days)`,
+            isSpread
+              ? `Legs: ${td.legsLabel}, expires ${td.expiry} (${td.dte} days)`
+              : `Strike: $${td.strike} ${td.optionType} (~${Math.round(Math.abs(td.delta) * 100)} delta), expires ${td.expiry} (${td.dte} days)`,
             `Debit: ~$${td.premiumPerContract.toFixed(0)} per contract (also your max loss)`,
+            isSpread
+              ? `Max profit at expiry: $${td.maxProfitPerContract.toFixed(0)} per contract`
+              : (td.strategy === "long_call" ? `Upside is uncapped above breakeven` : `Hard cap if stock → $0`),
             `Breakeven: $${td.breakeven.toFixed(2)}`,
           ],
-          riskNote: `Long ${td.optionType}s lose value to time decay every day. Max loss is the full debit (~$${td.maxLossPerContract.toFixed(0)} per contract) if ${td.symbol} doesn't move in your favor by ${td.expiry}. Strikes/premium are approximate — confirm in your broker before sending.`,
-          confidence: aligned ? "medium" : contrary ? "low" : "low",
+          riskNote: isSpread
+            ? `Defined-risk debit spread — max loss is the debit (~$${td.maxLossPerContract.toFixed(0)} per contract) if ${td.symbol} doesn't move in your favor by ${td.expiry}. Both legs lose time value; spreads cap upside in exchange for lower cost. Strikes/premium are approximate — confirm in your broker before sending.`
+            : `Long ${td.optionType}s lose value to time decay every day. Max loss is the full debit (~$${td.maxLossPerContract.toFixed(0)} per contract) if ${td.symbol} doesn't move in your favor by ${td.expiry}. Strikes/premium are approximate — confirm in your broker before sending.`,
+          confidence: aligned ? "medium" : "low",
         };
       } else if (tradeDetail) {
         // CSP / Covered-call (wheel) ticket — credit-collecting flow.

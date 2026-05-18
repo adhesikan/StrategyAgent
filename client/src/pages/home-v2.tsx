@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Settings2 } from "lucide-react";
+import { Settings2, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
@@ -308,17 +308,25 @@ export default function HomeV2() {
     window.localStorage.setItem("home.cardMode", cardMode);
   }, [cardMode]);
   const [sortBy, setSortBy] = useState<SortKey>("grade");
-  const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>(() => {
+  // Default filter loaded on login. Separate from the session-active filter
+  // so switching mid-session doesn't silently overwrite the user's default.
+  const [defaultInstrumentFilter, setDefaultInstrumentFilter] = useState<InstrumentFilter>(() => {
     if (typeof window === "undefined") return "all";
-    const v = window.localStorage.getItem("home.instrumentFilter");
-    return v === "all" || v === "stock" || v === "long_options" || v === "defined_risk" ? v : "all";
+    const v = window.localStorage.getItem("home.defaultInstrumentFilter");
+    if (v === "all" || v === "stock" || v === "long_options" || v === "defined_risk") return v;
+    // Back-compat: migrate the old auto-persisted key into the default.
+    const legacy = window.localStorage.getItem("home.instrumentFilter");
+    return legacy === "all" || legacy === "stock" || legacy === "long_options" || legacy === "defined_risk"
+      ? legacy
+      : "all";
   });
+  const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>(defaultInstrumentFilter);
   useEffect(() => {
     window.localStorage.setItem("home.ideasView", ideasView);
   }, [ideasView]);
   useEffect(() => {
-    window.localStorage.setItem("home.instrumentFilter", instrumentFilter);
-  }, [instrumentFilter]);
+    window.localStorage.setItem("home.defaultInstrumentFilter", defaultInstrumentFilter);
+  }, [defaultInstrumentFilter]);
   const { toast } = useToast();
   const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
   const [customDraft, setCustomDraft] = useState("");
@@ -533,10 +541,19 @@ export default function HomeV2() {
                     </RadioGroup>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Default show</Label>
+                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Default show on login</Label>
                     <RadioGroup
-                      value={instrumentFilter}
-                      onValueChange={(v) => setInstrumentFilter(v as InstrumentFilter)}
+                      value={defaultInstrumentFilter}
+                      onValueChange={(v) => {
+                        const next = v as InstrumentFilter;
+                        setDefaultInstrumentFilter(next);
+                        setInstrumentFilter(next);
+                        const label = INSTRUMENT_FILTERS.find((f) => f.value === next)?.label ?? next;
+                        toast({
+                          title: "Default filter saved",
+                          description: `“${label}” will load when you open the dashboard.`,
+                        });
+                      }}
                       className="gap-1"
                     >
                       {INSTRUMENT_FILTERS.map((f) => (
@@ -546,6 +563,10 @@ export default function HomeV2() {
                         </div>
                       ))}
                     </RadioGroup>
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Loads automatically next time you open the dashboard. You can still switch
+                      filters anytime for this session.
+                    </p>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -608,12 +629,14 @@ export default function HomeV2() {
             const filteredCount = ideasResp.ideas.filter((i) =>
               matchesInstrumentFilter(i.instrumentType, instrumentFilter),
             ).length;
+            const isDefault = instrumentFilter === defaultInstrumentFilter;
             return (
               <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="filter-instrument">
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground mr-1">Show</span>
                 <TooltipProvider delayDuration={150}>
                   {INSTRUMENT_FILTERS.map((f) => {
                     const active = instrumentFilter === f.value;
+                    const isDefaultChip = defaultInstrumentFilter === f.value;
                     return (
                       <Tooltip key={f.value}>
                         <TooltipTrigger asChild>
@@ -622,21 +645,65 @@ export default function HomeV2() {
                             onClick={() => setInstrumentFilter(f.value)}
                             data-testid={`filter-instrument-${f.value}`}
                             className={cn(
-                              "px-3 py-1 rounded-full text-xs transition-colors border",
+                              "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-colors border",
                               active
                                 ? "bg-primary text-primary-foreground border-primary"
                                 : "bg-muted/40 hover:bg-muted text-foreground/80 border-border",
                             )}
                           >
+                            {isDefaultChip && (
+                              <Star
+                                className={cn(
+                                  "h-3 w-3 fill-current",
+                                  active ? "text-primary-foreground" : "text-amber-500",
+                                )}
+                                aria-label="Default filter on login"
+                              />
+                            )}
                             {f.label}
                           </button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-snug">
                           {f.hint}
+                          {isDefaultChip && (
+                            <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-300">
+                              Loaded by default when you open the dashboard.
+                            </div>
+                          )}
                         </TooltipContent>
                       </Tooltip>
                     );
                   })}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={isDefault}
+                        onClick={() => {
+                          setDefaultInstrumentFilter(instrumentFilter);
+                          toast({
+                            title: "Default filter saved",
+                            description: `“${activeFilter.label}” will load when you open the dashboard.`,
+                          });
+                        }}
+                        data-testid="button-set-default-instrument-filter"
+                        className={cn(
+                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] transition-colors border",
+                          isDefault
+                            ? "border-transparent text-muted-foreground/70 cursor-default"
+                            : "border-border bg-background hover:bg-muted text-foreground/80",
+                        )}
+                      >
+                        <Star className={cn("h-3 w-3", isDefault && "fill-current text-amber-500")} />
+                        {isDefault ? "Default" : "Set as default"}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[240px] text-xs leading-snug">
+                      {isDefault
+                        ? `“${activeFilter.label}” is your login default.`
+                        : `Make “${activeFilter.label}” load by default when you open the dashboard.`}
+                    </TooltipContent>
+                  </Tooltip>
                 </TooltipProvider>
                 <span className="text-[11px] text-muted-foreground ml-1" data-testid="text-instrument-filter-count">
                   {filteredCount} of {ideasResp.ideas.length} match "{activeFilter.label}"

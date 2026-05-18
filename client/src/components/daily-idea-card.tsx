@@ -873,12 +873,37 @@ export function SimpleIdeaCard({ idea }: Props) {
                 {idea.score}% Setup Match
               </Badge>
             </TooltipTrigger>
-            <TooltipContent side="left" className="max-w-[280px] text-xs leading-snug">
-              <div className="font-semibold mb-1">Setup Match · {conviction.label}</div>
-              <div className="text-muted-foreground">
-                A 0–100 score combining technical signals, momentum, news sentiment, options liquidity, and risk fit.
-                Higher = more factors agree on this setup. It's not a price target or a prediction of profit.
+            <TooltipContent side="left" className="max-w-[320px] text-xs leading-snug">
+              <div className="font-semibold mb-1">
+                {idea.score}% Setup Match · {conviction.label}
               </div>
+              {idea.confidenceReason && (
+                <div className="text-muted-foreground italic mb-2">
+                  {idea.confidenceReason}
+                </div>
+              )}
+              {idea.gradeFactors ? (
+                <>
+                  <div className="text-muted-foreground">
+                    Why {idea.score}? Each factor is scored 0–100, then weighted into the composite:
+                  </div>
+                  <ul className="space-y-0.5 mt-1">
+                    <li>Technical {idea.gradeFactors.technical} × {GRADE_WEIGHTS.technical}%</li>
+                    <li>Momentum {idea.gradeFactors.momentum} × {GRADE_WEIGHTS.momentum}%</li>
+                    <li>News sentiment {idea.gradeFactors.sentiment} × {GRADE_WEIGHTS.sentiment}%</li>
+                    <li>Liquidity {idea.gradeFactors.liquidity} × {GRADE_WEIGHTS.liquidity}%</li>
+                    <li>Risk fit {idea.gradeFactors.risk} × {GRADE_WEIGHTS.risk}%</li>
+                  </ul>
+                  <div className="text-muted-foreground mt-2">
+                    Higher = more factors agree. Not a price target or a prediction of profit.
+                  </div>
+                </>
+              ) : (
+                <div className="text-muted-foreground">
+                  Composite of technical (28%), momentum (20%), news sentiment (22%), liquidity
+                  (15%), and risk fit (15%). Higher = more factors agree — not a price target.
+                </div>
+              )}
             </TooltipContent>
           </Tooltip>
           {idea.confidenceReason && (

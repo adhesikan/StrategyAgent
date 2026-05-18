@@ -29,7 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { DailyIdeaCard, DailyIdeaRow, SimpleIdeaCard, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
+import { DailyIdeaRow, SimpleIdeaCard, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
 import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -305,14 +305,6 @@ export default function HomeV2() {
     const v = window.localStorage.getItem("home.ideasView");
     return v === "list" || v === "card" ? v : "card";
   });
-  const [cardMode, setCardMode] = useState<"simple" | "advanced">(() => {
-    if (typeof window === "undefined") return "simple";
-    const v = window.localStorage.getItem("home.cardMode");
-    return v === "advanced" || v === "simple" ? v : "simple";
-  });
-  useEffect(() => {
-    window.localStorage.setItem("home.cardMode", cardMode);
-  }, [cardMode]);
   const [sortBy, setSortBy] = useState<SortKey>("grade");
   // Default filter loaded on login. Separate from the session-active filter
   // so switching mid-session doesn't silently overwrite the user's default.
@@ -499,27 +491,6 @@ export default function HomeV2() {
             </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground hidden sm:inline">View mode</span>
-              <div className="flex items-center border rounded-md" data-testid="toggle-card-mode">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("rounded-r-none h-8 px-3 text-xs", cardMode === "simple" && "bg-muted")}
-                  onClick={() => setCardMode("simple")}
-                  data-testid="button-mode-simple"
-                >
-                  Simple
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("rounded-l-none h-8 px-3 text-xs border-l", cardMode === "advanced" && "bg-muted")}
-                  onClick={() => setCardMode("advanced")}
-                  data-testid="button-mode-advanced"
-                >
-                  Advanced
-                </Button>
-              </div>
               {ideasResp?.dataMode === "simulated" && (
                 <Badge variant="outline" className="text-[10px]" data-testid="badge-simulated">Simulated data</Badge>
               )}
@@ -787,7 +758,7 @@ export default function HomeV2() {
                         >
                           #{i + 1}
                         </Badge>
-                        {cardMode === "simple" ? <SimpleIdeaCard idea={idea} /> : <DailyIdeaCard idea={idea} />}
+                        <SimpleIdeaCard idea={idea} />
                       </div>
                     ))}
                   </div>
@@ -943,13 +914,9 @@ export default function HomeV2() {
                     if (visible.length === 0) return null;
                     return ideasView === "card" ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {visible.map((idea) =>
-                          cardMode === "simple" ? (
-                            <SimpleIdeaCard key={idea.id} idea={idea} />
-                          ) : (
-                            <DailyIdeaCard key={idea.id} idea={idea} />
-                          ),
-                        )}
+                        {visible.map((idea) => (
+                          <SimpleIdeaCard key={idea.id} idea={idea} />
+                        ))}
                       </div>
                     ) : (
                       <div className="space-y-2">

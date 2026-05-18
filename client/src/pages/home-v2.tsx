@@ -327,6 +327,18 @@ export default function HomeV2() {
       : "all";
   });
   const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>(defaultInstrumentFilter);
+  // Synchronously collapse "More trade ideas" on tab/filter change so stale
+  // placeholder data from the previous tab can't render the expanded tabs
+  // block for even a single frame. Wrapping the setters (instead of using a
+  // useEffect) avoids the post-render timing window.
+  const changeTab = (next: string) => {
+    setShowMoreIdeas(false);
+    setTab(next);
+  };
+  const changeInstrumentFilter = (next: InstrumentFilter) => {
+    setShowMoreIdeas(false);
+    setInstrumentFilter(next);
+  };
   useEffect(() => {
     window.localStorage.setItem("home.ideasView", ideasView);
   }, [ideasView]);
@@ -372,6 +384,20 @@ export default function HomeV2() {
   };
 
   const activeBucket = TABS.find((t) => t.value === tab)?.bucket ?? "beginner";
+  // Top picks must be tab-independent — the Top 3 hero, subtitle count, and
+  // instrument filter chips all anchor to the canonical "all" view so they
+  // never disappear when the user clicks Stocks/Options/Watchlist/Alerts.
+  const { data: topPicksResp, isLoading: topPicksLoading } = useQuery<IdeasResponse>({
+    queryKey: ["/api/daily-ideas", { bucket: "all", universe: scanPrefs.universe, custom: scanPrefs.customSymbols }],
+    queryFn: async () => {
+      const r = await fetch(buildIdeasUrl("all", scanPrefs), { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load ideas");
+      return r.json();
+    },
+  });
+  // Per-tab ideas — powers ONLY the "More trade ideas" grid below the hero.
+  // When the user clicks a tab, only this grid refetches; the Top 3 hero
+  // remains stable.
   const { data: ideasResp, isLoading: ideasLoading } = useQuery<IdeasResponse>({
     queryKey: ["/api/daily-ideas", { bucket: activeBucket, universe: scanPrefs.universe, custom: scanPrefs.customSymbols }],
     queryFn: async () => {
@@ -379,6 +405,7 @@ export default function HomeV2() {
       if (!r.ok) throw new Error("Failed to load ideas");
       return r.json();
     },
+    placeholderData: (prev) => prev,
   });
 
   const submit = (text: string) => {
@@ -404,22 +431,22 @@ export default function HomeV2() {
             {greeting}, {firstName}.
           </h1>
           <p className="text-[15px] text-muted-foreground mt-1" data-testid="text-home-subtitle">
-            {ideasLoading
+            {topPicksLoading
               ? "Loading today's ideas…"
-              : `${ideasResp?.ideas.length ?? 0} ${(ideasResp?.ideas.length ?? 0) === 1 ? "idea" : "ideas"} ready to review — nothing sent without your approval.`}
+              : `${topPicksResp?.ideas.length ?? 0} ${(topPicksResp?.ideas.length ?? 0) === 1 ? "idea" : "ideas"} ready to review — nothing sent without your approval.`}
           </p>
-          {ideasResp?.marketRegime && (
+          {topPicksResp?.marketRegime && (
             <div
               className={cn(
                 "mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs",
-                REGIME_TONE[ideasResp.marketRegime.tone],
+                REGIME_TONE[topPicksResp.marketRegime.tone],
               )}
               data-testid="banner-market-regime"
             >
               <span className="font-semibold" data-testid="text-market-regime-label">
-                Market Environment: {ideasResp.marketRegime.label}
+                Market Environment: {topPicksResp.marketRegime.label}
               </span>
-              <span className="opacity-80 hidden sm:inline">— {ideasResp.marketRegime.hint}</span>
+              <span className="opacity-80 hidden sm:inline">— {topPicksResp.marketRegime.hint}</span>
             </div>
           )}
         </div>
@@ -553,7 +580,7 @@ export default function HomeV2() {
                       onValueChange={(v) => {
                         const next = v as InstrumentFilter;
                         setDefaultInstrumentFilter(next);
-                        setInstrumentFilter(next);
+                        changeInstrumentFilter(next);
                         const label = INSTRUMENT_FILTERS.find((f) => f.value === next)?.label ?? next;
                         toast({
                           title: "Default filter saved",
@@ -630,9 +657,9 @@ export default function HomeV2() {
               <span className="text-muted-foreground">Comma-separated, up to 30 tickers.</span>
             </div>
           )}
-          {ideasResp && ideasResp.ideas.length > 0 && (() => {
+          {topPicksResp && topPicksResp.ideas.length > 0 && (() => {
             const activeFilter = INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!;
-            const filteredCount = ideasResp.ideas.filter((i) =>
+            const filteredCount = topPicksResp.ideas.filter((i) =>
               matchesInstrumentFilter(i.instrumentType, instrumentFilter),
             ).length;
             const isDefault = instrumentFilter === defaultInstrumentFilter;
@@ -648,7 +675,7 @@ export default function HomeV2() {
                         <TooltipTrigger asChild>
                           <button
                             type="button"
-                            onClick={() => setInstrumentFilter(f.value)}
+                            onClick={() => changeInstrumentFilter(f.value)}
                             data-testid={`filter-instrument-${f.value}`}
                             className={cn(
                               "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-colors border",
@@ -712,18 +739,18 @@ export default function HomeV2() {
                   </Tooltip>
                 </TooltipProvider>
                 <span className="text-[11px] text-muted-foreground ml-1" data-testid="text-instrument-filter-count">
-                  {filteredCount} of {ideasResp.ideas.length} match "{activeFilter.label}"
+                  {filteredCount} of {topPicksResp.ideas.length} match "{activeFilter.label}"
                 </span>
               </div>
             );
           })()}
           {(() => {
-            const filteredIdeas = ideasResp
-              ? ideasResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
+            const filteredIdeas = topPicksResp
+              ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
               : [];
             return filteredIdeas.length >= 3;
           })() && (() => {
-            const filteredIdeas = ideasResp!.ideas.filter((i) =>
+            const filteredIdeas = topPicksResp!.ideas.filter((i) =>
               matchesInstrumentFilter(i.instrumentType, instrumentFilter),
             );
             const top3 = sortIdeas(filteredIdeas, sortBy).slice(0, 3);
@@ -786,26 +813,30 @@ export default function HomeV2() {
             );
           })()}
           {(() => {
-            // The Top 3 hero only renders when ≥ 3 ideas pass the instrument
-            // filter. In that case we collapse the lower tabs section behind a
-            // single toggle so the dashboard stays pointed. When fewer than 3
-            // ideas exist (or the tab is empty), the hero is hidden and we
-            // ALWAYS keep the lower tabs visible — otherwise users would see
-            // nothing at all.
-            const totalFiltered = ideasResp
-              ? ideasResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter)).length
+            // Top 3 hero anchors to the "all" view (topPicksResp). The lower
+            // tabs section is per-tab (ideasResp). When the hero is visible
+            // we collapse the tabs behind a single toggle so the dashboard
+            // stays pointed; when the hero is hidden (< 3 top picks) we
+            // always show the tabs so users see SOMETHING.
+            const topFiltered = topPicksResp
+              ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
+              : [];
+            const topThreeShown = topFiltered.length >= 3;
+            const top3Ids = new Set(sortIdeas(topFiltered, sortBy).slice(0, 3).map((i) => i.id));
+            // For the badge, count what the current tab actually adds beyond
+            // the Top 3 (deduped + instrument-filtered). Cap at 9 to match
+            // what the grid actually renders.
+            const tabExtras = ideasResp
+              ? ideasResp.ideas.filter(
+                  (i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter) && !top3Ids.has(i.id),
+                ).length
               : 0;
-            const topThreeShown = totalFiltered >= 3;
-            // Expanded grid is capped at 9 cards (slice(3, 12)) so the badge
-            // shows what users will actually see, not the raw remainder.
-            const moreCount = Math.min(9, Math.max(0, totalFiltered - 3));
-            // Hide the toggle when there are no extras to browse AND the Top 3
-            // already covered every available idea — but only when we have a
-            // real response (don't suppress during loading).
-            if (topThreeShown && moreCount === 0 && !ideasLoading) return null;
-            // No Top 3 → render tabs directly without the collapse wrapper so
-            // any matching ideas / empty-state UI stays visible.
+            const moreCount = Math.min(9, tabExtras);
+            // Hide the toggle entirely when the Top 3 is shown and this tab
+            // has no real extras (and we're not loading). Without a Top 3 we
+            // render tabs directly (no toggle) so we return null here.
             if (!topThreeShown) return null;
+            if (moreCount === 0 && !ideasLoading) return null;
             return (
               <div className="mt-5">
                 <button
@@ -836,22 +867,26 @@ export default function HomeV2() {
             );
           })()}
           {(() => {
-            // Decide whether to render the tabs block. We show it when:
-            //   - the Top 3 hero is hidden (totalFiltered < 3) so users always
-            //     see SOMETHING (matching cards or the empty-state Card), OR
-            //   - the user has explicitly expanded "More trade ideas" AND
-            //     there are actual extras to show. Without the extras gate, a
-            //     stale `showMoreIdeas=true` from a prior tab would leak the
-            //     empty tabs block onto a tab where the Top 3 already covers
-            //     everything.
-            const totalFiltered = ideasResp
-              ? ideasResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter)).length
-              : 0;
-            const topThreeShown = totalFiltered >= 3;
-            const hasExtras = totalFiltered - 3 > 0;
-            return !topThreeShown || (showMoreIdeas && hasExtras);
+            // Render the tabs block when:
+            //   - the Top 3 hero is hidden (< 3 top picks) so the user always
+            //     sees SOMETHING (matching cards or the empty-state Card), OR
+            //   - the user has explicitly expanded "More trade ideas" AND the
+            //     CURRENT tab has dedupe'd extras to show (prevents a stale
+            //     `showMoreIdeas=true` from a prior tab leaking the empty
+            //     tabs block onto a tab that has no extras of its own).
+            const topFiltered = topPicksResp
+              ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
+              : [];
+            const topThreeShown = topFiltered.length >= 3;
+            const top3Ids = new Set(sortIdeas(topFiltered, sortBy).slice(0, 3).map((i) => i.id));
+            const hasTabExtras = ideasResp
+              ? ideasResp.ideas.some(
+                  (i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter) && !top3Ids.has(i.id),
+                )
+              : false;
+            return !topThreeShown || (showMoreIdeas && hasTabExtras);
           })() && (
-          <Tabs value={tab} onValueChange={setTab} className="mt-4">
+          <Tabs value={tab} onValueChange={changeTab} className="mt-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <TooltipProvider delayDuration={150}>
                 <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
@@ -880,22 +915,31 @@ export default function HomeV2() {
                   </div>
                 ) : ideasResp && ideasResp.ideas.length > 0 ? (
                   (() => {
-                    // When ≥ 3 ideas (after instrument filter) exist, the first
-                    // 3 are featured above as "Top Picks for Your Review" — skip
-                    // them here. With < 3 the featured row is hidden, so show
-                    // everything that matches the filter.
-                    const filteredIdeas = ideasResp.ideas.filter((i) =>
-                      matchesInstrumentFilter(i.instrumentType, instrumentFilter),
+                    // Dedupe against the Top 3 hero so the "All" tab doesn't
+                    // show the same cards twice — but ONLY when the hero is
+                    // actually visible. If fewer than 3 top picks exist the
+                    // hero is hidden, so we must NOT subtract those ideas
+                    // from the grid (otherwise users lose valid ideas).
+                    const topFiltered = topPicksResp
+                      ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
+                      : [];
+                    const heroVisible = topFiltered.length >= 3;
+                    const top3Ids = heroVisible
+                      ? new Set(sortIdeas(topFiltered, sortBy).slice(0, 3).map((i) => i.id))
+                      : new Set<string>();
+                    const filteredIdeas = ideasResp.ideas.filter(
+                      (i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter) && !top3Ids.has(i.id),
                     );
                     if (filteredIdeas.length === 0) {
                       return (
                         <div className="text-sm text-muted-foreground py-6 text-center" data-testid="text-no-ideas-for-filter">
-                          No ideas match the "{INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!.label}" filter in this tab. Try a different filter or tab.
+                          {heroVisible
+                            ? `No additional ideas match the "${INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!.label}" filter in this tab beyond the Top 3 above. Try a different filter or tab.`
+                            : `No ideas match the "${INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!.label}" filter in this tab. Try a different filter or tab.`}
                         </div>
                       );
                     }
-                    const sorted = sortIdeas(filteredIdeas, sortBy);
-                    const visible = sorted.length >= 3 ? sorted.slice(3, 12) : sorted;
+                    const visible = sortIdeas(filteredIdeas, sortBy).slice(0, 9);
                     if (visible.length === 0) return null;
                     return ideasView === "card" ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -931,7 +975,7 @@ export default function HomeV2() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {tab !== "all" && (
-                        <Button size="sm" variant="outline" onClick={() => setTab("all")} data-testid="button-empty-try-all">
+                        <Button size="sm" variant="outline" onClick={() => changeTab("all")} data-testid="button-empty-try-all">
                           Try All ideas
                         </Button>
                       )}

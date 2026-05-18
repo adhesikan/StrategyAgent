@@ -3,6 +3,10 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
@@ -276,9 +280,23 @@ export default function HomeV2() {
   const { user } = useAuth();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("all");
-  const [ideasView, setIdeasView] = useState<ViewMode>("card");
+  const [ideasView, setIdeasView] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "card";
+    const v = window.localStorage.getItem("home.ideasView");
+    return v === "list" || v === "card" ? v : "card";
+  });
   const [sortBy, setSortBy] = useState<SortKey>("grade");
-  const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>("all");
+  const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>(() => {
+    if (typeof window === "undefined") return "all";
+    const v = window.localStorage.getItem("home.instrumentFilter");
+    return v === "all" || v === "stock" || v === "long_options" || v === "defined_risk" ? v : "all";
+  });
+  useEffect(() => {
+    window.localStorage.setItem("home.ideasView", ideasView);
+  }, [ideasView]);
+  useEffect(() => {
+    window.localStorage.setItem("home.instrumentFilter", instrumentFilter);
+  }, [instrumentFilter]);
   const { toast } = useToast();
   const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
   const [customDraft, setCustomDraft] = useState("");
@@ -415,6 +433,60 @@ export default function HomeV2() {
                   ))}
                 </SelectContent>
               </Select>
+              <ViewToggle value={ideasView} onChange={setIdeasView} testId="view-toggle-ideas" />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Default view settings"
+                    data-testid="button-ideas-defaults"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-64 space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold mb-1">Defaults</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Saved on this device — applied next time you open the home page.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Default view</Label>
+                    <RadioGroup
+                      value={ideasView}
+                      onValueChange={(v) => setIdeasView(v as ViewMode)}
+                      className="gap-1"
+                    >
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="card" id="def-view-card" data-testid="radio-default-view-card" />
+                        <Label htmlFor="def-view-card" className="text-xs font-normal cursor-pointer">Card view</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="list" id="def-view-list" data-testid="radio-default-view-list" />
+                        <Label htmlFor="def-view-list" className="text-xs font-normal cursor-pointer">List view</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Default show</Label>
+                    <RadioGroup
+                      value={instrumentFilter}
+                      onValueChange={(v) => setInstrumentFilter(v as InstrumentFilter)}
+                      className="gap-1"
+                    >
+                      {INSTRUMENT_FILTERS.map((f) => (
+                        <div key={f.value} className="flex items-center gap-2">
+                          <RadioGroupItem value={f.value} id={`def-filter-${f.value}`} data-testid={`radio-default-filter-${f.value}`} />
+                          <Label htmlFor={`def-filter-${f.value}`} className="text-xs font-normal cursor-pointer">{f.label}</Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <span className="text-xs text-muted-foreground hidden sm:inline">Scan from</span>
               <Select
                 value={scanPrefs.universe}
@@ -547,22 +619,41 @@ export default function HomeV2() {
                   </div>
                   <span className="text-[10px] text-muted-foreground">Nothing is sent without your approval.</span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {top3.map((idea, i) => (
-                    <div key={idea.id} className="relative" data-testid={`top-pick-${i + 1}`}>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "absolute -top-2 -left-2 z-10 text-[10px] font-bold px-1.5 py-0.5 shadow-sm",
-                          rankBadge(i),
-                        )}
-                      >
-                        #{i + 1}
-                      </Badge>
-                      <DailyIdeaCard idea={idea} />
-                    </div>
-                  ))}
-                </div>
+                {ideasView === "card" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {top3.map((idea, i) => (
+                      <div key={idea.id} className="relative" data-testid={`top-pick-${i + 1}`}>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "absolute -top-2 -left-2 z-10 text-[10px] font-bold px-1.5 py-0.5 shadow-sm",
+                            rankBadge(i),
+                          )}
+                        >
+                          #{i + 1}
+                        </Badge>
+                        <DailyIdeaCard idea={idea} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {top3.map((idea, i) => (
+                      <div key={idea.id} className="relative pl-7" data-testid={`top-pick-${i + 1}`}>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "absolute top-1/2 -translate-y-1/2 left-0 z-10 text-[10px] font-bold px-1.5 py-0.5 shadow-sm",
+                            rankBadge(i),
+                          )}
+                        >
+                          #{i + 1}
+                        </Badge>
+                        <DailyIdeaRow idea={idea} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -584,9 +675,6 @@ export default function HomeV2() {
                   ))}
                 </TabsList>
               </TooltipProvider>
-              {ideasResp && ideasResp.ideas.length > 0 && (
-                <ViewToggle value={ideasView} onChange={setIdeasView} testId="view-toggle-ideas" />
-              )}
             </div>
             {TABS.map((t) => (
               <TabsContent key={t.value} value={t.value} className="mt-4">

@@ -328,10 +328,10 @@ function deriveSignalPills(c: CandidateScenario): string[] {
       fallbacks.push("Defined Risk", "Two-Leg Setup");
       break;
     case "long_call":
-      fallbacks.push("Defined-Risk Long Call", "Premium Paid");
+      fallbacks.push("Single-Leg Call", "Premium Paid");
       break;
     case "long_put":
-      fallbacks.push("Defined-Risk Long Put", "Premium Paid");
+      fallbacks.push("Single-Leg Put", "Premium Paid");
       break;
     case "stock_swing":
     default:

@@ -26,14 +26,59 @@ const SECTIONS: Section[] = [
     id: "whats-new",
     title: "What's New",
     icon: Rocket,
-    summary: "Recent updates: scan-source picker, full Income order ticket, starter watchlist, and more.",
-    keywords: ["changelog", "updates", "release", "new"],
+    summary: "AI Volatility Intelligence, market regime banner, OCO option exits, Volatility Squeeze strategy, and more.",
+    keywords: [
+      "changelog", "updates", "release", "new",
+      "bollinger", "squeeze", "ttm squeeze", "keltner", "volatility squeeze",
+      "market regime", "oco", "bracket", "ai read", "signal pills",
+    ],
     body: (
       <>
         <p className="text-sm text-muted-foreground">Latest improvements you'll see across the app:</p>
         <ul className="list-disc pl-5 space-y-2 mt-3">
           <li>
-            <strong>"Scan from" picker on Home.</strong> The "Today's Ideas For You" section now has an
+            <strong>AI Volatility Intelligence on every idea card.</strong> Each card now shows a
+            setup-category chip (Breakout, Momentum, Pullback, Mean Reversion, Income, Options
+            Opportunity), 3–5 plain-English <em>signal pills</em> (e.g. <em>Volatility Squeeze</em>,{" "}
+            <em>Trend Aligned</em>, <em>Momentum Improving</em>, <em>Strong Participation</em>,{" "}
+            <em>News Tailwind</em>), a short confidence reason under the % Setup Match badge, and a
+            new <strong>AI Read</strong> paragraph that summarises why the setup looks the way it
+            does. Open <em>Advanced details</em> to see the full <em>Estimated volatility &amp; trend
+            signals</em> block (squeeze, range tightness, relative volume, trend alignment,
+            multi-timeframe confirmation, liquidity, R/R, false-breakout risk, suggested stop and
+            target zones). All metrics are labeled "est." since they are derived, not live broker
+            indicators. See <Link href="/guide#home" className="underline">Home</Link>.
+          </li>
+          <li>
+            <strong>Market Environment banner on Home.</strong> A compact color-toned pill near the
+            greeting describes today's regime — <em>Bullish Momentum</em>, <em>Bearish Pressure</em>,{" "}
+            <em>Mixed Conditions</em>, <em>Low Volatility</em>, or <em>High Volatility</em> — derived
+            from the average composite score and bias across today's candidates. Use it to gauge
+            whether breakout setups, mean-reversion plays, or premium-collection ideas are favored
+            today.
+          </li>
+          <li>
+            <strong>OCO bracket exits on the InstaTrade™ option ticket.</strong> When you review a
+            long call, long put, debit spread, or other option setup, a new{" "}
+            <em>Attach OCO exit (one-cancels-other)</em> toggle lets you set a take-profit % and
+            stop-loss % on the premium (defaults 75% / 50%). The bracket is recorded with your order
+            and echoed back in the confirmation. See <Link href="/guide#instatrade" className="underline">InstaTrade™ Order Review</Link>.
+          </li>
+          <li>
+            <strong>Single-leg vs multi-leg ticket clarity.</strong> The InstaTrade™ option ticket
+            now adapts its wording and submit-button label to the actual order — single-leg trades
+            (Long Call, Long Put, CSP) say <em>Send order</em>, and only true multi-leg orders
+            (verticals, iron condors, etc.) show the multi-leg routing notice.
+          </li>
+          <li>
+            <strong>Volatility Squeeze strategy (TTM-style).</strong> A new built-in strategy looks
+            for stocks where Bollinger Bands have contracted inside the Keltner Channels — the
+            classic squeeze pattern that often precedes a sharp expansion move. Surfaces on the
+            Strategy Scanner and the Trade Finder. See{" "}
+            <Link href="/guide#strategies" className="underline">Strategy Reference</Link>.
+          </li>
+          <li>
+            <strong>"Scan from" picker on Home.</strong> The "Today's Ideas For You" section has an
             inline selector so you can choose the stock list each tab scans — <em>My Watchlist, Dow 30,
             Nasdaq 100, S&amp;P 500, High Volume, Options Liquid,</em> or <em>Custom symbols</em>. Your
             choice is saved as a preference and persists across sessions. See the{" "}
@@ -178,6 +223,53 @@ const SECTIONS: Section[] = [
           <li>
             <strong>Simulated badge.</strong> Shows when no broker is connected, so prices and
             sizing are example values for learning rather than live quotes.
+          </li>
+        </ul>
+
+        <h4 className="font-semibold mt-3">Market Environment banner</h4>
+        <p className="text-sm">
+          A compact, color-toned pill sits near the greeting at the top of Home and describes today's
+          regime in plain English — <em>Bullish Momentum</em>, <em>Bearish Pressure</em>,{" "}
+          <em>Mixed Conditions</em>, <em>Low Volatility</em>, or <em>High Volatility</em>. It's
+          derived from the average composite score and bias across today's candidates, and is a
+          quick way to see whether breakout, mean-reversion, or premium-collection setups are
+          favored today. Like everything on this page, it's informational context, not a trade signal.
+        </p>
+
+        <h4 className="font-semibold mt-3">AI Volatility Intelligence on each card</h4>
+        <p className="text-sm">
+          Every idea card now layers in extra AI-derived context so you can size up a setup at a
+          glance without opening the full detail page.
+        </p>
+        <ul className="list-disc pl-5 space-y-1.5 mt-2">
+          <li>
+            <strong>Setup category chip</strong> next to the title — <em>Breakout</em>,{" "}
+            <em>Momentum Continuation</em>, <em>Pullback</em>, <em>Mean Reversion</em>,{" "}
+            <em>Income</em>, or <em>Options Opportunity</em>.
+          </li>
+          <li>
+            <strong>3–5 signal pills</strong> in plain English — e.g. <em>Volatility Squeeze</em>,{" "}
+            <em>Trend Aligned</em>, <em>Momentum Improving</em>, <em>Breakout Forming</em>,{" "}
+            <em>Strong Participation</em>, <em>News Tailwind</em>, <em>Market Confirmed</em>.
+            Weaker setups fall back to neutral pills like <em>Defined Risk</em>,{" "}
+            <em>Premium Collection</em>, or <em>Bullish/Bearish Bias</em> rather than overstating
+            confidence.
+          </li>
+          <li>
+            <strong>Confidence reason</strong> under the % Setup Match badge — a one-liner like
+            "Strong breakout conditions" or "Defined-risk spread setup".
+          </li>
+          <li>
+            <strong>AI Read paragraph</strong> (Sparkles icon) — a short, informational summary of
+            why the setup looks the way it does, plus a "risk grows if…" caveat. Never a "buy now"
+            recommendation.
+          </li>
+          <li>
+            <strong>Advanced details → Estimated volatility &amp; trend signals.</strong> Squeeze,
+            range tightness, relative volume, trend alignment, multi-timeframe confirmation,
+            liquidity, R/R, false-breakout risk, and suggested stop / target areas. Each metric is
+            labeled <em>est.</em> so you know it's derived from price action, not a live broker
+            indicator.
           </li>
         </ul>
 
@@ -333,7 +425,7 @@ const SECTIONS: Section[] = [
     title: "InstaTrade™ Order Review",
     icon: Zap,
     summary: "Self-directed order preparation. You approve every order before submission.",
-    keywords: ["order", "execute", "place trade", "broker order"],
+    keywords: ["order", "execute", "place trade", "broker order", "single-leg", "multi-leg", "oco", "bracket", "take profit", "stop loss"],
     body: (
       <>
         <p>
@@ -351,6 +443,32 @@ const SECTIONS: Section[] = [
             section.
           </li>
         </ul>
+
+        <h4 className="font-semibold mt-3">Single-leg vs multi-leg option tickets</h4>
+        <p>
+          The option ticket adapts to the actual order. Single-leg trades (Long Call, Long Put,
+          Cash-Secured Put) say <em>Single-leg option order</em> and the submit button reads{" "}
+          <em>Send order</em>. Only true multi-leg structures (verticals, iron condors, etc.) show
+          the multi-leg routing notice and the <em>Send multi-leg order</em> button. The on-screen
+          warning that some broker APIs can't route a full spread as one ticket only appears for
+          multi-leg orders.
+        </p>
+
+        <h4 className="font-semibold mt-3">OCO exit (one-cancels-other) on option tickets</h4>
+        <p>
+          When reviewing any option order you can flip on <strong>Attach OCO exit</strong> and set
+          two values:
+        </p>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li><strong>Take profit (% of premium)</strong> — default 75%, range 5%–500%.</li>
+          <li><strong>Stop loss (% of premium)</strong> — default 50%, range 5%–100%.</li>
+        </ul>
+        <p className="mt-2">
+          The bracket is logged with your order plan and echoed back in the confirmation toast. Some
+          brokers don't attach OCO exits to option tickets automatically, so always confirm the
+          bracket in your broker after submission.
+        </p>
+
         <p className="mt-3 text-sm text-muted-foreground">
           The "Review with InstaTrade™" button on any setup card opens the same review flow with the
           fields pre-filled.
@@ -525,13 +643,42 @@ const SECTIONS: Section[] = [
     id: "strategies",
     title: "Strategy Reference",
     icon: FileText,
-    summary: "Detailed write-ups for VCP, ORB, momentum, breakout, and other strategies.",
+    summary: "Built-in strategies including VCP, ORB, momentum, breakout, pullback, and the Volatility Squeeze.",
+    keywords: [
+      "vcp", "orb", "opening range", "momentum", "breakout", "pullback",
+      "volatility squeeze", "ttm squeeze", "bollinger", "bollinger bands",
+      "keltner", "keltner channels", "trend continuation", "gap and go",
+      "high rvol", "vwap reclaim", "strategy",
+    ],
     body: (
       <>
         <p>
           The dedicated <Link href="/help" className="underline">Strategy Reference</Link> page covers
           every built-in strategy with overview, characteristics, entry signals, risk management, best
-          conditions, and timeframe.
+          conditions, and timeframe. The current built-in lineup:
+        </p>
+        <ul className="list-disc pl-5 space-y-1.5 mt-2">
+          <li><strong>VCP (Volatility Contraction Pattern)</strong> — Minervini-style base building with tightening volatility and a clean pivot.</li>
+          <li><strong>VCP Multi-Day</strong> — daily-chart VCP variant for swing setups.</li>
+          <li><strong>Opening Range Breakout (ORB)</strong> — 5-minute and 15-minute opening range break with confirming volume.</li>
+          <li><strong>Gap &amp; Go</strong> — high-volume gappers that hold the open and continue in the gap direction.</li>
+          <li><strong>High RVOL</strong> — names trading on dramatically elevated relative volume.</li>
+          <li><strong>Trend Continuation</strong> — pullbacks and bounces inside an established trend.</li>
+          <li><strong>Classic Pullback</strong> — controlled retracement to a moving average or prior support.</li>
+          <li><strong>VWAP Reclaim</strong> — price reclaiming the day's VWAP after a flush, with volume confirmation.</li>
+          <li>
+            <strong>Volatility Squeeze (TTM-style)</strong> — flags stocks where the <em>Bollinger
+            Bands</em> have contracted <em>inside</em> the <em>Keltner Channels</em> (the classic
+            "squeeze on" signal) and historically precedes a sharp expansion move. The scanner
+            checks Bollinger Band width at multi-week lows, the BB-inside-KC condition, a tight
+            consolidation range, and a momentum trigger before flagging the setup. Squeeze setups
+            also surface as the <em>Volatility Squeeze</em> signal pill on idea cards.
+          </li>
+        </ul>
+        <p className="mt-3 text-sm text-muted-foreground">
+          The Strategy Scanner page lets you run any of these against your chosen stock list with
+          adjustable thresholds, and the Trade Finder can build an idea around any of them in
+          plain English.
         </p>
       </>
     ),

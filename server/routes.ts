@@ -2872,7 +2872,22 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const userId = req.session?.userId;
       if (!userId) return res.status(401).json({ error: "Auth required" });
 
-      const { symbol, instrumentType, legs, quantity, setupId, setupScore, vehicleScore, rewardRisk, overrideGuardrails } = req.body;
+      const { symbol, instrumentType, legs, quantity, setupId, setupScore, vehicleScore, rewardRisk, overrideGuardrails, oco } = req.body;
+      let ocoConfig: { takeProfitPct: number; stopLossPct: number } | null = null;
+      if (oco != null) {
+        if (typeof oco !== "object" || Array.isArray(oco)) {
+          return res.status(400).json({ error: "oco must be an object with takeProfitPct and stopLossPct" });
+        }
+        const tp = Number(oco.takeProfitPct);
+        const sl = Number(oco.stopLossPct);
+        if (!Number.isFinite(tp) || tp < 5 || tp > 500) {
+          return res.status(400).json({ error: "oco.takeProfitPct must be a number between 5 and 500" });
+        }
+        if (!Number.isFinite(sl) || sl < 5 || sl > 100) {
+          return res.status(400).json({ error: "oco.stopLossPct must be a number between 5 and 100" });
+        }
+        ocoConfig = { takeProfitPct: tp, stopLossPct: sl };
+      }
       if (!symbol || !instrumentType || !Array.isArray(legs) || legs.length === 0) {
         return res.status(400).json({ error: "Missing required fields: symbol, instrumentType, legs" });
       }
@@ -2916,7 +2931,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           entryPrice: Math.abs(totalDebit) || null,
           quantity: qty,
           outcomeLabel: "open",
-          notes: `Mock option fill (${legs.length} legs)`,
+          notes: `Mock option fill (${legs.length} leg${legs.length === 1 ? "" : "s"})${ocoConfig ? ` · OCO +${ocoConfig.takeProfitPct}% / -${ocoConfig.stopLossPct}%` : ""}`,
         } as any);
       } catch (e: any) {
         console.warn("[place-option] outcome record failed:", e.message);
@@ -2929,8 +2944,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         instrumentType,
         quantity: qty,
         netDebit: totalDebit,
+        oco: ocoConfig,
         warnings: gr.warnings,
-        notice: "Options execution is in preview mode (mock fill). Real broker routing coming soon.",
+        notice: ocoConfig
+          ? `Options execution is in preview mode (mock fill). OCO exit logged (+${ocoConfig.takeProfitPct}% / -${ocoConfig.stopLossPct}%). Confirm the bracket in your broker.`
+          : "Options execution is in preview mode (mock fill). Real broker routing coming soon.",
       });
     } catch (err: any) {
       console.error("[place-option] error:", err.message);

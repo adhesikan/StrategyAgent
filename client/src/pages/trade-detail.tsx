@@ -17,6 +17,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -497,6 +498,9 @@ export default function TradeDetailPage() {
 
   const [ticketOpen, setTicketOpen] = useState(false);
   const [optionTicketOpen, setOptionTicketOpen] = useState(false);
+  const [ocoEnabled, setOcoEnabled] = useState(false);
+  const [ocoTakeProfitPct, setOcoTakeProfitPct] = useState<number>(75);
+  const [ocoStopLossPct, setOcoStopLossPct] = useState<number>(50);
   const [saveWatchlistOpen, setSaveWatchlistOpen] = useState(false);
   const [contractQty, setContractQty] = useState(1);
   const [optionAck, setOptionAck] = useState(false);
@@ -636,12 +640,19 @@ export default function TradeDetailPage() {
         quantity: contractQty,
         setupScore: score,
         rewardRisk: plan.payoff.maxUp / Math.max(Math.abs(plan.payoff.maxDown), 1),
+        oco: ocoEnabled
+          ? {
+              takeProfitPct: ocoTakeProfitPct,
+              stopLossPct: ocoStopLossPct,
+            }
+          : null,
       });
       return res.json();
     },
     onSuccess: (data: any) => {
+      const isMulti = plan.legs.length > 1;
       toast({
-        title: "Multi-leg option order sent",
+        title: isMulti ? "Multi-leg option order sent" : "Option order sent",
         description: data.notice || `${plan.name} on ${ticker} — ${contractQty} contract${contractQty > 1 ? "s" : ""}.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/trade-outcomes"] });
@@ -926,7 +937,9 @@ export default function TradeDetailPage() {
               <Send className="h-4 w-4" /> InstaTrade™ — {plan.name}
             </SheetTitle>
             <SheetDescription>
-              Multi-leg option order for {ticker}. Confirm strikes, premiums and quantity in your broker chain before submitting.
+              {plan.legs.length > 1
+                ? `Multi-leg option order for ${ticker}. Confirm strikes, premiums and quantity in your broker chain before submitting.`
+                : `Single-leg option order for ${ticker}. Confirm strike, premium and quantity in your broker chain before submitting.`}
             </SheetDescription>
           </SheetHeader>
 
@@ -1122,6 +1135,66 @@ export default function TradeDetailPage() {
               </div>
             )}
 
+            <Card className="p-3 space-y-3 bg-muted/30" data-testid="card-oco-exit">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="oco-toggle" className="text-sm font-medium">
+                    Attach OCO exit (one-cancels-other)
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Auto-close at a profit target or stop on the premium.
+                  </p>
+                </div>
+                <Switch
+                  id="oco-toggle"
+                  checked={ocoEnabled}
+                  onCheckedChange={setOcoEnabled}
+                  data-testid="switch-oco"
+                />
+              </div>
+
+              {ocoEnabled && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="oco-tp" className="text-xs">
+                      Take profit (% of premium)
+                    </Label>
+                    <Input
+                      id="oco-tp"
+                      type="number"
+                      min={5}
+                      max={500}
+                      value={ocoTakeProfitPct}
+                      onChange={(e) =>
+                        setOcoTakeProfitPct(Math.max(5, Math.min(500, parseInt(e.target.value) || 0)))
+                      }
+                      data-testid="input-oco-tp"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="oco-sl" className="text-xs">
+                      Stop loss (% of premium)
+                    </Label>
+                    <Input
+                      id="oco-sl"
+                      type="number"
+                      min={5}
+                      max={100}
+                      value={ocoStopLossPct}
+                      onChange={(e) =>
+                        setOcoStopLossPct(Math.max(5, Math.min(100, parseInt(e.target.value) || 0)))
+                      }
+                      data-testid="input-oco-sl"
+                    />
+                  </div>
+                  <p className="col-span-2 text-[11px] text-muted-foreground">
+                    Logged with your order plan. Some brokers may not attach OCO exits to option
+                    tickets automatically — confirm the bracket in your broker after submission.
+                  </p>
+                </div>
+              )}
+            </Card>
+
             <div className="flex items-start gap-2">
               <Checkbox
                 id="option-ack"
@@ -1151,7 +1224,7 @@ export default function TradeDetailPage() {
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              Send multi-leg order
+              {plan.legs.length > 1 ? "Send multi-leg order" : "Send order"}
             </Button>
           </SheetFooter>
         </SheetContent>

@@ -164,6 +164,30 @@ function detectSpreadIntent(lower: string): "bull_call_spread" | "bear_put_sprea
   return null;
 }
 
+// Detect generic "find me a (good) option trade / trade idea" asks that
+// DON'T name a specific structure. These include the very common conditional
+// pattern "is X bullish? if yes find me a good option trade". We route them
+// through the bias engine and pick:
+//   - bullish bias → long_call
+//   - bearish bias → long_put
+//   - neutral bias → null (don't force a ticket — let prose explain why)
+// Returns true if the prompt looks like a generic "give me a trade" ask.
+// Excludes multi-leg phrasings (those go through detectSpreadIntent) and the
+// already-handled single-leg explicit asks (those go through
+// detectDirectionalOption). Excludes income/wheel phrasings (those are
+// covered by parsePrompt's incomeIntent).
+const INCOME_HINT = /\b(wheel|cash[-\s]?secured\s+put|covered\s+call|csp|premium\s+income|sell\s+(a\s+|the\s+|some\s+)?puts?|sell\s+(a\s+|the\s+|some\s+)?calls?|income|collect\s+premium)\b/;
+function detectGenericTradeAsk(lower: string): boolean {
+  if (MULTI_LEG_HINT.test(lower)) return false;
+  if (INCOME_HINT.test(lower)) return false;
+  // Already covered by detectDirectionalOption — let that path handle them so
+  // we don't double-trigger.
+  if (/\b(long\s+calls?|buy\s+(a\s+|the\s+|some\s+)?calls?|call\s+options?|long\s+puts?|buy\s+(a\s+|the\s+|some\s+)?puts?|put\s+options?)\b/.test(lower)) return false;
+  // Generic option / trade asks. We require the prompt to be ASKING for a
+  // trade — not just mentioning options in passing.
+  return /\b(option\s+(trade|play|idea|setup|strategy)|find\s+me\s+(a\s+|an\s+|the\s+|some\s+)?(good\s+|best\s+)?(option\s+)?trade|good\s+(option\s+)?trade|best\s+(option\s+)?trade|trade\s+idea|trade\s+setup|what\s+(option\s+)?trade|any\s+(option\s+)?trade|suggest\s+(a\s+|an\s+)?(option\s+)?trade|recommend\s+(a\s+|an\s+)?(option\s+)?trade)\b/.test(lower);
+}
+
 // Bull-call or bear-put debit spread ticket. Both legs come from the
 // deterministic option-plan builders so strikes/widths/debit/breakeven are
 // internally consistent — we never invent numbers.
@@ -678,10 +702,14 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         } else if (tickers.length > 0) {
           // Resolve which debit structure was asked for. Order: explicit spread
           // wording first (since "call spread" contains "call"), then
-          // single-leg long-call/long-put.
+          // single-leg long-call/long-put, then the GENERIC "find me a good
+          // option trade" pattern (resolved via bias the same way an
+          // ambiguous "debit spread" is — bullish→long_call, bearish→long_put,
+          // neutral→skip so we don't force a directional bet).
           const spreadAsk = detectSpreadIntent(lower);
           const dirAsk = !spreadAsk ? detectDirectionalOption(lower) : null;
-          if (spreadAsk || dirAsk) {
+          const genericAsk = !spreadAsk && !dirAsk ? detectGenericTradeAsk(lower) : false;
+          if (spreadAsk || dirAsk || genericAsk) {
             const sym = tickers[0];
             const live = ctx.tickers.find((t) => t.symbol === sym)?.last ?? null;
             // Determine bias from the same scan engine the rest of the app
@@ -702,14 +730,27 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
             // Resolve "debit_spread" (no direction in prompt) using the bias.
             // If the bias is neutral, default to bull-call so we still return
             // a concrete ticket — the alignment banner will flag it as speculative.
-            let resolvedKind: DirectionalKind;
+            // For a generic "find me an option trade" ask, map bias to
+            // long_call/long_put. If the bias is neutral we DON'T force a
+            // directional bet — fall through to plain prose with no ticket.
+            let resolvedKind: DirectionalKind | null;
             if (spreadAsk === "debit_spread") {
               resolvedKind = biasMeta.bias === "bearish" ? "bear_put_spread" : "bull_call_spread";
             } else if (spreadAsk) {
               resolvedKind = spreadAsk;
+            } else if (dirAsk) {
+              resolvedKind = dirAsk;
             } else {
-              resolvedKind = dirAsk!;
+              // genericAsk path
+              if (biasMeta.bias === "bullish") resolvedKind = "long_call";
+              else if (biasMeta.bias === "bearish") resolvedKind = "long_put";
+              else resolvedKind = null;
             }
+            if (!resolvedKind) {
+              // Neutral bias on a generic ask — skip ticket. Stash the bias
+              // so the prose layer can still explain "no clear direction".
+              directionalBias = null;
+            } else {
 
             const td = resolvedKind === "bull_call_spread" || resolvedKind === "bear_put_spread"
               ? buildSpreadTradeDetail(sym, live, resolvedKind)
@@ -730,6 +771,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                 : `Signals on ${sym} are neutral right now — a directional ${dirLabel} is speculative until the bias confirms.`;
             tradeDetail = td;
             directionalBias = { direction: resolvedKind, ...biasMeta };
+            }
           }
         }
       } catch (err) {

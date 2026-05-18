@@ -36,7 +36,10 @@ import {
   Info,
   Check,
   AlertTriangle,
+  HelpCircle,
+  ChevronDown,
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type StrategyCategory = "Momentum" | "Trend" | "Volatility" | "Intraday" | "Options";
 
@@ -968,6 +971,51 @@ export default function StrategyScannerPage() {
             })}
           </div>
         )}
+
+        <Collapsible className="mb-3">
+          <Card className="p-3">
+            <CollapsibleTrigger
+              className="w-full flex items-center justify-between gap-3 text-left group"
+              data-testid="button-toggle-scanner-help"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <HelpCircle className="h-4 w-4 text-primary shrink-0" />
+                <span className="text-sm font-medium">How to read these results</span>
+                <span className="text-[11px] text-muted-foreground hidden sm:inline truncate">
+                  What the columns mean &amp; how to pick a trade
+                </span>
+              </div>
+              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3 text-xs text-muted-foreground space-y-3 leading-relaxed" data-testid="content-scanner-help">
+              <p>
+                Each row is an <span className="text-foreground font-medium">underlying equity</span> that currently matches the <span className="text-foreground font-medium">{selected.name}</span> pattern. We surface the underlying — not a specific option contract — so you can pick the vehicle that fits your account on the next screen.
+              </p>
+              <div className="space-y-1.5">
+                <p className="text-foreground font-medium">What the columns mean</p>
+                <ul className="space-y-1 pl-4 list-disc marker:text-primary/60">
+                  <li><span className="text-foreground font-medium">RVOL</span> — relative volume vs. the stock's 30-day average. Higher = more conviction behind today's move (1.5×+ is meaningful, 3×+ is strong).</li>
+                  <li><span className="text-foreground font-medium">% change</span> — today's price move so far.</li>
+                  <li><span className="text-foreground font-medium">forming / ready</span> — pattern stage. <em>Ready</em> = trigger met; <em>forming</em> = setup developing, watch for confirmation.</li>
+                  <li><span className="text-foreground font-medium">Score</span> — 0–100 composite of how cleanly the name fits the pattern (technical strength × liquidity × confirmation).</li>
+                  <li><span className="text-foreground font-medium">Win prob</span> — historical hit-rate of this pattern at similar scores. A statistical reference point, not a prediction.</li>
+                </ul>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-foreground font-medium">How to pick a trade</p>
+                <ol className="space-y-1 pl-4 list-decimal marker:text-primary/60">
+                  <li>Sort by <span className="text-foreground font-medium">Score</span> first to see the cleanest setups.</li>
+                  <li>Prefer rows with <span className="text-foreground font-medium">RVOL ≥ 1.5×</span> and stage <span className="text-foreground font-medium">ready</span> — they have momentum behind them.</li>
+                  <li>Click <span className="text-foreground font-medium">View</span> to open the ticket. The vehicle ({TRADE_TYPES.find((t) => t.id === preferredType(selected))?.short}) is preselected — you can change it.</li>
+                  <li>Review the proposed entry, stop, and target. <span className="text-foreground font-medium">Nothing is sent without your approval.</span></li>
+                </ol>
+              </div>
+              <p className="italic">
+                Software-generated educational analysis — not investment advice. Confirm every order in your own broker before acting.
+              </p>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         <Card className="p-5">
           <div className="flex items-center justify-between mb-4">

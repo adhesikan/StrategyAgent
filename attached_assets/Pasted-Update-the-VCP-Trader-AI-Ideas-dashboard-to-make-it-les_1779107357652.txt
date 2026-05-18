@@ -1,0 +1,227 @@
+Update the VCP Trader AI Ideas dashboard to make it less intimidating, easier to scan, and more trader-friendly.
+
+Goal:
+Transform the current Ideas dashboard from a dense options/risk terminal into a guided “AI opportunities” experience.
+
+Key UX changes:
+
+1. Rename the page header
+Change:
+“Today’s Ideas For You”
+To:
+“Today’s Best Setups”
+
+Subtext:
+“AI-ranked opportunities based on your selected market and strategy filters.”
+
+2. Simplify opportunity cards
+
+For each idea card, show only these primary fields by default:
+
+- Ticker
+- Company name if available
+- Setup type, example:
+  “Bullish Call Opportunity”
+  “Stock Breakout Setup”
+  “Defined-Risk Options Setup”
+
+- AI Confidence or Setup Match score
+  Replace letter grades like B/C with:
+  “86% Setup Match”
+  or
+  “High Conviction”
+  or
+  “Moderate Conviction”
+
+- One plain-English reason:
+  Example:
+  “Strong momentum with bullish continuation signals.”
+  “Breakout pattern forming with improving volume.”
+  “Options liquidity appears acceptable for self-directed review.”
+
+- Estimated position cost
+  Replace visible “Max Loss” and “Capital” boxes with:
+  “Estimated cost: ~$351”
+
+- Primary CTA:
+  “Review Setup”
+
+- Secondary CTA:
+  “Add to Watchlist”
+
+3. Hide intimidating risk fields by default
+
+Remove these from the default card view:
+- Large red “High Risk” box
+- Max Loss box
+- Capital box
+- dense strategy metadata
+- excessive badges/pills
+
+Do not delete the data. Move it into an expandable section called:
+
+“Advanced details”
+
+Inside Advanced details, show:
+- Risk level
+- Max loss
+- Capital required
+- Strategy name
+- Option type
+- Simulation/live data status
+- Entry/exit plan
+- Any other current detailed metrics
+
+4. Replace scary risk language
+
+Where possible:
+- “High Risk” should not be shown prominently on the card.
+- In Advanced details, relabel risk as:
+  “Risk profile: Aggressive”
+  instead of:
+  “Risk: High”
+
+Use:
+- Conservative
+- Balanced
+- Aggressive
+
+instead of:
+- Low
+- Medium
+- High
+
+5. Improve visual hierarchy
+
+Update card styling:
+- More whitespace
+- Fewer borders
+- Softer card background
+- Avoid red unless it is a true warning/error
+- Use blue for primary actions
+- Use muted gray for secondary metadata
+- Make ticker and setup title visually dominant
+- Make confidence/match score easy to see but not overwhelming
+
+6. Add Beginner / Advanced mode toggle
+
+Add a toggle near the filters:
+
+Label:
+“View mode”
+
+Options:
+- Simple
+- Advanced
+
+Simple mode:
+- Shows simplified cards only
+- Advanced details collapsed by default
+- No red risk blocks
+- No dense options metrics on the card
+
+Advanced mode:
+- Shows current detailed information more readily
+- Advanced details can default open
+- Still use improved styling and better labels
+
+Persist this setting in localStorage.
+
+7. Simplify filter labels
+
+Current filter area feels crowded.
+
+Keep the filters, but improve wording:
+- “Stocks only” → “Stocks”
+- “Long options” → “Long Calls/Puts”
+- “Defined-risk options” → “Spreads”
+- “Scan from” → “Market universe”
+
+Keep functionality unchanged.
+
+8. Update Top 3 section
+
+Change:
+“Top 3 Picks for Your Review”
+
+To:
+“Top 3 AI-Ranked Setups”
+
+Subtext:
+“Review only what fits your risk and account settings.”
+
+Replace:
+“Nothing is sent without your approval.”
+
+With:
+“You stay in control. No order is placed without your approval.”
+
+9. Card layout example
+
+Each simplified card should look conceptually like this:
+
+AVGO
+Broadcom Inc.
+
+Bullish Call Opportunity
+
+86% Setup Match
+
+Strong momentum with bullish continuation signals.
+
+Estimated cost: ~$351
+
+[Review Setup] [Add to Watchlist]
+
+Advanced details ˅
+
+10. Compliance-safe language
+
+Do not use:
+- guaranteed
+- best trade
+- profit opportunity
+- recommended trade
+- should buy
+- sure winner
+
+Use:
+- setup
+- opportunity for review
+- candidate
+- self-directed review
+- estimated
+- simulated
+- AI-ranked
+
+Add or preserve a small disclosure near the page bottom or inside the review flow:
+
+“These ideas are for educational and informational purposes only. They are not investment advice or personalized recommendations. You decide whether any setup fits your objectives, risk tolerance, and account.”
+
+11. Keep functionality intact
+
+Do not break:
+- existing filters
+- sorting
+- scan universe dropdown
+- Review button flow
+- Learn more flow if currently used
+- simulated/live data labels
+- mobile responsiveness
+- dark mode
+
+12. Mobile improvement
+
+On mobile:
+- show one card per row
+- hide secondary metadata
+- keep CTA buttons full width
+- Advanced details collapsed by default
+
+Acceptance criteria:
+- The dashboard feels simpler and less intimidating.
+- Risk/max loss/capital are no longer visually dominant in Simple mode.
+- Traders can scan cards quickly.
+- Advanced users can still access the detailed metrics.
+- View mode toggle works and persists after refresh.
+- No compliance-sensitive investment recommendation language is introduced.

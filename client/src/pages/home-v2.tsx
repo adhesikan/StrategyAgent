@@ -27,7 +27,7 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
-import { DailyIdeaCard, DailyIdeaRow, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
+import { DailyIdeaCard, DailyIdeaRow, SimpleIdeaCard, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
 import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -219,9 +219,9 @@ type InstrumentFilter = "all" | "stock" | "long_options" | "defined_risk";
 
 const INSTRUMENT_FILTERS: { value: InstrumentFilter; label: string; hint: string }[] = [
   { value: "all", label: "All", hint: "Stocks plus every options structure." },
-  { value: "stock", label: "Stocks only", hint: "Long-share swing setups (no options)." },
-  { value: "long_options", label: "Long options", hint: "Long calls and long puts — single-leg, premium-paid, defined-risk-by-premium." },
-  { value: "defined_risk", label: "Defined-risk options", hint: "Vertical spreads, covered calls, and cash-secured puts — every position has a known max loss." },
+  { value: "stock", label: "Stocks", hint: "Long-share swing setups (no options)." },
+  { value: "long_options", label: "Long Calls/Puts", hint: "Long calls and long puts — single-leg, premium-paid, defined-risk-by-premium." },
+  { value: "defined_risk", label: "Spreads", hint: "Vertical spreads, covered calls, and cash-secured puts — every position has a known max loss." },
 ];
 
 function matchesInstrumentFilter(t: DailyIdea["instrumentType"], f: InstrumentFilter): boolean {
@@ -285,6 +285,14 @@ export default function HomeV2() {
     const v = window.localStorage.getItem("home.ideasView");
     return v === "list" || v === "card" ? v : "card";
   });
+  const [cardMode, setCardMode] = useState<"simple" | "advanced">(() => {
+    if (typeof window === "undefined") return "simple";
+    const v = window.localStorage.getItem("home.cardMode");
+    return v === "advanced" || v === "simple" ? v : "simple";
+  });
+  useEffect(() => {
+    window.localStorage.setItem("home.cardMode", cardMode);
+  }, [cardMode]);
   const [sortBy, setSortBy] = useState<SortKey>("grade");
   const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>(() => {
     if (typeof window === "undefined") return "all";
@@ -375,10 +383,11 @@ export default function HomeV2() {
         </div>
 
         <section>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div>
             <h2 className="text-base font-semibold flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
-              Today's Ideas For You
+              Today's Best Setups
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -416,7 +425,32 @@ export default function HomeV2() {
                 </Tooltip>
               </TooltipProvider>
             </h2>
-            <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-ideas-subtitle">
+              AI-ranked opportunities based on your selected market and strategy filters.
+            </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground hidden sm:inline">View mode</span>
+              <div className="flex items-center border rounded-md" data-testid="toggle-card-mode">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("rounded-r-none h-8 px-3 text-xs", cardMode === "simple" && "bg-muted")}
+                  onClick={() => setCardMode("simple")}
+                  data-testid="button-mode-simple"
+                >
+                  Simple
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("rounded-l-none h-8 px-3 text-xs border-l", cardMode === "advanced" && "bg-muted")}
+                  onClick={() => setCardMode("advanced")}
+                  data-testid="button-mode-advanced"
+                >
+                  Advanced
+                </Button>
+              </div>
               {ideasResp?.dataMode === "simulated" && (
                 <Badge variant="outline" className="text-[10px]" data-testid="badge-simulated">Simulated data</Badge>
               )}
@@ -487,7 +521,7 @@ export default function HomeV2() {
                   </div>
                 </PopoverContent>
               </Popover>
-              <span className="text-xs text-muted-foreground hidden sm:inline">Scan from</span>
+              <span className="text-xs text-muted-foreground hidden sm:inline">Market universe</span>
               <Select
                 value={scanPrefs.universe}
                 onValueChange={(v) => {
@@ -603,21 +637,14 @@ export default function HomeV2() {
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
-                    <h3 className="text-sm font-semibold">Top 3 Picks for Your Review</h3>
-                    <span className="text-[11px] text-muted-foreground">
-                      Highest-ranked by{" "}
-                      {sortBy === "grade"
-                        ? "grade + score"
-                        : sortBy === "score"
-                          ? "composite score"
-                          : sortBy === "risk_low"
-                            ? "lowest risk"
-                            : sortBy === "risk_high"
-                              ? "highest reward setup"
-                              : "symbol"}
-                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold">Top 3 AI-Ranked Setups</h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Review only what fits your risk and account settings.
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-muted-foreground">Nothing is sent without your approval.</span>
+                  <span className="text-[10px] text-muted-foreground">You stay in control. No order is placed without your approval.</span>
                 </div>
                 {ideasView === "card" ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -632,7 +659,7 @@ export default function HomeV2() {
                         >
                           #{i + 1}
                         </Badge>
-                        <DailyIdeaCard idea={idea} />
+                        {cardMode === "simple" ? <SimpleIdeaCard idea={idea} /> : <DailyIdeaCard idea={idea} />}
                       </div>
                     ))}
                   </div>
@@ -705,9 +732,13 @@ export default function HomeV2() {
                     if (visible.length === 0) return null;
                     return ideasView === "card" ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {visible.map((idea) => (
-                          <DailyIdeaCard key={idea.id} idea={idea} />
-                        ))}
+                        {visible.map((idea) =>
+                          cardMode === "simple" ? (
+                            <SimpleIdeaCard key={idea.id} idea={idea} />
+                          ) : (
+                            <DailyIdeaCard key={idea.id} idea={idea} />
+                          ),
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1038,10 +1069,8 @@ export default function HomeV2() {
           </div>
         </section>
 
-        <p className="text-xs text-muted-foreground pt-6 border-t" data-testid="text-home-disclaimer">
-          {ideasResp?.disclaimer ||
-            snap?.disclaimer ||
-            "Software-generated context for informational use only — not financial advice. Review before acting."}
+        <p className="text-xs text-muted-foreground pt-6 border-t leading-relaxed" data-testid="text-home-disclaimer">
+          These ideas are for educational and informational purposes only. They are not investment advice or personalized recommendations. You decide whether any setup fits your objectives, risk tolerance, and account.
         </p>
       </div>
     </div>

@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Plus, Check } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -221,6 +224,108 @@ const RISK_TIP: Record<DailyIdea["riskLevel"], string> = {
   medium: "Moderate volatility or partial capital exposure. Typical swing-trade risk profile.",
   high: "Elevated volatility, undefined risk, or large notional exposure. Size carefully and consider defined-risk alternatives.",
 };
+
+// Friendlier risk wording for the simple-mode card. We avoid "High Risk" as a
+// dominant red label; the same data is shown inside Advanced details as a
+// risk *profile* instead.
+export const RISK_PROFILE_LABEL: Record<DailyIdea["riskLevel"], string> = {
+  low: "Conservative",
+  medium: "Balanced",
+  high: "Aggressive",
+};
+
+// Plain-English setup-type headline shown in simple mode. Mirrors instrument
+// type but reads like a trader-friendly description rather than the formal
+// option-structure name used in the badge.
+export function setupTypeLabel(idea: Pick<DailyIdea, "instrumentType">): string {
+  switch (idea.instrumentType) {
+    case "stock":
+      return "Stock Breakout Setup";
+    case "long_call":
+      return "Bullish Call Opportunity";
+    case "long_put":
+      return "Bearish Put Opportunity";
+    case "spread":
+      return "Defined-Risk Options Setup";
+    case "covered_call":
+      return "Covered Call Income Setup";
+    case "cash_secured_put":
+      return "Cash-Secured Put Income Setup";
+  }
+}
+
+interface Conviction {
+  label: string;
+  tone: string;
+}
+
+// Maps the 0–100 composite score onto a qualitative conviction tier used for
+// the simple-mode badge. We use the same thresholds as the existing letter
+// grades so simple and advanced views agree on which setups are strongest.
+export function convictionFromScore(score: number): Conviction {
+  if (score >= 85) {
+    return {
+      label: "High Conviction",
+      tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40",
+    };
+  }
+  if (score >= 70) {
+    return {
+      label: "Moderate Conviction",
+      tone: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40",
+    };
+  }
+  return {
+    label: "Exploratory",
+    tone: "bg-muted text-muted-foreground border-border",
+  };
+}
+
+interface WatchlistSummary {
+  id: string;
+  name: string;
+  symbols?: string[];
+}
+
+// Shared mutation hook for the "Add to Watchlist" button. Uses the user's
+// first existing watchlist, creating one named "My Watchlist" if none exist.
+// Symbols already present are treated as success (server is idempotent in
+// practice; we also guard locally to avoid noisy toasts).
+export function useAddToWatchlist() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (symbol: string) => {
+      const upper = symbol.toUpperCase();
+      const listsRes = await fetch("/api/watchlists", { credentials: "include" });
+      if (!listsRes.ok) throw new Error("Couldn't load your watchlists.");
+      const lists: WatchlistSummary[] = await listsRes.json();
+      let target = lists[0];
+      if (!target) {
+        const created = await apiRequest("POST", "/api/watchlists", { name: "My Watchlist" });
+        target = await created.json();
+      }
+      if (target.symbols?.includes(upper)) {
+        return { alreadyPresent: true, name: target.name };
+      }
+      await apiRequest("POST", `/api/watchlists/${target.id}/symbols`, { symbol: upper });
+      return { alreadyPresent: false, name: target.name };
+    },
+    onSuccess: (result, symbol) => {
+      qc.invalidateQueries({ queryKey: ["/api/watchlists"] });
+      toast({
+        title: result.alreadyPresent ? `${symbol} is already on ${result.name}` : `Added ${symbol} to ${result.name}`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Couldn't add to watchlist",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
 
 // Weights mirror computeFinalScore() in server/services/opportunity-radar/scoring.ts
 export const GRADE_WEIGHTS = {
@@ -673,6 +778,167 @@ export function DailyIdeaCard({ idea }: Props) {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+// Simple-mode card. Shows only ticker, setup type, conviction, one-line
+// reason, estimated cost, and primary/secondary CTAs. Risk, max loss, capital,
+// strategy metadata, and entry/exit plan all live inside a collapsible
+// "Advanced details" section so the surface stays scannable.
+export function SimpleIdeaCard({ idea }: Props) {
+  const [, navigate] = useLocation();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const addToWatchlist = useAddToWatchlist();
+
+  const handleReview = () => {
+    const typeMap: Record<DailyIdea["instrumentType"], string> = {
+      stock: "stock",
+      long_call: "long-call",
+      long_put: "long-put",
+      spread: "vertical",
+      covered_call: "short-premium",
+      cash_secured_put: "short-premium",
+    };
+    const slug = STRATEGY_KEY_TO_SLUG[getStrategyKeyByInstrumentType(idea.instrumentType)];
+    navigate(`/trade/${idea.symbol}?type=${typeMap[idea.instrumentType]}&strategy=${slug}`);
+  };
+
+  const conviction = convictionFromScore(idea.score);
+  const setup = setupTypeLabel(idea);
+  const estimatedCost = idea.capitalNeeded > 0 ? idea.capitalNeeded : idea.maxRisk;
+  const strategy = getStrategyByInstrumentType(idea.instrumentType);
+
+  return (
+    <Card
+      className="p-5 hover-elevate border-border/60 bg-card/60 flex flex-col gap-4"
+      data-testid={`card-simple-idea-${idea.id}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-2xl font-bold tracking-tight" data-testid={`simple-symbol-${idea.id}`}>
+            {idea.symbol}
+          </div>
+          {idea.companyName && (
+            <div className="text-xs text-muted-foreground truncate mt-0.5">{idea.companyName}</div>
+          )}
+        </div>
+        <Badge
+          variant="outline"
+          className={`text-[11px] font-semibold whitespace-nowrap ${conviction.tone}`}
+          data-testid={`simple-confidence-${idea.id}`}
+        >
+          {idea.score}% Setup Match
+        </Badge>
+      </div>
+
+      <div>
+        <div className="text-sm font-semibold" data-testid={`simple-setup-${idea.id}`}>
+          {setup}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1.5 leading-snug">
+          {idea.simpleSummary}
+        </p>
+      </div>
+
+      <div className="text-sm">
+        <span className="text-muted-foreground">Estimated cost: </span>
+        <span className="font-semibold" data-testid={`simple-cost-${idea.id}`}>
+          ~${estimatedCost.toLocaleString()}
+        </span>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Button
+          onClick={handleReview}
+          className="flex-1 w-full"
+          data-testid={`button-simple-review-${idea.id}`}
+        >
+          Review Setup <ArrowRight className="h-3.5 w-3.5 ml-1" />
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => addToWatchlist.mutate(idea.symbol)}
+          disabled={addToWatchlist.isPending}
+          className="w-full sm:w-auto"
+          data-testid={`button-simple-watchlist-${idea.id}`}
+        >
+          {addToWatchlist.isSuccess ? (
+            <Check className="h-3.5 w-3.5 mr-1" />
+          ) : (
+            <Plus className="h-3.5 w-3.5 mr-1" />
+          )}
+          Add to Watchlist
+        </Button>
+      </div>
+
+      <div className="border-t pt-2 -mx-1">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex items-center justify-between w-full px-1 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          aria-expanded={advancedOpen}
+          data-testid={`button-simple-advanced-${idea.id}`}
+        >
+          <span>Advanced details</span>
+          {advancedOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </button>
+        {advancedOpen && (
+          <div className="mt-2 space-y-3 px-1 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <Detail label="Risk profile" value={RISK_PROFILE_LABEL[idea.riskLevel]} />
+              <Detail label="Max loss" value={`$${idea.maxRisk.toLocaleString()}`} />
+              <Detail label="Capital required" value={idea.capitalNeeded > 0 ? `$${idea.capitalNeeded.toLocaleString()}` : "—"} />
+              <Detail label="Time horizon" value={idea.timeHorizon} />
+              <Detail label="Strategy" value={strategy.name} />
+              <Detail label="Instrument" value={INSTRUMENT_LABEL[idea.instrumentType]} />
+              <Detail label="Data mode" value={idea.dataMode === "simulated" ? "Simulated" : "Live"} />
+              <Detail label="AI score" value={`${idea.score} / 100`} />
+            </div>
+            <div className="border-t pt-2">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                Why it appeared
+              </div>
+              <p className="text-muted-foreground leading-snug">{idea.whyItAppeared}</p>
+            </div>
+            <div className="border-t pt-2 space-y-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  Entry plan
+                </div>
+                <ul className="space-y-0.5 leading-snug">
+                  {PLAN_PREVIEW[idea.instrumentType].entryLegs.map((leg, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className={
+                        "text-[9px] font-bold px-1.5 py-0 leading-tight shrink-0 rounded border " +
+                        (leg.side === "BUY"
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                          : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40")
+                      }>
+                        {leg.side} {leg.qty}
+                      </span>
+                      <span className="text-muted-foreground">{leg.desc}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  Exit plan
+                </div>
+                <ol className="space-y-0.5 leading-snug list-decimal list-inside text-muted-foreground marker:text-primary/60">
+                  {PLAN_PREVIEW[idea.instrumentType].exitPlan.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground/80 italic border-t pt-2">
+              Estimates only — confirm in your broker before submitting any order.
+            </p>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

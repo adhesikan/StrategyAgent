@@ -18,7 +18,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { ComplianceFooter } from "@/components/trading-shell";
-import { DailyIdeasSection } from "@/components/daily-ideas-section";
 import { HelpLink } from "@/components/help-link";
 import { TradingViewHeatmap } from "@/components/tradingview-heatmap";
 
@@ -225,20 +224,6 @@ export default function MarketIntelPage() {
         activeSymbol={activeWhySymbol}
         result={whyQuery.data}
         isLoading={whyQuery.isLoading}
-      />
-
-      <DailyIdeasSection
-        bucket="stocks"
-        title="Stock Opportunities"
-        subtitle="AI-ranked stock candidate scenarios for self-directed review."
-        limit={6}
-      />
-
-      <DailyIdeasSection
-        bucket="options"
-        title="Options Opportunities"
-        subtitle="Defined-risk option ideas aligned with current market conditions."
-        limit={6}
       />
 
       <ComplianceFooter />

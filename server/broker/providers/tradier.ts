@@ -127,7 +127,7 @@ export async function tradierGetBatchQuotes(accessToken: string, symbols: string
 export async function tradierGetOptionExpirations(accessToken: string, symbol: string): Promise<string[]> {
   try {
     const data = await tradierFetch(
-      `${BASE_URL}/markets/options/expirations?symbol=${encodeURIComponent(symbol)}&includeAllRoots=false&strikes=false`,
+      `${getBaseUrlForToken(accessToken)}/markets/options/expirations?symbol=${encodeURIComponent(symbol)}&includeAllRoots=false&strikes=false`,
       accessToken,
     );
     const exps = data?.expirations?.date;
@@ -142,7 +142,7 @@ export async function tradierGetOptionExpirations(accessToken: string, symbol: s
 export async function tradierGetOptionChain(accessToken: string, symbol: string, expiration: string): Promise<OptionChainContract[]> {
   try {
     const data = await tradierFetch(
-      `${BASE_URL}/markets/options/chains?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&greeks=true`,
+      `${getBaseUrlForToken(accessToken)}/markets/options/chains?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&greeks=true`,
       accessToken,
     );
     const options = data?.options?.option;

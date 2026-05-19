@@ -62,6 +62,12 @@ interface AskTradeDetail {
   reasons: string[];
   warnings: string[];
   dataMode: "live" | "simulated";
+  // Source of the option *pricing* (premium, delta, IV). "broker_chain" =
+  // pulled from a real listed contract via the connected broker. "estimated"
+  // = computed from an internal Black–Scholes approximation (no broker
+  // connected, or chain fetch failed). The UI flags this explicitly so users
+  // never confuse a model estimate with a live market quote.
+  pricingSource: "broker_chain" | "estimated";
 }
 
 // Map the ask response's option strategy to the trade-detail page's
@@ -294,13 +300,24 @@ export default function AskPage() {
                     </Badge>
                     <Badge variant="outline" className="text-[10px] capitalize">{data.tradeDetail.symbol}</Badge>
                   </CardTitle>
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] ${data.tradeDetail.dataMode === "live" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : "text-amber-300 border-amber-500/40 bg-amber-500/10"}`}
-                    data-testid="badge-trade-detail-mode"
-                  >
-                    {data.tradeDetail.dataMode === "live" ? "Live quote" : "Simulated"}
-                  </Badge>
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] cursor-help ${data.tradeDetail.pricingSource === "broker_chain" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : "text-amber-300 border-amber-500/40 bg-amber-500/10"}`}
+                          data-testid="badge-trade-detail-mode"
+                        >
+                          {data.tradeDetail.pricingSource === "broker_chain" ? "Live broker chain" : "Estimated values"}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[300px] text-xs leading-snug">
+                        {data.tradeDetail.pricingSource === "broker_chain"
+                          ? "Strike, expiry, premium, and delta are pulled from a real listed contract via your connected broker's option chain. Bid/ask midpoint shown."
+                          : "Premium, delta, and IV are computed from an internal Black–Scholes approximation — directionally correct but NOT a live quote. Connect a broker (Tradier or TradeStation) to see real chain data. Always confirm in your broker before sending."}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">

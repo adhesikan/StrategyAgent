@@ -14,6 +14,7 @@ import { selectInstrument } from "../services/instrument-selector";
 import { scoreSetup } from "../services/probability-engine";
 import type { TradeSetup } from "../agent/strategy-engine";
 import { buildLongCallPlan, buildLongPutPlan, buildBullCallSpread, buildBearPutSpread, type OptionPlan } from "../services/options-evaluator";
+import { getOptionExpirations, getOptionChain } from "../broker";
 
 // Compact, human-readable trade ticket returned alongside the AI prose so
 // users see real strikes/expiry/credit instead of a vague suggestion. Every
@@ -60,6 +61,13 @@ export interface AskTradeDetail {
   reasons: string[];
   warnings: string[];
   dataMode: "live" | "simulated";
+  // Where the *option pricing* (premium, delta, IV) came from. "broker_chain"
+  // means we pulled a real contract from the user's connected broker (Tradier
+  // or TradeStation) — strike, expiry, bid/ask, delta are live market data.
+  // "estimated" means no broker is connected (or the chain fetch failed) so
+  // we used an internal Black–Scholes approximation — directionally correct
+  // but NOT a live quote. The UI surfaces this clearly to the user.
+  pricingSource: "broker_chain" | "estimated";
 }
 
 // Directional debit ticket — long call (bullish) or long put (bearish).
@@ -139,6 +147,7 @@ function buildDirectionalTradeDetail(
     reasons: plan.reasons,
     warnings: plan.warnings,
     dataMode,
+    pricingSource: "estimated",
   };
 }
 
@@ -282,6 +291,7 @@ function buildSpreadTradeDetail(
     reasons: plan.reasons,
     warnings: plan.warnings,
     dataMode,
+    pricingSource: "estimated",
   };
 }
 
@@ -371,7 +381,135 @@ function buildIncomeTradeDetail(
     reasons: plan.reasons,
     warnings: plan.warnings,
     dataMode,
+    pricingSource: "estimated",
   };
+}
+
+// Snap a synthetic single-leg trade ticket to a real contract from the user's
+// connected broker (Tradier / TradeStation) when possible. This replaces the
+// internal premium/delta estimates with live market quotes:
+//   - Picks the listed expiration closest to the requested DTE.
+//   - Picks the listed strike closest to the synthetic strike (same type).
+//   - Recomputes premium/breakeven/max-P/L/collateral/upside-cap from the
+//     real bid+ask midpoint.
+// Returns the original ticket unchanged if no broker is connected, the chain
+// is empty, or the closest contract has no usable quote. Multi-leg spreads
+// are left as estimates here (they need both legs from the chain — handled
+// elsewhere) and are explicitly skipped.
+async function enrichTradeDetailFromBrokerChain(
+  userId: string,
+  td: AskTradeDetail,
+): Promise<AskTradeDetail> {
+  // Spreads have two legs — enrichment for those is out of scope for this
+  // path. Leave them as "estimated" so the UI flags them clearly.
+  if (td.strategy === "bull_call_spread" || td.strategy === "bear_put_spread") {
+    return td;
+  }
+  try {
+    const expirations = await getOptionExpirations(userId, td.symbol);
+    if (!expirations || expirations.length === 0) return td;
+
+    // Pick the listed expiration whose date is closest to the synthetic one.
+    const today = Date.now();
+    const targetMs = today + td.dte * 86400000;
+    let bestExp: string | null = null;
+    let bestExpDelta = Infinity;
+    for (const exp of expirations) {
+      const t = Date.parse(exp);
+      if (Number.isNaN(t)) continue;
+      const d = Math.abs(t - targetMs);
+      if (d < bestExpDelta) {
+        bestExpDelta = d;
+        bestExp = exp;
+      }
+    }
+    if (!bestExp) return td;
+
+    const chain = await getOptionChain(userId, td.symbol, bestExp);
+    if (!chain || chain.length === 0) return td;
+
+    // Filter to the right side of the chain, drop malformed contracts
+    // (NaN/non-positive strike) up front, then pick closest strike.
+    const sameType = chain.filter(
+      (c) => c.optionType === td.optionType && Number.isFinite(c.strike) && c.strike > 0,
+    );
+    if (sameType.length === 0) return td;
+    let best = sameType[0];
+    let bestDelta = Math.abs(best.strike - td.strike);
+    for (const c of sameType) {
+      const d = Math.abs(c.strike - td.strike);
+      if (d < bestDelta) {
+        bestDelta = d;
+        best = c;
+      }
+    }
+
+    // Strict all-or-nothing: every required broker field must be finite and
+    // valid, otherwise we keep the estimated ticket rather than emit a
+    // mixed/partially-broker ticket that's misleadingly labeled
+    // "Live broker chain".
+    const strike = best.strike;
+    if (!Number.isFinite(strike) || strike <= 0) return td;
+
+    const rawDelta = best.greeks?.delta;
+    if (!Number.isFinite(rawDelta)) return td;
+    const delta = rawDelta as number;
+
+    const expiry = best.expiration;
+    const expiryMs = Date.parse(expiry);
+    if (!Number.isFinite(expiryMs)) return td;
+
+    // Live mid from bid/ask; fall back to last if one side is missing.
+    const bid = Number.isFinite(best.bid) && best.bid > 0 ? best.bid : 0;
+    const ask = Number.isFinite(best.ask) && best.ask > 0 ? best.ask : 0;
+    let mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : best.last;
+    if (!Number.isFinite(mid) || mid <= 0) return td;
+    const realDte = Math.max(0, Math.round((expiryMs - today) / 86400000));
+    const spot = td.spot;
+
+    // Recompute downstream fields per strategy. Mirrors the math in
+    // buildLongCallPlan / buildLongPutPlan / buildCashSecuredPutPlan /
+    // buildCoveredCallPlan but uses the live mid as the premium. Target
+    // multipliers (1.08 / 0.92) match the synthetic setups created in
+    // buildDirectionalTradeDetail so the "Est. profit at target" value
+    // stays consistent before and after enrichment.
+    const out: AskTradeDetail = {
+      ...td,
+      strike,
+      expiry,
+      dte: realDte,
+      delta: parseFloat(delta.toFixed(2)),
+      premiumPerShare: parseFloat(mid.toFixed(2)),
+      premiumPerContract: parseFloat((mid * 100).toFixed(2)),
+      pricingSource: "broker_chain",
+    };
+
+    if (td.strategy === "long_call") {
+      const target = spot * 1.08;
+      out.breakeven = parseFloat((strike + mid).toFixed(2));
+      out.maxLossPerContract = parseFloat((mid * 100).toFixed(2));
+      out.maxProfitPerContract = parseFloat((Math.max(0, target - strike - mid) * 100).toFixed(2));
+    } else if (td.strategy === "long_put") {
+      const target = spot * 0.92;
+      out.breakeven = parseFloat((strike - mid).toFixed(2));
+      out.maxLossPerContract = parseFloat((mid * 100).toFixed(2));
+      out.maxProfitPerContract = parseFloat((Math.max(0, strike - target - mid) * 100).toFixed(2));
+    } else if (td.strategy === "cash_secured_put") {
+      out.collateralPerContract = parseFloat((strike * 100 - mid * 100).toFixed(2));
+      out.breakeven = parseFloat((strike - mid).toFixed(2));
+      out.maxProfitPerContract = parseFloat((mid * 100).toFixed(2));
+      out.maxLossPerContract = parseFloat(((strike - mid) * 100).toFixed(2));
+    } else if (td.strategy === "covered_call") {
+      out.upsideCapPerContract = parseFloat(((strike + mid) * 100).toFixed(2));
+      out.breakeven = parseFloat((spot - mid).toFixed(2));
+      out.maxProfitPerContract = parseFloat(((Math.max(0, strike - spot) + mid) * 100).toFixed(2));
+      out.maxLossPerContract = parseFloat((Math.max(0, spot - mid) * 100).toFixed(2));
+    }
+    return out;
+  } catch (err) {
+    console.warn("[ask] broker chain enrichment failed:", (err as Error).message);
+    return td;
+  }
 }
 
 const askSchema = z.object({
@@ -808,6 +946,14 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         }
       } catch (err) {
         console.warn("[ask] trade detail build failed:", err);
+      }
+
+      // If the user has a connected broker, replace the synthetic premium/
+      // delta estimates with real contract data pulled from their broker's
+      // option chain. Falls through silently on failure so the synthetic
+      // estimate is still returned (and flagged as "Estimated" in the UI).
+      if (tradeDetail) {
+        tradeDetail = await enrichTradeDetailFromBrokerChain(userId, tradeDetail);
       }
 
       // Best-trade intent. Two paths:

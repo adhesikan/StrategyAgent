@@ -295,6 +295,37 @@ export async function runQuestionsBatch(
   return { total: rows.length, results };
 }
 
+// Replaces a run's recorded AI answer with the validator's previously
+// suggested improved answer, then re-grades it. Useful for admins to verify
+// that the validator's suggestion actually scores higher / passes the rubric
+// before treating it as the canonical reference answer.
+export async function applySuggestionAndRevalidate(runId: string): Promise<RunResult | null> {
+  const [run] = await db.select().from(agentTestRuns).where(eq(agentTestRuns.id, runId)).limit(1);
+  if (!run) return null;
+  const prevValidation = (run.validationJson ?? {}) as Record<string, unknown>;
+  const suggestion = String(prevValidation.suggestedImprovedAnswer ?? "").trim();
+  if (!suggestion) return null;
+  const [q] = await db.select().from(agentTestQuestions).where(eq(agentTestQuestions.id, run.questionId)).limit(1);
+  if (!q) return null;
+  const hardFails = findHardFailIssues(suggestion);
+  const validator = await runValidator(q, suggestion);
+  if (hardFails.length > 0) {
+    validator.complianceIssues = [...hardFails, ...validator.complianceIssues];
+  }
+  const status = scoreToStatus(validator.score, hardFails);
+  const [updated] = await db
+    .update(agentTestRuns)
+    .set({
+      aiAnswer: suggestion,
+      score: validator.score,
+      status,
+      validationJson: validator as unknown as Record<string, unknown>,
+    })
+    .where(eq(agentTestRuns.id, runId))
+    .returning();
+  return { run: updated, validator, hardFails };
+}
+
 export async function listQuestions(): Promise<AgentTestQuestion[]> {
   return db.select().from(agentTestQuestions).orderBy(agentTestQuestions.category, agentTestQuestions.difficulty);
 }

@@ -4,6 +4,7 @@
 
 import { Router } from "express";
 import {
+  applySuggestionAndRevalidate,
   getJob,
   listQuestions,
   listRecentRuns,
@@ -79,6 +80,17 @@ router.post("/run-batch", async (req: any, res) => {
   } catch (err: any) {
     console.error("[admin-agent-tests] start batch failed:", err);
     res.status(500).json({ error: "Batch start failed: " + err.message });
+  }
+});
+
+router.post("/runs/:id/apply-suggestion", async (req, res) => {
+  try {
+    const result = await applySuggestionAndRevalidate(req.params.id);
+    if (!result) return res.status(404).json({ error: "Run, question, or suggestion missing" });
+    res.json(result);
+  } catch (err: any) {
+    console.error("[admin-agent-tests] apply-suggestion failed:", err);
+    res.status(500).json({ error: "Apply failed: " + err.message });
   }
 });
 

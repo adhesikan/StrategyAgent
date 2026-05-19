@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Play, Database, Download, Beaker, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Loader2, Play, Database, Download, Beaker, ChevronDown, ChevronRight, AlertTriangle, Sparkles } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { AgentTestQuestion, AgentTestRun } from "@shared/schema";
@@ -105,6 +105,21 @@ export default function AdminAgentTestsPage() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/runs"] }),
     onError: (err: any) => toast({ title: "Run failed", description: err.message, variant: "destructive" }),
+  });
+
+  const applySuggestionMutation = useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await apiRequest("POST", `/api/admin/agent-tests/runs/${runId}/apply-suggestion`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Suggestion applied",
+        description: `Re-validated score: ${data?.run?.score ?? "?"} · status: ${data?.run?.status ?? "?"}`,
+      });
+      qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/runs"] });
+    },
+    onError: (err: any) => toast({ title: "Apply failed", description: err.message, variant: "destructive" }),
   });
 
   const runBatchMutation = useMutation({
@@ -368,7 +383,13 @@ export default function AdminAgentTestsPage() {
                       {isOpen && (
                         <TableRow className="bg-muted/30 hover:bg-muted/30">
                           <TableCell colSpan={8} className="p-4">
-                            <ExpandedDetail question={q} run={run} validation={v} />
+                            <ExpandedDetail
+                              question={q}
+                              run={run}
+                              validation={v}
+                              onApplySuggestion={(runId) => applySuggestionMutation.mutate(runId)}
+                              isApplying={applySuggestionMutation.isPending && applySuggestionMutation.variables === run?.id}
+                            />
                           </TableCell>
                         </TableRow>
                       )}
@@ -396,7 +417,19 @@ function SummaryTile({ label, value, tone, testId }: { label: string; value: num
   );
 }
 
-function ExpandedDetail({ question, run, validation }: { question: AgentTestQuestion; run: AgentTestRun | undefined; validation: ValidationJson }) {
+function ExpandedDetail({
+  question,
+  run,
+  validation,
+  onApplySuggestion,
+  isApplying,
+}: {
+  question: AgentTestQuestion;
+  run: AgentTestRun | undefined;
+  validation: ValidationJson;
+  onApplySuggestion: (runId: string) => void;
+  isApplying: boolean;
+}) {
   return (
     <div className="grid md:grid-cols-2 gap-4 text-sm">
       <div className="space-y-3">
@@ -440,10 +473,26 @@ function ExpandedDetail({ question, run, validation }: { question: AgentTestQues
                 </ul>
               </div>
             )}
-            {validation.suggestedImprovedAnswer && (
+            {validation.suggestedImprovedAnswer && run && (
               <div>
-                <div className="font-semibold text-xs uppercase text-muted-foreground mb-1">Suggested Better Answer</div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-semibold text-xs uppercase text-muted-foreground">Suggested Better Answer</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    disabled={isApplying}
+                    onClick={() => onApplySuggestion(run.id)}
+                    data-testid={`button-apply-suggestion-${run.id}`}
+                  >
+                    {isApplying ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1.5" />}
+                    Apply &amp; Re-validate
+                  </Button>
+                </div>
                 <p className="text-xs leading-relaxed bg-background p-3 rounded border">{validation.suggestedImprovedAnswer}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Replaces this run's recorded AI answer with the suggestion above and re-grades it.
+                </p>
               </div>
             )}
             <div>

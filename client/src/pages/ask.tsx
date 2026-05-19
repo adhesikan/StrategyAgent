@@ -101,6 +101,7 @@ interface AskResponse {
   suggestions: { label: string; href: string }[];
   source: "openai" | "rule_based";
   disclaimer: string;
+  referencesUsed?: { id: string; question: string; category: string }[];
 }
 
 const CONFIDENCE_TONE: Record<string, string> = {
@@ -284,6 +285,24 @@ export default function AskPage() {
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex items-start gap-2" data-testid="text-ask-risk">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
                   <div className="text-amber-100/90">{data.riskNote}</div>
+                </div>
+              )}
+
+              {data.referencesUsed && data.referencesUsed.length > 0 && (
+                <div className="rounded-lg border border-primary/25 bg-primary/[0.04] p-3 text-xs" data-testid="list-ask-references-used">
+                  <div className="flex items-center gap-1.5 font-medium text-primary/90 mb-1.5">
+                    <Sparkles className="h-3 w-3" />
+                    Examples that helped shape this answer
+                  </div>
+                  <ul className="space-y-1 text-muted-foreground">
+                    {data.referencesUsed.map((r) => (
+                      <li key={r.id} className="flex items-start gap-1.5" data-testid={`text-ask-reference-${r.id}`}>
+                        <span className="text-primary/70 mt-0.5">•</span>
+                        <span><span className="text-foreground/80">{r.question}</span> <span className="text-[10px] opacity-60">({r.category})</span></span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-1.5 text-[10px] opacity-60">Curated reference answers used as live examples to improve this response.</div>
                 </div>
               )}
             </CardContent>

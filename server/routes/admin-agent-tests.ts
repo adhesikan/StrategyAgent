@@ -15,6 +15,7 @@ import {
   deleteReferenceAnswer,
   listReferenceAnswers,
   promoteRunToReference,
+  promoteRunsBulk,
   PromoteValidationError,
 } from "../services/agent-reference-answers";
 import { seedAgentTestQuestions } from "../services/agent-test-seed";
@@ -121,6 +122,39 @@ router.post("/runs/:id/promote-to-reference", async (req, res) => {
     }
     console.error("[admin-agent-tests] promote failed:", err);
     res.status(500).json({ error: "Promote failed: " + err.message });
+  }
+});
+
+// Bulk-promote a batch of runs into the reference library. Body shape:
+//   { runIds: string[] }   — promote exactly these runs
+//   { all: true }          — promote every run currently shown by listRecentRuns
+// Returns per-run results so the UI can show "X published, Y skipped".
+router.post("/promote-bulk", async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    let runIds: string[] = [];
+    if (Array.isArray(body.runIds) && body.runIds.length > 0) {
+      runIds = body.runIds.filter((x: any) => typeof x === "string");
+    } else if (body.all === true) {
+      // Match the limit used by GET /runs (which feeds the admin UI) so
+      // "Publish All" can never silently miss a row the user can see.
+      const runs = await listRecentRuns(5000);
+      runIds = runs.map((r) => r.id);
+    } else {
+      return res.status(400).json({ error: "Provide runIds[] or all: true" });
+    }
+    if (runIds.length === 0) {
+      return res.json({ promoted: [], skipped: [], summary: { requested: 0, promoted: 0, skipped: 0 } });
+    }
+    const { promoted, skipped } = await promoteRunsBulk(runIds);
+    res.json({
+      promoted,
+      skipped,
+      summary: { requested: runIds.length, promoted: promoted.length, skipped: skipped.length },
+    });
+  } catch (err: any) {
+    console.error("[admin-agent-tests] bulk promote failed:", err);
+    res.status(500).json({ error: "Bulk promote failed: " + err.message });
   }
 });
 

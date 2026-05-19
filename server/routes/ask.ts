@@ -728,6 +728,10 @@ interface AskAnswer {
   keyPoints: string[];
   riskNote: string;
   confidence: "low" | "medium" | "high";
+  // Compact list of curated reference answers that shaped this response. Only
+  // populated by callOpenAi when matches exist; surfaced to users as a
+  // transparency footer in /api/ask responses.
+  referencesUsed?: { id: string; question: string; category: string }[];
 }
 
 function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): AskAnswer {
@@ -789,10 +793,13 @@ async function callOpenAi(
     // test runner so promoted answers don't inflate benchmark scores.
     // Failure is non-fatal — the agent still answers normally.
     let referenceBlock = "";
+    let referencesUsed: { id: string; question: string; category: string }[] = [];
     if (opts.useReferenceLibrary !== false) {
       try {
         const { buildReferencePromptBlock } = await import("../services/agent-reference-answers");
-        referenceBlock = await buildReferencePromptBlock(question, 3);
+        const result = await buildReferencePromptBlock(question, 3);
+        referenceBlock = result.block;
+        referencesUsed = result.used.map((r) => ({ id: r.id, question: r.question, category: r.category }));
       } catch (err) {
         console.warn("[ask] reference-answers lookup failed:", (err as Error).message);
       }
@@ -850,6 +857,7 @@ async function callOpenAi(
       keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.filter((x: any) => typeof x === "string").slice(0, 5) : [],
       riskNote: typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is software-generated analysis — not investment advice.",
       confidence: conf === "high" ? "high" : conf === "medium" ? "medium" : "low",
+      referencesUsed: referencesUsed.length > 0 ? referencesUsed : undefined,
     };
   } catch (err) {
     console.warn("[ask] openai call failed, falling back:", err);

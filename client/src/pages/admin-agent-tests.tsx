@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Play, Database, Download, Beaker, ChevronDown, ChevronRight, AlertTriangle, Sparkles, BookOpen, Star, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Play, Database, Download, Beaker, ChevronDown, ChevronRight, AlertTriangle, Sparkles, BookOpen, Star, Trash2, Upload } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { AgentTestQuestion, AgentTestRun, AgentReferenceAnswer } from "@shared/schema";
@@ -133,6 +134,34 @@ export default function AdminAgentTestsPage() {
       qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/reference-answers"] });
     },
     onError: (err: any) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
+  });
+
+  const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(new Set());
+  const toggleSelected = (runId: string) => {
+    setSelectedRunIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(runId)) next.delete(runId); else next.add(runId);
+      return next;
+    });
+  };
+
+  const bulkPromoteMutation = useMutation({
+    mutationFn: async (body: { runIds?: string[]; all?: boolean }) => {
+      const res = await apiRequest("POST", "/api/admin/agent-tests/promote-bulk", body);
+      return res.json() as Promise<{ summary: { requested: number; promoted: number; skipped: number }; skipped: { runId: string; reason: string }[] }>;
+    },
+    onSuccess: (data) => {
+      const skipNote = data.summary.skipped > 0
+        ? ` ${data.summary.skipped} of ${data.summary.requested} skipped — failed/empty answers can't be published.`
+        : "";
+      toast({
+        title: `Published ${data.summary.promoted} of ${data.summary.requested} answer${data.summary.requested === 1 ? "" : "s"} to the live agent`,
+        description: `The library will now shape responses to similar user questions.${skipNote}`,
+      });
+      setSelectedRunIds(new Set());
+      qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/reference-answers"] });
+    },
+    onError: (err: any) => toast({ title: "Bulk publish failed", description: err.message, variant: "destructive" }),
   });
 
   const applySuggestionMutation = useMutation({
@@ -260,6 +289,32 @@ export default function AdminAgentTestsPage() {
           <Button asChild variant="outline" size="sm" data-testid="button-export-csv">
             <a href="/api/admin/agent-tests/export.csv"><Download className="h-4 w-4 mr-2" />Export CSV</a>
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={selectedRunIds.size === 0 || bulkPromoteMutation.isPending}
+            onClick={() => bulkPromoteMutation.mutate({ runIds: Array.from(selectedRunIds) })}
+            data-testid="button-publish-selected"
+            title="Publish the checked answers to the live AI agent's reference library"
+          >
+            {bulkPromoteMutation.isPending && (bulkPromoteMutation.variables as any)?.runIds ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            Publish Selected ({selectedRunIds.size})
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            disabled={bulkPromoteMutation.isPending}
+            onClick={() => {
+              if (confirm("Publish ALL passing test answers to the live AI agent? Failing or empty runs will be skipped automatically.")) {
+                bulkPromoteMutation.mutate({ all: true });
+              }
+            }}
+            data-testid="button-publish-all"
+            title="Publish every eligible test answer to the live AI agent's reference library"
+          >
+            {bulkPromoteMutation.isPending && (bulkPromoteMutation.variables as any)?.all ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            Publish All
+          </Button>
         </div>
       </div>
 
@@ -365,6 +420,21 @@ export default function AdminAgentTestsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={(() => {
+                        const eligible = filteredQuestions.map((q) => latestRunByQuestion.get(q.id)?.id).filter((id): id is string => !!id);
+                        return eligible.length > 0 && eligible.every((id) => selectedRunIds.has(id));
+                      })()}
+                      onCheckedChange={(v) => {
+                        const eligible = filteredQuestions.map((q) => latestRunByQuestion.get(q.id)?.id).filter((id): id is string => !!id);
+                        if (v) setSelectedRunIds(new Set(eligible));
+                        else setSelectedRunIds(new Set());
+                      }}
+                      data-testid="checkbox-select-all-runs"
+                      aria-label="Select all runs"
+                    />
+                  </TableHead>
                   <TableHead>Question</TableHead>
                   <TableHead className="w-[140px]">Category</TableHead>
                   <TableHead className="w-[100px]">Difficulty</TableHead>
@@ -383,6 +453,15 @@ export default function AdminAgentTestsPage() {
                     <Fragment key={q.id}>
                       <TableRow className="cursor-pointer" onClick={() => setExpanded((e) => ({ ...e, [q.id]: !e[q.id] }))} data-testid={`row-question-${q.id}`}>
                         <TableCell>{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={run ? selectedRunIds.has(run.id) : false}
+                            disabled={!run}
+                            onCheckedChange={() => run && toggleSelected(run.id)}
+                            data-testid={`checkbox-select-run-${q.id}`}
+                            aria-label={`Select run for ${q.category}`}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm" data-testid={`text-question-${q.id}`}>{q.question}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{q.category}</Badge></TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px] capitalize">{q.difficulty}</Badge></TableCell>
@@ -418,7 +497,7 @@ export default function AdminAgentTestsPage() {
                       </TableRow>
                       {isOpen && (
                         <TableRow className="bg-muted/30 hover:bg-muted/30">
-                          <TableCell colSpan={8} className="p-4">
+                          <TableCell colSpan={9} className="p-4">
                             <ExpandedDetail
                               question={q}
                               run={run}

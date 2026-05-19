@@ -121,12 +121,25 @@ export async function findRelevantReferences(question: string, limit = 3): Promi
   return scored;
 }
 
+// Compact, user-safe summary of a matched reference. We deliberately omit
+// `referenceAnswer` so the API contract stays small and doesn't leak the
+// raw curated text into the client.
+export interface ReferenceUsedSummary {
+  id: string;
+  questionId: string;
+  question: string;
+  category: string;
+}
+
 // Format the top references as a compact prompt block the agent can consume.
-// Returns an empty string when no references match so we don't bloat the
-// prompt with empty headers.
-export async function buildReferencePromptBlock(question: string, limit = 3): Promise<string> {
+// Also returns the list of which references were injected so the API layer
+// can surface them to users as a transparency footer.
+export async function buildReferencePromptBlock(
+  question: string,
+  limit = 3,
+): Promise<{ block: string; used: ReferenceUsedSummary[] }> {
   const refs = await findRelevantReferences(question, limit);
-  if (refs.length === 0) return "";
+  if (refs.length === 0) return { block: "", used: [] };
   const lines: string[] = [
     "REFERENCE ANSWERS (curated by admins — match the structure, depth, and risk framing of these examples when the user's question is similar):",
   ];
@@ -135,7 +148,35 @@ export async function buildReferencePromptBlock(question: string, limit = 3): Pr
     lines.push(`Q (${r.category}): ${r.question}`);
     lines.push(`Reference A: ${r.referenceAnswer}`);
   }
-  return lines.join("\n");
+  return {
+    block: lines.join("\n"),
+    used: refs.map((r) => ({ id: r.id, questionId: r.questionId, question: r.question, category: r.category })),
+  };
+}
+
+// Bulk promote multiple runs. Skips any run that fails the
+// PromoteValidationError guardrails (empty / failed / errored), collecting
+// per-run results so the caller can show the user what was published vs
+// skipped.
+export async function promoteRunsBulk(runIds: string[]): Promise<{
+  promoted: AgentReferenceAnswer[];
+  skipped: { runId: string; reason: string }[];
+}> {
+  const promoted: AgentReferenceAnswer[] = [];
+  const skipped: { runId: string; reason: string }[] = [];
+  for (const id of runIds) {
+    try {
+      const ref = await promoteRunToReference(id);
+      if (!ref) {
+        skipped.push({ runId: id, reason: "Run or question not found" });
+      } else {
+        promoted.push(ref);
+      }
+    } catch (err: any) {
+      skipped.push({ runId: id, reason: err.message ?? "Unknown error" });
+    }
+  }
+  return { promoted, skipped };
 }
 
 // Best-effort accessor used by the bumping trigger; ensures touching a

@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert } from "lucide-react";
+import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker } from "lucide-react";
 
 interface AdminStats {
   totalUsers: number;
@@ -48,6 +48,13 @@ const tools = [
     href: "/admin/disclaimer-logs",
     icon: Shield,
     testId: "card-admin-compliance",
+  },
+  {
+    title: "AI Agent Test Suite",
+    description: "Validate the trading AI against 160 graded prompts",
+    href: "/admin/agent-tests",
+    icon: Beaker,
+    testId: "card-admin-agent-tests",
   },
 ];
 

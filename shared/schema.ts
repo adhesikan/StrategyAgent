@@ -2067,3 +2067,47 @@ export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit
 });
 export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
 export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+
+// AI Agent Test Suite — admin-only QA harness for the trading AI agent.
+// `agent_test_questions` is the seeded question bank (160 prompts across
+// trading/options/futures/compliance categories). `agent_test_runs` stores
+// every execution so admins can review the AI answer, the validator's grade,
+// and any compliance flags over time.
+export const agentTestQuestions = pgTable("agent_test_questions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category: text("category").notNull(),
+  difficulty: text("difficulty").notNull(), // beginner | intermediate | advanced
+  question: text("question").notNull(),
+  expectedAnswerGuidelines: text("expected_answer_guidelines").notNull(),
+  requiredConcepts: jsonb("required_concepts").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  forbiddenClaims: jsonb("forbidden_claims").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  complianceRules: jsonb("compliance_rules").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  scoringRubric: text("scoring_rubric").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const agentTestRuns = pgTable("agent_test_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull(),
+  category: text("category").notNull(),
+  difficulty: text("difficulty").notNull(),
+  question: text("question").notNull(),
+  aiAnswer: text("ai_answer").notNull(),
+  score: integer("score").notNull().default(0),
+  status: text("status").notNull(), // pass | needs_review | fail | error
+  validationJson: jsonb("validation_json").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentTestQuestionSchema = createInsertSchema(agentTestQuestions).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertAgentTestRunSchema = createInsertSchema(agentTestRuns).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAgentTestQuestion = z.infer<typeof insertAgentTestQuestionSchema>;
+export type AgentTestQuestion = typeof agentTestQuestions.$inferSelect;
+export type InsertAgentTestRun = z.infer<typeof insertAgentTestRunSchema>;
+export type AgentTestRun = typeof agentTestRuns.$inferSelect;

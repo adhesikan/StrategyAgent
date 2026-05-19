@@ -837,6 +837,28 @@ async function callOpenAi(question: string, ctx: ContextBlock): Promise<AskAnswe
   }
 }
 
+// Programmatic entry point used by the admin Agent Test Suite. Runs the same
+// classify → context → AI/rule-based answer pipeline as POST /api/ask without
+// going through Express, so the test runner doesn't need a session cookie.
+// Returns the flat answer payload (no broker enrichment / trade ticket — the
+// test bank evaluates prose, not order tickets).
+export async function askForAdminTest(
+  question: string,
+  userId: string,
+): Promise<{ headline: string; answer: string; keyPoints: string[]; riskNote: string }> {
+  const intent = classifyIntent(question);
+  const tickers = extractTickers(question);
+  const ctx = await buildContext(userId, question, intent, tickers);
+  let answer = await callOpenAi(question, ctx);
+  if (!answer) answer = ruleBasedAnswer(question, intent, ctx);
+  return {
+    headline: answer.headline ?? "",
+    answer: answer.answer ?? "",
+    keyPoints: Array.isArray(answer.keyPoints) ? answer.keyPoints : [],
+    riskNote: answer.riskNote ?? "",
+  };
+}
+
 export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler): void {
   app.post("/api/ask", isAuthenticated, async (req: any, res) => {
     try {

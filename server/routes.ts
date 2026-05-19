@@ -170,6 +170,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerAskRoutes(app, isAuthenticated);
   registerBillingRoutes(app, isAuthenticated);
 
+  // Admin AI Agent Test Suite — full router gated by both auth + admin
+  // middlewares. Endpoints: /questions, /runs, /seed, /run, /run-batch,
+  // /job/:id, /export.json, /export.csv.
+  const { default: agentTestsRouter } = await import("./routes/admin-agent-tests");
+  app.use("/api/admin/agent-tests", isAuthenticated, isAdmin, agentTestsRouter);
+
   startFuturesWorker().then(async () => {
     try {
       const feedInfo = getFeedInfo();

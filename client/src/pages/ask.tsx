@@ -64,6 +64,22 @@ interface AskTradeDetail {
   dataMode: "live" | "simulated";
 }
 
+// Map the ask response's option strategy to the trade-detail page's
+// (type, strategy) URL params so "Open ticket" lands on the matching option
+// payoff/ticket view instead of the default Long Stock layout.
+function tradeDetailRoute(td: Pick<AskTradeDetail, "symbol" | "strategy">): string {
+  const map: Record<AskTradeDetail["strategy"], { type: string; strategy: string }> = {
+    long_call: { type: "long-call", strategy: "long-call" },
+    long_put: { type: "long-put", strategy: "long-put" },
+    bull_call_spread: { type: "vertical", strategy: "bull-call-spread" },
+    bear_put_spread: { type: "vertical", strategy: "bear-put-spread" },
+    cash_secured_put: { type: "short-premium", strategy: "cash-secured-put" },
+    covered_call: { type: "short-premium", strategy: "covered-call" },
+  };
+  const { type, strategy } = map[td.strategy];
+  return `/trade/${td.symbol}?type=${type}&strategy=${strategy}`;
+}
+
 interface AskResponse {
   question: string;
   intent: string;
@@ -432,7 +448,7 @@ export default function AskPage() {
                 )}
 
                 <div className="flex items-center gap-2 pt-1">
-                  <Link href={`/trade/${data.tradeDetail.symbol}`}>
+                  <Link href={tradeDetailRoute(data.tradeDetail)}>
                     <Button size="sm" className="gap-1" data-testid="button-trade-detail-open-ticket">
                       Open ticket
                       <ArrowRight className="h-3.5 w-3.5" />

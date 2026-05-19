@@ -289,7 +289,10 @@ export function sizingHint(idea: Pick<DailyIdea, "instrumentType" | "capitalNeed
       const price = idea.underlyingPrice ?? 0;
       if (price > 0 && idea.capitalNeeded > 0) {
         const shares = Math.max(1, Math.floor(idea.capitalNeeded / price));
-        return `≈ ${shares.toLocaleString()} share${shares === 1 ? "" : "s"}`;
+        // Show the per-share basis price so the dollar cost is transparent
+        // — e.g. "≈ 27 shares @ $411.52" makes it obvious why ~$11k is
+        // needed, and surfaces stale quotes if the price drifts from live.
+        return `≈ ${shares.toLocaleString()} share${shares === 1 ? "" : "s"} @ $${price.toFixed(2)}`;
       }
       return "≈ position sized to your limits";
     }

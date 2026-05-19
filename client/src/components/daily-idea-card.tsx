@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
@@ -308,6 +308,31 @@ export function sizingHint(idea: Pick<DailyIdea, "instrumentType" | "capitalNeed
   }
 }
 
+// One-liner that explains why the dollar cost is what it is, by naming the
+// lever the user controls. Rendered as a separate muted line under the
+// sizing hint; the "per-trade risk limit" phrase becomes a link to
+// /settings/risk-profile so users can adjust budget and watch every idea
+// rescale. Returns null for instruments where the risk limit didn't drive
+// sizing (covered call / CSP are fixed at 1 contract / 100-share collateral).
+export function sizingRationale(
+  idea: Pick<DailyIdea, "instrumentType" | "maxRisk">,
+): { prefix: string; suffix: string } | null {
+  if (!idea.maxRisk || idea.maxRisk <= 0) return null;
+  const dollar = `~$${Math.round(idea.maxRisk).toLocaleString()}`;
+  switch (idea.instrumentType) {
+    case "stock":
+      return { prefix: `Sized so a stop-out costs ${dollar} — your `, suffix: "." };
+    case "long_call":
+    case "long_put":
+      return { prefix: `Sized so the max premium loss is ${dollar} — your `, suffix: "." };
+    case "spread":
+      return { prefix: `Sized so the max debit loss is ${dollar} — your `, suffix: "." };
+    case "covered_call":
+    case "cash_secured_put":
+      return null;
+  }
+}
+
 interface Conviction {
   label: string;
   tone: string;
@@ -582,6 +607,27 @@ export function DailyIdeaCard({ idea }: Props) {
             tip={capitalTip}
           />
         </div>
+
+        {(() => {
+          const r = sizingRationale(idea);
+          if (!r) return null;
+          return (
+            <div
+              className="text-[11px] text-muted-foreground -mt-1"
+              data-testid={`card-sizing-rationale-${idea.id}`}
+            >
+              {r.prefix}
+              <Link
+                href="/settings/risk-profile"
+                className="underline underline-offset-2 hover:text-foreground"
+                data-testid={`link-risk-limit-card-${idea.id}`}
+              >
+                per-trade risk limit
+              </Link>
+              {r.suffix}
+            </div>
+          );
+        })()}
 
         {(() => {
           const plan = PLAN_PREVIEW[idea.instrumentType];
@@ -861,6 +907,7 @@ export function SimpleIdeaCard({ idea }: Props) {
   const setup = setupTypeLabel(idea);
   const estimatedCost = idea.capitalNeeded > 0 ? idea.capitalNeeded : idea.maxRisk;
   const sizing = sizingHint(idea);
+  const rationale = sizingRationale(idea);
   const strategy = getStrategyByInstrumentType(idea.instrumentType);
 
   return (
@@ -989,6 +1036,22 @@ export function SimpleIdeaCard({ idea }: Props) {
         <div className="text-[11px] text-muted-foreground mt-0.5" data-testid={`simple-sizing-${idea.id}`}>
           {sizing}
         </div>
+        {rationale && (
+          <div
+            className="text-[11px] text-muted-foreground mt-0.5"
+            data-testid={`simple-sizing-rationale-${idea.id}`}
+          >
+            {rationale.prefix}
+            <Link
+              href="/settings/risk-profile"
+              className="underline underline-offset-2 hover:text-foreground"
+              data-testid={`link-risk-limit-${idea.id}`}
+            >
+              per-trade risk limit
+            </Link>
+            {rationale.suffix}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2">
@@ -1170,11 +1233,17 @@ export function DailyIdeaRow({ idea }: Props) {
       ? "Approximate cash to set aside: share price × shares for stocks, or premium × contracts × 100 for options."
       : "Defined-risk options idea — max loss equals the debit. No separate capital figure.";
 
+  const rationale = sizingRationale(idea);
+
   return (
     <TooltipProvider delayDuration={200}>
     <div
+      data-testid={`row-daily-idea-wrap-${idea.id}`}
+      className="rounded-md border bg-card px-3 py-2.5 hover-elevate"
+    >
+    <div
       data-testid={`row-daily-idea-${idea.id}`}
-      className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2.5 hover-elevate"
+      className="flex flex-wrap items-center gap-3"
     >
       <div className="flex items-center gap-2 min-w-[140px]">
         <span className="text-base font-bold" data-testid={`row-symbol-${idea.id}`}>{idea.symbol}</span>
@@ -1247,6 +1316,23 @@ export function DailyIdeaRow({ idea }: Props) {
       <Button size="sm" onClick={handleReview} data-testid={`row-review-${idea.id}`}>
         Review <ArrowRight className="h-3.5 w-3.5 ml-1" />
       </Button>
+    </div>
+    {rationale && (
+      <div
+        className="text-[11px] text-muted-foreground mt-1.5"
+        data-testid={`row-sizing-rationale-${idea.id}`}
+      >
+        {rationale.prefix}
+        <Link
+          href="/settings/risk-profile"
+          className="underline underline-offset-2 hover:text-foreground"
+          data-testid={`link-risk-limit-row-${idea.id}`}
+        >
+          per-trade risk limit
+        </Link>
+        {rationale.suffix}
+      </div>
+    )}
     </div>
     </TooltipProvider>
   );

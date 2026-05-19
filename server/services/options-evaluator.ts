@@ -40,11 +40,38 @@ export interface OptionsContext {
   livePrice?: number;
   ivRank?: number; // 0-100
   earningsBeforeExpiry?: boolean;
+  // When the user explicitly asked for a specific DTE (e.g. "find a 0 DTE
+  // trade on MU", "weekly trade on TSLA"), honor it instead of the builder's
+  // default. 0 means same-day expiry (snapped to today if a weekday, else
+  // next weekday). Any positive value is used as-is (no Friday-snap) so the
+  // returned expiry actually matches what was requested.
+  requestedDte?: number;
 }
 
 const BUSINESS_DAY_MS = 24 * 60 * 60 * 1000;
 
-function pickExpiry(targetDte = 21): { expiry: string; dte: number } {
+function pickExpiry(targetDte = 21, requestedDte?: number): { expiry: string; dte: number } {
+  // Honor an explicit user-requested DTE if provided.
+  if (typeof requestedDte === "number" && requestedDte >= 0) {
+    let target = new Date(Date.now() + requestedDte * BUSINESS_DAY_MS);
+    // For 0 DTE, bump past weekends to the next trading day so the expiry
+    // is always a date the market is actually open.
+    if (requestedDte === 0) {
+      target = new Date();
+      const day = target.getDay();
+      if (day === 6) target.setDate(target.getDate() + 2); // Sat -> Mon
+      else if (day === 0) target.setDate(target.getDate() + 1); // Sun -> Mon
+    }
+    const expiry = target.toISOString().slice(0, 10);
+    // When the user asked for 0 DTE we always report dte=0 regardless of
+    // weekend snap, so the rest of the system (premium model, copy, ticket)
+    // treats it as a same-day trade.
+    const dte =
+      requestedDte === 0
+        ? 0
+        : Math.max(0, Math.round((target.getTime() - Date.now()) / BUSINESS_DAY_MS));
+    return { expiry, dte };
+  }
   const target = new Date(Date.now() + targetDte * BUSINESS_DAY_MS);
   // Snap to next Friday
   const day = target.getDay();
@@ -67,7 +94,11 @@ function approximateDelta(strike: number, spot: number, type: "call" | "put"): n
 function approximatePremium(strike: number, spot: number, type: "call" | "put", dte: number, iv = 0.35): number {
   // Simplified: intrinsic + time value scaled by sqrt(dte)*iv
   const intrinsic = type === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
-  const timeValue = spot * iv * Math.sqrt(Math.max(1, dte) / 365);
+  // 0 DTE → no extrinsic. We give same-day options a tiny residual (1/3 of
+  // a single-day worth) so ATM/OTM premiums aren't literally zero (which
+  // would imply free options) but stay clearly near-intrinsic.
+  const dteForExtrinsic = dte <= 0 ? 0.33 : dte;
+  const timeValue = spot * iv * Math.sqrt(dteForExtrinsic / 365);
   // Reduce time value as you go further OTM
   const moneynessFactor = type === "call"
     ? Math.exp(-Math.max(0, strike - spot) / (spot * 0.1))
@@ -117,7 +148,7 @@ function suitabilityScore(legs: OptionLeg[]): { score: number; warnings: string[
 export function buildLongCallPlan(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
   const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
-  const { expiry, dte } = pickExpiry(21);
+  const { expiry, dte } = pickExpiry(21, ctx.requestedDte);
   const strike = roundStrike(spot * 0.99); // slightly ITM
   const leg = buildLeg(strike, "call", spot, dte, iv, "long");
   const netDebit = leg.mid;
@@ -147,7 +178,7 @@ export function buildLongCallPlan(setup: TradeSetup, ctx: OptionsContext = {}): 
 export function buildLongPutPlan(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
   const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
-  const { expiry, dte } = pickExpiry(21);
+  const { expiry, dte } = pickExpiry(21, ctx.requestedDte);
   const strike = roundStrike(spot * 1.01);
   const leg = buildLeg(strike, "put", spot, dte, iv, "long");
   const netDebit = leg.mid;
@@ -176,7 +207,7 @@ export function buildLongPutPlan(setup: TradeSetup, ctx: OptionsContext = {}): O
 export function buildBullCallSpread(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
   const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
-  const { expiry, dte } = pickExpiry(30);
+  const { expiry, dte } = pickExpiry(30, ctx.requestedDte);
   const longStrike = roundStrike(spot * 0.99);
   const shortStrike = roundStrike((setup.targets?.[0] ?? spot * 1.05));
   const longLeg = buildLeg(longStrike, "call", spot, dte, iv, "long");
@@ -212,7 +243,7 @@ export function buildBullCallSpread(setup: TradeSetup, ctx: OptionsContext = {})
 export function buildBearPutSpread(setup: TradeSetup, ctx: OptionsContext = {}): OptionPlan {
   const spot = ctx.livePrice ?? setup.metrics?.currentPrice ?? setup.entry;
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
-  const { expiry, dte } = pickExpiry(30);
+  const { expiry, dte } = pickExpiry(30, ctx.requestedDte);
   const longStrike = roundStrike(spot * 1.01);
   const shortStrike = roundStrike((setup.targets?.[0] ?? spot * 0.95));
   const longLeg = buildLeg(longStrike, "put", spot, dte, iv, "long");

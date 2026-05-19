@@ -65,10 +65,28 @@ export interface AskTradeDetail {
 // Directional debit ticket — long call (bullish) or long put (bearish).
 // Used when the user asks "find a long call on MU" so we return a concrete
 // strike + expiry + debit instead of generic prose.
+// Pull an explicit "N DTE" / "0 DTE" / "same-day" / "weekly" hint out of the
+// raw question so option builders honor the user's requested expiry. Returns
+// null if the user did not specify one (builder will fall back to its
+// default — currently ~21d for single-leg and ~30d for spreads).
+export function extractRequestedDte(question: string): number | null {
+  const lower = question.toLowerCase();
+  if (/\b(same[-\s]?day|0\s*dte|zero\s*dte)\b/.test(lower)) return 0;
+  if (/\bweekly\s+(trade|play|option|setup|call|put|spread)\b/.test(lower)) return 7;
+  if (/\bday\s+trade\b/.test(lower)) return 0;
+  const m = lower.match(/\b(\d{1,3})\s*dte\b/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 0 && n <= 365) return n;
+  }
+  return null;
+}
+
 function buildDirectionalTradeDetail(
   symbol: string,
   livePrice: number | null,
   direction: "long_call" | "long_put",
+  requestedDte: number | null = null,
 ): AskTradeDetail {
   const spot = livePrice && livePrice > 0 ? livePrice : 100;
   const dataMode: "live" | "simulated" = livePrice && livePrice > 0 ? "live" : "simulated";
@@ -94,7 +112,8 @@ function buildDirectionalTradeDetail(
     generatedAt: new Date().toISOString(),
   };
 
-  const plan: OptionPlan = bullish ? buildLongCallPlan(setup) : buildLongPutPlan(setup);
+  const ctx = requestedDte != null ? { requestedDte } : {};
+  const plan: OptionPlan = bullish ? buildLongCallPlan(setup, ctx) : buildLongPutPlan(setup, ctx);
   const leg = plan.legs[0];
   // Debit trades expose a positive netDebit — that's the premium the user pays.
   const debit = Math.abs(plan.netDebit);
@@ -205,6 +224,7 @@ function buildSpreadTradeDetail(
   symbol: string,
   livePrice: number | null,
   spread: "bull_call_spread" | "bear_put_spread",
+  requestedDte: number | null = null,
 ): AskTradeDetail {
   const spot = livePrice && livePrice > 0 ? livePrice : 100;
   const dataMode: "live" | "simulated" = livePrice && livePrice > 0 ? "live" : "simulated";
@@ -230,7 +250,8 @@ function buildSpreadTradeDetail(
     generatedAt: new Date().toISOString(),
   };
 
-  const plan: OptionPlan = bullish ? buildBullCallSpread(setup) : buildBearPutSpread(setup);
+  const spreadCtx = requestedDte != null ? { requestedDte } : {};
+  const plan: OptionPlan = bullish ? buildBullCallSpread(setup, spreadCtx) : buildBearPutSpread(setup, spreadCtx);
   const longLeg = plan.legs.find((l) => l.side === "long") ?? plan.legs[0];
   const shortLeg = plan.legs.find((l) => l.side === "short") ?? plan.legs[1];
   const debit = Math.abs(plan.netDebit);
@@ -762,9 +783,10 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               directionalBias = null;
             } else {
 
+            const requestedDte = extractRequestedDte(question);
             const td = resolvedKind === "bull_call_spread" || resolvedKind === "bear_put_spread"
-              ? buildSpreadTradeDetail(sym, live, resolvedKind)
-              : buildDirectionalTradeDetail(sym, live, resolvedKind);
+              ? buildSpreadTradeDetail(sym, live, resolvedKind, requestedDte)
+              : buildDirectionalTradeDetail(sym, live, resolvedKind, requestedDte);
 
             const wantBullish = resolvedKind === "long_call" || resolvedKind === "bull_call_spread";
             const matches = (wantBullish && biasMeta.bias === "bullish") || (!wantBullish && biasMeta.bias === "bearish");

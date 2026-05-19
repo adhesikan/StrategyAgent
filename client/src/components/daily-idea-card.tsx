@@ -77,6 +77,10 @@ export interface DailyIdea {
   };
   maxRisk: number;
   capitalNeeded: number;
+  // Spot price used by the scan when sizing capitalNeeded. Lets the card
+  // compute the real share count (capitalNeeded / underlyingPrice) instead
+  // of showing a hardcoded "100 shares" that disagrees with the dollar cost.
+  underlyingPrice?: number;
   potentialReward: number | null;
   timeHorizon: string;
   sentimentLabel: string | null;
@@ -275,11 +279,20 @@ export function setupTypeLabel(idea: Pick<DailyIdea, "instrumentType">): string 
 
 // Tiny qualitative sizing hint so the estimated cost reads with context
 // ("~$351 · 1 contract") instead of as a bare number. Mirrors the entry-leg
-// shape in PLAN_PREVIEW but as a single user-facing string.
-export function sizingHint(instrumentType: DailyIdea["instrumentType"]): string {
-  switch (instrumentType) {
-    case "stock":
-      return "≈ 100 shares";
+// shape in PLAN_PREVIEW but as a single user-facing string. For stock setups
+// we compute the actual share count from capitalNeeded / underlyingPrice so
+// the line agrees with the dollar figure shown above (e.g. $11k of GOOGL at
+// ~$400/share is ~28 shares, not "100 shares").
+export function sizingHint(idea: Pick<DailyIdea, "instrumentType" | "capitalNeeded" | "underlyingPrice">): string {
+  switch (idea.instrumentType) {
+    case "stock": {
+      const price = idea.underlyingPrice ?? 0;
+      if (price > 0 && idea.capitalNeeded > 0) {
+        const shares = Math.max(1, Math.floor(idea.capitalNeeded / price));
+        return `≈ ${shares.toLocaleString()} share${shares === 1 ? "" : "s"}`;
+      }
+      return "≈ position sized to your limits";
+    }
     case "long_call":
     case "long_put":
       return "≈ 1 option contract";
@@ -844,7 +857,7 @@ export function SimpleIdeaCard({ idea }: Props) {
   const conviction = convictionFromScore(idea.score);
   const setup = setupTypeLabel(idea);
   const estimatedCost = idea.capitalNeeded > 0 ? idea.capitalNeeded : idea.maxRisk;
-  const sizing = sizingHint(idea.instrumentType);
+  const sizing = sizingHint(idea);
   const strategy = getStrategyByInstrumentType(idea.instrumentType);
 
   return (

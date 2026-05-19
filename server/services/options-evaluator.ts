@@ -92,13 +92,20 @@ function approximateDelta(strike: number, spot: number, type: "call" | "put"): n
 }
 
 function approximatePremium(strike: number, spot: number, type: "call" | "put", dte: number, iv = 0.35): number {
-  // Simplified: intrinsic + time value scaled by sqrt(dte)*iv
+  // Simplified: intrinsic + ATM time value, faded for OTM strikes.
+  //
+  // The ATM time-value term uses the standard Black–Scholes ATM-call
+  // approximation: C_atm ≈ S · σ · √T · (1/√(2π)) ≈ S · σ · √T · 0.3989.
+  // Without the 1/√(2π) constant, extrinsic was ~2.5x too rich (e.g. a
+  // 27-delta 38-DTE OTM call on a $400 stock priced near $28 instead of
+  // a realistic ~$11).
   const intrinsic = type === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
   // 0 DTE → no extrinsic. We give same-day options a tiny residual (1/3 of
   // a single-day worth) so ATM/OTM premiums aren't literally zero (which
   // would imply free options) but stay clearly near-intrinsic.
   const dteForExtrinsic = dte <= 0 ? 0.33 : dte;
-  const timeValue = spot * iv * Math.sqrt(dteForExtrinsic / 365);
+  const ATM_BS_CONST = 0.3989; // 1 / sqrt(2*pi)
+  const timeValue = ATM_BS_CONST * spot * iv * Math.sqrt(dteForExtrinsic / 365);
   // Reduce time value as you go further OTM
   const moneynessFactor = type === "call"
     ? Math.exp(-Math.max(0, strike - spot) / (spot * 0.1))

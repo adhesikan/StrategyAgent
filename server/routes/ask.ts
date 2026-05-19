@@ -775,11 +775,28 @@ function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): A
   };
 }
 
-async function callOpenAi(question: string, ctx: ContextBlock): Promise<AskAnswer | null> {
+async function callOpenAi(
+  question: string,
+  ctx: ContextBlock,
+  opts: { useReferenceLibrary?: boolean } = {},
+): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
   try {
     const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // Pull curated reference answers (promoted from the admin Agent Test
+    // Suite) that match this question. Skipped when called from the admin
+    // test runner so promoted answers don't inflate benchmark scores.
+    // Failure is non-fatal — the agent still answers normally.
+    let referenceBlock = "";
+    if (opts.useReferenceLibrary !== false) {
+      try {
+        const { buildReferencePromptBlock } = await import("../services/agent-reference-answers");
+        referenceBlock = await buildReferencePromptBlock(question, 3);
+      } catch (err) {
+        console.warn("[ask] reference-answers lookup failed:", (err as Error).message);
+      }
+    }
     // Trim context for prompt: keep only top S/R levels and key indicator values to reduce tokens.
     const compact = {
       ...ctx,
@@ -818,6 +835,9 @@ async function callOpenAi(question: string, ctx: ContextBlock): Promise<AskAnswe
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
+        ...(referenceBlock
+          ? [{ role: "system" as const, content: referenceBlock }]
+          : []),
         { role: "user", content: userContent },
       ],
     });
@@ -849,7 +869,7 @@ export async function askForAdminTest(
   const intent = classifyIntent(question);
   const tickers = extractTickers(question);
   const ctx = await buildContext(userId, question, intent, tickers);
-  let answer = await callOpenAi(question, ctx);
+  let answer = await callOpenAi(question, ctx, { useReferenceLibrary: false });
   if (!answer) answer = ruleBasedAnswer(question, intent, ctx);
   return {
     headline: answer.headline ?? "",

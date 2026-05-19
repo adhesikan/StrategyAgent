@@ -11,6 +11,12 @@ import {
   runSingleTest,
   startBatchJob,
 } from "../services/agent-test-runner";
+import {
+  deleteReferenceAnswer,
+  listReferenceAnswers,
+  promoteRunToReference,
+  PromoteValidationError,
+} from "../services/agent-reference-answers";
 import { seedAgentTestQuestions } from "../services/agent-test-seed";
 import { db } from "../db";
 import { agentTestQuestions } from "@shared/schema";
@@ -91,6 +97,41 @@ router.post("/runs/:id/apply-suggestion", async (req, res) => {
   } catch (err: any) {
     console.error("[admin-agent-tests] apply-suggestion failed:", err);
     res.status(500).json({ error: "Apply failed: " + err.message });
+  }
+});
+
+router.get("/reference-answers", async (_req, res) => {
+  try {
+    const refs = await listReferenceAnswers();
+    res.json({ references: refs });
+  } catch (err: any) {
+    console.error("[admin-agent-tests] list refs failed:", err);
+    res.status(500).json({ error: "Failed to load references" });
+  }
+});
+
+router.post("/runs/:id/promote-to-reference", async (req, res) => {
+  try {
+    const ref = await promoteRunToReference(req.params.id);
+    if (!ref) return res.status(404).json({ error: "Run or question not found" });
+    res.json({ reference: ref });
+  } catch (err: any) {
+    if (err instanceof PromoteValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("[admin-agent-tests] promote failed:", err);
+    res.status(500).json({ error: "Promote failed: " + err.message });
+  }
+});
+
+router.delete("/reference-answers/:id", async (req, res) => {
+  try {
+    const ok = await deleteReferenceAnswer(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Reference not found" });
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[admin-agent-tests] delete ref failed:", err);
+    res.status(500).json({ error: "Delete failed: " + err.message });
   }
 });
 

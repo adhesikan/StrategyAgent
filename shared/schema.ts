@@ -2111,3 +2111,28 @@ export type InsertAgentTestQuestion = z.infer<typeof insertAgentTestQuestionSche
 export type AgentTestQuestion = typeof agentTestQuestions.$inferSelect;
 export type InsertAgentTestRun = z.infer<typeof insertAgentTestRunSchema>;
 export type AgentTestRun = typeof agentTestRuns.$inferSelect;
+
+// Curated reference answers promoted from the AI Agent Test Suite. When an
+// admin "promotes" a test run, the recorded answer becomes a few-shot
+// example injected into the live agent's system prompt for matching
+// questions. Keyed by questionId so each seed question can have at most one
+// canonical reference at a time.
+export const agentReferenceAnswers = pgTable("agent_reference_answers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull().unique(),
+  question: text("question").notNull(),
+  category: text("category").notNull(),
+  referenceAnswer: text("reference_answer").notNull(),
+  score: integer("score").default(0),
+  sourceRunId: varchar("source_run_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAgentReferenceAnswerSchema = createInsertSchema(agentReferenceAnswers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAgentReferenceAnswer = z.infer<typeof insertAgentReferenceAnswerSchema>;
+export type AgentReferenceAnswer = typeof agentReferenceAnswers.$inferSelect;

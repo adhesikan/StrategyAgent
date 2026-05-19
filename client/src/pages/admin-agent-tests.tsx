@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Play, Database, Download, Beaker, ChevronDown, ChevronRight, AlertTriangle, Sparkles } from "lucide-react";
+import { Loader2, Play, Database, Download, Beaker, ChevronDown, ChevronRight, AlertTriangle, Sparkles, BookOpen, Star, Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { AgentTestQuestion, AgentTestRun } from "@shared/schema";
+import type { AgentTestQuestion, AgentTestRun, AgentReferenceAnswer } from "@shared/schema";
 
 type ValidationJson = {
   score?: number;
@@ -105,6 +105,34 @@ export default function AdminAgentTestsPage() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/runs"] }),
     onError: (err: any) => toast({ title: "Run failed", description: err.message, variant: "destructive" }),
+  });
+
+  const referencesQuery = useQuery<{ references: AgentReferenceAnswer[] }>({
+    queryKey: ["/api/admin/agent-tests/reference-answers"],
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: async (runId: string) => {
+      const res = await apiRequest("POST", `/api/admin/agent-tests/runs/${runId}/promote-to-reference`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Promoted to reference library", description: "The live AI agent will now use this as a few-shot example for similar questions." });
+      qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/reference-answers"] });
+    },
+    onError: (err: any) => toast({ title: "Promote failed", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteReferenceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/admin/agent-tests/reference-answers/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Reference removed" });
+      qc.invalidateQueries({ queryKey: ["/api/admin/agent-tests/reference-answers"] });
+    },
+    onError: (err: any) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
   });
 
   const applySuggestionMutation = useMutation({
@@ -315,6 +343,14 @@ export default function AdminAgentTestsPage() {
         </CardContent>
       </Card>
 
+      {/* Reference library — promoted answers that the live AI agent now uses */}
+      <ReferenceLibrary
+        references={referencesQuery.data?.references ?? []}
+        isLoading={referencesQuery.isLoading}
+        onDelete={(id) => deleteReferenceMutation.mutate(id)}
+        deletingId={deleteReferenceMutation.isPending ? (deleteReferenceMutation.variables as string | undefined) : undefined}
+      />
+
       {/* Questions / runs table */}
       <Card>
         <CardContent className="p-0">
@@ -389,6 +425,8 @@ export default function AdminAgentTestsPage() {
                               validation={v}
                               onApplySuggestion={(runId) => applySuggestionMutation.mutate(runId)}
                               isApplying={applySuggestionMutation.isPending && applySuggestionMutation.variables === run?.id}
+                              onPromote={(runId) => promoteMutation.mutate(runId)}
+                              isPromoting={promoteMutation.isPending && promoteMutation.variables === run?.id}
                             />
                           </TableCell>
                         </TableRow>
@@ -402,6 +440,82 @@ export default function AdminAgentTestsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ReferenceLibrary({
+  references,
+  isLoading,
+  onDelete,
+  deletingId,
+}: {
+  references: AgentReferenceAnswer[];
+  isLoading: boolean;
+  onDelete: (id: string) => void;
+  deletingId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="w-full flex items-center justify-between text-left"
+          data-testid="button-toggle-reference-library"
+        >
+          <CardTitle className="text-base flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-primary" />
+            Reference Answer Library
+            <Badge variant="outline" className="ml-1 text-[10px]" data-testid="badge-reference-count">{references.length}</Badge>
+          </CardTitle>
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+        <p className="text-xs text-muted-foreground mt-1">
+          Curated answers promoted from test runs. The live AI agent injects up to 3 of these as few-shot examples when a user asks a similar question — actually improving real answers, not just test scores.
+        </p>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0">
+          {isLoading ? (
+            <div className="p-4 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : references.length === 0 ? (
+            <div className="text-sm text-muted-foreground p-3 text-center" data-testid="text-empty-references">
+              No reference answers yet. Run a test, expand a row, and click <strong>Promote to Reference</strong> on a good answer.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-auto">
+              {references.map((r) => (
+                <div key={r.id} className="border rounded p-3 bg-background" data-testid={`reference-${r.id}`}>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">{r.category}</Badge>
+                        {typeof r.score === "number" && r.score > 0 && (
+                          <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30">Score {r.score}</Badge>
+                        )}
+                        <span className="text-xs font-medium truncate">{r.question}</span>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 shrink-0"
+                      disabled={deletingId === r.id}
+                      onClick={() => onDelete(r.id)}
+                      data-testid={`button-delete-reference-${r.id}`}
+                    >
+                      {deletingId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                  <pre className="text-[11px] whitespace-pre-wrap text-muted-foreground max-h-32 overflow-auto">{r.referenceAnswer}</pre>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
@@ -423,12 +537,16 @@ function ExpandedDetail({
   validation,
   onApplySuggestion,
   isApplying,
+  onPromote,
+  isPromoting,
 }: {
   question: AgentTestQuestion;
   run: AgentTestRun | undefined;
   validation: ValidationJson;
   onApplySuggestion: (runId: string) => void;
   isApplying: boolean;
+  onPromote: (runId: string) => void;
+  isPromoting: boolean;
 }) {
   return (
     <div className="grid md:grid-cols-2 gap-4 text-sm">
@@ -454,7 +572,21 @@ function ExpandedDetail({
         {run ? (
           <>
             <div>
-              <div className="font-semibold text-xs uppercase text-muted-foreground mb-1">Full AI Answer</div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="font-semibold text-xs uppercase text-muted-foreground">Full AI Answer</div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  disabled={isPromoting || !run.aiAnswer}
+                  onClick={() => onPromote(run.id)}
+                  data-testid={`button-promote-${run.id}`}
+                  title="Save this answer as the canonical reference. The live AI agent will use it as a few-shot example for similar questions."
+                >
+                  {isPromoting ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Star className="h-3 w-3 mr-1.5" />}
+                  Promote to Reference
+                </Button>
+              </div>
               <pre className="text-xs whitespace-pre-wrap bg-background p-3 rounded border max-h-64 overflow-auto" data-testid={`text-full-answer-${run.id}`}>{run.aiAnswer || "(empty)"}</pre>
             </div>
             {validation.missingConcepts && validation.missingConcepts.length > 0 && (

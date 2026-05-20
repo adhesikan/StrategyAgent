@@ -3758,10 +3758,68 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // Schwab OAuth routes
   const SCHWAB_CLIENT_ID = process.env.SCHWAB_CLIENT_ID?.trim();
   const SCHWAB_CLIENT_SECRET = process.env.SCHWAB_CLIENT_SECRET?.trim();
+  const {
+    getEffectiveSchwabCreds,
+    getSchwabByoStatus,
+    saveUserSchwabCreds,
+    setSchwabCredentialMode,
+    clearUserSchwabCreds,
+    markSchwabReconnectRequired,
+  } = await import("./services/schwab-byo-credentials");
 
   function isSchwabOAuthConfigured(): boolean {
     return !!(SCHWAB_CLIENT_ID && SCHWAB_CLIENT_SECRET);
   }
+
+  // Advanced "Bring Your Own" Schwab credentials — secrets never round-trip.
+  app.get("/api/schwab/byo-credentials", isAuthenticated, async (req, res) => {
+    try {
+      const status = await getSchwabByoStatus(req.session.userId!);
+      const platformCallback = getSchwabCallbackUrl(req);
+      res.json({
+        ...status,
+        platformConfigured: isSchwabOAuthConfigured(),
+        platformCallbackUrl: platformCallback,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to load Schwab BYO status" });
+    }
+  });
+
+  app.put("/api/schwab/byo-credentials", isAuthenticated, async (req, res) => {
+    try {
+      const { clientId, clientSecret, redirectUri } = req.body || {};
+      await saveUserSchwabCreds(req.session.userId!, { clientId, clientSecret, redirectUri });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || "Failed to save Schwab BYO credentials" });
+    }
+  });
+
+  app.delete("/api/schwab/byo-credentials", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { wasUserMode } = await clearUserSchwabCreds(userId);
+      // If the user was actively in BYO mode and has a Schwab connection,
+      // explicitly disconnect — token refresh against the now-missing client
+      // app would fail silently otherwise.
+      let disconnected = false;
+      if (wasUserMode) {
+        try {
+          const conn = await storage.getBrokerConnection(userId);
+          if (conn?.provider === "schwab" && conn.isConnected) {
+            await storage.updateBrokerConnectionStatus(userId, false);
+            disconnected = true;
+          }
+        } catch (e) {
+          console.error("[SchwabByo] Failed to disconnect after clear:", (e as Error).message);
+        }
+      }
+      res.json({ success: true, disconnected });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to clear Schwab BYO credentials" });
+    }
+  });
 
   function getSchwabCallbackUrl(req?: any): string {
     if (req) {
@@ -3790,21 +3848,54 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     res.json({ configured: isSchwabOAuthConfigured() });
   });
 
-  // Initiate Schwab OAuth flow
+  // Initiate Schwab OAuth flow.
+  // Pass ?mode=user_credentials to use the user's saved BYO developer-app creds.
   app.get("/api/schwab/oauth", isAuthenticatedOrPartner, async (req, res) => {
     try {
-      if (!isSchwabOAuthConfigured()) {
-        return res.status(503).json({ error: "Schwab OAuth is not configured" });
+      const userId = req.session.userId!;
+      const requestedMode = req.query.mode === "user_credentials" ? "user_credentials" : "platform_credentials";
+
+      // If the user requested BYO mode, persist that mode on their row so the
+      // callback + refresh paths look up the right creds.
+      if (requestedMode === "user_credentials") {
+        try {
+          await setSchwabCredentialMode(userId, "user_credentials");
+        } catch (e: any) {
+          return res.status(400).json({ error: e.message || "Save your BYO credentials before connecting" });
+        }
+      } else {
+        // Normal connect always reverts to platform credentials.
+        try { await setSchwabCredentialMode(userId, "platform_credentials"); } catch {}
       }
 
-      const userId = req.session.userId!;
+      const effective = await getEffectiveSchwabCreds(userId);
+      if (!effective) {
+        return res.status(503).json({ error: "Schwab OAuth is not configured" });
+      }
+      if (requestedMode === "user_credentials" && effective.mode !== "user_credentials") {
+        return res.status(400).json({ error: "BYO credentials are incomplete — save Client ID, Client Secret, and Redirect URI first" });
+      }
+
       const state = crypto.randomBytes(16).toString("hex");
 
       (req.session as any).schwabOAuthState = state;
       (req.session as any).schwabOAuthUserId = userId;
       (req.session as any).schwabOAuthFromPartner = !!req.session.partnerUserId;
+      (req.session as any).schwabOAuthMode = effective.mode;
 
-      oauthStateStore.set(state, { userId, provider: "schwab", isPartner: !!req.session.partnerUserId, createdAt: Date.now() });
+      // Snapshot the chosen credentials onto the state so the callback uses the
+      // exact same client app (and redirect URI) the user authorized with,
+      // even if they edit/clear their BYO row mid-flow.
+      oauthStateStore.set(state, {
+        userId,
+        provider: "schwab",
+        isPartner: !!req.session.partnerUserId,
+        createdAt: Date.now(),
+        schwabMode: effective.mode,
+        schwabClientId: effective.clientId,
+        schwabClientSecret: effective.clientSecret,
+        schwabRedirectUri: effective.mode === "user_credentials" ? effective.redirectUri : null,
+      } as any);
 
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
@@ -3813,12 +3904,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         });
       });
 
-      const callbackUrl = getSchwabCallbackUrl(req);
-      console.log(`[Schwab OAuth] Using callback URL: ${callbackUrl}`);
+      const callbackUrl = effective.mode === "user_credentials" && effective.redirectUri
+        ? effective.redirectUri
+        : getSchwabCallbackUrl(req);
+      console.log(`[Schwab OAuth] mode=${effective.mode} callback=${callbackUrl}`);
 
       const authUrl = new URL("https://api.schwabapi.com/v1/oauth/authorize");
       authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("client_id", SCHWAB_CLIENT_ID!);
+      authUrl.searchParams.set("client_id", effective.clientId);
       authUrl.searchParams.set("redirect_uri", callbackUrl);
       authUrl.searchParams.set("scope", "readonly");
       authUrl.searchParams.set("state", state);
@@ -3872,8 +3965,29 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return res.redirect(buildRedirect("schwab_error=session_expired"));
       }
 
-      const callbackUrl = getSchwabCallbackUrl(req);
-      const basicAuth = Buffer.from(`${SCHWAB_CLIENT_ID}:${SCHWAB_CLIENT_SECRET}`).toString("base64");
+      // Prefer the credentials snapshot taken at OAuth initiation so we always
+      // exchange the code against the same client app the user authorized
+      // against, even if they edited/cleared BYO mid-flow.
+      const stateSnapshot = oauthStateStore.get(state) as any;
+      let effClientId: string | undefined = stateSnapshot?.schwabClientId;
+      let effClientSecret: string | undefined = stateSnapshot?.schwabClientSecret;
+      let effMode: "platform_credentials" | "user_credentials" | undefined = stateSnapshot?.schwabMode;
+      let effRedirectUri: string | null | undefined = stateSnapshot?.schwabRedirectUri;
+      if (!effClientId || !effClientSecret) {
+        // Fall back to live resolution if the state was already consumed earlier.
+        const effective = await getEffectiveSchwabCreds(userId);
+        if (!effective) {
+          return res.redirect(buildRedirect("schwab_error=credentials_missing"));
+        }
+        effClientId = effective.clientId;
+        effClientSecret = effective.clientSecret;
+        effMode = effective.mode;
+        effRedirectUri = effective.redirectUri;
+      }
+      const callbackUrl = effMode === "user_credentials" && effRedirectUri
+        ? effRedirectUri
+        : getSchwabCallbackUrl(req);
+      const basicAuth = Buffer.from(`${effClientId}:${effClientSecret}`).toString("base64");
 
       const tokenResponse = await fetch("https://api.schwabapi.com/v1/oauth/token", {
         method: "POST",

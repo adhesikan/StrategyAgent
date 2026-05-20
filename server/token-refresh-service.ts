@@ -118,12 +118,14 @@ async function refreshTradeStationToken(userId: string, refreshToken: string): P
 }
 
 async function refreshSchwabToken(userId: string, refreshToken: string): Promise<boolean> {
-  const clientId = process.env.SCHWAB_CLIENT_ID;
-  const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    console.error("[TokenRefresh] Schwab OAuth credentials not configured");
+  // Resolve credentials via the BYO helper so user_credentials mode is honored.
+  const { getEffectiveSchwabCreds, markSchwabRefreshSuccess, markSchwabReconnectRequired } = await import("./services/schwab-byo-credentials");
+  const effective = await getEffectiveSchwabCreds(userId);
+  if (!effective) {
+    console.error("[TokenRefresh] No Schwab credentials available for user", userId);
     return false;
   }
+  const { clientId, clientSecret } = effective;
 
   try {
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
@@ -142,10 +144,11 @@ async function refreshSchwabToken(userId: string, refreshToken: string): Promise
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[TokenRefresh] Schwab refresh failed for user ${userId}:`, errorText);
+      console.error(`[TokenRefresh] Schwab refresh failed for user ${userId} (mode=${effective.mode}):`, errorText);
       // Schwab refresh tokens expire after 7 days — if rejected, mark as requiresReauth.
       if (response.status === 400 || response.status === 401) {
         try { await storage.updateBrokerConnectionStatus(userId, false); } catch {}
+        try { await markSchwabReconnectRequired(userId, errorText.substring(0, 200) || `HTTP ${response.status}`); } catch {}
       }
       return false;
     }
@@ -168,8 +171,9 @@ async function refreshSchwabToken(userId: string, refreshToken: string): Promise
       expiresAt,
     );
     await storage.updateBrokerConnectionStatus(userId, true);
+    try { await markSchwabRefreshSuccess(userId); } catch {}
 
-    console.log(`[TokenRefresh] Successfully refreshed Schwab token for user ${userId}`);
+    console.log(`[TokenRefresh] Successfully refreshed Schwab token for user ${userId} (mode=${effective.mode})`);
     return true;
   } catch (error) {
     console.error(`[TokenRefresh] Error refreshing Schwab token for user ${userId}:`, error);

@@ -1,0 +1,153 @@
+Update the existing Strategy Agent application to add an OPTIONAL Schwab “Advanced BYO Credentials” connection mode.
+
+IMPORTANT:
+- Do NOT remove or rewrite any existing Schwab integration already built.
+- Do NOT break the current Schwab OAuth flow.
+- Do NOT change existing Tradier, TradeStation, or tastytrade integrations.
+- Add this as an additional advanced option only.
+
+GOAL:
+Allow advanced users who already have their own approved Schwab Developer app to enter their own:
+- Schwab Client ID
+- Schwab Client Secret
+- Schwab Redirect URI
+
+Then use those user-specific credentials for that user’s Schwab OAuth flow instead of the platform-level Schwab credentials.
+
+==================================================
+FEATURES TO ADD
+==================================================
+
+1. Add Schwab connection mode:
+- platform_credentials
+- user_credentials
+
+Default should remain:
+- platform_credentials
+
+2. Add secure database fields for user-level Schwab credentials:
+- schwabClientId
+- schwabClientSecret
+- schwabRedirectUri
+- schwabCredentialMode
+- schwabCredentialsUpdatedAt
+
+If token encryption already exists, use it.
+If not, store secrets server-side only and never expose them to frontend responses.
+
+3. Add UI section:
+Title:
+Advanced Schwab Connection
+
+Description:
+Use this only if you already have your own approved Schwab Developer app credentials.
+
+Fields:
+- Client ID
+- Client Secret
+- Redirect URI
+
+Buttons:
+- Save Credentials
+- Connect Schwab Using My Credentials
+- Clear My Credentials
+
+4. Keep existing normal Schwab connect button:
+- “Connect Schwab”
+This should continue using platform credentials.
+
+5. OAuth logic:
+When user chooses “Connect Schwab Using My Credentials”:
+- load that user’s saved Schwab client ID, client secret, and redirect URI
+- generate OAuth URL using those credentials
+- validate redirect URI exists
+- use those same credentials during callback/token exchange
+- store tokens in the existing Schwab connection table
+- mark credentialMode = user_credentials
+
+When user uses normal “Connect Schwab”:
+- keep current behavior using environment/platform credentials
+- mark credentialMode = platform_credentials
+
+6. Token refresh:
+Update the existing Schwab token refresh logic so it uses:
+- user-specific client ID/secret if credentialMode = user_credentials
+- platform env vars if credentialMode = platform_credentials
+
+Do not duplicate token refresh code.
+Only enhance the existing Schwab token manager.
+
+7. Safety:
+- Never send client secret back to frontend
+- Mask saved client secret in UI
+- Do not log client secret
+- Validate required fields before connecting
+- If user credentials are missing or invalid, show a clean error
+- Clearing credentials should not delete existing broker tokens unless required; if clearing would break refresh, warn in UI or mark reconnect required
+
+8. User instructions page:
+Add a help/instructions panel called:
+“How to connect Schwab using your own credentials”
+
+Include these steps:
+
+Step 1:
+Go to the Schwab Developer Portal and sign in.
+
+Step 2:
+Create a new app for your own use.
+
+Step 3:
+Select the appropriate Trader API / market data permissions available to your Schwab developer account.
+
+Step 4:
+Set the callback / redirect URI exactly to the value shown in Strategy Agent.
+
+Step 5:
+After Schwab approves or activates the app, copy the Client ID and Client Secret.
+
+Step 6:
+Paste Client ID, Client Secret, and Redirect URI into Strategy Agent.
+
+Step 7:
+Click “Save Credentials.”
+
+Step 8:
+Click “Connect Schwab Using My Credentials.”
+
+Step 9:
+Approve access on Schwab’s OAuth screen.
+
+Step 10:
+Return to Strategy Agent and confirm Schwab shows Connected.
+
+Add notes:
+- This is an advanced option.
+- Normal users should use the standard Schwab connection when available.
+- You must already have access to Schwab’s Developer Portal.
+- Schwab may require app approval before credentials work.
+- Your redirect URI must match exactly.
+- If Schwab credentials expire, are revoked, or are changed, reconnect may be required.
+
+9. Admin/debug:
+Add safe status display:
+- credential mode
+- connected status
+- last refresh success
+- reconnect required
+- last error
+
+Do not show secrets.
+
+==================================================
+DELIVERABLES
+==================================================
+
+After implementation, summarize:
+- files changed
+- database changes
+- new UI added
+- how user credentials mode works
+- how token refresh chooses credentials
+- user steps added
+- any setup required

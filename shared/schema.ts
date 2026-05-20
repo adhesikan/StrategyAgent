@@ -2136,3 +2136,27 @@ export const insertAgentReferenceAnswerSchema = createInsertSchema(agentReferenc
 });
 export type InsertAgentReferenceAnswer = z.infer<typeof insertAgentReferenceAnswerSchema>;
 export type AgentReferenceAnswer = typeof agentReferenceAnswers.$inferSelect;
+
+// User-provided Schwab developer-app credentials (Advanced BYO mode).
+// Existence of a row with credentialMode='user_credentials' tells the Schwab
+// OAuth + refresh code paths to use these creds instead of the platform env
+// vars. Client ID and client secret are stored encrypted at rest.
+export const userBrokerCredentials = pgTable("user_broker_credentials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  provider: text("provider").notNull().default("schwab"),
+  credentialMode: text("credential_mode").notNull().default("platform_credentials"),
+  encryptedClientId: text("encrypted_client_id"),
+  clientIdIv: text("client_id_iv"),
+  clientIdAuthTag: text("client_id_auth_tag"),
+  encryptedClientSecret: text("encrypted_client_secret"),
+  clientSecretIv: text("client_secret_iv"),
+  clientSecretAuthTag: text("client_secret_auth_tag"),
+  redirectUri: text("redirect_uri"),
+  lastError: text("last_error"),
+  lastRefreshSuccessAt: timestamp("last_refresh_success_at"),
+  reconnectRequired: boolean("reconnect_required").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type UserBrokerCredentials = typeof userBrokerCredentials.$inferSelect;

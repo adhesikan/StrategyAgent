@@ -38,6 +38,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { InteractiveTutorial } from "@/components/interactive-tutorial";
+import { SchwabByoPanel } from "@/components/schwab-byo-panel";
 import { useExperienceMode } from "@/hooks/use-experience-mode";
 import type { BrokerConnection, BrokerProviderType, OpportunityDefaults, SnaptradeConnection } from "@shared/schema";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
@@ -1435,6 +1436,8 @@ export default function Settings() {
                 </Dialog>
               </CardContent>
             </Card>
+
+            <SchwabByoPanel />
 
           </div>
         </TabsContent>

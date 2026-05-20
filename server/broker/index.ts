@@ -360,9 +360,13 @@ async function refreshTradierToken(userId: string, refreshToken: string): Promis
 }
 
 async function refreshSchwabToken(userId: string, refreshToken: string): Promise<string | null> {
-  const clientId = process.env.SCHWAB_CLIENT_ID;
-  const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
-  if (!clientId || !clientSecret || !refreshToken) return null;
+  if (!refreshToken) return null;
+
+  // Resolve credentials via the BYO helper so user_credentials mode is honored.
+  const { getEffectiveSchwabCreds, markSchwabRefreshSuccess, markSchwabReconnectRequired } = await import("../services/schwab-byo-credentials");
+  const effective = await getEffectiveSchwabCreds(userId);
+  if (!effective) return null;
+  const { clientId, clientSecret } = effective;
 
   try {
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
@@ -380,7 +384,11 @@ async function refreshSchwabToken(userId: string, refreshToken: string): Promise
     });
 
     if (!response.ok) {
-      console.error(`[BrokerService] Schwab token refresh failed: ${response.status}`);
+      const errText = await response.text().catch(() => "");
+      console.error(`[BrokerService] Schwab token refresh failed (${effective.mode}): ${response.status}`);
+      if (response.status === 400 || response.status === 401) {
+        try { await markSchwabReconnectRequired(userId, errText.substring(0, 200) || `HTTP ${response.status}`); } catch {}
+      }
       return null;
     }
 
@@ -399,8 +407,9 @@ async function refreshSchwabToken(userId: string, refreshToken: string): Promise
       data.refresh_token || refreshToken,
       expiresAt,
     );
+    try { await markSchwabRefreshSuccess(userId); } catch {}
 
-    console.log(`[BrokerService] Schwab token refreshed for user ${userId}`);
+    console.log(`[BrokerService] Schwab token refreshed for user ${userId} (mode=${effective.mode})`);
     invalidateBrokerCache(userId);
     return data.access_token;
   } catch (error) {

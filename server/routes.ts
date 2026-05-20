@@ -3772,14 +3772,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   }
 
   // Advanced "Bring Your Own" Schwab credentials — secrets never round-trip.
+  // Canonical public callback URL the user should register with Schwab.
+  // Hardcoded to the production domain so dev/preview hosts don't end up in
+  // what users paste into the Schwab Developer Portal.
+  const PUBLIC_SCHWAB_CALLBACK_URL = "https://www.vcptrader.com/api/schwab/callback";
+
   app.get("/api/schwab/byo-credentials", isAuthenticated, async (req, res) => {
     try {
       const status = await getSchwabByoStatus(req.session.userId!);
-      const platformCallback = getSchwabCallbackUrl(req);
       res.json({
         ...status,
         platformConfigured: isSchwabOAuthConfigured(),
-        platformCallbackUrl: platformCallback,
+        platformCallbackUrl: PUBLIC_SCHWAB_CALLBACK_URL,
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Failed to load Schwab BYO status" });

@@ -50,10 +50,15 @@ export function SchwabByoPanel() {
   });
 
   useEffect(() => {
-    if (status?.redirectUri && !redirectUri) {
+    if (redirectUri) return;
+    if (status?.redirectUri) {
       setRedirectUri(status.redirectUri);
+    } else if (status?.platformCallbackUrl) {
+      // Default to this app's callback URL so users can paste it straight into
+      // their Schwab Developer Portal app config.
+      setRedirectUri(status.platformCallbackUrl);
     }
-  }, [status?.redirectUri]);
+  }, [status?.redirectUri, status?.platformCallbackUrl]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

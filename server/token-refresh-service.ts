@@ -117,6 +117,66 @@ async function refreshTradeStationToken(userId: string, refreshToken: string): P
   }
 }
 
+async function refreshSchwabToken(userId: string, refreshToken: string): Promise<boolean> {
+  const clientId = process.env.SCHWAB_CLIENT_ID;
+  const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    console.error("[TokenRefresh] Schwab OAuth credentials not configured");
+    return false;
+  }
+
+  try {
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const response = await fetch("https://api.schwabapi.com/v1/oauth/token", {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[TokenRefresh] Schwab refresh failed for user ${userId}:`, errorText);
+      // Schwab refresh tokens expire after 7 days — if rejected, mark as requiresReauth.
+      if (response.status === 400 || response.status === 401) {
+        try { await storage.updateBrokerConnectionStatus(userId, false); } catch {}
+      }
+      return false;
+    }
+
+    const tokenData = await response.json();
+    if (!tokenData.access_token) {
+      console.error(`[TokenRefresh] No access token in Schwab refresh response for user ${userId}`);
+      return false;
+    }
+
+    const expiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : new Date(Date.now() + 30 * 60 * 1000);
+
+    await storage.setBrokerConnectionWithTokens(
+      userId,
+      "schwab",
+      tokenData.access_token,
+      tokenData.refresh_token || refreshToken,
+      expiresAt,
+    );
+    await storage.updateBrokerConnectionStatus(userId, true);
+
+    console.log(`[TokenRefresh] Successfully refreshed Schwab token for user ${userId}`);
+    return true;
+  } catch (error) {
+    console.error(`[TokenRefresh] Error refreshing Schwab token for user ${userId}:`, error);
+    return false;
+  }
+}
+
 // Per-user in-flight dedupe so concurrent /api/broker/ping calls (multiple
 // tabs, the 1s heartbeat, parallel queries) share a single refresh attempt
 // instead of each posting to the broker in parallel.
@@ -138,6 +198,9 @@ export async function refreshUserBrokerToken(userId: string): Promise<boolean> {
       }
       if (fullConnection.provider === "tradestation") {
         return await refreshTradeStationToken(userId, fullConnection.refreshToken);
+      }
+      if (fullConnection.provider === "schwab") {
+        return await refreshSchwabToken(userId, fullConnection.refreshToken);
       }
       return false;
     } catch (err) {
@@ -182,6 +245,8 @@ async function checkAndRefreshTokens(): Promise<void> {
         await refreshTradierToken(connection.userId, fullConnection.refreshToken);
       } else if (connection.provider === "tradestation") {
         await refreshTradeStationToken(connection.userId, fullConnection.refreshToken);
+      } else if (connection.provider === "schwab") {
+        await refreshSchwabToken(connection.userId, fullConnection.refreshToken);
       }
     }
   } catch (error) {

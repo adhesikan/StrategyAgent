@@ -475,8 +475,24 @@ export async function fetchQuotesFromBroker(
       return fetchAlpacaQuotes(connection.accessToken, connection.refreshToken ?? null, symbols);
     case "ibkr":
       return fetchIBKRQuotes(connection.accessToken, symbols);
-    case "schwab":
-      return fetchSchwabQuotes(connection.accessToken, symbols);
+    case "schwab": {
+      // Route through the centralized helper so we get proactive refresh and
+      // a clean requiresReauth signal if the token can't be refreshed.
+      const { getValidBrokerAccessToken, forceRefreshBrokerToken } = await import("./broker/index");
+      const token = await getValidBrokerAccessToken(connection.userId, "schwab");
+      if (!token) throw new Error("Schwab connection requires re-authentication");
+      try {
+        return await fetchSchwabQuotes(token, symbols);
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (msg.includes("401") || msg.includes("403")) {
+          const refreshed = await forceRefreshBrokerToken(connection.userId, "schwab");
+          if (!refreshed) throw new Error("Schwab connection requires re-authentication");
+          return await fetchSchwabQuotes(refreshed, symbols);
+        }
+        throw e;
+      }
+    }
     case "tastytrade":
       return fetchTastyTradeQuotes(connection.accessToken, symbols);
     case "tradestation":

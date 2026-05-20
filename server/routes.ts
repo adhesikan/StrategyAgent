@@ -2206,23 +2206,23 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           testResult = { success: false, message: `API error: ${response.status}` };
         }
       } else if (connection.provider === "schwab") {
-        const response = await fetch("https://api.schwabapi.com/marketdata/v1/quotes?symbols=AAPL", {
-          headers: {
-            "Authorization": `Bearer ${connection.accessToken}`,
-            "Accept": "application/json",
-          },
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
+        try {
+          const { schwabFetchAuthed } = await import("./broker/providers/schwab");
+          const data = await schwabFetchAuthed(
+            req.session.userId!,
+            "https://api.schwabapi.com/marketdata/v1/quotes?symbols=AAPL",
+          );
           const quote = data.AAPL?.quote || data.AAPL;
           testResult = {
             success: true,
             message: "Connection successful",
             data: quote ? { symbol: "AAPL", last: quote.lastPrice || quote.mark, volume: quote.totalVolume } : null,
           };
-        } else {
-          testResult = { success: false, message: `API error: ${response.status}` };
+        } catch (err: any) {
+          testResult = {
+            success: false,
+            message: err?.requiresReauth ? "Schwab connection requires re-authentication" : (err?.message || "Schwab API error"),
+          };
         }
       } else if (connection.provider === "tradestation") {
         const tsBase = getTradeStationBaseUrl(connection.simMode);
@@ -3754,6 +3754,183 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // TradeStation OAuth callback routes
   app.get("/tradestation-callback", handleTradeStationOAuthCallback);
   app.get("/api/tradestation/callback", handleTradeStationOAuthCallback);
+
+  // Schwab OAuth routes
+  const SCHWAB_CLIENT_ID = process.env.SCHWAB_CLIENT_ID?.trim();
+  const SCHWAB_CLIENT_SECRET = process.env.SCHWAB_CLIENT_SECRET?.trim();
+
+  function isSchwabOAuthConfigured(): boolean {
+    return !!(SCHWAB_CLIENT_ID && SCHWAB_CLIENT_SECRET);
+  }
+
+  function getSchwabCallbackUrl(req?: any): string {
+    if (req) {
+      const host = req.get("host");
+      const proto = req.get("x-forwarded-proto") || req.protocol || "https";
+      if (host) {
+        return `${proto}://${host}/api/schwab/callback`;
+      }
+    }
+    let baseUrl: string;
+    if (process.env.APP_URL) {
+      baseUrl = process.env.APP_URL;
+    } else if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    } else if (process.env.REPLIT_DEPLOYMENT_URL) {
+      baseUrl = `https://${process.env.REPLIT_DEPLOYMENT_URL}`;
+    } else if (process.env.REPLIT_DEV_DOMAIN) {
+      baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    } else {
+      baseUrl = "http://localhost:5000";
+    }
+    return `${baseUrl}/api/schwab/callback`;
+  }
+
+  app.get("/api/schwab/oauth/status", (req, res) => {
+    res.json({ configured: isSchwabOAuthConfigured() });
+  });
+
+  // Initiate Schwab OAuth flow
+  app.get("/api/schwab/oauth", isAuthenticatedOrPartner, async (req, res) => {
+    try {
+      if (!isSchwabOAuthConfigured()) {
+        return res.status(503).json({ error: "Schwab OAuth is not configured" });
+      }
+
+      const userId = req.session.userId!;
+      const state = crypto.randomBytes(16).toString("hex");
+
+      (req.session as any).schwabOAuthState = state;
+      (req.session as any).schwabOAuthUserId = userId;
+      (req.session as any).schwabOAuthFromPartner = !!req.session.partnerUserId;
+
+      oauthStateStore.set(state, { userId, provider: "schwab", isPartner: !!req.session.partnerUserId, createdAt: Date.now() });
+
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      const callbackUrl = getSchwabCallbackUrl(req);
+      console.log(`[Schwab OAuth] Using callback URL: ${callbackUrl}`);
+
+      const authUrl = new URL("https://api.schwabapi.com/v1/oauth/authorize");
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("client_id", SCHWAB_CLIENT_ID!);
+      authUrl.searchParams.set("redirect_uri", callbackUrl);
+      authUrl.searchParams.set("scope", "readonly");
+      authUrl.searchParams.set("state", state);
+
+      res.json({ authUrl: authUrl.toString() });
+    } catch (error: any) {
+      console.error("Schwab OAuth initiation error:", error);
+      res.status(500).json({ error: error.message || "Failed to initiate Schwab OAuth" });
+    }
+  });
+
+  async function handleSchwabOAuthCallback(req: any, res: any) {
+    let isFromPartner = !!req.session?.schwabOAuthFromPartner || !!req.session?.partnerUserId;
+    let redirectBase = isFromPartner ? "/partner/dashboard?tab=broker" : "/settings";
+    let buildRedirect = (params: string) => `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}${params}`;
+    try {
+      const { code, state } = req.query;
+
+      if (!code || typeof code !== "string") {
+        return res.redirect(buildRedirect("schwab_error=missing_code"));
+      }
+      if (!state || typeof state !== "string") {
+        return res.redirect(buildRedirect("schwab_error=missing_state"));
+      }
+
+      let userId: string | undefined;
+
+      if (state === (req.session as any).schwabOAuthState) {
+        userId = (req.session as any).schwabOAuthUserId;
+        delete (req.session as any).schwabOAuthState;
+        delete (req.session as any).schwabOAuthUserId;
+        delete (req.session as any).schwabOAuthFromPartner;
+        oauthStateStore.delete(state);
+      } else {
+        const stored = oauthStateStore.get(state);
+        if (stored && stored.provider === "schwab") {
+          console.log(`[Schwab OAuth] Session state lost, using server-side state store for user ${stored.userId}`);
+          userId = stored.userId;
+          isFromPartner = stored.isPartner;
+          redirectBase = isFromPartner ? "/partner/dashboard?tab=broker" : "/settings";
+          buildRedirect = (params: string) => `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}${params}`;
+          oauthStateStore.delete(state);
+        } else {
+          console.error("Schwab OAuth state mismatch - no matching state in session or server store");
+          return res.redirect(buildRedirect("schwab_error=state_mismatch"));
+        }
+      }
+
+      if (!userId) {
+        console.error("No user ID found for Schwab OAuth callback");
+        return res.redirect(buildRedirect("schwab_error=session_expired"));
+      }
+
+      const callbackUrl = getSchwabCallbackUrl(req);
+      const basicAuth = Buffer.from(`${SCHWAB_CLIENT_ID}:${SCHWAB_CLIENT_SECRET}`).toString("base64");
+
+      const tokenResponse = await fetch("https://api.schwabapi.com/v1/oauth/token", {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${basicAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: callbackUrl,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("Schwab token exchange failed:", errorText);
+        return res.redirect(buildRedirect("schwab_error=token_exchange_failed"));
+      }
+
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.access_token;
+
+      if (!accessToken) {
+        console.error("No access token in Schwab response:", tokenData);
+        return res.redirect(buildRedirect("schwab_error=no_access_token"));
+      }
+
+      const expiresAt = tokenData.expires_in
+        ? new Date(Date.now() + tokenData.expires_in * 1000)
+        : new Date(Date.now() + 30 * 60 * 1000);
+
+      await storage.setBrokerConnectionWithTokens(
+        userId,
+        "schwab",
+        accessToken,
+        tokenData.refresh_token || undefined,
+        expiresAt,
+      );
+      await storage.updateBrokerConnectionStatus(userId, true);
+
+      if (isFromPartner) {
+        await storage.updateBrokerAutoReconnect(userId, true);
+        console.log(`[Schwab OAuth] Auto-enabled persistent connection for partner user ${userId}`);
+      }
+
+      console.log(`[Schwab OAuth] User ${userId} successfully connected to Schwab`);
+      res.redirect(buildRedirect("schwab_success=true"));
+    } catch (error: any) {
+      console.error("Schwab OAuth callback error:", error);
+      res.redirect(buildRedirect("schwab_error=unknown"));
+    }
+  }
+
+  app.get("/schwab-callback", handleSchwabOAuthCallback);
+  app.get("/api/schwab/callback", handleSchwabOAuthCallback);
 
   // SnapTrade OAuth brokerage connection routes
   app.get("/api/snaptrade/status", (req, res) => {

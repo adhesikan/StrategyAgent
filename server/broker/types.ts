@@ -36,7 +36,7 @@ export interface NormalizedOrder {
 
 export interface BrokerStatus {
   connected: boolean;
-  provider: "tradier" | "tradestation" | null;
+  provider: "tradier" | "tradestation" | "schwab" | null;
   accountId?: string;
 }
 

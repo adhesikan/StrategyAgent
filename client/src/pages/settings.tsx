@@ -100,6 +100,16 @@ const brokerProviders = [
     requiresSecretKey: true,
     supportsOAuth: false,
   },
+  {
+    id: "schwab",
+    name: "Charles Schwab",
+    description: "Full-service brokerage and wealth management",
+    tokenUrl: "https://developer.schwab.com/",
+    tokenInstructions: "Log in to the Schwab Developer Portal, create or open your trading app, and use OAuth below to connect.",
+    requiresSecretKey: false,
+    supportsOAuth: true,
+    signupUrl: "https://www.schwab.com/open-an-account",
+  },
 ];
 
 function TradeStationSimModeCard() {
@@ -414,10 +424,15 @@ export default function Settings() {
     queryKey: ["/api/tradestation/oauth/status"],
   });
 
+  const { data: schwabOAuthStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ["/api/schwab/oauth/status"],
+  });
+
   // Helper to check if OAuth is available for a provider
   const isOAuthAvailable = (providerId: string): boolean => {
     if (providerId === "tradier") return !!tradierOAuthStatus?.configured;
     if (providerId === "tradestation") return !!tradestationOAuthStatus?.configured;
+    if (providerId === "schwab") return !!schwabOAuthStatus?.configured;
     return false;
   };
 
@@ -569,16 +584,41 @@ export default function Settings() {
     },
   });
 
+  const schwabOAuthMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/schwab/oauth");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to initiate Schwab OAuth");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Connection Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Helper to initiate OAuth for a provider
   const initiateOAuth = (providerId: string) => {
     if (providerId === "tradier") {
       tradierOAuthMutation.mutate();
     } else if (providerId === "tradestation") {
       tradestationOAuthMutation.mutate();
+    } else if (providerId === "schwab") {
+      schwabOAuthMutation.mutate();
     }
   };
 
-  const isOAuthPending = tradierOAuthMutation.isPending || tradestationOAuthMutation.isPending;
+  const isOAuthPending = tradierOAuthMutation.isPending || tradestationOAuthMutation.isPending || schwabOAuthMutation.isPending;
 
   // Handle OAuth callback query params (Tradier and TradeStation)
   useEffect(() => {
@@ -587,6 +627,8 @@ export default function Settings() {
     const tradierError = params.get("tradier_error");
     const tradestationSuccess = params.get("tradestation_success");
     const tradestationError = params.get("tradestation_error");
+    const schwabSuccess = params.get("schwab_success");
+    const schwabError = params.get("schwab_error");
     
     const errorMessages: Record<string, string> = {
       missing_code: "Authorization code not received",
@@ -623,6 +665,20 @@ export default function Settings() {
       toast({
         title: "TradeStation Connection Failed",
         description: errorMessages[tradestationError] || tradestationError,
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", "/settings");
+    } else if (schwabSuccess === "true") {
+      toast({
+        title: "Schwab Connected",
+        description: "Your Schwab account has been connected successfully.",
+      });
+      window.history.replaceState({}, "", "/settings");
+      queryClient.invalidateQueries({ queryKey: ["/api/broker/status"] });
+    } else if (schwabError) {
+      toast({
+        title: "Schwab Connection Failed",
+        description: errorMessages[schwabError] || schwabError,
         variant: "destructive",
       });
       window.history.replaceState({}, "", "/settings");

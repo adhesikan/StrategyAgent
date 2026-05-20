@@ -12,11 +12,13 @@ import {
   tsGetOptionExpirations,
   tsGetOptionChain,
 } from "./providers/tradestation";
+import { schwabProvider } from "./providers/schwab";
 import { storage } from "../storage";
 
 const providers: Record<string, BrokerProvider> = {
   tradier: tradierProvider,
   tradestation: tradestationProvider,
+  schwab: schwabProvider,
 };
 
 function getProvider(providerName: string): BrokerProvider {
@@ -357,6 +359,56 @@ async function refreshTradierToken(userId: string, refreshToken: string): Promis
   }
 }
 
+async function refreshSchwabToken(userId: string, refreshToken: string): Promise<string | null> {
+  const clientId = process.env.SCHWAB_CLIENT_ID;
+  const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  try {
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const response = await fetch("https://api.schwabapi.com/v1/oauth/token", {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[BrokerService] Schwab token refresh failed: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!data.access_token) return null;
+
+    // Schwab access tokens are 30 min; refresh tokens are 7 days.
+    const expiresAt = data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000)
+      : new Date(Date.now() + 30 * 60 * 1000);
+
+    await storage.setBrokerConnectionWithTokens(
+      userId,
+      "schwab",
+      data.access_token,
+      data.refresh_token || refreshToken,
+      expiresAt,
+    );
+
+    console.log(`[BrokerService] Schwab token refreshed for user ${userId}`);
+    invalidateBrokerCache(userId);
+    return data.access_token;
+  } catch (error) {
+    console.error("[BrokerService] Schwab token refresh error:", (error as Error).message);
+    return null;
+  }
+}
+
 async function getConnectionForUser(userId: string) {
   const connection = await storage.getBrokerConnectionWithToken(userId);
   if (!connection || !connection.accessToken || !connection.isConnected) {
@@ -374,6 +426,8 @@ async function getConnectionForUser(userId: string) {
         newToken = await refreshTradeStationToken(userId, connection.refreshToken);
       } else if (connection.provider === "tradier") {
         newToken = await refreshTradierToken(userId, connection.refreshToken);
+      } else if (connection.provider === "schwab") {
+        newToken = await refreshSchwabToken(userId, connection.refreshToken);
       }
 
       if (newToken) {
@@ -383,6 +437,64 @@ async function getConnectionForUser(userId: string) {
   }
 
   return connection;
+}
+
+/**
+ * Centralized helper for any code that needs a valid access token for a specific
+ * provider. Performs a proactive refresh if the token is near expiry. Returns
+ * null if the user has no connection for that provider or the token cannot be
+ * refreshed (caller should treat this as requiresReauth).
+ *
+ * All Schwab/Tradier/TradeStation API calls outside this module should go
+ * through this helper rather than reading tokens directly from storage.
+ */
+export async function getValidBrokerAccessToken(userId: string, provider: string): Promise<string | null> {
+  const connection = await storage.getBrokerConnectionWithToken(userId);
+  if (!connection || connection.provider !== provider || !connection.accessToken || !connection.isConnected) {
+    return null;
+  }
+
+  const expiresAt = connection.accessTokenExpiresAt ? new Date(connection.accessTokenExpiresAt).getTime() : null;
+  const needsRefresh = expiresAt !== null && expiresAt < Date.now() + 5 * 60 * 1000;
+
+  if (needsRefresh) {
+    if (!connection.refreshToken) {
+      // Token is expired/near-expiry and we have no way to refresh — mark requiresReauth.
+      try { await storage.updateBrokerConnectionStatus(userId, false); } catch {}
+      return null;
+    }
+    let newToken: string | null = null;
+    if (provider === "tradier") newToken = await refreshTradierToken(userId, connection.refreshToken);
+    else if (provider === "tradestation") newToken = await refreshTradeStationToken(userId, connection.refreshToken);
+    else if (provider === "schwab") newToken = await refreshSchwabToken(userId, connection.refreshToken);
+    if (newToken) return newToken;
+    // Refresh failed — mark the connection as needing re-auth so the UI surfaces it.
+    try { await storage.updateBrokerConnectionStatus(userId, false); } catch {}
+    return null;
+  }
+
+  return connection.accessToken;
+}
+
+/**
+ * Force-refresh a user's broker token (e.g. after a 401/403 response from the
+ * broker API). Returns the new access token on success or null on failure
+ * (in which case the connection is marked requiresReauth).
+ */
+export async function forceRefreshBrokerToken(userId: string, provider: string): Promise<string | null> {
+  const connection = await storage.getBrokerConnectionWithToken(userId);
+  if (!connection || connection.provider !== provider || !connection.refreshToken) {
+    try { await storage.updateBrokerConnectionStatus(userId, false); } catch {}
+    return null;
+  }
+  let newToken: string | null = null;
+  if (provider === "tradier") newToken = await refreshTradierToken(userId, connection.refreshToken);
+  else if (provider === "tradestation") newToken = await refreshTradeStationToken(userId, connection.refreshToken);
+  else if (provider === "schwab") newToken = await refreshSchwabToken(userId, connection.refreshToken);
+  if (!newToken) {
+    try { await storage.updateBrokerConnectionStatus(userId, false); } catch {}
+  }
+  return newToken;
 }
 
 export async function getTokenHealth(userId: string): Promise<{ status: "valid" | "expiring" | "expired" | "unknown"; expiresAt: string | null; provider: string | null }> {

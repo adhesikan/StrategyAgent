@@ -1,0 +1,82 @@
+Update Strategy Agent to add Schwab as a new brokerage connection using the same OAuth persistence and refresh approach used for Buzz Signals, but implement it through a broker-agnostic architecture.
+
+Create/extend a BrokerageConnectionManager that supports:
+- Tradier
+- TradeStation
+- tastytrade
+- Schwab
+
+Each broker connection should normalize:
+- provider
+- userId
+- accountId
+- accessToken
+- refreshToken
+- accessTokenExpiresAt
+- refreshTokenExpiresAt or refreshTokenIssuedAt
+- connectionStatus
+- requiresReauth
+- lastRefreshAttemptAt
+- lastRefreshSuccessAt
+- lastError
+- createdAt
+- updatedAt
+
+Add Schwab OAuth connection flow:
+- connect Schwab
+- callback handling
+- token storage
+- token refresh before expiry
+- reconnect required handling
+- account discovery
+- quote/market data access through the same brokerage abstraction
+
+Important:
+- Do not rebuild the app.
+- Do not break existing Tradier, TradeStation, or tastytrade connections.
+- Add Schwab as another provider in the existing brokerage connection system.
+- All Schwab API calls must go through getValidBrokerAccessToken(userId, "schwab").
+- Do not read Schwab tokens directly from routes.
+- If Schwab returns 401/403, refresh once and retry once.
+- If refresh fails, mark Schwab as requiresReauth = true.
+
+Create or update:
+- broker provider enum
+- Schwab OAuth connect route
+- Schwab OAuth callback route
+- Schwab token refresh logic
+- Schwab account fetch
+- Schwab quote fetch
+- Schwab normalized market data mapping
+- UI card for Schwab connection status
+
+The Strategy Agent UI should show Schwab alongside Tradier, TradeStation, and tastytrade:
+- Connected
+- Refreshing
+- Reconnect Required
+- Last refreshed
+- Last error if available
+
+For market data, normalize Schwab quote data into the same internal format used by the app:
+- symbol
+- lastPrice
+- bidPrice
+- askPrice
+- markPrice = midpoint of bid/ask when available
+- spread
+- spreadPercent
+- quoteTime
+- tradeTime
+- isDelayed
+- isStale
+- provider = "schwab"
+
+Use Schwab only when the user has connected Schwab and selected it as their data/execution provider.
+
+After implementation, summarize:
+- files changed
+- database changes
+- new env vars
+- Schwab OAuth routes
+- how token refresh works
+- what still needs manual Schwab app portal setup

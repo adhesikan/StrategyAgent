@@ -1018,6 +1018,42 @@ export function SimpleIdeaCard({ idea }: Props) {
       </div>
 
       <div className="text-sm">
+        {idea.instrumentType !== "stock" && (
+          (() => {
+            const legs = idea.entryStrikes?.legs ?? [];
+            const expRaw = idea.entryStrikes?.expiration;
+            let expDisplay = "30–45 DTE";
+            if (expRaw) {
+              const d = new Date(expRaw);
+              if (!isNaN(d.getTime())) {
+                expDisplay = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+              } else {
+                expDisplay = expRaw;
+              }
+            }
+            let strikeDisplay = "ATM (broker chain unavailable)";
+            if (legs.length === 1) {
+              const l = legs[0];
+              strikeDisplay = `$${l.strike.toLocaleString()} ${l.optionType.toUpperCase()} (${l.label})`;
+            } else if (legs.length > 1) {
+              strikeDisplay = legs
+                .map((l) => `$${l.strike.toLocaleString()} ${l.optionType.toUpperCase()}`)
+                .join(" / ");
+            }
+            return (
+              <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px]" data-testid={`simple-option-details-${idea.id}`}>
+                <span>
+                  <span className="text-muted-foreground">Strike: </span>
+                  <span className="font-medium" data-testid={`simple-option-strike-${idea.id}`}>{strikeDisplay}</span>
+                </span>
+                <span>
+                  <span className="text-muted-foreground">Expires: </span>
+                  <span className="font-medium" data-testid={`simple-option-expiry-${idea.id}`}>{expDisplay}</span>
+                </span>
+              </div>
+            );
+          })()
+        )}
         <div>
           <span className="text-muted-foreground">Estimated cost: </span>
           <Tooltip>

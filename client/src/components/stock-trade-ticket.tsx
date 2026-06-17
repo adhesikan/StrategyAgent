@@ -577,6 +577,7 @@ export function StockTradeTicket({
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="h-4 w-4 text-primary" />
                     <Label className="text-xs font-medium">Position Protection</Label>
+                    <HelpLink section="position-protection" />
                   </div>
                   <Switch
                     checked={protectionEnabled}

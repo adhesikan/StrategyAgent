@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, Pause, Play, X, Loader2, TrendingDown, Target, DollarSign } from "lucide-react";
+import { HelpLink } from "@/components/help-link";
 import type { PositionProtectionPlan } from "@shared/schema";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -58,6 +59,7 @@ export function PositionProtectionPanel() {
         <CardTitle className="text-lg flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-primary" />
           Position Protection
+          <HelpLink section="position-protection" />
         </CardTitle>
         <CardDescription>
           We monitor these positions during market hours and submit your exit order when a rule triggers.

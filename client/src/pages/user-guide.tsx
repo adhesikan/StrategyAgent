@@ -4,6 +4,7 @@ import {
   BookOpen, Home, TrendingUp, DollarSign, BarChart3, Newspaper, Radar,
   Zap, ShieldCheck, Briefcase, Settings as SettingsIcon, FileText, HelpCircle,
   Search, Sparkles, AlertTriangle, CheckCircle2, ChevronRight, Moon, Rocket,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -472,6 +473,89 @@ const SECTIONS: Section[] = [
         <p className="mt-3 text-sm text-muted-foreground">
           The "Review with InstaTrade™" button on any setup card opens the same review flow with the
           fields pre-filled.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "position-protection",
+    title: "Position Protection (Exit Rules)",
+    icon: ShieldAlert,
+    summary: "Set your own stop loss, take profit, and trailing stops. The app watches your position and submits the exit order when your rule is hit.",
+    keywords: [
+      "position protection", "trailing stop", "stop loss", "take profit", "exit",
+      "exit rules", "exit protection", "trail", "protect position", "auto exit",
+    ],
+    body: (
+      <>
+        <p>
+          <strong>Position Protection</strong> lets you define exit rules for a position — a{" "}
+          <strong>stop loss</strong>, a <strong>take profit</strong> target, and/or a{" "}
+          <strong>trailing stop</strong>. The app then watches the price during market hours and,
+          when one of your rules is hit, submits a standard exit order for you.
+        </p>
+        <p className="mt-2">
+          It is <strong>not autonomous and not AI-managed</strong>. You choose whether to turn it on,
+          you set every number yourself, and you acknowledge the risk before it starts. You can pause,
+          resume, or cancel any plan at any time.
+        </p>
+
+        <h4 className="font-semibold mt-3">Where to set it up</h4>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li>
+            <strong>On a new trade</strong> — in the{" "}
+            <Link href="/instatrade" className="underline">InstaTrade™</Link> ticket, open the{" "}
+            <strong>Position Protection</strong> section, set your rules, check the acknowledgment box,
+            and submit. Your protection plan is created when the order goes through.
+          </li>
+          <li>
+            <strong>On an existing position</strong> — go to{" "}
+            <Link href="/history" className="underline">My Activity</Link>. Below your live positions
+            is the <strong>Position Protection panel</strong>, where you can add or edit a stop,
+            target, or trailing stop and pause, resume, or cancel each plan. Protected positions show
+            a <strong>"Protected"</strong> badge.
+          </li>
+        </ul>
+
+        <h4 className="font-semibold mt-3">The three exit rules</h4>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li><strong>Stop loss</strong> — exits if the price falls to (or below) your level, to cap a loss.</li>
+          <li><strong>Take profit</strong> — exits if the price rises to (or above) your target, to lock in a gain.</li>
+          <li>
+            <strong>Trailing stop</strong> — follows the price in your favor by a set amount (percent
+            or dollars). As the position moves your way, the stop ratchets up and never moves back; if
+            the price then pulls back by your trail amount, it exits. If more than one rule would
+            trigger at once, the stop takes priority, then the trail, then the target.
+          </li>
+        </ul>
+
+        <h4 className="font-semibold mt-3">Important things to know</h4>
+        <ul className="list-disc pl-5 space-y-1 mt-2">
+          <li>
+            <strong>It checks every 30 seconds during market hours.</strong> It is not a guaranteed,
+            instant, or tick-by-tick stop — fast moves can fill away from your level, and fills aren't
+            guaranteed.
+          </li>
+          <li>
+            <strong>Exits are sent as regular market orders.</strong> Your broker has no special
+            "trailing stop" order here — the app manages the trailing level and submits a normal exit
+            order when your rule is hit.
+          </li>
+          <li>
+            <strong>Paper trading and stocks are on by default.</strong> Live (real-money) accounts,
+            options, and spreads stay off until enabled in your environment settings.
+          </li>
+          <li>
+            <strong>Each plan exits only once.</strong> Once an exit order is submitted the plan is
+            closed and won't fire again.
+          </li>
+        </ul>
+
+        <p className="mt-3 text-sm text-muted-foreground">
+          Position Protection is separate from your{" "}
+          <Link href="/settings/risk-profile" className="underline">My Limits</Link> guardrails. My
+          Limits decides whether an order is allowed to be placed; Position Protection manages exiting
+          a position you already hold.
         </p>
       </>
     ),

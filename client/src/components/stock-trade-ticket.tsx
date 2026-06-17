@@ -103,14 +103,34 @@ export function StockTradeTicket({
   const [protectionEnabled, setProtectionEnabled] = useState(false);
   const [ppStopEnabled, setPpStopEnabled] = useState(true);
   const [ppStopMode, setPpStopMode] = useState<"percent" | "dollar" | "price">("percent");
-  const [ppStopValue, setPpStopValue] = useState<string>("8");
+  const [ppStopValue, setPpStopValue] = useState<string>("5");
   const [ppTargetEnabled, setPpTargetEnabled] = useState(false);
   const [ppTargetMode, setPpTargetMode] = useState<"percent" | "dollar" | "price">("percent");
   const [ppTargetValue, setPpTargetValue] = useState<string>("20");
   const [ppTrailEnabled, setPpTrailEnabled] = useState(false);
   const [ppTrailMode, setPpTrailMode] = useState<"percent" | "dollar">("percent");
   const [ppTrailValue, setPpTrailValue] = useState<string>("10");
+  const [ppExitOrderType, setPpExitOrderType] = useState<"market" | "stop" | "stop_limit">("market");
+  const [ppAdvancedOpen, setPpAdvancedOpen] = useState(false);
+  const [ppPreset, setPpPreset] = useState<"conservative" | "standard" | "wider" | "custom">("standard");
   const [ppAck, setPpAck] = useState(false);
+
+  // Beginner presets: one tap sets a stop-only plan at a sensible percentage.
+  function applyPpPreset(preset: "conservative" | "standard" | "wider" | "custom") {
+    setPpPreset(preset);
+    if (preset === "custom") {
+      setPpAdvancedOpen(true);
+      return;
+    }
+    const stopPct = preset === "conservative" ? "3" : preset === "standard" ? "5" : "8";
+    setPpStopEnabled(true);
+    setPpStopMode("percent");
+    setPpStopValue(stopPct);
+    setPpTargetEnabled(false);
+    setPpTrailEnabled(false);
+    setPpExitOrderType("market");
+    setPpAdvancedOpen(false);
+  }
 
   const { data: ppConfig } = useQuery<{
     enabled: boolean;
@@ -237,7 +257,7 @@ export function StockTradeTicket({
             positionSide: "long",
             quantity,
             entryPrice,
-            exitOrderType: "market",
+            exitOrderType: ppExitOrderType,
             acknowledged: true,
             stopEnabled: ppStopEnabled,
             stopMode: ppStopMode,
@@ -603,6 +623,46 @@ export function StockTradeTicket({
 
                 {protectionEnabled && (
                   <div className="space-y-3 p-3 rounded-md border bg-muted/20">
+                    {/* Beginner presets */}
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Quick preset</Label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {([
+                          { key: "conservative", label: "Conservative", sub: "3%" },
+                          { key: "standard", label: "Standard", sub: "5%" },
+                          { key: "wider", label: "Wider", sub: "8%" },
+                          { key: "custom", label: "Custom", sub: "set it" },
+                        ] as const).map((p) => (
+                          <button
+                            key={p.key}
+                            type="button"
+                            onClick={() => applyPpPreset(p.key)}
+                            data-testid={`button-pp-preset-${p.key}`}
+                            className={`flex flex-col items-center rounded-md border px-1 py-1.5 text-[11px] transition-colors ${
+                              ppPreset === p.key
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border hover:bg-muted/40"
+                            }`}
+                          >
+                            <span className="font-medium leading-tight">{p.label}</span>
+                            <span className="text-[10px] text-muted-foreground">{p.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setPpAdvancedOpen((v) => !v)}
+                      data-testid="toggle-pp-advanced"
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      {ppAdvancedOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      <span>Advanced rules</span>
+                    </button>
+
+                    {ppAdvancedOpen && (
+                    <div className="space-y-3">
                     {/* Stop loss */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -717,6 +777,27 @@ export function StockTradeTicket({
                         </>
                       )}
                     </div>
+
+                    {/* Exit order type */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">When triggered, submit</Label>
+                      <Select value={ppExitOrderType} onValueChange={(v) => setPpExitOrderType(v as any)}>
+                        <SelectTrigger className="h-8" data-testid="select-pp-exit-order-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="market">Market order (fastest)</SelectItem>
+                          <SelectItem value="stop">Stop order (rests at level)</SelectItem>
+                          <SelectItem value="stop_limit">Stop-limit (price protected)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground">
+                        Market fills fastest but at the next available price. Stop-limit caps the price
+                        but may not fill in a fast move.
+                      </p>
+                    </div>
+                    </div>
+                    )}
 
                     <div className="flex items-start gap-2 pt-1">
                       <Checkbox

@@ -107,9 +107,23 @@ export function PositionProtectionPanel() {
                       </span>
                     ))}
                   </div>
-                  {plan.lastPrice != null && (
-                    <p className="text-[11px] text-muted-foreground">Last seen ${plan.lastPrice.toFixed(2)}</p>
-                  )}
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {plan.lastPrice != null && <span>Last ${plan.lastPrice.toFixed(2)}</span>}
+                    {plan.trailEnabled && plan.trailStopPrice != null && (
+                      <span data-testid={`text-trailstop-${plan.symbol}`}>
+                        Trail stop ${plan.trailStopPrice.toFixed(2)}
+                      </span>
+                    )}
+                    {plan.highWaterMark != null && <span>High ${plan.highWaterMark.toFixed(2)}</span>}
+                    {plan.lastCheckedAt && (
+                      <span data-testid={`text-lastchecked-${plan.symbol}`}>
+                        Checked {new Date(plan.lastCheckedAt).toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/80">
+                    Exit as {plan.exitOrderType === "stop_limit" ? "stop-limit" : plan.exitOrderType} order
+                  </p>
                 </div>
                 {(plan.status === "active" || plan.status === "paused") && (
                   <div className="flex items-center gap-1 shrink-0">

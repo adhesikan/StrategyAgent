@@ -271,6 +271,12 @@ export async function createPlan(userId: string, input: CreatePlanInput): Promis
     price: input.entryPrice ?? null,
     metadata: { stopPrice, targetPrice, trailStopPrice },
   });
+  await notifyUser(plan, {
+    title: `${plan.symbol} — Exit Protection on`,
+    body: `We're now watching ${plan.quantity} ${plan.symbol} during market hours and will submit your exit when a rule triggers.`,
+    tag: `protection-active-${plan.id}`,
+    subject: `${plan.symbol} — Exit Protection is now active`,
+  });
   return plan;
 }
 
@@ -547,15 +553,43 @@ async function triggerExit(
       orderId = `sim-${randomUUID()}`;
       brokerStatus = "simulated";
     } else {
+      // Honor the user-selected exit order type. The trigger level depends on
+      // which rule fired; for stop/stop_limit we hand the broker that level so
+      // the order rests rather than crossing the spread blindly.
+      const exitOrderType = plan.exitOrderType === "stop" || plan.exitOrderType === "stop_limit"
+        ? plan.exitOrderType
+        : "market";
+      const triggerLevel =
+        reason === "stop"
+          ? plan.stopPrice
+          : reason === "trail"
+            ? plan.trailStopPrice
+            : plan.targetPrice;
+
       const orderRequest: any = {
         accountId: plan.brokerAccountId,
         symbol: plan.symbol,
         side: exitSide,
         quantity: plan.quantity,
-        orderType: "market",
+        orderType: exitOrderType,
         duration: "day",
         orderClass: isOption ? "option" : "equity",
       };
+
+      if (exitOrderType !== "market" && triggerLevel != null) {
+        orderRequest.stopPrice = triggerLevel;
+        if (exitOrderType === "stop_limit") {
+          // Limit a hair past the stop so the order can fill: sells accept a
+          // slightly lower price, buys a slightly higher one.
+          const slip = 0.005;
+          orderRequest.price = exitSide === "sell" ? triggerLevel * (1 - slip) : triggerLevel * (1 + slip);
+        }
+      } else if (exitOrderType !== "market") {
+        // No usable level (e.g. percent rule without computed price) — fall back
+        // to a market order so the exit still goes out.
+        orderRequest.orderType = "market";
+      }
+
       if (isOption) {
         orderRequest.optionSymbol = plan.optionSymbol;
         orderRequest.optionSide = plan.positionSide === "long" ? "sell_to_close" : "buy_to_close";
@@ -600,7 +634,52 @@ async function triggerExit(
       message: `Exit order failed: ${(err as Error).message}`,
       price,
     });
+    await notifyUser(plan, {
+      title: `${plan.symbol} — Exit Protection error`,
+      body: `We couldn't submit your ${plan.symbol} exit (${reason}). Please review the position manually. Reason: ${(err as Error).message}`,
+      tag: `protection-error-${plan.id}`,
+      subject: `${plan.symbol} — Exit Protection couldn't submit your order`,
+    });
     console.error(`[PositionProtection] Exit failed for plan ${plan.id}:`, (err as Error).message);
+  }
+}
+
+// Generic best-effort user notification (push + email). Used for non-trigger
+// lifecycle events like errors and activation.
+async function notifyUser(
+  plan: PositionProtectionPlan,
+  opts: { title: string; body: string; tag: string; subject: string },
+): Promise<void> {
+  try {
+    const { sendPushNotification } = await import("../../push-service");
+    const subs = await storage.getPushSubscriptionsByUserId(plan.userId);
+    for (const sub of subs) {
+      await sendPushNotification(sub, {
+        title: opts.title,
+        body: opts.body,
+        icon: "/logo.png",
+        badge: "/logo.png",
+        tag: opts.tag,
+        data: { url: "/history", symbol: plan.symbol },
+      });
+    }
+  } catch (err) {
+    console.error("[PositionProtection] Push notify error:", (err as Error).message);
+  }
+  try {
+    const { getEmailProviderStatus, sendCampaign } = await import("../../email-service");
+    if (getEmailProviderStatus().configured) {
+      const user = await storage.getUser(plan.userId);
+      if (user?.email) {
+        await sendCampaign({
+          subject: opts.subject,
+          html: `<p>${opts.body}</p><p>This is software-generated order routing, not investment advice.</p>`,
+          recipients: [{ email: user.email, userId: plan.userId }],
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[PositionProtection] Email notify error:", (err as Error).message);
   }
 }
 

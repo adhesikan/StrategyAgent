@@ -74,7 +74,19 @@ export interface OptionQuote {
   openInterest: number;
 }
 
+// Declares what an individual broker can do natively. Position Protection uses
+// `nativeTrailingStop` to decide whether it must run an application-managed
+// monitoring loop (true for every broker we support today — none accept a
+// native trailing_stop order).
+export interface BrokerCapabilities {
+  nativeTrailingStop: boolean;
+  stocks: boolean;
+  options: boolean;
+  spreads: boolean;
+}
+
 export interface BrokerProvider {
+  capabilities?: BrokerCapabilities;
   getStatus(accessToken: string): Promise<BrokerStatus>;
   getAccounts(accessToken: string): Promise<NormalizedAccount[]>;
   getPositions(accessToken: string, accountId?: string): Promise<NormalizedPosition[]>;

@@ -19,7 +19,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { OpenBrokerButton } from "@/components/open-broker-button";
-import { Briefcase, TrendingUp, TrendingDown, Radio, X, Loader2 } from "lucide-react";
+import { Briefcase, TrendingUp, TrendingDown, Radio, X, Loader2, ShieldCheck } from "lucide-react";
+import type { PositionProtectionPlan } from "@shared/schema";
 
 interface BrokerPosition {
   symbol: string;
@@ -39,6 +40,18 @@ export function LivePositionsPanel() {
     enabled: isConnected,
     refetchInterval: 30000,
   });
+
+  const { data: protectionPlans = [] } = useQuery<PositionProtectionPlan[]>({
+    queryKey: ["/api/position-protection/plans"],
+    enabled: isConnected,
+    refetchInterval: 30000,
+  });
+
+  const protectedSymbols = new Set(
+    protectionPlans
+      .filter((p) => p.status === "active" || p.status === "paused")
+      .map((p) => p.symbol.toUpperCase()),
+  );
 
   usePositionUpdates(isConnected);
 
@@ -132,7 +145,21 @@ export function LivePositionsPanel() {
                       className="border-b last:border-b-0"
                       data-testid={`row-position-${pos.symbol}`}
                     >
-                      <td className="py-2 px-2 font-mono font-bold">{pos.symbol}</td>
+                      <td className="py-2 px-2 font-mono font-bold">
+                        <span className="inline-flex items-center gap-1.5">
+                          {pos.symbol}
+                          {protectedSymbols.has(pos.symbol.toUpperCase()) && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] gap-0.5 border-primary/40 text-primary bg-primary/5"
+                              data-testid={`badge-protected-${pos.symbol}`}
+                            >
+                              <ShieldCheck className="h-2.5 w-2.5" />
+                              Protected
+                            </Badge>
+                          )}
+                        </span>
+                      </td>
                       <td className="py-2 px-2 text-right tabular-nums">{pos.qty}</td>
                       <td className="py-2 px-2 text-right tabular-nums">${pos.avgPrice.toFixed(2)}</td>
                       <td className="py-2 px-2 text-right tabular-nums">${pos.marketPrice.toFixed(2)}</td>

@@ -243,6 +243,12 @@ export async function tsGetOptionChain(accessToken: string, symbol: string, expi
 }
 
 export const tradestationProvider: BrokerProvider = {
+  capabilities: {
+    nativeTrailingStop: false,
+    stocks: true,
+    options: true,
+    spreads: true,
+  },
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const accounts = await tsFetch(`${LIVE_BASE_URL}/brokerage/accounts`, accessToken);
     const accountList = accounts?.Accounts || accounts || [];

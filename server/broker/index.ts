@@ -692,6 +692,13 @@ export async function getOptionQuote(userId: string, optionSymbol: string) {
   return provider.getOptionQuote(token, optionSymbol);
 }
 
+export async function getBrokerCapabilities(userId: string) {
+  const connection = await getConnectionForUser(userId);
+  if (!connection || !isSupportedProvider(connection.provider)) return null;
+  const provider = getProviderForConnection(connection);
+  return provider.capabilities ?? null;
+}
+
 export async function getOptionExpirations(userId: string, symbol: string): Promise<string[]> {
   const connection = await getConnectionForUser(userId);
   if (!connection || !isSupportedProvider(connection.provider)) return [];

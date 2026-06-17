@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker } from "lucide-react";
+import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck } from "lucide-react";
 
 interface AdminStats {
   totalUsers: number;
@@ -55,6 +55,13 @@ const tools = [
     href: "/admin/agent-tests",
     icon: Beaker,
     testId: "card-admin-agent-tests",
+  },
+  {
+    title: "Position Protection Monitor",
+    description: "User exit plans, trailing stops & trigger status",
+    href: "/admin/position-protection",
+    icon: ShieldCheck,
+    testId: "card-admin-position-protection",
   },
 ];
 

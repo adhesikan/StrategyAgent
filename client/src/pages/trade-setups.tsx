@@ -20,6 +20,7 @@ import {
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LivePositionsPanel } from "@/components/live-positions-panel";
+import { PositionProtectionPanel } from "@/components/position-protection-panel";
 
 interface SetupHistoryItem {
   id: string;
@@ -117,6 +118,7 @@ export default function TradeSetupsPage() {
       </div>
 
       <LivePositionsPanel />
+      <PositionProtectionPanel />
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">

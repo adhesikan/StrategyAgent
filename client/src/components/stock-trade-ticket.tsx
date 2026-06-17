@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -23,10 +24,12 @@ import {
   Zap,
   Target,
   Shield,
+  ShieldCheck,
   ChevronDown,
   ChevronUp,
   DollarSign,
   Moon,
+  TrendingDown,
 } from "lucide-react";
 import { getMarketSessionInfo } from "@shared/market-session";
 import { HelpLink } from "@/components/help-link";
@@ -96,6 +99,32 @@ export function StockTradeTicket({
   const [livePrice, setLivePrice] = useState<number>(0);
   const [extendedHours, setExtendedHours] = useState(false);
 
+  // ── Position Protection (app-managed exit rules) ──
+  const [protectionEnabled, setProtectionEnabled] = useState(false);
+  const [ppStopEnabled, setPpStopEnabled] = useState(true);
+  const [ppStopMode, setPpStopMode] = useState<"percent" | "dollar" | "price">("percent");
+  const [ppStopValue, setPpStopValue] = useState<string>("8");
+  const [ppTargetEnabled, setPpTargetEnabled] = useState(false);
+  const [ppTargetMode, setPpTargetMode] = useState<"percent" | "dollar" | "price">("percent");
+  const [ppTargetValue, setPpTargetValue] = useState<string>("20");
+  const [ppTrailEnabled, setPpTrailEnabled] = useState(false);
+  const [ppTrailMode, setPpTrailMode] = useState<"percent" | "dollar">("percent");
+  const [ppTrailValue, setPpTrailValue] = useState<string>("10");
+  const [ppAck, setPpAck] = useState(false);
+
+  const { data: ppConfig } = useQuery<{
+    enabled: boolean;
+    liveEnabled: boolean;
+    optionsEnabled: boolean;
+    spreadsEnabled: boolean;
+  }>({
+    queryKey: ["/api/position-protection/config"],
+  });
+
+  const accountIsPaper = selectedAccount?.id?.startsWith("sandbox:") ?? false;
+  const accountMode: "paper" | "live" = accountIsPaper ? "paper" : "live";
+  const protectionLiveBlocked = !accountIsPaper && ppConfig ? !ppConfig.liveEnabled : false;
+
   const sessionInfo = getMarketSessionInfo();
   const inExtendedSession = sessionInfo.session === "pre" || sessionInfo.session === "after";
 
@@ -124,6 +153,8 @@ export function StockTradeTicket({
       setAdvancedOpen(false);
       setLivePrice(0);
       setExtendedHours(false);
+      setProtectionEnabled(false);
+      setPpAck(false);
 
       if (scanResult.prefillTarget && scanResult.stopLoss) {
         setBracketEnabled(true);
@@ -187,13 +218,52 @@ export function StockTradeTicket({
       const res = await apiRequest("POST", "/api/trade/place-equity", payload);
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       toast({
         title: "Order Placed",
         description: `Buy order for ${quantity} shares of ${scanResult?.ticker} submitted${data.hasBracket ? " with bracket exit" : ""}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/broker/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+
+      if (protectionEnabled && ppAck && selectedAccount && scanResult) {
+        try {
+          const planPayload: Record<string, any> = {
+            brokerProvider: data.provider || "tradier",
+            brokerAccountId: selectedAccount.id,
+            accountMode,
+            symbol: scanResult.ticker,
+            instrumentType: "stock",
+            positionSide: "long",
+            quantity,
+            entryPrice,
+            exitOrderType: "market",
+            acknowledged: true,
+            stopEnabled: ppStopEnabled,
+            stopMode: ppStopMode,
+            stopValue: ppStopEnabled ? parseFloat(ppStopValue) : undefined,
+            targetEnabled: ppTargetEnabled,
+            targetMode: ppTargetMode,
+            targetValue: ppTargetEnabled ? parseFloat(ppTargetValue) : undefined,
+            trailEnabled: ppTrailEnabled,
+            trailMode: ppTrailMode,
+            trailValue: ppTrailEnabled ? parseFloat(ppTrailValue) : undefined,
+          };
+          await apiRequest("POST", "/api/position-protection/plans", planPayload);
+          queryClient.invalidateQueries({ queryKey: ["/api/position-protection/plans"] });
+          toast({
+            title: "Position Protection On",
+            description: `We'll watch ${scanResult.ticker} and submit your exit when a rule triggers.`,
+          });
+        } catch (err: any) {
+          toast({
+            title: "Order placed, but protection didn't save",
+            description: err?.message || "You can add Position Protection from your positions panel.",
+            variant: "destructive",
+          });
+        }
+      }
+
       onOpenChange(false);
     },
     onError: (error: any) => {
@@ -501,6 +571,170 @@ export function StockTradeTicket({
               )}
             </div>
 
+            {ppConfig?.enabled && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    <Label className="text-xs font-medium">Position Protection</Label>
+                  </div>
+                  <Switch
+                    checked={protectionEnabled}
+                    disabled={protectionLiveBlocked}
+                    onCheckedChange={setProtectionEnabled}
+                    data-testid="switch-position-protection"
+                  />
+                </div>
+
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  After your order fills, we monitor this position during market hours and
+                  submit your exit order when one of your rules triggers — including trailing
+                  stops your broker can't place natively. This is software-generated order
+                  routing, not investment advice, and fills aren't guaranteed.
+                </p>
+
+                {protectionLiveBlocked && (
+                  <p className="text-[11px] text-amber-500 leading-snug" data-testid="text-protection-live-blocked">
+                    Position Protection is available on paper accounts right now. Switch to a paper
+                    account to enable it.
+                  </p>
+                )}
+
+                {protectionEnabled && (
+                  <div className="space-y-3 p-3 rounded-md border bg-muted/20">
+                    {/* Stop loss */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-3 w-3 text-destructive" />
+                          <Label className="text-xs">Stop Loss</Label>
+                        </div>
+                        <Switch
+                          checked={ppStopEnabled}
+                          onCheckedChange={setPpStopEnabled}
+                          data-testid="switch-pp-stop"
+                        />
+                      </div>
+                      {ppStopEnabled && (
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={ppStopValue}
+                            onChange={(e) => setPpStopValue(e.target.value)}
+                            className="h-8"
+                            data-testid="input-pp-stop-value"
+                          />
+                          <Select value={ppStopMode} onValueChange={(v) => setPpStopMode(v as any)}>
+                            <SelectTrigger className="h-8 w-28" data-testid="select-pp-stop-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="percent">% below</SelectItem>
+                              <SelectItem value="dollar">$ below</SelectItem>
+                              <SelectItem value="price">at price</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Take profit */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Target className="h-3 w-3 text-chart-2" />
+                          <Label className="text-xs">Take Profit</Label>
+                        </div>
+                        <Switch
+                          checked={ppTargetEnabled}
+                          onCheckedChange={setPpTargetEnabled}
+                          data-testid="switch-pp-target"
+                        />
+                      </div>
+                      {ppTargetEnabled && (
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={ppTargetValue}
+                            onChange={(e) => setPpTargetValue(e.target.value)}
+                            className="h-8"
+                            data-testid="input-pp-target-value"
+                          />
+                          <Select value={ppTargetMode} onValueChange={(v) => setPpTargetMode(v as any)}>
+                            <SelectTrigger className="h-8 w-28" data-testid="select-pp-target-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="percent">% above</SelectItem>
+                              <SelectItem value="dollar">$ above</SelectItem>
+                              <SelectItem value="price">at price</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Trailing stop */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <TrendingDown className="h-3 w-3 text-yellow-500" />
+                          <Label className="text-xs">Trailing Stop</Label>
+                        </div>
+                        <Switch
+                          checked={ppTrailEnabled}
+                          onCheckedChange={setPpTrailEnabled}
+                          data-testid="switch-pp-trail"
+                        />
+                      </div>
+                      {ppTrailEnabled && (
+                        <>
+                          <div className="flex gap-2">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={ppTrailValue}
+                              onChange={(e) => setPpTrailValue(e.target.value)}
+                              className="h-8"
+                              data-testid="input-pp-trail-value"
+                            />
+                            <Select value={ppTrailMode} onValueChange={(v) => setPpTrailMode(v as any)}>
+                              <SelectTrigger className="h-8 w-28" data-testid="select-pp-trail-mode">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="percent">% trail</SelectItem>
+                                <SelectItem value="dollar">$ trail</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Follows the high. We move the stop up as price rises, never down.
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-start gap-2 pt-1">
+                      <Checkbox
+                        id="pp-ack"
+                        checked={ppAck}
+                        onCheckedChange={(c) => setPpAck(c === true)}
+                        className="mt-0.5"
+                        data-testid="checkbox-pp-ack"
+                      />
+                      <Label htmlFor="pp-ack" className="text-[11px] leading-snug text-muted-foreground font-normal">
+                        I understand Position Protection submits exit orders on my behalf when my
+                        rules trigger. Fills aren't guaranteed and this isn't investment advice.
+                      </Label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {inExtendedSession && (
               <div className="space-y-2 p-3 rounded-md border border-blue-500/30 bg-blue-500/5">
                 <div className="flex items-center justify-between">
@@ -609,7 +843,8 @@ export function StockTradeTicket({
               placeMutation.isPending ||
               !selectedAccount ||
               (entryType === "limit" && (!limitPrice || parseFloat(limitPrice) <= 0)) ||
-              (bracketEnabled && (!targetPrice || !stopPrice || parseFloat(targetPrice) <= 0 || parseFloat(stopPrice) <= 0))
+              (bracketEnabled && (!targetPrice || !stopPrice || parseFloat(targetPrice) <= 0 || parseFloat(stopPrice) <= 0)) ||
+              (protectionEnabled && !ppAck)
             }
             className="flex-1"
             data-testid="button-stock-ticket-place"

@@ -533,6 +533,11 @@ async function restoreBrokerConnections() {
   startExitManager();
   log("Exit manager started (TradeGuard)");
 
+  // Start Position Protection worker (user-defined exit rules / trailing stops)
+  const { startPositionProtectionWorker } = await import("./position-protection-worker");
+  startPositionProtectionWorker();
+  log("Position Protection worker started");
+
   // Start token refresh service for persistent broker connections
   const { startTokenRefreshService } = await import("./token-refresh-service");
   startTokenRefreshService();

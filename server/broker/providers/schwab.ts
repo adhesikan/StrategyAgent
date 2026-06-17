@@ -112,6 +112,12 @@ function mapDuration(d: OrderRequest["duration"]): string {
 }
 
 export const schwabProvider: BrokerProvider = {
+  capabilities: {
+    nativeTrailingStop: false,
+    stocks: true,
+    options: false,
+    spreads: false,
+  },
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const numbers = await schwabFetch(`${TRADER_URL}/accounts/accountNumbers`, accessToken);
     const first = Array.isArray(numbers) ? numbers[0] : null;

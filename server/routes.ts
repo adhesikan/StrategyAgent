@@ -51,6 +51,7 @@ import { registerNewsSentimentRoutes } from "./routes/news-sentiment";
 import { registerHomeSnapshotRoutes } from "./routes/home-snapshot";
 import { registerDailyIdeasRoutes } from "./routes/daily-ideas";
 import { registerJournalRoutes } from "./routes/journal";
+import { registerPositionProtectionRoutes } from "./routes/position-protection";
 import { registerAskRoutes } from "./routes/ask";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
@@ -167,6 +168,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerHomeSnapshotRoutes(app, isAuthenticated);
   registerDailyIdeasRoutes(app, isAuthenticated);
   registerJournalRoutes(app, isAuthenticated);
+  registerPositionProtectionRoutes(app, isAuthenticated, isAdmin);
   registerAskRoutes(app, isAuthenticated);
   registerBillingRoutes(app, isAuthenticated);
 

@@ -1218,6 +1218,111 @@ export const insertManagedExitSchema = createInsertSchema(managedExits).omit({
 export type InsertManagedExit = z.infer<typeof insertManagedExitSchema>;
 export type ManagedExit = typeof managedExits.$inferSelect;
 
+// ─── Position Protection (user-directed exit rules) ───────────────────
+// App-managed monitoring of stop loss / take profit / trailing stops.
+// NOT autonomous trading: a user must explicitly enable each plan, define
+// the parameters, and acknowledge the risk. Tradier has no native
+// trailing_stop order, so the worker submits regular market/stop exit
+// orders when a user-defined trigger is hit.
+export const PositionProtectionStatus = {
+  ACTIVE: "active",
+  PAUSED: "paused",
+  TRIGGERED: "triggered",
+  EXITED: "exited",
+  CANCELLED: "cancelled",
+  ERROR: "error",
+} as const;
+export type PositionProtectionStatusType =
+  typeof PositionProtectionStatus[keyof typeof PositionProtectionStatus];
+
+export const positionProtectionPlans = pgTable("position_protection_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  brokerProvider: text("broker_provider").notNull(),
+  brokerAccountId: text("broker_account_id").notNull(),
+  // "paper" (sandbox) or "live" — used to gate live trading behind a flag.
+  accountMode: text("account_mode").notNull().default("paper"),
+  symbol: text("symbol").notNull(),
+  // "stock" | "option" — options/spreads disabled by default via env flag.
+  instrumentType: text("instrument_type").notNull().default("stock"),
+  optionSymbol: text("option_symbol"),
+  // "long" | "short" — direction of the position being protected.
+  positionSide: text("position_side").notNull().default("long"),
+  quantity: integer("quantity").notNull(),
+  entryPrice: real("entry_price"),
+
+  // Hard stop loss
+  stopEnabled: boolean("stop_enabled").notNull().default(false),
+  stopMode: text("stop_mode"), // "price" | "percent" | "dollar"
+  stopValue: real("stop_value"),
+  stopPrice: real("stop_price"),
+
+  // Take profit target
+  targetEnabled: boolean("target_enabled").notNull().default(false),
+  targetMode: text("target_mode"), // "price" | "percent" | "dollar"
+  targetValue: real("target_value"),
+  targetPrice: real("target_price"),
+
+  // App-managed trailing stop
+  trailEnabled: boolean("trail_enabled").notNull().default(false),
+  trailMode: text("trail_mode"), // "percent" | "dollar"
+  trailValue: real("trail_value"),
+  highWaterMark: real("high_water_mark"),
+  trailStopPrice: real("trail_stop_price"),
+
+  // How the exit order is submitted when triggered.
+  exitOrderType: text("exit_order_type").notNull().default("market"), // "market" | "stop" | "stop_limit"
+
+  status: text("status").notNull().default("active"),
+  triggerReason: text("trigger_reason"), // "stop" | "target" | "trail"
+  submittedExitOrderId: text("submitted_exit_order_id"),
+  exitPrice: real("exit_price"),
+  exitedAt: timestamp("exited_at"),
+  lastPrice: real("last_price"),
+  lastCheckedAt: timestamp("last_checked_at"),
+  acknowledged: boolean("acknowledged").notNull().default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPositionProtectionPlanSchema = createInsertSchema(positionProtectionPlans).omit({
+  id: true,
+  status: true,
+  triggerReason: true,
+  submittedExitOrderId: true,
+  exitPrice: true,
+  exitedAt: true,
+  lastPrice: true,
+  lastCheckedAt: true,
+  highWaterMark: true,
+  trailStopPrice: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPositionProtectionPlan = z.infer<typeof insertPositionProtectionPlanSchema>;
+export type PositionProtectionPlan = typeof positionProtectionPlans.$inferSelect;
+
+export const positionProtectionEvents = pgTable("position_protection_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planId: varchar("plan_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  // created | updated | trail_adjusted | triggered | exit_submitted |
+  // exit_filled | paused | resumed | cancelled | error
+  eventType: text("event_type").notNull(),
+  message: text("message"),
+  price: real("price"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPositionProtectionEventSchema = createInsertSchema(positionProtectionEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPositionProtectionEvent = z.infer<typeof insertPositionProtectionEventSchema>;
+export type PositionProtectionEvent = typeof positionProtectionEvents.$inferSelect;
+
 // ─── Futures Orders ───────────────────────────────────────────────
 export const FuturesOrderStatus = {
   CREATED: "created",

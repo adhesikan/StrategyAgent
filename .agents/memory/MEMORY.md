@@ -1,0 +1,1 @@
+- [Position Protection exit safety](position-protection-exit-safety.md) — exit worker uses atomic claim + submittedExitOrderId guard + strict lifecycle state machine to never double-submit exits; Tradier has no native trailing_stop.

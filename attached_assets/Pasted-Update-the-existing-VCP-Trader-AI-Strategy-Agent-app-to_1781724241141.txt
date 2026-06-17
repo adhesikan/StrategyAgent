@@ -1,0 +1,489 @@
+Update the existing VCP Trader AI / Strategy Agent app to add user-directed trailing stop and position protection features using the existing broker integration architecture.
+
+Important:
+Tradier does not appear to support native trailing stop orders through the standard order API. Do NOT implement this as a native Tradier trailing_stop order type unless the broker adapter explicitly confirms support.
+Instead, implement an application-managed trailing stop engine that monitors user-enabled positions and submits regular market/stop/stop-limit exit orders through the broker when the user-defined trailing condition is triggered.
+
+Core principle:
+This is NOT full automation and NOT AI trading for the user.
+This is user-directed position protection.
+The user must explicitly enable the exit rule, define the trailing stop parameters, and acknowledge the risks before the engine monitors the position.
+
+Do not market this as:
+- autonomous trading
+- autopilot
+- AI trades for you
+- guaranteed protection
+- guaranteed stop
+- guaranteed fill
+
+Use language:
+- Position Protection
+- Exit Protection
+- User-defined exit rules
+- Trailing stop monitoring
+- Self-directed risk controls
+- Application-managed exit rule
+
+====================================================
+1. FEATURE NAME / UX
+====================================================
+
+Add a new feature area called:
+
+Position Protection
+
+Do NOT use TradeGuard™ as a trademark.
+
+Position Protection should include:
+- Fixed stop loss
+- Take profit
+- Trailing stop by dollar amount
+- Trailing stop by percentage
+- Optional OCO-style exit plan when supported
+- Alerts-only mode
+- Paper mode simulation
+
+Show this inside:
+- Trade Detail page
+- InstaTrade™ ticket
+- Position detail page
+- Journal/results detail where appropriate
+
+====================================================
+2. INSTATRADE™ TICKET UPDATE
+====================================================
+
+In the InstaTrade™ order ticket drawer, add an optional section:
+
+Position Protection
+
+Collapsed by default.
+
+Fields:
+- Enable Position Protection toggle
+- Stop Loss toggle
+- Take Profit toggle
+- Trailing Stop toggle
+
+If Trailing Stop enabled:
+- Trail type:
+  - Dollar
+  - Percent
+- Trail value:
+  - e.g. $2.00 or 5%
+- Trigger basis:
+  - Last price
+  - Bid/ask midpoint
+  - Underlying price for options
+- Exit order type when triggered:
+  - Market
+  - Limit with offset
+  - Stop market if supported
+  - Stop limit if supported
+
+For beginner mode:
+Show simple presets:
+- Conservative: 3% trail
+- Standard: 5% trail
+- Wider: 8% trail
+- Custom
+
+For advanced mode:
+Show all fields.
+
+Add warning:
+“Trailing stops are monitored by VCP Trader AI and are not guaranteed. If the app or broker connection is unavailable, the exit may not trigger. Prices can gap beyond stop levels.”
+
+====================================================
+3. USER ACKNOWLEDGMENT
+====================================================
+
+Before enabling Position Protection on a live broker position, require checkbox:
+
+“I understand this is a user-defined exit rule monitored by VCP Trader AI. This is not a guaranteed stop or investment advice. Market gaps, outages, data delays, or broker errors may prevent execution at the expected price.”
+
+Store:
+- acknowledgedAt
+- acknowledgmentText
+- userId
+- positionProtectionPlanId
+
+====================================================
+4. DATABASE TABLES
+====================================================
+
+Add table:
+
+position_protection_plans
+
+Fields:
+id
+userId
+accountId
+broker
+brokerAccountId
+symbol
+underlyingSymbol
+instrumentType
+positionId
+entryOrderId
+brokerPositionRef
+quantity
+side
+enabled
+mode: alerts_only | paper | live
+status: active | paused | triggered | canceled | error | completed
+stopLossEnabled
+stopLossPrice
+takeProfitEnabled
+takeProfitPrice
+trailingStopEnabled
+trailType: dollar | percent
+trailValue
+triggerBasis: last | midpoint | bid | ask | underlying
+exitOrderType: market | limit | stop_market | stop_limit
+limitOffset
+highestPriceSeen
+lowestPriceSeen
+currentStopPrice
+lastMarketPrice
+lastCheckedAt
+triggeredAt
+triggerReason
+submittedExitOrderId
+lastError
+acknowledgedAt
+acknowledgmentText
+createdAt
+updatedAt
+
+Add table:
+
+position_protection_events
+
+Fields:
+id
+planId
+userId
+eventType
+message
+marketPrice
+stopPrice
+highestPriceSeen
+lowestPriceSeen
+brokerOrderId
+rawPayloadJson
+createdAt
+
+Event types:
+created
+activated
+price_update
+stop_updated
+triggered
+exit_order_submitted
+exit_order_rejected
+paused
+canceled
+error
+completed
+
+====================================================
+5. BACKEND SERVICES
+====================================================
+
+Create service:
+
+PositionProtectionService
+
+Functions:
+- createPlan(userId, planInput)
+- updatePlan(userId, planId, updates)
+- cancelPlan(userId, planId)
+- pausePlan(userId, planId)
+- resumePlan(userId, planId)
+- getPlansForUser(userId)
+- getActivePlans()
+- processPlan(plan)
+- calculateTrailingStop(plan, marketData)
+- triggerExit(plan, marketData)
+- logEvent(planId, eventType, message, payload)
+
+Create service:
+
+TrailingStopCalculator
+
+Logic for long positions:
+- highestPriceSeen = max(highestPriceSeen, currentPrice)
+- dollar trail stop = highestPriceSeen - trailValue
+- percent trail stop = highestPriceSeen * (1 - trailValue / 100)
+- trigger when currentPrice <= currentStopPrice
+
+Logic for short positions:
+- lowestPriceSeen = min(lowestPriceSeen, currentPrice)
+- dollar trail stop = lowestPriceSeen + trailValue
+- percent trail stop = lowestPriceSeen * (1 + trailValue / 100)
+- trigger when currentPrice >= currentStopPrice
+
+Support stocks first.
+Support options with caution:
+- For long calls/puts, trail option premium by default
+- Optional setting to trail based on underlying stock price
+- For spreads, initially alerts-only unless existing spread exit builder is reliable
+
+====================================================
+6. BROKER ADAPTERS
+====================================================
+
+Use existing broker service abstraction.
+
+Do not hard-code Tradier only.
+
+Update broker adapter interface:
+
+BrokerAdapter:
+- getQuote(symbol)
+- getOptionQuote(optionSymbol)
+- getPosition(accountId, symbol)
+- submitOrder(order)
+- cancelOrder(orderId)
+- supportsNativeTrailingStop? boolean
+- supportsStopOrders? boolean
+- supportsStopLimitOrders? boolean
+
+Tradier adapter:
+- supportsNativeTrailingStop = false unless confirmed
+- supportsStopOrders based on current implementation
+- submit exit order as regular market/limit/stop/stop_limit order
+
+TradeStation adapter:
+- check adapter capabilities
+- only use native trailing stop if existing API support is confirmed and implemented
+- otherwise use same application-managed monitoring
+
+====================================================
+7. MONITORING WORKER
+====================================================
+
+Create background worker:
+
+positionProtectionWorker
+
+Runs during regular market hours.
+Poll active plans.
+
+Default polling:
+- every 15 seconds for live mode
+- every 60 seconds for paper mode
+
+Make polling interval configurable via env:
+
+POSITION_PROTECTION_LIVE_POLL_SECONDS=15
+POSITION_PROTECTION_PAPER_POLL_SECONDS=60
+
+Worker flow:
+1. Load active plans
+2. Fetch latest quote via broker adapter or paper data source
+3. Update highest/lowest price seen
+4. Recalculate trailing stop
+5. Save updated currentStopPrice
+6. If trigger condition met:
+   - mark triggered
+   - submit exit order if live mode
+   - simulate exit if paper mode
+   - log event
+   - notify user if notification service exists
+
+Important:
+Use database locks or idempotency to prevent duplicate exit orders.
+Before submitting exit:
+- re-check plan status
+- verify no submittedExitOrderId exists
+- verify position quantity still exists
+- verify market is open
+
+====================================================
+8. PAPER MODE SUPPORT
+====================================================
+
+Paper Mode:
+- Support trailing stop simulation
+- Use paper quote source / delayed snapshot source
+- When triggered, create paper exit order
+- Update paper position and paper account balance
+- Log to journal
+
+Label:
+“Paper Position Protection”
+
+====================================================
+9. LIVE MODE SAFETY CONTROLS
+====================================================
+
+Before enabling live Position Protection:
+- broker must be connected
+- position must exist
+- user must acknowledge risk
+- instrument must be supported
+- worker must be healthy
+
+If worker health check fails:
+Disable enabling live protection and show:
+“Position Protection monitoring is temporarily unavailable.”
+
+Add server-side safety:
+- max number of active plans per user
+- reject unsupported complex option strategies initially
+- reject plans without valid trail value
+- reject plans for symbols with unavailable quotes
+
+====================================================
+10. UI — POSITION DETAIL PAGE
+====================================================
+
+Add Position Protection panel:
+
+Status:
+Active / Paused / Triggered / Error
+
+Show:
+- Current price
+- Highest price seen
+- Current trailing stop
+- Trail type/value
+- Last checked time
+- Mode: Paper / Live / Alerts Only
+
+Buttons:
+- Pause
+- Resume
+- Edit
+- Cancel
+
+Event log:
+Show recent events:
+- trailing stop updated
+- price checked
+- exit triggered
+- order submitted
+
+Beginner mode:
+Show simple explanation:
+“Your trailing stop follows the position as it moves in your favor and may trigger an exit if price reverses.”
+
+====================================================
+11. UI — HOME / JOURNAL / RESULTS
+====================================================
+
+Home:
+Add small card:
+Position Protection
+- X active plans
+- Y alerts triggered today
+
+Journal:
+For trades with protection enabled, show badge:
+Protected
+
+Results:
+Show whether exit was:
+- manual
+- paper
+- position protection
+- broker order
+
+====================================================
+12. NOTIFICATIONS
+====================================================
+
+If existing notification/email/push service exists, trigger notifications:
+
+Events:
+- protection activated
+- trailing stop updated meaningfully
+- stop triggered
+- exit order submitted
+- exit order rejected
+- monitoring error
+- broker connection expired
+
+Message examples:
+“Trailing stop triggered for AAPL. Exit order submitted through your connected broker.”
+“Position Protection error for AMD: broker connection expired. Please reconnect.”
+
+====================================================
+13. COPY / COMPLIANCE LANGUAGE
+====================================================
+
+Use this copy in UI:
+
+“Position Protection uses user-defined exit rules and application-managed monitoring. It is not guaranteed and may not trigger during outages, data delays, broker interruptions, market gaps, or unavailable quotes.”
+
+Footer on Position Protection pages:
+“Position Protection is a software workflow tool for self-directed traders. It does not provide investment advice and does not guarantee execution or limit losses.”
+
+====================================================
+14. DISABLE PUBLIC AUTOMATION CONFUSION
+====================================================
+
+Do not expose Position Protection as full automation.
+
+Use:
+- exit rule
+- risk control
+- position protection
+
+Avoid:
+- autopilot
+- autonomous
+- AI-managed
+- automatic profits
+- hands-free trading
+
+====================================================
+15. ADMIN / OPERATIONS
+====================================================
+
+Add admin panel section:
+Position Protection Monitoring
+
+Show:
+- active live plans
+- active paper plans
+- triggered today
+- errors
+- worker heartbeat
+- broker errors
+- average poll latency
+
+Add env flags:
+ENABLE_POSITION_PROTECTION=true
+ENABLE_LIVE_POSITION_PROTECTION=false by default until tested
+ENABLE_OPTIONS_POSITION_PROTECTION=false initially
+ENABLE_SPREAD_POSITION_PROTECTION=false initially
+
+Default:
+- paper enabled
+- live disabled until manually enabled
+- stocks enabled first
+- options disabled or alerts-only first
+
+====================================================
+16. TESTING REQUIREMENTS
+====================================================
+
+Verify:
+- TypeScript builds
+- Existing InstaTrade™ still works
+- Existing broker orders still work
+- No native Tradier trailing_stop order type is submitted
+- Paper trailing stop simulation works
+- Live protection cannot be enabled without broker connection
+- Live protection cannot be enabled without acknowledgment
+- Duplicate exit orders are prevented
+- Worker updates trailing stops correctly for long positions
+- Worker supports short logic if short positions are allowed
+- UI shows clear warning
+- Feature is hidden if env flag disabled
+- Admin dashboard shows worker status

@@ -10,7 +10,7 @@ import {
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { storage } from "../../storage";
 import { fetchQuotesFromBroker } from "../../broker-service";
-import { placeBrokerOrder, getBrokerCapabilities } from "../../broker/index";
+import { placeBrokerOrder, getBrokerCapabilities, getBrokerPositions } from "../../broker/index";
 import {
   evaluateTriggers,
   updateTrail,
@@ -115,6 +115,7 @@ export interface CreatePlanInput {
   trailValue?: number;
   exitOrderType?: "market" | "stop" | "stop_limit";
   acknowledged: boolean;
+  acknowledgedText?: string | null;
   notes?: string | null;
 }
 
@@ -131,6 +132,9 @@ export function checkPlanGates(input: CreatePlanInput): GateResult {
   }
   if (!input.acknowledged) {
     return { ok: false, error: "You must acknowledge the risk disclosure to enable Position Protection.", code: "ACK_REQUIRED" };
+  }
+  if (!input.acknowledgedText || input.acknowledgedText.trim().length === 0) {
+    return { ok: false, error: "A snapshot of the acknowledged disclosure is required.", code: "ACK_TEXT_REQUIRED" };
   }
   if (input.accountMode === "live" && !cfg.liveEnabled) {
     return { ok: false, error: "Position Protection is available for paper accounts only right now.", code: "LIVE_DISABLED" };
@@ -257,6 +261,8 @@ export async function createPlan(userId: string, input: CreatePlanInput): Promis
       trailStopPrice,
       exitOrderType: input.exitOrderType ?? "market",
       acknowledged: input.acknowledged,
+      acknowledgedText: input.acknowledged ? (input.acknowledgedText ?? null) : null,
+      acknowledgedAt: input.acknowledged ? new Date() : null,
       notes: input.notes ?? null,
       status: PositionProtectionStatus.ACTIVE,
     })
@@ -553,6 +559,53 @@ async function triggerExit(
       orderId = `sim-${randomUUID()}`;
       brokerStatus = "simulated";
     } else {
+      // Re-verify the live position before sending an exit. The plan may be
+      // stale — the user could have closed or reduced the position manually
+      // since protection was enabled. Submitting an exit for a phantom or
+      // larger-than-held position risks broker rejection or unintended new
+      // exposure (e.g. a sell creating a short). Abort to a safe state instead.
+      const positions = await getBrokerPositions(plan.userId, plan.brokerAccountId);
+      const match = positions.find(
+        (p) => p.symbol.toUpperCase() === plan.symbol.toUpperCase(),
+      );
+      const heldQty = match ? Math.abs(match.qty) : 0;
+      const heldSide: "long" | "short" | null = match
+        ? match.qty > 0
+          ? "long"
+          : match.qty < 0
+            ? "short"
+            : null
+        : null;
+
+      if (heldQty <= 0 || heldSide !== plan.positionSide) {
+        // Position is gone or flipped — do not send an order.
+        await db
+          .update(positionProtectionPlans)
+          .set({ status: PositionProtectionStatus.CANCELLED, updatedAt: new Date() })
+          .where(eq(positionProtectionPlans.id, plan.id));
+        await logEvent({
+          planId: plan.id,
+          userId: plan.userId,
+          eventType: "cancelled",
+          message: `Exit skipped — no matching ${plan.positionSide} position found for ${plan.symbol} at broker (position closed or changed). Protection cancelled.`,
+          price,
+          metadata: { reason, heldQty, heldSide, expectedQty: plan.quantity },
+        });
+        await notifyUser(plan, {
+          title: `${plan.symbol} — Exit Protection cancelled`,
+          body: `We didn't send an exit for ${plan.symbol} because the position no longer matches what we were watching (it was closed or changed). Please review manually.`,
+          tag: `protection-cancelled-${plan.id}`,
+          subject: `${plan.symbol} — Exit Protection cancelled (position changed)`,
+        });
+        console.warn(
+          `[PositionProtection] Skipped exit for plan ${plan.id}: held ${heldQty} ${heldSide ?? "none"} vs expected ${plan.quantity} ${plan.positionSide}`,
+        );
+        return;
+      }
+
+      // Never exit more than is actually held — clamp to the current quantity.
+      const exitQty = Math.min(plan.quantity, heldQty);
+
       // Honor the user-selected exit order type. The trigger level depends on
       // which rule fired; for stop/stop_limit we hand the broker that level so
       // the order rests rather than crossing the spread blindly.
@@ -570,7 +623,7 @@ async function triggerExit(
         accountId: plan.brokerAccountId,
         symbol: plan.symbol,
         side: exitSide,
-        quantity: plan.quantity,
+        quantity: exitQty,
         orderType: exitOrderType,
         duration: "day",
         orderClass: isOption ? "option" : "equity",

@@ -40,6 +40,7 @@ const createPlanSchema = z.object({
   trailValue: z.number().positive().optional(),
   exitOrderType: z.enum(["market", "stop", "stop_limit"]).optional(),
   acknowledged: z.boolean(),
+  acknowledgedText: z.string().max(2000).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
 });
 

@@ -1281,6 +1281,10 @@ export const positionProtectionPlans = pgTable("position_protection_plans", {
   lastPrice: real("last_price"),
   lastCheckedAt: timestamp("last_checked_at"),
   acknowledged: boolean("acknowledged").notNull().default(false),
+  // Snapshot of the exact acknowledgment copy the user agreed to, plus when —
+  // required for compliance audit when enabling protection on live positions.
+  acknowledgedText: text("acknowledged_text"),
+  acknowledgedAt: timestamp("acknowledged_at"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1297,6 +1301,7 @@ export const insertPositionProtectionPlanSchema = createInsertSchema(positionPro
   lastCheckedAt: true,
   highWaterMark: true,
   trailStopPrice: true,
+  acknowledgedAt: true,
   createdAt: true,
   updatedAt: true,
 });

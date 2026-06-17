@@ -66,6 +66,9 @@ interface StockTradeTicketProps {
   onSymbolChange?: (newSymbol: string) => void;
 }
 
+const PP_ACK_TEXT =
+  "I understand Position Protection submits exit orders on my behalf when my rules trigger. Fills aren't guaranteed and this isn't investment advice.";
+
 export function StockTradeTicket({
   open,
   onOpenChange,
@@ -259,6 +262,7 @@ export function StockTradeTicket({
             entryPrice,
             exitOrderType: ppExitOrderType,
             acknowledged: true,
+            acknowledgedText: PP_ACK_TEXT,
             stopEnabled: ppStopEnabled,
             stopMode: ppStopMode,
             stopValue: ppStopEnabled ? parseFloat(ppStopValue) : undefined,
@@ -808,8 +812,7 @@ export function StockTradeTicket({
                         data-testid="checkbox-pp-ack"
                       />
                       <Label htmlFor="pp-ack" className="text-[11px] leading-snug text-muted-foreground font-normal">
-                        I understand Position Protection submits exit orders on my behalf when my
-                        rules trigger. Fills aren't guaranteed and this isn't investment advice.
+                        {PP_ACK_TEXT}
                       </Label>
                     </div>
                   </div>

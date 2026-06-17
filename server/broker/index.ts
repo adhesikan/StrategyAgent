@@ -601,8 +601,11 @@ function resolveAccountToken(connection: any, accountId?: string): { token: stri
   return { token: connection.accessToken!, realAccountId: accountId, isSandbox: false };
 }
 
-export async function getBrokerPositions(userId: string): Promise<NormalizedPosition[]> {
-  const cacheKey = `positions:${userId}`;
+export async function getBrokerPositions(userId: string, accountId?: string): Promise<NormalizedPosition[]> {
+  // Scope the cache + lookup to the requested account when given, otherwise the
+  // connection's preferred account. Account-scoping matters for safety-critical
+  // callers (e.g. exit re-verification) that submit orders on a specific account.
+  const cacheKey = `positions:${userId}:${accountId ?? "default"}`;
   const cached = getCached<NormalizedPosition[]>(cacheKey);
   if (cached) return cached;
 
@@ -610,7 +613,10 @@ export async function getBrokerPositions(userId: string): Promise<NormalizedPosi
   if (!connection || !isSupportedProvider(connection.provider)) return [];
 
   const provider = getProviderForConnection(connection);
-  const { token, realAccountId } = resolveAccountToken(connection, connection.preferredAccountId ?? undefined);
+  const { token, realAccountId } = resolveAccountToken(
+    connection,
+    accountId ?? connection.preferredAccountId ?? undefined,
+  );
   const positions = await provider.getPositions(token, realAccountId);
   setCache(cacheKey, positions, CACHE_TTL.POSITIONS);
   return positions;

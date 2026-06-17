@@ -22,6 +22,15 @@ rule triggers. These invariants must survive any future change:
    safety bug. **How to apply:** any new exit/order path must branch on
    accountMode before calling the broker.
 
+   **Re-verify the live position before exiting, scoped to the plan's account.**
+   A plan can go stale (user closed/reduced the position manually). The live
+   path must fetch positions for `plan.brokerAccountId` (NOT the connection's
+   default/preferred account) and match symbol + side; abort (cancel + notify,
+   no order) if missing/flipped, and clamp exit qty to what's actually held.
+   **Why:** validating against account A while submitting on account B
+   reintroduces phantom/over-exit risk. `getBrokerPositions(userId, accountId?)`
+   is account-scoped (cache key + token resolution).
+
 3. **Honor the user's exit order type.** Plans persist an exit order type
    (market / stop / stop-limit); the live path must build the broker order to
    match, falling back to market only when no usable trigger level exists.

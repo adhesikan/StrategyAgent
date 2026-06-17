@@ -50,8 +50,12 @@ export function PositionProtectionPanel() {
   });
 
   const visible = plans.filter((p) => ["active", "paused", "triggered", "error"].includes(p.status));
+  const recentlyExited = plans
+    .filter((p) => p.status === "exited" && p.exitedAt)
+    .sort((a, b) => new Date(b.exitedAt!).getTime() - new Date(a.exitedAt!).getTime())
+    .slice(0, 5);
 
-  if (!isLoading && visible.length === 0) return null;
+  if (!isLoading && visible.length === 0 && recentlyExited.length === 0) return null;
 
   return (
     <Card data-testid="section-position-protection">
@@ -146,6 +150,37 @@ export function PositionProtectionPanel() {
                 )}
               </div>
             ))}
+
+            {recentlyExited.length > 0 && (
+              <div className="pt-2 mt-2 border-t space-y-1.5">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Recently exited
+                </p>
+                {recentlyExited.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="flex items-center justify-between gap-3 rounded-md bg-muted/20 px-3 py-2 text-xs"
+                    data-testid={`row-exited-protection-${plan.symbol}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <span className="font-mono font-semibold">{plan.symbol}</span>
+                      {plan.triggerReason && (
+                        <Badge variant="outline" className="text-[10px] capitalize">
+                          {plan.triggerReason === "trail" ? "trailing stop" : plan.triggerReason} hit
+                        </Badge>
+                      )}
+                      {plan.accountMode === "paper" && (
+                        <Badge variant="outline" className="text-[10px]">Paper</Badge>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-muted-foreground tabular-nums">
+                      {plan.exitPrice != null ? `$${plan.exitPrice.toFixed(2)}` : "—"}
+                      {plan.exitedAt ? ` · ${new Date(plan.exitedAt).toLocaleDateString()}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

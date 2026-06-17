@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useLocation } from "wouter";
-import { Search, Sparkles, ArrowRight, Target } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, Sparkles, ArrowRight, Target, ShieldCheck } from "lucide-react";
 import { HomeActionCard, ComplianceFooter } from "@/components/trading-shell";
+import type { PositionProtectionPlan } from "@shared/schema";
 import { QuickPromptBar } from "@/components/home/quick-prompt-bar";
 import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
 import { PopularChips } from "@/components/home/popular-chips";
@@ -38,6 +40,13 @@ export default function HomeDashboard() {
 
   const hero = useMemo(() => PERSONA_HERO[persona ?? "default"] ?? PERSONA_HERO.default, [persona]);
 
+  const { data: protectionPlans = [] } = useQuery<PositionProtectionPlan[]>({
+    queryKey: ["/api/position-protection/plans"],
+  });
+  const activeProtected = protectionPlans.filter(
+    (p) => p.status === "active" || p.status === "paused",
+  ).length;
+
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 md:space-y-8">
       {/* Hero */}
@@ -59,6 +68,27 @@ export default function HomeDashboard() {
 
       {/* Quota banner (only shows when usage > 80%) */}
       <QuotaBanner />
+
+      {/* Position Protection summary (only when protecting positions) */}
+      {activeProtected > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate("/history")}
+          data-testid="card-home-protection"
+          className="w-full flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-left transition-colors hover:bg-emerald-500/10"
+        >
+          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold" data-testid="text-protection-count">
+              {activeProtected} position{activeProtected === 1 ? "" : "s"} with Exit Protection active
+            </p>
+            <p className="text-xs text-muted-foreground">
+              App-monitored stop, target, and trailing rules. Exits route as standard orders — fills aren't guaranteed.
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      )}
 
       {/* Main grid: single merged action card + Ask AI + snapshot panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">

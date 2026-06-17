@@ -495,9 +495,9 @@ const SECTIONS: Section[] = [
           when one of your rules is hit, submits a standard exit order for you.
         </p>
         <p className="mt-2">
-          It is <strong>not autonomous and not AI-managed</strong>. You choose whether to turn it on,
-          you set every number yourself, and you acknowledge the risk before it starts. You can pause,
-          resume, or cancel any plan at any time.
+          <strong>You stay in control.</strong> You choose whether to turn it on, you set every number
+          yourself, and you acknowledge the risk before it starts. Nothing happens until you enable it,
+          and you can pause, resume, or cancel any plan at any time.
         </p>
 
         <h4 className="font-semibold mt-3">Where to set it up</h4>
@@ -532,8 +532,8 @@ const SECTIONS: Section[] = [
         <h4 className="font-semibold mt-3">Important things to know</h4>
         <ul className="list-disc pl-5 space-y-1 mt-2">
           <li>
-            <strong>It checks every 30 seconds during market hours.</strong> It is not a guaranteed,
-            instant, or tick-by-tick stop — fast moves can fill away from your level, and fills aren't
+            <strong>It checks your positions periodically during market hours.</strong> It is not an
+            instant or tick-by-tick stop — fast moves can fill away from your level, and fills aren't
             guaranteed.
           </li>
           <li>

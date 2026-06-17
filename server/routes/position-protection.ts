@@ -11,8 +11,10 @@ import {
   getEventsForPlan,
   getProtectionConfig,
   getAllPlansForAdmin,
+  getAdminStats,
   type CreatePlanInput,
 } from "../services/position-protection/index";
+import { getWorkerHeartbeat } from "../position-protection-worker";
 
 const valueMode = z.enum(["price", "percent", "dollar"]);
 const trailMode = z.enum(["percent", "dollar"]);
@@ -155,6 +157,16 @@ export function registerPositionProtectionRoutes(
       const statusParam = typeof req.query.status === "string" ? req.query.status.split(",") : undefined;
       const plans = await getAllPlansForAdmin(statusParam);
       res.json(plans);
+    } catch (err) {
+      res.status(500).json({ message: (err as Error).message });
+    }
+  });
+
+  // Admin telemetry: aggregate counts + worker heartbeat.
+  app.get("/api/admin/position-protection/stats", isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const stats = await getAdminStats();
+      res.json({ stats, heartbeat: getWorkerHeartbeat(), config: getProtectionConfig() });
     } catch (err) {
       res.status(500).json({ message: (err as Error).message });
     }

@@ -19,8 +19,34 @@ const STATUS_STYLE: Record<string, string> = {
 
 const STATUS_FILTERS = ["all", "active", "paused", "triggered", "exited", "cancelled", "error"];
 
+interface ProtectionStats {
+  stats: {
+    active: number;
+    paused: number;
+    triggered: number;
+    error: number;
+    exitedToday: number;
+    errorsToday: number;
+  };
+  heartbeat: {
+    lastRunAt: string | null;
+    lastLiveCount: number;
+    lastPaperCount: number;
+    lastError: string | null;
+    liveIntervalMs: number;
+    paperIntervalMs: number;
+    running: boolean;
+  };
+  config: { enabled: boolean; liveEnabled: boolean; optionsEnabled: boolean; spreadsEnabled: boolean };
+}
+
 export default function AdminPositionProtectionPage() {
   const [status, setStatus] = useState("all");
+
+  const { data: telemetry } = useQuery<ProtectionStats>({
+    queryKey: ["/api/admin/position-protection/stats"],
+    refetchInterval: 15000,
+  });
 
   const { data: plans = [], isLoading } = useQuery<PositionProtectionPlan[]>({
     queryKey: ["/api/admin/position-protection/plans", status],
@@ -41,6 +67,12 @@ export default function AdminPositionProtectionPage() {
     return acc;
   }, {});
 
+  const hb = telemetry?.heartbeat;
+  const stats = telemetry?.stats;
+  const cfg = telemetry?.config;
+  const lastRunMs = hb?.lastRunAt ? Date.now() - new Date(hb.lastRunAt).getTime() : null;
+  const workerHealthy = hb?.running && lastRunMs != null && lastRunMs < 120000;
+
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-6xl">
       <div>
@@ -52,6 +84,63 @@ export default function AdminPositionProtectionPage() {
           All user-defined exit plans across accounts. App-managed monitoring; exits are submitted as standard orders.
         </p>
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <Card data-testid="card-stat-worker">
+          <CardContent className="p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Worker</p>
+            <p className={`text-sm font-semibold ${workerHealthy ? "text-emerald-400" : "text-red-400"}`}>
+              {hb ? (workerHealthy ? "Healthy" : hb.running ? "Stale" : "Stopped") : "—"}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {hb?.lastRunAt ? `ran ${Math.round((lastRunMs || 0) / 1000)}s ago` : "no runs yet"}
+            </p>
+          </CardContent>
+        </Card>
+        {[
+          { label: "Active", value: stats?.active },
+          { label: "Paused", value: stats?.paused },
+          { label: "Triggered", value: stats?.triggered },
+          { label: "Exited today", value: stats?.exitedToday },
+          { label: "Errors", value: stats?.error },
+          { label: "Errors today", value: stats?.errorsToday },
+        ].map((s) => (
+          <Card key={s.label} data-testid={`card-stat-${s.label.toLowerCase().replace(/\s/g, "-")}`}>
+            <CardContent className="p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.label}</p>
+              <p className="text-lg font-bold tabular-nums">{s.value ?? "—"}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {(cfg || hb) && (
+        <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+          {cfg && (
+            <>
+              <Badge variant="outline" className="text-[10px]">
+                Engine {cfg.enabled ? "on" : "off"}
+              </Badge>
+              <Badge variant="outline" className="text-[10px]">
+                Live {cfg.liveEnabled ? "on" : "off"}
+              </Badge>
+              <Badge variant="outline" className="text-[10px]">
+                Options {cfg.optionsEnabled ? "on" : "off"}
+              </Badge>
+              <Badge variant="outline" className="text-[10px]">
+                Spreads {cfg.spreadsEnabled ? "on" : "off"}
+              </Badge>
+            </>
+          )}
+          {hb && (
+            <span className="ml-auto">
+              Poll: live {Math.round(hb.liveIntervalMs / 1000)}s · paper {Math.round(hb.paperIntervalMs / 1000)}s · last
+              sweep {hb.lastLiveCount} live / {hb.lastPaperCount} paper
+              {hb.lastError ? ` · last error: ${hb.lastError}` : ""}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {Object.entries(counts).map(([s, n]) => (

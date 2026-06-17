@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { db } from "../../db";
 import {
   positionProtectionPlans,
@@ -6,10 +7,10 @@ import {
   type PositionProtectionPlan,
   type InsertPositionProtectionEvent,
 } from "@shared/schema";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { storage } from "../../storage";
 import { fetchQuotesFromBroker } from "../../broker-service";
-import { placeBrokerOrder } from "../../broker/index";
+import { placeBrokerOrder, getBrokerCapabilities } from "../../broker/index";
 import {
   evaluateTriggers,
   updateTrail,
@@ -76,11 +77,20 @@ export async function getPlan(planId: string, userId: string): Promise<PositionP
   return rows[0];
 }
 
-export async function getActivePlans(): Promise<PositionProtectionPlan[]> {
-  return db
-    .select()
-    .from(positionProtectionPlans)
-    .where(eq(positionProtectionPlans.status, PositionProtectionStatus.ACTIVE));
+export async function getActivePlans(accountMode?: "paper" | "live"): Promise<PositionProtectionPlan[]> {
+  const where = accountMode
+    ? and(
+        eq(positionProtectionPlans.status, PositionProtectionStatus.ACTIVE),
+        eq(positionProtectionPlans.accountMode, accountMode),
+      )
+    : eq(positionProtectionPlans.status, PositionProtectionStatus.ACTIVE);
+  return db.select().from(positionProtectionPlans).where(where);
+}
+
+// Maximum simultaneous active/paused plans per user (env-overridable).
+function maxActivePerUser(): number {
+  const raw = Number(process.env.POSITION_PROTECTION_MAX_ACTIVE_PER_USER);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 25;
 }
 
 // ─── Validation / safety gates ──────────────────────────────────────
@@ -140,9 +150,64 @@ export function checkPlanGates(input: CreatePlanInput): GateResult {
   return { ok: true };
 }
 
+// Async gates that need DB / broker lookups: a connected broker, a per-user
+// active-plan cap, and broker-capability validation for the chosen instrument.
+export async function checkPlanGatesAsync(userId: string, input: CreatePlanInput): Promise<GateResult> {
+  const sync = checkPlanGates(input);
+  if (!sync.ok) return sync;
+
+  const connection = await storage.getBrokerConnection(userId);
+  if (!connection) {
+    return {
+      ok: false,
+      error: "Connect a broker before enabling Position Protection.",
+      code: "NO_BROKER",
+    };
+  }
+
+  const existing = await db
+    .select({ id: positionProtectionPlans.id })
+    .from(positionProtectionPlans)
+    .where(and(eq(positionProtectionPlans.userId, userId), inArray(positionProtectionPlans.status, ACTIVE_STATUSES)));
+  if (existing.length >= maxActivePerUser()) {
+    return {
+      ok: false,
+      error: `You've reached the limit of ${maxActivePerUser()} active protection plans. Cancel one before adding more.`,
+      code: "PLAN_LIMIT",
+    };
+  }
+
+  try {
+    const caps = await getBrokerCapabilities(userId);
+    if (caps) {
+      if (input.instrumentType === "stock" && !caps.stocks) {
+        return { ok: false, error: "Your broker doesn't support stock protection.", code: "CAP_STOCKS" };
+      }
+      if (input.instrumentType === "option" && !caps.options) {
+        return { ok: false, error: "Your broker doesn't support option protection.", code: "CAP_OPTIONS" };
+      }
+      // Multi-leg / spread structures are never monitored as a single plan here.
+      const cfg = getProtectionConfig();
+      if (input.instrumentType === "option" && input.optionSymbol && input.optionSymbol.includes(",")) {
+        if (!cfg.spreadsEnabled || !caps.spreads) {
+          return {
+            ok: false,
+            error: "Multi-leg / spread protection isn't supported. Protect a single-leg position instead.",
+            code: "CAP_SPREADS",
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[PositionProtection] Capability check error:", (err as Error).message);
+  }
+
+  return { ok: true };
+}
+
 // ─── Create / update / lifecycle ────────────────────────────────────
 export async function createPlan(userId: string, input: CreatePlanInput): Promise<PositionProtectionPlan> {
-  const gate = checkPlanGates(input);
+  const gate = await checkPlanGatesAsync(userId, input);
   if (!gate.ok) {
     const err = new Error(gate.error) as Error & { code?: string };
     err.code = gate.code;
@@ -473,27 +538,38 @@ async function triggerExit(
   const isOption = plan.instrumentType === "option" && !!plan.optionSymbol;
 
   try {
-    const orderRequest: any = {
-      accountId: plan.brokerAccountId,
-      symbol: plan.symbol,
-      side: exitSide,
-      quantity: plan.quantity,
-      orderType: "market",
-      duration: "day",
-      orderClass: isOption ? "option" : "equity",
-    };
-    if (isOption) {
-      orderRequest.optionSymbol = plan.optionSymbol;
-      orderRequest.optionSide = plan.positionSide === "long" ? "sell_to_close" : "buy_to_close";
-    }
+    let orderId: string;
+    let brokerStatus: string;
+    const simulated = plan.accountMode === "paper";
 
-    const result = await placeBrokerOrder(plan.userId, orderRequest);
+    if (simulated) {
+      // Paper mode: never send a live broker order. Simulate the fill locally.
+      orderId = `sim-${randomUUID()}`;
+      brokerStatus = "simulated";
+    } else {
+      const orderRequest: any = {
+        accountId: plan.brokerAccountId,
+        symbol: plan.symbol,
+        side: exitSide,
+        quantity: plan.quantity,
+        orderType: "market",
+        duration: "day",
+        orderClass: isOption ? "option" : "equity",
+      };
+      if (isOption) {
+        orderRequest.optionSymbol = plan.optionSymbol;
+        orderRequest.optionSide = plan.positionSide === "long" ? "sell_to_close" : "buy_to_close";
+      }
+      const result = await placeBrokerOrder(plan.userId, orderRequest);
+      orderId = result.orderId;
+      brokerStatus = result.status;
+    }
 
     await db
       .update(positionProtectionPlans)
       .set({
         status: PositionProtectionStatus.EXITED,
-        submittedExitOrderId: result.orderId,
+        submittedExitOrderId: orderId,
         exitPrice: price,
         exitedAt: new Date(),
         updatedAt: new Date(),
@@ -503,13 +579,15 @@ async function triggerExit(
     await logEvent({
       planId: plan.id,
       userId: plan.userId,
-      eventType: "exit_submitted",
-      message: `Exit order ${result.orderId} submitted (${reason}) — ${exitSide} ${plan.quantity} ${plan.symbol}`,
+      eventType: simulated ? "exit_simulated" : "exit_submitted",
+      message: simulated
+        ? `Paper exit simulated (${reason}) — ${exitSide} ${plan.quantity} ${plan.symbol} at ~$${price.toFixed(2)}`
+        : `Exit order ${orderId} submitted (${reason}) — ${exitSide} ${plan.quantity} ${plan.symbol}`,
       price,
-      metadata: { orderId: result.orderId, brokerStatus: result.status },
+      metadata: { orderId, brokerStatus, simulated },
     });
 
-    await notifyTrigger(plan, reason, price);
+    await notifyTrigger(plan, reason, price, simulated);
   } catch (err) {
     await db
       .update(positionProtectionPlans)
@@ -530,27 +608,81 @@ async function notifyTrigger(
   plan: PositionProtectionPlan,
   reason: "stop" | "target" | "trail",
   price: number,
+  simulated: boolean,
 ): Promise<void> {
+  const label = reason === "target" ? "Target hit" : reason === "trail" ? "Trailing stop hit" : "Stop hit";
+  const side = plan.positionSide === "long" ? "sell" : "buy";
+  const verb = simulated ? "simulated a paper" : "submitted a";
+  const body = `Exit Protection ${verb} ${side} order for ${plan.quantity} ${plan.symbol} at ~$${price.toFixed(2)}.`;
+
+  // Push notification.
   try {
     const { sendPushNotification } = await import("../../push-service");
     const subs = await storage.getPushSubscriptionsByUserId(plan.userId);
-    const label = reason === "target" ? "Target hit" : reason === "trail" ? "Trailing stop hit" : "Stop hit";
     for (const sub of subs) {
       await sendPushNotification(sub, {
         title: `${plan.symbol} — ${label}`,
-        body: `Exit Protection submitted a ${plan.positionSide === "long" ? "sell" : "buy"} order for ${plan.quantity} ${plan.symbol} at ~$${price.toFixed(2)}.`,
+        body,
         icon: "/logo.png",
         badge: "/logo.png",
         tag: `protection-${plan.id}`,
-        data: { url: "/journal", symbol: plan.symbol },
+        data: { url: "/history", symbol: plan.symbol },
       });
     }
   } catch (err) {
-    console.error("[PositionProtection] Notify error:", (err as Error).message);
+    console.error("[PositionProtection] Push notify error:", (err as Error).message);
+  }
+
+  // Email notification (best-effort; skipped if no provider configured).
+  try {
+    const { getEmailProviderStatus, sendCampaign } = await import("../../email-service");
+    if (getEmailProviderStatus().configured) {
+      const user = await storage.getUser(plan.userId);
+      if (user?.email) {
+        await sendCampaign({
+          subject: `${plan.symbol} — ${label} (Exit Protection)`,
+          html: `<p>${body}</p><p>Trigger: <strong>${reason}</strong>${simulated ? " (paper / simulated)" : ""}.</p><p>This is software-generated order routing, not investment advice. Fills aren't guaranteed.</p>`,
+          recipients: [{ email: user.email, userId: plan.userId }],
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[PositionProtection] Email notify error:", (err as Error).message);
   }
 }
 
 // ─── Admin / monitoring ─────────────────────────────────────────────
+export async function getAdminStats() {
+  const rows = await db
+    .select({ status: positionProtectionPlans.status })
+    .from(positionProtectionPlans);
+  const byStatus: Record<string, number> = {};
+  for (const r of rows) byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const triggeredToday = await db
+    .select({ id: positionProtectionPlans.id })
+    .from(positionProtectionPlans)
+    .where(and(eq(positionProtectionPlans.status, PositionProtectionStatus.EXITED), gte(positionProtectionPlans.exitedAt, startOfDay)));
+
+  const errorEvents = await db
+    .select({ id: positionProtectionEvents.id })
+    .from(positionProtectionEvents)
+    .where(and(eq(positionProtectionEvents.eventType, "error"), gte(positionProtectionEvents.createdAt, startOfDay)));
+
+  return {
+    byStatus,
+    active: byStatus[PositionProtectionStatus.ACTIVE] || 0,
+    paused: byStatus[PositionProtectionStatus.PAUSED] || 0,
+    triggered: byStatus[PositionProtectionStatus.TRIGGERED] || 0,
+    error: byStatus[PositionProtectionStatus.ERROR] || 0,
+    exitedToday: triggeredToday.length,
+    errorsToday: errorEvents.length,
+  };
+}
+
 export async function getAllPlansForAdmin(statuses?: string[]) {
   if (statuses && statuses.length > 0) {
     return db

@@ -25,4 +25,15 @@ guards. Never let a plan that has a `submittedExitOrderId` return to ACTIVE.
 **Broker note:** Tradier has NO native trailing_stop order type — trailing is
 app-managed; the worker submits a regular market order on trigger. Same for the other
 providers (all `nativeTrailingStop = false`). Defaults: paper+stocks ON, live/options/
-spreads OFF behind env flags (`PROTECTION_LIVE_ENABLED` etc.).
+spreads OFF behind env flags (`POSITION_PROTECTION_LIVE_ENABLED`,
+`POSITION_PROTECTION_OPTIONS_ENABLED`, `POSITION_PROTECTION_SPREADS_ENABLED`,
+`POSITION_PROTECTION_ENABLED`).
+
+**Paper safety:** plans with `accountMode === "paper"` NEVER call the broker on
+trigger — `triggerExit` simulates a `sim-<uuid>` fill, logs an `exit_simulated`
+event, and notifies. Only `accountMode === "live"` routes a real order.
+
+**Worker cadence:** two intervals split by accountMode — live polls faster
+(`POSITION_PROTECTION_LIVE_POLL_MS`, default 15s) than paper
+(`POSITION_PROTECTION_PAPER_POLL_MS`, default 60s). `getWorkerHeartbeat()` feeds the
+admin telemetry endpoint so operators can confirm the loop is alive.

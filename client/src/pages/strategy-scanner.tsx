@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -782,9 +782,14 @@ export default function StrategyScannerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, selected.id]);
 
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+
   const select = (s: Strategy) => {
     setSelected(s);
     scanMutation.mutate(s);
+    requestAnimationFrame(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const preferredType = (s: Strategy): TradeType => {
@@ -1017,7 +1022,7 @@ export default function StrategyScannerPage() {
           </Card>
         </Collapsible>
 
-        <Card className="p-5">
+        <Card className="p-5 scroll-mt-4" ref={resultsRef}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <span className="relative flex h-2.5 w-2.5">

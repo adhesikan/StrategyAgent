@@ -81,7 +81,9 @@ export function BillingSection() {
     ? `${trialDaysLeft ?? 0} day${(trialDaysLeft ?? 0) === 1 ? "" : "s"} remaining — trial ends ${formatDate(trialEndsAt)}. Subscribe to VCP Trader AI Pro ($99/month) to continue after your trial.`
     : isPaidSubscriber
     ? `Monthly plan — renews ${formatDate(currentPeriodEndsAt)}`
-    : "Your free trial has ended. Manage your subscription in Stripe to reactivate.";
+    : status === "trial_expired"
+    ? "Your free trial has ended. Subscribe to VCP Trader AI Pro ($99/month) to regain full access."
+    : "Subscribe to VCP Trader AI Pro ($99/month) to unlock full access.";
 
   return (
     <div className="space-y-6">
@@ -141,7 +143,7 @@ export function BillingSection() {
               ) : (
                 <Button
                   onClick={() => checkout.mutate()}
-                  disabled={!isTrialing || checkout.isPending}
+                  disabled={checkout.isPending}
                   data-testid="button-upgrade-from-settings"
                 >
                   {checkout.isPending ? (

@@ -53,6 +53,7 @@ import { registerDailyIdeasRoutes } from "./routes/daily-ideas";
 import { registerJournalRoutes } from "./routes/journal";
 import { registerPositionProtectionRoutes } from "./routes/position-protection";
 import { registerAskRoutes } from "./routes/ask";
+import { registerHelpRoutes } from "./routes/help";
 import { registerMarketDataAdminRoutes } from "./routes/market-data-admin";
 import { registerDailyAnalysisRoutes } from "./routes/daily-analysis";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
@@ -172,6 +173,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerJournalRoutes(app, isAuthenticated);
   registerPositionProtectionRoutes(app, isAuthenticated, isAdmin);
   registerAskRoutes(app, isAuthenticated);
+  registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;

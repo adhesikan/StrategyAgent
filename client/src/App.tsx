@@ -9,6 +9,7 @@ import { TopNav } from "@/components/top-nav";
 import { LegalAcceptanceModal } from "@/components/legal-acceptance-modal";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { Footer } from "@/components/footer";
+import { HelpAssistant } from "@/components/help-assistant";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { BrokerStatusProvider } from "@/hooks/use-broker-status";
@@ -277,6 +278,7 @@ function AppLayoutInner() {
             <Footer />
           </PullToRefresh>
         </div>
+        <HelpAssistant />
         <LegalAcceptanceModal
           open={showLegalModal}
           onAccepted={() => setShowLegalModal(false)}

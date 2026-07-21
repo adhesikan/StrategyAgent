@@ -11,9 +11,9 @@ import { useBranding } from "@/hooks/use-branding";
 
 function proFeatures(instaTradeName: string): string[] {
   return [
-    "Daily AI-ranked stock candidates",
-    "Current market data through connected brokerages",
-    `${instaTradeName} order review and submission`,
+    "Daily AI-ranked stock and options candidates",
+    "Current stock and options market data through connected brokerages",
+    `${instaTradeName} stock and options order review and submission`,
     "Built-in risk checks & exit protection",
     "Smart alerts, scanner, and trade journal",
     "Cancel anytime",

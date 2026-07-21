@@ -1,0 +1,408 @@
+You are working on the existing VCP Trader AI application.
+
+Do not rebuild the pricing page or create a new pricing system.
+
+The current pricing card already includes:
+
+- VCP Trader AI Pro
+- $99/month
+- Founding Member Price
+- Planned standard price: $149/month
+- 14-Day Free Trial
+- Historical daily market analysis disclosure
+- Start Free Trial CTA
+- Configurable InstaTrade trademark handling
+
+Your task is to update the pricing-page copy so the plan clearly communicates that VCP Trader AI supports both stock and options research, while accurately distinguishing between:
+
+1. Options strategy intelligence available during the trial
+2. Current options-chain and executable options functionality available only through a connected supported brokerage
+
+Do not modify Stripe pricing, trial duration, checkout behavior, broker integrations, or subscription logic.
+
+# Confirmed Product Rules
+
+1. The active subscription price remains $99/month.
+2. The planned future standard price remains $149/month.
+3. The free trial remains 14 days.
+4. Trial users may explore historical daily market analysis and options strategy intelligence.
+5. Trial users without a broker connection do not receive current options quotes, current options chains, current Greeks, current bid/ask data, current open interest, or executable options orders.
+6. Current options data must come from a supported connected brokerage.
+7. Options orders must be reviewed and submitted through InstaTrade.
+8. VCP Trader AI does not provide built-in paper trading.
+9. VCP Trader AI does not place autonomous trades.
+10. Continue using the centralized InstaTrade trademark helper.
+11. Current trademark status remains pending registration, so the user-facing name should currently render as InstaTrade™.
+
+# Phase 1: Audit the Current Pricing Implementation
+
+Before editing:
+
+1. Locate the pricing page and pricing card component.
+2. Identify where the following copy is stored:
+   - Pricing page heading
+   - Pricing page subtitle
+   - Plan description
+   - Feature list
+   - Trial disclosure
+   - CTA
+3. Search for existing wording such as:
+   - Daily AI-ranked stock candidates
+   - AI-assisted options strategy insights
+   - Historical daily market analysis during trial
+   - Full market analysis during trial
+   - Daily AI options ideas
+   - Options chains through supported brokerages
+   - InstaTrade
+4. Confirm whether the same pricing copy appears on:
+   - Homepage
+   - Pricing page
+   - Signup page
+   - Upgrade modal
+   - Billing page
+   - Checkout summary
+   - Trial emails
+5. Reuse the existing pricing-card design and component structure.
+6. Do not create duplicate pricing data.
+7. Do not alter Stripe configuration.
+
+# Phase 2: Update the Pricing Page Subtitle
+
+Replace the current subtitle with:
+
+Start with a 14-day trial featuring historical daily stock analysis, AI-ranked stock and options candidates, market intelligence, and options strategy research. Connect a supported brokerage account to unlock current quotes, options chains, Greeks, account context, and self-directed InstaTrade™ stock and options order review and submission.
+
+Important:
+
+- Render InstaTrade using the existing centralized trademark helper.
+- Do not hardcode the ™ symbol.
+- Keep the text readable on mobile.
+- Do not imply that current options data is available without a broker.
+- Do not imply autonomous execution.
+- Do not imply investment advice.
+
+# Phase 3: Update the Plan Description
+
+Replace the current short plan description with:
+
+One complete plan for AI-powered stock and options research, strategy analysis, broker-connected market data, and self-directed order review and submission.
+
+Ensure that the description:
+
+- Clearly mentions both stocks and options
+- Remains concise
+- Does not imply discretionary portfolio management
+- Does not imply guaranteed outcomes
+- Does not imply automatic trading
+
+# Phase 4: Replace the Pricing Feature List
+
+Replace the current feature list with the following exact ordered list:
+
+1. Daily AI-ranked stock and options candidates
+2. Historical daily stock analysis during trial
+3. Options strategy insights for calls, puts, debit spreads, credit spreads, covered calls, and cash-secured puts
+4. Risk, reward, breakeven, and capital-requirement analysis
+5. Grow, Income, Trade, and Markets modes
+6. Opportunity Radar and Analysis Conditions
+7. News sentiment and market context
+8. Watchlist intelligence
+9. Congress Activity
+10. Tradier and TradeStation connections
+11. Current stock and options market data through connected brokerages
+12. Options chains, Greeks, bid/ask, volume, and open interest where supported
+13. InstaTrade™ stock and options order review and submission
+14. Defined-risk options controls
+15. Position and results tracking
+16. Analysis-to-live workflow
+
+Requirements:
+
+- Preserve the current checkmark design.
+- Preserve responsive spacing.
+- Render InstaTrade through the centralized trademark helper.
+- Do not hardcode the trademark symbol.
+- Do not use “Daily AI options ideas.”
+- Do not use “Full market analysis during trial.”
+- Do not claim current options data for users without a broker.
+- Do not claim that all brokers support all options fields.
+- Keep “where supported” for options chains and market-data details.
+- Do not add paper-trading language.
+- Do not add autonomous trading language.
+
+# Phase 5: Update the Trial Disclosure
+
+Replace the current trial disclosure with:
+
+Trial access includes historical daily stock analysis and options strategy insights. Current stock and option prices, options chains, Greeks, bid/ask data, liquidity, account eligibility, buying power, positions, and order submission require a supported brokerage connection.
+
+Design requirements:
+
+- Keep the disclosure visible inside the pricing card.
+- Use the existing muted callout style.
+- Do not hide it inside a tooltip.
+- Ensure it wraps correctly on mobile.
+- Do not use alarming warning colors.
+- Keep it readable by screen readers.
+
+# Phase 6: Add Optional Supporting Copy
+
+If the card currently has a short line beneath the feature list or above the CTA, use:
+
+Explore stock and options research without connecting a broker. Connect when you are ready to review current market data and self-directed orders.
+
+Only add this if it fits the existing layout cleanly.
+
+Do not make the pricing card excessively tall or cluttered.
+
+# Phase 7: Preserve Existing Pricing Details
+
+Do not change:
+
+- VCP Trader AI Pro
+- $99/month
+- Founding Member Price
+- Lock in this price while your subscription remains continuously active
+- Planned standard price: $149/month
+- Founding Member Access
+- 14-Day Free Trial
+- Start Free Trial
+- No broker connection required to explore analysis
+
+Do not:
+
+- Add a $299 anchor price
+- Strike through $149
+- Add a discount percentage
+- Add a countdown timer
+- Create false scarcity
+- Create another pricing tier
+
+# Phase 8: Preserve Stripe and Trial Behavior
+
+Verify but do not change:
+
+- Current Stripe recurring price remains $99/month
+- Billing interval remains monthly
+- Trial remains 14 days
+- Existing subscriptions remain unchanged
+- Checkout flow remains unchanged
+- Billing portal remains unchanged
+- Stripe webhooks remain unchanged
+
+If the application is not currently using $99/month or a 14-day trial, stop and report the discrepancy before changing billing configuration.
+
+Do not create a $149 Stripe price.
+
+# Phase 9: Trademark Handling
+
+Continue using the existing centralized trademark configuration.
+
+Current setting:
+
+TRADEMARK_INSTATRADE_STATUS=pending_registration
+
+Current display:
+
+InstaTrade™
+
+Future registered display:
+
+InstaTrade®
+
+Do not change the current status.
+
+Do not replace the centralized trademark helper with hardcoded text.
+
+Verify that the pricing page footer currently renders:
+
+InstaTrade™ is a trademark of Sunfish Technologies LLC.
+
+Do not render “registered trademark” until the configuration changes to registered.
+
+# Phase 10: Update Duplicate Pricing Copy
+
+Search for duplicated pricing features in:
+
+- Homepage
+- Pricing page
+- Upgrade modal
+- Signup flow
+- Billing settings
+- Checkout summary
+- Trial-start email
+- Trial-ending email
+- User Guide
+- Help center
+- SEO metadata
+
+Update only where the old wording creates a direct contradiction.
+
+At minimum, remove or replace:
+
+- Daily AI options ideas
+- Full market analysis during trial
+- Any claim that current option prices are available without a broker
+- Any claim that options-chain access is included for all users without qualification
+
+Do not perform a broad rewrite of unrelated pages.
+
+# Phase 11: Responsive and Visual Requirements
+
+Ensure the updated pricing card works on:
+
+- Desktop
+- Tablet
+- Mobile
+- PWA layout
+
+Check:
+
+- Feature list wraps correctly
+- Long options-related lines do not overflow
+- Trial disclosure remains readable
+- Badges do not overlap
+- CTA stays full-width on mobile
+- No horizontal scrolling
+- Price remains visually dominant
+- Planned standard price remains secondary
+- The card does not become excessively wide
+
+If needed, shorten only visual labels while preserving the meaning.
+
+# Phase 12: Accessibility
+
+Ensure:
+
+- Feature checkmarks are decorative or labeled correctly
+- Long feature text is announced logically
+- Trial disclosure is accessible
+- CTA retains an accessible name
+- Contrast remains sufficient
+- Focus states remain visible
+- Trademark symbol does not create broken screen-reader output
+
+# Phase 13: Tests
+
+Add or update tests to verify:
+
+## Pricing copy
+
+- The subtitle mentions stock and options candidates
+- The plan description mentions stock and options research
+- Daily AI-ranked stock and options candidates appears
+- Historical daily stock analysis during trial appears
+- Calls, puts, debit spreads, credit spreads, covered calls, and cash-secured puts appear
+- Risk, reward, breakeven, and capital-requirement analysis appears
+- Current stock and options market data through connected brokerages appears
+- Options chains, Greeks, bid/ask, volume, and open interest where supported appears
+- InstaTrade stock and options order review and submission appears
+- Defined-risk options controls appears
+
+## Removed copy
+
+- Daily AI options ideas does not appear
+- Full market analysis during trial does not appear
+- Paper trading does not appear
+- Autonomous trading claims do not appear
+- $299 does not appear
+- $149 is not struck through
+
+## Trial disclosure
+
+- Historical daily stock analysis is identified
+- Options strategy insights are identified
+- Current options data requires a supported broker
+- Order submission requires a supported broker
+
+## Trademark
+
+- Pending status renders InstaTrade™
+- Registered status would render InstaTrade®
+- Current footer uses trademark, not registered trademark
+- Symbols are not hardcoded in the pricing component
+
+## Billing
+
+- Existing $99 monthly Stripe price remains unchanged
+- Trial remains 14 days
+- CTA continues using the existing checkout or signup flow
+
+## Responsive behavior
+
+- Desktop layout renders
+- Tablet layout renders
+- Mobile layout renders
+- No horizontal overflow
+- Long feature lines wrap correctly
+
+# Phase 14: Implementation Order
+
+Perform the work in this order:
+
+1. Audit current pricing copy and components.
+2. Confirm Stripe price and trial duration.
+3. Update pricing subtitle.
+4. Update plan description.
+5. Replace feature list.
+6. Update trial disclosure.
+7. Add optional supporting copy only if the layout remains clean.
+8. Update contradictory duplicate copy.
+9. Verify trademark helper usage.
+10. Verify responsive layout.
+11. Verify accessibility.
+12. Add or update tests.
+13. Run the test suite.
+14. Run the production build.
+15. Provide an implementation report.
+
+# Important Constraints
+
+- Do not rebuild the pricing page.
+- Do not modify Stripe pricing.
+- Do not change the 14-day trial.
+- Do not add a new tier.
+- Do not add a $299 anchor.
+- Do not strike through $149.
+- Do not imply current options data without broker connection.
+- Do not imply that all brokers support every options field.
+- Do not add built-in paper trading.
+- Do not claim autonomous order submission.
+- Do not change the InstaTrade trademark status.
+- Do not hardcode trademark symbols.
+- Do not break existing subscriptions.
+- Reuse the existing dark design system.
+- Make incremental, testable changes.
+
+# Final Deliverables
+
+After implementation, report:
+
+1. Files changed
+2. Pricing subtitle updated
+3. Plan description updated
+4. Final options-focused feature list
+5. Trial disclosure updated
+6. Duplicate copy updated
+7. Trademark helper usage verified
+8. Stripe configuration verified
+9. Trial-duration verification
+10. Responsive changes
+11. Accessibility changes
+12. Tests added or updated
+13. Test results
+14. Production build result
+15. Any remaining inconsistent pricing copy
+
+Do not mark the task complete until the pricing card clearly communicates:
+
+- Stock research
+- Options research
+- Calls and puts
+- Debit and credit spreads
+- Covered calls
+- Cash-secured puts
+- Risk, reward, breakeven, and capital analysis
+- Current options chains and Greeks through supported brokerages
+- InstaTrade™ stock and options order review and submission
+- The distinction between trial strategy insights and broker-connected current options data

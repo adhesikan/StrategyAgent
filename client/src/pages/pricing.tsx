@@ -11,20 +11,21 @@ import { useBranding } from "@/hooks/use-branding";
 
 function planFeatures(instaTradeName: string): string[] {
   return [
-    "Daily AI-ranked stock candidates",
-    "Historical daily market analysis during trial",
+    "Daily AI-ranked stock and options candidates",
+    "Historical daily stock analysis during trial",
+    "Options strategy insights for calls, puts, debit spreads, credit spreads, covered calls, and cash-secured puts",
+    "Risk, reward, breakeven, and capital-requirement analysis",
     "Grow, Income, Trade, and Markets modes",
     "Opportunity Radar and Analysis Conditions",
     "News sentiment and market context",
     "Watchlist intelligence",
     "Congress Activity",
-    "AI-assisted options strategy insights",
     "Tradier and TradeStation connections",
-    "Current market data through connected brokerages",
-    "Options chains through supported brokerages",
-    `${instaTradeName} order review and submission`,
+    "Current stock and options market data through connected brokerages",
+    "Options chains, Greeks, bid/ask, volume, and open interest where supported",
+    `${instaTradeName} stock and options order review and submission`,
+    "Defined-risk options controls",
     "Position and results tracking",
-    "Built-in risk controls",
     "Analysis-to-live workflow",
   ];
 }
@@ -99,7 +100,7 @@ export default function PricingPage() {
           Simple Pricing. Bring Your Broker.
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Start with a 14-day trial featuring historical daily market analysis, AI-ranked stock candidates, market intelligence, and research tools. Connect a supported brokerage account to unlock current broker-authorized market data, account context, options chains where available, and self-directed {instaTradeName} order review and submission.
+          Start with a 14-day trial featuring historical daily stock analysis, AI-ranked stock and options candidates, market intelligence, and options strategy research. Connect a supported brokerage account to unlock current quotes, options chains, Greeks, account context, and self-directed {instaTradeName} stock and options order review and submission.
         </p>
       </div>
 
@@ -131,7 +132,7 @@ export default function PricingPage() {
               Planned standard price: $149/month
             </p>
             <p className="text-sm text-muted-foreground mt-3">
-              One complete plan for market research, AI-ranked opportunities, broker-connected analysis, and self-directed stock and options order review.
+              One complete plan for AI-powered stock and options research, strategy analysis, broker-connected market data, and self-directed order review and submission.
             </p>
           </div>
 
@@ -151,7 +152,7 @@ export default function PricingPage() {
           >
             <Info className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
             <p>
-              Trial data: Market analysis uses historical daily data through the previous completed trading session. Current quotes, positions, buying power, options-chain data, and order submission require a supported brokerage connection.
+              Trial access includes historical daily stock analysis and options strategy insights. Current stock and option prices, options chains, Greeks, bid/ask data, liquidity, account eligibility, buying power, positions, and order submission require a supported brokerage connection.
             </p>
           </div>
 
@@ -177,6 +178,9 @@ export default function PricingPage() {
               </Button>
               <p className="text-xs text-muted-foreground text-center">
                 No broker connection required to explore analysis.
+              </p>
+              <p className="text-xs text-muted-foreground text-center" data-testid="text-supporting-copy">
+                Explore stock and options research without connecting a broker. Connect when you are ready to review current market data and self-directed orders.
               </p>
               <Button
                 size="lg"

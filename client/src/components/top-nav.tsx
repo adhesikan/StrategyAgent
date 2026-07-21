@@ -200,11 +200,6 @@ function UserMenu() {
             <User className="h-4 w-4" /> Settings
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/guide" className="flex items-center gap-2" data-testid="menu-link-guide">
-            <HelpCircle className="h-4 w-4" /> User Guide
-          </Link>
-        </DropdownMenuItem>
         {user.role === "admin" && (
           <DropdownMenuItem asChild>
             <Link href="/admin" className="flex items-center gap-2" data-testid="menu-link-admin">
@@ -242,6 +237,11 @@ export function TopNav() {
           <NavLinks />
         </div>
         <div className="flex items-center gap-1">
+          <Link href="/guide" data-testid="link-user-guide" title="User Guide">
+            <Button variant="ghost" size="icon" aria-label="User Guide" data-testid="button-user-guide">
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          </Link>
           <AlertBell />
           <ThemeToggle />
           <UserMenu />

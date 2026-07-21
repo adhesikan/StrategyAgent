@@ -146,7 +146,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 <div class="badge">Scheduled Maintenance</div>
 <h1>VCP Trader AI is temporarily offline</h1>
 <p>We're performing upgrades to improve your trading experience. This usually takes just a few minutes.</p>
-<p style="font-size:.875rem">If you need immediate help, contact <a href="mailto:support@sunfishtech.com" style="color:#60a5fa">support@sunfishtech.com</a></p>
+<p style="font-size:.875rem">If you need immediate help, contact <a href="mailto:support@sunfishtrading.com" style="color:#60a5fa">support@sunfishtrading.com</a></p>
 </div></body></html>`);
   });
 

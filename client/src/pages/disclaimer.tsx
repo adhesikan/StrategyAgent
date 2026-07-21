@@ -27,11 +27,11 @@ export default function DisclaimerPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl" data-testid="text-page-title">Disclaimer</CardTitle>
-            <p className="text-sm text-muted-foreground">Last updated: January 2026</p>
+            <p className="text-sm text-muted-foreground">Last updated: July 2026</p>
           </CardHeader>
           <CardContent className="prose prose-sm dark:prose-invert max-w-none space-y-4">
             <p>
-              VCP Trader AI is a software platform designed to help self-directed traders and investors analyze financial markets, generate structured trade setups using AI-powered strategy analysis, and optionally execute trades based on user-defined rules.
+              VCP Trader AI is a software platform operated by Sunfish Technologies LLC, a Massachusetts limited liability company, designed to help self-directed traders and investors analyze financial markets, generate structured trade setups using AI-powered strategy analysis, and optionally execute trades based on user-defined rules.
             </p>
 
             <p>
@@ -56,6 +56,10 @@ export default function DisclaimerPage() {
 
             <p>
               Trading and investing involve substantial risk, including the potential loss of capital. Past performance, backtested results, or hypothetical examples do not guarantee future results. Users are solely responsible for all trading decisions, automation settings, risk management choices, tax consequences, and outcomes resulting from their use of the platform.
+            </p>
+
+            <p>
+              This Disclaimer is governed by the laws of the Commonwealth of Massachusetts, USA. For questions about this Disclaimer, please contact Sunfish Technologies LLC at support@sunfishtrading.com.
             </p>
           </CardContent>
         </Card>

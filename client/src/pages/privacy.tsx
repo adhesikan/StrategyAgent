@@ -27,9 +27,13 @@ export default function PrivacyPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl" data-testid="text-page-title">Privacy Policy</CardTitle>
-            <p className="text-sm text-muted-foreground">Last updated: January 2026</p>
+            <p className="text-sm text-muted-foreground">Last updated: July 2026</p>
           </CardHeader>
           <CardContent className="prose prose-sm dark:prose-invert max-w-none space-y-6">
+            <p>
+              This Privacy Policy describes how Sunfish Technologies LLC, a Massachusetts limited liability company ("we," "us"), collects, uses, and protects information in connection with the VCP Trader AI platform. This Policy is governed by the laws of the Commonwealth of Massachusetts, USA.
+            </p>
+
             <section>
               <h3>A. Information We Collect</h3>
               <p>We collect the following types of information:</p>
@@ -111,7 +115,7 @@ export default function PrivacyPage() {
                 <li><strong>Deletion:</strong> Request deletion of your account and personal data.</li>
               </ul>
               <p>
-                To exercise these rights, please contact Sunfish Technologies LLC at support@sunfishtechnologies.com.
+                To exercise these rights, please contact Sunfish Technologies LLC at support@sunfishtrading.com.
               </p>
             </section>
 
@@ -125,7 +129,7 @@ export default function PrivacyPage() {
             <section>
               <h3>Contact Us</h3>
               <p>
-                If you have questions about this Privacy Policy, please contact Sunfish Technologies LLC at support@sunfishtechnologies.com.
+                If you have questions about this Privacy Policy, please contact Sunfish Technologies LLC at support@sunfishtrading.com.
               </p>
             </section>
           </CardContent>

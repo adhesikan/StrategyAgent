@@ -27,13 +27,13 @@ export default function TermsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl" data-testid="text-page-title">Terms of Use</CardTitle>
-            <p className="text-sm text-muted-foreground">Last updated: January 2026</p>
+            <p className="text-sm text-muted-foreground">Last updated: July 2026</p>
           </CardHeader>
           <CardContent className="prose prose-sm dark:prose-invert max-w-none space-y-6">
             <section>
               <h3>1. Description of Service</h3>
               <p>
-                VCP Trader AI is a software platform developed and operated by Sunfish Technologies LLC that provides AI-powered strategy analysis, trade setup generation, market scanning tools, technical analysis charts, and educational resources for traders. The platform includes features such as natural language setup generation, built-in and custom strategies, interactive charts, and push notifications.
+                VCP Trader AI is a software platform developed and operated by Sunfish Technologies LLC, a Massachusetts limited liability company, that provides AI-powered strategy analysis, trade setup generation, market scanning tools, technical analysis charts, and educational resources for traders. The platform includes features such as natural language setup generation, built-in and custom strategies, interactive charts, and push notifications.
               </p>
             </section>
 
@@ -96,7 +96,7 @@ export default function TermsPage() {
             <section>
               <h3>10. Governing Law</h3>
               <p>
-                These Terms shall be governed by and construed in accordance with the laws of the State of Delaware, USA, without regard to its conflict of law provisions.
+                These Terms shall be governed by and construed in accordance with the laws of the Commonwealth of Massachusetts, USA, without regard to its conflict of law provisions.
               </p>
             </section>
 
@@ -110,7 +110,7 @@ export default function TermsPage() {
             <section>
               <h3>12. Contact</h3>
               <p>
-                For questions about these Terms, please contact Sunfish Technologies LLC at support@sunfishtechnologies.com.
+                For questions about these Terms, please contact Sunfish Technologies LLC at support@sunfishtrading.com.
               </p>
             </section>
           </CardContent>

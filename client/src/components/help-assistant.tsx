@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -80,15 +81,24 @@ export function HelpAssistant() {
 
   return (
     <>
-      <Button
-        size="icon"
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 h-11 w-11 rounded-full shadow-lg"
-        onClick={() => setOpen(true)}
-        aria-label="Open help assistant"
-        data-testid="button-open-help-assistant"
-      >
-        <HelpCircle className="h-5 w-5" />
-      </Button>
+      {createPortal(
+        <Button
+          size="icon"
+          className="fixed z-50 h-11 w-11 rounded-full shadow-lg"
+          style={{
+            right: "max(1rem, env(safe-area-inset-right))",
+            bottom: "max(1.25rem, env(safe-area-inset-bottom))",
+            left: "auto",
+            top: "auto",
+          }}
+          onClick={() => setOpen(true)}
+          aria-label="Open help assistant"
+          data-testid="button-open-help-assistant"
+        >
+          <HelpCircle className="h-5 w-5" />
+        </Button>,
+        document.body,
+      )}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex flex-col w-full sm:max-w-md p-0">

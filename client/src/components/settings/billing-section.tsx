@@ -1,5 +1,4 @@
 import { useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +51,37 @@ export function BillingSection() {
     },
   });
 
+  const checkout = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/billing/checkout", { planId: "pro", cycle: "monthly" });
+      return res.json() as Promise<{ url: string }>;
+    },
+    onSuccess: (d) => {
+      window.location.href = d.url;
+    },
+    onError: (e: Error) => {
+      toast({
+        title: "Couldn't start checkout",
+        description: e.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const limitLabel = dailyAnalysesLimit === -1 ? "Unlimited" : String(dailyAnalysesLimit);
+
+  // Paid = an active (non-trial) subscription on a non-free plan.
+  const isPaidSubscriber = !isTrialing && plan !== "free" && status !== "trial_expired";
+  const displayPlanName = isTrialing
+    ? "14-Day Free Trial"
+    : isPaidSubscriber
+    ? "VCP Trader AI Pro"
+    : planName;
+  const planSubtitle = isTrialing
+    ? `${trialDaysLeft ?? 0} day${(trialDaysLeft ?? 0) === 1 ? "" : "s"} remaining — trial ends ${formatDate(trialEndsAt)}. Subscribe to VCP Trader AI Pro ($99/month) to continue after your trial.`
+    : isPaidSubscriber
+    ? `Monthly plan — renews ${formatDate(currentPeriodEndsAt)}`
+    : "Your free trial has ended. Manage your subscription in Stripe to reactivate.";
 
   return (
     <div className="space-y-6">
@@ -78,11 +107,11 @@ export function BillingSection() {
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Current plan</p>
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-xl font-semibold" data-testid="text-current-plan-name">
-                  {planName}
+                  {displayPlanName}
                 </p>
                 {isTrialing && (
                   <Badge className="text-[10px]" data-testid="badge-trial">
-                    Trial — {trialDaysLeft ?? 0}d left
+                    {trialDaysLeft ?? 0}d left
                   </Badge>
                 )}
                 {status === "past_due" && (
@@ -91,39 +120,37 @@ export function BillingSection() {
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {isTrialing
-                  ? `Trial ends ${formatDate(trialEndsAt)}`
-                  : plan === "free"
-                  ? "Free forever — no card on file"
-                  : `Renews ${formatDate(currentPeriodEndsAt)}`}
+              <p className="text-xs text-muted-foreground mt-1 max-w-md" data-testid="text-plan-subtitle">
+                {planSubtitle}
               </p>
             </div>
             <div className="flex gap-2">
-              {plan === "free" ? (
-                <Button asChild data-testid="button-upgrade-from-settings">
-                  <Link href="/pricing">
-                    <Sparkles className="h-4 w-4 mr-1" /> Upgrade
-                  </Link>
+              {isPaidSubscriber ? (
+                <Button
+                  onClick={() => portal.mutate()}
+                  disabled={portal.isPending}
+                  data-testid="button-open-portal"
+                >
+                  {portal.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                  )}
+                  Manage in Stripe
                 </Button>
               ) : (
-                <>
-                  <Button variant="outline" asChild data-testid="button-change-plan">
-                    <Link href="/pricing">Change plan</Link>
-                  </Button>
-                  <Button
-                    onClick={() => portal.mutate()}
-                    disabled={portal.isPending}
-                    data-testid="button-open-portal"
-                  >
-                    {portal.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <ExternalLink className="h-4 w-4 mr-1" />
-                    )}
-                    Manage in Stripe
-                  </Button>
-                </>
+                <Button
+                  onClick={() => checkout.mutate()}
+                  disabled={!isTrialing || checkout.isPending}
+                  data-testid="button-upgrade-from-settings"
+                >
+                  {checkout.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-1" />
+                  )}
+                  Upgrade
+                </Button>
               )}
             </div>
           </div>

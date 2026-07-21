@@ -84,8 +84,10 @@ export function HelpAssistant() {
       {createPortal(
         <Button
           size="icon"
-          className="fixed z-50 h-11 w-11 rounded-full shadow-lg ring-2 ring-background"
+          className="h-11 w-11 rounded-full shadow-lg ring-2 ring-background"
           style={{
+            position: "fixed",
+            zIndex: 60,
             right: "max(1rem, env(safe-area-inset-right))",
             top: "max(4.5rem, calc(env(safe-area-inset-top) + 4.5rem))",
             left: "auto",

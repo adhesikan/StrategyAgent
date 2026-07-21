@@ -59,11 +59,15 @@ async function loadOpenPositions(userId: string): Promise<JournalPosition[]> {
     if (!strategyBySymbol.has(sym)) strategyBySymbol.set(sym, s.strategyName);
   }
 
-  return broker.map((p) => ({
+  // The journal tracks only trades that originated in this app: broker
+  // positions with no matching in-app setup/order history are excluded.
+  const appOriginated = broker.filter((p) => strategyBySymbol.has(p.symbol.toUpperCase()));
+
+  return appOriginated.map((p) => ({
     id: `pos:${p.symbol}`,
     ticker: p.symbol.toUpperCase(),
     name: p.symbol.toUpperCase(),
-    strategy: strategyBySymbol.get(p.symbol.toUpperCase()) || "Position",
+    strategy: strategyBySymbol.get(p.symbol.toUpperCase()) || "InstaTrade",
     status: "Open" as const,
     pl: Math.round((p.unrealizedPnl ?? 0) * 100) / 100,
     pctOfMax: null,

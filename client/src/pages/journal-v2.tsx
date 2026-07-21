@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, ArrowRight, Info } from "lucide-react";
 import { Link } from "wouter";
+import { Input } from "@/components/ui/input";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
+import { OptionTradeTicket } from "@/components/option-trade-ticket";
 
 interface BrokerAccount {
   id: string;
@@ -60,6 +62,9 @@ function fmtMoney(n: number): string {
 export default function JournalV2() {
   const [view, setView] = useState<View>("open");
   const [ticketOpen, setTicketOpen] = useState(false);
+  const [optionTicketOpen, setOptionTicketOpen] = useState(false);
+  const [tickerInput, setTickerInput] = useState("");
+  const [ticketTicker, setTicketTicker] = useState("SPY");
   const [selectedAccount, setSelectedAccount] = useState<BrokerAccount | null>(null);
 
   const { data: brokerAccounts } = useQuery<BrokerAccount[]>({
@@ -89,7 +94,8 @@ export default function JournalV2() {
           <div>
             <h1 className="text-[22px] font-medium" data-testid="text-journal-title">Journal</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Your trades, P&amp;L, and patterns over time.
+              Your trades, P&amp;L, and patterns over time. Only trades originated and executed
+              through this app via InstaTrade™ are tracked here.
             </p>
           </div>
           <div className="bg-muted/40 rounded-lg p-1 flex">
@@ -290,14 +296,50 @@ export default function JournalV2() {
         </div>
 
         <Card className="p-5 border-dashed">
-          <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <div className="text-sm font-medium">Place a new trade without leaving</div>
-              <p className="text-xs text-muted-foreground mt-0.5">Open the InstaTrade™ panel pre-filled to a fresh ticket.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Enter any ticker and open an InstaTrade™ stock or options ticket.
+              </p>
             </div>
-            <Button onClick={() => setTicketOpen(true)} data-testid="button-open-instatrade">
-              Open InstaTrade™
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                value={tickerInput}
+                onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && tickerInput.trim()) {
+                    setTicketTicker(tickerInput.trim());
+                    setTicketOpen(true);
+                  }
+                }}
+                placeholder="Ticker (e.g. AAPL)"
+                className="w-40 uppercase"
+                maxLength={8}
+                data-testid="input-instatrade-ticker"
+              />
+              <Button
+                onClick={() => {
+                  setTicketTicker(tickerInput.trim() || "SPY");
+                  setTicketOpen(true);
+                }}
+                disabled={!tickerInput.trim()}
+                data-testid="button-open-instatrade"
+              >
+                Trade Stock
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setTicketTicker(tickerInput.trim() || "SPY");
+                  setOptionTicketOpen(true);
+                }}
+                disabled={!tickerInput.trim()}
+                data-testid="button-open-instatrade-option"
+              >
+                Trade Option
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
@@ -306,13 +348,22 @@ export default function JournalV2() {
         open={ticketOpen}
         onOpenChange={setTicketOpen}
         scanResult={{
-          ticker: "SPY",
+          ticker: ticketTicker,
           price: 0,
           resistance: null,
           stopLoss: null,
           stage: "WATCH",
           patternScore: 0,
         }}
+        brokerAccounts={brokerAccounts || []}
+        selectedAccount={selectedAccount}
+        onAccountChange={setSelectedAccount}
+      />
+      <OptionTradeTicket
+        open={optionTicketOpen}
+        onOpenChange={setOptionTicketOpen}
+        symbol={ticketTicker}
+        onSymbolChange={setTicketTicker}
         brokerAccounts={brokerAccounts || []}
         selectedAccount={selectedAccount}
         onAccountChange={setSelectedAccount}

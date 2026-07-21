@@ -180,6 +180,14 @@ export function registerAuthRoutes(app: Express): void {
         data.lastName
       );
 
+      // Auto-start the 14-day Pro trial for every new signup.
+      const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      await authStorage.updateUser(user.id, {
+        planId: "pro",
+        subscriptionStatus: "trialing",
+        trialEndsAt,
+      });
+
       if (req.body.acceptLegal) {
         await authStorage.updateUser(user.id, {
           acceptedLegalVersion: LEGAL_VERSION,

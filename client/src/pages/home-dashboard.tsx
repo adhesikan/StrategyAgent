@@ -9,6 +9,7 @@ import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
 import { PopularChips } from "@/components/home/popular-chips";
 import { DailyOpportunities } from "@/components/home/daily-opportunities";
 import { QuotaBanner } from "@/components/quota-banner";
+import { TrialBanner } from "@/components/trial-banner";
 import { StartChoiceDialog, PersonalizationPromptCard, IncompletePreferencesDisclosure } from "@/components/start-choice";
 import { TodaysOpportunities, NeedsAttention, PositionsSummaryOrConnect } from "@/components/home/home-sections";
 import { usePersona } from "@/context/PersonaContext";
@@ -68,6 +69,9 @@ export default function HomeDashboard() {
 
         <QuickPromptBar />
       </div>
+
+      {/* Trial countdown + subscribe CTA (only during/after an active trial) */}
+      <TrialBanner />
 
       {/* Quota banner (only shows when usage > 80%) */}
       <QuotaBanner />

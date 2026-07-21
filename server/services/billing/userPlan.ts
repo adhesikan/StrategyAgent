@@ -133,7 +133,35 @@ export interface BillingStatusPayload {
 }
 
 export async function getBillingStatus(userId: string): Promise<BillingStatusPayload> {
-  const record = await resetDailyAnalysesIfNeeded(userId);
+  let record = await resetDailyAnalysesIfNeeded(userId);
+
+  // Reconcile expired trials at read time.
+  if (
+    record &&
+    record.subscriptionStatus === "trialing" &&
+    record.trialEndsAt &&
+    record.trialEndsAt.getTime() <= Date.now()
+  ) {
+    if (!record.stripeSubscriptionId) {
+      // App-managed trial with no Stripe subscription → downgrade to free.
+      await db
+        .update(usersTable)
+        .set({ planId: "free", subscriptionStatus: "trial_expired", updatedAt: new Date() })
+        .where(eq(usersTable.id, userId));
+      record = { ...record, planId: "free", subscriptionStatus: "trial_expired" };
+    } else {
+      // Stripe subscription exists but our status is stale (missed/delayed
+      // webhook). Best-effort live reconciliation from Stripe.
+      try {
+        const { reconcileSubscriptionForUser } = await import("./stripe");
+        await reconcileSubscriptionForUser(userId, record.stripeSubscriptionId);
+        record = (await getUserPlanRecord(userId)) ?? record;
+      } catch (err) {
+        console.error(`[billing] trial reconciliation failed for user ${userId}:`, err);
+      }
+    }
+  }
+
   const planId: PlanId = record?.planId ?? "free";
   const plan = getPlan(planId);
   const status = record?.subscriptionStatus ?? "active";

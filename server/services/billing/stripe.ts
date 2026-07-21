@@ -56,6 +56,23 @@ export async function createCheckoutSession(
   const customerId = await getOrCreateCustomer(userId, email);
   const baseUrl = getAppBaseUrl();
 
+  // Never grant a second trial. If the user has an app-started trial still
+  // running, carry over only the remaining days; if their trial was already
+  // used or has ended, checkout starts a paid subscription immediately.
+  const [userRow] = await db
+    .select({ trialEndsAt: usersTable.trialEndsAt })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  let trialDays: number | undefined;
+  if (!userRow?.trialEndsAt) {
+    trialDays = 14;
+  } else {
+    const msLeft = userRow.trialEndsAt.getTime() - Date.now();
+    const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+    trialDays = daysLeft >= 1 ? Math.min(14, daysLeft) : undefined;
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -63,7 +80,7 @@ export async function createCheckoutSession(
     success_url: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/billing/cancel`,
     subscription_data: {
-      trial_period_days: 14,
+      ...(trialDays ? { trial_period_days: trialDays } : {}),
       metadata: { userId, planId, cycle },
     },
     metadata: { userId, planId, cycle },
@@ -72,6 +89,19 @@ export async function createCheckoutSession(
 
   if (!session.url) throw new Error("Stripe did not return a checkout URL");
   return { url: session.url };
+}
+
+/**
+ * Fetches the live subscription from Stripe and syncs the user's plan record.
+ * Used as a fallback when webhooks are delayed or missed.
+ */
+export async function reconcileSubscriptionForUser(
+  userId: string,
+  subscriptionId: string,
+): Promise<void> {
+  const stripe = await getUncachableStripeClient();
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  await applySubscriptionToUser(userId, sub);
 }
 
 export async function createPortalSession(userId: string): Promise<{ url: string }> {

@@ -847,8 +847,10 @@ export default function UserGuidePage() {
   useEffect(() => {
     document.title = "User Guide | VCP Trader AI";
     const hash = window.location.hash.replace("#", "");
-    if (hash) {
-      const el = document.getElementById(hash);
+    const pathMatch = location.match(/^\/guide\/([^/]+)/);
+    const target = hash || (pathMatch ? pathMatch[1] : "");
+    if (target) {
+      const el = document.getElementById(target);
       if (el) {
         setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
       }

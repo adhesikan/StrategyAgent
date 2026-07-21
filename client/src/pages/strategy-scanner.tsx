@@ -784,12 +784,14 @@ export default function StrategyScannerPage() {
 
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
-  const select = (s: Strategy) => {
+  const select = (s: Strategy, scrollToResults = false) => {
     setSelected(s);
     scanMutation.mutate(s);
-    requestAnimationFrame(() => {
-      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    if (scrollToResults) {
+      requestAnimationFrame(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   };
 
   const preferredType = (s: Strategy): TradeType => {
@@ -962,7 +964,7 @@ export default function StrategyScannerPage() {
                       size="sm"
                       variant={isSelected ? "default" : "outline"}
                       className="h-7 text-xs"
-                      onClick={() => select(s)}
+                      onClick={() => select(s, true)}
                     >
                       {isSelected && running ? (
                         <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Running…</>

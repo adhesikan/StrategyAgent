@@ -263,6 +263,18 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
     if (step > 0) setStep(step - 1);
   };
 
+  const handleSkip = () => {
+    saveMutation.mutate(undefined, {
+      onSuccess: () => {
+        setStep(TOTAL_STEPS - 1);
+        toast({
+          title: "Setup skipped",
+          description: "Default settings were applied. You can update them anytime on the Settings page.",
+        });
+      },
+    });
+  };
+
   const handleFinish = () => {
     onComplete();
     if (!isEditing) {
@@ -598,30 +610,50 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
         </div>
 
         {step < TOTAL_STEPS - 1 && (
-          <div className="flex items-center justify-between gap-2 pt-2 border-t">
-            {step > 0 ? (
-              <Button variant="ghost" onClick={handleBack} data-testid="button-back">
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Back
-              </Button>
-            ) : (
-              <div />
+          <>
+            {!isEditing && (
+              <p className="text-xs text-muted-foreground text-center" data-testid="text-skip-note">
+                In a hurry? You can skip this and update everything later on the Settings page.
+              </p>
             )}
-            <Button
-              onClick={handleNext}
-              disabled={saveMutation.isPending}
-              data-testid={step === TOTAL_STEPS - 2 ? "button-complete-setup" : "button-next"}
-            >
-              {step === TOTAL_STEPS - 2 ? (
-                saveMutation.isPending ? "Saving..." : (isEditing ? "Save Changes" : "Complete Setup")
+            <div className="flex items-center justify-between gap-2 pt-2 border-t">
+              {step > 0 ? (
+                <Button variant="ghost" onClick={handleBack} data-testid="button-back">
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Back
+                </Button>
               ) : (
-                <>
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </>
+                <div />
               )}
-            </Button>
-          </div>
+              <div className="flex items-center gap-2">
+                {!isEditing && (
+                  <Button
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={handleSkip}
+                    disabled={saveMutation.isPending}
+                    data-testid="button-skip-setup"
+                  >
+                    Skip for now
+                  </Button>
+                )}
+                <Button
+                  onClick={handleNext}
+                  disabled={saveMutation.isPending}
+                  data-testid={step === TOTAL_STEPS - 2 ? "button-complete-setup" : "button-next"}
+                >
+                  {step === TOTAL_STEPS - 2 ? (
+                    saveMutation.isPending ? "Saving..." : (isEditing ? "Save Changes" : "Complete Setup")
+                  ) : (
+                    <>
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </TooltipProvider>
       </DialogContent>

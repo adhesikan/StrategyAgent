@@ -330,6 +330,11 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
           )}
         </div>
 
+        {step < TOTAL_STEPS - 1 && (
+          <p className="text-xs text-muted-foreground text-center" data-testid="text-mw-skip-note">
+            In a hurry? Skip these questions — you can update your preferences anytime on the Settings page.
+          </p>
+        )}
         <div className="flex items-center justify-between gap-2 pt-2 border-t">
           <Button
             variant="ghost"
@@ -342,15 +347,26 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
             Back
           </Button>
           {step < TOTAL_STEPS - 1 ? (
-            <Button
-              size="sm"
-              onClick={handleNext}
-              disabled={!canAdvance}
-              data-testid="button-mw-next"
-            >
-              Next
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={handleFinish}
+                data-testid="button-mw-skip"
+              >
+                Skip for now
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleNext}
+                disabled={!canAdvance}
+                data-testid="button-mw-next"
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           ) : (
             <Button size="sm" onClick={handleFinish} data-testid="button-mw-finish">
               Start Free Trial

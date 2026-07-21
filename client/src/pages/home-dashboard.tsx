@@ -7,6 +7,7 @@ import type { PositionProtectionPlan } from "@shared/schema";
 import { QuickPromptBar } from "@/components/home/quick-prompt-bar";
 import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
 import { PopularChips } from "@/components/home/popular-chips";
+import { DailyOpportunities } from "@/components/home/daily-opportunities";
 import { QuotaBanner } from "@/components/quota-banner";
 import { StartChoiceDialog, PersonalizationPromptCard, IncompletePreferencesDisclosure } from "@/components/start-choice";
 import { TodaysOpportunities, NeedsAttention, PositionsSummaryOrConnect } from "@/components/home/home-sections";
@@ -152,6 +153,8 @@ export default function HomeDashboard() {
 
       {/* Popular chips */}
       <PopularChips />
+
+      <DailyOpportunities />
 
       <ComplianceFooter />
     </div>

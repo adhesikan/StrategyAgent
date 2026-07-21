@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck } from "lucide-react";
+import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck, Database } from "lucide-react";
 
 interface AdminStats {
   totalUsers: number;
@@ -62,6 +62,13 @@ const tools = [
     href: "/admin/position-protection",
     icon: ShieldCheck,
     testId: "card-admin-position-protection",
+  },
+  {
+    title: "Market Data",
+    description: "Twelve Data ingestion, credits, symbols & licensing",
+    href: "/admin/market-data",
+    icon: Database,
+    testId: "card-admin-market-data",
   },
 ];
 

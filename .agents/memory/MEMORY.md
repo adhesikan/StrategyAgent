@@ -1,2 +1,3 @@
 - [Position Protection exit safety](position-protection-exit-safety.md) — exit worker uses atomic claim + submittedExitOrderId guard + strict lifecycle state machine to never double-submit exits; Tradier has no native trailing_stop.
 - [Two-mode customer policy](two-mode-policy.md) — customer copy is Analysis Mode / Connected Broker Mode only; keep internal "paper"/"simulated" API values; enforce trading gates server-side, not just in the UI.
+- [Twelve Data market data](twelve-data-market-data.md) — env vars are the only license control; prelaunch access never via Stripe status; credit caps need transactional reservation; holiday-aware scheduler.

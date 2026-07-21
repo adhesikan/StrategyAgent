@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time, date, bigint, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -2298,3 +2298,223 @@ export const userBrokerCredentials = pgTable("user_broker_credentials", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 export type UserBrokerCredentials = typeof userBrokerCredentials.$inferSelect;
+
+// ============================================================
+// Twelve Data / Daily Market Data integration (provider-neutral)
+// ============================================================
+
+// Provider licensing record. Environment variables remain the final safety
+// control — a permissive DB value must never override a restrictive env var.
+export const marketDataLicenseConfig = pgTable("market_data_license_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().unique(),
+  planName: text("plan_name").notNull(),
+  licenseMode: text("license_mode").notNull().default("prelaunch"), // disabled | prelaunch | external
+  externalDisplayEnabled: boolean("external_display_enabled").notNull().default(false),
+  effectiveDate: date("effective_date"),
+  attributionRequired: boolean("attribution_required").notNull().default(true),
+  confirmationReference: text("confirmation_reference"),
+  notes: text("notes"),
+  updatedBy: varchar("updated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type MarketDataLicenseConfig = typeof marketDataLicenseConfig.$inferSelect;
+
+// Curated, admin-managed symbol universe for daily ingestion.
+export const marketDataSymbols = pgTable("market_data_symbols", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull().unique(),
+  companyName: text("company_name"),
+  assetType: text("asset_type").notNull().default("equity"), // equity | etf
+  exchange: text("exchange"),
+  sector: text("sector"),
+  provider: text("provider").notNull().default("twelve_data"),
+  providerSymbol: text("provider_symbol"),
+  enabled: boolean("enabled").notNull().default(true),
+  internalAnalysisEnabled: boolean("internal_analysis_enabled").notNull().default(true),
+  futureTrialEnabled: boolean("future_trial_enabled").notNull().default(false),
+  displayOrder: integer("display_order").notNull().default(0),
+  backfillYears: integer("backfill_years").notNull().default(2),
+  lastSuccessfulIngestionAt: timestamp("last_successful_ingestion_at"),
+  latestAvailableTradeDate: date("latest_available_trade_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertMarketDataSymbolSchema = createInsertSchema(marketDataSymbols).omit({
+  id: true,
+  lastSuccessfulIngestionAt: true,
+  latestAvailableTradeDate: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertMarketDataSymbol = z.infer<typeof insertMarketDataSymbolSchema>;
+export type MarketDataSymbol = typeof marketDataSymbols.$inferSelect;
+
+// Normalized historical daily OHLCV bars. Prices use numeric (never float).
+export const marketDailyBars = pgTable("market_daily_bars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  tradeDate: date("trade_date").notNull(),
+  open: numeric("open", { precision: 18, scale: 6 }).notNull(),
+  high: numeric("high", { precision: 18, scale: 6 }).notNull(),
+  low: numeric("low", { precision: 18, scale: 6 }).notNull(),
+  close: numeric("close", { precision: 18, scale: 6 }).notNull(),
+  adjustedClose: numeric("adjusted_close", { precision: 18, scale: 6 }),
+  volume: bigint("volume", { mode: "number" }).notNull(),
+  dataProvider: text("data_provider").notNull().default("twelve_data"),
+  providerTimestamp: text("provider_timestamp"),
+  ingestedAt: timestamp("ingested_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  validatedAt: timestamp("validated_at"),
+  isComplete: boolean("is_complete").notNull().default(true),
+  isAdjusted: boolean("is_adjusted").notNull().default(false),
+  dataVersion: integer("data_version").notNull().default(1),
+  checksum: text("checksum"),
+}, (t) => ({
+  uqSymbolDateProvider: uniqueIndex("uq_mdb_symbol_date_provider").on(t.symbol, t.tradeDate, t.dataProvider),
+  idxSymbolDate: index("idx_mdb_symbol_date").on(t.symbol, t.tradeDate),
+  idxTradeDate: index("idx_mdb_trade_date").on(t.tradeDate),
+  idxSymbolComplete: index("idx_mdb_symbol_complete").on(t.symbol, t.isComplete),
+}));
+export type MarketDailyBar = typeof marketDailyBars.$inferSelect;
+
+export const marketDataIngestionRuns = pgTable("market_data_ingestion_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("twelve_data"),
+  runType: text("run_type").notNull(), // backfill | daily | manual | health_check | repair
+  environment: text("environment").notNull().default("development"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  status: text("status").notNull().default("pending"), // pending|running|partially_completed|completed|failed|cancelled|deferred_quota
+  symbolsRequested: integer("symbols_requested").notNull().default(0),
+  symbolsSucceeded: integer("symbols_succeeded").notNull().default(0),
+  symbolsFailed: integer("symbols_failed").notNull().default(0),
+  creditsReserved: integer("credits_reserved").notNull().default(0),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  recordsInserted: integer("records_inserted").notNull().default(0),
+  recordsUpdated: integer("records_updated").notNull().default(0),
+  errorSummary: text("error_summary"),
+  initiatedBy: varchar("initiated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type MarketDataIngestionRun = typeof marketDataIngestionRuns.$inferSelect;
+
+export const marketDataIngestionItems = pgTable("market_data_ingestion_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ingestionRunId: varchar("ingestion_run_id").notNull(),
+  symbol: text("symbol").notNull(),
+  status: text("status").notNull().default("pending"),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  recordsReceived: integer("records_received").notNull().default(0),
+  recordsInserted: integer("records_inserted").notNull().default(0),
+  recordsUpdated: integer("records_updated").notNull().default(0),
+  latestTradeDate: date("latest_trade_date"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (t) => ({
+  idxRun: index("idx_mdii_run").on(t.ingestionRunId),
+}));
+export type MarketDataIngestionItem = typeof marketDataIngestionItems.$inferSelect;
+
+// Internally calculated daily indicators (versioned).
+export const dailyIndicators = pgTable("daily_indicators", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  tradeDate: date("trade_date").notNull(),
+  sma10: numeric("sma10", { precision: 18, scale: 6 }),
+  sma20: numeric("sma20", { precision: 18, scale: 6 }),
+  sma50: numeric("sma50", { precision: 18, scale: 6 }),
+  sma100: numeric("sma100", { precision: 18, scale: 6 }),
+  sma200: numeric("sma200", { precision: 18, scale: 6 }),
+  ema8: numeric("ema8", { precision: 18, scale: 6 }),
+  ema21: numeric("ema21", { precision: 18, scale: 6 }),
+  rsi14: numeric("rsi14", { precision: 10, scale: 4 }),
+  atr14: numeric("atr14", { precision: 18, scale: 6 }),
+  averageVolume20: bigint("average_volume20", { mode: "number" }),
+  relativeVolume: numeric("relative_volume", { precision: 10, scale: 4 }),
+  return1d: numeric("return_1d", { precision: 10, scale: 6 }),
+  return5d: numeric("return_5d", { precision: 10, scale: 6 }),
+  return20d: numeric("return_20d", { precision: 10, scale: 6 }),
+  historicalVolatility20: numeric("historical_volatility20", { precision: 10, scale: 6 }),
+  distanceFrom52WeekHigh: numeric("distance_from_52_week_high", { precision: 10, scale: 6 }),
+  trendScore: integer("trend_score"),
+  momentumScore: integer("momentum_score"),
+  volumeScore: integer("volume_score"),
+  riskScore: integer("risk_score"),
+  calculationVersion: integer("calculation_version").notNull().default(1),
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+}, (t) => ({
+  uqSymbolDateVersion: uniqueIndex("uq_di_symbol_date_version").on(t.symbol, t.tradeDate, t.calculationVersion),
+  idxSymbolDate: index("idx_di_symbol_date").on(t.symbol, t.tradeDate),
+}));
+export type DailyIndicatorRow = typeof dailyIndicators.$inferSelect;
+
+// Published internal daily analysis snapshots.
+export const dailyAnalysisSnapshots = pgTable("daily_analysis_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  analysisDate: date("analysis_date").notNull(),
+  marketDataAsOf: date("market_data_as_of").notNull(),
+  compositeScore: integer("composite_score").notNull(),
+  compositeGrade: text("composite_grade").notNull(),
+  technicalScore: integer("technical_score"),
+  momentumScore: integer("momentum_score"),
+  volumeScore: integer("volume_score"),
+  trendScore: integer("trend_score"),
+  riskScore: integer("risk_score"),
+  conditionsPassed: jsonb("conditions_passed").$type<string[]>().default([]),
+  conditionsFailed: jsonb("conditions_failed").$type<string[]>().default([]),
+  setupType: text("setup_type"),
+  summary: text("summary"),
+  strengths: jsonb("strengths").$type<string[]>().default([]),
+  risks: jsonb("risks").$type<string[]>().default([]),
+  dataProvider: text("data_provider").notNull().default("twelve_data"),
+  modelVersion: text("model_version"),
+  calculationVersion: integer("calculation_version").notNull().default(1),
+  accessScope: text("access_scope").notNull().default("internal"), // internal | external_trial | external_paid
+  generatedAt: timestamp("generated_at").defaultNow(),
+  publishedAt: timestamp("published_at"),
+  isCurrent: boolean("is_current").notNull().default(false),
+}, (t) => ({
+  idxSymbolCurrent: index("idx_das_symbol_current").on(t.symbol, t.isCurrent),
+  idxAnalysisDate: index("idx_das_analysis_date").on(t.analysisDate),
+}));
+export type DailyAnalysisSnapshot = typeof dailyAnalysisSnapshots.$inferSelect;
+
+// Persistent (multi-instance safe) provider credit accounting.
+export const marketDataCreditUsage = pgTable("market_data_credit_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("twelve_data"),
+  windowType: text("window_type").notNull(), // minute | day
+  windowStart: timestamp("window_start").notNull(),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  uqProviderWindow: uniqueIndex("uq_mdcu_provider_window").on(t.provider, t.windowType, t.windowStart),
+}));
+export type MarketDataCreditUsage = typeof marketDataCreditUsage.$inferSelect;
+
+// Per-request credit ledger for admin visibility / auditing.
+export const marketDataRequestLog = pgTable("market_data_request_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("twelve_data"),
+  endpoint: text("endpoint").notNull(),
+  endpointWeight: integer("endpoint_weight").notNull().default(1),
+  symbolsRequested: jsonb("symbols_requested").$type<string[]>().default([]),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  status: text("status").notNull(), // success | error | deferred
+  retryCount: integer("retry_count").notNull().default(0),
+  durationMs: integer("duration_ms"),
+  ingestionRunId: varchar("ingestion_run_id"),
+  environment: text("environment"),
+  caller: text("caller"),
+  errorCode: text("error_code"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  idxCreatedAt: index("idx_mdrl_created_at").on(t.createdAt),
+}));
+export type MarketDataRequestLog = typeof marketDataRequestLog.$inferSelect;

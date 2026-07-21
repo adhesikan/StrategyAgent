@@ -450,6 +450,38 @@ async function restoreBrokerConnections() {
   );
   log("Alert engine started");
   
+  // Daily market-data ingestion (Twelve Data) — runs after 7:15 PM ET on
+  // expected US trading days. Uses a Postgres advisory lock internally so
+  // duplicate/multi-instance starts are safe. No-ops when disabled/paused.
+  cron.schedule(
+    "15 19 * * 1-5",
+    async () => {
+      try {
+        const { runIngestion, isExpectedTradingDay } = await import(
+          "./services/daily-market-data/ingestion"
+        );
+        if (!isExpectedTradingDay()) return;
+        log("[MarketData] Running daily ingestion...", "market-data");
+        const result = await runIngestion({ runType: "daily", initiatedBy: "scheduler" });
+        log(`[MarketData] Daily ingestion finished: ${result.status}`, "market-data");
+      } catch (error: any) {
+        log(`[MarketData] Daily ingestion error: ${error.message}`, "market-data");
+      }
+    },
+    { timezone: "America/New_York" },
+  );
+  log("Daily market-data ingestion job scheduled (7:15 PM ET, weekdays)");
+
+  // Seed the curated symbol universe + license config row once (no-ops when
+  // already present). Non-blocking; failures are logged only.
+  import("./services/daily-market-data/ingestion")
+    .then(async ({ seedSymbolUniverseIfEmpty, ensureLicenseConfigRow }) => {
+      const seeded = await seedSymbolUniverseIfEmpty();
+      await ensureLicenseConfigRow();
+      if (seeded > 0) log(`[MarketData] Seeded ${seeded} symbols`, "market-data");
+    })
+    .catch((e: any) => log(`[MarketData] Startup seed error: ${e.message}`, "market-data"));
+
   // Start opportunity resolver job (runs every 5 minutes)
   cron.schedule("*/5 * * * *", async () => {
     try {

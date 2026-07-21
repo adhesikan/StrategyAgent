@@ -46,6 +46,8 @@ import AdminUsersPage from "@/pages/admin-users";
 import AdminHomePage from "@/pages/admin-home";
 import AdminEmailsPage from "@/pages/admin-emails";
 import AdminSessionsPage from "@/pages/admin-sessions";
+import AdminMarketDataPage from "@/pages/admin-market-data";
+import DailyAnalysisPage from "@/pages/daily-analysis";
 import AdminPositionProtectionPage from "@/pages/admin-position-protection";
 import AdminAgentTestsPage from "@/pages/admin-agent-tests";
 import NotFound from "@/pages/not-found";
@@ -149,6 +151,8 @@ function AppRouter() {
       <Route path="/admin/users">{() => <AdminOnly><AdminUsersPage /></AdminOnly>}</Route>
       <Route path="/admin/emails">{() => <AdminOnly><AdminEmailsPage /></AdminOnly>}</Route>
       <Route path="/admin/sessions">{() => <AdminOnly><AdminSessionsPage /></AdminOnly>}</Route>
+      <Route path="/admin/market-data">{() => <AdminOnly><AdminMarketDataPage /></AdminOnly>}</Route>
+      <Route path="/daily-analysis" component={DailyAnalysisPage} />
       <Route path="/admin/position-protection">{() => <AdminOnly><AdminPositionProtectionPage /></AdminOnly>}</Route>
       <Route path="/admin/agent-tests">{() => <AdminOnly><AdminAgentTestsPage /></AdminOnly>}</Route>
       <Route path="/app/automation">{() => <AdminOnly><Redirect to="/automation" /></AdminOnly>}</Route>

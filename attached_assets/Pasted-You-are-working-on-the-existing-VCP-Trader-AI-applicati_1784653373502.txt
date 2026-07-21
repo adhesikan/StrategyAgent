@@ -1,0 +1,1709 @@
+You are working on the existing VCP Trader AI application.
+
+Do not rebuild the application from scratch.
+
+First inspect the complete existing codebase, including:
+
+- Authentication
+- User roles
+- Subscription and trial logic
+- Broker integrations
+- Market-data services
+- Opportunity Radar
+- Probability Engine
+- Analysis Conditions
+- Grow Mode
+- Income Mode
+- Trade Finder
+- Market Intel
+- News Sentiment
+- CongressFlow integration
+- InstaTrade™
+- Position Protection
+- Admin settings
+- Database schema
+- Background jobs
+- Environment variables
+- Existing feature flags
+- Existing market-data integrations
+- Existing Twelve Data code, if any
+
+The goal is to integrate Twelve Data as a provider-neutral historical daily market-data source for VCP Trader AI.
+
+The current Twelve Data plan is Basic.
+
+Twelve Data has confirmed in writing that:
+
+1. Any plan, including Basic, may be used during testing and pre-launch.
+2. The Venture Plan or above is required before Twelve Data data or Twelve Data-derived analytics are displayed to external users.
+3. Daily OHLCV data may be stored in our database.
+4. Derived analytics may be calculated and displayed after upgrading to an external-display plan.
+5. One commercial license may cover multiple products operated by Sunfish Technologies LLC.
+6. Historical backfills, caching, retention, and stored symbol counts are permitted.
+7. Attribution is required when data or derived analytics are externally displayed.
+
+Build the complete Twelve Data integration now for development, testing, and pre-launch validation.
+
+Do not enable customer-facing access until the application is switched to an approved external-display license mode after upgrading to Venture.
+
+# Core Product Rules
+
+1. VCP Trader AI is an AI-powered market research and trade-intelligence platform for self-directed traders.
+2. Twelve Data will initially be used for historical daily and previous-completed-session data.
+3. Twelve Data data must be retrieved centrally by the backend and stored in VCP Trader AI’s database.
+4. Do not call Twelve Data directly from the frontend.
+5. Do not expose the Twelve Data API key.
+6. Do not make a Twelve Data API request for every user page view.
+7. Calculate technical indicators internally using stored daily bars.
+8. Do not implement built-in paper trading.
+9. Do not display stored daily prices as real-time prices.
+10. Do not use previous-day pricing directly inside a live order.
+11. Users must connect a supported brokerage before accessing:
+    - Current brokerage positions
+    - Buying power
+    - Current broker quotes
+    - Options chains
+    - Order previews
+    - InstaTrade™
+    - Position Protection
+12. Before any order is reviewed, all price-dependent values must be refreshed through the user’s connected brokerage data source.
+13. Twelve Data should remain a replaceable provider behind a provider-neutral interface.
+
+# Twelve Data Current Plan and Limits
+
+The Basic plan currently includes:
+
+- 8 API credits per minute
+- 800 API credits per day
+- 8 trial WebSocket credits
+- Testing and pre-launch use
+- US equities and ETFs
+- Forex
+- Crypto
+- Reference data
+- Technical indicators
+- Batch requests
+- Global trial symbols
+
+For this implementation:
+
+- Do not use Twelve Data WebSockets.
+- Do not build real-time streaming with Twelve Data.
+- Use the `/time_series` endpoint with `interval=1day`.
+- Use Twelve Data only for enabled symbols.
+- Store daily OHLCV in PostgreSQL.
+- Calculate indicators internally.
+- Keep API usage well below plan limits.
+- Use centralized ingestion rather than per-user requests.
+
+# Twelve Data Licensing Modes
+
+Implement three server-enforced license modes:
+
+- disabled
+- prelaunch
+- external
+
+## disabled
+
+When:
+
+TWELVE_DATA_LICENSE_MODE=disabled
+
+Behavior:
+
+- Do not call Twelve Data.
+- Disable all Twelve Data ingestion.
+- Disable historical backfills.
+- Disable Twelve Data-backed analysis.
+- Return a safe unavailable state in the application.
+
+## prelaunch
+
+This is the current mode while using the Basic plan.
+
+When:
+
+TWELVE_DATA_LICENSE_MODE=prelaunch
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=false
+
+Allow:
+
+- Local development
+- Internal development environments
+- Admin testing
+- Internal QA
+- Historical backfills
+- Daily ingestion
+- Database storage
+- Technical indicator calculations
+- Opportunity Radar testing
+- Probability Engine testing
+- Analysis Conditions testing
+- Grow Mode testing
+- Income Mode underlying analysis testing
+- AI-summary testing
+- CongressFlow enrichment testing
+- Controlled pre-launch test accounts
+- Explicitly allowlisted users
+- Users with a dedicated internal-tester role
+
+Do not allow:
+
+- Public trial users
+- Open beta users
+- Paying external users
+- Anonymous users
+- General customer-facing display
+- Customer emails containing Twelve Data-derived analysis
+- Customer push notifications containing Twelve Data-derived analysis
+- Customer-facing exports containing Twelve Data-derived information
+
+Pre-launch access must be restricted by backend authorization.
+
+Do not rely only on frontend hiding.
+
+## external
+
+Enable only after the Twelve Data account has been upgraded to Venture or another plan permitting external display.
+
+External display requires both:
+
+TWELVE_DATA_LICENSE_MODE=external
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=true
+
+Only when both settings are active may Twelve Data-backed analysis be shown to:
+
+- Trial users
+- Beta users
+- Paid users
+- Other authorized external customers
+
+External access must also follow normal VCP Trader AI trial, subscription, role, and feature-access rules.
+
+If either setting is missing or false, deny external access.
+
+# Phase 1: Audit Existing Architecture
+
+Before editing:
+
+1. Inspect the full project structure.
+2. Identify the frontend framework.
+3. Identify the backend framework.
+4. Identify routing patterns.
+5. Identify the ORM and migration process.
+6. Identify current user roles.
+7. Identify trial and subscription access logic.
+8. Identify the current feature-flag architecture.
+9. Identify existing market-data provider interfaces.
+10. Identify Tradier, TradeStation, and SnapTrade adapters.
+11. Identify existing OHLCV tables.
+12. Identify existing indicator calculations.
+13. Identify existing scheduler or background-job infrastructure.
+14. Identify existing admin monitoring pages.
+15. Identify existing Opportunity Radar data inputs.
+16. Identify existing Probability Engine factors.
+17. Identify existing analysis mode and broker-connected mode logic.
+18. Search for:
+    - Twelve Data
+    - Alpha Vantage
+    - Yahoo Finance
+    - market data
+    - historical data
+    - daily bars
+    - OHLCV
+    - technical indicators
+    - SMA
+    - EMA
+    - RSI
+    - ATR
+    - Opportunity Radar
+    - data provider
+    - data source
+
+Reuse existing patterns.
+
+Do not create duplicate systems when an existing service, table, worker, queue, or feature-flag framework can be extended.
+
+Before destructive architectural or schema changes, produce an implementation summary.
+
+# Phase 2: Environment Variables
+
+Add or reuse the following server-only environment variables:
+
+TWELVE_DATA_API_KEY=
+TWELVE_DATA_ENABLED=true
+TWELVE_DATA_LICENSE_MODE=prelaunch
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=false
+TWELVE_DATA_API_CREDITS_PER_MINUTE=8
+TWELVE_DATA_DAILY_CREDIT_LIMIT=800
+TWELVE_DATA_MINUTE_SAFETY_LIMIT=7
+TWELVE_DATA_DAILY_SAFETY_LIMIT=750
+TWELVE_DATA_INTERVAL=1day
+TWELVE_DATA_TIMEZONE=America/New_York
+TWELVE_DATA_MAX_RETRIES=2
+TWELVE_DATA_REQUEST_TIMEOUT_MS=15000
+TWELVE_DATA_DEFAULT_OUTPUT_SIZE=5000
+TWELVE_DATA_INTERNAL_USER_EMAILS=
+TWELVE_DATA_ATTRIBUTION_ENABLED=true
+
+Rules:
+
+- API keys must only exist server-side.
+- Never include the API key in frontend environment variables.
+- Never return the API key through an endpoint.
+- Never include the API key in logs.
+- Redact the API key from error objects and URLs.
+- Environment variables must not be sufficient by themselves to grant user access if user authorization fails.
+
+# Phase 3: Market-Data License Configuration
+
+Create or reuse a database-backed provider license configuration.
+
+Suggested table:
+
+market_data_license_config
+
+Fields:
+
+- id
+- provider
+- planName
+- licenseMode
+- externalDisplayEnabled
+- effectiveDate
+- attributionRequired
+- confirmationReference
+- notes
+- updatedBy
+- createdAt
+- updatedAt
+
+Current Twelve Data record:
+
+- provider: twelve_data
+- planName: basic
+- licenseMode: prelaunch
+- externalDisplayEnabled: false
+- attributionRequired: true
+- confirmationReference: written email confirmation from Twelve Data sales
+- notes: Basic may be used for testing and pre-launch. Venture required before external user display.
+
+When upgraded later:
+
+- planName: venture
+- licenseMode: external
+- externalDisplayEnabled: true
+
+Environment settings must remain the final safety control.
+
+A database value must not override a restrictive environment setting.
+
+# Phase 4: Provider-Neutral Market-Data Interface
+
+Create or extend a provider-neutral interface.
+
+Example:
+
+interface DailyMarketDataProvider {
+  providerName: string;
+
+  getDailyBars(params: {
+    symbol: string;
+    startDate?: string;
+    endDate?: string;
+    outputSize?: number;
+  }): Promise<NormalizedDailyBar[]>;
+
+  getLatestDailyBar(params: {
+    symbol: string;
+  }): Promise<NormalizedDailyBar | null>;
+
+  healthCheck(): Promise<ProviderHealthResult>;
+}
+
+Define:
+
+type NormalizedDailyBar = {
+  symbol: string;
+  tradeDate: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  adjustedClose?: number | null;
+  volume: number;
+  provider: string;
+  providerTimestamp?: string | null;
+  isComplete: boolean;
+};
+
+Implement:
+
+TwelveDataDailyProvider
+
+Do not let Opportunity Radar, Grow Mode, Analysis Conditions, or Probability Engine depend directly on Twelve Data response formats.
+
+All downstream systems should consume normalized market data.
+
+# Phase 5: Secure Twelve Data API Client
+
+Build a server-side Twelve Data client.
+
+Use the `/time_series` endpoint initially.
+
+Request parameters should include:
+
+- symbol
+- interval=1day
+- outputsize
+- timezone=America/New_York
+- order=ASC, if supported
+- apikey
+
+Requirements:
+
+- Request timeout
+- Abort support
+- Structured error handling
+- Exponential retry delay
+- Maximum two retries
+- No retries for permanent 4xx failures
+- Detect Twelve Data API error payloads
+- Detect quota errors
+- Detect unsupported symbols
+- Detect empty responses
+- Validate returned symbol and interval
+- Parse numbers safely
+- Reject malformed records
+- Prevent simultaneous duplicate requests for the same symbol
+- Redact secrets from logs
+- Record request duration
+- Record estimated credits used
+- Record provider status
+
+Do not use WebSockets.
+
+Do not use Twelve Data’s technical-indicator endpoints initially.
+
+Calculate indicators internally from stored data.
+
+# Phase 6: Credit-Limit Manager
+
+Implement a persistent server-side Twelve Data credit manager.
+
+Twelve Data charges API credits by endpoint weight and number of symbols.
+
+For `/time_series`, initially configure:
+
+- 1 credit per symbol per request
+
+Make endpoint weights configurable.
+
+Track:
+
+- Credits used during the current minute
+- Credits used during the current day
+- Minute reset time
+- Daily reset time
+- Endpoint
+- Endpoint weight
+- Symbols requested
+- Request status
+- Retry count
+- Ingestion run
+- Environment
+- Caller
+
+Use safety thresholds:
+
+- Maximum 7 credits per minute
+- Maximum 750 credits per day
+
+This preserves reserve capacity below the 8-per-minute and 800-per-day limits.
+
+Before every request:
+
+1. Calculate required credits.
+2. Check minute availability.
+3. Check daily availability.
+4. Reserve credits.
+5. Queue or delay when the minute safety threshold would be exceeded.
+6. Stop optional ingestion when the daily safety limit would be exceeded.
+7. Allow administrative visibility into the reason for deferral.
+8. Account for retry requests separately.
+9. Release or reconcile failed reservation state safely.
+
+If the application can run on multiple instances, do not use only in-memory counters.
+
+Use PostgreSQL, Redis, or the project’s existing distributed locking mechanism.
+
+# Phase 7: Curated Symbol Universe
+
+Create or reuse an admin-managed table:
+
+market_data_symbols
+
+Suggested fields:
+
+- id
+- symbol
+- companyName
+- assetType
+- exchange
+- sector
+- provider
+- providerSymbol
+- enabled
+- internalAnalysisEnabled
+- futureTrialEnabled
+- displayOrder
+- backfillYears
+- lastSuccessfulIngestionAt
+- latestAvailableTradeDate
+- createdAt
+- updatedAt
+
+Seed a small initial universe only if no universe already exists:
+
+- SPY
+- QQQ
+- IWM
+- DIA
+- NVDA
+- MSFT
+- AAPL
+- AMZN
+- GOOGL
+- META
+- AVGO
+- AMD
+- MU
+- PLTR
+- ORCL
+- JPM
+- COST
+- WMT
+- TSLA
+- XOM
+
+This universe is for product testing and analysis coverage.
+
+Do not describe these symbols as recommendations.
+
+Admin capabilities:
+
+- Add a symbol
+- Disable a symbol
+- Enable internal analysis
+- Flag for future trial access
+- Reorder symbols
+- Set backfill depth
+- Trigger a one-symbol refresh
+- Trigger a one-symbol backfill
+- View latest stored date
+- View ingestion errors
+- View current credit usage
+- Pause ingestion
+
+# Phase 8: Database Schema
+
+Inspect existing tables before creating new ones.
+
+Reuse existing schemas where practical.
+
+## market_daily_bars
+
+Suggested fields:
+
+- id
+- symbol
+- tradeDate
+- open
+- high
+- low
+- close
+- adjustedClose
+- volume
+- dataProvider
+- providerTimestamp
+- ingestedAt
+- updatedAt
+- validatedAt
+- isComplete
+- isAdjusted
+- dataVersion
+- checksum
+
+Unique constraint:
+
+- symbol
+- tradeDate
+- dataProvider
+
+Indexes:
+
+- symbol and tradeDate
+- tradeDate
+- dataProvider
+- symbol and isComplete
+
+Use an appropriate decimal or numeric type for price data.
+
+Do not use floating-point types where financial precision matters.
+
+## market_data_ingestion_runs
+
+Fields:
+
+- id
+- provider
+- runType
+- environment
+- startedAt
+- completedAt
+- status
+- symbolsRequested
+- symbolsSucceeded
+- symbolsFailed
+- creditsReserved
+- creditsUsed
+- recordsInserted
+- recordsUpdated
+- errorSummary
+- initiatedBy
+- createdAt
+
+Run types:
+
+- backfill
+- daily
+- manual
+- health_check
+- repair
+
+Statuses:
+
+- pending
+- running
+- partially_completed
+- completed
+- failed
+- cancelled
+- deferred_quota
+
+## market_data_ingestion_items
+
+Fields:
+
+- id
+- ingestionRunId
+- symbol
+- status
+- creditsUsed
+- recordsReceived
+- recordsInserted
+- recordsUpdated
+- latestTradeDate
+- errorCode
+- errorMessage
+- startedAt
+- completedAt
+
+## daily_indicators
+
+Suggested fields:
+
+- id
+- symbol
+- tradeDate
+- sma10
+- sma20
+- sma50
+- sma100
+- sma200
+- ema8
+- ema21
+- rsi14
+- atr14
+- averageVolume20
+- relativeVolume
+- return1d
+- return5d
+- return20d
+- historicalVolatility20
+- distanceFrom52WeekHigh
+- trendScore
+- momentumScore
+- volumeScore
+- riskScore
+- calculationVersion
+- calculatedAt
+
+Unique constraint:
+
+- symbol
+- tradeDate
+- calculationVersion
+
+## daily_analysis_snapshots
+
+Suggested fields:
+
+- id
+- symbol
+- analysisDate
+- marketDataAsOf
+- compositeScore
+- compositeGrade
+- technicalScore
+- momentumScore
+- volumeScore
+- trendScore
+- riskScore
+- conditionsPassed
+- conditionsFailed
+- setupType
+- summary
+- strengths
+- risks
+- dataProvider
+- modelVersion
+- calculationVersion
+- accessScope
+- generatedAt
+- publishedAt
+- isCurrent
+
+Access scopes:
+
+- internal
+- external_trial
+- external_paid
+
+While license mode is prelaunch, generate internal snapshots only.
+
+Do not generate or publish external trial snapshots.
+
+# Phase 9: Historical Backfill
+
+Create an admin-only historical backfill workflow.
+
+Initial behavior:
+
+- Default to two years
+- Allow up to five years where supported
+- Keep backfill depth configurable per symbol
+- Process symbols sequentially or in quota-safe batches
+- Respect 7-credit-per-minute safety limit
+- Respect 750-credit-per-day safety limit
+- Upsert records safely
+- Avoid duplicate rows
+- Resume after interruption
+- Record each symbol result
+- Permit corrected historical data updates
+- Record corrections to previously stored bars
+- Do not erase older valid history when a request returns fewer rows
+- Do not backfill every supported market automatically
+- Process only explicitly enabled symbols
+
+If Twelve Data supports a sufficiently large output size for a single symbol request, use one request per symbol where practical.
+
+Do not make one request per date.
+
+# Phase 10: Daily Scheduled Ingestion
+
+Create a daily scheduled job.
+
+Recommended schedule:
+
+- After 7:00 p.m. America/New_York
+- On expected US trading days
+
+Do not assume market data is finalized immediately at 4:00 p.m.
+
+Workflow:
+
+1. Acquire a distributed job lock.
+2. Load enabled symbols.
+3. Check current credit budget.
+4. Determine each symbol’s latest stored date.
+5. Request a small recent history window to capture new or corrected bars.
+6. Normalize the provider response.
+7. Validate all bars.
+8. Upsert new or corrected records.
+9. Recalculate affected indicators.
+10. Generate internal daily analysis snapshots.
+11. Run internal Opportunity Radar.
+12. Run internal Analysis Conditions.
+13. Update Probability Engine daily factors.
+14. Preserve the previous valid snapshot until the new snapshot passes validation.
+15. Mark the new snapshot current.
+16. Record the ingestion result.
+17. Release the distributed lock.
+18. Notify admins on repeated or material failures.
+
+Handle:
+
+- Weekends
+- US market holidays
+- Delayed data publication
+- Provider outages
+- Partial failures
+- Duplicate job starts
+- Corrected historical bars
+
+# Phase 11: Data Validation
+
+Validate every bar before storage or publication.
+
+Required checks:
+
+- Requested symbol matches returned symbol
+- Trade date is valid
+- Trade date is not in the future
+- Open is greater than zero
+- High is greater than zero
+- Low is greater than zero
+- Close is greater than zero
+- High >= open
+- High >= close
+- High >= low
+- Low <= open
+- Low <= close
+- Low <= high
+- Volume >= 0
+- No duplicate date for the same symbol and provider
+- Latest daily bar represents a completed session
+- Large price jumps are flagged for potential splits
+- Missing expected sessions are flagged
+- Adjusted and unadjusted values are not mixed silently
+- Numeric fields are finite and parseable
+
+Invalid records must:
+
+- Be rejected
+- Be logged
+- Not update current analysis snapshots
+- Not replace a previous valid bar
+
+# Phase 12: Internal Indicator Calculation
+
+Calculate indicators internally from stored daily bars.
+
+Initial indicators:
+
+- SMA 10
+- SMA 20
+- SMA 50
+- SMA 100
+- SMA 200
+- EMA 8
+- EMA 21
+- RSI 14
+- ATR 14
+- Average volume 20
+- Relative volume
+- 1-day return
+- 5-day return
+- 20-day return
+- 20-day historical volatility
+- Distance from 52-week high
+- Trend score
+- Momentum score
+- Volume score
+- Historical risk score
+
+Requirements:
+
+- Deterministic calculations
+- Explicit null handling when insufficient history exists
+- Versioned calculation logic
+- Unit tests against known values
+- Recalculate only affected date ranges when possible
+- Do not mix indicator versions silently
+- Do not call Twelve Data indicator endpoints unless explicitly enabled later
+
+# Phase 13: Central Access-Control Service
+
+Create a central server-side authorization function such as:
+
+canAccessTwelveDataBackedAnalysis({
+  user,
+  environment,
+  feature,
+  requestedScope
+})
+
+Do not scatter inconsistent license checks across the application.
+
+## Prelaunch access rules
+
+When:
+
+TWELVE_DATA_LICENSE_MODE=prelaunch
+
+Allow only:
+
+- Admin role
+- Internal employee role
+- Internal tester role
+- Explicitly allowlisted account
+- Approved pre-launch testing account
+
+Deny:
+
+- Anonymous users
+- Public trial users
+- Open beta users
+- Paid external users
+- Normal customer accounts
+
+A user being on a Stripe trial must not automatically grant access in prelaunch mode.
+
+## External access rules
+
+When:
+
+TWELVE_DATA_LICENSE_MODE=external
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=true
+
+Then evaluate normal application rules:
+
+- Subscription status
+- Trial status
+- Role
+- Account status
+- Feature flag
+- Product entitlement
+
+Enforce access checks on:
+
+- Daily analysis endpoints
+- Opportunity Radar endpoints
+- Analysis Conditions
+- Probability Engine
+- Grow Mode
+- Income Mode underlying analysis
+- Trade Finder
+- Watchlists
+- Saved candidate analysis
+- AI summaries
+- CongressFlow enrichment
+- Emails
+- Push notifications
+- Exports
+- Reports
+- Partner dashboards
+- White-label experiences
+
+Do not return raw data to unauthorized users.
+
+Safe denial message:
+
+“Daily market analysis is not currently available for this account.”
+
+Do not expose internal licensing configuration to end users.
+
+# Phase 14: User Modes
+
+Retain two customer-facing modes:
+
+## Analysis Mode
+
+For users without a connected supported brokerage.
+
+In the future, after Venture activation, Analysis Mode may show:
+
+- Historical daily market analysis
+- Data through the previous completed session
+- Curated-symbol opportunities
+- Daily Analysis Conditions
+- Daily Probability Engine factors
+- Watchlists
+- Saved candidates
+- CongressFlow context
+- AI summaries
+
+During prelaunch mode, only authorized internal or allowlisted test accounts may see Twelve Data-backed Analysis Mode.
+
+External users must not see placeholder Twelve Data results.
+
+## Connected Broker Mode
+
+For users with a supported brokerage connection.
+
+Provides:
+
+- Broker-entitled quotes
+- Account balances
+- Buying power
+- Positions
+- Options chains
+- Broker previews
+- InstaTrade™
+- Position Protection
+
+Connected Broker Mode should prefer broker data for current, account-specific, or executable workflows.
+
+# Phase 15: Daily Analysis Mode UI
+
+Create or update an internal feature called:
+
+Daily Analysis Mode
+
+Show only to authorized pre-launch testers for now.
+
+Display:
+
+- Data source type: Historical Daily Data
+- Market data through date
+- Latest available completed-session close
+- Candidate grade
+- Conditions passed
+- Technical score
+- Momentum score
+- Volume score
+- Historical risk score
+- Main strengths
+- Main risks
+- Data disclaimer
+- Attribution component
+
+Required disclosure:
+
+“Market analysis is based on historical daily data through the previous completed trading session. It does not reflect current intraday prices or market conditions.”
+
+Candidate disclosure:
+
+“This candidate was generated using data available through [DATE]. Prices and conditions may have changed.”
+
+Never call stored daily data:
+
+- Live price
+- Current price
+- Real-time quote
+- Intraday price
+
+Use:
+
+- Latest available daily close
+- Previous completed session close
+- Historical data through [DATE]
+
+# Phase 16: Homepage Integration
+
+For authorized internal pre-launch users, update the homepage to show a Daily Opportunities section.
+
+Show three to five candidates.
+
+Each card may contain:
+
+- Symbol
+- Setup type
+- Composite grade
+- Market-data-as-of date
+- Conditions passed
+- Main strength
+- Main warning
+- Latest completed-session close
+- Save action
+- Add to Watchlist
+- Connect Broker
+
+Do not show:
+
+- Paper Trade
+- Simulate Trade
+- Live order values based on stored prices
+
+For external users during prelaunch mode, hide the Twelve Data-backed section or show a generic unavailable state.
+
+# Phase 17: Opportunity Radar Integration
+
+Update Opportunity Radar to accept normalized daily data.
+
+Add a data-source label:
+
+- Daily Historical Data
+- Broker Data
+
+Twelve Data-backed internal results should include:
+
+- Symbol
+- Market-data-as-of date
+- Setup type
+- Composite score
+- Composite grade
+- Conditions passed
+- Conditions failed
+- Technical score
+- Momentum score
+- Volume score
+- Trend score
+- Historical risk score
+- Main strength
+- Main warning
+
+Do not describe historical daily results as live trade signals.
+
+Do not automatically transfer a historical candidate into a live order.
+
+# Phase 18: Analysis Conditions Integration
+
+Use stored daily bars and internally calculated indicators for supported conditions.
+
+Examples:
+
+- Price above SMA 20
+- Price above SMA 50
+- Price above SMA 200
+- SMA 50 above SMA 200
+- RSI within threshold
+- Volume expansion
+- Relative volume
+- Near 52-week high
+- ATR risk
+- Trend consistency
+- Price contraction
+- Breakout proximity
+- Relative strength
+- Momentum persistence
+
+For each condition display:
+
+- Condition name
+- Current historical value
+- Threshold
+- Passed or failed
+- Explanation
+- Market-data-as-of date
+
+Do not present the result as reflecting the current intraday market.
+
+# Phase 19: Probability Engine Integration
+
+Use available daily factors:
+
+- Technical
+- Momentum
+- Volume
+- Trend
+- Historical risk
+
+Display unavailable factors explicitly.
+
+Example:
+
+- Technical: 86
+- Momentum: 79
+- Volume: 72
+- Trend: 84
+- Historical Risk: 75
+- Realtime: Unavailable in Daily Analysis Mode
+- Options Data: Requires broker connection
+
+Do not substitute previous-day data for realtime factors.
+
+Do not label a composite score as a guaranteed probability of profit.
+
+Use:
+
+- Composite score
+- Scenario grade
+- Setup quality
+- Conditions matched
+
+# Phase 20: Grow Mode Integration
+
+Allow authorized pre-launch testers to use daily stored data in Grow Mode.
+
+Inputs may include:
+
+- Capital intended for the search
+- Growth objective
+- Preferred maximum risk
+- Holding period
+- Stocks or options interest
+
+Outputs may include:
+
+- Daily candidate scenarios
+- Position-size illustration based on previous close
+- ATR-based risk illustration
+- Trend analysis
+- Momentum analysis
+- Conditions matched
+- Main risks
+- Connect Broker action
+
+Required disclosure:
+
+“Illustration based on the previous completed trading session. Current prices may differ.”
+
+Before live order review:
+
+1. Require supported broker connection.
+2. Fetch current broker-entitled quote.
+3. Refresh balances and buying power.
+4. Refresh positions.
+5. Recalculate quantity.
+6. Recalculate risk.
+7. Revalidate the strategy.
+8. Rebuild the InstaTrade™ ticket.
+9. Require explicit user review.
+
+Never carry stored Twelve Data prices directly into a live order.
+
+# Phase 21: Income Mode Restrictions
+
+Daily stock data alone is insufficient for actionable options analysis.
+
+For authorized Analysis Mode users, allow:
+
+- Underlying trend analysis
+- Historical volatility
+- Income-strategy education
+- Covered-call education
+- Cash-secured-put education
+- Defined-risk spread education
+- General underlying candidates to review after broker connection
+
+Do not provide using Twelve Data daily stock bars alone:
+
+- Current option premiums
+- Current bid/ask
+- Current strikes as executable selections
+- Current Greeks
+- Current implied volatility
+- Current open interest
+- Current probability of assignment
+- Live options order tickets
+
+Display:
+
+“Connect a supported brokerage account to retrieve the current options chain and evaluate available strategy structures.”
+
+# Phase 22: Trade Finder Integration
+
+For authorized pre-launch users without a broker, Trade Finder may use daily data for:
+
+- Symbol selection
+- Directional analysis
+- Trend filters
+- Momentum filters
+- Historical volatility
+- Daily setup types
+- Risk illustrations
+- Save candidate
+- Add to watchlist
+- Connect Broker
+
+Do not create executable options orders without current broker data.
+
+# Phase 23: CongressFlow Enrichment
+
+Allow daily bars to enrich CongressFlow internally.
+
+For congressional disclosures, calculate where possible:
+
+- Closing price on reported transaction date
+- Closing price on disclosure date
+- Latest available daily close
+- Price movement between transaction and disclosure
+- Reporting delay
+- Technical context on disclosure date
+- Trend context after disclosure
+
+Required disclosure:
+
+“Congressional transaction disclosures may be delayed, amended, incomplete, or range-based. They are not trading signals or recommendations.”
+
+Do not expose Twelve Data-backed CongressFlow enrichment externally until external display is enabled.
+
+# Phase 24: AI Analysis
+
+Allow AI-generated summaries from structured daily analytics.
+
+Inputs should be structured and minimized:
+
+- Symbol
+- Market-data-as-of date
+- Setup type
+- Scores
+- Conditions passed
+- Conditions failed
+- Trend metrics
+- Volume metrics
+- Risk metrics
+- Relevant CongressFlow context
+- Relevant licensed news context
+
+AI summaries must:
+
+- State the data date
+- Avoid claiming real-time awareness
+- Avoid guaranteeing outcomes
+- Avoid giving direct personalized investment advice
+- Avoid describing the candidate as suitable for the user unless based on explicit saved preferences
+- Identify limitations
+- Mention when options data is unavailable
+- Avoid inventing prices or indicators
+- Be stored with model version and source-data version
+
+During prelaunch mode, AI summaries based on Twelve Data must only be available to authorized testers.
+
+# Phase 25: Attribution
+
+Build a reusable Twelve Data attribution component.
+
+When external display is eventually enabled, use wording such as:
+
+“Historical daily market data provided by Twelve Data. Technical analysis, scores, rankings, and AI-generated insights are produced by VCP Trader AI.”
+
+Possible Data Sources section:
+
+- Historical daily market data: Twelve Data
+- Congressional disclosures: CongressFlow using official public filings
+- News data: configured news provider
+- Analysis and scoring: VCP Trader AI
+
+Requirements:
+
+- Attribution must be visible where required.
+- Keep attribution configurable.
+- Support future exchange-specific attribution.
+- Do not imply Twelve Data created VCP Trader’s rankings or AI analysis.
+- Keep attribution enabled in authorized pre-launch testing so the final UI is tested before launch.
+
+# Phase 26: Broker Transition and InstaTrade™
+
+When a historical daily candidate transitions toward live execution:
+
+1. Require authentication.
+2. Require connected supported brokerage.
+3. Verify active broker token.
+4. Retrieve current broker quote.
+5. Retrieve account balances.
+6. Retrieve buying power.
+7. Retrieve positions.
+8. Retrieve options chain when applicable.
+9. Recalculate all price-sensitive values.
+10. Re-run server guardrails.
+11. Revalidate candidate conditions where applicable.
+12. Build a new InstaTrade™ ticket.
+13. Clearly show that live broker data replaced historical analysis data.
+14. Require order-specific acknowledgment.
+15. Require explicit Send to Broker action.
+
+Do not send orders using Twelve Data historical prices.
+
+Do not allow AI, voice, Opportunity Radar, or TradingView to bypass user review.
+
+# Phase 27: Admin Market Data Dashboard
+
+Add a Market Data section to the admin portal.
+
+Display:
+
+- Provider
+- Current plan name
+- License mode
+- External display enabled
+- API connection status
+- Credits used this minute
+- Minute safety threshold
+- Credits used today
+- Daily safety threshold
+- Last successful request
+- Last failed request
+- Last ingestion run
+- Last backfill run
+- Latest data date by symbol
+- Missing bars
+- Enabled symbols
+- Internal analysis enabled
+- Future trial enabled
+- Ingestion failures
+- Attribution enabled
+- Current environment
+
+Admin actions:
+
+- Test Twelve Data connection
+- Refresh one symbol
+- Run daily ingestion
+- Start backfill
+- Pause ingestion
+- Resume ingestion
+- Add symbol
+- Disable symbol
+- Change backfill depth
+- View ingestion logs
+- Export ingestion logs
+- View credit usage
+- View licensing configuration
+- View external-display readiness checklist
+
+Do not allow an admin UI click alone to enable external display.
+
+External display requires deployment configuration:
+
+TWELVE_DATA_LICENSE_MODE=external
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=true
+
+# Phase 28: External Launch Readiness Checklist
+
+Add an admin-only checklist for upgrading from Basic/prelaunch to Venture/external.
+
+Checklist:
+
+- Twelve Data Venture plan active
+- Written external-display approval retained
+- Plan name updated
+- License mode updated to external
+- External display environment variable enabled
+- Attribution reviewed
+- Exchange-specific attribution reviewed
+- External endpoints tested
+- Trial user access tested
+- Paid user access tested
+- Unauthorized user denial tested
+- Data-date disclosures present
+- Current-price terminology removed
+- Broker refresh before order review verified
+- Privacy policy updated if needed
+- Terms and disclosures updated
+- Production monitoring enabled
+
+Do not automatically enable external display after a billing-plan change.
+
+Require an explicit deployment configuration update.
+
+# Phase 29: API Endpoints
+
+Follow existing application conventions.
+
+Possible admin endpoints:
+
+GET /api/admin/market-data/status
+POST /api/admin/market-data/test
+POST /api/admin/market-data/refresh/:symbol
+POST /api/admin/market-data/backfill
+POST /api/admin/market-data/ingest-daily
+GET /api/admin/market-data/runs
+GET /api/admin/market-data/runs/:id
+GET /api/admin/market-data/symbols
+POST /api/admin/market-data/symbols
+PATCH /api/admin/market-data/symbols/:id
+GET /api/admin/market-data/license
+PATCH /api/admin/market-data/license
+
+Possible analysis endpoints:
+
+GET /api/daily-analysis/opportunities
+GET /api/daily-analysis/symbol/:symbol
+GET /api/daily-analysis/conditions/:symbol
+GET /api/daily-analysis/history/:symbol
+POST /api/daily-analysis/summary/:symbol
+
+Requirements:
+
+- Authenticate all endpoints appropriately.
+- Authorize using the central Twelve Data access service.
+- Validate symbols.
+- Validate dates.
+- Add pagination where needed.
+- Rate-limit user-facing endpoints.
+- Do not return provider credentials.
+- Do not return internal license notes to normal users.
+- Record data-as-of timestamps.
+
+# Phase 30: Error Handling and Resilience
+
+Handle:
+
+- Invalid API key
+- Expired or revoked API key
+- Quota exceeded
+- Minute limit reached
+- Daily limit reached
+- Provider outage
+- Timeout
+- DNS failure
+- Unsupported symbol
+- Empty result
+- Malformed payload
+- Missing latest daily bar
+- Stale data
+- Database failure
+- Partial ingestion failure
+- Duplicate job
+- Worker crash
+- Calculation failure
+- AI-summary failure
+- License-mode misconfiguration
+
+Behavior:
+
+- Do not publish partial invalid analysis.
+- Keep the last valid snapshot active.
+- Mark the displayed data date clearly.
+- Notify admins after repeated failures.
+- Allow individual-symbol failures without discarding successful symbols.
+- Do not retry endlessly.
+- Do not exceed configured credit limits.
+- Log safe structured error details.
+- Redact secrets.
+
+# Phase 31: Security
+
+Requirements:
+
+- Keep API key server-side.
+- Use existing secret storage.
+- Redact credentials in logs.
+- Restrict admin endpoints.
+- Validate all user inputs.
+- Normalize ticker symbols.
+- Reject arbitrary URLs.
+- Prevent SSRF.
+- Add rate limits.
+- Add CSRF protection where relevant.
+- Add audit logs for manual ingestion and license changes.
+- Use distributed locks for ingestion.
+- Prevent external users from bypassing backend gates.
+- Do not trust frontend plan or role fields.
+- Do not store the API key in the database unless encrypted and required.
+- Do not expose Twelve Data raw responses unnecessarily.
+- Do not log full provider request URLs containing keys.
+
+# Phase 32: Testing
+
+Add comprehensive tests.
+
+## Twelve Data client
+
+- Successful time-series response
+- Numeric parsing
+- Empty response
+- Unsupported symbol
+- Invalid API key
+- Rate-limit error
+- Provider error payload
+- Timeout
+- Retry behavior
+- No retry for permanent failure
+- API key redaction
+
+## Credit manager
+
+- One-credit request
+- Multi-symbol credit calculation
+- Seven-credit minute safety limit
+- Eight-credit provider limit protection
+- Daily 750-credit safety limit
+- Daily 800-credit provider limit protection
+- Minute reset
+- Daily reset
+- Retry accounting
+- Concurrent reservation
+- Multi-instance behavior
+- Deferred request
+
+## Backfill
+
+- Initial backfill
+- Two-year history
+- Five-year history
+- Duplicate records
+- Corrected records
+- Resume after interruption
+- Quota deferral
+- Partial symbol failure
+- Invalid bar rejection
+
+## Daily ingestion
+
+- New bar
+- No new bar
+- Corrected previous bar
+- Weekend
+- Market holiday
+- Delayed provider publication
+- Duplicate job
+- Partial failure
+- Previous snapshot preserved
+
+## Indicators
+
+- SMA
+- EMA
+- RSI
+- ATR
+- Average volume
+- Relative volume
+- Returns
+- Historical volatility
+- 52-week high distance
+- Insufficient history
+- Version consistency
+
+## Licensing access
+
+- Disabled mode denies everyone
+- Prelaunch mode allows admin
+- Prelaunch mode allows internal role
+- Prelaunch mode allows allowlisted tester
+- Prelaunch mode denies external trial user
+- Prelaunch mode denies external paid user
+- Prelaunch mode denies anonymous user
+- External mode still requires external-display flag
+- External mode honors subscription rules
+- Frontend cannot bypass backend restrictions
+- Email generation respects license mode
+- Push notification generation respects license mode
+- Export respects license mode
+
+## Daily Analysis Mode
+
+- Data-as-of date displayed
+- Previous close terminology used
+- No live-price terminology
+- Attribution displayed
+- Unavailable realtime factors displayed
+- Connect Broker CTA shown
+- External user denied during prelaunch
+
+## Broker transition
+
+- Broker required before order review
+- Current quote refresh required
+- Buying power refresh required
+- Historical price not carried into ticket
+- Guardrails rerun
+- Explicit user confirmation required
+
+## Admin
+
+- Provider status
+- Credit usage
+- Manual refresh
+- Backfill
+- Daily ingestion
+- Symbol management
+- License display
+- External enablement blocked without environment flags
+- Audit log created
+
+# Phase 33: Implementation Order
+
+Perform the work in this order:
+
+1. Audit the existing application.
+2. Produce an architecture and implementation summary.
+3. Add environment-variable configuration.
+4. Add license-mode configuration.
+5. Create the provider-neutral daily-data interface.
+6. Build the secure Twelve Data client.
+7. Build the persistent credit manager.
+8. Add or update database schemas.
+9. Add curated symbol administration.
+10. Build historical backfill.
+11. Build daily scheduled ingestion.
+12. Add validation.
+13. Add internal indicator calculations.
+14. Build the central access-control service.
+15. Add the admin Market Data dashboard.
+16. Add internal Daily Analysis Mode.
+17. Integrate Opportunity Radar.
+18. Integrate Analysis Conditions.
+19. Integrate Probability Engine.
+20. Integrate Grow Mode.
+21. Add Income Mode restrictions.
+22. Integrate Trade Finder.
+23. Add CongressFlow enrichment.
+24. Add AI-summary support.
+25. Add attribution.
+26. Add broker transition safeguards.
+27. Add external launch-readiness checklist.
+28. Add automated tests.
+29. Run migrations.
+30. Run unit tests.
+31. Run integration tests.
+32. Run the production build.
+33. Verify existing broker features still work.
+34. Provide a final implementation report.
+
+# Important Constraints
+
+- Do not rebuild VCP Trader AI.
+- Do not remove working broker integrations.
+- Do not create customer-facing paper trading.
+- Do not expose Twelve Data data to external users while in prelaunch mode.
+- Do not expose Twelve Data-derived analytics to external users while in prelaunch mode.
+- Do not use WebSockets.
+- Do not expose the API key.
+- Do not make API requests per user page load.
+- Do not label historical daily data as current or live.
+- Do not use stored Twelve Data pricing to submit an order.
+- Do not create live options structures without current broker data.
+- Do not weaken InstaTrade™ confirmation requirements.
+- Do not weaken server-side trade guardrails.
+- Do not allow AI or voice commands to submit an order.
+- Do not allow TradingView to create unrestricted entry orders.
+- Do not perform destructive migrations without preserving data.
+- Reuse existing services, components, tables, queues, and coding conventions.
+- Use TypeScript types and schema validation.
+- Add loading, error, empty, and stale-data states.
+- Make changes incrementally.
+- Stop and report before destructive architectural changes.
+
+# Final Deliverables
+
+After implementation, provide:
+
+1. Existing architecture discovered
+2. Files changed
+3. Database migrations created
+4. Environment variables required
+5. Twelve Data endpoints used
+6. Provider-neutral interface created
+7. Credit-management implementation
+8. Curated symbols configured
+9. Historical backfill behavior
+10. Daily ingestion behavior
+11. Validation rules
+12. Indicator calculations
+13. License-mode behavior
+14. Pre-launch access-control behavior
+15. Admin dashboard changes
+16. Daily Analysis Mode changes
+17. Opportunity Radar changes
+18. Analysis Conditions changes
+19. Probability Engine changes
+20. Grow Mode changes
+21. Income Mode restrictions
+22. Trade Finder changes
+23. CongressFlow enrichment
+24. AI-summary implementation
+25. Attribution implementation
+26. Broker-transition safeguards
+27. Tests added
+28. Test results
+29. Production build result
+30. Remaining risks
+31. Manual deployment steps
+32. Required scheduled jobs
+33. Required database setup
+34. Steps required before upgrading to Venture
+35. Exact configuration changes required after upgrading to Venture
+
+Do not enable external user access during this implementation.
+
+The system must remain in:
+
+TWELVE_DATA_LICENSE_MODE=prelaunch
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=false
+
+until Sunfish Technologies LLC upgrades to the Twelve Data Venture Plan and explicitly changes the production deployment configuration.

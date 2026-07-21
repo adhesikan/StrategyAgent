@@ -84,12 +84,12 @@ export function HelpAssistant() {
       {createPortal(
         <Button
           size="icon"
-          className="fixed z-50 h-11 w-11 rounded-full shadow-lg"
+          className="fixed z-50 h-11 w-11 rounded-full shadow-lg ring-2 ring-background"
           style={{
             right: "max(1rem, env(safe-area-inset-right))",
-            bottom: "max(1.25rem, env(safe-area-inset-bottom))",
+            top: "max(4.5rem, calc(env(safe-area-inset-top) + 4.5rem))",
             left: "auto",
-            top: "auto",
+            bottom: "auto",
           }}
           onClick={() => setOpen(true)}
           aria-label="Open help assistant"

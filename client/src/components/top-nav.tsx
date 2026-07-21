@@ -1,6 +1,9 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Loader2, LogOut, User, Bell, HelpCircle, Sparkles } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { LANDING_PAGE_OPTIONS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -168,6 +171,56 @@ function AlertBell() {
   );
 }
 
+// Menu item to pin the page the user is currently on as their default
+// landing page after login. Only shown when the current path is one of the
+// approved landing pages; shows a check when it's already the default.
+function SetDefaultPageItem() {
+  const [location] = useLocation();
+  const { toast } = useToast();
+  const { data: settings } = useQuery<{ defaultLandingPage?: string }>({
+    queryKey: ["/api/user/settings"],
+  });
+  const option = LANDING_PAGE_OPTIONS.find((o) => o.value === location);
+  const isDefault = option && settings?.defaultLandingPage === option.value;
+
+  const mutation = useMutation({
+    mutationFn: async (path: string) => {
+      const res = await apiRequest("PUT", "/api/user/settings", { defaultLandingPage: path });
+      return res.json();
+    },
+    onSuccess: (_data, path) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
+      const label = LANDING_PAGE_OPTIONS.find((o) => o.value === path)?.label ?? path;
+      toast({ title: "Default page updated", description: `${label} will now open when you log in.` });
+    },
+    onError: () => {
+      toast({ title: "Couldn't update default page", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
+  if (!option) return null;
+
+  return (
+    <DropdownMenuItem
+      onClick={(e) => {
+        e.preventDefault();
+        if (!isDefault && !mutation.isPending) mutation.mutate(option.value);
+      }}
+      disabled={mutation.isPending}
+      data-testid="menu-set-default-page"
+    >
+      {mutation.isPending ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      ) : isDefault ? (
+        <Check className="mr-2 h-4 w-4 text-emerald-500" />
+      ) : (
+        <Pin className="mr-2 h-4 w-4" />
+      )}
+      {isDefault ? `${option.label} is your default page` : `Make ${option.label} my default page`}
+    </DropdownMenuItem>
+  );
+}
+
 function UserMenu() {
   const { user, logout, isLoggingOut } = useAuth();
   if (!user) return null;
@@ -195,6 +248,7 @@ function UserMenu() {
           </p>
         </div>
         <DropdownMenuSeparator />
+        <SetDefaultPageItem />
         <DropdownMenuItem asChild>
           <Link href="/settings" className="flex items-center gap-2" data-testid="menu-link-settings">
             <User className="h-4 w-4" /> Settings

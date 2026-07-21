@@ -3,33 +3,37 @@ import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Sparkles, Loader2, ArrowLeft, ArrowRight } from "lucide-react";
+import { Check, Sparkles, Loader2, ArrowLeft, ArrowRight, Info } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePlan } from "@/context/PlanContext";
+import { useBranding } from "@/hooks/use-branding";
 
-const PLAN_FEATURES: string[] = [
-  "Daily AI stock ideas",
-  "Daily AI options ideas",
-  "Grow, Income, Trade, and Markets modes",
-  "Opportunity Radar / Top Opportunities",
-  "News sentiment and market context",
-  "Watchlist intelligence",
-  "Full market analysis during trial",
-  "Broker connection support",
-  "Tradier and TradeStation support",
-  "Live market data through connected brokerage account",
-  "Options chains through connected brokerage account where supported",
-  "InstaTrade™ order review and submission",
-  "Journal and results tracking",
-  "Built-in risk controls",
-  "Analysis-to-live workflow",
-];
+function planFeatures(instaTradeName: string): string[] {
+  return [
+    "Daily AI-ranked stock candidates",
+    "Historical daily market analysis during trial",
+    "Grow, Income, Trade, and Markets modes",
+    "Opportunity Radar and Analysis Conditions",
+    "News sentiment and market context",
+    "Watchlist intelligence",
+    "Congress Activity",
+    "AI-assisted options strategy insights",
+    "Tradier and TradeStation connections",
+    "Current market data through connected brokerages",
+    "Options chains through supported brokerages",
+    `${instaTradeName} order review and submission`,
+    "Position and results tracking",
+    "Built-in risk controls",
+    "Analysis-to-live workflow",
+  ];
+}
 
 export default function PricingPage() {
   const [, navigate] = useLocation();
   const { plan: currentPlan } = usePlan();
   const { toast } = useToast();
+  const { instaTradeName, instaTradeFooterNotice } = useBranding();
   const isCurrent = currentPlan !== "free";
 
   useEffect(() => {
@@ -95,7 +99,7 @@ export default function PricingPage() {
           Simple Pricing. Bring Your Broker.
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Start your trial with full market analysis and AI-ranked candidates. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
+          Start with a 14-day trial featuring historical daily market analysis, AI-ranked stock candidates, market intelligence, and research tools. Connect a supported brokerage account to unlock current broker-authorized market data, account context, options chains where available, and self-directed {instaTradeName} order review and submission.
         </p>
       </div>
 
@@ -104,29 +108,52 @@ export default function PricingPage() {
           className="relative rounded-2xl border-2 border-primary bg-card/40 backdrop-blur p-6 md:p-8 flex flex-col gap-5 shadow-xl"
           data-testid="card-plan-pro"
         >
-          <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-            <Sparkles className="h-3 w-3 mr-1" /> 14-Day Free Trial
+          <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-founding-member">
+            <Sparkles className="h-3 w-3 mr-1" /> Founding Member Access
           </Badge>
 
           <div className="text-center pt-2">
-            <h3 className="font-bold text-2xl" data-testid="text-plan-name">VCP Trader AI Pro</h3>
+            <div className="flex justify-center">
+              <Badge variant="secondary" data-testid="badge-free-trial">14-Day Free Trial</Badge>
+            </div>
+            <h3 className="font-bold text-2xl mt-3" data-testid="text-plan-name">VCP Trader AI Pro</h3>
             <div className="mt-3 flex items-baseline justify-center gap-1">
-              <span className="text-5xl font-bold">$99</span>
+              <span className="text-5xl font-bold" data-testid="text-pro-price">$99</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              One simple plan. Everything you need to research, review, and submit self-directed stock and options orders.
+            <p className="text-sm font-medium text-primary mt-2" data-testid="text-founding-price-label">
+              Founding Member Price
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Lock in this price while your subscription remains continuously active.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
+              Planned standard price: $149/month
+            </p>
+            <p className="text-sm text-muted-foreground mt-3">
+              One complete plan for market research, AI-ranked opportunities, broker-connected analysis, and self-directed stock and options order review.
             </p>
           </div>
 
           <ul className="space-y-2 text-sm">
-            {PLAN_FEATURES.map((h) => (
+            {planFeatures(instaTradeName).map((h) => (
               <li key={h} className="flex items-start gap-2">
-                <Check className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                <Check className="h-4 w-4 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
                 <span>{h}</span>
               </li>
             ))}
           </ul>
+
+          <div
+            className="rounded-lg border border-border bg-muted/40 p-3 flex items-start gap-2 text-xs text-muted-foreground"
+            role="note"
+            data-testid="box-trial-disclosure"
+          >
+            <Info className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+            <p>
+              Trial data: Market analysis uses historical daily data through the previous completed trading session. Current quotes, positions, buying power, options-chain data, and order submission require a supported brokerage connection.
+            </p>
+          </div>
 
           {isCurrent ? (
             <Button variant="outline" disabled data-testid="button-current">
@@ -145,9 +172,12 @@ export default function PricingPage() {
                 ) : (
                   <Sparkles className="h-4 w-4 mr-1" />
                 )}
-                Start 14-Day Trial
+                Start Free Trial
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                No broker connection required to explore analysis.
+              </p>
               <Button
                 size="lg"
                 variant="outline"
@@ -168,6 +198,7 @@ export default function PricingPage() {
         <p>
           VCP Trader AI is a software tool for analysis and education. It is not a broker-dealer or investment adviser and does not provide personalized investment advice. You always confirm orders before they're sent.
         </p>
+        <p data-testid="text-trademark-notice">{instaTradeFooterNotice}</p>
       </div>
     </div>
   );

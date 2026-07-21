@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { storage } from "./storage";
 import { insertAlertSchema, insertAlertRuleSchema, insertWatchlistSchema, insertAutomationSettingsSchema, scannerFilters, UserRole, RuleConditionType, PatternStage, StrategyType, userSettingsUpdateSchema } from "@shared/schema";
+import { normalizeTrademarkStatus, buildBrandingInfo } from "@shared/branding";
 import { getUserPlanRecord, setUserTraderPersona } from "./services/billing/userPlan";
 import { registerBillingRoutes } from "./routes/billing";
 import { requireFeature } from "./middleware/planGuard";
@@ -181,6 +182,15 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     return user ? { id: user.id, email: user.email, role: user.role } : null;
   });
   registerBillingRoutes(app, isAuthenticated);
+
+  // Public branding/trademark configuration. The InstaTrade mark symbol is
+  // controlled by the TRADEMARK_INSTATRADE_STATUS env var (pending_registration
+  // | registered) so the switch to ® after the USPTO certificate issues is a
+  // configuration-only change. Defaults safely to pending_registration.
+  app.get("/api/branding", (_req, res) => {
+    const status = normalizeTrademarkStatus(process.env.TRADEMARK_INSTATRADE_STATUS);
+    res.json(buildBrandingInfo(status));
+  });
 
   // Admin AI Agent Test Suite — full router gated by both auth + admin
   // middlewares. Endpoints: /questions, /runs, /seed, /run, /run-batch,

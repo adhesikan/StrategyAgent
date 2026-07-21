@@ -7,15 +7,18 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePlan } from "@/context/PlanContext";
 import { type PlanId } from "@shared/plans";
+import { useBranding } from "@/hooks/use-branding";
 
-const PRO_FEATURES = [
-  "Daily AI-ranked stock & options ideas",
-  "Live broker-connected market data",
-  "InstaTrade™ one-click order review",
-  "Built-in risk checks & exit protection",
-  "Smart alerts, scanner, and trade journal",
-  "Cancel anytime",
-];
+function proFeatures(instaTradeName: string): string[] {
+  return [
+    "Daily AI-ranked stock candidates",
+    "Current market data through connected brokerages",
+    `${instaTradeName} order review and submission`,
+    "Built-in risk checks & exit protection",
+    "Smart alerts, scanner, and trade journal",
+    "Cancel anytime",
+  ];
+}
 
 interface UpgradeModalProps {
   open: boolean;
@@ -33,6 +36,7 @@ export function UpgradeModal({
 }: UpgradeModalProps) {
   const { plan: currentPlan } = usePlan();
   const { toast } = useToast();
+  const { instaTradeName } = useBranding();
   const isCurrent = currentPlan === "pro";
 
   const checkout = useMutation({
@@ -78,10 +82,11 @@ export function UpgradeModal({
               <span className="text-3xl font-bold">$99</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">14-day free trial · cancel anytime</p>
+            <p className="text-xs font-medium text-primary mt-1">Founding Member Price</p>
+            <p className="text-xs text-muted-foreground mt-0.5">14-day free trial · cancel anytime · planned standard price: $149/month</p>
           </div>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
-            {PRO_FEATURES.map((f) => (
+            {proFeatures(instaTradeName).map((f) => (
               <li key={f} className="flex items-start gap-2">
                 <Check className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
                 <span>{f}</span>
@@ -99,7 +104,7 @@ export function UpgradeModal({
             ) : checkout.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              "Start 14-Day Free Trial"
+              "Start Free Trial"
             )}
           </Button>
         </div>

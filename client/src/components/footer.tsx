@@ -1,8 +1,10 @@
 import { Link } from "wouter";
 import { ShieldAlert } from "lucide-react";
+import { useBranding } from "@/hooks/use-branding";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
+  const { instaTradeFooterNotice } = useBranding();
 
   return (
     <footer className="border-t bg-background/95 mt-auto shrink-0" data-testid="global-footer">
@@ -31,7 +33,8 @@ export function Footer() {
       </div>
       <div className="py-2 px-6 flex items-center justify-between gap-4 text-xs text-muted-foreground flex-wrap">
         <p data-testid="text-copyright">
-          © {currentYear} Sunfish Technologies LLC. All rights reserved.
+          © {currentYear} Sunfish Technologies LLC. All rights reserved.{" "}
+          <span data-testid="text-trademark-notice-footer">{instaTradeFooterNotice}</span>
         </p>
         <nav className="flex items-center gap-3">
           <Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-footer-terms">

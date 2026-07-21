@@ -103,7 +103,8 @@ const SECTIONS: Section[] = [
           </li>
           <li>
             <strong>Single Pro plan with 14-day free trial.</strong> Pricing has been simplified to one
-            plan — <strong>VCP Trader AI Pro at $99/month</strong>, with a 14-day free trial.
+            plan — <strong>VCP Trader AI Pro at $99/month</strong> (Founding Member Price; planned standard
+            price: $149/month), with a 14-day free trial.
           </li>
         </ul>
       </>
@@ -823,7 +824,7 @@ const SECTIONS: Section[] = [
           </div>
           <div>
             <dt className="font-semibold">How much does it cost? Is there a trial?</dt>
-            <dd className="text-muted-foreground">There's one plan — <strong>VCP Trader AI Pro at $99/month</strong> with a <strong>14-day free trial</strong>. No charge until the trial ends; cancel anytime.</dd>
+            <dd className="text-muted-foreground">There's one plan — <strong>VCP Trader AI Pro at $99/month</strong> (Founding Member Price; planned standard price: $149/month) with a <strong>14-day free trial</strong>. No charge until the trial ends; cancel anytime.</dd>
           </div>
           <div>
             <dt className="font-semibold">Why is my "Today's Ideas" tab empty?</dt>

@@ -353,7 +353,7 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
             </Button>
           ) : (
             <Button size="sm" onClick={handleFinish} data-testid="button-mw-finish">
-              Start 14-Day Trial
+              Start Free Trial
               <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           )}

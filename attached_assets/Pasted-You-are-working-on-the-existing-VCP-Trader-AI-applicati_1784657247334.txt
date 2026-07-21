@@ -1,0 +1,775 @@
+You are working on the existing VCP Trader AI application.
+
+Do not rebuild the application from scratch.
+
+First inspect the current pricing page, pricing card component, Stripe setup, trial logic, subscription metadata, legal/footer components, trademark usage, responsive styles, marketing copy, signup flow, onboarding flow, billing settings, emails, and any other location where pricing or InstaTrade branding appears.
+
+Preserve the existing single-plan pricing model unless a change is explicitly requested below.
+
+The goal is to update the VCP Trader AI pricing experience to:
+
+- Keep the active price at $99/month
+- Position $99/month as a Founding Member Price
+- Show a planned standard price of $149/month
+- Retain the 14-day free trial
+- Accurately describe the trial as historical daily market analysis
+- Clarify that live data, brokerage context, options chains, and order submission require a supported brokerage connection
+- Continue using InstaTrade™ until the USPTO registration certificate officially issues
+- Make the InstaTrade trademark symbol configurable so it can later switch to InstaTrade® without code changes
+- Improve trust, clarity, and conversion without using a misleading crossed-out price
+
+# Confirmed Trademark Status
+
+Sunfish Technologies LLC owns the InstaTrade trademark.
+
+The USPTO has accepted the Statement of Use for InstaTrade in Classes 36 and 42, and the mark is entitled to registration.
+
+However, the formal USPTO registration certificate has not yet been issued.
+
+Therefore, the application must currently display:
+
+InstaTrade™
+
+Do not display:
+
+InstaTrade®
+
+until the official registration certificate has been issued.
+
+Build a centralized trademark configuration so the symbol can later be changed from ™ to ® through configuration only.
+
+# Important Pricing Rules
+
+1. Do not display a crossed-out $299 price.
+2. Do not display $149 as a current discounted-from price.
+3. Use:
+
+   Founding Member Price
+
+4. Use:
+
+   Planned standard price: $149/month
+
+5. Keep the active subscription price at:
+
+   $99/month
+
+6. Keep the trial at:
+
+   14 days
+
+7. Do not modify the Stripe price amount unless the current Stripe configuration is not $99/month.
+8. Do not create a new Stripe product or price unless necessary.
+9. Do not break existing subscriptions.
+10. Do not change existing billing IDs without first reporting the impact.
+11. Do not imply that trial users receive live market data without a broker connection.
+12. Do not imply that current options chains are available without a supported brokerage connection.
+13. Do not imply built-in paper trading.
+14. Do not use “Daily AI options ideas” unless current options data is available through a supported broker for that user.
+15. Continue using InstaTrade™ until trademark status is changed to registered.
+16. Do not hardcode ™ or ® throughout the application.
+17. Add a configurable trademark notice in the footer.
+18. Do not create false urgency, countdowns, fake scarcity, or fake savings percentages.
+
+# Phase 1: Audit Before Editing
+
+Before making changes:
+
+1. Locate:
+   - Pricing page route
+   - Pricing card component
+   - Stripe product and price references
+   - Trial duration configuration
+   - Pricing feature arrays
+   - CTA button logic
+   - Checkout route
+   - Billing portal route
+   - Footer and legal notice components
+   - Mobile pricing styles
+   - Trademark helper components, if any
+   - Product constants
+   - Marketing metadata
+2. Search the codebase for:
+   - $99
+   - $149
+   - $299
+   - 14-Day Free Trial
+   - Start 14-Day Trial
+   - Start Free Trial
+   - Full market analysis during trial
+   - Daily AI options ideas
+   - InstaTrade
+   - InstaTrade™
+   - InstaTrade®
+   - VCP Trader AI Pro
+3. Identify whether pricing copy is duplicated across:
+   - Homepage
+   - Pricing page
+   - Signup page
+   - Onboarding
+   - Billing settings
+   - Upgrade modal
+   - Trial banner
+   - Checkout summary
+   - Welcome email
+   - Trial-start email
+   - Trial-ending email
+   - SEO metadata
+   - Open Graph descriptions
+   - Admin subscription pages
+   - User Guide
+   - Legal pages
+4. Identify whether trademark text is duplicated across:
+   - Pricing page
+   - Homepage
+   - Order review
+   - Order confirmation
+   - Navigation
+   - Help
+   - User Guide
+   - Emails
+   - Notifications
+   - Legal pages
+   - Footer
+   - Metadata
+5. Reuse existing design components and styling.
+6. Do not create duplicate pricing logic.
+7. Do not create duplicate trademark logic.
+8. Before changing Stripe IDs or billing behavior, provide a short impact summary.
+
+# Phase 2: Centralized Trademark Configuration
+
+Create a centralized trademark configuration.
+
+Add a server-safe or shared application setting:
+
+TRADEMARK_INSTATRADE_STATUS=pending_registration
+
+Supported values:
+
+- pending_registration
+- registered
+
+Current production value:
+
+pending_registration
+
+Behavior:
+
+If:
+
+TRADEMARK_INSTATRADE_STATUS=pending_registration
+
+Display:
+
+InstaTrade™
+
+Footer notice:
+
+InstaTrade™ is a trademark of Sunfish Technologies LLC.
+
+If:
+
+TRADEMARK_INSTATRADE_STATUS=registered
+
+Display:
+
+InstaTrade®
+
+Footer notice:
+
+InstaTrade® is a registered trademark of Sunfish Technologies LLC.
+
+Requirements:
+
+- Do not hardcode ™ or ® across pages.
+- Create a reusable formatter, helper, or component.
+- Use one canonical product-name function such as:
+  - getInstaTradeDisplayName()
+  - InstaTradeMark
+  - formatTrademark("instatrade")
+- The helper must be usable in:
+  - React components
+  - Server-rendered pages
+  - Emails
+  - Notifications
+  - Metadata
+  - Legal notices
+- If environment configuration is unavailable, default safely to pending_registration.
+- Do not allow normal users to change trademark status.
+- Admin UI may display status but should not override deployment configuration unless the existing settings system is secure and appropriate.
+- Add tests for both trademark states.
+
+# Phase 3: Update the Pricing Page Header
+
+Use this heading:
+
+Simple Pricing. Bring Your Broker.
+
+Use this subtitle:
+
+Start with a 14-day trial featuring historical daily market analysis, AI-ranked stock candidates, market intelligence, and research tools. Connect a supported brokerage account to unlock current broker-authorized market data, account context, options chains where available, and self-directed InstaTrade™ order review and submission.
+
+Important:
+
+- Render “InstaTrade™” using the centralized trademark helper.
+- Do not hardcode the symbol in the text.
+- Keep the subtitle concise enough to remain readable.
+- Use a sensible maximum content width.
+- Preserve the current dark visual style.
+- Do not imply that a broker connection is required to begin the trial.
+
+# Phase 4: Update the Pricing Card Header
+
+Show two separate badges.
+
+## Primary badge
+
+Founding Member Access
+
+## Secondary badge
+
+14-Day Free Trial
+
+Recommended layout:
+
+- Use the existing top ribbon for Founding Member Access
+- Add 14-Day Free Trial as a smaller badge
+- On mobile, stack or wrap cleanly
+- Prevent overlap with card borders
+- Preserve accessibility contrast
+- Keep the card visually premium and uncluttered
+
+# Phase 5: Update the Plan Name and Price
+
+Keep:
+
+VCP Trader AI Pro
+
+Display:
+
+$99 /month
+
+Directly beneath the price add:
+
+Founding Member Price
+
+Then add:
+
+Lock in this price while your subscription remains continuously active.
+
+Then add:
+
+Planned standard price: $149/month
+
+Rules:
+
+- Do not strike through $149
+- Do not label $149 as Regular Price
+- Do not imply $149 is currently being charged
+- Do not show a savings percentage
+- Do not add a countdown timer
+- Do not claim limited quantity unless a real limit exists
+- Keep the price presentation easy to scan
+
+# Phase 6: Update the Plan Description
+
+Replace the current plan description with:
+
+One complete plan for market research, AI-ranked opportunities, broker-connected analysis, and self-directed stock and options order review.
+
+Ensure the description:
+
+- Is centered
+- Wraps cleanly
+- Does not overpromise
+- Does not imply autonomous trading
+- Does not imply investment advice
+
+# Phase 7: Replace the Feature List
+
+Replace the current feature list with:
+
+1. Daily AI-ranked stock candidates
+2. Historical daily market analysis during trial
+3. Grow, Income, Trade, and Markets modes
+4. Opportunity Radar and Analysis Conditions
+5. News sentiment and market context
+6. Watchlist intelligence
+7. Congress Activity
+8. AI-assisted options strategy insights
+9. Tradier and TradeStation connections
+10. Current market data through connected brokerages
+11. Options chains through supported brokerages
+12. InstaTrade™ order review and submission
+13. Position and results tracking
+14. Built-in risk controls
+15. Analysis-to-live workflow
+
+Requirements:
+
+- Preserve the current checkmark style
+- Keep spacing compact but readable
+- Use responsive wrapping
+- Render InstaTrade through the centralized trademark helper
+- Do not repeatedly show ™ after every mention on the same page if a cleaner pattern exists
+- Use the symbol on the first prominent mention in the feature list
+- Do not use “Daily AI options ideas”
+- Do not use “Full market analysis during trial”
+- Do not claim current options prices for users without a broker
+- Do not claim built-in paper trading
+- Do not claim autonomous execution
+
+# Phase 8: Add Trial Data Disclosure
+
+Add a visually distinct but subtle disclosure box above the CTA.
+
+Use this copy:
+
+Trial data: Market analysis uses historical daily data through the previous completed trading session. Current quotes, positions, buying power, options-chain data, and order submission require a supported brokerage connection.
+
+Design requirements:
+
+- Use a muted bordered panel or soft background
+- Add an information icon if consistent with the current design system
+- Do not use alarming colors
+- Keep it visible without requiring a tooltip
+- Ensure mobile wrapping
+- Ensure screen-reader accessibility
+- Do not reference Twelve Data by name in the pricing card unless the product already has a Data Sources section
+
+# Phase 9: Update the CTA
+
+Replace:
+
+Start 14-Day Trial
+
+With:
+
+Start Free Trial
+
+Below the button add:
+
+No broker connection required to explore analysis.
+
+CTA behavior:
+
+- Preserve the existing signup and trial flow
+- Preserve current Stripe checkout behavior
+- Preserve current authentication behavior
+- Do not require broker connection before starting the trial
+- Do not change the 14-day trial duration
+- Do not create a second pricing tier
+- Do not create duplicate checkout sessions
+- Preserve loading, disabled, success, and error states
+
+# Phase 10: Trademark Notice
+
+Add a shared footer notice using the centralized trademark status.
+
+Current status:
+
+InstaTrade™ is a trademark of Sunfish Technologies LLC.
+
+Future registered status:
+
+InstaTrade® is a registered trademark of Sunfish Technologies LLC.
+
+Requirements:
+
+- Use the shared footer or legal footer
+- Show it on the pricing page
+- Prefer showing it site-wide where appropriate
+- Keep it in smaller muted text
+- Preserve copyright, privacy, terms, and legal links
+- Do not claim the mark is registered until the status is configured as registered
+- Do not mention USPTO Statement of Use acceptance in public-facing footer copy
+
+# Phase 11: Stripe and Subscription Verification
+
+Inspect the current Stripe configuration.
+
+Confirm:
+
+- The active recurring price is $99/month
+- The billing interval is monthly
+- The trial is 14 days
+- Existing subscribers remain on their current subscriptions
+- Checkout uses the intended Stripe product and price
+- Billing portal remains functional
+- Webhooks remain functional
+- Trial start and trial end dates are calculated correctly
+
+If Stripe is already correctly configured:
+
+- Do not create a new Stripe product
+- Do not create a new Stripe price
+- Do not modify active price IDs
+- Do not update existing subscriptions
+
+If Stripe is not configured at $99/month:
+
+- Stop and report the current configuration
+- Explain the required billing changes
+- Do not change production billing identifiers without explicit confirmation
+
+The planned $149/month price is marketing copy only.
+
+Do not create or activate a $149 Stripe price unless explicitly requested later.
+
+# Phase 12: Update Duplicate Marketing Copy
+
+Search and update all duplicated pricing copy.
+
+Potential locations:
+
+- Homepage pricing section
+- Pricing route
+- Signup page
+- Onboarding
+- Billing settings
+- Upgrade modal
+- Trial banner
+- Checkout summary
+- Welcome email
+- Trial-start email
+- Trial-ending email
+- Subscription confirmation email
+- SEO title and description
+- Open Graph metadata
+- Admin subscription display
+- User Guide
+- Help center
+- Sales pages
+
+Use consistent language:
+
+- $99/month
+- Founding Member Price
+- Planned standard price: $149/month
+- 14-day free trial
+- Historical daily market analysis during trial
+- Broker connection required for current quotes and execution
+- No broker connection required to begin exploring analysis
+
+Do not show:
+
+- $299 anchor pricing
+- Crossed-out $149 pricing
+- False savings claims
+- Daily AI options ideas
+- Full live market analysis during trial
+- Built-in paper trading
+- Autonomous trading claims
+
+# Phase 13: Update InstaTrade References Across the Application
+
+Search for all hardcoded InstaTrade references.
+
+Update them to use the centralized trademark helper.
+
+Areas to inspect:
+
+- Pricing
+- Homepage
+- Navigation
+- Trade Finder
+- Opportunity cards
+- Order ticket
+- Review Order workflow
+- Order confirmation
+- My Activity
+- Position Protection
+- User Guide
+- Help
+- Broker connection flow
+- Email templates
+- Push notifications
+- Legal pages
+- SEO metadata
+- Open Graph metadata
+- Admin portal
+- Partner dashboard
+
+Guidelines:
+
+- Use the trademark symbol on first prominent mention per page or document
+- Plain “InstaTrade” may be used in subsequent references on the same page if this matches existing legal guidance and keeps the UI clean
+- Footer notice remains authoritative
+- Do not alter database identifiers, API route names, code symbols, or internal feature keys solely to add a trademark symbol
+- Do not put ™ or ® into technical identifiers
+- Only update user-facing text
+
+# Phase 14: Responsive Layout
+
+Ensure the updated pricing experience works on:
+
+- Desktop
+- Tablet
+- Mobile
+- PWA mode
+
+Requirements:
+
+- Price and “/month” remain aligned
+- Badges wrap correctly
+- Feature list does not overflow
+- Disclosure box fits the card
+- CTA remains full-width on mobile
+- No horizontal scrolling
+- Card remains visually balanced
+- Footer notice is readable
+- Planned standard price does not dominate the main price
+- Founding Member Price remains easy to understand
+- Maintain current dark styling
+
+# Phase 15: Accessibility
+
+Ensure:
+
+- Badges have sufficient contrast
+- CTA has an accessible name
+- Check icons are decorative or labeled correctly
+- Disclosure box is readable by screen readers
+- Price is announced logically
+- Focus states remain visible
+- No information is conveyed by color alone
+- Trademark symbols do not cause awkward screen-reader output
+- Footer trademark notice is accessible
+- Text remains readable at increased zoom
+
+# Phase 16: Analytics
+
+Preserve existing analytics.
+
+If pricing events exist, verify:
+
+- Pricing page viewed
+- Start Free Trial clicked
+- Checkout started
+- Trial activated
+- Checkout failed
+- Billing portal opened
+
+Update event labels if needed.
+
+Suggested metadata:
+
+- plan: vcp_trader_ai_pro
+- price: 99
+- billing_interval: monthly
+- offer_type: founding_member
+- trial_days: 14
+- planned_standard_price: 149
+
+Do not include sensitive personal information.
+
+Do not create duplicate events.
+
+# Phase 17: Legal and Disclosure Consistency
+
+Verify the pricing page remains consistent with:
+
+- Terms of Service
+- Privacy Policy
+- Investment disclaimer
+- Brokerage disclosures
+- Trial terms
+- Subscription cancellation rules
+- Trademark notices
+
+Do not make legal promises such as:
+
+- Guaranteed access forever
+- Guaranteed permanent pricing regardless of account status
+- Guaranteed investment results
+- Guaranteed execution
+- Guaranteed protection
+
+The phrase:
+
+Lock in this price while your subscription remains continuously active.
+
+must be used only if the billing system and business policy will honor it.
+
+If the application has no mechanism or policy to preserve the founding price, stop and report this before publishing that language.
+
+# Phase 18: Tests
+
+Add or update tests.
+
+## Pricing content
+
+Verify:
+
+- Heading displays
+- Subtitle displays
+- Founding Member Access badge appears
+- 14-Day Free Trial badge appears
+- $99/month appears
+- Founding Member Price appears
+- Planned standard price: $149/month appears
+- $149 is not struck through
+- $299 does not appear
+- Trial disclosure appears
+- Footer trademark notice appears
+- Current InstaTrade symbol is ™
+- Registered symbol does not appear while status is pending_registration
+
+## Trademark configuration
+
+Verify:
+
+- pending_registration returns InstaTrade™
+- pending_registration footer says trademark
+- registered returns InstaTrade®
+- registered footer says registered trademark
+- invalid or missing setting defaults to pending_registration
+- symbols are not hardcoded across the pricing page
+- internal API and route identifiers remain unchanged
+
+## Feature list
+
+Verify:
+
+- Daily AI-ranked stock candidates appears
+- Historical daily market analysis during trial appears
+- Congress Activity appears
+- Daily AI options ideas does not appear
+- Full market analysis during trial does not appear
+- Paper trading does not appear
+
+## CTA
+
+Verify:
+
+- Start Free Trial appears
+- CTA routes to existing signup or checkout flow
+- Trial remains 14 days
+- Broker connection is not required before signup
+
+## Stripe
+
+Verify:
+
+- Checkout uses the current $99 monthly price
+- No $149 Stripe price is created
+- Existing subscription logic remains unchanged
+- Billing portal remains functional
+- Stripe webhooks continue working
+
+## Responsive behavior
+
+Verify:
+
+- Desktop layout
+- Tablet layout
+- Mobile layout
+- No horizontal overflow
+- Disclosure box wraps correctly
+- Badges do not overlap
+- Footer notice remains readable
+
+# Phase 19: Implementation Order
+
+Perform the work in this order:
+
+1. Audit pricing, trademark, and billing architecture.
+2. Identify all duplicate pricing copy.
+3. Identify all user-facing InstaTrade references.
+4. Confirm Stripe price and trial configuration.
+5. Add centralized trademark configuration.
+6. Add trademark helper or component.
+7. Update pricing header.
+8. Update pricing card badges.
+9. Update pricing copy.
+10. Replace plan description.
+11. Replace feature list.
+12. Add trial disclosure.
+13. Update CTA.
+14. Add configurable trademark notice.
+15. Update duplicate marketing copy.
+16. Update user-facing InstaTrade references.
+17. Verify responsive styles.
+18. Verify accessibility.
+19. Update analytics labels if needed.
+20. Add or update tests.
+21. Run test suite.
+22. Run production build.
+23. Provide final implementation report.
+
+# Important Constraints
+
+- Do not rebuild the pricing page.
+- Do not add a $299 anchor price.
+- Do not cross out $149.
+- Do not create false urgency.
+- Do not change the Stripe price from $99 without explicit confirmation.
+- Do not create a $149 Stripe price yet.
+- Do not break existing subscribers.
+- Do not change the 14-day trial.
+- Do not require a broker to start the trial.
+- Do not claim live market data for users without a connected broker.
+- Do not claim current options-chain access without a supported brokerage.
+- Do not add paper-trading claims.
+- Do not claim autonomous trading.
+- Do not display InstaTrade® until registration status is configured as registered.
+- Do not hardcode trademark symbols throughout the application.
+- Do not modify technical identifiers solely for branding.
+- Do not remove existing checkout behavior.
+- Do not remove legal or privacy links.
+- Reuse the existing design system.
+- Maintain current dark styling.
+- Make incremental, testable changes.
+- Stop and report before changing production Stripe identifiers or making destructive architecture changes.
+
+# Final Deliverables
+
+After implementation, provide:
+
+1. Files changed
+2. Pricing components updated
+3. Duplicate pricing copy locations updated
+4. User-facing InstaTrade references updated
+5. Trademark configuration created
+6. Trademark helper or component created
+7. Current trademark status
+8. Footer notice behavior
+9. Stripe configuration verified
+10. Current Stripe product and price behavior
+11. Trial duration verification
+12. Final pricing copy
+13. Feature-list changes
+14. CTA changes
+15. Responsive changes
+16. Accessibility changes
+17. Tests added or updated
+18. Test results
+19. Production build result
+20. Remaining inconsistencies
+21. Manual deployment steps
+22. Environment variable added
+23. Exact future change required after the USPTO registration certificate issues
+
+Do not mark the task complete until the pricing page displays:
+
+- VCP Trader AI Pro
+- $99/month
+- Founding Member Price
+- Planned standard price: $149/month
+- Founding Member Access
+- 14-Day Free Trial
+- Accurate historical-data trial disclosure
+- Start Free Trial CTA
+- InstaTrade™ while status is pending_registration
+- The correct configurable trademark footer notice
+
+while preserving the existing $99 monthly Stripe subscription and 14-day trial behavior.
+
+Current required environment setting:
+
+TRADEMARK_INSTATRADE_STATUS=pending_registration
+
+After the official USPTO registration certificate issues, the only required production configuration change should be:
+
+TRADEMARK_INSTATRADE_STATUS=registered

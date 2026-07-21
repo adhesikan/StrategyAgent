@@ -44,7 +44,9 @@ import {
   Repeat,
   Lock,
   GraduationCap,
+  Info,
 } from "lucide-react";
+import { useBranding } from "@/hooks/use-branding";
 import logoUrl from "@assets/ChatGPT_Image_Jan_1,_2026,_01_38_07_PM_1767292703801.png";
 import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
@@ -56,12 +58,13 @@ import { MarketingOnboardingWizard } from "@/components/marketing-onboarding-wiz
 function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
   const { isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { instaTradeName } = useBranding();
 
   const navLinks = [
     { href: "#features", label: "Features" },
     { href: "#stocks", label: "Stocks" },
     { href: "#options", label: "Options" },
-    { href: "#instatrade", label: "InstaTrade™" },
+    { href: "#instatrade", label: instaTradeName },
     { href: "#pricing", label: "Pricing" },
     { href: "#faq", label: "FAQ" },
   ];
@@ -107,7 +110,7 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
                     }}
                     data-testid="button-start-trial"
                   >
-                    Start 14-Day Trial
+                    Start Free Trial
                   </Button>
                 </>
               )}
@@ -155,7 +158,7 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
                       }}
                       data-testid="button-start-trial-mobile"
                     >
-                      Start 14-Day Trial
+                      Start Free Trial
                     </Button>
                   </>
                 )}
@@ -253,12 +256,13 @@ function MockSetupCard() {
  * HERO
  * --------------------------------------------------------- */
 function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
+  const { instaTradeName } = useBranding();
   const trustBadges = [
     "Stocks + Options",
     "Daily AI Ideas",
     "14-Day Analysis Trial",
     "Broker-Connected Data",
-    "InstaTrade™",
+    instaTradeName,
   ];
 
   return (
@@ -295,7 +299,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
               className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0"
               data-testid="text-hero-subheadline"
             >
-              VCP Trader AI helps self-directed traders discover stock and options opportunities, understand risks, and send reviewed orders through their connected broker with InstaTrade™.
+              VCP Trader AI helps self-directed traders discover stock and options opportunities, understand risks, and send reviewed orders through their connected broker with {instaTradeName}.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
               <Button
@@ -306,7 +310,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
                 }}
                 data-testid="button-hero-trial"
               >
-                Start 14-Day Trial
+                Start Free Trial
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Button
@@ -929,20 +933,21 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
  * PRICING — Single plan: VCP Trader AI Pro $99/mo + 14-day trial
  * --------------------------------------------------------- */
 function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
+  const { instaTradeName, instaTradeFooterNotice } = useBranding();
   const planFeatures = [
-    "Daily AI stock ideas",
-    "Daily AI options ideas",
+    "Daily AI-ranked stock candidates",
+    "Historical daily market analysis during trial",
     "Grow, Income, Trade, and Markets modes",
-    "Opportunity Radar / Top Opportunities",
+    "Opportunity Radar and Analysis Conditions",
     "News sentiment and market context",
     "Watchlist intelligence",
-    "Full market analysis during trial",
-    "Broker connection support",
-    "Tradier and TradeStation support",
-    "Live market data through connected brokerage account",
-    "Options chains through connected brokerage account where supported",
-    "InstaTrade™ order review and submission",
-    "Journal and results tracking",
+    "Congress Activity",
+    "AI-assisted options strategy insights",
+    "Tradier and TradeStation connections",
+    "Current market data through connected brokerages",
+    "Options chains through supported brokerages",
+    `${instaTradeName} order review and submission`,
+    "Position and results tracking",
     "Built-in risk controls",
     "Analysis-to-live workflow",
   ];
@@ -955,23 +960,35 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
             Simple Pricing. Bring Your Broker.
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Start your trial with full market analysis and AI-ranked candidates. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
+            Start with a 14-day trial featuring historical daily market analysis, AI-ranked stock candidates, market intelligence, and research tools. Connect a supported brokerage account to unlock current broker-authorized market data, account context, options chains where available, and self-directed {instaTradeName} order review and submission.
           </p>
         </div>
 
         <div className="max-w-xl mx-auto">
           <Card className="border-primary bg-card flex flex-col relative shadow-xl" data-testid="card-plan-pro">
-            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-trial">
-              14-Day Free Trial
+            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-founding-member">
+              Founding Member Access
             </Badge>
             <CardHeader className="text-center pt-8">
-              <CardTitle className="text-2xl">VCP Trader AI Pro</CardTitle>
+              <div className="flex justify-center">
+                <Badge variant="secondary" data-testid="badge-trial">14-Day Free Trial</Badge>
+              </div>
+              <CardTitle className="text-2xl mt-3">VCP Trader AI Pro</CardTitle>
               <div className="mt-3 flex items-baseline justify-center gap-1">
                 <span className="text-5xl font-bold" data-testid="text-pro-price">$99</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
+              <p className="text-sm font-medium text-primary mt-2" data-testid="text-founding-price-label">
+                Founding Member Price
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Lock in this price while your subscription remains continuously active.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
+                Planned standard price: $149/month
+              </p>
               <CardDescription className="mt-2">
-                One simple plan. Everything you need to research, review, and submit self-directed stock and options orders.
+                One complete plan for market research, AI-ranked opportunities, broker-connected analysis, and self-directed stock and options order review.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
@@ -983,6 +1000,16 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                   </li>
                 ))}
               </ul>
+              <div
+                className="rounded-lg border border-border bg-muted/40 p-3 flex items-start gap-2 text-xs text-muted-foreground mb-4"
+                role="note"
+                data-testid="box-trial-disclosure"
+              >
+                <Info className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                <p>
+                  Trial data: Market analysis uses historical daily data through the previous completed trading session. Current quotes, positions, buying power, options-chain data, and order submission require a supported brokerage connection.
+                </p>
+              </div>
               <div className="flex flex-col gap-2">
                 <Button
                   size="lg"
@@ -992,9 +1019,12 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                   }}
                   data-testid="button-select-pro"
                 >
-                  Start 14-Day Trial
+                  Start Free Trial
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  No broker connection required to explore analysis.
+                </p>
                 <Button
                   size="lg"
                   variant="outline"
@@ -1018,6 +1048,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
           <p>
             All scenarios are software-generated for informational and educational purposes only. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice.
           </p>
+          <p data-testid="text-trademark-notice-pricing">{instaTradeFooterNotice}</p>
         </div>
       </div>
     </section>
@@ -1116,7 +1147,7 @@ function FinalCtaSection({ onStartTrial }: { onStartTrial: () => void }) {
     <section className="py-16 md:py-20" id="instatrade">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-2xl md:text-3xl font-bold">Ready to trade with clarity?</h2>
-        <p className="mt-3 text-muted-foreground">Start your 14-day free trial with full market analysis. Connect your broker when you're ready. Review every order before it's sent.</p>
+        <p className="mt-3 text-muted-foreground">Start your 14-day free trial with historical daily market analysis. Connect your broker when you're ready. Review every order before it's sent.</p>
         <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button
             size="lg"
@@ -1126,7 +1157,7 @@ function FinalCtaSection({ onStartTrial }: { onStartTrial: () => void }) {
             }}
             data-testid="button-final-trial"
           >
-            Start 14-Day Trial
+            Start Free Trial
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
           <a href="#features">

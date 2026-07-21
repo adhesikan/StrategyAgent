@@ -27,20 +27,25 @@ import {
 // positions only. Sandbox ("paper") plans are reserved for internal
 // development/testing and require an explicit env flag. Options and
 // spreads stay off until explicitly enabled via env flag.
-function flag(name: string, defaultOn: boolean): boolean {
-  const raw = process.env[name];
-  if (raw === undefined || raw === "") return defaultOn;
-  return raw === "1" || raw.toLowerCase() === "true";
+function flag(names: string[], defaultOn: boolean): boolean {
+  for (const name of names) {
+    const raw = process.env[name];
+    if (raw !== undefined && raw !== "") {
+      return raw === "1" || raw.toLowerCase() === "true";
+    }
+  }
+  return defaultOn;
 }
 
 export function getProtectionConfig() {
   return {
-    enabled: flag("POSITION_PROTECTION_ENABLED", true),
-    liveEnabled: flag("POSITION_PROTECTION_LIVE_ENABLED", true),
+    enabled: flag(["ENABLE_POSITION_PROTECTION", "POSITION_PROTECTION_ENABLED"], true),
+    // Live exits submit real-money orders — admin must explicitly enable.
+    liveEnabled: flag(["ENABLE_LIVE_POSITION_PROTECTION", "POSITION_PROTECTION_LIVE_ENABLED"], false),
     // Internal only: allows sandbox-account plans for development/testing.
-    sandboxEnabled: flag("POSITION_PROTECTION_SANDBOX_ENABLED", false),
-    optionsEnabled: flag("POSITION_PROTECTION_OPTIONS_ENABLED", false),
-    spreadsEnabled: flag("POSITION_PROTECTION_SPREADS_ENABLED", false),
+    sandboxEnabled: flag(["POSITION_PROTECTION_SANDBOX_ENABLED"], false),
+    optionsEnabled: flag(["ENABLE_OPTIONS_POSITION_PROTECTION", "POSITION_PROTECTION_OPTIONS_ENABLED"], false),
+    spreadsEnabled: flag(["ENABLE_SPREAD_POSITION_PROTECTION", "POSITION_PROTECTION_SPREADS_ENABLED"], false),
   };
 }
 

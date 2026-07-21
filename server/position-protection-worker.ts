@@ -80,8 +80,11 @@ export function startPositionProtectionWorker(): void {
   if (liveHandle || paperHandle) return;
   heartbeat.startedAt = new Date().toISOString();
   heartbeat.running = true;
+  const cfg = getProtectionConfig();
   console.log(
-    `[PositionProtection] Starting protection worker (live ${LIVE_INTERVAL_MS / 1000}s / paper ${PAPER_INTERVAL_MS / 1000}s)`,
+    `[PositionProtection] Starting protection worker (live ${LIVE_INTERVAL_MS / 1000}s / paper ${PAPER_INTERVAL_MS / 1000}s) — ` +
+      `config: enabled=${cfg.enabled} liveEnabled=${cfg.liveEnabled} sandboxEnabled=${cfg.sandboxEnabled} ` +
+      `optionsEnabled=${cfg.optionsEnabled} spreadsEnabled=${cfg.spreadsEnabled}`,
   );
   liveHandle = setInterval(() => runProtectionChecks("live"), LIVE_INTERVAL_MS);
   paperHandle = setInterval(() => runProtectionChecks("paper"), PAPER_INTERVAL_MS);

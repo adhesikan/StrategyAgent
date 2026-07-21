@@ -33,7 +33,7 @@ Same gating in `option-trade-ticket.tsx`. Server enforces it too: `/api/trade/pl
 Server-side execution guardrails (`server/services/execution-guardrails.ts`) block trades that violate stored preferences (allowed instruments, defined-risk-only, min score, min R/R) and return `GUARDRAIL_BLOCKED`.
 
 ## Position Protection (live-only)
-Customer-facing PP is restricted to verified live brokerage positions. `server/services/position-protection/index.ts` flags: `liveEnabled` (default ON), `sandboxEnabled` (default OFF, internal dev only — paper plans rejected with `LIVE_ONLY`). `POST /api/position-protection/plans` derives `accountMode` server-side from the `sandbox:` account-id prefix (client claim ignored).
+Customer-facing PP is restricted to verified live brokerage positions. `server/services/position-protection/index.ts` flags: `liveEnabled` (default OFF — real-money exits require explicit `ENABLE_LIVE_POSITION_PROTECTION=true`), `sandboxEnabled` (default OFF, internal dev only — paper plans rejected with `LIVE_ONLY`). Flags accept both `ENABLE_*_POSITION_PROTECTION` and legacy `POSITION_PROTECTION_*` names; effective config is logged at worker startup. `POST /api/position-protection/plans` derives `accountMode` server-side from the `sandbox:` account-id prefix (client claim ignored).
 
 ## External Alert Webhook Hardening
 `POST /api/external-alerts/webhook` (server/routes.ts): env kill switch `EXTERNAL_ALERT_WEBHOOK_ENABLED`, per-key rate limit (`EXTERNAL_ALERT_RATE_LIMIT_PER_MIN`, default 30/min), 5-min timestamp skew validation, idempotency/replay protection via `X-Idempotency-Key` or payload SHA-256 fingerprint (10-min TTL, in-memory — single-instance only).

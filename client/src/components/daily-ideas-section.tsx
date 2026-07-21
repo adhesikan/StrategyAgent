@@ -48,7 +48,7 @@ export function DailyIdeasSection({ bucket, title, subtitle, limit = 6, emptyTex
         </div>
         <div className="flex items-center gap-2">
           {data?.dataMode === "simulated" && (
-            <Badge variant="outline" className="text-[10px]">Simulated data</Badge>
+            <Badge variant="outline" className="text-[10px]">Educational examples</Badge>
           )}
           {data && data.ideas.length > 0 && (
             <ViewToggle value={viewMode} onChange={setViewMode} testId={`view-toggle-${bucket}`} />

@@ -2765,7 +2765,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       // Execution guardrails (skip for partner / non-session calls)
       if (req.session?.userId) {
         const { checkGuardrails } = await import("./services/execution-guardrails");
-        const prefs = (await storage.getUserTradePreferences(req.session.userId)) || {};
+        const prefs = (await storage.getUserTradePreferences(req.session.userId)) || ({} as any);
+        const isSandboxAccount = typeof accountId === "string" && accountId.startsWith("sandbox:");
+        if (!isSandboxAccount && !(prefs as any).liveSetupCompleted) {
+          return res.status(422).json({
+            error: "Complete Live Trading Setup before sending live orders.",
+            code: "LIVE_SETUP_REQUIRED",
+          });
+        }
         const gr = checkGuardrails({
           prefs,
           instrumentType: "stock",
@@ -2905,7 +2912,15 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       }
 
       const { checkGuardrails } = await import("./services/execution-guardrails");
-      const prefs = (await storage.getUserTradePreferences(userId)) || {};
+      const prefs = (await storage.getUserTradePreferences(userId)) || ({} as any);
+      const optAccountId = typeof req.body.accountId === "string" ? req.body.accountId : "";
+      const optIsSandbox = optAccountId.startsWith("sandbox:");
+      if (!optIsSandbox && !(prefs as any).liveSetupCompleted) {
+        return res.status(422).json({
+          error: "Complete Live Trading Setup before sending live orders.",
+          code: "LIVE_SETUP_REQUIRED",
+        });
+      }
       const totalDebit = legs.reduce((acc: number, l: any) => acc + (l.side === "buy" ? 1 : -1) * (Number(l.estimatedPremium) || 0), 0);
       const gr = checkGuardrails({
         prefs,
@@ -6356,17 +6371,83 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   // Webhook endpoint - authenticated via API key (not session)
   // Accepts either structured JSON or rawText from Strategy Fundamentals
+  // ─── Inbound alert webhook hardening ─────────────────────────────
+  // Admin kill switch (env), per-key rate limiting, timestamp validation,
+  // and idempotency/replay protection. Per-user secrets are the hashed
+  // API keys already required below.
+  const webhookRateBuckets = new Map<string, { count: number; resetAt: number }>();
+  const WEBHOOK_RATE_LIMIT = Number(process.env.EXTERNAL_ALERT_RATE_LIMIT_PER_MIN) || 30;
+  const webhookSeenKeys = new Map<string, number>(); // idempotency key -> expiry
+  const WEBHOOK_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+  const WEBHOOK_MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
+
+  function webhookRateLimited(keyHash: string): boolean {
+    const now = Date.now();
+    // Bound memory: evict expired buckets before inserting new ones.
+    if (webhookRateBuckets.size > 2000) {
+      webhookRateBuckets.forEach((b, k) => { if (now >= b.resetAt) webhookRateBuckets.delete(k); });
+      if (webhookRateBuckets.size > 5000) webhookRateBuckets.clear();
+    }
+    const bucket = webhookRateBuckets.get(keyHash);
+    if (!bucket || now >= bucket.resetAt) {
+      webhookRateBuckets.set(keyHash, { count: 1, resetAt: now + 60_000 });
+      return false;
+    }
+    bucket.count++;
+    return bucket.count > WEBHOOK_RATE_LIMIT;
+  }
+
+  function webhookIsReplay(idemKey: string): boolean {
+    const now = Date.now();
+    if (webhookSeenKeys.size > 5000) {
+      webhookSeenKeys.forEach((exp, k) => { if (exp < now) webhookSeenKeys.delete(k); });
+    }
+    const existing = webhookSeenKeys.get(idemKey);
+    if (existing && existing > now) return true;
+    webhookSeenKeys.set(idemKey, now + WEBHOOK_IDEMPOTENCY_TTL_MS);
+    return false;
+  }
+
   app.post("/api/external-alerts/webhook", async (req, res) => {
     try {
+      const killSwitchRaw = process.env.EXTERNAL_ALERT_WEBHOOK_ENABLED;
+      if (killSwitchRaw !== undefined && killSwitchRaw !== "" && killSwitchRaw !== "1" && killSwitchRaw.toLowerCase() !== "true") {
+        return res.status(503).json({ error: "Webhook ingestion is temporarily disabled" });
+      }
+
       const apiKey = (req.headers["x-api-key"] as string) || (req.query.token as string);
       if (!apiKey) {
         return res.status(401).json({ error: "Missing API key. Provide via X-API-Key header or ?token= query parameter" });
       }
 
       const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
+      if (webhookRateLimited(keyHash)) {
+        return res.status(429).json({ error: "Rate limit exceeded. Try again shortly." });
+      }
+
       const apiKeyRecord = await storage.findExternalAlertApiKeyByHash(keyHash);
       if (!apiKeyRecord) {
         return res.status(401).json({ error: "Invalid API key" });
+      }
+
+      // Timestamp validation (replay window) when the sender provides one.
+      if (req.body?.timestamp) {
+        const ts = new Date(req.body.timestamp).getTime();
+        if (!Number.isFinite(ts)) {
+          return res.status(400).json({ error: "Invalid timestamp format" });
+        }
+        if (Math.abs(Date.now() - ts) > WEBHOOK_MAX_TIMESTAMP_SKEW_MS) {
+          return res.status(400).json({ error: "Alert timestamp outside the accepted window" });
+        }
+      }
+
+      // Idempotency / replay protection: explicit key or payload fingerprint.
+      const explicitIdem = (req.headers["x-idempotency-key"] as string) || req.body?.idempotency_key;
+      const idemKey = explicitIdem
+        ? `${keyHash}:${explicitIdem}`
+        : `${keyHash}:${crypto.createHash("sha256").update(JSON.stringify(req.body ?? {})).digest("hex")}`;
+      if (webhookIsReplay(idemKey)) {
+        return res.status(200).json({ success: true, duplicate: true, message: "Duplicate alert ignored" });
       }
 
       await storage.updateExternalAlertApiKeyLastUsed(apiKeyRecord.id);

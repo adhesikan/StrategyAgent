@@ -1,0 +1,1228 @@
+You are working on an existing production-oriented application called **VCP Trader AI**.
+
+Do not rebuild the application from scratch.
+
+First inspect the entire existing codebase, routes, database schema, authentication, billing, broker integrations, feature flags, components, API endpoints, workers, background jobs, and environment configuration. Reuse existing architecture and working functionality wherever possible.
+
+The application currently includes or may include:
+
+* React
+* TypeScript
+* Vite
+* Tailwind CSS
+* shadcn/ui
+* Node.js
+* Express
+* PostgreSQL
+* Drizzle ORM
+* Stripe
+* SendGrid
+* Tradier
+* TradeStation
+* SnapTrade
+* Opportunity Radar
+* Probability Engine
+* Analysis Conditions
+* Grow Mode
+* Income Mode
+* Trade Finder
+* News Sentiment
+* Market Intel
+* InstaTrade™
+* Position Protection
+* User Guide
+* Admin Portal
+* Partner Dashboard
+* PWA and push notifications
+
+Your task is to update the existing VCP Trader AI product around the following confirmed product requirements.
+
+# Primary Product Rules
+
+1. VCP Trader AI is an AI-powered stock and options intelligence platform for self-directed traders.
+2. Strategy Agent generates software-based market analysis and ranked trade candidates.
+3. Users review all candidates and orders.
+4. InstaTrade™ is the only standard live order execution path.
+5. The application must never place an initial entry order without explicit user review and confirmation.
+6. The application does not provide investment advice or guarantee results.
+7. The application does not currently provide built-in paper trading.
+8. Remove all customer-facing claims and UI elements suggesting that VCP Trader AI has:
+
+   * Paper accounts
+   * Virtual cash
+   * Paper buying power
+   * Simulated brokerage positions
+   * Simulated order fills
+   * Paper P&L
+   * Paper orders
+   * Paper Position Protection
+9. Internal development mocks, broker sandbox integrations, and automated tests may remain, but they must not appear as user-facing paper trading.
+10. Persona onboarding must be optional and must not block initial product access.
+
+# Product Modes
+
+Replace any existing Paper Mode or three-mode system with two customer-facing modes.
+
+## Analysis Mode
+
+Used when the user has not connected a brokerage account.
+
+Analysis Mode may provide:
+
+* AI-generated market candidates
+* Opportunity Radar
+* Probability Engine scores
+* Analysis Conditions
+* News sentiment
+* Morning Briefing
+* Why Is It Moving?
+* Market Intel
+* Grow Mode analysis
+* Income Mode analysis
+* Trade Finder analysis
+* Watchlists
+* Saved candidates
+* Educational strategy examples
+* Delayed, end-of-day, cached, snapshot, or limited market data where permitted
+
+Analysis Mode must not provide:
+
+* Virtual account balances
+* Simulated orders
+* Simulated fills
+* Fake positions
+* Paper P&L
+* Paper trade buttons
+* Paper Position Protection
+* Any representation that a simulated brokerage account exists
+
+## Connected Broker Mode
+
+Used after the user connects Tradier, TradeStation, or a supported SnapTrade brokerage.
+
+Connected Broker Mode may provide:
+
+* Broker-authorized market data
+* Account balances
+* Buying power
+* Positions
+* Options chains
+* Broker order previews
+* InstaTrade™ order submission
+* Position Protection for supported positions
+* Broker-related activity history
+
+Add a clearly visible mode indicator in the application header:
+
+* Analysis Mode
+* Connected Broker Mode
+
+The mode should be derived from the user’s active broker connection and selected brokerage account.
+
+# First Task: Audit Before Editing
+
+Before changing files:
+
+1. Inspect the project structure.
+2. Identify all routes and pages related to:
+
+   * Paper trading
+   * Simulated trading
+   * Demo trading
+   * Virtual portfolios
+   * Paper orders
+   * Simulated fills
+   * Paper balances
+   * Paper P&L
+   * Paper Position Protection
+3. Search the codebase for terms such as:
+
+   * paper
+   * paper trade
+   * paper mode
+   * simulation
+   * simulated
+   * demo account
+   * virtual account
+   * virtual cash
+   * fake fill
+   * test portfolio
+4. Identify whether any of these are:
+
+   * Customer-facing production functionality
+   * Internal development mocks
+   * Broker sandbox functionality
+   * Automated tests
+5. Do not delete useful internal testing infrastructure.
+6. Create an implementation summary before making destructive schema changes.
+7. Preserve all working authentication, Stripe, broker OAuth, market analysis, scoring, sentiment, admin, and notification functionality.
+
+# Optional Personalization
+
+The existing persona onboarding must not be mandatory.
+
+## New Account Flow
+
+After account creation, show a lightweight start screen:
+
+**How would you like to begin?**
+
+Actions:
+
+* Explore Market Analysis
+* Connect My Broker
+* Personalize My Experience
+* Skip for Now
+
+Do not show Paper Mode.
+
+The user must be able to select Explore Market Analysis or Skip for Now and immediately reach the homepage.
+
+## Personalization Options
+
+Provide:
+
+### Quick Setup
+
+Ask only:
+
+1. Are you primarily interested in growth, income, or both?
+2. What is your preferred maximum risk per trade?
+3. Do you prefer stocks, options, or both?
+
+### Full Personalization
+
+Retain the existing seven-step persona workflow as an optional experience.
+
+### Skip for Now
+
+Allow the user to proceed with default display and analysis settings.
+
+Do not force the user to complete Quick Setup or Full Personalization before accessing:
+
+* Home
+* Market Intel
+* Opportunity Radar
+* News
+* Trade Finder analysis
+* Grow analysis
+* Income analysis
+* User Guide
+
+## Non-Blocking Personalization Prompt
+
+On the homepage, optionally show a dismissible card:
+
+**Make these ideas more relevant**
+
+Complete your trading preferences to improve candidate filtering and configure your risk limits.
+
+Actions:
+
+* Quick Setup
+* Full Setup
+* Dismiss
+
+Store dismissal so it does not reappear on every visit.
+
+Do not use a blocking modal.
+
+# Default Behavior for Users Who Skip Personalization
+
+Use conservative interface defaults, but do not claim they represent the user’s suitability or financial profile.
+
+Recommended defaults:
+
+* Guided interface
+* Stocks visible
+* Defined-risk options may be visible as general analysis
+* Undefined-risk strategies hidden or disabled
+* Advanced analytics collapsed
+* General high-liquidity candidate universe
+* High-grade candidates prioritized
+* General risk warnings displayed
+* No live order execution until broker connection and required live settings are complete
+
+Display this disclosure when preferences are incomplete:
+
+“These are general software-generated market candidates and have not been filtered using your complete trading preferences or financial circumstances.”
+
+# Live Trading Setup
+
+Do not require the full persona workflow before live execution.
+
+When a user tries to review a live order, collect only the required missing settings through a short inline Live Trading Setup.
+
+Require:
+
+* Connected broker
+* Selected brokerage account
+* Allowed instruments
+* Maximum dollar risk per trade
+* Defined-risk-only preference
+* Options-experience acknowledgment when applicable
+* Required execution disclosure
+* Order-specific acknowledgment
+
+The workflow should be:
+
+1. Connect broker
+2. Select brokerage account
+3. Set maximum risk
+4. Select stocks, options, or both
+5. Select defined-risk-only preference
+6. Complete options acknowledgment if needed
+7. Save required settings
+8. Return directly to the order ticket
+
+Do not redirect the user to the full persona wizard.
+
+# Homepage Redesign
+
+Simplify the homepage using progressive disclosure.
+
+## Header
+
+Show:
+
+* VCP Trader AI logo or product name
+* Analysis Mode or Connected Broker Mode
+* Broker connection status
+* Market status
+* Notifications
+* Profile menu
+
+## Main AI Prompt
+
+Display:
+
+**What would you like help with today?**
+
+Include a text input and optional microphone button.
+
+Suggested prompt chips:
+
+* Find a bullish stock setup
+* Show income opportunities
+* Find defined-risk options candidates
+* Why is NVDA moving?
+* Review my connected positions
+* Show high-grade market candidates
+
+Voice transcription must populate the text input for review. Voice must never directly submit an order.
+
+## Four Main Actions
+
+Create four large, clear actions:
+
+### Grow
+
+Navigate to the Grow workflow.
+
+### Income
+
+Navigate to Income Mode.
+
+### Find a Trade
+
+Navigate to Trade Finder.
+
+### Understand Markets
+
+Navigate to Market Intel.
+
+## Today’s Opportunities
+
+Show no more than three to five cards.
+
+Each card should show:
+
+* Symbol
+* Strategy
+* Stock or options label
+* Composite grade
+* Estimated capital requirement when available
+* Maximum theoretical risk when calculable
+* Time horizon
+* Short explanation
+* Primary warning
+
+For users without a broker, actions should be:
+
+* View Analysis
+* Save
+* Connect Broker
+
+For users with a broker, actions should be:
+
+* View Analysis
+* Review Order
+
+Remove all Paper Trade actions.
+
+## Needs Your Attention
+
+Only display when relevant.
+
+Examples:
+
+* Broker connection expired
+* Order rejected
+* Position Protection triggered
+* Position Protection monitoring failed
+* Trial ending soon
+* Required trading settings incomplete
+* Options acknowledgment required
+
+## Compact Positions Summary
+
+Only show connected brokerage positions.
+
+If no broker is connected, display a small call to action rather than an empty portfolio:
+
+“Connect a brokerage account to view positions, balances, and buying power.”
+
+Do not display fake or simulated positions.
+
+# Navigation
+
+Use the following main navigation:
+
+* Home
+* Grow
+* Income
+* Trade
+* Markets
+
+Place advanced and secondary features under More:
+
+* Opportunity Radar
+* Analysis Conditions
+* My Activity
+* Position Protection
+* User Guide
+* Settings
+* Billing
+* Legal
+
+Admin-only features must not appear in standard user navigation.
+
+# Progressive Disclosure
+
+Keep existing advanced functionality, but reveal it in stages.
+
+## Candidate Summary
+
+Show:
+
+* Candidate type
+* Why it appeared
+* Grade
+* Estimated capital
+* Maximum theoretical risk
+* Time horizon
+* Main warning
+
+## Analysis Details
+
+After View Analysis, show:
+
+* Technical context
+* News sentiment
+* Probability Engine factors
+* Passed and failed Analysis Conditions
+* Risk/reward
+* Catalyst context
+* Instrument comparison
+
+## Advanced Details
+
+Place behind an expandable section:
+
+* Greeks
+* Implied volatility
+* Option volume
+* Open interest
+* Bid/ask spread
+* Full option chain
+* Detailed score factors
+* All Analysis Conditions
+* Custom conditions
+* Indicator values
+
+## Execution Details
+
+Only show after Review Order:
+
+* Quantity
+* Order type
+* Limit price
+* Option legs
+* Capital requirement
+* Maximum loss
+* Maximum gain
+* Breakeven
+* Buying-power effect
+* Risk acknowledgment
+* Final Send to Broker action
+
+# Grow Mode
+
+Grow Mode should generate analysis and candidates, not simulated trades.
+
+Use a guided workflow:
+
+1. Capital intended for the search
+2. Goal
+3. Maximum preferred risk
+4. Activity level
+5. Stocks, options, or both
+6. Connect broker or continue with analysis
+
+Allow answers to be:
+
+* Saved as defaults
+* Used for this search only
+
+For users without a broker, output:
+
+* Candidate scenarios
+* Available market context
+* Estimated capital requirement
+* Maximum theoretical risk
+* Conditions matched
+* News context
+* Save candidate
+* Connect Broker
+
+For users with a broker, validate:
+
+* Current quote
+* Buying power
+* Options-chain availability
+* Contract liquidity
+* Position-size eligibility
+
+Then allow Review Order.
+
+Add a reality-check message when goals appear aggressive relative to selected risk.
+
+# Income Mode
+
+Income Mode should provide general analysis without a broker and account-specific validation with a broker.
+
+## Without Broker
+
+Show candidate analysis for:
+
+* Covered calls
+* Cash-secured puts
+* Defined-risk spreads
+
+Clearly state:
+
+“Brokerage connection is required to verify share ownership, available cash, buying power, and strategy eligibility.”
+
+## With Broker
+
+Verify:
+
+* Existing shares
+* Shares already committed
+* Available cash
+* Buying power
+* Existing option obligations
+* Contract liquidity
+* Position concentration
+
+Only then allow Review Order.
+
+# Trade Finder
+
+## Without Broker
+
+Allow:
+
+* Symbol search
+* Direction
+* Strategy selection
+* Maximum preferred risk
+* General expiration structure
+* Technical conditions
+* News context
+* Strategy education
+* Save candidate
+* Add to watchlist
+* Connect Broker
+
+## With Broker
+
+Use broker data for:
+
+* Current quotes
+* Options chains
+* Buying power
+* Open positions
+* Order preview
+
+Then allow the user to open InstaTrade™.
+
+# Opportunity Radar
+
+Keep Opportunity Radar as the advanced discovery workspace.
+
+The homepage should reuse selected Opportunity Radar candidates rather than duplicate the full scanner interface.
+
+For users without preferences, label candidates as:
+
+“General market candidate”
+
+For users with saved preferences, label candidates as:
+
+“Filtered using your saved settings”
+
+Do not call a candidate personalized if the user has not provided sufficient preferences.
+
+# Probability Engine
+
+Retain the existing five-factor model:
+
+* Technical
+* Realtime
+* News
+* Analyst
+* Risk
+
+Use language such as:
+
+* Composite score
+* Scenario grade
+* Setup quality
+* Conditions matched
+
+Do not describe the grade as a guaranteed probability of profit.
+
+When preferences are incomplete, compare available instruments rather than declaring one instrument best for the user.
+
+# Analysis Conditions
+
+Retain the 14 built-in conditions and custom conditions.
+
+Default presentation:
+
+* Number of conditions passed
+* Key passed conditions
+* Important failed conditions
+
+Expanded presentation:
+
+* Condition
+* Value
+* Threshold
+* Pass/fail
+* Explanation
+
+Keep custom condition building under the advanced interface.
+
+# InstaTrade™
+
+InstaTrade™ is available only with a connected and verified broker.
+
+Remove these button labels everywhere:
+
+* Paper Trade
+* Simulate Trade
+* Test Trade
+* Try This Trade
+
+Use adaptive labels:
+
+* Connect Broker
+* Complete Live Setup
+* Review Order
+* Send to Broker
+
+## InstaTrade™ Sequence
+
+1. User selects a candidate
+2. User opens Review Order
+3. Verify authenticated session
+4. Verify broker connection
+5. Verify selected account
+6. Collect missing required live settings inline
+7. Refresh quote
+8. Refresh balances and buying power
+9. Refresh current positions
+10. Apply server-side guardrails
+11. Request broker preview where supported
+12. Display updated terms
+13. Require risk acknowledgment
+14. User explicitly clicks Send to Broker
+15. Submit broker order
+16. Store broker response
+17. Update My Activity
+18. Send notification
+
+Never submit an initial entry order from:
+
+* AI prompt
+* Voice command
+* TradingView webhook
+* Opportunity Radar
+* Background worker
+* Admin action
+
+without the user reviewing and confirming the InstaTrade™ ticket.
+
+# Server-Side Guardrails
+
+Enforce on the backend:
+
+* Allowed instruments
+* Maximum dollar risk
+* Maximum account-percentage risk
+* Defined-risk-only preference
+* Options access
+* Position-size limits
+* Minimum grade when configured
+* Minimum risk/reward when configured
+* Buying-power checks
+* Strategy restrictions
+* Concentration limits
+* Admin feature flags
+
+If a setting is missing, request only that setting.
+
+If an order is blocked, show the exact reason.
+
+Do not silently resize or alter a live order.
+
+# Position Protection
+
+Position Protection must only be available for verified live brokerage positions.
+
+Supported rule types:
+
+* Stop loss
+* Take profit
+* Percentage trailing stop
+* Dollar trailing stop
+
+Presets:
+
+* Conservative: 3%
+* Standard: 5%
+* Wider: 8%
+* Custom
+
+Clearly state that presets are configuration shortcuts, not recommendations.
+
+Supported exit order types:
+
+* Market
+* Stop
+* Stop-limit
+
+## Activation Requirements
+
+Require:
+
+* Connected brokerage account
+* Verified open position
+* Verified quantity
+* User-selected protection rule
+* User-selected exit order type
+* Risk acknowledgment
+* Relevant admin feature flag enabled
+
+## Live Trigger Sequence
+
+1. Lock the rule to prevent duplicate execution
+2. Confirm rule is active
+3. Reverify broker authentication
+4. Reverify actual open position
+5. Reverify available quantity
+6. Refresh relevant market data
+7. Confirm trigger condition
+8. Apply server safety checks
+9. Submit the configured exit order
+10. Store the broker response
+11. Update protection status
+12. Add event to My Activity
+13. Send push and email notifications
+14. Release the processing lock safely
+
+Do not implement or display:
+
+* Paper Position Protection
+* Virtual trailing stops attached to fake positions
+* Simulated exits
+* Paper stop-loss activity
+
+Internal development tests may use mocks or broker sandbox environments.
+
+# TradingView Integration
+
+TradingView is an optional alert source.
+
+Supported use cases:
+
+* Create or update a candidate
+* Add a watchlist alert
+* Notify the user of a condition
+* Update an existing user-authorized Position Protection rule
+* Trigger evaluation of an existing authorized live exit rule
+
+TradingView must not create unrestricted initial entry orders.
+
+## Secure Flow
+
+TradingView alert
+→ VCP Trader webhook
+→ Validate secret
+→ Validate payload schema
+→ Validate timestamp
+→ Check idempotency
+→ Prevent replay
+→ Match user and authorized rule
+→ Update analysis or protection state
+→ Reverify live position
+→ Submit exit only when a previously authorized protection rule is triggered
+→ Log and notify
+
+Add:
+
+* Per-user webhook secrets
+* Rate limiting
+* Idempotency keys
+* Replay protection
+* Duplicate-order prevention
+* Admin kill switch
+* Full webhook activity logs
+
+# My Activity
+
+Track real platform actions and connected-broker activity.
+
+Include:
+
+* Candidate viewed
+* Candidate saved
+* Candidate dismissed
+* Order prepared
+* Live order submitted
+* Fill
+* Rejection
+* Position detected
+* Position closed
+* Position Protection enabled
+* Protection edited
+* Protection paused
+* Protection resumed
+* Protection triggered
+* User notes
+
+Remove customer-facing records for:
+
+* Paper orders
+* Simulated fills
+* Paper P&L
+* Virtual positions
+* Simulated brokerage performance
+
+Optional candidate tracking may include:
+
+* Candidate price when generated
+* Later market movement
+* Whether analysis conditions remained valid
+* Maximum favorable movement
+* Maximum adverse movement
+
+Label this clearly:
+
+“Historical candidate analysis — not a trade or account performance record.”
+
+# Trial and Billing
+
+Keep the existing single plan:
+
+**VCP Trader AI Pro — $99 per month**
+
+Keep the 14-day trial if already implemented.
+
+The trial should be an analysis and discovery trial, not a paper-trading trial.
+
+Trial features may include:
+
+* Today’s Opportunities
+* Grow
+* Income analysis
+* Trade Finder analysis
+* Limited Opportunity Radar
+* Probability Engine
+* Analysis Conditions
+* News sentiment
+* Market Intel
+* Watchlists
+* Saved candidates
+* User Guide
+
+Trial limitations:
+
+* Data may be delayed or limited
+* Symbol coverage may be limited
+* Option-chain coverage may be limited
+* No order submission without a broker
+* No virtual account
+* No simulated fills
+* No paper P&L
+
+Update pricing pages, feature tables, onboarding, emails, and tooltips to remove paper-trading claims.
+
+# User Guide
+
+Update the guide and contextual help.
+
+Include:
+
+* Quick Start
+* Analysis Mode
+* Connected Broker Mode
+* Optional personalization
+* Grow
+* Income
+* Trade Finder
+* Opportunity Radar
+* Probability Engine
+* Analysis Conditions
+* Market Intel
+* InstaTrade™
+* Position Protection
+* TradingView alerts
+* Broker connections
+* Live Trading Setup
+* Risk controls
+* Trial limitations
+* Billing
+
+Remove built-in paper-trading documentation.
+
+# Admin Portal
+
+Preserve and improve:
+
+* User management
+* Stripe subscription status
+* Broker connection status
+* Position Protection monitoring
+* Worker heartbeat
+* Order audit
+* Session audit
+* Email campaigns
+* Feature flags
+* Webhook monitoring
+* Partner management
+* System health
+* Kill switches
+
+Feature flags should include:
+
+* Live stock execution
+* Live options execution
+* Stock Position Protection
+* Option Position Protection
+* TradingView integration
+* Specific brokers
+* Specific strategies
+* Partner features
+
+Do not expose internal sandbox or mock functionality to users.
+
+# Database Changes
+
+Inspect the existing schema before changing it.
+
+Possible fields and entities needed:
+
+## User Preferences
+
+* onboardingStatus
+* quickSetupCompleted
+* fullPersonalizationCompleted
+* personalizationDismissed
+* preferredGoal
+* preferredInstruments
+* preferredRiskAmount
+* interfaceMode
+
+## Live Trading Settings
+
+Keep separate from optional personalization:
+
+* liveSetupCompleted
+* maxDollarRisk
+* maxAccountRiskPercent
+* allowedInstruments
+* definedRiskOnly
+* optionsAcknowledgedAt
+* executionDisclosureAcceptedAt
+
+## Saved Candidates
+
+* userId
+* candidateId
+* symbol
+* strategy
+* grade
+* savedAt
+* status
+* notes
+
+## Watchlists
+
+Reuse existing watchlist tables if available.
+
+## Position Protection
+
+Ensure rules reference:
+
+* User
+* Broker connection
+* Brokerage account
+* Verified live position
+* Symbol or option contract
+* Quantity
+* Rule type
+* Rule value
+* Exit order type
+* Status
+* Trigger metadata
+* Broker order response
+* Activity timestamps
+
+Do not perform destructive migrations without preserving existing data.
+
+Create migrations using the project’s existing Drizzle workflow.
+
+# UI and Copy Updates
+
+Search all user-facing text and replace inaccurate wording.
+
+Replace:
+
+* Paper Mode → Analysis Mode, where appropriate
+* Paper Trade → Connect Broker or Review Order
+* Simulated Portfolio → Remove
+* Practice Account → Remove
+* Virtual Cash → Remove
+* Simulated Fill → Remove
+* Paper Position Protection → Remove
+
+Do not blindly replace internal development terminology in test files.
+
+Use these disclosures:
+
+## Analysis Mode
+
+“These are general software-generated market candidates. They are not based on a complete evaluation of your financial circumstances and are not investment advice.”
+
+## Personalized Analysis
+
+“These candidates are filtered using the settings you provided. They remain software-generated analysis and are not investment advice.”
+
+## Educational Example
+
+“Educational example only. This is not a live quote, order, recommendation, or simulated brokerage transaction.”
+
+## Position Protection
+
+“Position Protection follows rules you configure for a verified brokerage position. Execution and price are not guaranteed. Gaps, delayed data, outages, rejected orders, and market conditions may affect results.”
+
+# Testing Requirements
+
+Add or update tests for:
+
+## Onboarding
+
+* New user skips personalization
+* New user completes Quick Setup
+* New user completes Full Personalization
+* Dismissed personalization prompt remains dismissed
+* User can update preferences later
+
+## Analysis Mode
+
+* User can browse analysis without broker
+* User cannot submit an order
+* User cannot activate Position Protection
+* Connect Broker actions appear
+* No fake balances or positions appear
+
+## Connected Broker Mode
+
+* Broker connection changes mode
+* Balances and positions load from broker
+* Broker disconnect returns user to Analysis Mode
+* Expired token shows reconnect message
+
+## InstaTrade™
+
+* Order cannot submit without broker
+* Missing live settings are requested inline
+* Guardrails block invalid orders
+* User acknowledgment is required
+* Final explicit submission is required
+* Broker response is logged
+
+## Position Protection
+
+* Cannot activate without verified position
+* Position is reverified before exit
+* Duplicate trigger is blocked
+* Quantity change is handled
+* Position manually closed is handled
+* Broker rejection is handled
+* Paused rule does not trigger
+* Cancelled rule does not trigger
+
+## TradingView
+
+* Invalid secret rejected
+* Stale timestamp rejected
+* Duplicate payload ignored
+* Unauthorized rule rejected
+* Arbitrary entry order rejected
+* Authorized protection evaluation accepted
+* Position reverified before exit
+
+## Billing
+
+* Trial grants analysis features
+* Trial does not imply paper trading
+* Expired subscription restricts paid analysis features correctly
+* Broker credentials remain handled according to existing policy
+
+# Implementation Order
+
+Perform the work in this order:
+
+## Phase 1: Audit and terminology
+
+1. Audit paper and simulation references
+2. Identify internal versus customer-facing simulation code
+3. Preserve internal test infrastructure
+4. Remove inaccurate customer-facing copy
+5. Add Analysis Mode terminology
+
+## Phase 2: Optional onboarding
+
+1. Add start-choice screen
+2. Add Skip for Now
+3. Add Quick Setup
+4. Preserve Full Personalization
+5. Add dismissible homepage personalization prompt
+6. Add safe default behavior
+
+## Phase 3: Homepage and navigation
+
+1. Simplify header
+2. Add mode indicator
+3. Add AI prompt
+4. Add four primary actions
+5. Add Today’s Opportunities
+6. Add Needs Your Attention
+7. Move advanced tools under More
+
+## Phase 4: Broker conversion flow
+
+1. Improve Connect Broker calls to action
+2. Add Connected Broker Mode
+3. Build short Live Trading Setup
+4. Separate required execution settings from optional preferences
+5. Restore user to the original order after setup
+
+## Phase 5: InstaTrade™
+
+1. Remove paper states
+2. Add adaptive button states
+3. Reverify broker data
+4. Enforce server guardrails
+5. Require acknowledgments
+6. Log all activity
+
+## Phase 6: Position Protection
+
+1. Restrict to verified live positions
+2. Complete stop, target, and trailing rules
+3. Add edit, pause, resume, and cancel
+4. Add duplicate-trigger protection
+5. Add worker monitoring
+6. Add push and email notifications
+7. Keep option protection behind an admin flag
+
+## Phase 7: TradingView
+
+1. Secure webhook
+2. Add user secrets
+3. Add validation and idempotency
+4. Match only authorized rules
+5. Reverify live positions
+6. Add admin monitoring and kill switch
+
+## Phase 8: Trial and billing
+
+1. Convert trial messaging to analysis-only
+2. Update pricing page
+3. Update User Guide
+4. Update emails and onboarding copy
+5. Test Stripe access rules
+
+## Phase 9: QA
+
+1. Run unit tests
+2. Run integration tests
+3. Run database migrations
+4. Test mobile and PWA layouts
+5. Test broker reconnection
+6. Test live-trading safeguards
+7. Test Position Protection failures
+8. Test all optional onboarding paths
+
+# Final Deliverables
+
+After implementation, provide:
+
+1. A summary of the existing architecture discovered
+2. A list of files changed
+3. A list of database migrations created
+4. A list of paper-trading references removed
+5. A list of internal mocks or sandbox functions preserved
+6. A description of the new onboarding paths
+7. A description of Analysis Mode versus Connected Broker Mode
+8. A description of the updated homepage
+9. A description of the InstaTrade™ workflow
+10. A description of Position Protection restrictions
+11. A description of TradingView security controls
+12. Test results
+13. Remaining risks or incomplete items
+14. Required environment variables
+15. Manual deployment or migration steps
+
+# Important Development Constraints
+
+* Do not rebuild the application.
+* Do not replace working broker integrations unnecessarily.
+* Do not break existing authentication or Stripe billing.
+* Do not delete internal test mocks merely because they contain the word simulated.
+* Do not expose internal broker sandbox tools to customers.
+* Do not create an internal customer-facing paper-trading system.
+* Do not allow AI or voice commands to directly place orders.
+* Do not allow TradingView to create arbitrary entry orders.
+* Do not weaken server-side guardrails.
+* Do not perform destructive database migrations without preserving data.
+* Maintain responsive PWA behavior.
+* Follow the existing coding conventions and component system.
+* Use TypeScript types and validation for all new workflows.
+* Add error handling, loading states, empty states, and audit logging.
+* Make incremental, testable changes.
+* Stop and report before making a destructive architectural change.

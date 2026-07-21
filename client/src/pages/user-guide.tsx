@@ -88,7 +88,7 @@ const SECTIONS: Section[] = [
           <li>
             <strong>Full InstaTrade™ order review on Income.</strong> The Income mode "Review Details"
             and "Prepare Order" buttons now open the same order-review modal used by Grow — with
-            broker-aware button labels (Paper Trade vs. Send to Broker) and the required acknowledgment
+            broker-aware button labels (Connect Broker vs. Send to Broker) and the required acknowledgment
             checkbox. See <Link href="/guide#income" className="underline">Generate Income</Link>.
           </li>
           <li>
@@ -124,11 +124,10 @@ const SECTIONS: Section[] = [
         </p>
         <ol className="list-decimal pl-5 space-y-2 mt-3">
           <li><strong>Start your free trial.</strong> There's one plan — <strong>Pro at $99/month with a 14-day free trial</strong>. You can cancel anytime from the Stripe billing portal.</li>
-          <li><strong>Complete the persona wizard.</strong> A short 7-step questionnaire computes your trader persona (buyer / seller / complex / learner), suggests a strategy bundle, and seeds safety limits like max risk per trade and max daily loss.</li>
+          <li><strong>Personalize (optional).</strong> You can complete a Quick Setup (3 questions) or the full 7-step persona questionnaire to tune candidate filtering and seed safety limits — or skip it entirely and explore right away.</li>
           <li><strong>Pick a starting mode</strong> from the sidebar: Home (overview), Grow (growth ideas), Income (covered calls / CSPs), Trade (plain-English builder), or Markets (news + sentiment).</li>
           <li><strong>Set your limits</strong> in <Link href="/settings/risk-profile" className="underline">My Limits</Link> — minimum grade, max risk per trade, allowed instruments. These limits are enforced when you prepare an order.</li>
-          <li><strong>Connect a broker</strong> in <Link href="/settings" className="underline">Settings → Connect Your Broker</Link> (Tradier or TradeStation, both via OAuth; SnapTrade also supported) for live quotes and order routing. Without a broker you can still browse ideas with simulated examples.</li>
-          <li><strong>Try paper mode first.</strong> Connect a broker sandbox account to practice with realistic order routing before going live.</li>
+          <li><strong>Connect a broker</strong> in <Link href="/settings" className="underline">Settings → Connect Your Broker</Link> (Tradier or TradeStation, both via OAuth; SnapTrade also supported) for live quotes and order routing. Without a broker you're in Analysis Mode — full AI analysis and educational examples with delayed reference data.</li>
         </ol>
         <p className="mt-3 text-sm text-muted-foreground">
           New accounts are seeded with a 10-symbol Starter Watchlist so Home, Markets, and the scanners
@@ -222,8 +221,8 @@ const SECTIONS: Section[] = [
             breakdown is in the "Learn more" drawer.
           </li>
           <li>
-            <strong>Simulated badge.</strong> Shows when no broker is connected, so prices and
-            sizing are example values for learning rather than live quotes.
+            <strong>Educational Example badge.</strong> Shows when no broker is connected, so prices and
+            sizing are example values using delayed reference data rather than live quotes.
           </li>
         </ul>
 
@@ -279,7 +278,7 @@ const SECTIONS: Section[] = [
           <li>Type a request like "income ideas this week" or "why is NVDA moving?" — the prompt bar routes you to the right tool.</li>
           <li>Tap a popular chip to jump straight into Grow, Income, Trade, or Markets.</li>
           <li>Review the AI snapshot for market tone, top growth, top income, and watchlist risk.</li>
-          <li>A "Simulated data" badge appears when you don't have a broker connected and we're using example quotes.</li>
+          <li>An "Educational examples" badge appears when you don't have a broker connected and we're using delayed reference quotes.</li>
         </ul>
         <p className="mt-3 text-sm text-muted-foreground">
           Everything on this screen is informational — no order is sent until you explicitly review and confirm it.
@@ -303,7 +302,7 @@ const SECTIONS: Section[] = [
         <ul className="list-disc pl-5 space-y-1 mt-2">
           <li>Each card shows entry, stop, target, AI grade, and why-it-was-picked.</li>
           <li>"Prepare Order" opens the Order Review modal — you must check the acknowledgment box before any submission.</li>
-          <li>Use paper mode to practice without risking capital.</li>
+          <li>Without a broker, Grow produces candidate analysis you can save — no order is ever placed without your review.</li>
         </ul>
       </>
     ),
@@ -332,8 +331,7 @@ const SECTIONS: Section[] = [
           required, max loss, and a required acknowledgment checkbox before you can submit.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
-          <li><strong>Broker connected (live)</strong> — the action button reads <em>Send to Broker via InstaTrade™</em>.</li>
-          <li><strong>Broker connected (sandbox)</strong> — the button reads <em>Paper Trade</em>.</li>
+          <li><strong>Broker connected</strong> — the action button reads <em>Send to Broker via InstaTrade™</em>.</li>
           <li><strong>No broker connected</strong> — the button is disabled and prompts you to connect one.</li>
         </ul>
       </>
@@ -416,7 +414,7 @@ const SECTIONS: Section[] = [
         </p>
         <p className="mt-3">
           Each card has a "View Why" drawer showing the factor breakdown and a Review Scenario modal
-          that mirrors the standard order review acknowledgment before any paper trade or live order.
+          that mirrors the standard order review acknowledgment before any live order.
         </p>
       </>
     ),
@@ -436,8 +434,7 @@ const SECTIONS: Section[] = [
         <ul className="list-disc pl-5 space-y-1 mt-2">
           <li>Simple mode: ticker, side, quantity, price.</li>
           <li>Advanced mode: bracket orders (entry + stop + target) and Risk Controls exit plan.</li>
-          <li>Paper mode is supported via the broker sandbox.</li>
-          <li>Live orders require a connected broker (Tradier, TradeStation, or SnapTrade).</li>
+          <li>Orders require a connected broker (Tradier, TradeStation, or SnapTrade).</li>
           <li>
             Outside regular hours, a <strong>Pre-Market / After-Hours</strong> toggle appears on the
             ticket — see the <Link href="/guide#extended-hours" className="underline">Pre-Market &amp; After-Hours</Link>{" "}
@@ -542,8 +539,8 @@ const SECTIONS: Section[] = [
             order when your rule is hit.
           </li>
           <li>
-            <strong>Paper trading and stocks are on by default.</strong> Live (real-money) accounts,
-            options, and spreads stay off until enabled in your environment settings.
+            <strong>Available for verified brokerage positions.</strong> Stock protection is on by
+            default; options and spreads stay off until enabled by an administrator.
           </li>
           <li>
             <strong>Each plan exits only once.</strong> Once an exit order is submitted the plan is
@@ -639,20 +636,20 @@ const SECTIONS: Section[] = [
   },
   {
     id: "paper-mode",
-    title: "Paper / Simulated Mode",
+    title: "Analysis Mode vs. Connected Broker Mode",
     icon: CheckCircle2,
-    summary: "Practice with broker sandboxes or simulated data — no real money.",
+    summary: "Two ways to use the platform — analysis only, or connected to your broker.",
     body: (
       <>
         <p>
-          You can use the platform in two ways:
+          The platform operates in two modes:
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
-          <li><strong>Simulated</strong> — no broker connected; quotes and balances use deterministic mocks. Great for exploring the UI.</li>
-          <li><strong>Paper trading</strong> — connect a broker's paper account (Tradier sandbox or TradeStation sim). Orders route to the broker's sandbox API and behave like real fills.</li>
+          <li><strong>Analysis Mode</strong> — no broker connected. Full AI analysis, candidate scenarios, scoring, news sentiment, and educational strategy examples using delayed or snapshot reference data. No orders can be placed.</li>
+          <li><strong>Connected Broker Mode</strong> — a broker is connected. Broker-authorized market data, account balances and positions, and InstaTrade™ order review and submission through your own brokerage account.</li>
         </ul>
         <p className="mt-3">
-          The data-mode pill on Home shows which mode you're in. Switch to live by connecting a live
+          The mode indicator in the header shows which mode you're in. Switch modes by connecting a
           broker account in Settings.
         </p>
       </>
@@ -671,7 +668,7 @@ const SECTIONS: Section[] = [
           a brokerage. Connections are encrypted and you can disconnect at any time.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
-          <li><strong>Tradier</strong> — OAuth; supports live and sandbox (paper).</li>
+          <li><strong>Tradier</strong> — OAuth; live account connection.</li>
           <li><strong>TradeStation</strong> — OAuth via TradeStation v3; supports live and sim.</li>
           <li><strong>SnapTrade</strong> — OAuth gateway to 20+ brokerages for order execution.</li>
         </ul>
@@ -695,7 +692,7 @@ const SECTIONS: Section[] = [
           generated setup with filters for grade, instrument, executed status, and minimum score.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">
-          <li>Mark a setup as Reviewed, Paper Traded, Prepared Order, or Sent Order.</li>
+          <li>Mark a setup as Reviewed, Prepared Order, or Sent Order.</li>
           <li>Sent orders are mirrored to your trade history for performance review.</li>
           <li>Use the outcome tracker to log win/loss and notes after a position closes.</li>
         </ul>
@@ -806,7 +803,7 @@ const SECTIONS: Section[] = [
           </div>
           <div>
             <dt className="font-semibold">Do I need a broker to use it?</dt>
-            <dd className="text-muted-foreground">You can browse and use simulated mode without a broker. Live quotes and order placement require a connected Tradier, TradeStation, or SnapTrade account.</dd>
+            <dd className="text-muted-foreground">You can use Analysis Mode without a broker — full AI analysis with delayed reference data. Live quotes and order placement require a connected Tradier, TradeStation, or SnapTrade account.</dd>
           </div>
           <div>
             <dt className="font-semibold">Is this investment advice?</dt>

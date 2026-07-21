@@ -96,7 +96,9 @@ export function registerPositionProtectionRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
-      const plan = await createPlan(userId, parsed.data as CreatePlanInput);
+      // Derive account mode server-side — never trust the client's claim.
+      const derivedMode: "paper" | "live" = parsed.data.brokerAccountId.startsWith("sandbox:") ? "paper" : "live";
+      const plan = await createPlan(userId, { ...parsed.data, accountMode: derivedMode } as CreatePlanInput);
       res.status(201).json(plan);
     } catch (err) {
       const e = err as Error & { code?: string };

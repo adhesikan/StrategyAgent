@@ -699,15 +699,15 @@ export default function FuturesScanner() {
       return "TradeStation connected. Click 'Activate TradeStation Futures' to use live futures data.";
     }
     if (missingVars.length > 0) {
-      return "Data feed credentials incomplete. Falling back to simulated data.";
+      return "Data feed credentials incomplete. Showing delayed reference data.";
     }
     if (lastInitError) {
-      return "Data feed connection failed. Falling back to simulated data.";
+      return "Data feed connection failed. Showing delayed reference data.";
     }
     if (feedDetail && feedDetail !== "default" && feedDetail !== "FUTURES_FEED not set to rithmic") {
       return feedDetail;
     }
-    return "Running with simulated data. Connect a brokerage that supports futures to enable live data.";
+    return "Showing delayed reference data. Connect a brokerage that supports futures to enable live data.";
   };
 
   const buildMissingVarsHint = (): string | null => {

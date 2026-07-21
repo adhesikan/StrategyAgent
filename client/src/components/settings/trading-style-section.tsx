@@ -39,7 +39,7 @@ const OPTIONS: Array<{
     id: "learner",
     title: "Learner",
     tagline: "Show me how everything works first",
-    examples: "Tutorials, paper trading, simplified UI",
+    examples: "Tutorials, guided examples, simplified UI",
     icon: GraduationCap,
   },
 ];

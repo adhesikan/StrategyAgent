@@ -23,7 +23,7 @@ const PERSONA_CHIPS: Record<PersonaId | "default", string[]> = {
   ],
   learner: [
     "Explain a covered call in plain English",
-    "Show me a paper-trade setup on SPY",
+    "Show me a defined-risk setup on SPY",
     "What's a stop loss?",
     "Walk me through a basic breakout trade",
   ],
@@ -611,8 +611,8 @@ export default function AgentPage() {
               <div className="rounded-md border border-border bg-muted/30 p-2.5 text-xs">
                 <span className="font-medium text-foreground">Data source: </span>
                 {isConnected
-                  ? "Broker connected — the engine requests live quotes from your broker; per-scan results show whether each symbol came back live, mixed, or simulated. Account-aware sizing and risk checks are active."
-                  : "No broker connected — running on simulated examples. Connect a broker for live quotes and account-aware risk checks."}
+                  ? "Broker connected — the engine requests live quotes from your broker; per-scan results show whether each symbol came back live, mixed, or from educational examples. Account-aware sizing and risk checks are active."
+                  : "Analysis Mode — running on educational examples with delayed/snapshot context. Connect a broker for live quotes and account-aware risk checks."}
               </div>
             </div>
           </CollapsibleContent>
@@ -633,13 +633,13 @@ export default function AgentPage() {
                   ? bestPicksQuery.data.dataMode === "live"
                     ? " from live broker quotes plus news + OpenAI sentiment."
                     : bestPicksQuery.data.dataMode === "mixed"
-                      ? " from a mix of live broker quotes and simulated fallbacks, plus news + OpenAI sentiment."
+                      ? " from a mix of live broker quotes and delayed reference fallbacks, plus news + OpenAI sentiment."
                       : bestPicksQuery.data.brokerConnected
-                        ? " from simulated quotes (your broker returned no live data for this universe), plus news + OpenAI sentiment."
-                        : " from simulated examples (no broker connected), plus news + OpenAI sentiment."
+                        ? " from delayed reference quotes (your broker returned no live data for this universe), plus news + OpenAI sentiment."
+                        : " from educational examples (Analysis Mode), plus news + OpenAI sentiment."
                   : isConnected
                     ? " uses live broker quotes when your broker returns them, plus news + OpenAI sentiment."
-                    : " uses simulated examples until you connect a broker, plus news + OpenAI sentiment."}
+                    : " uses educational examples until you connect a broker, plus news + OpenAI sentiment."}
               </p>
             </div>
             <Button
@@ -679,10 +679,10 @@ export default function AgentPage() {
                 {bestPicksQuery.data.dataMode === "live"
                   ? "Live Broker Data"
                   : bestPicksQuery.data.dataMode === "mixed"
-                    ? "Mixed (live + simulated)"
+                    ? "Mixed (live + delayed reference)"
                     : bestPicksQuery.data.brokerConnected
-                      ? "Broker connected · simulated fallback"
-                      : "Simulated Examples"}
+                      ? "Broker connected · delayed reference fallback"
+                      : "Analysis Mode · Educational Examples"}
               </Badge>
               <span className="text-muted-foreground">
                 Universe: <span className="text-foreground">{bestPicksQuery.data.universeLabel}</span> ({bestPicksQuery.data.universeSize} symbols)

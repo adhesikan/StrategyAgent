@@ -278,7 +278,7 @@ function DataSourceBadge({ dataSource }: { dataSource?: string }) {
       className="text-[10px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
       data-testid="badge-data-source"
     >
-      Simulated data
+      Delayed reference data
     </Badge>
   );
 }

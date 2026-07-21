@@ -418,8 +418,8 @@ export function OnboardingWizard({ open, onComplete, onClose, isEditing, savedSe
                         <BarChart3 className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-medium">Use Demo Data</p>
-                        <p className="text-xs text-muted-foreground">Explore with simulated market data</p>
+                        <p className="text-sm font-medium">Explore in Analysis Mode</p>
+                        <p className="text-xs text-muted-foreground">Explore with delayed reference market data</p>
                       </div>
                       <Check className="h-4 w-4 text-muted-foreground" />
                     </CardContent>

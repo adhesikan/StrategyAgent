@@ -53,7 +53,7 @@ export default function BrokerConnectionsPage() {
               <span className="text-sm font-medium">
                 {isConnected
                   ? isPaper
-                    ? `Paper: ${providerName}`
+                    ? `Sandbox: ${providerName}`
                     : `Live: ${providerName}`
                   : "Not Connected"}
               </span>

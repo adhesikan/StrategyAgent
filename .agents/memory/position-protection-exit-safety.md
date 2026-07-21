@@ -38,9 +38,11 @@ rule triggers. These invariants must survive any future change:
    defeats it.
 
 **Broker note:** No provider exposes a native trailing_stop order — trailing is
-app-managed; the worker submits a regular order on trigger. Defaults: paper+stocks
-ON, live/options/spreads OFF behind `POSITION_PROTECTION_*` env flags. Live polls
-faster than paper (separate env-configurable cadences). `getWorkerHeartbeat()`
+app-managed; the worker submits a regular order on trigger. Customer-facing PP is
+live-only: `liveEnabled` defaults ON, `sandboxEnabled` (paper plans) defaults OFF
+behind `POSITION_PROTECTION_*` env flags, and the create route derives accountMode
+from the `sandbox:` account-id prefix — never trust the client's mode claim.
+Live polls faster than paper (separate env-configurable cadences). `getWorkerHeartbeat()`
 feeds admin telemetry.
 
 **Compliance copy:** public Position Protection copy must avoid

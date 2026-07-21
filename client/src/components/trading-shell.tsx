@@ -50,10 +50,7 @@ export function HomeActionCard({ title, subtitle, icon: Icon, onClick, testId, a
 }
 
 export function BrokerStatusStrip() {
-  const { isConnected, providerName, status } = useBrokerStatus();
-  const isPaper = status?.preferredAccountId?.startsWith("sandbox:");
-  const isLiveMode = isConnected && !isPaper;
-  const isPaperMode = isConnected && isPaper;
+  const { isConnected, providerName } = useBrokerStatus();
   const sessionInfo = getMarketSessionInfo();
   const sessionPillClass: Record<string, string> = {
     regular: "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5",
@@ -68,16 +65,10 @@ export function BrokerStatusStrip() {
     closed: "Market is closed (outside 4:00 AM – 8:00 PM ET, weekends, or holidays).",
   };
 
-  const modeLabel = isLiveMode
-    ? "Live Broker Mode"
-    : isPaperMode
-    ? "Paper Mode"
-    : "Simulated Examples";
-  const modeTitle = isLiveMode
-    ? "Using your connected brokerage account for live or broker-provided market data and order submission."
-    : isPaperMode
-    ? "Practicing with simulated trades using delayed/snapshot market context from your broker sandbox."
-    : "Examples for learning the workflow only — connect a broker for live market data.";
+  const modeLabel = isConnected ? "Connected Broker Mode" : "Analysis Mode";
+  const modeTitle = isConnected
+    ? "Using your connected brokerage account for broker-authorized market data, balances, positions, and order submission via InstaTrade™."
+    : "AI-generated market analysis and candidates only. Connect a broker for account data and order submission.";
 
   return (
     <Card data-testid="card-broker-status-strip" className="bg-card/40 backdrop-blur border-border/60 shadow-sm">
@@ -87,13 +78,13 @@ export function BrokerStatusStrip() {
             variant="outline"
             title={modeTitle}
             className={
-              isLiveMode
+              isConnected
                 ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5 gap-1.5"
-                : "border-amber-500/40 text-amber-400 bg-amber-500/5 gap-1.5"
+                : "border-blue-500/40 text-blue-400 bg-blue-500/5 gap-1.5"
             }
             data-testid="pill-mode"
           >
-            <FlaskConical className="h-3 w-3" />
+            {isConnected ? <CheckCircle2 className="h-3 w-3" /> : <FlaskConical className="h-3 w-3" />}
             {modeLabel}
           </Badge>
 
@@ -138,12 +129,12 @@ export function BrokerStatusStrip() {
           {!isConnected && (
             <Badge
               variant="outline"
-              title="Trial mode: example prices are anchored to free daily market closes from Yahoo Finance (with a Stooq fallback), refreshed once a day. Connect a broker to use live market data."
+              title="Analysis Mode uses delayed, end-of-day, or snapshot reference prices refreshed daily. Connect a broker for broker-authorized market data."
               className="border-blue-500/30 text-blue-300/90 bg-blue-500/5 gap-1.5"
               data-testid="pill-yahoo-reference"
             >
               <Database className="h-3 w-3" />
-              Mock data · daily reference prices
+              Delayed reference data
             </Badge>
           )}
         </div>
@@ -163,12 +154,11 @@ export function ComplianceFooter() {
         <p>
           <span className="font-medium text-foreground">Not investment advice.</span>{" "}
           VCP Trader AI provides software-generated trading scenarios, market context,
-          paper trading workflows, and order preparation tools for educational and
-          informational purposes only. VCP Trader AI is not a broker-dealer, investment
-          adviser, fiduciary, or data vendor and does not provide personalized investment
-          advice. Trading stocks and options involves risk, including loss of principal.
-          Paper Mode uses simulated execution and delayed, snapshot, sandbox, or
-          estimated market context. Live market data, options chains, account balances,
+          and order preparation tools for educational and informational purposes only.
+          VCP Trader AI is not a broker-dealer, investment adviser, fiduciary, or data
+          vendor and does not provide personalized investment advice. Trading stocks and
+          options involves risk, including loss of principal. Analysis Mode uses delayed,
+          snapshot, or estimated market context. Live market data, options chains, account balances,
           positions, and order submission are available only through your supported
           connected brokerage account, subject to your broker's entitlements. Past
           performance and back-tested results do not guarantee future outcomes. You are

@@ -14,25 +14,35 @@ VCP Trader AI is an AI-powered stock and options intelligence platform for self-
 - `shared/plans.ts` still defines `free/pro/edge/team` for backward-compat with admin/partner code, but only `pro` is shown publicly. `client/src/pages/pricing.tsx` and the home `PricingSection` are single-plan layouts.
 - Authenticated `PlanSelector` / `UpgradeModal` still reference legacy tiers — pending consolidation.
 
-## Data Modes (BrokerStatusStrip)
-Three standardized modes with hover tooltips, surfaced via `client/src/components/trading-shell.tsx`:
-- **Live Broker Mode** — broker connected, non-sandbox account
-- **Paper Mode** — broker connected, sandbox account (id starts with `sandbox:`)
-- **Simulated Examples** — no broker connected (learning fallback)
+## Two Modes (customer-facing)
+Customer vocabulary is two modes only (no public paper/simulated trading claims):
+- **Analysis Mode** — no broker connected. AI analysis, Educational Examples, delayed reference data. No orders.
+- **Connected Broker Mode** — broker connected. Live data + InstaTrade™ order review/submission. Sandbox broker accounts (`sandbox:` id prefix) are internal/dev only and surface as "Sandbox: {provider}" / "Broker Sandbox".
+Internal API values (`dataMode: "simulated"`, PP `accountMode: "paper"`, testids) are unchanged.
+
+## Optional Onboarding (T104)
+`client/src/components/start-choice.tsx`: StartChoiceDialog (gated on `prefs.onboardingStatus === 'not_started'`), 3-question QuickSetupDialog, PersonalizationPromptCard, IncompletePreferencesDisclosure — wired into `home-dashboard.tsx`. Home sections in `client/src/components/home/home-sections.tsx` (TodaysOpportunities, NeedsAttention, PositionsSummaryOrConnect).
 
 ## InstaTrade™ Flow
 The only execution path. Sheet-based ticket (`client/src/components/stock-trade-ticket.tsx`) with required acknowledgment checkbox before submission. Button label adapts:
 - No account → `Connect Broker to Use InstaTrade™` (disabled)
-- Sandbox account → `Paper Trade`
-- Live account → `Send to Broker with InstaTrade™`
+- Live account, Live Trading Setup incomplete → `Complete Live Trading Setup` (opens inline `LiveTradingSetupDialog` from `client/src/components/live-trading-setup.tsx`; saves prefs incl. `liveSetupCompleted`, options + execution-disclosure acks)
+- Live account, setup complete → `Send to Broker with InstaTrade™`
+Same gating in `option-trade-ticket.tsx`. Server enforces it too: `/api/trade/place-equity` and `/api/trade/place-option` return `LIVE_SETUP_REQUIRED` (422) for non-sandbox accounts when `liveSetupCompleted` is false.
 
 Server-side execution guardrails (`server/services/execution-guardrails.ts`) block trades that violate stored preferences (allowed instruments, defined-risk-only, min score, min R/R) and return `GUARDRAIL_BLOCKED`.
+
+## Position Protection (live-only)
+Customer-facing PP is restricted to verified live brokerage positions. `server/services/position-protection/index.ts` flags: `liveEnabled` (default ON), `sandboxEnabled` (default OFF, internal dev only — paper plans rejected with `LIVE_ONLY`). `POST /api/position-protection/plans` derives `accountMode` server-side from the `sandbox:` account-id prefix (client claim ignored).
+
+## External Alert Webhook Hardening
+`POST /api/external-alerts/webhook` (server/routes.ts): env kill switch `EXTERNAL_ALERT_WEBHOOK_ENABLED`, per-key rate limit (`EXTERNAL_ALERT_RATE_LIMIT_PER_MIN`, default 30/min), 5-min timestamp skew validation, idempotency/replay protection via `X-Idempotency-Key` or payload SHA-256 fingerprint (10-min TTL, in-memory — single-instance only).
 
 ## App Shell & Navigation
 - **Sidebar** (`client/src/components/app-sidebar.tsx`): Home, Grow (`/goal-mode`), Income (`/income-mode`), Trade (`/trade-finder`), Markets (`/market-intel`); collapsible **More** with Top Opportunities (`/opportunity-radar`), My Activity (`/history`), My Limits (`/settings/risk-profile`), Settings, **Advanced Tools** (Trade Setups, Discover, Charts, Backtest, Alerts), plus User Guide (`/guide`) and Strategy Reference (`/help`). Admin items appended for admins.
 - **Mobile bottom nav** (`client/src/components/mobile-bottom-nav.tsx`): Home/Grow/Income/Trade/More.
 - **Authenticated home** (`client/src/pages/home-dashboard.tsx`): hero prompt → `QuickPromptBar` (intent-based routing) → status pills → `NewHereBadge` → 4 action cards → `AiSnapshotPanel` (`GET /api/home/snapshot`) → `PopularChips` → `ComplianceFooter`.
-- **Public landing** (`client/src/pages/home.tsx`): hero (CTA "Start 14-Day Trial"), trust badges (Stocks+Options · Daily AI Ideas · Paper Mode Trial · Broker-Connected Data · InstaTrade™), problem/benefits/features, single-plan pricing, FAQ (8 spec Q&As), final CTA.
+- **Public landing** (`client/src/pages/home.tsx`): hero (CTA "Start 14-Day Trial"), trust badges (Stocks+Options · Daily AI Ideas · 14-Day Analysis Trial · Broker-Connected Data · InstaTrade™), problem/benefits/features, single-plan pricing, FAQ (8 spec Q&As), final CTA.
 - **Compliance**: full §12 disclaimer in `client/src/components/footer.tsx` (global) and `ComplianceFooter` in `trading-shell.tsx` (in-app).
 
 ## User Guide

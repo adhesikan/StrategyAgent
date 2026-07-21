@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { getMarketSessionInfo } from "@shared/market-session";
 import { HelpLink } from "@/components/help-link";
+import { LiveTradingSetupDialog, useLiveSetupStatus } from "@/components/live-trading-setup";
 
 interface ScanResultData {
   ticker: string;
@@ -138,6 +139,7 @@ export function StockTradeTicket({
   const { data: ppConfig } = useQuery<{
     enabled: boolean;
     liveEnabled: boolean;
+    sandboxEnabled?: boolean;
     optionsEnabled: boolean;
     spreadsEnabled: boolean;
   }>({
@@ -146,7 +148,12 @@ export function StockTradeTicket({
 
   const accountIsPaper = selectedAccount?.id?.startsWith("sandbox:") ?? false;
   const accountMode: "paper" | "live" = accountIsPaper ? "paper" : "live";
+  const { liveSetupCompleted } = useLiveSetupStatus();
+  const [showLiveSetup, setShowLiveSetup] = useState(false);
+  const needsLiveSetup = !accountIsPaper && !!selectedAccount && !liveSetupCompleted;
   const protectionLiveBlocked = !accountIsPaper && ppConfig ? !ppConfig.liveEnabled : false;
+  const protectionSandboxBlocked = accountIsPaper && ppConfig ? !ppConfig.sandboxEnabled : false;
+  const protectionBlocked = protectionLiveBlocked || protectionSandboxBlocked;
 
   const sessionInfo = getMarketSessionInfo();
   const inExtendedSession = sessionInfo.session === "pre" || sessionInfo.session === "after";
@@ -605,7 +612,7 @@ export function StockTradeTicket({
                   </div>
                   <Switch
                     checked={protectionEnabled}
-                    disabled={protectionLiveBlocked}
+                    disabled={protectionBlocked}
                     onCheckedChange={setProtectionEnabled}
                     data-testid="switch-position-protection"
                   />
@@ -620,8 +627,12 @@ export function StockTradeTicket({
 
                 {protectionLiveBlocked && (
                   <p className="text-[11px] text-amber-500 leading-snug" data-testid="text-protection-live-blocked">
-                    Position Protection is available on paper accounts right now. Switch to a paper
-                    account to enable it.
+                    Position Protection is temporarily unavailable for live accounts.
+                  </p>
+                )}
+                {protectionSandboxBlocked && (
+                  <p className="text-[11px] text-muted-foreground leading-snug" data-testid="text-protection-live-only">
+                    Position Protection is only available for verified live brokerage positions.
                   </p>
                 )}
 
@@ -923,7 +934,7 @@ export function StockTradeTicket({
             Cancel
           </Button>
           <Button
-            onClick={() => placeMutation.mutate()}
+            onClick={() => (needsLiveSetup ? setShowLiveSetup(true) : placeMutation.mutate())}
             disabled={
               placeMutation.isPending ||
               !selectedAccount ||
@@ -942,11 +953,18 @@ export function StockTradeTicket({
             )}
             {!selectedAccount
               ? "Connect Broker to Use InstaTrade™"
+              : needsLiveSetup
+              ? "Complete Live Trading Setup"
               : extendedHours
               ? `Send ${sessionInfo.session === "pre" ? "Pre-Market" : "After-Hours"} Order`
               : "Send to Broker with InstaTrade™"}
           </Button>
         </SheetFooter>
+        <LiveTradingSetupDialog
+          open={showLiveSetup}
+          onClose={() => setShowLiveSetup(false)}
+          onCompleted={() => setShowLiveSetup(false)}
+        />
       </SheetContent>
     </Sheet>
   );

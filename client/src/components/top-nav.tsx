@@ -78,7 +78,7 @@ function BrandWithStatus() {
   if (isConnected && providerName) {
     if (isPaper) {
       dotClass = "bg-amber-400";
-      label = `Paper: ${providerName}`;
+      label = `Sandbox: ${providerName}`;
       pillClass = "border-amber-500/40 text-amber-400 bg-amber-500/5";
     } else {
       dotClass = "bg-emerald-400";

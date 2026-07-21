@@ -528,11 +528,11 @@ export function DailyIdeaCard({ idea }: Props) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Badge variant="outline" className="text-[10px] cursor-help border-muted-foreground/40 text-muted-foreground">
-                    Simulated
+                    Educational Example
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[260px] text-xs leading-snug">
-                  No broker is connected, so prices and sizing are example values for learning. Connect a broker for live quotes.
+                  Educational example only. This is not a live quote, order, recommendation, or simulated brokerage transaction. Connect a broker for live quotes.
                 </TooltipContent>
               </Tooltip>
             )}
@@ -1134,7 +1134,7 @@ export function SimpleIdeaCard({ idea }: Props) {
               <Detail label="Time horizon" value={idea.timeHorizon} />
               <Detail label="Strategy" value={strategy.name} />
               <Detail label="Instrument" value={INSTRUMENT_LABEL[idea.instrumentType]} />
-              <Detail label="Data mode" value={idea.dataMode === "simulated" ? "Simulated" : "Live"} />
+              <Detail label="Data mode" value={idea.dataMode === "simulated" ? "Educational example" : "Live"} />
               <Detail label="AI score" value={`${idea.score} / 100`} />
             </div>
             {idea.advancedMetrics && (

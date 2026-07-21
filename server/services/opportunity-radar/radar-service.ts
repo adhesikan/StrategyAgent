@@ -826,12 +826,12 @@ export async function generateCandidateScenarios(
       ctx.dataMode === "live"
         ? `Using live broker quotes (${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols).`
         : ctx.dataMode === "mixed"
-          ? `Partial live data — ${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols came from your broker; the rest used simulated quotes.`
+          ? `Partial live data — ${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols came from your broker; the rest used delayed reference quotes.`
           : ctx.quoteFetchError
-            ? `Simulated data mode — ${ctx.quoteFetchError}`
+            ? `Delayed reference data — ${ctx.quoteFetchError}`
             : ctx.brokerConnected
-              ? "Simulated data mode — your broker returned no live quotes for this universe. Try a different universe or reconnect."
-              : "Simulated data mode — connect a broker for live quotes and account-aware risk checks.",
+              ? "Delayed reference data — your broker returned no live quotes for this universe. Try a different universe or reconnect."
+              : "Analysis Mode — connect a broker for live quotes and account-aware risk checks.",
       sentimentNote,
       ...relaxedNotes,
     ],

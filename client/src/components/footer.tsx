@@ -14,11 +14,11 @@ export function Footer() {
         <p>
           <span className="font-medium">Important — Not Investment Advice.</span>{" "}
           VCP Trader AI provides software-generated trading scenarios, market context,
-          paper trading workflows, and order preparation tools for educational and
+          and order preparation tools for educational and
           informational purposes only. VCP Trader AI is not a broker-dealer, investment
           adviser, fiduciary, or data vendor and does not provide personalized investment
           advice. Trading stocks and options involves risk, including loss of principal.
-          Paper Mode uses simulated execution and delayed, snapshot, sandbox, or estimated
+          Analysis Mode uses delayed, snapshot, end-of-day, or estimated
           market context. Live market data, options chains, account balances, positions,
           and order submission are available only through your supported connected
           brokerage account, subject to your broker's entitlements. Past performance and

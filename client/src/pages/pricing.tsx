@@ -15,7 +15,7 @@ const PLAN_FEATURES: string[] = [
   "Opportunity Radar / Top Opportunities",
   "News sentiment and market context",
   "Watchlist intelligence",
-  "Paper/simulated trading during trial",
+  "Full market analysis during trial",
   "Broker connection support",
   "Tradier and TradeStation support",
   "Live market data through connected brokerage account",
@@ -23,7 +23,7 @@ const PLAN_FEATURES: string[] = [
   "InstaTrade™ order review and submission",
   "Journal and results tracking",
   "Built-in risk controls",
-  "Paper-to-live workflow",
+  "Analysis-to-live workflow",
 ];
 
 export default function PricingPage() {
@@ -95,7 +95,7 @@ export default function PricingPage() {
           Simple Pricing. Bring Your Broker.
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Start in paper mode during your trial. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
+          Start your trial with full market analysis and AI-ranked candidates. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
         </p>
       </div>
 
@@ -152,9 +152,9 @@ export default function PricingPage() {
                 size="lg"
                 variant="outline"
                 onClick={() => navigate("/home")}
-                data-testid="button-explore-paper"
+                data-testid="button-explore-analysis"
               >
-                Explore in Paper Mode
+                Explore Market Analysis
               </Button>
             </div>
           )}

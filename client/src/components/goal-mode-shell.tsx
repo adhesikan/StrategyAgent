@@ -54,7 +54,7 @@ const GOAL_OPTIONS: { value: GoalModePrefs["goalType"]; label: string; desc: str
   { value: "monthly_income", label: "Monthly income", desc: "Premium-collection ideas with defined risk" },
   { value: "account_growth", label: "Account growth", desc: "Risk-aware directional and trend setups" },
   { value: "lower_risk", label: "Lower-risk ideas", desc: "Smaller position sizes, defined-risk only" },
-  { value: "learn_practice", label: "Learn and practice", desc: "Paper-mode scenarios with explanations" },
+  { value: "learn_practice", label: "Learn and practice", desc: "Educational analysis with explanations" },
 ];
 const INSTRUMENT_OPTIONS = [
   "Stocks",
@@ -311,8 +311,8 @@ export function GoalModeWizard({ open, onClose, onComplete }: GoalModeWizardProp
               ) : (
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
                   <p>
-                    You can explore scenarios in <strong>simulated mode</strong> now. Connect your broker
-                    later for live market data and self-directed order entry.
+                    You can explore analysis and candidate scenarios in <strong>Analysis Mode</strong> now.
+                    Connect your broker later for live market data and self-directed order entry.
                   </p>
                 </div>
               )}
@@ -343,7 +343,7 @@ export function GoalModeWizard({ open, onClose, onComplete }: GoalModeWizardProp
                 onClick={() => finishWith(false)}
                 data-testid="button-goal-simulated"
               >
-                Continue in Simulated Mode
+                Continue with Analysis
               </Button>
               {!isConnected && (
                 <Button
@@ -485,7 +485,7 @@ function gradeExplanation(grade: CandidateScenario["probabilityGrade"]): string 
     case "B":
       return "Grade B: Acceptable setup — meets the core criteria but with weaker confirmation on one or two signals (volume, trend, or risk/reward). Trade smaller or wait for confirmation.";
     case "C":
-      return "Grade C: Marginal setup — barely passes the screen. Consider skipping or using paper mode first. Below 60 we hide the idea entirely.";
+      return "Grade C: Marginal setup — barely passes the screen. Consider skipping or reviewing the analysis details first. Below 60 we hide the idea entirely.";
     default:
       return "Composite grade from our scoring engine (technical + sentiment + momentum + liquidity + risk).";
   }

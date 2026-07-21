@@ -116,7 +116,7 @@ function buildDirectionalTradeDetail(
     reasoning: [],
     invalidation: [],
     metrics: { currentPrice: spot },
-    dataSource: dataMode === "live" ? "live broker quote" : "simulated price baseline",
+    dataSource: dataMode === "live" ? "live broker quote" : "delayed reference price",
     generatedAt: new Date().toISOString(),
   };
 
@@ -255,7 +255,7 @@ function buildSpreadTradeDetail(
     reasoning: [],
     invalidation: [],
     metrics: { currentPrice: spot },
-    dataSource: dataMode === "live" ? "live broker quote" : "simulated price baseline",
+    dataSource: dataMode === "live" ? "live broker quote" : "delayed reference price",
     generatedAt: new Date().toISOString(),
   };
 
@@ -328,7 +328,7 @@ function buildIncomeTradeDetail(
     reasoning: [],
     invalidation: [],
     metrics: { currentPrice: spot },
-    dataSource: dataMode === "live" ? "live broker quote" : "simulated price baseline",
+    dataSource: dataMode === "live" ? "live broker quote" : "delayed reference price",
     generatedAt: new Date().toISOString(),
   };
 
@@ -1074,8 +1074,8 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           bestTradeMeta.dataMode === "live"
             ? "live broker data"
             : bestTradeMeta.dataMode === "mixed"
-              ? "a mix of live broker data and simulated examples"
-              : "simulated examples";
+              ? "a mix of live broker data and delayed reference data"
+              : "delayed reference data";
 
         if (bestTradeMeta.scope === "symbol") {
           const sym = bestTradeMeta.label;
@@ -1149,7 +1149,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         const dirLabel = td.strategyLabel.toLowerCase();
         const sentenceData = td.dataMode === "live"
           ? `${td.symbol} is at $${td.spot.toFixed(2)}.`
-          : `Using a simulated price baseline of $${td.spot.toFixed(2)} (no live quote available).`;
+          : `Using a delayed reference price of $${td.spot.toFixed(2)} (no live quote available).`;
         const aligned = td.signalAlignment === "aligned";
         const contrary = td.signalAlignment === "contrary";
         const biasSentence = aligned
@@ -1198,7 +1198,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           : `${td.symbol} wheel — sell the $${td.strike} call expiring ${td.expiry}`;
         const sentenceData = td.dataMode === "live"
           ? `${td.symbol} is at $${td.spot.toFixed(2)}.`
-          : `Using a simulated price baseline of $${td.spot.toFixed(2)} (no live quote available).`;
+          : `Using a delayed reference price of $${td.spot.toFixed(2)} (no live quote available).`;
         const sentencePlan = isCsp
           ? `${verbAction} 1× ${td.expiry} ${td.symbol} $${td.strike} put for about $${td.premiumPerShare.toFixed(2)} per share — roughly $${td.premiumPerContract.toFixed(0)} credit per contract. Cash collateral required: about $${td.collateralPerContract.toFixed(0)}.`
           : `${verbAction} 1× ${td.expiry} ${td.symbol} $${td.strike} call against 100 shares you own for about $${td.premiumPerShare.toFixed(2)} per share — roughly $${td.premiumPerContract.toFixed(0)} credit per contract.`;

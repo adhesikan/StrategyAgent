@@ -23,8 +23,10 @@ import {
 } from "./calculator";
 
 // ─── Feature flags ──────────────────────────────────────────────────
-// Position Protection ships paper + stocks first. Live trading, options, and
-// spreads stay off until each is explicitly enabled via env flag.
+// Position Protection is customer-facing for verified LIVE brokerage
+// positions only. Sandbox ("paper") plans are reserved for internal
+// development/testing and require an explicit env flag. Options and
+// spreads stay off until explicitly enabled via env flag.
 function flag(name: string, defaultOn: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return defaultOn;
@@ -34,7 +36,9 @@ function flag(name: string, defaultOn: boolean): boolean {
 export function getProtectionConfig() {
   return {
     enabled: flag("POSITION_PROTECTION_ENABLED", true),
-    liveEnabled: flag("POSITION_PROTECTION_LIVE_ENABLED", false),
+    liveEnabled: flag("POSITION_PROTECTION_LIVE_ENABLED", true),
+    // Internal only: allows sandbox-account plans for development/testing.
+    sandboxEnabled: flag("POSITION_PROTECTION_SANDBOX_ENABLED", false),
     optionsEnabled: flag("POSITION_PROTECTION_OPTIONS_ENABLED", false),
     spreadsEnabled: flag("POSITION_PROTECTION_SPREADS_ENABLED", false),
   };
@@ -137,7 +141,10 @@ export function checkPlanGates(input: CreatePlanInput): GateResult {
     return { ok: false, error: "A snapshot of the acknowledged disclosure is required.", code: "ACK_TEXT_REQUIRED" };
   }
   if (input.accountMode === "live" && !cfg.liveEnabled) {
-    return { ok: false, error: "Position Protection is available for paper accounts only right now.", code: "LIVE_DISABLED" };
+    return { ok: false, error: "Position Protection is temporarily unavailable for live accounts.", code: "LIVE_DISABLED" };
+  }
+  if (input.accountMode === "paper" && !cfg.sandboxEnabled) {
+    return { ok: false, error: "Position Protection is only available for verified live brokerage positions.", code: "LIVE_ONLY" };
   }
   if (input.instrumentType === "option" && !cfg.optionsEnabled) {
     return { ok: false, error: "Option Position Protection isn't enabled yet.", code: "OPTIONS_DISABLED" };

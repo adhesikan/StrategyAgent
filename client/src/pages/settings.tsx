@@ -142,9 +142,9 @@ function TradeStationSimModeCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Simulated Trading</CardTitle>
+        <CardTitle className="text-base font-medium">TradeStation Environment</CardTitle>
         <CardDescription>
-          Switch between live and simulated trading environments on TradeStation
+          Switch between TradeStation's live and sandbox (developer) environments
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -378,8 +378,8 @@ export default function Settings() {
       setSandboxToken("");
       setShowSandboxInput(false);
       toast({
-        title: "Paper Trading Enabled",
-        description: "Sandbox token saved. Paper trading accounts are now available.",
+        title: "Sandbox Access Enabled",
+        description: "Sandbox token saved. Broker sandbox accounts are now available.",
       });
     },
     onError: (error) => {
@@ -400,7 +400,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ["/api/broker/sandbox-status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/broker/accounts"] });
       toast({
-        title: "Paper Trading Disabled",
+        title: "Sandbox Access Disabled",
         description: "Sandbox token removed.",
       });
     },
@@ -1075,9 +1075,9 @@ export default function Settings() {
             {brokerStatus?.isConnected && brokerStatus?.provider === "tradier" && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base font-medium">Paper Trading</CardTitle>
+                  <CardTitle className="text-base font-medium">Broker Sandbox</CardTitle>
                   <CardDescription>
-                    Practice trading with a Tradier sandbox account using simulated money
+                    Connect a Tradier sandbox (developer) account for testing broker workflows
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

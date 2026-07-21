@@ -495,10 +495,10 @@ export default function HomeV2() {
                 <Badge
                   variant="outline"
                   className="text-[10px] border-blue-500/30 text-blue-300/90 bg-blue-500/5"
-                  title="Trial mode: example prices are anchored to free daily market closes from Yahoo Finance (with a Stooq fallback), refreshed once a day. Connect a broker for live data."
+                  title="Analysis Mode uses delayed, end-of-day, or snapshot reference prices refreshed daily. Connect a broker for broker-authorized market data."
                   data-testid="badge-simulated"
                 >
-                  Mock data · daily reference prices
+                  Delayed reference data
                 </Badge>
               )}
               <span className="text-xs text-muted-foreground hidden sm:inline">Sort by</span>
@@ -941,7 +941,7 @@ export default function HomeV2() {
                         <p className="font-medium">No ideas in this category right now.</p>
                         <p className="text-xs text-muted-foreground">
                           {ideasResp?.brokerConnected === false
-                            ? "Your broker isn't connected, so we're running on simulated examples — and the strict filters for this tab didn't surface anything. "
+                            ? "Your broker isn't connected, so we're showing educational examples with delayed reference data — and the strict filters for this tab didn't surface anything. "
                             : "The filters for this tab didn't surface anything in the current scan. "}
                           Try another tab, build a watchlist, or connect your broker for live data.
                         </p>
@@ -1018,7 +1018,7 @@ export default function HomeV2() {
                 }
                 data-testid="badge-snapshot-source"
               >
-                {snap?.dataMode === "live" ? "Live broker data" : "Simulated"}
+                {snap?.dataMode === "live" ? "Live broker data" : "Delayed reference"}
               </Badge>
               <HelpLink section="home" label="Snapshot help" />
             </div>

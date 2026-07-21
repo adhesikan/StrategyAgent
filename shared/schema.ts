@@ -2118,10 +2118,38 @@ export const userTradePreferences = pgTable("user_trade_preferences", {
   minProbabilityScore: integer("min_probability_score").default(65),
   defaultOrderType: text("default_order_type").default("limit"),
   requireConfirmation: boolean("require_confirmation").default(true),
+  onboardingStatus: text("onboarding_status").default("not_started"),
+  quickSetupCompleted: boolean("quick_setup_completed").default(false),
+  fullPersonalizationCompleted: boolean("full_personalization_completed").default(false),
+  personalizationDismissed: boolean("personalization_dismissed").default(false),
+  preferredGoal: text("preferred_goal"),
+  preferredInstruments: text("preferred_instruments"),
+  preferredRiskAmount: real("preferred_risk_amount"),
+  interfaceMode: text("interface_mode").default("guided"),
+  liveSetupCompleted: boolean("live_setup_completed").default(false),
+  maxDollarRisk: real("max_dollar_risk"),
+  maxAccountRiskPercent: real("max_account_risk_percent"),
+  optionsAcknowledgedAt: timestamp("options_acknowledged_at"),
+  executionDisclosureAcceptedAt: timestamp("execution_disclosure_accepted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 export const insertUserTradePreferencesSchema = createInsertSchema(userTradePreferences).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const savedCandidates = pgTable("saved_candidates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  candidateId: varchar("candidate_id"),
+  symbol: text("symbol").notNull(),
+  strategy: text("strategy"),
+  grade: text("grade"),
+  status: text("status").default("saved"),
+  notes: text("notes"),
+  savedAt: timestamp("saved_at").defaultNow(),
+});
+export const insertSavedCandidateSchema = createInsertSchema(savedCandidates).omit({ id: true, savedAt: true });
+export type InsertSavedCandidate = z.infer<typeof insertSavedCandidateSchema>;
+export type SavedCandidate = typeof savedCandidates.$inferSelect;
 export type InsertUserTradePreferences = z.infer<typeof insertUserTradePreferencesSchema>;
 export type UserTradePreferences = typeof userTradePreferences.$inferSelect;
 

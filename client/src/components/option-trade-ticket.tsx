@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { LiveTradingSetupDialog, useLiveSetupStatus } from "@/components/live-trading-setup";
 import {
   Sheet,
   SheetContent,
@@ -142,6 +143,9 @@ export function OptionTradeTicket({
 
   const accountSelected = !!selectedAccount;
   const isSandbox = selectedAccount?.id?.startsWith("sandbox:") || false;
+  const { liveSetupCompleted } = useLiveSetupStatus();
+  const [showLiveSetup, setShowLiveSetup] = useState(false);
+  const needsLiveSetup = accountSelected && !isSandbox && !liveSetupCompleted;
 
   useEffect(() => {
     if (selectedContract && !limitPrice) {
@@ -215,9 +219,9 @@ export function OptionTradeTicket({
 
   const submitLabel = !accountSelected
     ? "Connect Broker to Use InstaTrade™"
-    : isSandbox
-      ? "Paper Trade"
-      : "Send to Broker with InstaTrade™";
+    : needsLiveSetup
+    ? "Complete Live Trading Setup"
+    : "Send to Broker with InstaTrade™";
 
   const dte = expiration ? daysUntil(expiration) : 0;
   const estCost = (selectedContract && orderType === "limit" && limitPrice)
@@ -481,7 +485,7 @@ export function OptionTradeTicket({
                       <span className="font-mono font-medium">${estCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     {isSandbox && (
-                      <Badge variant="outline" className="text-[10px] mt-1">Paper account — simulated fill</Badge>
+                      <Badge variant="outline" className="text-[10px] mt-1">Broker sandbox account</Badge>
                     )}
                   </div>
 
@@ -507,7 +511,7 @@ export function OptionTradeTicket({
             Cancel
           </Button>
           <Button
-            onClick={() => placeMutation.mutate()}
+            onClick={() => (needsLiveSetup ? setShowLiveSetup(true) : placeMutation.mutate())}
             disabled={!accountSelected || !selectedContract || !acknowledged || placeMutation.isPending}
             className="flex-1"
             data-testid="button-option-submit"
@@ -516,6 +520,12 @@ export function OptionTradeTicket({
             {submitLabel}
           </Button>
         </SheetFooter>
+        <LiveTradingSetupDialog
+          open={showLiveSetup}
+          onClose={() => setShowLiveSetup(false)}
+          onCompleted={() => setShowLiveSetup(false)}
+          involvesOptions
+        />
       </SheetContent>
     </Sheet>
   );

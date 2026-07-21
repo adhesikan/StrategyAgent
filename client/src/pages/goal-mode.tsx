@@ -98,7 +98,7 @@ export default function GoalModePage() {
   const handleSend = () => {
     if (!activeScenario) return;
     toast({
-      title: brokerConnected ? "Order sent" : "Simulated order placed",
+      title: brokerConnected ? "Order sent" : "Analysis saved — connect a broker to place orders",
       description: `${activeScenario.ticker} ${activeScenario.strategyType} submitted for review.`,
     });
   };

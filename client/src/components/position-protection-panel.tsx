@@ -208,7 +208,7 @@ export function PositionProtectionPanel() {
                           {plan.status}
                         </Badge>
                         {plan.accountMode === "paper" && (
-                          <Badge variant="outline" className="text-[10px]">Paper</Badge>
+                          <Badge variant="outline" className="text-[10px]">Sandbox</Badge>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -382,7 +382,7 @@ export function PositionProtectionPanel() {
                         </Badge>
                       )}
                       {plan.accountMode === "paper" && (
-                        <Badge variant="outline" className="text-[10px]">Paper</Badge>
+                        <Badge variant="outline" className="text-[10px]">Sandbox</Badge>
                       )}
                     </div>
                     <span className="shrink-0 text-muted-foreground tabular-nums">

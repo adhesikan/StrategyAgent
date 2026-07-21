@@ -481,7 +481,7 @@ function BrokerStatusCard({
                   ? "Live"
                   : dataMode === "mixed"
                     ? `Partial Live${data?.liveQuoteCount != null && data?.universeSize ? ` (${data.liveQuoteCount}/${data.universeSize})` : ""}`
-                    : "Simulated"
+                    : "Delayed reference"
               }
               tone={dataMode === "live" ? "green" : dataMode === "mixed" ? "amber" : "amber"}
               testId="chip-data-mode"
@@ -518,7 +518,7 @@ function BrokerStatusCard({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
               <StatusChip label="Broker" value="Not Connected" tone="amber" testId="chip-broker" />
-              <StatusChip label="Data mode" value="Simulated" tone="amber" testId="chip-data-mode" />
+              <StatusChip label="Data mode" value="Delayed reference" tone="amber" testId="chip-data-mode" />
               <StatusChip
                 label="Stock list"
                 value={universeLabel}
@@ -533,12 +533,12 @@ function BrokerStatusCard({
               />
             </div>
             <p className="text-sm text-muted-foreground" data-testid="text-no-broker-msg">
-              You can explore simulated scenarios now. Connect your broker for live market data, account-aware
+              You're in Analysis Mode — explore AI-ranked candidate scenarios with delayed reference data. Connect your broker for live market data, account-aware
               risk checks, and self-directed order previews.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" data-testid="button-continue-simulated">
-                Continue Simulated
+                Continue in Analysis Mode
               </Button>
               <Button
                 size="sm"

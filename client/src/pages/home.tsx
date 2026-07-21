@@ -256,7 +256,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
   const trustBadges = [
     "Stocks + Options",
     "Daily AI Ideas",
-    "Paper Mode Trial",
+    "14-Day Analysis Trial",
     "Broker-Connected Data",
     "InstaTrade™",
   ];
@@ -337,7 +337,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
               ))}
             </div>
             <p className="mt-4 text-xs text-muted-foreground max-w-xl mx-auto lg:mx-0" data-testid="text-hero-disclaimer">
-              Trial mode uses paper/simulated workflows with delayed or snapshot market context. Live market data and order submission require a supported connected brokerage account. Informational only — not investment advice.
+              The trial provides AI-generated market analysis with delayed or snapshot market context. Live market data and order submission require a supported connected brokerage account. Informational only — not investment advice.
             </p>
             <p className="mt-2 text-[11px] text-muted-foreground/80">
               Powered by Strategy Agent
@@ -422,7 +422,7 @@ function BenefitsSection() {
     {
       icon: GraduationCap,
       title: "Learn Over Time",
-      copy: "Track reviewed, paper-traded, and executed ideas so you can see what's working.",
+      copy: "Track reviewed, saved, and executed ideas so you can see what's working.",
     },
   ];
 
@@ -714,7 +714,7 @@ function FeaturesSection() {
       copy: "Prepare reviewed orders through your connected broker. You approve every order before it is submitted.",
       bullets: [
         "Tradier, TradeStation, and SnapTrade-connected brokerages",
-        "Paper mode available",
+        "Adaptive order review workflow",
         "Live data through your brokerage connection",
         "Explicit confirmation required before submission",
       ],
@@ -739,7 +739,7 @@ function FeaturesSection() {
       testId: "feature-history",
       eyebrow: "H · Journal / Learning",
       title: "Track What You Review and Trade",
-      copy: "Review your past ideas, paper trades, executed trades, and outcomes to understand what works for you.",
+      copy: "Review your past ideas, saved candidates, executed trades, and outcomes to understand what works for you.",
       bullets: [
         "Filter by grade, instrument and executed status",
         "Outcomes inform future scenarios",
@@ -936,7 +936,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
     "Opportunity Radar / Top Opportunities",
     "News sentiment and market context",
     "Watchlist intelligence",
-    "Paper/simulated trading during trial",
+    "Full market analysis during trial",
     "Broker connection support",
     "Tradier and TradeStation support",
     "Live market data through connected brokerage account",
@@ -944,7 +944,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
     "InstaTrade™ order review and submission",
     "Journal and results tracking",
     "Built-in risk controls",
-    "Paper-to-live workflow",
+    "Analysis-to-live workflow",
   ];
 
   return (
@@ -955,7 +955,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
             Simple Pricing. Bring Your Broker.
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Start in paper mode during your trial. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
+            Start your trial with full market analysis and AI-ranked candidates. Connect Tradier, TradeStation, or another supported brokerage for live market data, account context, and self-directed InstaTrade™ order submission.
           </p>
         </div>
 
@@ -999,12 +999,12 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                   size="lg"
                   variant="outline"
                   onClick={() => {
-                    track("explore_paper_mode_clicked", { location: "pricing" });
+                    track("explore_analysis_mode_clicked", { location: "pricing" });
                     onStartTrial();
                   }}
-                  data-testid="button-explore-paper"
+                  data-testid="button-explore-analysis"
                 >
-                  Explore in Paper Mode
+                  Explore Market Analysis
                 </Button>
               </div>
             </CardContent>
@@ -1051,19 +1051,19 @@ function FAQSection() {
   const faqs = [
     {
       q: "Do I need a brokerage account to start?",
-      a: "No. You can start the 14-day trial in Paper Mode. To access live market data, live account context, options chains, and InstaTrade™ order submission, connect a supported brokerage account such as Tradier or TradeStation.",
+      a: "No. You can start the 14-day trial in Analysis Mode with AI-generated candidates and market context. To access live market data, account balances, options chains, and InstaTrade™ order submission, connect a supported brokerage account such as Tradier or TradeStation.",
     },
     {
       q: "Does VCP Trader AI include live market data?",
       a: "No separate live market data feed is included. Live data comes through your connected brokerage account and depends on your broker's entitlements and permissions.",
     },
     {
-      q: "Can I paper trade without connecting a broker?",
-      a: "Yes. Paper Mode lets you practice with simulated trades using delayed/snapshot market context, or simulated examples when data is unavailable.",
+      q: "What can I do without connecting a broker?",
+      a: "In Analysis Mode you get AI-generated market candidates, Opportunity Radar, scoring, news sentiment, Market Intel, watchlists, and educational strategy examples using delayed or snapshot market context. Order submission requires a connected broker.",
     },
     {
-      q: "Are paper option prices real quotes?",
-      a: "When broker or approved delayed options data is unavailable, option prices in Paper Mode may be estimated for learning purposes and can differ from live market quotes.",
+      q: "Does the trial include paper trading?",
+      a: "No. VCP Trader AI does not provide built-in paper trading, virtual cash, or simulated fills. The trial is an analysis and discovery trial — connect a supported brokerage account for account data and order submission.",
     },
     {
       q: "Does it trade automatically?",
@@ -1116,7 +1116,7 @@ function FinalCtaSection({ onStartTrial }: { onStartTrial: () => void }) {
     <section className="py-16 md:py-20" id="instatrade">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-2xl md:text-3xl font-bold">Ready to trade with clarity?</h2>
-        <p className="mt-3 text-muted-foreground">Start your 14-day free trial in Paper Mode. Connect your broker when you're ready. Review every order before it's sent.</p>
+        <p className="mt-3 text-muted-foreground">Start your 14-day free trial with full market analysis. Connect your broker when you're ready. Review every order before it's sent.</p>
         <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button
             size="lg"

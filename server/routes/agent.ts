@@ -106,23 +106,23 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
                 setup = generateSetupFromScanResult(result, parsed);
               } else {
                 setup = generateMockSetup(parsed);
-                setup.dataSource = "simulated (no valid setup from live data)";
+                setup.dataSource = "delayed reference (no valid setup from live data)";
               }
             } else {
               setup = generateMockSetup(parsed);
-              setup.dataSource = "simulated (limited market data)";
+              setup.dataSource = "delayed reference (limited market data)";
             }
           } else {
             setup = generateMockSetup(parsed);
-            setup.dataSource = "simulated";
+            setup.dataSource = "delayed reference";
           }
         } else {
           setup = generateMockSetup(parsed);
-          setup.dataSource = "simulated (no broker connected)";
+          setup.dataSource = "delayed reference (no broker connected)";
         }
       } catch (err) {
         setup = generateMockSetup(parsed);
-        setup.dataSource = "simulated (data fetch error)";
+        setup.dataSource = "delayed reference (data fetch error)";
       }
 
       if (body.conditions && body.conditions.length > 0) {
@@ -478,14 +478,67 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
     minProbabilityScore: z.number().int().min(0).max(100).optional(),
     defaultOrderType: z.enum(["market", "limit"]).optional(),
     requireConfirmation: z.boolean().optional(),
+    onboardingStatus: z.enum(["not_started", "skipped", "quick_setup", "full_personalization"]).optional(),
+    quickSetupCompleted: z.boolean().optional(),
+    fullPersonalizationCompleted: z.boolean().optional(),
+    personalizationDismissed: z.boolean().optional(),
+    preferredGoal: z.enum(["growth", "income", "both"]).optional(),
+    preferredInstruments: z.enum(["stocks", "options", "both"]).optional(),
+    preferredRiskAmount: z.number().min(0).optional(),
+    interfaceMode: z.enum(["guided", "advanced"]).optional(),
+    liveSetupCompleted: z.boolean().optional(),
+    maxDollarRisk: z.number().min(0).optional(),
+    maxAccountRiskPercent: z.number().min(0).max(100).optional(),
+    optionsAcknowledged: z.boolean().optional(),
+    executionDisclosureAccepted: z.boolean().optional(),
   });
 
   app.put("/api/user/trade-preferences", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const body = tradePrefSchema.parse(req.body);
-      const result = await storage.upsertUserTradePreferences(userId, body as any);
+      const { optionsAcknowledged, executionDisclosureAccepted, ...body } = tradePrefSchema.parse(req.body);
+      const data: Record<string, unknown> = { ...body };
+      if (optionsAcknowledged) data.optionsAcknowledgedAt = new Date();
+      if (executionDisclosureAccepted) data.executionDisclosureAcceptedAt = new Date();
+      const result = await storage.upsertUserTradePreferences(userId, data as any);
       res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ─── Saved Candidates ─────────────────────────────────
+  app.get("/api/saved-candidates", isAuthenticated, async (req, res) => {
+    try {
+      const items = await storage.getSavedCandidates(req.session.userId!);
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const savedCandidateSchema = z.object({
+    candidateId: z.string().optional(),
+    symbol: z.string().min(1).max(12),
+    strategy: z.string().optional(),
+    grade: z.string().optional(),
+    notes: z.string().max(2000).optional(),
+  });
+
+  app.post("/api/saved-candidates", isAuthenticated, async (req, res) => {
+    try {
+      const body = savedCandidateSchema.parse(req.body);
+      const item = await storage.createSavedCandidate({ ...body, userId: req.session.userId! });
+      res.status(201).json(item);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/saved-candidates/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSavedCandidate(req.session.userId!, req.params.id);
+      res.json({ ok: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }

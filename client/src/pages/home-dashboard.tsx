@@ -1,13 +1,15 @@
 import { useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Sparkles, ArrowRight, Target, ShieldCheck } from "lucide-react";
+import { Search, ArrowRight, ShieldCheck, TrendingUp, Wallet, LineChart } from "lucide-react";
 import { HomeActionCard, ComplianceFooter } from "@/components/trading-shell";
 import type { PositionProtectionPlan } from "@shared/schema";
 import { QuickPromptBar } from "@/components/home/quick-prompt-bar";
 import { AiSnapshotPanel } from "@/components/home/ai-snapshot-panel";
 import { PopularChips } from "@/components/home/popular-chips";
 import { QuotaBanner } from "@/components/quota-banner";
+import { StartChoiceDialog, PersonalizationPromptCard, IncompletePreferencesDisclosure } from "@/components/start-choice";
+import { TodaysOpportunities, NeedsAttention, PositionsSummaryOrConnect } from "@/components/home/home-sections";
 import { usePersona } from "@/context/PersonaContext";
 import type { TraderPersona } from "@shared/plans";
 
@@ -69,6 +71,10 @@ export default function HomeDashboard() {
       {/* Quota banner (only shows when usage > 80%) */}
       <QuotaBanner />
 
+      {/* Optional onboarding: start choice for brand-new users, dismissible personalization prompt */}
+      <StartChoiceDialog />
+      <PersonalizationPromptCard />
+
       {/* Position Protection summary (only when protecting positions) */}
       {activeProtected > 0 && (
         <button
@@ -90,25 +96,44 @@ export default function HomeDashboard() {
         </button>
       )}
 
-      {/* Main grid: single merged action card + Ask AI + snapshot panel */}
+      {/* Needs Your Attention (only when relevant) */}
+      <NeedsAttention />
+
+      {/* Main grid: four primary actions + snapshot panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="lg:col-span-2 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             <HomeActionCard
+              title="Grow"
+              subtitle="Set a growth goal and review ranked candidate scenarios sized to your capital and risk limits."
+              icon={TrendingUp}
+              accent="emerald"
+              testId="card-action-grow"
+              onClick={() => navigate("/goal-mode")}
+            />
+            <HomeActionCard
+              title="Income"
+              subtitle="Explore covered calls, cash-secured puts, and defined-risk income candidates."
+              icon={Wallet}
+              accent="blue"
+              testId="card-action-income"
+              onClick={() => navigate("/income-mode")}
+            />
+            <HomeActionCard
               title="Find a Trade"
-              subtitle="Describe a stock or options setup in plain English. Ranked candidates include live news, sentiment, and technical indicators."
+              subtitle="Describe a stock or options setup in plain English. Ranked candidates include news, sentiment, and technical indicators."
               icon={Search}
               accent="violet"
               testId="card-action-find"
               onClick={() => navigate("/trade-finder")}
             />
             <HomeActionCard
-              title="Ask: Best trade on a ticker"
-              subtitle="Ask AI in plain English — e.g. 'Find a high-probability trade on NVDA'. Get one stock and one defined-risk option trade with bias from broker data, news, and AI sentiment."
-              icon={Target}
-              accent="emerald"
-              testId="card-action-ask-best-trade"
-              onClick={() => navigate("/ask?q=" + encodeURIComponent("Find a high-probability trade on NVDA"))}
+              title="Understand Markets"
+              subtitle="Morning briefing, why a stock is moving, watchlist sentiment, and top catalysts."
+              icon={LineChart}
+              accent="amber"
+              testId="card-action-markets"
+              onClick={() => navigate("/market-intel")}
             />
           </div>
         </div>
@@ -117,6 +142,13 @@ export default function HomeDashboard() {
           <AiSnapshotPanel />
         </aside>
       </div>
+
+      {/* Today's Opportunities */}
+      <TodaysOpportunities />
+      <IncompletePreferencesDisclosure />
+
+      {/* Positions summary / connect CTA */}
+      <PositionsSummaryOrConnect />
 
       {/* Popular chips */}
       <PopularChips />

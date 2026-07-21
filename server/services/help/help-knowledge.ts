@@ -119,6 +119,26 @@ export const HELP_TOPICS: HelpTopic[] = [
     keywords: ["faq", "question", "cancel", "refund", "billing", "subscription", "manage plan"],
     text: "Common answers: billing is via Stripe — manage or cancel any time from the billing portal in Settings. The 14-day trial gives full Pro access. Data in Analysis Mode is delayed reference data; live data requires a connected broker. Support: use this help assistant, the User Guide at /guide, or email support@sunfishtrading.com.",
   },
+  {
+    id: "faq",
+    title: "Contact Support",
+    keywords: [
+      "support",
+      "contact",
+      "email",
+      "help",
+      "reach",
+      "support team",
+      "customer service",
+      "get in touch",
+      "talk to someone",
+      "human",
+      "report a problem",
+      "bug",
+      "issue",
+    ],
+    text: "You can reach the support team by email at support@sunfishtrading.com. You can also use this help assistant for how-to questions, or browse the User Guide at /guide for a full walkthrough of every feature.",
+  },
 ];
 
 // Quick reference of in-app destinations the assistant may point users to.

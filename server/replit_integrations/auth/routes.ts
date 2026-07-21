@@ -232,7 +232,24 @@ export function registerAuthRoutes(app: Express): void {
       delete req.session.partnerUserId;
       recordSessionEvent({ req, userId: user.id, email: user.email, eventType: "login" });
 
-      const { password: _, ...safeUser } = user;
+      // Legacy accounts created before the 14-day trial model: start their
+      // trial on first login if they've never had one and have no Stripe
+      // subscription. Mirrors the auto-trial granted at registration.
+      let responseUser = user;
+      if (!user.trialEndsAt && !user.stripeSubscriptionId) {
+        try {
+          await authStorage.updateUser(user.id, {
+            planId: "pro",
+            subscriptionStatus: "trialing",
+            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          });
+          responseUser = (await authStorage.getUser(user.id)) ?? user;
+        } catch (err) {
+          console.error("Failed to backfill trial on login:", err);
+        }
+      }
+
+      const { password: _, ...safeUser } = responseUser;
       res.json(safeUser);
     } catch (error) {
       if (error instanceof z.ZodError) {

@@ -238,8 +238,9 @@ export function TopNav() {
         </div>
         <div className="flex items-center gap-1">
           <Link href="/guide" data-testid="link-user-guide" title="User Guide">
-            <Button variant="ghost" size="icon" aria-label="User Guide" data-testid="button-user-guide">
+            <Button variant="ghost" size="sm" className="gap-1.5" aria-label="User Guide" data-testid="button-user-guide">
               <HelpCircle className="h-5 w-5" />
+              <span className="hidden lg:inline">User Guide</span>
             </Button>
           </Link>
           <AlertBell />

@@ -692,11 +692,17 @@ export default function TradeDetailPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 space-y-6">
         <button
-          onClick={() => navigate("/scanner")}
+          onClick={() => {
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              navigate("/scanner");
+            }
+          }}
           className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
           data-testid="button-back"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to scanner
+          <ArrowLeft className="h-4 w-4" /> Back
         </button>
 
         <div className="flex flex-wrap items-start justify-between gap-4">

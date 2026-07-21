@@ -42,13 +42,6 @@ const NAV_ITEMS: TopNavItem[] = [
       p === "/agent",
   },
   {
-    label: "Journal",
-    href: "/journal",
-    icon: BookOpen,
-    testId: "topnav-journal",
-    matches: (p) => p === "/journal" || p === "/history" || p === "/trade-setups",
-  },
-  {
     label: "Scanner",
     href: "/scanner",
     icon: SearchIcon,
@@ -61,6 +54,13 @@ const NAV_ITEMS: TopNavItem[] = [
     icon: Newspaper,
     testId: "topnav-markets",
     matches: (p) => p === "/markets" || p === "/market-intel" || p === "/news",
+  },
+  {
+    label: "Journal",
+    href: "/journal",
+    icon: BookOpen,
+    testId: "topnav-journal",
+    matches: (p) => p === "/journal" || p === "/history" || p === "/trade-setups",
   },
   {
     label: "Ask AI",

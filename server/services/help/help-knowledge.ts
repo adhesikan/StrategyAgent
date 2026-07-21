@@ -155,6 +155,29 @@ export const HELP_PAGES: { label: string; path: string; hint: string }[] = [
   { label: "User Guide", path: "/guide", hint: "full plain-language guide" },
 ];
 
+// Rank in-app pages by label/hint overlap with the question — used to point
+// users at the right screen when the guide search alone isn't enough.
+export function rankHelpPages(question: string, limit = 2): { label: string; path: string; hint: string }[] {
+  const lower = question.toLowerCase();
+  const words = lower.split(/[^a-z0-9']+/).filter((w) => w.length > 2);
+  const scored = HELP_PAGES.map((p) => {
+    let score = 0;
+    const labelLower = p.label.toLowerCase();
+    const hintLower = p.hint.toLowerCase();
+    if (lower.includes(labelLower)) score += 3;
+    for (const w of words) {
+      if (labelLower.includes(w)) score += 2;
+      if (hintLower.includes(w)) score += 1;
+    }
+    return { p, score };
+  });
+  return scored
+    .filter((s) => s.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((s) => s.p);
+}
+
 // Rank topics by keyword/title overlap with the question. Simple and fast —
 // good enough to pick context for the model and drive the no-AI fallback.
 export function rankHelpTopics(question: string, limit = 4, minScore = 0): HelpTopic[] {

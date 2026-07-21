@@ -1,6 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
-import { HELP_TOPICS, HELP_PAGES, rankHelpTopics, type HelpTopic } from "../services/help/help-knowledge";
+import { HELP_TOPICS, HELP_PAGES, rankHelpTopics, rankHelpPages, type HelpTopic } from "../services/help/help-knowledge";
 
 const askSchema = z.object({
   question: z.string().trim().min(2).max(500),
@@ -87,26 +87,49 @@ App pages:
 ${pages}`;
 }
 
-function fallbackAnswer(question: string): HelpAnswer {
-  // Require a meaningful keyword/title match (score >= 2) before asserting an
-  // answer — weak full-text-only matches produce misleading off-topic replies.
+// Local search: User Guide topics first, then in-app pages. Returns null when
+// neither produces a confident match (score >= 2 keyword/title threshold).
+function localAnswer(question: string): HelpAnswer | null {
   const topics = rankHelpTopics(question, 3, 1.9);
-  if (topics.length === 0) {
+  const pages = rankHelpPages(question, 2);
+
+  if (topics.length > 0) {
+    const top = topics[0];
+    const suggestedPages = [
+      { label: "User Guide", path: `/guide/${top.id}` },
+      ...pages.filter((p) => p.path !== "/guide").map((p) => ({ label: p.label, path: p.path })),
+    ].slice(0, 2);
     return {
+      answer: `${top.text} You can read more in the "${top.title}" section of the User Guide.`,
+      relatedSections: topics.map((t) => ({ id: t.id, title: t.title })),
+      suggestedPages,
+      source: "guide",
+    };
+  }
+
+  if (pages.length > 0 && pages.some((p) => p.path !== "/guide")) {
+    const list = pages.map((p) => `${p.label} (${p.hint})`).join(" and ");
+    return {
+      answer: `That sounds related to ${list}. Open the page below, or browse the User Guide for a full walkthrough.`,
+      relatedSections: [],
+      suggestedPages: pages.map((p) => ({ label: p.label, path: p.path })),
+      source: "guide",
+    };
+  }
+
+  return null;
+}
+
+function fallbackAnswer(question: string): HelpAnswer {
+  return (
+    localAnswer(question) ?? {
       answer:
         "I couldn't match that to a help topic. Try rephrasing, or browse the User Guide for a full walkthrough of every feature.",
       relatedSections: [],
       suggestedPages: [{ label: "User Guide", path: "/guide" }],
       source: "guide",
-    };
-  }
-  const top = topics[0];
-  return {
-    answer: `${top.text} You can read more in the "${top.title}" section of the User Guide.`,
-    relatedSections: topics.map((t) => ({ id: t.id, title: t.title })),
-    suggestedPages: [{ label: "User Guide", path: `/guide/${top.id}` }],
-    source: "guide",
-  };
+    }
+  );
 }
 
 async function answerWithOpenAi(
@@ -184,6 +207,12 @@ export function registerHelpRoutes(app: Express, isAuthenticated: RequestHandler
       });
     }
     const { question, history = [] } = parsed.data;
+    // Search order: 1) User Guide topics, 2) in-app pages, 3) OpenAI as a
+    // last resort only when local search finds no confident match.
+    const local = localAnswer(question);
+    if (local) {
+      return res.json(local);
+    }
     const aiAnswer = await answerWithOpenAi(question, history);
     const result = aiAnswer ?? fallbackAnswer(question);
     res.json(result);

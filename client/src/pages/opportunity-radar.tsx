@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ViewToggle, useViewMode } from "@/components/view-toggle";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Radar,
@@ -806,6 +807,7 @@ function RankedList({
   onPrepareOrder: (s: CandidateScenario) => void;
   onViewNews: (s: CandidateScenario) => void;
 }) {
+  const [viewMode, setViewMode] = useViewMode("opportunity-radar");
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="loading-radar">
@@ -835,18 +837,21 @@ function RankedList({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold" data-testid="text-results-heading">
           Ranked candidate scenarios
         </h2>
-        {data.hiddenByGuardrails > 0 && (
-          <Badge variant="outline" data-testid="badge-hidden-count">
-            {data.hiddenByGuardrails} hidden by your limits
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {data.hiddenByGuardrails > 0 && (
+            <Badge variant="outline" data-testid="badge-hidden-count">
+              {data.hiddenByGuardrails} hidden by your limits
+            </Badge>
+          )}
+          <ViewToggle value={viewMode} onChange={setViewMode} testId="view-toggle-radar" />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className={viewMode === "card" ? "grid grid-cols-1 lg:grid-cols-2 gap-4" : "flex flex-col gap-3 max-w-3xl"}>
         {data.candidates.map((c) => (
           <CandidateCard
             key={c.id}

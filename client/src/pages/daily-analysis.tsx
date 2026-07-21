@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DataAttribution } from "@/components/data-attribution";
 import { Link } from "wouter";
 import { CalendarDays, Info, LineChart } from "lucide-react";
+import { ViewToggle, useViewMode } from "@/components/view-toggle";
 
 interface DailyOpportunitiesResponse {
   disclosure: string;
@@ -53,6 +54,7 @@ function gradeColor(grade: string) {
 
 export default function DailyAnalysisPage() {
   const [selected, setSelected] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useViewMode("daily-analysis");
 
   const { data, isLoading, error } = useQuery<DailyOpportunitiesResponse>({
     queryKey: ["/api/daily-analysis/opportunities"],
@@ -108,6 +110,12 @@ export default function DailyAnalysisPage() {
         {data.disclosure}
       </div>
 
+      {data.opportunities.length > 0 && (
+        <div className="flex justify-end">
+          <ViewToggle value={viewMode} onChange={setViewMode} testId="view-toggle-daily" />
+        </div>
+      )}
+
       {data.opportunities.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -115,7 +123,7 @@ export default function DailyAnalysisPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={viewMode === "card" ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "flex flex-col gap-3"}>
           {data.opportunities.map((o) => (
             <Card
               key={o.id}

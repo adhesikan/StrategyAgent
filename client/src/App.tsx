@@ -86,6 +86,23 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function DefaultLanding() {
+  const { data: settings, isLoading } = useReactQuery<{ defaultLandingPage?: string | null }>({
+    queryKey: ["/api/user/settings"],
+  });
+  if (isLoading) {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  const target = settings?.defaultLandingPage && settings.defaultLandingPage.startsWith("/")
+    ? settings.defaultLandingPage
+    : "/home";
+  return <Redirect to={target} />;
+}
+
 function AppRouter() {
   return (
     <Switch>
@@ -132,7 +149,7 @@ function AppRouter() {
       <Route path="/billing/success" component={BillingSuccessPage} />
       <Route path="/billing/cancel" component={BillingCancelPage} />
 
-      <Route path="/">{() => <Redirect to="/home" />}</Route>
+      <Route path="/" component={DefaultLanding} />
       <Route path="/signals">{() => <Redirect to="/scanner" />}</Route>
       <Route path="/watchlists">{() => <Redirect to="/scanner" />}</Route>
       <Route path="/app/stocks">{() => <Redirect to="/scanner" />}</Route>

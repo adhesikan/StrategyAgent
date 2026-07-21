@@ -20,6 +20,7 @@ import {
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LivePositionsPanel } from "@/components/live-positions-panel";
+import { ViewToggle, useViewMode } from "@/components/view-toggle";
 import { PositionProtectionPanel } from "@/components/position-protection-panel";
 
 interface SetupHistoryItem {
@@ -38,6 +39,7 @@ interface SetupHistoryItem {
 export default function TradeSetupsPage() {
   const [symbolFilter, setSymbolFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [viewMode, setViewMode] = useViewMode("trade-setups", "list");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [instrumentFilter, setInstrumentFilter] = useState("all");
   const [executedFilter, setExecutedFilter] = useState("all");
@@ -186,6 +188,7 @@ export default function TradeSetupsPage() {
           className="w-[110px] h-9"
           data-testid="input-filter-minscore"
         />
+        <ViewToggle value={viewMode} onChange={setViewMode} testId="view-toggle-setups" className="ml-auto" />
       </div>
 
       {isLoading ? (
@@ -205,7 +208,7 @@ export default function TradeSetupsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className={viewMode === "card" ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "space-y-3"}>
           {setups.map((setup) => (
             <Card key={setup.id} className="bg-card/80" data-testid={`card-setup-history-${setup.id}`}>
               <CardContent className="py-4">

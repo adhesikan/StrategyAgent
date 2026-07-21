@@ -683,8 +683,23 @@ export const userSettings = pgTable("user_settings", {
   onboardingStep: integer("onboarding_step").default(0),
   positionSizingMethod: text("position_sizing_method").default("fixed_dollar"),
   positionSizingValue: integer("position_sizing_value").default(1000),
+  defaultLandingPage: text("default_landing_page").default("/home"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const LANDING_PAGE_OPTIONS = [
+  { value: "/home", label: "Home" },
+  { value: "/scanner", label: "Scanner" },
+  { value: "/goal-mode", label: "Grow" },
+  { value: "/income-mode", label: "Income" },
+  { value: "/trade-finder", label: "Trade" },
+  { value: "/markets", label: "Markets" },
+  { value: "/opportunity-radar", label: "Top Opportunities" },
+  { value: "/journal", label: "Journal" },
+  { value: "/instatrade", label: "InstaTrade" },
+  { value: "/charts", label: "Charts" },
+] as const;
+export const landingPageValues = LANDING_PAGE_OPTIONS.map((o) => o.value) as unknown as [string, ...string[]];
 
 export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ 
   id: true,
@@ -730,6 +745,7 @@ export const userSettingsUpdateSchema = z.object({
   onboardingStep: z.number().min(0).max(6).optional(),
   positionSizingMethod: z.enum(["fixed_dollar", "fixed_shares", "percent_account"]).optional(),
   positionSizingValue: z.number().min(1).optional(),
+  defaultLandingPage: z.enum(landingPageValues).optional(),
   traderPersona: z.enum(["buyer", "seller", "complex", "learner"]).nullable().optional(),
 });
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;

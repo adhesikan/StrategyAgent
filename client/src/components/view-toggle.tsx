@@ -1,8 +1,24 @@
+import { useState } from "react";
 import { LayoutGrid, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type ViewMode = "card" | "list";
+
+export function useViewMode(storageKey: string, initial: ViewMode = "card") {
+  const [mode, setMode] = useState<ViewMode>(() => {
+    try {
+      const saved = localStorage.getItem(`view-mode:${storageKey}`);
+      if (saved === "card" || saved === "list") return saved;
+    } catch {}
+    return initial;
+  });
+  const update = (v: ViewMode) => {
+    setMode(v);
+    try { localStorage.setItem(`view-mode:${storageKey}`, v); } catch {}
+  };
+  return [mode, update] as const;
+}
 
 interface Props {
   value: ViewMode;

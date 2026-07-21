@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle, User, KeyRound, UserX, Loader2, SlidersHorizontal } from "lucide-react";
+import { Settings as SettingsIcon, Bell, Wifi, Shield, Database, FileText, Printer, ExternalLink, Code, Bot, Send, History, AlertCircle, CheckCircle, Plus, Trash2, Edit2, Zap, Clock, Target, List, Info, Eye, Save, TriangleAlert, BookOpen, RotateCcw, ChevronLeft, ChevronRight, Radio, HelpCircle, User, KeyRound, UserX, Loader2, SlidersHorizontal, Home as HomeIcon } from "lucide-react";
 import { TradePreferencesSection } from "@/components/trade-preferences-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,7 @@ import { InteractiveTutorial } from "@/components/interactive-tutorial";
 import { SchwabByoPanel } from "@/components/schwab-byo-panel";
 import { useExperienceMode } from "@/hooks/use-experience-mode";
 import type { BrokerConnection, BrokerProviderType, OpportunityDefaults, SnaptradeConnection } from "@shared/schema";
+import { LANDING_PAGE_OPTIONS } from "@shared/schema";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { useTooltipVisibility } from "@/hooks/use-tooltips";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
@@ -60,6 +61,7 @@ interface UserSettingsResponse {
   hasSeenVcpTutorial: boolean;
   hasSeenAlertsTutorial: boolean;
   preferredDataSource: "brokerage";
+  defaultLandingPage?: string | null;
 }
 
 const brokerProviders = [
@@ -1528,6 +1530,36 @@ export default function Settings() {
                   onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, showTooltips: checked }))}
                   data-testid="switch-tooltips"
                 />
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <HomeIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">Default Page After Login</p>
+                    <p className="text-sm text-muted-foreground">
+                      The page you land on when you sign in or open the app
+                    </p>
+                  </div>
+                </div>
+                <Select
+                  value={localSettings.defaultLandingPage || "/home"}
+                  onValueChange={(v) => {
+                    setLocalSettings(prev => ({ ...prev, defaultLandingPage: v }));
+                    saveSettingsMutation.mutate({ defaultLandingPage: v } as Partial<UserSettingsResponse>);
+                  }}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-default-landing-page">
+                    <SelectValue placeholder="Home" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANDING_PAGE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value} data-testid={`option-landing-${o.value.replace("/", "")}`}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </CardContent>
           </Card>

@@ -8,6 +8,8 @@ import { fetchQuotesFromBroker, fetchHistoryFromBroker } from "../broker-service
 import { scoreSetup } from "../services/probability-engine";
 import { selectInstrument } from "../services/instrument-selector";
 import { checkAnalysisQuota, trackAnalysisUsage, requireFeature } from "../middleware/planGuard";
+import { authStorage } from "../replit_integrations/auth";
+import { getTrialFeatureRestriction, normalizeSymbol, TRIAL_SYMBOL_DENIAL_MESSAGE } from "../services/daily-market-data/trial-entitlement";
 
 const conditionSchema = z.object({
   conditionType: z.string(),
@@ -528,7 +530,23 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
   app.post("/api/saved-candidates", isAuthenticated, async (req, res) => {
     try {
       const body = savedCandidateSchema.parse(req.body);
-      const item = await storage.createSavedCandidate({ ...body, userId: req.session.userId! });
+      const userId = req.session.userId!;
+      const user = await authStorage.getUser(userId);
+      const restriction = await getTrialFeatureRestriction(user);
+      if (restriction.restricted) {
+        const normalized = normalizeSymbol(body.symbol);
+        if (!normalized || !restriction.allowedSymbols.includes(normalized)) {
+          return res.status(403).json({ error: TRIAL_SYMBOL_DENIAL_MESSAGE, code: "SYMBOL_NOT_IN_TRIAL_COVERAGE" });
+        }
+        const existing = await storage.getSavedCandidates(userId);
+        if (existing.length >= restriction.savedCandidateLimit) {
+          return res.status(403).json({
+            error: `Trial accounts are limited to ${restriction.savedCandidateLimit} saved candidates.`,
+            code: "TRIAL_SAVED_CANDIDATE_LIMIT",
+          });
+        }
+      }
+      const item = await storage.createSavedCandidate({ ...body, userId });
       res.status(201).json(item);
     } catch (err: any) {
       res.status(400).json({ error: err.message });

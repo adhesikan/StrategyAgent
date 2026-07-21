@@ -11,6 +11,7 @@ import { DataAttribution } from "@/components/data-attribution";
 import { CalendarDays, ArrowRight } from "lucide-react";
 
 interface DailyOpportunitiesResponse {
+  modeLabel?: string;
   disclosure: string;
   opportunities: Array<{
     id: string;
@@ -42,7 +43,7 @@ export function DailyOpportunities() {
         <div>
           <h2 className="text-base font-medium">Daily Opportunities</h2>
           <p className="text-xs text-muted-foreground">
-            Historical daily analysis — internal pre-launch preview
+            {data.modeLabel ?? "Historical daily analysis"}
           </p>
         </div>
         <Link href="/daily-analysis">

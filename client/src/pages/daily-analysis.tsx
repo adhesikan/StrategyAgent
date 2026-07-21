@@ -13,7 +13,27 @@ import { Link } from "wouter";
 import { CalendarDays, Info, LineChart } from "lucide-react";
 import { ViewToggle, useViewMode } from "@/components/view-toggle";
 
+interface DailyAnalysisAccess {
+  allowed: boolean;
+  accessLevel: string;
+  dataMode: string;
+  trialRestricted: boolean;
+  limits?: { maxWatchlists: number; maxSymbolsPerWatchlist: number; radarResultLimit: number };
+}
+
+interface CoverageResponse {
+  title: string;
+  description: string;
+  disclosure: string;
+  attribution: string | null;
+  etfs: Array<{ symbol: string; companyName: string; latestAvailableTradeDate: string | null }>;
+  stocks: Array<{ symbol: string; companyName: string; latestAvailableTradeDate: string | null }>;
+  deniedSymbolMessage: string;
+}
+
 interface DailyOpportunitiesResponse {
+  mode?: string;
+  modeLabel?: string;
   disclosure: string;
   attribution: string | null;
   dataSourceType: string;
@@ -61,6 +81,17 @@ export default function DailyAnalysisPage() {
     retry: false,
   });
 
+  const { data: access } = useQuery<DailyAnalysisAccess>({
+    queryKey: ["/api/daily-analysis/access"],
+    retry: false,
+  });
+
+  const { data: coverage } = useQuery<CoverageResponse>({
+    queryKey: ["/api/daily-analysis/coverage"],
+    retry: false,
+    enabled: !!access?.allowed,
+  });
+
   const { data: detail, isLoading: detailLoading } = useQuery<SymbolDetailResponse>({
     queryKey: ["/api/daily-analysis/symbol", selected],
     enabled: !!selected,
@@ -101,9 +132,23 @@ export default function DailyAnalysisPage() {
           <LineChart className="h-6 w-6" /> Daily Analysis Mode
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Data source: {data.dataSourceType}
+          {data.modeLabel ?? `Data source: ${data.dataSourceType}`}
         </p>
       </div>
+
+      {access?.trialRestricted && (
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm flex items-start justify-between gap-3 flex-wrap" data-testid="banner-daily-analysis-mode">
+          <div className="space-y-1">
+            <p className="font-medium">You're in Daily Analysis Mode</p>
+            <p className="text-xs text-muted-foreground">
+              Analysis uses historical daily data through the previous completed trading session, limited to the Trial Market Coverage below. Connect a broker for live data and the full experience.
+            </p>
+          </div>
+          <Link href="/settings/broker">
+            <Button size="sm" data-testid="button-trial-connect-broker">Connect Broker</Button>
+          </Link>
+        </div>
+      )}
 
       <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex gap-2" data-testid="text-daily-disclosure">
         <Info className="h-4 w-4 shrink-0 mt-0.5" />
@@ -202,6 +247,44 @@ export default function DailyAnalysisPage() {
             ) : (
               <p className="text-muted-foreground text-sm">No detail available.</p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {coverage && (
+        <Card data-testid="card-trial-coverage">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">{coverage.title}</CardTitle>
+            <CardDescription className="text-xs">{coverage.description}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {coverage.etfs.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">ETFs</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {coverage.etfs.map((s) => (
+                    <Badge key={s.symbol} variant="outline" data-testid={`badge-coverage-${s.symbol}`}>
+                      {s.symbol}
+                      <span className="ml-1 text-muted-foreground font-normal hidden sm:inline">{s.companyName}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {coverage.stocks.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Stocks</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {coverage.stocks.map((s) => (
+                    <Badge key={s.symbol} variant="outline" data-testid={`badge-coverage-${s.symbol}`}>
+                      {s.symbol}
+                      <span className="ml-1 text-muted-foreground font-normal hidden sm:inline">{s.companyName}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">{coverage.deniedSymbolMessage}</p>
           </CardContent>
         </Card>
       )}

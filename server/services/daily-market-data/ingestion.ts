@@ -64,6 +64,9 @@ export async function seedSymbolUniverseIfEmpty(): Promise<number> {
       companyName: s.companyName,
       assetType: s.assetType,
       displayOrder: i,
+      trialEnabled: true,
+      internalAnalysisEnabled: true,
+      enabled: true,
     })),
   );
   return SEED_SYMBOLS.length;

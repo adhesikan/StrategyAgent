@@ -38,6 +38,7 @@ interface MarketDataStatus {
     enabled: boolean;
     internalAnalysisEnabled: boolean;
     futureTrialEnabled: boolean;
+    trialEnabled: boolean;
     backfillYears: number;
     latestAvailableTradeDate: string | null;
     lastSuccessfulIngestionAt: string | null;
@@ -233,6 +234,7 @@ export default function AdminMarketDataPage() {
                 <th className="py-2 pr-3">Symbol</th>
                 <th className="py-2 pr-3">Enabled</th>
                 <th className="py-2 pr-3">Internal Analysis</th>
+                <th className="py-2 pr-3">Trial Coverage</th>
                 <th className="py-2 pr-3">Future Trial</th>
                 <th className="py-2 pr-3">Backfill (yrs)</th>
                 <th className="py-2 pr-3">Latest Data</th>
@@ -245,6 +247,7 @@ export default function AdminMarketDataPage() {
                   <td className="py-2 pr-3 font-medium">{s.symbol}<div className="text-xs text-muted-foreground font-normal">{s.companyName}</div></td>
                   <td className="py-2 pr-3"><Switch checked={s.enabled} onCheckedChange={(v) => patchSymbolMutation.mutate({ id: s.id, patch: { enabled: v } })} data-testid={`switch-enabled-${s.symbol}`} /></td>
                   <td className="py-2 pr-3"><Switch checked={s.internalAnalysisEnabled} onCheckedChange={(v) => patchSymbolMutation.mutate({ id: s.id, patch: { internalAnalysisEnabled: v } })} /></td>
+                  <td className="py-2 pr-3"><Switch checked={s.trialEnabled} onCheckedChange={(v) => patchSymbolMutation.mutate({ id: s.id, patch: { trialEnabled: v } })} data-testid={`switch-trial-${s.symbol}`} /></td>
                   <td className="py-2 pr-3"><Switch checked={s.futureTrialEnabled} onCheckedChange={(v) => patchSymbolMutation.mutate({ id: s.id, patch: { futureTrialEnabled: v } })} /></td>
                   <td className="py-2 pr-3">{s.backfillYears}</td>
                   <td className="py-2 pr-3">{s.latestAvailableTradeDate ?? "—"}</td>

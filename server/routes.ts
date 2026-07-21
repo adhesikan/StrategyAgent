@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { insertAlertSchema, insertAlertRuleSchema, insertWatchlistSchema, insertAutomationSettingsSchema, scannerFilters, UserRole, RuleConditionType, PatternStage, StrategyType, userSettingsUpdateSchema } from "@shared/schema";
 import { normalizeTrademarkStatus, buildBrandingInfo } from "@shared/branding";
 import { getUserPlanRecord, setUserTraderPersona } from "./services/billing/userPlan";
+import { getTrialFeatureRestriction, normalizeSymbol, TRIAL_SYMBOL_DENIAL_MESSAGE } from "./services/daily-market-data/trial-entitlement";
 import { registerBillingRoutes } from "./routes/billing";
 import { requireFeature } from "./middleware/planGuard";
 import { sendEntrySignal, sendExitSignal, createAutomationLogEntry, type EntrySignal, type ExitSignal } from "./algopilotx";
@@ -1802,6 +1803,22 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     try {
       const userId = req.session.userId!;
       const watchlistData = insertWatchlistSchema.parse({ ...req.body, userId });
+      const trialUser = await authStorage.getUser(userId);
+      const restriction = await getTrialFeatureRestriction(trialUser);
+      if (restriction.restricted && Array.isArray(watchlistData.symbols)) {
+        const invalid = watchlistData.symbols
+          .map((s) => normalizeSymbol(s))
+          .filter((s) => !s || !restriction.allowedSymbols.includes(s));
+        if (invalid.length > 0) {
+          return res.status(403).json({ error: TRIAL_SYMBOL_DENIAL_MESSAGE, code: "SYMBOL_NOT_IN_TRIAL_COVERAGE" });
+        }
+        if (watchlistData.symbols.length > restriction.watchlistLimit) {
+          return res.status(403).json({
+            error: `Trial watchlists are limited to ${restriction.watchlistLimit} symbols.`,
+            code: "TRIAL_WATCHLIST_LIMIT",
+          });
+        }
+      }
       const watchlist = await storage.createWatchlist(watchlistData);
       res.json(watchlist);
     } catch (error) {
@@ -1830,6 +1847,21 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const { symbol } = req.body;
       if (!symbol) {
         return res.status(400).json({ error: "Symbol is required" });
+      }
+      const trialUser = await authStorage.getUser(userId);
+      const restriction = await getTrialFeatureRestriction(trialUser);
+      if (restriction.restricted) {
+        const normalized = normalizeSymbol(String(symbol));
+        if (!normalized || !restriction.allowedSymbols.includes(normalized)) {
+          return res.status(403).json({ error: TRIAL_SYMBOL_DENIAL_MESSAGE, code: "SYMBOL_NOT_IN_TRIAL_COVERAGE" });
+        }
+        const existing = await storage.getWatchlist(req.params.id, userId);
+        if (existing && Array.isArray(existing.symbols) && existing.symbols.length >= restriction.watchlistLimit) {
+          return res.status(403).json({
+            error: `Trial watchlists are limited to ${restriction.watchlistLimit} symbols. Connect a supported brokerage account for expanded coverage.`,
+            code: "TRIAL_WATCHLIST_LIMIT",
+          });
+        }
       }
       const watchlist = await storage.addSymbolToWatchlist(req.params.id, userId, symbol);
       if (!watchlist) {

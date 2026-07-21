@@ -41,6 +41,19 @@ export function getTwelveDataConfig() {
   };
 }
 
+/** Trial Daily Analysis Mode product configuration (license flags above remain the final legal gate). */
+export function getTrialDailyAnalysisConfig() {
+  return {
+    enabled: (process.env.TRIAL_DAILY_ANALYSIS_ENABLED ?? "true").toLowerCase() !== "false",
+    symbolLimit: envInt("TRIAL_DAILY_ANALYSIS_SYMBOL_LIMIT", 20),
+    watchlistLimit: envInt("TRIAL_DAILY_ANALYSIS_WATCHLIST_LIMIT", 10),
+    savedCandidateLimit: envInt("TRIAL_SAVED_CANDIDATE_LIMIT", 20),
+    radarResultLimit: envInt("TRIAL_OPPORTUNITY_RADAR_RESULT_LIMIT", 5),
+    requireNoBrokerConnection:
+      (process.env.TRIAL_REQUIRE_NO_BROKER_CONNECTION || "false").toLowerCase() === "true",
+  };
+}
+
 /** Remove the API key from any string (URLs, error messages) before logging. */
 export function redactApiKey(input: string): string {
   const key = process.env.TWELVE_DATA_API_KEY;

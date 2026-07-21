@@ -2,6 +2,8 @@ import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { generateCandidateScenarios, type RadarFilters } from "../services/opportunity-radar/radar-service";
+import { authStorage } from "../replit_integrations/auth";
+import { getTrialFeatureRestriction, normalizeSymbol } from "../services/daily-market-data/trial-entitlement";
 
 const filtersSchema = z.object({
   strategyType: z.enum(["any", "stock_swing", "long_call", "long_put", "debit_spread", "covered_call", "cash_secured_put"]).optional(),
@@ -81,7 +83,32 @@ export function registerOpportunityRadarRoutes(app: Express, isAuthenticated: Re
         customSymbols: Array.isArray(parsed.data.customSymbols) ? parsed.data.customSymbols : undefined,
       };
 
+      // Trial users without a supported broker scan only the approved trial
+      // universe with a capped result count — enforced server-side.
+      const trialUser = await authStorage.getUser(userId);
+      const restriction = await getTrialFeatureRestriction(trialUser);
+      if (restriction.restricted) {
+        const allowed = restriction.allowedSymbols;
+        if (filters.customSymbols?.length) {
+          filters.customSymbols = filters.customSymbols
+            .map((s) => normalizeSymbol(s))
+            .filter((s): s is string => !!s && allowed.includes(s));
+          if (filters.customSymbols.length === 0) filters.customSymbols = allowed;
+        } else {
+          filters.customSymbols = allowed;
+          filters.universe = undefined;
+        }
+      }
+
       const result = await generateCandidateScenarios(userId, filters);
+      if (restriction.restricted && Array.isArray((result as any)?.candidates)) {
+        (result as any).candidates = (result as any).candidates
+          .filter((c: any) => restriction.allowedSymbols.includes(String(c.symbol || "").toUpperCase()))
+          .slice(0, restriction.radarResultLimit);
+        (result as any).trialRestricted = true;
+        (result as any).trialCoverageNote =
+          "Trial results are limited to the approved trial market coverage using historical daily factors.";
+      }
       return res.json(result);
     } catch (err) {
       console.error("[OpportunityRadar] /api/radar/scenarios failed:", err);

@@ -1,0 +1,1031 @@
+You are working on the existing VCP Trader AI application.
+
+Do not rebuild the application from scratch.
+
+The application already has or may have:
+
+- User authentication
+- Stripe subscriptions and 14-day trials
+- User roles and entitlements
+- Tradier integration
+- TradeStation integration
+- SnapTrade integration
+- Twelve Data integration
+- Historical daily market-data storage
+- Opportunity Radar
+- Probability Engine
+- Analysis Conditions
+- Grow Mode
+- Income Mode
+- Trade Finder
+- Market Intel
+- Watchlists
+- Saved candidates
+- Congress Activity
+- InstaTrade™
+- Position Protection
+- Admin portal
+- Feature flags
+
+Your task is to implement and verify a restricted Daily Analysis Mode for trial users who do not have a connected supported brokerage account.
+
+Trial users must receive access only to an approved curated universe of stocks and ETFs using historical daily data supplied through the existing Twelve Data backend integration.
+
+Do not expose Twelve Data directly from the frontend.
+
+Do not implement paper trading.
+
+Do not provide current options chains, current Greeks, live order tickets, brokerage balances, positions, buying power, or Position Protection without a supported brokerage connection.
+
+# Licensing Safety Requirement
+
+Twelve Data has confirmed:
+
+- The Basic plan may be used during testing and pre-launch.
+- Venture or another approved external-display plan is required before Twelve Data data or derived analytics are displayed to external users.
+
+The application must support these server-enforced modes:
+
+- disabled
+- prelaunch
+- external
+
+Current development configuration:
+
+TWELVE_DATA_LICENSE_MODE=prelaunch
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=false
+
+During prelaunch:
+
+- Admins and explicitly approved test accounts may test the trial-user experience.
+- Public trial users must not receive Twelve Data-backed content.
+
+After upgrading to Venture, production configuration will become:
+
+TWELVE_DATA_LICENSE_MODE=external
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=true
+
+Only then may normal external trial users receive Daily Analysis Mode.
+
+Do not weaken this license gate.
+
+# Approved Trial Universe
+
+Create or confirm the following approved trial universe.
+
+ETFs:
+
+- SPY
+- QQQ
+- IWM
+- DIA
+
+Stocks:
+
+- NVDA
+- MSFT
+- AAPL
+- AMZN
+- GOOGL
+- META
+- AVGO
+- AMD
+- MU
+- PLTR
+- ORCL
+- JPM
+- COST
+- WMT
+- TSLA
+- XOM
+
+The total approved universe is 20 symbols.
+
+These symbols are selected for product coverage and liquidity. They must not be described as recommendations.
+
+Do not let trial users search, request, or retrieve Twelve Data analysis for symbols outside this approved universe.
+
+# Primary Access Rules
+
+Implement the following user-state behavior.
+
+## Trial user without supported broker
+
+Allow access to:
+
+- Daily Analysis Mode
+- Historical daily analysis through the previous completed trading session
+- Approved 20-symbol universe only
+- Daily Opportunities
+- Limited Opportunity Radar
+- Analysis Conditions
+- Daily Probability Engine factors
+- Historical trend and momentum analysis
+- Historical volatility
+- Watchlists limited to approved symbols
+- Saved candidates limited to approved symbols
+- Grow Mode using approved symbols
+- Trade Finder using approved symbols
+- General options strategy education
+- Congress Activity context for approved symbols
+- AI summaries based on stored daily data
+- Connect Broker calls to action
+
+Do not allow access to:
+
+- Symbols outside the approved trial universe
+- Raw Twelve Data API responses
+- Direct Twelve Data API calls
+- Intraday or live Twelve Data quotes
+- WebSocket data
+- Current options chains
+- Current options prices
+- Current Greeks
+- Current open interest
+- Current bid/ask data
+- Current brokerage positions
+- Current buying power
+- Order preview
+- InstaTrade™ order submission
+- Position Protection
+- Paper trading
+- Simulated fills
+- Virtual positions
+- Paper P&L
+
+## Trial user with supported broker connection
+
+The user may continue using Daily Analysis Mode, but current and account-specific workflows should use broker-authorized data.
+
+Allow access according to existing broker entitlements:
+
+- Current broker quotes
+- Positions
+- Buying power
+- Options chains where supported
+- Account-specific analysis
+- InstaTrade™ review and submission
+- Position Protection where enabled
+
+Do not use stored Twelve Data prices directly in an order ticket.
+
+## Paid user without supported broker
+
+Follow the normal paid-product rules, but if Twelve Data external display is enabled, allow the same Daily Analysis Mode universe unless a broader paid universe has already been implemented.
+
+Do not accidentally grant the trial restriction to paid broker-connected users.
+
+## Expired trial user
+
+Do not grant Daily Analysis Mode unless the user has an active paid subscription or another explicit entitlement.
+
+Show the existing subscription or upgrade experience.
+
+# Phase 1: Audit Existing Trial and Market-Data Logic
+
+Before changing code:
+
+1. Inspect:
+   - User model
+   - Stripe trial fields
+   - Subscription states
+   - Broker connection tables
+   - Broker connection status logic
+   - Feature flags
+   - Twelve Data access-control service
+   - Market-data symbol tables
+   - Watchlist logic
+   - Saved candidate logic
+   - Opportunity Radar queries
+   - Analysis endpoints
+   - Grow Mode
+   - Trade Finder
+   - Income Mode
+   - AI-summary endpoints
+   - Admin symbol management
+2. Identify how the application currently determines:
+   - Active trial
+   - Trial expiration
+   - Active subscription
+   - Supported broker connection
+   - Selected brokerage account
+   - Internal test user
+   - Twelve Data license mode
+3. Search for:
+   - trial
+   - subscription
+   - brokerConnected
+   - analysisMode
+   - dailyAnalysis
+   - market_data_symbols
+   - futureTrialEnabled
+   - trialEnabled
+   - Twelve Data
+   - allowedSymbols
+   - watchlist
+   - saved candidate
+4. Reuse existing authorization and entitlement patterns.
+5. Do not create duplicate trial systems.
+6. Do not create a second Twelve Data client.
+7. Before destructive schema changes, report the proposed changes.
+
+# Phase 2: Central Trial Entitlement Service
+
+Create or update one central server-side entitlement function.
+
+Suggested interface:
+
+getDailyAnalysisEntitlement({
+  user,
+  subscription,
+  trial,
+  brokerConnections,
+  environment
+})
+
+Return a structured result such as:
+
+{
+  allowed: boolean;
+  accessLevel:
+    | "none"
+    | "internal_prelaunch"
+    | "external_trial"
+    | "external_paid"
+    | "broker_connected";
+  allowedSymbols: string[];
+  dataMode:
+    | "unavailable"
+    | "historical_daily"
+    | "broker_current";
+  reasonCode?: string;
+}
+
+Do not spread entitlement decisions across unrelated components.
+
+## Active trial definition
+
+Use the application’s existing Stripe or subscription logic.
+
+An active trial generally requires:
+
+- Authenticated user
+- Trial status active
+- Trial end date in the future
+- Account not suspended
+- Account not cancelled in a way that immediately removes access
+- Product entitlement active
+
+Do not trust a frontend trial flag.
+
+## Supported broker definition
+
+Use the existing supported-broker adapter registry.
+
+A broker connection counts only when:
+
+- Provider is supported
+- Connection is active
+- Token is valid or refreshable
+- Brokerage account is selected where required
+- Connection is not disabled or revoked
+
+# Phase 3: Approved Trial Symbol Configuration
+
+Use a database-backed symbol universe rather than hardcoding the list throughout the application.
+
+Reuse or create:
+
+market_data_symbols
+
+Required fields:
+
+- id
+- symbol
+- companyName
+- assetType
+- provider
+- enabled
+- internalAnalysisEnabled
+- trialEnabled
+- paidEnabled
+- brokerConnectedEnabled
+- displayOrder
+- createdAt
+- updatedAt
+
+Configure these 20 records with:
+
+- enabled = true
+- internalAnalysisEnabled = true
+- trialEnabled = true
+- provider = twelve_data
+
+Approved symbols:
+
+SPY
+QQQ
+IWM
+DIA
+NVDA
+MSFT
+AAPL
+AMZN
+GOOGL
+META
+AVGO
+AMD
+MU
+PLTR
+ORCL
+JPM
+COST
+WMT
+TSLA
+XOM
+
+Add a unique constraint on normalized symbol.
+
+Normalize symbols to uppercase.
+
+Do not allow duplicate symbols.
+
+# Phase 4: Server-Side Symbol Allowlist
+
+Create a reusable service:
+
+getAllowedTrialSymbols()
+
+It must load enabled trial symbols from the database.
+
+Add caching with a reasonable short TTL, but invalidate the cache when an administrator changes the symbol universe.
+
+Every trial-facing endpoint must validate requested symbols against this allowlist.
+
+Example behavior:
+
+Requested symbol: NVDA
+Result: allowed
+
+Requested symbol: NFLX
+Result: denied unless later enabled by admin
+
+Requested symbol: lowercase "mu"
+Normalize to MU, then validate.
+
+Requested symbol containing invalid characters:
+Reject.
+
+Do not silently fetch an unauthorized symbol from Twelve Data.
+
+# Phase 5: Twelve Data Ingestion Coverage
+
+Ensure the daily ingestion worker retrieves data only for enabled symbols.
+
+For the 20 approved trial symbols:
+
+- Backfill at least two years of daily OHLCV
+- Allow configurable expansion to five years
+- Run one centralized nightly update
+- Store data through the previous completed trading session
+- Calculate indicators internally
+- Generate daily analysis snapshots
+- Do not call Twelve Data during user page loads
+- Do not use WebSockets
+- Respect existing credit limits
+- Preserve the last valid snapshot when ingestion fails
+
+The Basic-plan limits are:
+
+- 8 API credits per minute
+- 800 API credits per day
+
+Use existing safety limits:
+
+- 7 credits per minute
+- 750 credits per day
+
+For 20 symbols at one credit per symbol, daily refresh should remain comfortably within the quota.
+
+# Phase 6: Trial Daily Analysis API
+
+Create or update trial-facing endpoints using existing route conventions.
+
+Possible endpoints:
+
+GET /api/trial/daily-analysis/symbols
+GET /api/trial/daily-analysis/opportunities
+GET /api/trial/daily-analysis/symbol/:symbol
+GET /api/trial/daily-analysis/conditions/:symbol
+GET /api/trial/daily-analysis/history/:symbol
+GET /api/trial/daily-analysis/watchlist
+POST /api/trial/daily-analysis/watchlist
+POST /api/trial/daily-analysis/save-candidate
+
+All endpoints must:
+
+1. Authenticate the user.
+2. Check active trial or paid entitlement.
+3. Check Twelve Data license mode.
+4. Check external-display flag.
+5. Check broker state where relevant.
+6. Validate the symbol against the approved universe.
+7. Return stored database data only.
+8. Never call Twelve Data directly during the request.
+9. Include the market-data-as-of date.
+10. Include the data-source type.
+11. Include stale-data status.
+12. Avoid returning provider secrets or raw payloads.
+
+During prelaunch, normal external trial users must receive a safe unavailable response.
+
+Approved internal test accounts may exercise the external-trial flow for QA.
+
+# Phase 7: Trial Homepage Experience
+
+For an entitled trial user without a supported broker, show:
+
+## Mode indicator
+
+Daily Analysis Mode
+
+## Supporting label
+
+Historical daily data through the previous completed trading session
+
+## Daily Opportunities
+
+Show three to five candidates selected from the approved universe.
+
+Each card should include:
+
+- Symbol
+- Company or ETF name
+- Asset type
+- Setup type
+- Composite grade
+- Conditions passed
+- Technical score
+- Momentum score
+- Volume score
+- Historical risk score
+- Market-data-as-of date
+- Latest available completed-session close
+- Main strength
+- Main risk
+
+Actions:
+
+- View Analysis
+- Save Candidate
+- Add to Watchlist
+- Connect Broker
+
+Do not show:
+
+- Paper Trade
+- Simulate
+- Review Order using historical pricing
+- Send to Broker without broker connection
+
+# Phase 8: Trial Symbol Browser
+
+Add a clear section or page showing the approved trial universe.
+
+Title:
+
+Trial Market Coverage
+
+Supporting copy:
+
+Explore historical daily analysis for a curated group of highly liquid U.S. stocks and ETFs.
+
+Separate into:
+
+## ETFs
+
+- SPY
+- QQQ
+- IWM
+- DIA
+
+## Stocks
+
+- NVDA
+- MSFT
+- AAPL
+- AMZN
+- GOOGL
+- META
+- AVGO
+- AMD
+- MU
+- PLTR
+- ORCL
+- JPM
+- COST
+- WMT
+- TSLA
+- XOM
+
+Add search and filter, but limit results to this universe.
+
+Do not show unsupported symbols in autocomplete for trial users.
+
+If a user searches for an unsupported symbol, display:
+
+“This symbol is not included in the current trial market coverage. Connect a supported brokerage account or upgrade when broader coverage becomes available.”
+
+Do not imply that a paid upgrade alone necessarily unlocks the symbol unless that entitlement exists.
+
+# Phase 9: Watchlist Restrictions
+
+Trial users without a supported broker may create a watchlist using approved symbols only.
+
+Requirements:
+
+- Enforce the symbol allowlist on the server.
+- Limit the number of trial watchlist symbols to a configurable value, such as 10.
+- Reject unsupported symbols.
+- Preserve existing paid-user behavior.
+- Preserve broker-connected behavior.
+- Do not delete existing unsupported watchlist symbols when an existing user enters trial state.
+- Hide unsupported symbols from trial analysis rather than destroying user data.
+- Display a clear coverage message.
+
+Suggested variable:
+
+TRIAL_DAILY_ANALYSIS_WATCHLIST_LIMIT=10
+
+# Phase 10: Saved Candidate Restrictions
+
+Trial users may save candidates generated from the approved universe.
+
+Requirements:
+
+- Candidate symbol must be trial-enabled.
+- Candidate must reference a valid daily analysis snapshot.
+- Store market-data-as-of date.
+- Store snapshot ID or version.
+- Store composite grade and setup type.
+- Do not store a fake order.
+- Do not create simulated positions.
+- Limit saved candidates using a configurable trial limit.
+
+Suggested variable:
+
+TRIAL_SAVED_CANDIDATE_LIMIT=20
+
+# Phase 11: Opportunity Radar Restrictions
+
+For trial users without a broker:
+
+- Scan only the approved 20-symbol universe.
+- Show a limited number of results.
+- Recommended maximum: five current results.
+- Use historical daily factors only.
+- Mark unavailable realtime and options-chain factors.
+- Include data-through date.
+- Do not call the full-market scanner.
+- Do not reveal disabled or unsupported symbols through counts or error messages.
+
+Suggested variable:
+
+TRIAL_OPPORTUNITY_RADAR_RESULT_LIMIT=5
+
+# Phase 12: Probability Engine Trial Behavior
+
+For trial users, use only factors supported by stored daily data:
+
+- Technical
+- Trend
+- Momentum
+- Volume
+- Historical risk
+- Licensed news context where available
+- Congress Activity context where available
+
+Display unavailable factors explicitly:
+
+- Realtime: Requires broker connection
+- Current options data: Requires broker connection
+- Account suitability: Requires broker connection and user settings
+
+Do not treat unavailable factors as zero unless the scoring methodology explicitly supports that.
+
+Prefer calculating a daily-data composite score using only available factors and clearly label it.
+
+Use:
+
+Daily Analysis Grade
+
+or:
+
+Historical Daily Composite Grade
+
+Do not call it a guaranteed probability of profit.
+
+# Phase 13: Grow Mode Trial Restrictions
+
+Trial users may use Grow Mode with the approved symbol universe.
+
+Allow:
+
+- Capital intended for analysis
+- Goal selection
+- Preferred maximum risk
+- Holding period
+- Stocks or options interest
+- Daily stock candidate ranking
+- Position-size illustration using the previous completed-session close
+- ATR-based historical risk illustration
+- Save candidate
+- Connect Broker
+
+Do not allow:
+
+- Live quantity recommendation without current broker price
+- Current buying-power validation
+- Executable order ticket
+- Current options-chain selection
+- Paper trade
+
+Required disclosure:
+
+“Illustration based on the previous completed trading session. Current prices and conditions may differ.”
+
+# Phase 14: Income Mode Trial Restrictions
+
+Trial users may receive underlying stock analysis and options strategy education for approved symbols.
+
+Allow:
+
+- Trend analysis
+- Historical volatility
+- Covered-call education
+- Cash-secured-put education
+- Debit-spread education
+- Credit-spread education
+- General risk and payoff explanations
+- Candidate underlyings to review after broker connection
+
+Do not display:
+
+- Current options premiums
+- Current strikes as executable choices
+- Current expirations as executable choices
+- Current Greeks
+- Current implied volatility
+- Current bid/ask
+- Current open interest
+- Current assignment probability
+- Options order ticket
+
+Required copy:
+
+“Connect a supported brokerage account to retrieve the current options chain and evaluate available strategy structures.”
+
+# Phase 15: Trade Finder Trial Restrictions
+
+Trial Trade Finder must search only the approved universe.
+
+Allow filters such as:
+
+- Symbol
+- Asset type
+- Direction
+- Setup type
+- Trend
+- Momentum
+- Historical volatility
+- Maximum preferred historical risk
+- Holding period
+
+Do not allow arbitrary symbol entry to bypass the approved universe.
+
+For options-related requests, return strategy education and underlying analysis only until a broker is connected.
+
+# Phase 16: Congress Activity Integration
+
+Show Congress Activity context only for approved symbols where data exists.
+
+Possible fields:
+
+- Recent disclosure count
+- Latest transaction type
+- Transaction date
+- Disclosure date
+- Reporting delay
+- Amount range
+- Closing price on transaction date
+- Closing price on disclosure date
+- Latest available daily close
+
+Required disclosure:
+
+“Congressional disclosures may be delayed, amended, incomplete, or reported as ranges. They are not trading signals or recommendations.”
+
+Do not make Congress Activity mandatory for a symbol to appear.
+
+# Phase 17: Broker Connection Upgrade Path
+
+For every trial analysis page, provide a clear Connect Broker CTA.
+
+Suggested labels:
+
+- Connect Broker for Current Data
+- Connect Broker to Review Live Market Conditions
+- Connect Broker to Access Current Options Data
+- Connect Broker to Review an Order
+
+After successful broker connection:
+
+1. Revalidate the connection.
+2. Retrieve broker-authorized current data.
+3. Refresh the symbol.
+4. Recalculate price-sensitive metrics.
+5. Retrieve options chain when applicable.
+6. Retrieve account balances and buying power.
+7. Revalidate positions.
+8. Build a new InstaTrade™ ticket.
+9. Require explicit user review.
+
+Never transfer the previous-day price directly into the live ticket.
+
+# Phase 18: Trial Disclosures and Attribution
+
+Display this disclosure in Daily Analysis Mode:
+
+“Market analysis is based on historical daily data through the previous completed trading session. It does not reflect current intraday prices or market conditions.”
+
+Display on candidate pages:
+
+“This analysis was generated using data available through [DATE]. Prices and conditions may have changed.”
+
+When Twelve Data external display is active, display attribution according to the existing attribution component.
+
+Suggested copy:
+
+“Historical daily market data provided by Twelve Data. Technical analysis, scores, rankings, and AI-generated insights are produced by VCP Trader AI.”
+
+Keep attribution enabled for internal pre-launch QA.
+
+# Phase 19: Admin Controls
+
+Add or update an admin section called:
+
+Trial Market Coverage
+
+Display:
+
+- Approved symbol
+- Company or ETF name
+- Asset type
+- Trial enabled
+- Internal testing enabled
+- Provider
+- Latest data date
+- Last successful ingestion
+- Data status
+- Current snapshot status
+- Display order
+
+Admin actions:
+
+- Add symbol
+- Enable trial access
+- Disable trial access
+- Reorder symbols
+- Trigger refresh
+- Trigger backfill
+- View ingestion errors
+- View current analysis snapshot
+- Preview the trial-user experience
+
+Requirements:
+
+- Admin changes must invalidate symbol-cache data.
+- Disabling a symbol must remove it from new trial results.
+- Do not delete historical records automatically.
+- Add an audit log for universe changes.
+- Do not let admin UI bypass the Twelve Data external-display environment flags.
+
+# Phase 20: Feature Flags and Configuration
+
+Add or confirm these settings:
+
+TWELVE_DATA_LICENSE_MODE=prelaunch
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=false
+TRIAL_DAILY_ANALYSIS_ENABLED=true
+TRIAL_DAILY_ANALYSIS_SYMBOL_LIMIT=20
+TRIAL_DAILY_ANALYSIS_WATCHLIST_LIMIT=10
+TRIAL_SAVED_CANDIDATE_LIMIT=20
+TRIAL_OPPORTUNITY_RADAR_RESULT_LIMIT=5
+TRIAL_REQUIRE_NO_BROKER_CONNECTION=false
+
+Interpretation:
+
+- TRIAL_DAILY_ANALYSIS_ENABLED controls product entitlement.
+- Twelve Data license flags remain the final legal safety gate.
+- TRIAL_REQUIRE_NO_BROKER_CONNECTION=false means broker-connected trial users may still view Daily Analysis Mode, but broker data should be used for current and execution workflows.
+
+During prelaunch, only authorized test accounts can pass the external-trial access path.
+
+# Phase 21: Safe External Activation
+
+After upgrading to Venture, external trial access should require:
+
+TWELVE_DATA_LICENSE_MODE=external
+TWELVE_DATA_EXTERNAL_DISPLAY_ENABLED=true
+TRIAL_DAILY_ANALYSIS_ENABLED=true
+
+All three must be true.
+
+Do not automatically activate external display based only on the Stripe plan, database plan name, or admin checkbox.
+
+# Phase 22: Tests
+
+Add comprehensive tests.
+
+## Approved universe
+
+- All 20 approved symbols are present
+- Symbols normalize to uppercase
+- Duplicate symbols rejected
+- ETFs classified correctly
+- Stocks classified correctly
+- Disabled symbol removed from trial access
+- Unsupported symbol denied
+
+## Trial entitlement
+
+- Active trial user allowed in external license mode
+- Expired trial user denied
+- Suspended user denied
+- Paid user handled correctly
+- Anonymous user denied
+- Prelaunch allowlisted tester allowed
+- Prelaunch normal external trial user denied
+- External display requires both license flags
+- Frontend cannot bypass backend entitlement
+
+## Broker state
+
+- Trial user without broker receives Daily Analysis Mode
+- Trial user with broker still sees historical analysis
+- Current workflows use broker data
+- Expired broker connection returns current workflow to reconnect state
+- Historical price is not used in live ticket
+
+## APIs
+
+- Approved symbol returns stored analysis
+- Unsupported symbol returns safe denial
+- API does not call Twelve Data during page request
+- Data-as-of date included
+- Stale-data state included
+- Raw provider payload not exposed
+- API key not exposed
+
+## Watchlists
+
+- Approved symbol can be added
+- Unsupported symbol rejected
+- Trial limit enforced
+- Paid-user behavior preserved
+- Existing unsupported symbols not deleted
+
+## Saved candidates
+
+- Approved candidate can be saved
+- Unsupported symbol rejected
+- Snapshot reference stored
+- Candidate limit enforced
+- No fake position created
+
+## Opportunity Radar
+
+- Uses only approved universe
+- Result limit enforced
+- Historical-data label shown
+- Realtime factors marked unavailable
+- No unsupported symbols leaked
+
+## Grow and Trade Finder
+
+- Only approved symbols searchable
+- Previous-session disclosure shown
+- No live order ticket without broker
+- Connect Broker CTA shown
+
+## Income Mode
+
+- Strategy education visible
+- Current premiums unavailable
+- Current Greeks unavailable
+- Broker connection message shown
+
+## Licensing
+
+- disabled mode denies access
+- prelaunch mode restricts normal external users
+- external mode permits entitled trial users
+- Attribution displays when required
+- Admin cannot bypass deployment flags
+
+# Phase 23: Implementation Order
+
+Perform work in this order:
+
+1. Audit current trial, broker, and Twelve Data architecture.
+2. Confirm active Stripe trial logic.
+3. Confirm central Twelve Data license gate.
+4. Create or update trial entitlement service.
+5. Seed or update the approved 20-symbol universe.
+6. Add the server-side symbol allowlist.
+7. Verify ingestion coverage for all approved symbols.
+8. Add trial Daily Analysis APIs.
+9. Update trial homepage.
+10. Add Trial Market Coverage page.
+11. Restrict watchlists.
+12. Restrict saved candidates.
+13. Restrict Opportunity Radar.
+14. Update Probability Engine behavior.
+15. Update Grow Mode.
+16. Update Income Mode.
+17. Update Trade Finder.
+18. Add Congress Activity context.
+19. Add broker conversion CTAs.
+20. Add disclosures and attribution.
+21. Add admin Trial Market Coverage controls.
+22. Add feature flags.
+23. Add automated tests.
+24. Run migrations.
+25. Run unit tests.
+26. Run integration tests.
+27. Run production build.
+28. Provide an implementation report.
+
+# Important Constraints
+
+- Do not rebuild VCP Trader AI.
+- Do not expose Twelve Data directly to the frontend.
+- Do not expose the API key.
+- Do not call Twelve Data per user request.
+- Do not enable external trial display while in prelaunch license mode.
+- Do not allow trial users to access unsupported symbols.
+- Do not implement paper trading.
+- Do not create simulated orders or positions.
+- Do not show current options data without a broker connection.
+- Do not create live orders using historical prices.
+- Do not weaken InstaTrade™ confirmation.
+- Do not weaken broker or server-side guardrails.
+- Do not delete existing user watchlist data.
+- Do not break paid-user or broker-connected entitlements.
+- Do not perform destructive database migrations.
+- Reuse existing services and coding patterns.
+- Add loading, error, empty, restricted, and stale-data states.
+- Make incremental, testable changes.
+
+# Final Deliverables
+
+After implementation, report:
+
+1. Existing trial entitlement architecture
+2. Files changed
+3. Database migrations created
+4. Approved trial universe seeded
+5. ETFs and stocks configured
+6. Trial entitlement service created or updated
+7. Twelve Data license gate behavior
+8. Trial Daily Analysis APIs
+9. Homepage changes
+10. Trial Market Coverage page
+11. Watchlist restrictions
+12. Saved-candidate restrictions
+13. Opportunity Radar restrictions
+14. Probability Engine changes
+15. Grow Mode changes
+16. Income Mode restrictions
+17. Trade Finder restrictions
+18. Congress Activity integration
+19. Broker conversion workflow
+20. Admin coverage controls
+21. Feature flags added
+22. Tests added
+23. Test results
+24. Production build result
+25. Remaining risks
+26. Manual deployment steps
+27. Current prelaunch configuration
+28. Exact configuration required after Venture upgrade
+
+Do not mark the task complete until:
+
+- All 20 approved symbols are loaded and retrievable internally.
+- Trial APIs enforce the approved universe.
+- Unsupported symbols are denied server-side.
+- Trial users see only historical daily analysis.
+- Current options and execution require a supported broker.
+- External trial access remains blocked during prelaunch.
+- Authorized pre-launch testers can validate the complete trial experience.

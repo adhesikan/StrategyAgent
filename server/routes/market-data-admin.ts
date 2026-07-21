@@ -15,6 +15,8 @@ import {
   insertMarketDataSymbolSchema,
 } from "@shared/schema";
 import { getTwelveDataConfig } from "../services/daily-market-data/config";
+import { invalidateTrialSymbolCache } from "../services/daily-market-data/trial-entitlement";
+import { storage } from "../storage";
 import { twelveDataProvider } from "../services/daily-market-data/twelve-data-client";
 import { getCreditUsageSummary } from "../services/daily-market-data/credit-manager";
 import {
@@ -88,6 +90,7 @@ export function registerMarketDataAdminRoutes(app: Express, isAdmin: RequestHand
           enabled: s.enabled,
           internalAnalysisEnabled: s.internalAnalysisEnabled,
           futureTrialEnabled: s.futureTrialEnabled,
+          trialEnabled: s.trialEnabled,
           backfillYears: s.backfillYears,
           latestAvailableTradeDate: s.latestAvailableTradeDate,
           lastSuccessfulIngestionAt: s.lastSuccessfulIngestionAt,
@@ -167,6 +170,15 @@ export function registerMarketDataAdminRoutes(app: Express, isAdmin: RequestHand
       });
       if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(data.symbol)) return res.status(400).json({ error: "Invalid symbol" });
       const [row] = await db.insert(marketDataSymbols).values(data).returning();
+      invalidateTrialSymbolCache();
+      try {
+        await storage.createActivityLog({
+          userId: (req as any).session?.userId ?? "system",
+          eventType: "trial_market_coverage_change",
+          description: `Admin added market-data symbol ${row.symbol}`,
+          metadataJson: { action: "add", symbol: row.symbol, trialEnabled: row.trialEnabled },
+        });
+      } catch {}
       res.status(201).json(row);
     } catch (e: any) {
       if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });
@@ -183,6 +195,15 @@ export function registerMarketDataAdminRoutes(app: Express, isAdmin: RequestHand
         .where(eq(marketDataSymbols.id, String(req.params.id)))
         .returning();
       if (!row) return res.status(404).json({ error: "Symbol not found" });
+      invalidateTrialSymbolCache();
+      try {
+        await storage.createActivityLog({
+          userId: (req as any).session?.userId ?? "system",
+          eventType: "trial_market_coverage_change",
+          description: `Admin updated market-data symbol ${row.symbol}`,
+          metadataJson: { action: "update", symbol: row.symbol, patch },
+        });
+      } catch {}
       res.json(row);
     } catch (e: any) {
       if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors });

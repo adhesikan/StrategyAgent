@@ -117,7 +117,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "faq",
     title: "FAQ",
     keywords: ["faq", "question", "cancel", "refund", "billing", "subscription", "manage plan"],
-    text: "Common answers: billing is via Stripe — manage or cancel any time from the billing portal in Settings. The 14-day trial gives full Pro access. Data in Analysis Mode is delayed reference data; live data requires a connected broker. Support: use this help assistant or the User Guide at /guide.",
+    text: "Common answers: billing is via Stripe — manage or cancel any time from the billing portal in Settings. The 14-day trial gives full Pro access. Data in Analysis Mode is delayed reference data; live data requires a connected broker. Support: use this help assistant, the User Guide at /guide, or email support@sunfishtrading.com.",
   },
 ];
 

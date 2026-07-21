@@ -959,7 +959,8 @@ export default function UserGuidePage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-8">
             <p className="text-xs text-muted-foreground">
               Still have questions? Check the <Link href="/disclaimer" className="underline">Disclaimer</Link>,{" "}
-              <Link href="/terms" className="underline">Terms</Link>, or contact support from the Settings page.
+              <Link href="/terms" className="underline">Terms</Link>, or email us at{" "}
+              <a href="mailto:support@sunfishtrading.com" className="underline" data-testid="link-support-email">support@sunfishtrading.com</a>.
             </p>
             <Button asChild variant="outline" size="sm">
               <Link href="/home" data-testid="link-back-home">Back to Home</Link>

@@ -341,20 +341,25 @@ export function OptionTradeTicket({
               ) : null}
 
               {!expirationsQuery.isError && !chainQuery.isError && (
+                <>
                 <div className="rounded-md border max-h-72 overflow-auto" data-testid="option-chain-table">
-                  <table className="w-full text-xs">
+                  <table className="w-full min-w-[560px] text-xs">
                     <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10">
                       <tr className="text-left text-muted-foreground">
-                        <th className="px-2 py-1.5 font-medium">Strike</th>
+                        <th className="px-2 py-1.5 font-medium sticky left-0 bg-muted/80 backdrop-blur z-20">Strike</th>
                         <th className="px-2 py-1.5 font-medium text-right">Bid</th>
                         <th className="px-2 py-1.5 font-medium text-right">Ask</th>
-                        <th className="px-2 py-1.5 font-medium text-right">Δ</th>
-                        <th className="px-2 py-1.5 font-medium text-right">OI</th>
+                        <th className="px-2 py-1.5 font-medium text-right" title="Delta">Δ</th>
+                        <th className="px-2 py-1.5 font-medium text-right" title="Gamma">Γ</th>
+                        <th className="px-2 py-1.5 font-medium text-right" title="Theta">Θ</th>
+                        <th className="px-2 py-1.5 font-medium text-right" title="Vega">Vega</th>
+                        <th className="px-2 py-1.5 font-medium text-right" title="Implied volatility">IV</th>
+                        <th className="px-2 py-1.5 font-medium text-right" title="Open interest">OI</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredContracts.length === 0 && !chainQuery.isFetching ? (
-                        <tr><td colSpan={5} className="px-2 py-3 text-center text-muted-foreground">
+                        <tr><td colSpan={9} className="px-2 py-3 text-center text-muted-foreground">
                           No {side}s for this expiration.
                         </td></tr>
                       ) : null}
@@ -367,10 +372,14 @@ export function OptionTradeTicket({
                             className={`cursor-pointer hover-elevate active-elevate-2 ${isSelected ? "bg-primary/15 ring-1 ring-primary/40" : ""}`}
                             data-testid={`row-option-${c.optionType}-${c.strike}`}
                           >
-                            <td className="px-2 py-1.5 font-mono">{c.strike.toFixed(2)}</td>
+                            <td className={`px-2 py-1.5 font-mono sticky left-0 z-10 ${isSelected ? "bg-primary/15" : "bg-background"}`}>{c.strike.toFixed(2)}</td>
                             <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(c.bid)}</td>
                             <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(c.ask)}</td>
                             <td className="px-2 py-1.5 text-right font-mono">{c.greeks ? c.greeks.delta.toFixed(2) : "—"}</td>
+                            <td className="px-2 py-1.5 text-right font-mono">{c.greeks ? c.greeks.gamma.toFixed(3) : "—"}</td>
+                            <td className="px-2 py-1.5 text-right font-mono">{c.greeks ? c.greeks.theta.toFixed(2) : "—"}</td>
+                            <td className="px-2 py-1.5 text-right font-mono">{c.greeks ? c.greeks.vega.toFixed(2) : "—"}</td>
+                            <td className="px-2 py-1.5 text-right font-mono">{c.greeks ? `${(c.greeks.mid_iv * 100).toFixed(1)}%` : "—"}</td>
                             <td className="px-2 py-1.5 text-right font-mono">{c.openInterest.toLocaleString()}</td>
                           </tr>
                         );
@@ -378,6 +387,8 @@ export function OptionTradeTicket({
                     </tbody>
                   </table>
                 </div>
+                <p className="text-[10px] text-muted-foreground">Scroll the table sideways to see all greeks (Δ, Γ, Θ, Vega, IV).</p>
+                </>
               )}
             </div>
 

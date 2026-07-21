@@ -877,7 +877,7 @@ export default function UserGuidePage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">VCP Trader AI</Badge>
-          <Badge variant="outline">Powered by Strategy Agent</Badge>
+          <Badge variant="outline">Powered by Sunfish Technologies LLC</Badge>
         </div>
       </div>
 

@@ -340,7 +340,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
               The trial provides AI-generated market analysis with delayed or snapshot market context. Live market data and order submission require a supported connected brokerage account. Informational only — not investment advice.
             </p>
             <p className="mt-2 text-[11px] text-muted-foreground/80">
-              Powered by Strategy Agent
+              Powered by Sunfish Technologies LLC
             </p>
           </div>
           <div className="lg:pl-6">
@@ -1151,7 +1151,7 @@ function LandingFooter() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <img src={logoUrl} alt="VCP Trader AI" className="h-6 w-auto" />
-            <span className="text-sm font-medium text-muted-foreground">VCP Trader AI · Powered by Strategy Agent engine</span>
+            <span className="text-sm font-medium text-muted-foreground">VCP Trader AI · Powered by Sunfish Technologies LLC</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm">
             <Link href="/terms" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-footer-terms">Terms</Link>

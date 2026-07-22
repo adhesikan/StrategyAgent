@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check } from "lucide-react";
+import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -53,8 +53,14 @@ const NAV_ITEMS: TopNavItem[] = [
     href: "/markets",
     icon: Newspaper,
     testId: "topnav-markets",
-    matches: (p) =>
-      p === "/markets" || p === "/market-intel" || p === "/news" || p.startsWith("/markets/congress-activity"),
+    matches: (p) => p === "/markets" || p === "/market-intel" || p === "/news",
+  },
+  {
+    label: "Congress",
+    href: "/markets/congress-activity",
+    icon: Landmark,
+    testId: "topnav-congress",
+    matches: (p) => p.startsWith("/markets/congress-activity"),
   },
   {
     label: "Journal",

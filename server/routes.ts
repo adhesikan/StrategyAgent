@@ -8341,8 +8341,68 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         }
       })();
     } catch (error: any) {
-      console.error("[Audit] page-view handler error:", error.message);
-      if (!res.headersSent) res.status(500).json({ error: "audit failed" });
+      // handled below
+      return handlePageViewError(res, error);
+    }
+  });
+  function handlePageViewError(res: any, error: any) {
+    console.error("[Audit] page-view failed:", error?.message);
+    if (!res.headersSent) res.status(202).json({ ok: true });
+  }
+
+  // Public: log cookie-consent decisions (accept/deny) with IP + geo + user info.
+  const cookieConsentRate = new Map<string, { count: number; resetAt: number }>();
+  app.post("/api/cookie-consent", async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { cookieConsents } = await import("@shared/schema");
+      const { lookupGeo } = await import("./services/audit/geo-lookup");
+
+      const ip = req.ip || "unknown";
+      const now = Date.now();
+      const bucket = cookieConsentRate.get(ip);
+      if (bucket && bucket.resetAt > now) {
+        if (bucket.count >= 10) return res.status(429).json({ error: "rate limited" });
+        bucket.count += 1;
+      } else {
+        cookieConsentRate.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
+      }
+      if (cookieConsentRate.size > 5000) {
+        for (const [k, v] of cookieConsentRate) if (v.resetAt <= now) cookieConsentRate.delete(k);
+      }
+
+      const body = (req.body || {}) as { decision?: string; path?: string };
+      const decision = body.decision === "accepted" || body.decision === "denied" ? body.decision : null;
+      if (!decision) return res.status(400).json({ error: "decision must be 'accepted' or 'denied'" });
+      const path = typeof body.path === "string" ? body.path.slice(0, 500) : null;
+      const ua = ((req.headers["user-agent"] as string | undefined) || "").slice(0, 500);
+      const userId = (req as any).user?.id || (req as any).user?.claims?.sub || null;
+      const email = (req as any).user?.email || null;
+
+      // Respond immediately; geo lookup + insert run in background.
+      res.status(202).json({ ok: true });
+
+      (async () => {
+        try {
+          const geo = await lookupGeo(ip);
+          await db.insert(cookieConsents).values({
+            userId,
+            email,
+            decision,
+            ipAddress: ip,
+            userAgent: ua,
+            country: geo.country,
+            region: geo.region,
+            city: geo.city,
+            path,
+          });
+        } catch (err: any) {
+          console.error("[CookieConsent] insert failed:", err.message);
+        }
+      })();
+    } catch (error: any) {
+      console.error("[CookieConsent] failed:", error?.message);
+      if (!res.headersSent) res.status(202).json({ ok: true });
     }
   });
 

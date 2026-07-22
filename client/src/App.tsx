@@ -16,7 +16,7 @@ import { BrokerStatusProvider } from "@/hooks/use-broker-status";
 import { TooltipVisibilityProvider } from "@/hooks/use-tooltips";
 import { PersonaProvider } from "@/context/PersonaContext";
 import { PlanProvider } from "@/context/PlanContext";
-import { StatusBanner, VerifyEmailBanner } from "@/components/status-banner";
+import { StatusBanner, VerifyEmailBanner, CookieConsentBanner } from "@/components/status-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ErrorBoundary } from "@/components/error-boundary";
 
@@ -368,6 +368,7 @@ function App() {
         <TooltipVisibilityProvider>
           <TooltipProvider>
             <AuthenticatedApp />
+            <CookieConsentBanner />
             <Toaster />
           </TooltipProvider>
         </TooltipVisibilityProvider>

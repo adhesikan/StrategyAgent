@@ -2190,6 +2190,23 @@ export const insertSessionAuditEventSchema = createInsertSchema(sessionAuditEven
 export type InsertSessionAuditEvent = z.infer<typeof insertSessionAuditEventSchema>;
 export type SessionAuditEvent = typeof sessionAuditEvents.$inferSelect;
 
+export const cookieConsents = pgTable("cookie_consents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  email: text("email"),
+  decision: text("decision").notNull(), // "accepted" | "denied"
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  country: text("country"),
+  region: text("region"),
+  city: text("city"),
+  path: text("path"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertCookieConsentSchema = createInsertSchema(cookieConsents).omit({ id: true, createdAt: true });
+export type InsertCookieConsent = z.infer<typeof insertCookieConsentSchema>;
+export type CookieConsent = typeof cookieConsents.$inferSelect;
+
 export const emailCampaigns = pgTable("email_campaigns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   subject: text("subject").notNull(),

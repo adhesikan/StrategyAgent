@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Wifi, WifiOff, AlertTriangle, X, MailWarning } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle, X, MailWarning, Cookie } from "lucide-react";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation } from "@tanstack/react-query";
@@ -71,6 +71,67 @@ export function VerifyEmailBanner() {
       >
         <X className="h-3.5 w-3.5" />
       </Button>
+    </div>
+  );
+}
+
+const COOKIE_CONSENT_KEY = "cookie-consent";
+
+export function CookieConsentBanner() {
+  const [decision, setDecision] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(COOKIE_CONSENT_KEY) || sessionStorage.getItem(COOKIE_CONSENT_KEY);
+    } catch {
+      return null;
+    }
+  });
+
+  const record = (choice: "accepted" | "denied") => {
+    try {
+      // Acceptance persists forever; denial is remembered for this session only.
+      if (choice === "accepted") localStorage.setItem(COOKIE_CONSENT_KEY, choice);
+      else sessionStorage.setItem(COOKIE_CONSENT_KEY, choice);
+    } catch {
+      // storage unavailable (private mode) — banner will reappear next visit
+    }
+    setDecision(choice);
+    apiRequest("POST", "/api/cookie-consent", {
+      decision: choice,
+      path: window.location.pathname,
+    }).catch(() => {
+      // logging is best-effort; never block the user
+    });
+  };
+
+  if (decision) return null;
+
+  return (
+    <div
+      className="fixed bottom-0 inset-x-0 z-50 bg-background border-t shadow-lg px-4 py-3 md:py-4"
+      role="dialog"
+      aria-label="Cookie consent"
+      data-testid="banner-cookie-consent"
+    >
+      <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-start md:items-center gap-3">
+        <Cookie className="h-5 w-5 text-muted-foreground shrink-0 hidden md:block" />
+        <p className="text-xs md:text-sm text-muted-foreground flex-1" data-testid="text-cookie-consent">
+          We use cookies to keep you signed in, remember your preferences, and improve VCP Trader AI.
+          By clicking "Accept", you consent to our use of cookies.
+        </p>
+        <div className="flex gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => record("denied")}
+            data-testid="button-cookie-decline"
+          >
+            Decline
+          </Button>
+          <Button size="sm" onClick={() => record("accepted")} data-testid="button-cookie-accept">
+            Accept
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

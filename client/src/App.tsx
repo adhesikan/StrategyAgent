@@ -24,6 +24,7 @@ import Charts from "@/pages/charts";
 import Backtest from "@/pages/backtest";
 import SettingsPage from "@/pages/settings";
 import AuthPage from "@/pages/auth";
+import { VerifyEmailPage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/account-email-actions";
 import HomePage from "@/pages/home";
 import TermsPage from "@/pages/terms";
 import DisclaimerPage from "@/pages/disclaimer";
@@ -318,6 +319,9 @@ function PublicRoutes() {
   if (location === "/privacy") return <PrivacyPage />;
   if (location === "/open-source") return <OpenSourcePage />;
   if (location === "/auth") return <AuthPage />;
+  if (location === "/verify-email") return <VerifyEmailPage />;
+  if (location === "/forgot-password") return <ForgotPasswordPage />;
+  if (location === "/reset-password") return <ResetPasswordPage />;
   
   return null;
 }
@@ -331,7 +335,7 @@ function AuthenticatedApp() {
     return <PartnerDashboard />;
   }
 
-  const publicRoutes = ["/", "/terms", "/disclaimer", "/privacy", "/open-source", "/auth"];
+  const publicRoutes = ["/", "/terms", "/disclaimer", "/privacy", "/open-source", "/auth", "/verify-email", "/forgot-password", "/reset-password"];
   const isPublicRoute = publicRoutes.includes(location);
   
   if (isLoading) {

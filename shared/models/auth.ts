@@ -48,6 +48,11 @@ export const users = pgTable("users", {
   acceptedUserAgent: varchar("accepted_user_agent"),
   snaptradeUserId: varchar("snaptrade_user_id"),
   snaptradeUserSecret: varchar("snaptrade_user_secret"),
+  emailVerified: timestamp("email_verified"),
+  verificationTokenHash: varchar("verification_token_hash"),
+  verificationTokenExpiresAt: timestamp("verification_token_expires_at"),
+  resetTokenHash: varchar("reset_token_hash"),
+  resetTokenExpiresAt: timestamp("reset_token_expires_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -189,6 +189,18 @@ async function findUserIdForCustomer(customerId: string, fallbackMeta?: string |
  * Handles plan-related Stripe events. Safe to no-op for unrelated events
  * (the partner webhook handler at /api/stripe/webhook handles its own events).
  */
+// Dedupe email side-effects across Stripe webhook retries (in-memory, single-instance).
+const processedEmailEventIds = new Set<string>();
+function shouldSendWebhookEmail(eventId: string): boolean {
+  if (processedEmailEventIds.has(eventId)) return false;
+  processedEmailEventIds.add(eventId);
+  if (processedEmailEventIds.size > 2000) {
+    const first = processedEmailEventIds.values().next().value;
+    if (first) processedEmailEventIds.delete(first);
+  }
+  return true;
+}
+
 export async function handlePlanWebhook(payload: Buffer, signature: string): Promise<void> {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) {
@@ -206,6 +218,17 @@ export async function handlePlanWebhook(payload: Buffer, signature: string): Pro
       const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
       const sub = await stripe.subscriptions.retrieve(subId);
       await applySubscriptionToUser(userId, sub);
+
+      // Fire-and-forget subscription confirmation email.
+      if (!shouldSendWebhookEmail(event.id)) return;
+      (async () => {
+        const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        if (user?.email) {
+          const { sendSubscriptionConfirmation } = await import("../email/email-service");
+          const planName = sub.status === "trialing" ? "VCP Trader AI Pro (14-day free trial)" : "VCP Trader AI Pro";
+          await sendSubscriptionConfirmation(user.email, planName, userId);
+        }
+      })().catch((err) => console.warn("Subscription confirmation email failed:", err?.message || err));
       return;
     }
     case "customer.subscription.created":
@@ -216,6 +239,17 @@ export async function handlePlanWebhook(payload: Buffer, signature: string): Pro
       const userId = await findUserIdForCustomer(customerId, sub.metadata?.userId ?? null);
       if (!userId) return;
       await applySubscriptionToUser(userId, sub);
+
+      // Fire-and-forget billing notice on cancellation.
+      if (event.type === "customer.subscription.deleted" && shouldSendWebhookEmail(event.id)) {
+        (async () => {
+          const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+          if (user?.email) {
+            const { sendBillingNotice } = await import("../email/email-service");
+            await sendBillingNotice(user.email, "Your VCP Trader AI Pro subscription has been canceled. You can resubscribe anytime from the Billing page in Settings.", userId);
+          }
+        })().catch((err) => console.warn("Cancellation billing notice failed:", err?.message || err));
+      }
       return;
     }
     case "invoice.payment_failed": {
@@ -228,6 +262,16 @@ export async function handlePlanWebhook(payload: Buffer, signature: string): Pro
         .update(usersTable)
         .set({ subscriptionStatus: "past_due", updatedAt: new Date() })
         .where(eq(usersTable.id, userId));
+
+      // Fire-and-forget payment-failed billing notice.
+      if (!shouldSendWebhookEmail(event.id)) return;
+      (async () => {
+        const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        if (user?.email) {
+          const { sendBillingNotice } = await import("../email/email-service");
+          await sendBillingNotice(user.email, "We couldn't process your latest payment for VCP Trader AI Pro. Please update your payment method in the Billing page to keep your subscription active.", userId);
+        }
+      })().catch((err) => console.warn("Payment-failed billing notice failed:", err?.message || err));
       return;
     }
     default:

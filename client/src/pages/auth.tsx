@@ -124,6 +124,13 @@ export default function AuthPage() {
                 </button>
               </div>
             </div>
+            {isLogin && (
+              <div className="flex justify-end">
+                <Link href="/forgot-password" className="text-xs text-primary hover:underline" data-testid="link-forgot-password">
+                  Forgot password?
+                </Link>
+              </div>
+            )}
             {!isLogin && (
               <div className="flex items-start gap-3 pt-2">
                 <Checkbox

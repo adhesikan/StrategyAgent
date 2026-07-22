@@ -540,6 +540,25 @@ export async function runIngestion(options: {
       })
       .where(eq(marketDataIngestionRuns.id, runId));
 
+    // Fire-and-forget internal research report email summarizing the ingestion run.
+    const reportTo = process.env.ADMIN_SUPPORT_NOTIFICATION_EMAIL || process.env.EMAIL_FORWARD_ADDRESS;
+    if (reportTo && results.length > 0) {
+      (async () => {
+        const { sendResearchReportEmail } = await import("../email/email-service");
+        const inserted = results.reduce((a, r) => a + r.inserted, 0);
+        const updated = results.reduce((a, r) => a + r.updated, 0);
+        const summary = [
+          `Daily market data ingestion finished with status: ${status}.`,
+          `Symbols succeeded: ${succeeded}, failed: ${failed}, credits used: ${results.length}.`,
+          `Records inserted: ${inserted}, updated: ${updated}.`,
+          failed > 0
+            ? `Failures: ${results.filter((r) => r.status === "failed").map((r) => `${r.symbol} (${r.errorCode})`).join(", ")}`
+            : "No failures.",
+        ].join("\n");
+        await sendResearchReportEmail(reportTo, `Daily Market Data Report — ${status}`, summary);
+      })().catch((err) => console.warn("[Ingestion] Research report email failed:", err?.message || err));
+    }
+
     return { runId, status, results };
   } finally {
     await releaseLock();

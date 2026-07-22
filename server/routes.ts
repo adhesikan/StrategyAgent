@@ -2094,6 +2094,16 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         isConnected: connection.isConnected,
         lastSync: connection.lastSync,
       };
+
+      // Fire-and-forget broker connection alert email.
+      (async () => {
+        const user = await storage.getUser(userId);
+        if (user?.email) {
+          const { sendBrokerConnectionAlert } = await import("./services/email/email-service");
+          await sendBrokerConnectionAlert(user.email, provider, "A broker account was connected to your VCP Trader AI account. If this wasn't you, disconnect it in Settings and contact support.", userId);
+        }
+      })().catch((err) => console.warn("Broker connect email failed:", err?.message || err));
+
       res.json(sanitizedConnection);
     } catch (error: any) {
       console.error("Failed to connect broker:", error.message);
@@ -2105,6 +2115,16 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     try {
       const userId = req.session.userId!;
       await storage.clearBrokerConnection(userId);
+
+      // Fire-and-forget broker disconnection alert email.
+      (async () => {
+        const user = await storage.getUser(userId);
+        if (user?.email) {
+          const { sendBrokerConnectionAlert } = await import("./services/email/email-service");
+          await sendBrokerConnectionAlert(user.email, "your broker", "Your broker connection was disconnected from VCP Trader AI. If this wasn't you, reconnect and contact support.", userId);
+        }
+      })().catch((err) => console.warn("Broker disconnect email failed:", err?.message || err));
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to disconnect broker" });

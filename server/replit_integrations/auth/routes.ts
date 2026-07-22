@@ -140,6 +140,44 @@ export const verifyJwt: RequestHandler = (req, _res, next) => {
   next();
 };
 
+// ---- Email verification & password reset token helpers ----
+import crypto from "crypto";
+
+function generateToken(): { token: string; hash: string } {
+  const token = crypto.randomBytes(32).toString("hex");
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  return { token, hash };
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function appBaseUrl(_req: Request): string {
+  // Never derive from request headers — host-header poisoning could leak
+  // reset/verification tokens to attacker-controlled domains.
+  const envBase = process.env.APP_BASE_URL;
+  if (envBase) return envBase.replace(/\/$/, "");
+  const replitDomain = (process.env.REPLIT_DOMAINS || "").split(",")[0]?.trim() || process.env.REPLIT_DEV_DOMAIN;
+  if (replitDomain) return `https://${replitDomain}`;
+  return "http://localhost:5000";
+}
+
+/** Generates a verification token for a user and emails the verify link. Fire-and-forget safe. */
+async function issueVerificationEmail(req: Request, userId: string, email: string): Promise<void> {
+  const { token, hash } = generateToken();
+  await db
+    .update(users)
+    .set({
+      verificationTokenHash: hash,
+      verificationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+  const { sendEmailVerification } = await import("../../services/email/email-service");
+  await sendEmailVerification(email, `${appBaseUrl(req)}/verify-email?token=${token}`, userId);
+}
+
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
   newPassword: z.string().min(6, "New password must be at least 6 characters"),
@@ -202,10 +240,12 @@ export function registerAuthRoutes(app: Express): void {
       seedNewUser(user.id);
       recordSessionEvent({ req, userId: user.id, email: user.email, eventType: "register" });
 
-      // Fire-and-forget welcome email (never blocks registration).
+      // Fire-and-forget welcome + verification emails (never block registration).
       import("../../services/email/email-service")
         .then(({ sendWelcomeEmail }) => sendWelcomeEmail(user.email, data.firstName || null, user.id))
         .catch((err) => console.warn("Welcome email failed:", err?.message || err));
+      issueVerificationEmail(req, user.id, user.email)
+        .catch((err) => console.warn("Verification email failed:", err?.message || err));
 
       const updatedUser = await authStorage.getUser(user.id);
       const { password: _, ...safeUser } = updatedUser!;
@@ -373,6 +413,109 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
+  // ---- Email verification ----
+  app.post("/api/auth/verify-email", async (req, res) => {
+    try {
+      const { token } = z.object({ token: z.string().min(10).max(200) }).parse(req.body);
+      const hash = hashToken(token);
+      const [user] = await db.select().from(users).where(eq(users.verificationTokenHash, hash)).limit(1);
+      if (!user || !user.verificationTokenExpiresAt || user.verificationTokenExpiresAt < new Date()) {
+        return res.status(400).json({ message: "This verification link is invalid or has expired." });
+      }
+      await db
+        .update(users)
+        .set({ emailVerified: new Date(), verificationTokenHash: null, verificationTokenExpiresAt: null, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+      res.json({ message: "Email verified successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid token" });
+      console.error("Verify email error:", error);
+      res.status(500).json({ message: "Failed to verify email" });
+    }
+  });
+
+  app.post("/api/auth/resend-verification", isAuthenticated, async (req, res) => {
+    try {
+      const user = await authStorage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.emailVerified) return res.json({ message: "Email is already verified" });
+      await issueVerificationEmail(req, user.id, user.email);
+      res.json({ message: "Verification email sent" });
+    } catch (error) {
+      console.error("Resend verification error:", error);
+      res.status(500).json({ message: "Failed to send verification email" });
+    }
+  });
+
+  // ---- Password reset (forgot password) ----
+  const forgotAttempts = new Map<string, { count: number; windowStart: number }>();
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = z.object({ email: z.string().email() }).parse(req.body);
+
+      // Rate limit per IP: 5/15min. When throttled, silently skip sending but
+      // keep the uniform 200 response (no enumeration/probing signal).
+      const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0] || req.ip || "unknown").trim();
+      const now = Date.now();
+      let throttled = false;
+      const bucket = forgotAttempts.get(ip);
+      if (!bucket || now - bucket.windowStart > 15 * 60_000) {
+        forgotAttempts.set(ip, { count: 1, windowStart: now });
+      } else if (++bucket.count > 5) {
+        throttled = true;
+      }
+      if (forgotAttempts.size > 5000) forgotAttempts.clear();
+
+      const user = throttled ? null : await authStorage.getUserByEmail(email);
+      if (user) {
+        const { token, hash } = generateToken();
+        await db
+          .update(users)
+          .set({ resetTokenHash: hash, resetTokenExpiresAt: new Date(now + 60 * 60 * 1000), updatedAt: new Date() })
+          .where(eq(users.id, user.id));
+        import("../../services/email/email-service")
+          .then(({ sendPasswordResetEmail }) =>
+            sendPasswordResetEmail(user.email, `${appBaseUrl(req)}/reset-password?token=${token}`, user.id))
+          .catch((err) => console.warn("Password reset email failed:", err?.message || err));
+      }
+      // Always the same response — never reveal whether the email exists.
+      res.json({ message: "If that email is registered, a reset link has been sent." });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid email address" });
+      console.error("Forgot password error:", error);
+      res.status(500).json({ message: "Failed to process request" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, newPassword } = z
+        .object({ token: z.string().min(10).max(200), newPassword: z.string().min(6, "Password must be at least 6 characters") })
+        .parse(req.body);
+      const hash = hashToken(token);
+      const [user] = await db.select().from(users).where(eq(users.resetTokenHash, hash)).limit(1);
+      if (!user || !user.resetTokenExpiresAt || user.resetTokenExpiresAt < new Date()) {
+        return res.status(400).json({ message: "This reset link is invalid or has expired." });
+      }
+      await authStorage.updateUser(user.id, { password: newPassword });
+      await db
+        .update(users)
+        .set({ resetTokenHash: null, resetTokenExpiresAt: null, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+
+      import("../../services/email/email-service")
+        .then(({ sendSecurityAlertEmail }) =>
+          sendSecurityAlertEmail(user.email, "Your password was reset using a password-reset link. If this wasn't you, contact support immediately.", user.id))
+        .catch((err) => console.warn("Security alert email failed:", err?.message || err));
+
+      res.json({ message: "Password reset successfully. You can now log in." });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Reset password error:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
   app.post("/api/auth/change-password", isAuthenticated, async (req, res) => {
     try {
       const data = changePasswordSchema.parse(req.body);
@@ -392,6 +535,13 @@ export function registerAuthRoutes(app: Express): void {
 
       await authStorage.updateUser(user.id, { password: data.newPassword });
       console.log(`[Auth] Password changed for user ${user.id}`);
+
+      // Fire-and-forget security alert email.
+      import("../../services/email/email-service")
+        .then(({ sendSecurityAlertEmail }) =>
+          sendSecurityAlertEmail(user.email, "Your account password was changed. If this wasn't you, reset your password immediately and contact support.", user.id))
+        .catch((err) => console.warn("Security alert email failed:", err?.message || err));
+
       res.json({ message: "Password changed successfully" });
     } catch (error) {
       if (error instanceof z.ZodError) {

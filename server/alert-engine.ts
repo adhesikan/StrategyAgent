@@ -9,6 +9,20 @@ import { ALERT_DISCLAIMER, getStrategyDisplayName } from "@shared/strategies";
 /**
  * Get current time in Eastern Time as minutes since midnight
  */
+/** Fire-and-forget trade alert email mirroring the push notification. */
+function emailAlertEvent(userId: string, event: AlertEvent): void {
+  (async () => {
+    const user = await storage.getUser(userId);
+    if (!user?.email) return;
+    const data = (event.payload || {}) as Record<string, any>;
+    const symbol = event.symbol || data.ticker || "Trade Alert";
+    const title = `${symbol} — ${event.toState || data.targetStage || "signal"}`;
+    const summary = data.message || `An alert rule triggered for ${symbol}.`;
+    const { sendTradeAlertEmail } = await import("./services/email/email-service");
+    await sendTradeAlertEmail(user.email, title, `${summary}\n\n${ALERT_DISCLAIMER}`, userId);
+  })().catch((err) => console.log(`[AlertEngine] Alert email error: ${err?.message || err}`));
+}
+
 function getEasternTimeMinutes(): number {
   const now = new Date();
   const etFormatter = new Intl.DateTimeFormat('en-US', {
@@ -385,6 +399,7 @@ export async function processAlertRules(
             } catch (pushError) {
               console.log(`[AlertEngine] Push notification error: ${pushError}`);
             }
+            emailAlertEvent(rule.userId, event);
           }
           
           // Send webhook if enabled and endpoint configured (only during market hours)
@@ -551,6 +566,7 @@ export async function processAlertRules(
             } catch (pushError) {
               console.log(`[AlertEngine] Push notification error: ${pushError}`);
             }
+            emailAlertEvent(rule.userId, event);
           }
           
           // Send webhook if enabled and endpoint configured (only during market hours)
@@ -678,6 +694,7 @@ export async function processAlertRules(
             } catch (pushError) {
               console.log(`[AlertEngine] Push notification error: ${pushError}`);
             }
+            emailAlertEvent(rule.userId, event);
           }
           
           await storage.updateAlertRule(rule.id, {

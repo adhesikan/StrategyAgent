@@ -216,12 +216,8 @@ export function registerHomeSnapshotRoutes(
               };
             }
           }
-          if (!watchlistAlert && negatives[0] && userId) {
-            watchlistAlert = {
-              symbol: negatives[0].symbol,
-              message: negatives[0].whyItMatters ?? `${negatives[0].symbol} — bearish news flow worth reviewing.`,
-            };
-          }
+          // No fallback to off-watchlist symbols: a "watchlist alert" must only
+          // reference symbols actually on the user's watchlist.
         }
       } catch {
         // fall through to mock

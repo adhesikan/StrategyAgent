@@ -245,6 +245,16 @@ export function registerAuthRoutes(app: Express): void {
       import("../../services/email/email-service")
         .then(({ sendWelcomeEmail }) => sendWelcomeEmail(user.email, data.firstName || null, user.id))
         .catch((err) => console.warn("Welcome email failed:", err?.message || err));
+      import("../../services/email/email-service")
+        .then(({ sendAdminEventNotification }) =>
+          sendAdminEventNotification("New user signup", [
+            `Email: ${user.email}`,
+            `Name: ${[data.firstName, data.lastName].filter(Boolean).join(" ") || "(not provided)"}`,
+            `User ID: ${user.id}`,
+            `Plan: Pro (14-day trial, ends ${trialEndsAt.toISOString().slice(0, 10)})`,
+            `Signed up: ${new Date().toISOString()}`,
+          ]))
+        .catch((err) => console.warn("Admin signup notification failed:", err?.message || err));
       issueVerificationEmail(req, user.id, user.email)
         .catch((err) => console.warn("Verification email failed:", err?.message || err));
 
@@ -611,6 +621,15 @@ export function registerAuthRoutes(app: Express): void {
       }
       await db.delete(users).where(eq(users.id, userId));
       console.log(`[Auth] Account deleted for user ${userId} (${user.email}) with all associated data`);
+
+      import("../../services/email/email-service")
+        .then(({ sendAdminEventNotification }) =>
+          sendAdminEventNotification("Account deleted", [
+            `Email: ${user.email}`,
+            `User ID: ${userId}`,
+            `Deleted: ${new Date().toISOString()}`,
+          ]))
+        .catch((err) => console.warn("Admin account-deletion notification failed:", err?.message || err));
 
       req.session.destroy((err) => {
         if (err) console.error("Session destroy error after account deletion:", err);

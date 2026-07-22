@@ -232,9 +232,16 @@ export async function handlePlanWebhook(payload: Buffer, signature: string): Pro
       (async () => {
         const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
         if (user?.email) {
-          const { sendSubscriptionConfirmation } = await import("../email/email-service");
+          const { sendSubscriptionConfirmation, sendAdminEventNotification } = await import("../email/email-service");
           const planName = sub.status === "trialing" ? "VCP Trader AI Pro (14-day free trial)" : "VCP Trader AI Pro";
           await sendSubscriptionConfirmation(user.email, planName, userId);
+          await sendAdminEventNotification("New subscription", [
+            `Email: ${user.email}`,
+            `User ID: ${userId}`,
+            `Plan: ${planName}`,
+            `Stripe status: ${sub.status}`,
+            `Subscription ID: ${sub.id}`,
+          ]);
         }
       })().catch((err) => console.warn("Subscription confirmation email failed:", err?.message || err));
       return;
@@ -253,8 +260,14 @@ export async function handlePlanWebhook(payload: Buffer, signature: string): Pro
         (async () => {
           const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
           if (user?.email) {
-            const { sendBillingNotice } = await import("../email/email-service");
+            const { sendBillingNotice, sendAdminEventNotification } = await import("../email/email-service");
             await sendBillingNotice(user.email, "Your VCP Trader AI Pro subscription has been canceled. You can resubscribe anytime from the Billing page in Settings.", userId);
+            await sendAdminEventNotification("Subscription canceled", [
+              `Email: ${user.email}`,
+              `User ID: ${userId}`,
+              `Subscription ID: ${sub.id}`,
+              `Canceled at: ${sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : new Date().toISOString()}`,
+            ]);
           }
         })().catch((err) => console.warn("Cancellation billing notice failed:", err?.message || err));
       }
@@ -276,8 +289,15 @@ export async function handlePlanWebhook(payload: Buffer, signature: string): Pro
       (async () => {
         const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
         if (user?.email) {
-          const { sendBillingNotice } = await import("../email/email-service");
+          const { sendBillingNotice, sendAdminEventNotification } = await import("../email/email-service");
           await sendBillingNotice(user.email, "We couldn't process your latest payment for VCP Trader AI Pro. Please update your payment method in the Billing page to keep your subscription active.", userId);
+          await sendAdminEventNotification("Payment failed", [
+            `Email: ${user.email}`,
+            `User ID: ${userId}`,
+            `Invoice: ${invoice.id ?? "(unknown)"}`,
+            `Amount due: ${typeof invoice.amount_due === "number" ? `$${(invoice.amount_due / 100).toFixed(2)}` : "(unknown)"}`,
+            `Status set to past_due.`,
+          ]);
         }
       })().catch((err) => console.warn("Payment-failed billing notice failed:", err?.message || err));
       return;

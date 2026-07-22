@@ -145,6 +145,41 @@ export async function sendEmail(args: SendEmailArgs): Promise<SendEmailResult> {
 
 // ------- Typed helpers -------
 
+/**
+ * Internal admin/business event notification (new signups, subscriptions,
+ * cancellations, etc). Goes to the support inbox — never to customers.
+ * Fire-and-forget safe: logs failures but never throws.
+ */
+export async function sendAdminEventNotification(eventTitle: string, lines: string[]) {
+  const to =
+    process.env.ADMIN_SUPPORT_NOTIFICATION_EMAIL ||
+    process.env.EMAIL_FORWARD_ADDRESS ||
+    "support@sunfishtrading.com";
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const text = `${eventTitle}\n\n${lines.join("\n")}\n\nSent automatically by VCP Trader AI.`;
+  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
+    <h2 style="font-size:16px;margin:0 0 12px">${esc(eventTitle)}</h2>
+    <table style="border-collapse:collapse">${lines
+      .map((l) => `<tr><td style="padding:2px 0">${esc(l)}</td></tr>`)
+      .join("")}</table>
+    <p style="color:#666;font-size:12px;margin-top:16px">Sent automatically by VCP Trader AI.</p>
+  </div>`;
+  try {
+    return await sendEmail({
+      to,
+      subject: `[VCP Trader AI] ${eventTitle}`,
+      text,
+      html,
+      messageType: "admin_notification",
+      essential: true,
+      headers: { "X-VCP-Forwarded": "true" },
+    });
+  } catch (err: any) {
+    console.warn(`[email] admin notification failed (${eventTitle}):`, err?.message || err);
+    return { success: false, errorCode: "exception", errorMessage: String(err?.message || err) } as SendEmailResult;
+  }
+}
+
 export async function sendWelcomeEmail(to: string, firstName?: string | null, userId?: string) {
   const t = templates.welcome(firstName);
   return sendEmail({ to, subject: "Welcome to VCP Trader AI", ...t, messageType: "welcome", userId, essential: true });

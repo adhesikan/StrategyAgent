@@ -58,6 +58,11 @@ RITHMIC_TICKER_PLANT_URI = "wss://rituz00100.rithmic.com:443"
 RITHMIC_ORDER_PLANT_URI = "wss://rituz00100.rithmic.com:443"
 RITHMIC_SYSTEM_NAME = "Rithmic Test"
 RITHMIC_WS_URL = "wss://rituz00100.rithmic.com:443"
+EMAIL_FROM_ADDRESS = "team@vcptrader.com"
+EMAIL_FROM_NAME = "VCP Trader AI"
+EMAIL_FORWARD_ADDRESS = "support@sunfishtrading.com"
+EMAIL_REPLY_TO = "team@vcptrader.com"
+ADMIN_SUPPORT_NOTIFICATION_EMAIL = "support@sunfishtrading.com"
 
 [userenv.production]
 APP_URL = "https://www.vcptrader.com"

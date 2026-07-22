@@ -1,0 +1,759 @@
+Update the existing VCP Trader AI application to add a secure, production-ready Resend email service for sending and receiving email.
+
+IMPORTANT:
+- First inspect the complete existing codebase, framework, routing structure, database schema, authentication system, environment-variable conventions, notification services, admin interface, deployment configuration, and logging patterns.
+- Reuse the existing architecture and coding conventions.
+- Do not rebuild or replace working functionality.
+- Do not remove or break authentication, broker OAuth integrations, trading features, subscription features, push notifications, existing APIs, or Railway/Replit deployment configuration.
+- Make all changes production-safe, typed, modular, testable, and backward compatible.
+- The verified email domain is vcptrader.com.
+- The primary sender and inbound address is team@vcptrader.com.
+- Every incoming email to team@vcptrader.com must also be forwarded to support@sunfishtrading.com.
+- Resend receiving is already enabled and the domain DNS is verified for sending and receiving.
+- Do not create or assume a traditional mailbox for team@vcptrader.com. Resend is being used through its API and inbound webhooks.
+
+==================================================
+1. INSTALL AND CONFIGURE RESEND
+==================================================
+
+Install the official Resend Node.js package if it is not already installed:
+
+npm install resend
+
+Add these environment variables using the project’s existing environment-variable validation pattern:
+
+RESEND_API_KEY=
+RESEND_WEBHOOK_SECRET=
+EMAIL_FROM_ADDRESS=team@vcptrader.com
+EMAIL_FROM_NAME=VCP Trader AI
+EMAIL_FORWARD_ADDRESS=support@sunfishtrading.com
+EMAIL_REPLY_TO=team@vcptrader.com
+APP_BASE_URL=
+ADMIN_SUPPORT_NOTIFICATION_EMAIL=support@sunfishtrading.com
+
+Requirements:
+- Never expose RESEND_API_KEY or RESEND_WEBHOOK_SECRET to the browser.
+- Validate required server-side environment variables at startup.
+- Update .env.example with placeholders only.
+- Do not commit real secrets.
+- Add clear setup instructions to the README.
+
+==================================================
+2. CREATE A CENTRAL EMAIL SERVICE
+==================================================
+
+Create a reusable server-side email module using the existing project folder conventions.
+
+Suggested structure, adjusted to match the project:
+
+lib/email/resend-client.ts
+lib/email/email-service.ts
+lib/email/email-types.ts
+lib/email/email-templates.ts
+lib/email/inbound-email-service.ts
+lib/email/email-logging.ts
+
+The central service should support:
+
+sendEmail({
+  to,
+  subject,
+  html,
+  text,
+  replyTo,
+  cc,
+  bcc,
+  tags,
+  headers
+})
+
+Also create specific helpers such as:
+
+sendWelcomeEmail()
+sendEmailVerification()
+sendPasswordResetEmail()
+sendSecurityAlertEmail()
+sendBrokerConnectionAlert()
+sendSubscriptionConfirmation()
+sendBillingNotice()
+sendTradeAlertEmail()
+sendResearchReportEmail()
+sendSupportAcknowledgment()
+sendSupportReply()
+forwardInboundEmail()
+
+Use this sender by default:
+
+VCP Trader AI <team@vcptrader.com>
+
+Use team@vcptrader.com as the default reply-to address unless a workflow explicitly requires a different reply-to.
+
+Return consistent typed results:
+
+{
+  success: boolean,
+  providerMessageId?: string,
+  errorCode?: string,
+  errorMessage?: string
+}
+
+Do not allow email-provider exceptions to crash unrelated application workflows. Log errors safely and return structured failures.
+
+==================================================
+3. EMAIL TEMPLATES
+==================================================
+
+Create polished, responsive, accessible HTML email templates matching the existing VCP Trader AI branding.
+
+Every template should include:
+
+- VCP Trader AI branding
+- Clear subject and heading
+- Mobile-friendly layout
+- Plain-text alternative
+- Accessible typography
+- Relevant call-to-action button
+- Support contact: team@vcptrader.com
+- Company identification where appropriate
+- Required legal/compliance footer where applicable
+- Unsubscribe/preferences link for marketing emails
+- No unsubscribe link for essential transactional or security messages unless legally required
+- A statement on research/trading-related emails that software-generated information is for informational and educational reference only and is not financial or investment advice
+
+Do not include sensitive account, brokerage, order, position, token, or authentication information in email.
+
+Separate templates into categories:
+
+Transactional:
+- Welcome
+- Email verification
+- Password reset
+- Security notification
+- Subscription confirmation
+- Billing notice
+- Broker connection status
+
+Product:
+- Trade-alert notification
+- Research-report notification
+- Daily opportunity-report notification
+- Position-protection notification
+
+Support:
+- Support acknowledgment
+- Support reply
+- Internal support forwarding notice
+
+Marketing:
+- Newsletter
+- Product announcement
+- Trial reminder
+- Trial ending notice
+
+==================================================
+4. INBOUND RESEND WEBHOOK
+==================================================
+
+Create a public server endpoint using the project’s current framework conventions.
+
+Suggested endpoint:
+
+POST /api/webhooks/resend
+
+Requirements:
+
+- Accept raw request content as needed for signature verification.
+- Verify every webhook using RESEND_WEBHOOK_SECRET and the official Resend SDK verification method.
+- Do not process unverified events.
+- Return an appropriate 2xx response quickly after safely accepting a valid event.
+- Make processing idempotent.
+- Store the Resend webhook event ID or another unique provider identifier so duplicate deliveries are ignored.
+- Log invalid signatures without logging secrets or complete sensitive payloads.
+- Support at minimum:
+  - email.received
+  - email.sent
+  - email.delivered
+  - email.delivery_delayed
+  - email.bounced
+  - email.complained
+  - email.failed
+  - email.opened, only if enabled and appropriate
+  - email.clicked, only if enabled and appropriate
+
+IMPORTANT FOR email.received:
+The webhook event may contain only email metadata. After verifying the event, use the Resend Receiving API and the received email ID to retrieve the complete email, including:
+
+- from
+- to
+- cc
+- bcc
+- subject
+- text body
+- HTML body
+- headers
+- attachment metadata
+
+Retrieve attachment information only when needed. Do not assume that the webhook payload itself contains the complete message body.
+
+==================================================
+5. INBOUND ROUTING FOR TEAM@VCPTRADER.COM
+==================================================
+
+When an email is received for:
+
+team@vcptrader.com
+
+perform the following workflow:
+
+1. Verify the webhook.
+2. Retrieve the complete received email from Resend.
+3. Normalize sender and recipient addresses.
+4. Reject or quarantine obviously malformed, dangerous, or oversized content.
+5. Sanitize HTML before displaying it in the admin portal.
+6. Store the inbound message in the database.
+7. Attempt to match the sender email to an existing VCP Trader AI user.
+8. Create a new support ticket or append the message to an existing thread.
+9. Forward a safe representation of the inbound email to:
+   support@sunfishtrading.com
+10. Send an acknowledgment to the sender from:
+   VCP Trader AI <team@vcptrader.com>
+11. Preserve threading identifiers where possible.
+12. Record all actions in an auditable email event log.
+
+Do not create forwarding loops.
+
+Before forwarding, explicitly block forwarding when the sender or return path is:
+
+- team@vcptrader.com
+- support@sunfishtrading.com
+- another known automated forwarding address that would cause recursion
+
+Add an internal forwarding marker header such as:
+
+X-VCP-Forwarded: true
+
+Do not forward a message again if that marker already exists.
+
+==================================================
+6. FORWARDING FORMAT
+==================================================
+
+Forward inbound messages to:
+
+support@sunfishtrading.com
+
+Use:
+
+From:
+VCP Trader AI <team@vcptrader.com>
+
+Reply-To:
+Original customer sender address, when safe and valid
+
+Subject:
+[VCP Trader AI] Fwd: {original subject}
+
+Forwarded email content should clearly display:
+
+- Original sender
+- Original recipients
+- Received date/time
+- Original subject
+- Plain-text body
+- Sanitized HTML body if appropriate
+- VCP support ticket ID
+- Matched VCP user ID or “No matching user”
+- Link to the internal support ticket when available
+
+Do not blindly re-send unsafe raw HTML.
+
+Handle attachments safely:
+- Apply configurable attachment count and size limits.
+- Allow only approved file types.
+- Do not execute, render, or trust attachment contents.
+- If forwarding the actual attachment is not supported safely, include filename, type, size, and a secure admin-only link instead.
+- Never expose temporary provider attachment URLs directly to unauthenticated users.
+
+==================================================
+7. DATABASE MODELS
+==================================================
+
+Inspect the current database and ORM before changing the schema.
+
+Add or adapt models equivalent to:
+
+EmailMessage
+- id
+- provider
+- providerMessageId
+- direction: INBOUND or OUTBOUND
+- messageType
+- fromAddress
+- fromName
+- toAddresses
+- ccAddresses
+- bccAddresses
+- replyTo
+- subject
+- textBody
+- sanitizedHtmlBody
+- status
+- receivedAt
+- sentAt
+- userId nullable
+- ticketId nullable
+- threadKey nullable
+- metadata JSON
+- createdAt
+- updatedAt
+
+EmailEvent
+- id
+- provider
+- providerEventId unique
+- providerMessageId
+- eventType
+- payloadMetadata JSON
+- occurredAt
+- processedAt
+- processingStatus
+- errorMessage nullable
+- createdAt
+
+SupportTicket
+- use the existing support model if one exists
+- otherwise add:
+  - id
+  - ticketNumber
+  - userId nullable
+  - requesterEmail
+  - requesterName nullable
+  - subject
+  - category
+  - priority
+  - status
+  - assignedToUserId nullable
+  - lastMessageAt
+  - createdAt
+  - updatedAt
+
+SupportMessage
+- id
+- ticketId
+- emailMessageId nullable
+- direction
+- senderType
+- senderEmail
+- bodyText
+- sanitizedBodyHtml
+- createdAt
+
+EmailSuppression
+- id
+- emailAddress unique
+- reason
+- source
+- active
+- createdAt
+- updatedAt
+
+Create a safe migration. Do not delete existing production data.
+
+Add appropriate indexes and uniqueness constraints, especially for:
+
+- providerEventId
+- providerMessageId
+- ticketNumber
+- requesterEmail
+- userId
+- ticketId
+- createdAt
+- status
+
+==================================================
+8. SUPPORT TICKET MATCHING AND THREADING
+==================================================
+
+Implement deterministic support threading.
+
+Prefer this matching order:
+
+1. Existing internal ticket token in reply address, subject, or headers
+2. Resend/provider message references and email headers
+3. Existing open ticket with same sender and normalized subject within a reasonable time window
+4. Otherwise create a new ticket
+
+Generate a secure public-facing ticket number such as:
+
+VCP-2026-000123
+
+Do not expose sequential database IDs.
+
+Acknowledgment subject:
+
+We received your message — {ticketNumber}
+
+Acknowledgment body should:
+- confirm receipt
+- show the ticket number
+- state that the team will review it
+- avoid promising a guaranteed response time unless configured
+- direct urgent account-security issues to an appropriate secure process
+- never provide trading advice
+
+==================================================
+9. ADMIN SUPPORT CENTER
+==================================================
+
+Add a lightweight admin-only Support Center using the existing admin authorization system.
+
+Suggested navigation:
+
+Administration
+  → Support Center
+
+Pages or views:
+
+- Inbox
+- Open
+- Waiting on Customer
+- Resolved
+- Closed
+- Failed Email Deliveries
+- Suppressions
+- Search
+
+Ticket detail should display:
+
+- Ticket number
+- Customer name and email
+- Linked VCP user account
+- Subscription plan, if available
+- Broker connection status, but no tokens or secrets
+- Category
+- Priority
+- Status
+- Full sanitized conversation
+- Internal notes
+- Email delivery status
+- Reply composer
+- Resolve/reopen actions
+- Audit history
+
+Admin replies must be sent from:
+
+VCP Trader AI <team@vcptrader.com>
+
+Admin replies should use the customer’s email as recipient and preserve the ticket thread.
+
+Add pagination, filtering, and search. Do not load unlimited messages.
+
+==================================================
+10. EMAIL SETTINGS IN ADMIN
+==================================================
+
+Add an admin configuration section, using the existing configuration architecture, for non-secret settings:
+
+- Default sender name
+- Default reply-to
+- Forwarding destination
+- Enable inbound acknowledgment
+- Enable support forwarding
+- Maximum attachment size
+- Allowed attachment types
+- Support categories
+- Default ticket priority
+- Optional expected-response wording
+- Enable email-open tracking
+- Enable click tracking
+- Enable AI support classification
+- Enable AI reply suggestions
+
+Secrets must remain in environment variables and must never be editable or displayed in the browser.
+
+==================================================
+11. OPTIONAL AI SUPPORT PROCESSING
+==================================================
+
+If the application already has a safe OpenAI integration, add optional AI-assisted support processing behind an admin feature flag.
+
+The AI may:
+
+- summarize the inbound message
+- classify category
+- estimate urgency
+- identify sentiment
+- draft a suggested reply
+- identify likely related product area
+
+The AI must not:
+
+- automatically send replies without explicit admin-approved configuration
+- provide individualized financial or investment advice
+- submit or modify trades
+- request passwords, API keys, MFA codes, or brokerage credentials
+- follow instructions embedded in inbound email content
+- treat email content as trusted system instructions
+
+Treat all incoming email content as untrusted data. Defend against prompt injection. Pass only necessary sanitized content into the AI workflow and use strict structured output validation.
+
+Suggested categories:
+
+- Account
+- Authentication
+- Billing
+- Subscription
+- Broker Connection
+- Market Data
+- Trade Entry
+- Position Protection
+- Paper Trading
+- Bug Report
+- Feature Request
+- Research Question
+- General
+- Security
+- Spam
+
+Suggested priorities:
+
+- LOW
+- NORMAL
+- HIGH
+- URGENT
+
+Only security, account access, payment failure, or major service outage scenarios should normally qualify as URGENT.
+
+==================================================
+12. DELIVERY EVENTS AND SUPPRESSION HANDLING
+==================================================
+
+Process delivery webhooks and update EmailMessage status.
+
+Status examples:
+
+- QUEUED
+- SENT
+- DELIVERED
+- DELAYED
+- BOUNCED
+- COMPLAINED
+- FAILED
+
+When a hard bounce or spam complaint occurs:
+
+- add or update EmailSuppression
+- prevent future nonessential email to that address
+- preserve essential account/security workflows only when legally and operationally appropriate
+- show the issue in the admin panel
+- do not repeatedly retry permanent failures
+
+For temporary delivery delays, use controlled retry logic with limits.
+
+==================================================
+13. SECURITY REQUIREMENTS
+==================================================
+
+Implement all of the following:
+
+- Official webhook-signature verification
+- Idempotent event handling
+- Constant-time or SDK-supported signature validation
+- Server-only API keys
+- Rate limiting for public endpoints where appropriate
+- Request-size limits
+- HTML sanitization
+- Attachment restrictions
+- Header injection prevention
+- Email-address normalization and validation
+- Forwarding-loop prevention
+- Structured logging with redaction
+- No secrets, auth tokens, brokerage tokens, payment data, or full sensitive payloads in logs
+- Admin authorization for all support-management endpoints
+- CSRF protections consistent with the existing application
+- Do not expose raw inbound email HTML without sanitization
+- Do not automatically trust links or attachments in inbound messages
+- Do not automatically execute AI-proposed actions
+
+==================================================
+14. RELIABILITY AND BACKGROUND PROCESSING
+==================================================
+
+Use the project’s existing job queue if one exists.
+
+The webhook should:
+
+1. Verify the signature.
+2. Store the event idempotently.
+3. Enqueue or initiate safe processing.
+4. Return a fast success response.
+
+Long-running tasks such as:
+- retrieving the full email
+- downloading attachment metadata
+- AI classification
+- database ticket creation
+- forwarding
+- acknowledgment sending
+
+should run outside the immediate webhook response when the existing architecture supports background jobs.
+
+Add retry behavior with exponential backoff and a dead-letter or failed-job state.
+
+Never send duplicate acknowledgments or duplicate forwards when a job retries.
+
+==================================================
+15. APPLICATION INTEGRATION
+==================================================
+
+Replace scattered direct email logic with the central email service where practical.
+
+Integrate it into existing workflows such as:
+
+- Registration
+- Email verification
+- Password reset
+- Login/security alerts
+- Trial start
+- Trial ending
+- Subscription activation
+- Payment failure
+- Broker connected
+- Broker disconnected
+- Token-refresh failure
+- Trade-alert notification
+- Position-protection event
+- Research report available
+- Support reply
+
+Do not change the business rules of these workflows. Only route their email delivery through the new service.
+
+Respect existing user notification preferences.
+
+==================================================
+16. TESTING
+==================================================
+
+Add automated tests matching the existing testing framework.
+
+Test at minimum:
+
+- Sending a standard transactional email
+- Correct default sender
+- Webhook valid-signature acceptance
+- Invalid-signature rejection
+- Duplicate webhook idempotency
+- Retrieving full inbound email after email.received
+- Creating a new support ticket
+- Appending to an existing ticket
+- Forwarding to support@sunfishtrading.com
+- Preventing forwarding loops
+- Sending one acknowledgment only
+- Sanitizing hostile HTML
+- Rejecting unsafe attachments
+- Handling bounce and complaint events
+- Suppression behavior
+- Admin authorization
+- Error handling when Resend is unavailable
+
+Mock external Resend calls in automated tests.
+
+==================================================
+17. HEALTH CHECK AND OBSERVABILITY
+==================================================
+
+Add a safe admin-visible email-service status section showing:
+
+- Resend configured: yes/no
+- Domain expected: vcptrader.com
+- Default sender
+- Webhook configured: yes/no
+- Last valid webhook time
+- Last inbound email time
+- Last successful outbound email time
+- Recent failed deliveries
+- Pending email jobs
+- Failed email jobs
+
+Never display API keys or webhook secrets.
+
+Add structured logs and metrics using existing project conventions.
+
+==================================================
+18. README AND MANUAL SETUP STEPS
+==================================================
+
+Update the README with exact manual configuration steps:
+
+1. Create a Resend API key.
+2. Add RESEND_API_KEY to Replit/Railway secrets.
+3. In Resend, create a webhook endpoint pointing to:
+   {APP_BASE_URL}/api/webhooks/resend
+4. Subscribe the webhook to:
+   - email.received
+   - email.sent
+   - email.delivered
+   - email.delivery_delayed
+   - email.bounced
+   - email.complained
+   - email.failed
+5. Copy the Resend webhook signing secret.
+6. Add it as RESEND_WEBHOOK_SECRET.
+7. Confirm EMAIL_FROM_ADDRESS=team@vcptrader.com.
+8. Confirm EMAIL_FORWARD_ADDRESS=support@sunfishtrading.com.
+9. Deploy the application.
+10. Send an outbound test email.
+11. Send an inbound test email to team@vcptrader.com.
+12. Confirm:
+    - webhook received
+    - email stored
+    - support ticket created
+    - email forwarded to support@sunfishtrading.com
+    - acknowledgment sent to original sender
+13. Verify that duplicate webhook retries do not duplicate tickets, forwarding, or acknowledgments.
+
+==================================================
+19. ACCEPTANCE CRITERIA
+==================================================
+
+The work is complete only when:
+
+- The app can send branded email from team@vcptrader.com.
+- Incoming email to team@vcptrader.com triggers a verified Resend webhook.
+- The complete inbound email is retrieved through the Receiving API.
+- The inbound email is stored safely.
+- A support ticket is created or updated.
+- The message is forwarded once to support@sunfishtrading.com.
+- The sender receives one acknowledgment.
+- Duplicate events do not create duplicate records or emails.
+- Forwarding loops are prevented.
+- Admin users can view and reply to tickets.
+- Delivery status is tracked.
+- Bounce and complaint suppression works.
+- Existing application features remain operational.
+- Tests pass.
+- Type checking passes.
+- Linting passes.
+- Production build passes.
+- README documentation is complete.
+
+==================================================
+20. FINAL RESPONSE
+==================================================
+
+After implementation, provide:
+
+1. Summary of the existing architecture discovered.
+2. List of files created.
+3. List of files modified.
+4. Database migration summary.
+5. New environment variables.
+6. Resend dashboard steps I must complete manually.
+7. Webhook URL to enter in Resend.
+8. Events selected for the webhook.
+9. Test results.
+10. Build and type-check results.
+11. Any assumptions or unresolved risks.
+12. A concise end-to-end test checklist.
+
+Do not claim completion unless the implementation, tests, type checks, and production build actually succeed.

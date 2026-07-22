@@ -21,6 +21,7 @@ interface BillingStatus {
   isTrialing: boolean;
   trialDaysLeft: number | null;
   resetsAt: string;
+  hasStripeSubscription?: boolean;
 }
 
 interface PlanContextValue {
@@ -29,6 +30,7 @@ interface PlanContextValue {
   status: string;
   billingCycle: "monthly" | "annual";
   isTrialing: boolean;
+  hasStripeSubscription: boolean;
   trialDaysLeft: number | null;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
@@ -66,6 +68,7 @@ export function PlanProvider({ children }: { children: ReactNode }) {
       status: data?.subscriptionStatus ?? "active",
       billingCycle: data?.billingCycle ?? "monthly",
       isTrialing: data?.isTrialing ?? false,
+      hasStripeSubscription: data?.hasStripeSubscription ?? false,
       trialDaysLeft: data?.trialDaysLeft ?? null,
       trialEndsAt: data?.trialEndsAt ?? null,
       currentPeriodEndsAt: data?.currentPeriodEndsAt ?? null,
@@ -94,6 +97,7 @@ export function usePlan(): PlanContextValue {
       status: "active",
       billingCycle: "monthly",
       isTrialing: false,
+      hasStripeSubscription: false,
       trialDaysLeft: null,
       trialEndsAt: null,
       currentPeriodEndsAt: null,

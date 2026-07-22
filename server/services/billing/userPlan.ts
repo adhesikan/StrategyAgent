@@ -130,6 +130,7 @@ export interface BillingStatusPayload {
   isTrialing: boolean;
   trialDaysLeft: number | null;
   resetsAt: string;
+  hasStripeSubscription: boolean;
 }
 
 export async function getBillingStatus(userId: string): Promise<BillingStatusPayload> {
@@ -184,5 +185,6 @@ export async function getBillingStatus(userId: string): Promise<BillingStatusPay
     isTrialing,
     trialDaysLeft,
     resetsAt: nextUtcMidnight().toISOString(),
+    hasStripeSubscription: !!record?.stripeSubscriptionId,
   };
 }

@@ -31,6 +31,7 @@ export function BillingSection() {
     dailyAnalysesLimit,
     quotaPercent,
     isLoading,
+    hasStripeSubscription,
   } = usePlan();
   const { toast } = useToast();
 
@@ -70,8 +71,10 @@ export function BillingSection() {
 
   const limitLabel = dailyAnalysesLimit === -1 ? "Unlimited" : String(dailyAnalysesLimit);
 
-  // Paid = an active (non-trial) subscription on a non-free plan.
-  const isPaidSubscriber = !isTrialing && plan !== "free" && status !== "trial_expired";
+  // Paid = a real Stripe subscription on a non-free plan (app-managed trial
+  // users have no Stripe records, so the billing portal would fail for them).
+  const isPaidSubscriber =
+    hasStripeSubscription && !isTrialing && plan !== "free" && status !== "trial_expired";
   const displayPlanName = isTrialing
     ? "14-Day Free Trial"
     : isPaidSubscriber

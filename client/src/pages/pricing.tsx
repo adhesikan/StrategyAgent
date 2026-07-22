@@ -32,10 +32,13 @@ function planFeatures(instaTradeName: string): string[] {
 
 export default function PricingPage() {
   const [, navigate] = useLocation();
-  const { plan: currentPlan } = usePlan();
+  const { plan: currentPlan, hasStripeSubscription, isTrialing } = usePlan();
   const { toast } = useToast();
   const { instaTradeName, instaTradeFooterNotice } = useBranding();
-  const isCurrent = currentPlan !== "free";
+  // Only treat the user as a paying subscriber when a Stripe subscription
+  // exists. App-managed trial users (planId "pro", no Stripe record) must
+  // still be able to subscribe via checkout.
+  const isCurrent = hasStripeSubscription && currentPlan !== "free";
 
   useEffect(() => {
     document.title = "Pricing — VCP Trader AI";
@@ -173,7 +176,7 @@ export default function PricingPage() {
                 ) : (
                   <Sparkles className="h-4 w-4 mr-1" />
                 )}
-                Start Free Trial
+                {isTrialing ? "Subscribe to Pro" : "Start Free Trial"}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <p className="text-xs text-muted-foreground text-center">

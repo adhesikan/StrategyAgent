@@ -34,10 +34,13 @@ export function UpgradeModal({
   reason,
   feature,
 }: UpgradeModalProps) {
-  const { plan: currentPlan } = usePlan();
+  const { plan: currentPlan, hasStripeSubscription, isTrialing } = usePlan();
   const { toast } = useToast();
   const { instaTradeName } = useBranding();
-  const isCurrent = currentPlan === "pro";
+  // Only block checkout for actual Stripe subscribers. App-managed trial
+  // users (planId "pro" with no Stripe subscription) must still be able
+  // to subscribe.
+  const isCurrent = hasStripeSubscription && currentPlan === "pro";
 
   const checkout = useMutation({
     mutationFn: async () => {
@@ -103,6 +106,8 @@ export function UpgradeModal({
               "You're on Pro"
             ) : checkout.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isTrialing ? (
+              "Subscribe to Pro"
             ) : (
               "Start Free Trial"
             )}

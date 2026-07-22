@@ -72,6 +72,7 @@ import PricingPage from "@/pages/pricing";
 import BillingSuccessPage from "@/pages/billing-success";
 import BillingCancelPage from "@/pages/billing-cancel";
 import AskPage from "@/pages/ask";
+import CongressActivityPage from "@/pages/congress-activity";
 import { Redirect } from "wouter";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
@@ -121,6 +122,8 @@ function AppRouter() {
       <Route path="/trade-finder" component={AgentPage} />
       <Route path="/income-mode" component={IncomeModePage} />
       <Route path="/market-intel" component={MarketIntelPage} />
+      <Route path="/markets/congress-activity/politician/:slug" component={CongressActivityPage} />
+      <Route path="/markets/congress-activity" component={CongressActivityPage} />
       <Route path="/markets" component={MarketIntelPage} />
       <Route path="/history" component={JournalV2} />
       <Route path="/agent" component={AgentPage} />

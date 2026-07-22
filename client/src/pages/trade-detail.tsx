@@ -4,7 +4,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2, AlertCircle, Landmark } from "lucide-react";
+import { CongressFlowEmbed } from "@/components/congressflow-embed";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import {
   Sheet,
@@ -477,6 +478,7 @@ export default function TradeDetailPage() {
   const rawStrategy = sp.get("strategy");
   const type = (sp.get("type") || "stock") as TradeType;
   const ticker = (params.ticker || "AAPL").toUpperCase();
+  const [showCongress, setShowCongress] = useState(false);
   const strategy = normalizeStrategyForType(rawStrategy, type);
 
   const { data: quote, isLoading: quoteLoading, isError: quoteError } = useQuery<QuoteResponse>({
@@ -854,6 +856,30 @@ export default function TradeDetailPage() {
             </Card>
           );
         })()}
+
+        <Card className="p-5" data-testid="card-congress-activity">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between gap-2 text-left"
+            onClick={() => setShowCongress((v) => !v)}
+            aria-expanded={showCongress}
+            data-testid="button-toggle-congress-activity"
+          >
+            <h2 className="text-sm font-medium flex items-center gap-2">
+              <Landmark className="h-4 w-4 text-primary" /> Congress Activity for {ticker}
+            </h2>
+            <span className="text-xs text-muted-foreground">{showCongress ? "Hide" : "Show"}</span>
+          </button>
+          <p className="text-xs text-muted-foreground mt-1">
+            Reported U.S. congressional transactions from public disclosures. Disclosures may be delayed, amended,
+            incomplete, or reported as value ranges. Research context only — not a trading signal or recommendation.
+          </p>
+          {showCongress && (
+            <div className="mt-3">
+              <CongressFlowEmbed view="ticker" ticker={ticker} minHeight={400} maxHeight={1600} />
+            </div>
+          )}
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="p-5">

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,8 @@ import {
   ExternalLink,
   Search,
   AlertTriangle,
+  Landmark,
+  ArrowRight,
 } from "lucide-react";
 import { ComplianceFooter } from "@/components/trading-shell";
 import { HelpLink } from "@/components/help-link";
@@ -214,6 +217,27 @@ export default function MarketIntelPage() {
           testId="card-strongest-negative"
         />
       </div>
+
+      <Card className="hover-elevate" data-testid="card-congress-activity-link">
+        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Landmark className="h-5 w-5 text-primary mt-0.5" />
+            <div>
+              <p className="font-semibold text-sm">Congress Activity</p>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                Track reported U.S. congressional stock and ETF transactions from public disclosures — searchable and
+                sortable by ticker, chamber, party, state, sector, transaction type, and date.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" asChild data-testid="button-open-congress-activity">
+            <Link href="/markets/congress-activity">
+              View Congress Activity
+              <ArrowRight className="h-4 w-4 ml-1.5" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <TradingViewHeatmap height={480} dataSource="SPX500" />
 

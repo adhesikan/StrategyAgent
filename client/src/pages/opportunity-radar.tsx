@@ -19,6 +19,7 @@ import {
   Minus,
   ExternalLink,
   ArrowUpDown,
+  Landmark,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { HelpLink } from "@/components/help-link";
+import { CongressFlowEmbed } from "@/components/congressflow-embed";
 
 type Bias = "any" | "bullish" | "bearish" | "neutral";
 type StrategyType =
@@ -299,6 +301,7 @@ export default function OpportunityRadarPage() {
   const [explainScenario, setExplainScenario] = useState<CandidateScenario | null>(null);
   const [reviewScenario, setReviewScenario] = useState<CandidateScenario | null>(null);
   const [newsScenario, setNewsScenario] = useState<CandidateScenario | null>(null);
+  const [congressSymbol, setCongressSymbol] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>("score_desc");
   const [sentimentFilter, setSentimentFilter] = useState<SentimentFilter>("any");
   const { isConnected } = useBrokerStatus();
@@ -389,10 +392,12 @@ export default function OpportunityRadarPage() {
           logScenarioAction(s, "prepared_order");
         }}
         onViewNews={(s) => setNewsScenario(s)}
+        onViewCongress={(s) => setCongressSymbol(s.symbol)}
       />
 
       <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
       <NewsContextDrawer scenario={newsScenario} onClose={() => setNewsScenario(null)} />
+      <CongressActivityDrawer symbol={congressSymbol} onClose={() => setCongressSymbol(null)} />
 
       <OrderReviewDialog
         scenario={reviewScenario}
@@ -799,6 +804,7 @@ function RankedList({
   onReview,
   onPrepareOrder,
   onViewNews,
+  onViewCongress,
 }: {
   data?: RadarResult;
   isLoading: boolean;
@@ -806,6 +812,7 @@ function RankedList({
   onReview: (s: CandidateScenario) => void;
   onPrepareOrder: (s: CandidateScenario) => void;
   onViewNews: (s: CandidateScenario) => void;
+  onViewCongress: (s: CandidateScenario) => void;
 }) {
   const [viewMode, setViewMode] = useViewMode("opportunity-radar");
   if (isLoading) {
@@ -860,6 +867,7 @@ function RankedList({
             onReview={() => onReview(c)}
             onPrepareOrder={() => onPrepareOrder(c)}
             onViewNews={() => onViewNews(c)}
+            onViewCongress={() => onViewCongress(c)}
           />
         ))}
       </div>
@@ -873,12 +881,14 @@ function CandidateCard({
   onReview,
   onPrepareOrder,
   onViewNews,
+  onViewCongress,
 }: {
   scenario: CandidateScenario;
   onExplain: () => void;
   onReview: () => void;
   onPrepareOrder: () => void;
   onViewNews: () => void;
+  onViewCongress: () => void;
 }) {
   return (
     <Card className="hover-elevate" data-testid={`card-scenario-${scenario.symbol}`}>
@@ -944,6 +954,10 @@ function CandidateCard({
           <Button size="sm" variant="outline" onClick={onReview} data-testid={`button-review-${scenario.symbol}`}>
             <ListChecks className="h-4 w-4 mr-1" />
             Review Scenario
+          </Button>
+          <Button size="sm" variant="outline" onClick={onViewCongress} data-testid={`button-congress-${scenario.symbol}`}>
+            <Landmark className="h-4 w-4 mr-1" />
+            Congress Activity
           </Button>
           <Button size="sm" onClick={onPrepareOrder} data-testid={`button-prepare-${scenario.symbol}`}>
             <Send className="h-4 w-4 mr-1" />
@@ -1350,6 +1364,42 @@ function SentimentChip({
         {s.miniReason}
       </p>
     </div>
+  );
+}
+
+function CongressActivityDrawer({
+  symbol,
+  onClose,
+}: {
+  symbol: string | null;
+  onClose: () => void;
+}) {
+  const open = !!symbol;
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="sheet-congress-activity">
+        {symbol && (
+          <>
+            <SheetHeader>
+              <SheetTitle data-testid="text-congress-drawer-title">
+                <span className="flex items-center gap-2">
+                  <Landmark className="h-4 w-4 text-primary" />
+                  Congress Activity — {symbol}
+                </span>
+              </SheetTitle>
+              <SheetDescription>
+                Reported U.S. congressional transactions for {symbol} from public disclosures. Disclosures may be
+                delayed, amended, incomplete, or reported as value ranges. Research context only — not a trading
+                signal or investment recommendation.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-4">
+              <CongressFlowEmbed view="ticker" ticker={symbol} minHeight={400} maxHeight={1600} />
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 

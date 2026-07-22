@@ -53,7 +53,8 @@ const NAV_ITEMS: TopNavItem[] = [
     href: "/markets",
     icon: Newspaper,
     testId: "topnav-markets",
-    matches: (p) => p === "/markets" || p === "/market-intel" || p === "/news",
+    matches: (p) =>
+      p === "/markets" || p === "/market-intel" || p === "/news" || p.startsWith("/markets/congress-activity"),
   },
   {
     label: "Journal",

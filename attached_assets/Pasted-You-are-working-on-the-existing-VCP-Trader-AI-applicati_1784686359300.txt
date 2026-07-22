@@ -1,0 +1,1043 @@
+You are working on the existing VCP Trader AI application.
+
+Do not rebuild the application.
+
+CongressFlow is already deployed as a separate application at:
+
+https://congress.vcptrader.com
+
+It exposes a fully embeddable congressional financial disclosure widget at:
+
+https://congress.vcptrader.com/embed
+
+Your task is to integrate CongressFlow into VCP Trader AI as a secure, responsive, reusable iframe component.
+
+The VCP Trader AI application is hosted on the vcptrader.com domain, which is already whitelisted by CongressFlow for cross-origin iframe communication.
+
+Do not duplicate CongressFlow data, tables, filters, politician profiles, or disclosure-processing logic inside VCP Trader AI.
+
+CongressFlow remains the source application for congressional disclosure intelligence.
+
+# Integration Objectives
+
+Implement CongressFlow in VCP Trader AI with:
+
+1. A full Congress Activity page
+2. A reusable single-ticker Congress Activity card
+3. Optional politician-profile embedding support
+4. Automatic iframe height resizing
+5. Parent-to-iframe ticker synchronization
+6. Iframe-to-parent ticker-selection events
+7. Secure postMessage origin validation
+8. Loading, error, and unavailable states
+9. Responsive desktop, tablet, mobile, and PWA behavior
+10. Analytics for meaningful embed interactions
+
+# CongressFlow Embed URLs
+
+## Full activity feed
+
+Use:
+
+https://congress.vcptrader.com/embed
+
+This view contains the complete congressional activity feed and its own internal filters for:
+
+- Ticker
+- Chamber
+- Party
+- State
+- Sector
+- Transaction type
+- Date range
+- Sort order
+
+Do not rebuild these filter controls in VCP Trader AI unless a future native integration explicitly requires it.
+
+## Single ticker view
+
+Use:
+
+https://congress.vcptrader.com/embed?view=ticker&ticker=AAPL
+
+Replace AAPL with the current normalized ticker.
+
+## Single politician view
+
+Use:
+
+https://congress.vcptrader.com/embed?view=politician&slug=nancy-pelosi
+
+Replace the slug with the selected politician slug.
+
+# Supported Parent-to-Iframe Commands
+
+CongressFlow accepts these window.postMessage commands:
+
+SET_TICKER
+
+Payload:
+
+{
+  type: "SET_TICKER",
+  ticker: "NVDA"
+}
+
+SET_DATE_RANGE
+
+Payload:
+
+{
+  type: "SET_DATE_RANGE",
+  startDate: "2025-01-01",
+  endDate: "2025-07-22"
+}
+
+SET_WATCHLIST
+
+Payload:
+
+{
+  type: "SET_WATCHLIST",
+  tickers: ["AAPL", "MSFT", "NVDA"]
+}
+
+REFRESH_DATA
+
+Payload:
+
+{
+  type: "REFRESH_DATA"
+}
+
+# Supported Iframe-to-Parent Events
+
+CongressFlow emits these events:
+
+CONGRESSFLOW_READY
+
+Payload:
+
+{
+  type: "CONGRESSFLOW_READY",
+  version: "1.0"
+}
+
+CONGRESSFLOW_HEIGHT_CHANGED
+
+Payload:
+
+{
+  type: "CONGRESSFLOW_HEIGHT_CHANGED",
+  height: 900
+}
+
+CONGRESSFLOW_TICKER_SELECTED
+
+Payload:
+
+{
+  type: "CONGRESSFLOW_TICKER_SELECTED",
+  ticker: "AAPL"
+}
+
+CONGRESSFLOW_POLITICIAN_SELECTED
+
+Payload:
+
+{
+  type: "CONGRESSFLOW_POLITICIAN_SELECTED",
+  slug: "nancy-pelosi",
+  name: "Nancy Pelosi"
+}
+
+CONGRESSFLOW_SOURCE_OPENED
+
+Payload:
+
+{
+  type: "CONGRESSFLOW_SOURCE_OPENED",
+  url: "https://..."
+}
+
+# Phase 1: Audit the Existing Application
+
+Before editing:
+
+1. Inspect:
+   - Main navigation
+   - Markets section
+   - Stock detail page
+   - Opportunity Radar
+   - Watchlists
+   - Trade Finder
+   - Grow Mode
+   - Income Mode
+   - Existing iframe components
+   - Existing analytics
+   - Existing CSP and security headers
+   - Current ticker-selection state management
+   - Existing mobile layout
+2. Search for:
+   - Congress Activity
+   - CongressFlow
+   - congressional
+   - politician
+   - ticker selected
+   - selectedTicker
+   - currentTicker
+   - iframe
+   - postMessage
+3. Identify:
+   - The canonical ticker-normalization utility
+   - The application’s route structure
+   - The shared card and panel components
+   - The current loading skeleton component
+   - The preferred analytics service
+4. Reuse existing components and patterns.
+5. Do not create duplicate ticker state.
+6. Do not create a second congressional activity database.
+7. Do not implement new CongressFlow API endpoints.
+
+# Phase 2: Create a Reusable CongressFlow Embed Component
+
+Create a reusable component such as:
+
+CongressFlowEmbed
+
+Suggested interface:
+
+type CongressFlowView = "activity" | "ticker" | "politician";
+
+interface CongressFlowEmbedProps {
+  view?: CongressFlowView;
+  ticker?: string;
+  politicianSlug?: string;
+  watchlistTickers?: string[];
+  startDate?: string;
+  endDate?: string;
+  minHeight?: number;
+  maxHeight?: number;
+  className?: string;
+  onReady?: (version?: string) => void;
+  onTickerSelected?: (ticker: string) => void;
+  onPoliticianSelected?: (payload: {
+    slug: string;
+    name?: string;
+  }) => void;
+  onSourceOpened?: (url: string) => void;
+}
+
+Requirements:
+
+- Use a real iframe.
+- Default view to activity.
+- Use width="100%".
+- Remove iframe border.
+- Add a descriptive title attribute.
+- Add appropriate loading behavior.
+- Use lazy loading where it will not harm important page rendering.
+- Preserve dark-theme compatibility.
+- Prevent horizontal overflow.
+- Support server-side-rendered applications safely.
+- Only access window inside client-side lifecycle hooks.
+
+# Phase 3: Build Embed URLs Safely
+
+Create one centralized URL builder.
+
+Base URL:
+
+https://congress.vcptrader.com/embed
+
+Behavior:
+
+## Activity
+
+https://congress.vcptrader.com/embed
+
+## Ticker
+
+https://congress.vcptrader.com/embed?view=ticker&ticker=NVDA
+
+## Politician
+
+https://congress.vcptrader.com/embed?view=politician&slug=nancy-pelosi
+
+Requirements:
+
+- Use URL and URLSearchParams.
+- Normalize ticker symbols to uppercase.
+- Trim whitespace.
+- Reject malformed ticker strings.
+- URL-encode query parameters.
+- Do not concatenate untrusted raw query strings.
+- Do not allow callers to override the CongressFlow origin.
+- Do not accept javascript:, data:, or arbitrary iframe URLs.
+- Keep the base origin in centralized configuration.
+
+Suggested configuration:
+
+NEXT_PUBLIC_CONGRESSFLOW_EMBED_URL=https://congress.vcptrader.com/embed
+
+If the project does not use Next.js, use the equivalent public runtime configuration pattern.
+
+# Phase 4: Secure postMessage Handling
+
+The trusted CongressFlow origin is:
+
+https://congress.vcptrader.com
+
+Create a centralized constant:
+
+CONGRESSFLOW_ORIGIN=https://congress.vcptrader.com
+
+When receiving events:
+
+1. Verify:
+
+   event.origin === "https://congress.vcptrader.com"
+
+2. Verify:
+
+   event.source === iframeRef.current?.contentWindow
+
+3. Verify event.data is an object.
+
+4. Verify event.data.type is a supported event type.
+
+5. Validate required payload fields.
+
+6. Ignore malformed or unknown events.
+
+Do not process CongressFlow messages from any other origin.
+
+Do not use "*" when validating incoming messages.
+
+For outgoing messages, send to the explicit trusted origin:
+
+iframe.contentWindow.postMessage(payload, CONGRESSFLOW_ORIGIN)
+
+Do not send outgoing production messages using "*".
+
+# Phase 5: Auto-Height Resizing
+
+Listen for:
+
+CONGRESSFLOW_HEIGHT_CHANGED
+
+When received:
+
+- Validate that height is a finite number.
+- Reject negative, zero, NaN, infinite, or unrealistic heights.
+- Clamp the value to configured boundaries.
+
+Suggested defaults:
+
+minHeight = 500
+maxHeight = 2400
+
+Apply:
+
+iframe.style.height = `${clampedHeight}px`
+
+Requirements:
+
+- Use a smooth CSS height transition only if it does not create layout instability.
+- Avoid rapid resize loops.
+- Debounce or requestAnimationFrame updates if events arrive frequently.
+- Keep a fallback height before the first height event.
+- Full activity view may use a larger fallback, such as 700px.
+- Ticker card may use a smaller fallback, such as 480px.
+- Do not allow the iframe to collapse to zero height.
+- Ensure mobile height updates work correctly.
+
+# Phase 6: Ready-State Handling
+
+Listen for:
+
+CONGRESSFLOW_READY
+
+When received:
+
+- Mark the embed as ready.
+- Store the reported version if present.
+- Hide the loading skeleton.
+- Send any queued initial commands:
+  - SET_TICKER
+  - SET_DATE_RANGE
+  - SET_WATCHLIST
+- Record an analytics event.
+
+Suggested analytics event:
+
+congressflow_embed_ready
+
+Metadata:
+
+- view
+- version
+- ticker if applicable
+- route
+
+Do not send commands repeatedly if the embed is already synchronized.
+
+# Phase 7: Parent-to-Iframe Ticker Synchronization
+
+When the selected ticker changes in VCP Trader AI:
+
+1. Normalize the ticker.
+2. Confirm the iframe is ready.
+3. Send:
+
+{
+  type: "SET_TICKER",
+  ticker: normalizedTicker
+}
+
+Use:
+
+iframe.contentWindow.postMessage(
+  {
+    type: "SET_TICKER",
+    ticker: normalizedTicker
+  },
+  CONGRESSFLOW_ORIGIN
+)
+
+Requirements:
+
+- Do not reload the iframe every time the ticker changes unless the current view requires a URL-level navigation.
+- Prefer SET_TICKER after the iframe has loaded.
+- Avoid duplicate commands when the ticker has not changed.
+- Queue the latest ticker if the iframe is not ready yet.
+- Clear stale queued ticker values when the component unmounts.
+- Do not send unsupported or empty ticker values.
+
+# Phase 8: Date Range Synchronization
+
+When startDate and endDate are provided:
+
+Send:
+
+{
+  type: "SET_DATE_RANGE",
+  startDate,
+  endDate
+}
+
+Requirements:
+
+- Use YYYY-MM-DD.
+- Validate date format.
+- Ensure startDate is not after endDate.
+- Queue the command until the embed is ready.
+- Do not repeatedly send unchanged date ranges.
+
+# Phase 9: Watchlist Synchronization
+
+When watchlistTickers are provided:
+
+Send:
+
+{
+  type: "SET_WATCHLIST",
+  tickers: normalizedTickers
+}
+
+Requirements:
+
+- Normalize symbols to uppercase.
+- Remove duplicates.
+- Remove empty values.
+- Apply a reasonable maximum list size.
+- Do not send user account data, positions, quantities, or cost basis.
+- Send only ticker strings.
+- Queue until the embed is ready.
+- Resend only when the normalized list changes.
+
+For trial users, send only the symbols they are entitled to view.
+
+Do not leak paid-only or unsupported symbols through the embed.
+
+# Phase 10: Full Congress Activity Page
+
+Add a route using existing route conventions.
+
+Preferred navigation:
+
+Markets
+→ Congress Activity
+
+Suggested route:
+
+/markets/congress-activity
+
+Page title:
+
+Congress Activity
+
+Supporting copy:
+
+Track reported U.S. congressional stock and ETF transactions, review disclosure details, and explore activity by ticker, chamber, party, state, sector, transaction type, and date.
+
+Add a disclosure beneath the heading:
+
+Congressional financial disclosures may be delayed, amended, incomplete, or reported as value ranges. This information is provided for research purposes and is not a trading signal or investment recommendation.
+
+Embed:
+
+https://congress.vcptrader.com/embed
+
+Use the full activity view.
+
+Requirements:
+
+- Use the reusable CongressFlowEmbed component.
+- Allow auto-height resizing.
+- Show a loading skeleton before ready.
+- Show a retry state if loading fails.
+- Keep the page responsive.
+- Do not duplicate CongressFlow’s internal filters.
+- Do not add an extra nested scroll area unless unavoidable.
+- Preserve VCP Trader AI navigation and footer around the embed.
+
+# Phase 11: Stock Detail Page Integration
+
+Add a Congress Activity tab or section to the existing stock detail page.
+
+Suggested tab order:
+
+- Overview
+- Technicals
+- News
+- Congress Activity
+- Options
+- Broker
+
+Use the ticker embed view:
+
+https://congress.vcptrader.com/embed?view=ticker&ticker={TICKER}
+
+Requirements:
+
+- Pass the current stock ticker.
+- Keep the iframe synchronized when the stock page ticker changes.
+- Use the compact ticker view.
+- Show a clear empty state if CongressFlow has no disclosures.
+- Do not interpret no disclosure activity as bullish or bearish.
+- Do not incorporate Congress activity into a trading score unless that scoring logic already exists and is separately disclosed.
+
+# Phase 12: Opportunity Radar Integration
+
+On each Opportunity Radar card, add a small action or badge:
+
+Congress Activity
+
+When clicked:
+
+- Open a drawer, modal, expandable panel, or stock detail section.
+- Render the ticker-specific CongressFlow view.
+- Pass the selected ticker.
+- Do not load one iframe for every card at initial render.
+- Lazy-load the embed only after the user opens the panel.
+- Ensure only one active CongressFlow iframe is mounted at a time where practical.
+
+Do not display invented transaction counts outside the iframe unless VCP Trader AI has a verified native CongressFlow API integration.
+
+# Phase 13: Watchlist Integration
+
+Add an optional Congress Activity panel to the watchlist page.
+
+When the user selects a watchlist ticker:
+
+- Send SET_TICKER to the iframe.
+- Keep the iframe mounted when practical.
+- Do not reload the entire page.
+- Optionally send the user’s entitled watchlist tickers using SET_WATCHLIST.
+
+For trial users:
+
+- Send only approved trial-market symbols.
+- Do not expose unsupported symbols.
+- Do not send account holdings.
+
+# Phase 14: Handle Ticker Selection from CongressFlow
+
+Listen for:
+
+CONGRESSFLOW_TICKER_SELECTED
+
+When received:
+
+- Normalize the ticker.
+- Validate it using the application’s ticker rules.
+- Record an analytics event.
+- React using existing VCP Trader AI behavior.
+
+Preferred behavior:
+
+- Open or navigate to the existing stock detail page
+- Or update the current ticker panel
+- Or open the existing chart/detail drawer
+
+Do not create a duplicate stock detail experience.
+
+Suggested route behavior:
+
+/stocks/{ticker}
+
+or the application’s existing equivalent.
+
+Do not automatically open an order ticket.
+
+Do not automatically initiate a broker request.
+
+Do not automatically create a trade idea.
+
+# Phase 15: Handle Politician Selection
+
+Listen for:
+
+CONGRESSFLOW_POLITICIAN_SELECTED
+
+When received:
+
+- Validate slug.
+- Record an analytics event.
+- Open a politician detail drawer or page using the politician embed view.
+
+Suggested route:
+
+/markets/congress-activity/politician/{slug}
+
+Embed URL:
+
+https://congress.vcptrader.com/embed?view=politician&slug={slug}
+
+Display the name received from CongressFlow only as presentation text.
+
+Do not use the name to build the URL.
+
+Use the validated slug.
+
+# Phase 16: Handle Source Opened Events
+
+Listen for:
+
+CONGRESSFLOW_SOURCE_OPENED
+
+When received:
+
+- Validate that the URL uses https.
+- Prefer allowing only recognized official disclosure-document domains.
+- Record an analytics event.
+- Do not inject the URL into raw HTML.
+- Do not automatically navigate the entire VCP Trader AI app away from the current page.
+- Allow CongressFlow’s normal source-opening behavior to continue.
+
+If the parent also displays an external-link notice, use safe external-link attributes:
+
+rel="noopener noreferrer"
+
+# Phase 17: Loading, Error, and Retry States
+
+Provide these states:
+
+## Loading
+
+Show:
+
+- Existing skeleton component
+- “Loading Congress Activity…”
+
+## Ready
+
+Show the iframe.
+
+## Slow load
+
+After a reasonable delay, show:
+
+“CongressFlow is taking longer than expected to load.”
+
+Keep waiting without immediately removing the iframe.
+
+## Error
+
+Show:
+
+“Congress Activity is temporarily unavailable.”
+
+Actions:
+
+- Retry
+- Open Congress Activity in a new tab
+
+The new-tab URL may be:
+
+https://congress.vcptrader.com/embed
+
+or the appropriate ticker/politician URL.
+
+Do not expose implementation errors, iframe internals, or stack traces to users.
+
+# Phase 18: Content Security Policy and Iframe Permissions
+
+Inspect the application’s current CSP.
+
+Allow the iframe origin:
+
+https://congress.vcptrader.com
+
+Update frame-src or child-src as appropriate.
+
+Example intent:
+
+frame-src 'self' https://congress.vcptrader.com;
+
+Do not weaken the entire CSP.
+
+Do not use:
+
+frame-src *
+
+Do not add unnecessary iframe permissions.
+
+Start with a restrictive sandbox only if it is compatible with CongressFlow.
+
+If using sandbox, test carefully because CongressFlow may require:
+
+- allow-scripts
+- allow-same-origin
+- allow-popups
+- allow-popups-to-escape-sandbox
+
+Do not add:
+
+- allow-camera
+- allow-microphone
+- allow-geolocation
+- allow-payment
+
+unless explicitly required, which is not expected.
+
+# Phase 19: Privacy and Data Minimization
+
+Do not send CongressFlow:
+
+- User name
+- Email
+- Account ID
+- Brokerage account ID
+- Positions
+- Quantities
+- Cost basis
+- Buying power
+- Order history
+- Subscription details
+- Authentication tokens
+- Session cookies
+- Internal database IDs
+
+Allowed outbound contextual data:
+
+- Ticker
+- Date range
+- Entitled watchlist ticker symbols
+- Refresh command
+
+Do not place personal data in query parameters.
+
+# Phase 20: Trial User Behavior
+
+Trial users should be able to access Congress Activity for the approved trial stock and ETF universe.
+
+For trial users:
+
+- Full activity feed may be available if permitted by product policy.
+- Ticker-specific views must be limited to trial-entitled symbols.
+- Watchlist synchronization must include only trial-entitled symbols.
+- Unsupported symbols must not be sent to CongressFlow through the VCP Trader AI interface.
+- Congress Activity remains research context, not a trading recommendation.
+- Broker connection is not required to view congressional disclosure data.
+
+If the current trial entitlement service already exposes allowed symbols, use it.
+
+Do not create a separate trial-symbol list for CongressFlow.
+
+# Phase 21: Paid and Broker-Connected User Behavior
+
+Paid and broker-connected users may use Congress Activity according to existing product entitlements.
+
+CongressFlow does not require access to brokerage information.
+
+Do not send broker data into the iframe.
+
+Ticker selection from a broker-connected workflow may synchronize the symbol only.
+
+# Phase 22: Refresh Handling
+
+Expose an internal component method or UI action that sends:
+
+{
+  type: "REFRESH_DATA"
+}
+
+Use this only for:
+
+- User-initiated refresh
+- Route revisit where fresh embed state is needed
+- Admin testing
+
+Do not create frequent polling.
+
+Do not send REFRESH_DATA on every render.
+
+Rate-limit manual refresh actions in the parent UI.
+
+# Phase 23: Analytics
+
+Track:
+
+- congressflow_embed_loaded
+- congressflow_embed_ready
+- congressflow_embed_error
+- congressflow_ticker_sent
+- congressflow_ticker_selected
+- congressflow_politician_selected
+- congressflow_source_opened
+- congressflow_refresh_requested
+- congressflow_retry_clicked
+
+Suggested metadata:
+
+- view
+- ticker where applicable
+- politicianSlug where applicable
+- route
+- trialOrPaid
+- brokerConnected
+- embedVersion
+- loadDurationMs
+
+Do not include personal information.
+
+Do not log full external source URLs if they may contain sensitive parameters.
+
+# Phase 24: Accessibility
+
+Ensure:
+
+- Iframe has a meaningful title.
+- Loading state is announced appropriately.
+- Error state is keyboard accessible.
+- Retry action is keyboard accessible.
+- Embedded region has a visible heading.
+- Focus does not become trapped.
+- Mobile users can scroll naturally.
+- The iframe does not create hidden horizontal scrolling.
+- New-tab actions clearly indicate external navigation.
+- Color is not the only indicator of state.
+
+Suggested iframe titles:
+
+Activity:
+
+CongressFlow congressional financial disclosure activity
+
+Ticker:
+
+CongressFlow congressional activity for NVDA
+
+Politician:
+
+CongressFlow profile for selected member
+
+# Phase 25: Tests
+
+Add unit, integration, and browser tests.
+
+## URL builder
+
+Verify:
+
+- Activity URL is correct
+- Ticker URL contains normalized ticker
+- Politician URL contains encoded slug
+- Malformed ticker rejected
+- Arbitrary origin cannot be injected
+
+## Incoming messages
+
+Verify:
+
+- Trusted-origin message accepted
+- Untrusted-origin message ignored
+- Wrong iframe source ignored
+- Unknown message type ignored
+- Malformed payload ignored
+- Valid height event resizes iframe
+- Excessive height is clamped
+- Invalid height is rejected
+- Ready event updates state
+- Ticker-selected callback fires
+- Politician-selected callback fires
+
+## Outgoing messages
+
+Verify:
+
+- SET_TICKER sent after ready
+- Pre-ready ticker is queued
+- Duplicate ticker is not resent unnecessarily
+- SET_DATE_RANGE uses valid dates
+- SET_WATCHLIST normalizes and deduplicates
+- REFRESH_DATA sends only after user action
+- Explicit CongressFlow origin is used instead of "*"
+
+## Full activity page
+
+Verify:
+
+- Navigation item exists
+- Page title displays
+- Disclosure displays
+- Full activity iframe loads
+- Loading state displays
+- Retry state works
+
+## Stock detail
+
+Verify:
+
+- Congress Activity tab exists
+- Correct ticker view loads
+- Ticker changes synchronize
+- No order ticket opens automatically
+
+## Trial entitlements
+
+Verify:
+
+- Approved trial ticker can be sent
+- Unsupported trial ticker is blocked
+- Watchlist sends only entitled symbols
+- Broker information is never sent
+
+## Responsive behavior
+
+Verify:
+
+- Desktop
+- Tablet
+- Mobile
+- PWA
+- Auto-height updates
+- No horizontal overflow
+- No nested-scroll regression where avoidable
+
+## Security
+
+Verify:
+
+- CSP allows only the CongressFlow iframe origin
+- No wildcard frame-src
+- No personal data sent in postMessage
+- No arbitrary URL accepted
+- Source URL handling is safe
+
+# Phase 26: Implementation Order
+
+Perform the work in this order:
+
+1. Audit routes, ticker state, CSP, analytics, and existing embed utilities.
+2. Create centralized CongressFlow configuration.
+3. Create safe embed URL builder.
+4. Create reusable CongressFlowEmbed component.
+5. Implement trusted-origin message listener.
+6. Implement auto-height behavior.
+7. Implement ready-state command queue.
+8. Implement SET_TICKER synchronization.
+9. Implement date-range and watchlist synchronization.
+10. Add Markets → Congress Activity page.
+11. Add stock-detail Congress Activity tab.
+12. Add lazy-loaded Opportunity Radar integration.
+13. Add watchlist integration.
+14. Handle ticker-selected events.
+15. Handle politician-selected events.
+16. Handle source-opened events safely.
+17. Add loading, error, retry, and external-open states.
+18. Update CSP.
+19. Add analytics.
+20. Verify trial-entitlement filtering.
+21. Add tests.
+22. Run linting.
+23. Run type checking.
+24. Run unit tests.
+25. Run integration tests.
+26. Run browser tests.
+27. Run production build.
+28. Provide an implementation report.
+
+# Important Constraints
+
+- Do not rebuild CongressFlow.
+- Do not copy CongressFlow tables or filters into VCP Trader AI.
+- Do not duplicate congressional data.
+- Do not scrape the iframe.
+- Do not read iframe DOM content.
+- Do not use wildcard origin validation.
+- Do not send production postMessages using "*" as the target origin.
+- Do not accept messages from untrusted origins.
+- Do not send brokerage or personal data.
+- Do not open an order automatically from a CongressFlow event.
+- Do not treat congressional transactions as recommendations.
+- Do not create one iframe per Opportunity Radar card.
+- Do not weaken CSP globally.
+- Do not expose unsupported trial tickers.
+- Reuse existing ticker state, navigation, cards, analytics, and design system.
+- Maintain the existing dark theme.
+- Make incremental, testable changes.
+
+# Final Deliverables
+
+After implementation, report:
+
+1. Files changed
+2. CongressFlow configuration added
+3. Reusable embed component created
+4. Embed URL builder created
+5. Trusted-origin validation implemented
+6. Auto-height behavior implemented
+7. Ready-state handling implemented
+8. Parent-to-iframe commands implemented
+9. Iframe-to-parent events implemented
+10. Full Congress Activity page added
+11. Stock-detail integration added
+12. Opportunity Radar integration added
+13. Watchlist integration added
+14. Politician-view support added
+15. Trial-entitlement behavior
+16. CSP changes
+17. Privacy safeguards
+18. Analytics events
+19. Accessibility changes
+20. Tests added
+21. Test results
+22. Production build result
+23. Remaining issues
+24. Manual deployment steps
+
+Do not mark the task complete until:
+
+- Markets → Congress Activity works
+- The full activity iframe renders
+- Height updates automatically
+- The selected VCP Trader AI ticker synchronizes to CongressFlow
+- CongressFlow ticker clicks update or open the existing VCP Trader AI stock experience
+- Politician selection events are handled
+- Messages are restricted to https://congress.vcptrader.com
+- Trial users can only send entitled tickers
+- No brokerage or personal data is transmitted
+- The production build passes

@@ -5,7 +5,16 @@ export type MarketingEvent =
   | "explore_analysis_mode_clicked"
   | "pricing_plan_selected"
   | "onboarding_completed"
-  | "broker_connect_clicked";
+  | "broker_connect_clicked"
+  | "congressflow_embed_loaded"
+  | "congressflow_embed_ready"
+  | "congressflow_embed_error"
+  | "congressflow_ticker_sent"
+  | "congressflow_ticker_selected"
+  | "congressflow_politician_selected"
+  | "congressflow_source_opened"
+  | "congressflow_refresh_requested"
+  | "congressflow_retry_clicked";
 
 export function track(event: MarketingEvent, props: Record<string, unknown> = {}): void {
   try {

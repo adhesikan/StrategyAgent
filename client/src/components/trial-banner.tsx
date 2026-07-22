@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Clock, ArrowRight } from "lucide-react";
 import { usePlan } from "@/context/PlanContext";
+import { useAuth } from "@/hooks/use-auth";
 
 function formatRemaining(msLeft: number): string {
   if (msLeft <= 0) return "Trial ended";
@@ -17,6 +18,7 @@ function formatRemaining(msLeft: number): string {
 export function TrialBanner() {
   const [, navigate] = useLocation();
   const { isTrialing, trialEndsAt, status } = usePlan();
+  const { isAdmin } = useAuth();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function TrialBanner() {
   }, []);
 
   const expired = status === "trial_expired";
-  if (!isTrialing && !expired) return null;
+  if (isAdmin || (!isTrialing && !expired)) return null;
 
   const msLeft = trialEndsAt ? new Date(trialEndsAt).getTime() - now : 0;
   const endingSoon = isTrialing && msLeft <= 3 * 86_400_000;

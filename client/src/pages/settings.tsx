@@ -83,7 +83,7 @@ const brokerProviders = [
     tokenInstructions: "Log in to TradeStation, go to API settings, and copy your Access Token.",
     requiresSecretKey: false,
     supportsOAuth: true,
-    signupUrl: "https://getstarted2.tradestation.com/intro?offer=ALGOAGRB",
+    signupUrl: "https://www.tradestation.com/promo/AlgoPilotX/",
   },
   { 
     id: "alpaca", 

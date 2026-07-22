@@ -8396,6 +8396,20 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             city: geo.city,
             path,
           });
+          // Mirror into the compliance log so it shows in admin Compliance Logs.
+          const crypto = await import("crypto");
+          await storage.createDisclaimerAcceptance({
+            userId: userId || null,
+            userEmail: email || "",
+            userName: email || "anonymous visitor",
+            acceptanceType: "COOKIE_CONSENT",
+            disclaimerVersion: "v1",
+            disclaimerHash: crypto.createHash("sha256").update("cookie-consent:v1").digest("hex"),
+            accepted: decision === "accepted",
+            ipAddress: ip,
+            userAgent: ua,
+            metadataJson: { path, country: geo.country, region: geo.region, city: geo.city },
+          });
         } catch (err: any) {
           console.error("[CookieConsent] insert failed:", err.message);
         }

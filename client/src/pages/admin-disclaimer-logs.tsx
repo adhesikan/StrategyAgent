@@ -106,6 +106,7 @@ export default function AdminDisclaimerLogs() {
                   <SelectItem value="PARTNER_AUTO_MODE">Partner Auto Mode</SelectItem>
                   <SelectItem value="LEGAL_TERMS">Legal Terms</SelectItem>
                   <SelectItem value="TERMS_UPDATE">Terms Update</SelectItem>
+                  <SelectItem value="COOKIE_CONSENT">Cookie Consent</SelectItem>
                 </SelectContent>
               </Select>
             </div>

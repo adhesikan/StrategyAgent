@@ -198,6 +198,33 @@ const acceptLegalSchema = z.object({
   acceptDisclaimer: z.boolean().refine(v => v === true, "You must accept the disclaimer"),
 });
 
+// Compliance log: mirror legal/terms acceptances into disclaimer_acceptance_logs
+// so they appear in the admin Compliance Logs page. Fire-and-forget — never
+// blocks or fails the auth flow.
+function recordLegalComplianceLog(req: any, opts: {
+  userId: string;
+  email: string;
+  name?: string | null;
+  acceptanceType: "LEGAL_TERMS" | "TERMS_UPDATE";
+  metadata?: Record<string, unknown>;
+}) {
+  Promise.all([import("../../storage"), import("crypto")])
+    .then(([{ storage }, crypto]) =>
+      storage.createDisclaimerAcceptance({
+        userId: opts.userId,
+        userEmail: opts.email,
+        userName: opts.name || opts.email,
+        acceptanceType: opts.acceptanceType,
+        disclaimerVersion: LEGAL_VERSION,
+        disclaimerHash: crypto.createHash("sha256").update(`legal:${LEGAL_VERSION}`).digest("hex"),
+        accepted: true,
+        ipAddress: req.ip || req.headers["x-forwarded-for"]?.toString() || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadataJson: opts.metadata || null,
+      }))
+    .catch((err) => console.warn("[Compliance] legal acceptance log failed:", err?.message || err));
+}
+
 export function registerAuthRoutes(app: Express): void {
   app.get("/api/legal/version", (req, res) => {
     res.json({ version: LEGAL_VERSION });
@@ -233,6 +260,13 @@ export function registerAuthRoutes(app: Express): void {
           acceptedAt: new Date(),
           acceptedIp: req.ip || req.headers["x-forwarded-for"]?.toString() || "unknown",
           acceptedUserAgent: req.headers["user-agent"] || "unknown",
+        });
+        recordLegalComplianceLog(req, {
+          userId: user.id,
+          email: user.email,
+          name: [data.firstName, data.lastName].filter(Boolean).join(" ") || null,
+          acceptanceType: "LEGAL_TERMS",
+          metadata: { source: "registration", acceptedTerms: true, acceptedPrivacy: true, acceptedDisclaimer: true },
         });
       }
 
@@ -364,6 +398,14 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+
+      recordLegalComplianceLog(req, {
+        userId: user.id,
+        email: user.email,
+        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+        acceptanceType: "TERMS_UPDATE",
+        metadata: { source: "accept_legal_modal", acceptedTerms: true, acceptedPrivacy: true, acceptedDisclaimer: true },
+      });
 
       const { password: _, ...safeUser } = user;
       res.json(safeUser);

@@ -44,8 +44,8 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: "markets",
     title: "Market Intel & News",
-    keywords: ["market intel", "news", "sentiment", "briefing", "moving", "catalyst", "congress"],
-    text: "Markets (/market-intel) includes the Morning Briefing, watchlist sentiment, strongest positive/negative movers, 'Why is X moving?' lookups powered by news sentiment analysis, Congress Flow, and Top Catalysts.",
+    keywords: ["market intel", "news", "sentiment", "briefing", "moving", "catalyst"],
+    text: "Markets (/market-intel) includes the Morning Briefing, watchlist sentiment, strongest positive/negative movers, 'Why is X moving?' lookups powered by news sentiment analysis, and Top Catalysts.",
   },
   {
     id: "radar",

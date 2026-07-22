@@ -86,7 +86,7 @@ Provider-neutral daily OHLCV ingestion via Twelve Data `/time_series` (Basic pla
 - `/goal-mode` (Grow): 6-step wizard (capital → goal → risk → activity → instruments → broker) → `GoalRealityCheck` + `CandidateScenarioCard`. `Prepare Order` always opens `OrderReviewModal` with explicit ack.
 - `/income-mode`: covered-call / CSP / defined-risk form.
 - `/trade-finder`: AgentPage aliased as "Advanced Trade Builder" with novice prompt chips.
-- `/market-intel`: Morning Briefing, Why It's Moving, Watchlist Impact, Congress Flow, Top Catalysts.
+- `/market-intel`: Morning Briefing, Why It's Moving, Watchlist Impact, Top Catalysts. (Congress Activity removed from all customer-facing lists per user request, July 2026.)
 - `/history`: TradeSetupsPage. Backward-compat: `/agent`, `/trade-setups` still resolve.
 - `tradeSetupHistory` schema includes: `sourceMode`, `userCapital`, `monthlyTarget`, `maxRiskPerTrade`, `allowedInstruments`, `activityLevel`, `goalType`, `realityCheckText`, `complianceAcknowledged`, `orderReviewedAt`, `userConfirmedOrder`.
 

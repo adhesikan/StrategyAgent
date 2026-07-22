@@ -20,7 +20,6 @@ export function DataSourcesList({ className = "" }: { className?: string }) {
     <div className={`text-[11px] text-muted-foreground space-y-0.5 ${className}`} data-testid="list-data-sources">
       <div className="font-medium text-xs">Data Sources</div>
       <div>Historical daily market data: Twelve Data</div>
-      <div>Congressional disclosures: CongressFlow using official public filings</div>
       <div>News data: configured news provider</div>
       <div>Analysis and scoring: VCP Trader AI</div>
     </div>

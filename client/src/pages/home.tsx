@@ -943,7 +943,6 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
     "Opportunity Radar and Analysis Conditions",
     "News sentiment and market context",
     "Watchlist intelligence",
-    "Congress Activity",
     "Tradier and TradeStation connections",
     "Current stock and options market data through connected brokerages",
     "Options chains, Greeks, bid/ask, volume, and open interest where supported",

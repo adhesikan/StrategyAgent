@@ -120,7 +120,8 @@ export default function PricingPage() {
               <Badge variant="secondary" data-testid="badge-free-trial">14-Day Free Trial</Badge>
             </div>
             <h3 className="font-bold text-2xl mt-3" data-testid="text-plan-name">VCP Trader AI Pro</h3>
-            <div className="mt-3 flex items-baseline justify-center gap-1">
+            <div className="mt-3 flex items-baseline justify-center gap-2">
+              <span className="text-2xl font-semibold text-muted-foreground line-through" data-testid="text-standard-price">$149</span>
               <span className="text-5xl font-bold" data-testid="text-pro-price">$99</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
@@ -131,7 +132,7 @@ export default function PricingPage() {
               Lock in this price while your subscription remains continuously active.
             </p>
             <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
-              Planned standard price: $149/month
+              Standard price: $149/month
             </p>
             <p className="text-sm text-muted-foreground mt-3">
               One complete plan for AI-powered stock and options research, strategy analysis, broker-connected market data, and self-directed order review and submission.

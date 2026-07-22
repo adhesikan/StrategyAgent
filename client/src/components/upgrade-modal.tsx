@@ -81,12 +81,13 @@ export function UpgradeModal({
           </Badge>
           <div>
             <h3 className="font-semibold text-lg">VCP Trader AI Pro</h3>
-            <div className="mt-1 flex items-baseline gap-1">
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-lg font-semibold text-muted-foreground line-through" data-testid="text-standard-price-modal">$149</span>
               <span className="text-3xl font-bold">$99</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
             <p className="text-xs font-medium text-primary mt-1">Founding Member Price</p>
-            <p className="text-xs text-muted-foreground mt-0.5">14-day free trial · cancel anytime · planned standard price: $149/month</p>
+            <p className="text-xs text-muted-foreground mt-0.5">14-day free trial · cancel anytime · standard price: $149/month</p>
           </div>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
             {proFeatures(instaTradeName).map((f) => (

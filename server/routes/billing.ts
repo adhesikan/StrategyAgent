@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { getBillingStatus } from "../services/billing/userPlan";
 import { createCheckoutSession, createPortalSession } from "../services/billing/stripe";
+import { getPublicPricing } from "../services/billing/pricing";
 import { isPlanId, type PlanId } from "@shared/plans";
 
 interface SessionRequest extends Request {
@@ -14,6 +15,12 @@ const checkoutSchema = z.object({
 });
 
 export function registerBillingRoutes(app: Express, isAuthenticated: any) {
+  // Public — used by the landing page, pricing page, and upgrade modal to
+  // decide whether to advertise founding-member pricing.
+  app.get("/api/billing/pricing", (_req: Request, res: Response) => {
+    res.json(getPublicPricing());
+  });
+
   app.get("/api/billing/status", isAuthenticated, async (req: SessionRequest, res: Response) => {
     try {
       const userId = req.session?.userId;

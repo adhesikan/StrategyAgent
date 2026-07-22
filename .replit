@@ -64,6 +64,7 @@ EMAIL_FORWARD_ADDRESS = "support@sunfishtrading.com"
 EMAIL_REPLY_TO = "team@vcptrader.com"
 ADMIN_SUPPORT_NOTIFICATION_EMAIL = "support@sunfishtrading.com"
 STRIPE_PRO_MONTHLY_PRICE_ID = "price_1TvovGDCGEaap7wcSMQ9xL7e"
+STRIPE_PRO_STANDARD_MONTHLY_PRICE_ID = "price_1Tvp4hDCGEaap7wcmLF1azPk"
 
 [userenv.production]
 APP_URL = "https://www.vcptrader.com"

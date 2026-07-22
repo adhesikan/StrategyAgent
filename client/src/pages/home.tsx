@@ -47,6 +47,7 @@ import {
   Info,
 } from "lucide-react";
 import { useBranding } from "@/hooks/use-branding";
+import { usePricing } from "@/hooks/use-pricing";
 import logoUrl from "@assets/ChatGPT_Image_Jan_1,_2026,_01_38_07_PM_1767292703801.png";
 import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
@@ -934,6 +935,7 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
  * --------------------------------------------------------- */
 function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
   const { instaTradeName, instaTradeFooterNotice } = useBranding();
+  const pricing = usePricing();
   const planFeatures = [
     "Daily AI-ranked stock and options candidates",
     "Historical daily stock analysis during trial",
@@ -966,28 +968,36 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
 
         <div className="max-w-xl mx-auto">
           <Card className="border-primary bg-card flex flex-col relative shadow-xl" data-testid="card-plan-pro">
-            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-founding-member">
-              Founding Member Access
-            </Badge>
+            {pricing.foundingActive && (
+              <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-founding-member">
+                Founding Member Access
+              </Badge>
+            )}
             <CardHeader className="text-center pt-8">
               <div className="flex justify-center">
                 <Badge variant="secondary" data-testid="badge-trial">14-Day Free Trial</Badge>
               </div>
               <CardTitle className="text-2xl mt-3">VCP Trader AI Pro</CardTitle>
               <div className="mt-3 flex items-baseline justify-center gap-2">
-                <span className="text-2xl font-semibold text-muted-foreground line-through" data-testid="text-standard-price">$149</span>
-                <span className="text-5xl font-bold" data-testid="text-pro-price">$99</span>
+                {pricing.foundingActive && (
+                  <span className="text-2xl font-semibold text-muted-foreground line-through" data-testid="text-standard-price">${pricing.standardMonthlyPrice}</span>
+                )}
+                <span className="text-5xl font-bold" data-testid="text-pro-price">${pricing.monthlyPrice}</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
-              <p className="text-sm font-medium text-primary mt-2" data-testid="text-founding-price-label">
-                Founding Member Price
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Lock in this price while your subscription remains continuously active.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
-                Standard price: $149/month
-              </p>
+              {pricing.foundingActive && (
+                <>
+                  <p className="text-sm font-medium text-primary mt-2" data-testid="text-founding-price-label">
+                    Founding Member Price
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Lock in this price while your subscription remains continuously active.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
+                    Standard price: ${pricing.standardMonthlyPrice}/month
+                  </p>
+                </>
+              )}
               <CardDescription className="mt-2">
                 One complete plan for AI-powered stock and options research, strategy analysis, broker-connected market data, and self-directed order review and submission.
               </CardDescription>

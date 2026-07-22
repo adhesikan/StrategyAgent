@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePlan } from "@/context/PlanContext";
 import { type PlanId } from "@shared/plans";
 import { useBranding } from "@/hooks/use-branding";
+import { usePricing } from "@/hooks/use-pricing";
 
 function proFeatures(instaTradeName: string): string[] {
   return [
@@ -37,6 +38,7 @@ export function UpgradeModal({
   const { plan: currentPlan, hasStripeSubscription, isTrialing } = usePlan();
   const { toast } = useToast();
   const { instaTradeName } = useBranding();
+  const pricing = usePricing();
   // Only block checkout for actual Stripe subscribers. App-managed trial
   // users (planId "pro" with no Stripe subscription) must still be able
   // to subscribe.
@@ -82,12 +84,19 @@ export function UpgradeModal({
           <div>
             <h3 className="font-semibold text-lg">VCP Trader AI Pro</h3>
             <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-lg font-semibold text-muted-foreground line-through" data-testid="text-standard-price-modal">$149</span>
-              <span className="text-3xl font-bold">$99</span>
+              {pricing.foundingActive && (
+                <span className="text-lg font-semibold text-muted-foreground line-through" data-testid="text-standard-price-modal">${pricing.standardMonthlyPrice}</span>
+              )}
+              <span className="text-3xl font-bold">${pricing.monthlyPrice}</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
-            <p className="text-xs font-medium text-primary mt-1">Founding Member Price</p>
-            <p className="text-xs text-muted-foreground mt-0.5">14-day free trial · cancel anytime · standard price: $149/month</p>
+            {pricing.foundingActive && (
+              <p className="text-xs font-medium text-primary mt-1">Founding Member Price</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              14-day free trial · cancel anytime
+              {pricing.foundingActive ? ` · standard price: $${pricing.standardMonthlyPrice}/month` : ""}
+            </p>
           </div>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
             {proFeatures(instaTradeName).map((f) => (

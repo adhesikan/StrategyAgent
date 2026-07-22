@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePlan } from "@/context/PlanContext";
 import { useBranding } from "@/hooks/use-branding";
+import { usePricing } from "@/hooks/use-pricing";
 
 function planFeatures(instaTradeName: string): string[] {
   return [
@@ -32,6 +33,7 @@ function planFeatures(instaTradeName: string): string[] {
 export default function PricingPage() {
   const [, navigate] = useLocation();
   const { plan: currentPlan, hasStripeSubscription, isTrialing } = usePlan();
+  const pricing = usePricing();
   const { toast } = useToast();
   const { instaTradeName, instaTradeFooterNotice } = useBranding();
   // Only treat the user as a paying subscriber when a Stripe subscription
@@ -111,9 +113,11 @@ export default function PricingPage() {
           className="relative rounded-2xl border-2 border-primary bg-card/40 backdrop-blur p-6 md:p-8 flex flex-col gap-5 shadow-xl"
           data-testid="card-plan-pro"
         >
-          <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-founding-member">
-            <Sparkles className="h-3 w-3 mr-1" /> Founding Member Access
-          </Badge>
+          {pricing.foundingActive && (
+            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2" data-testid="badge-founding-member">
+              <Sparkles className="h-3 w-3 mr-1" /> Founding Member Access
+            </Badge>
+          )}
 
           <div className="text-center pt-2">
             <div className="flex justify-center">
@@ -121,19 +125,25 @@ export default function PricingPage() {
             </div>
             <h3 className="font-bold text-2xl mt-3" data-testid="text-plan-name">VCP Trader AI Pro</h3>
             <div className="mt-3 flex items-baseline justify-center gap-2">
-              <span className="text-2xl font-semibold text-muted-foreground line-through" data-testid="text-standard-price">$149</span>
-              <span className="text-5xl font-bold" data-testid="text-pro-price">$99</span>
+              {pricing.foundingActive && (
+                <span className="text-2xl font-semibold text-muted-foreground line-through" data-testid="text-standard-price">${pricing.standardMonthlyPrice}</span>
+              )}
+              <span className="text-5xl font-bold" data-testid="text-pro-price">${pricing.monthlyPrice}</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
-            <p className="text-sm font-medium text-primary mt-2" data-testid="text-founding-price-label">
-              Founding Member Price
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Lock in this price while your subscription remains continuously active.
-            </p>
-            <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
-              Standard price: $149/month
-            </p>
+            {pricing.foundingActive && (
+              <>
+                <p className="text-sm font-medium text-primary mt-2" data-testid="text-founding-price-label">
+                  Founding Member Price
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Lock in this price while your subscription remains continuously active.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1" data-testid="text-planned-standard-price">
+                  Standard price: ${pricing.standardMonthlyPrice}/month
+                </p>
+              </>
+            )}
             <p className="text-sm text-muted-foreground mt-3">
               One complete plan for AI-powered stock and options research, strategy analysis, broker-connected market data, and self-directed order review and submission.
             </p>

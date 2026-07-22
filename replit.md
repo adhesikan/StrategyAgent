@@ -9,7 +9,8 @@ VCP Trader AI is an AI-powered stock and options intelligence platform for self-
 - No public automation/autopilot/autonomous language. Automation routes are admin-gated only.
 
 ## Pricing & Trial Model
-- **One plan**: VCP Trader AI Pro — **$99/month with a 14-day free trial**.
+- **One plan**: VCP Trader AI Pro — **$99/month founding price (standard $149/month) with a 14-day free trial**.
+- **Founding-pricing control** (`server/services/billing/pricing.ts`): `FOUNDING_PRICING_ENDS_AT` env (ISO date; unset = founding active). Founding active → checkout uses `STRIPE_PRO_MONTHLY_PRICE_ID` ($99); ended → `STRIPE_PRO_STANDARD_MONTHLY_PRICE_ID` ($149, same Stripe product). Public `GET /api/billing/pricing` drives UI (`usePricing` hook) — pricing page, landing PricingSection, UpgradeModal hide founding branding and show $149 when ended. Existing subscribers keep their subscribed price.
 - Stripe checkout endpoint (`server/services/billing/stripe.ts`) already passes `trial_period_days: 14`. The `pro` planId is reused — to deploy a new price the user updates `STRIPE_PRO_MONTHLY_PRICE_ID` to a $99 recurring Stripe price.
 - `shared/plans.ts` still defines `free/pro/edge/team` for backward-compat with admin/partner code, but only `pro` is shown publicly. `client/src/pages/pricing.tsx` and the home `PricingSection` are single-plan layouts.
 - Authenticated `PlanSelector` / `UpgradeModal` still reference legacy tiers — pending consolidation.

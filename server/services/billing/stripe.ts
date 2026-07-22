@@ -4,10 +4,16 @@ import { users as usersTable } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { getUncachableStripeClient } from "../../stripeClient";
 import { PLANS, isPlanId, type PlanId } from "@shared/plans";
+import { getActiveProMonthlyPriceId, isProMonthlyPriceId } from "./pricing";
 
 export type BillingCycle = "monthly" | "annual";
 
 export function getPriceId(planId: PlanId, cycle: BillingCycle): string | null {
+  // Pro monthly honors the founding-pricing window ($99 founding vs $149
+  // standard, controlled by FOUNDING_PRICING_ENDS_AT).
+  if (planId === "pro" && cycle === "monthly") {
+    return getActiveProMonthlyPriceId();
+  }
   const plan = PLANS[planId];
   if (!plan) return null;
   return cycle === "annual" ? plan.stripeAnnualPriceId : plan.stripeMonthlyPriceId;
@@ -122,6 +128,8 @@ export async function createPortalSession(userId: string): Promise<{ url: string
 
 function planIdFromPrice(priceId: string | null | undefined): PlanId | null {
   if (!priceId) return null;
+  // Both founding and standard pro monthly prices map to the pro plan.
+  if (isProMonthlyPriceId(priceId)) return "pro";
   for (const id of Object.keys(PLANS) as PlanId[]) {
     const plan = PLANS[id];
     if (plan.stripeMonthlyPriceId === priceId || plan.stripeAnnualPriceId === priceId) {

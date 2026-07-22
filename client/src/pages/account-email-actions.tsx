@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +38,7 @@ export function VerifyEmailPage() {
         const body = await res.json();
         setStatus("success");
         setMessage(body.message || "Email verified successfully");
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       })
       .catch((err: any) => {
         setStatus("error");

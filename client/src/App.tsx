@@ -16,7 +16,7 @@ import { BrokerStatusProvider } from "@/hooks/use-broker-status";
 import { TooltipVisibilityProvider } from "@/hooks/use-tooltips";
 import { PersonaProvider } from "@/context/PersonaContext";
 import { PlanProvider } from "@/context/PlanContext";
-import { StatusBanner } from "@/components/status-banner";
+import { StatusBanner, VerifyEmailBanner } from "@/components/status-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ErrorBoundary } from "@/components/error-boundary";
 
@@ -272,6 +272,7 @@ function AppLayoutInner() {
       <BrokerStatusProvider>
         <div className="flex flex-col min-h-screen w-full">
           <TopNav />
+          <VerifyEmailBanner />
           <StatusBanner />
           <PullToRefresh
             onRefresh={async () => {

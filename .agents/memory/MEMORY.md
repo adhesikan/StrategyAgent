@@ -2,4 +2,5 @@
 - [Two-mode customer policy](two-mode-policy.md) — public copy: Analysis Mode / Connected Broker Mode only; keep internal "paper" values; gate trading server-side.
 - [Twelve Data market data](twelve-data-market-data.md) — env vars are the only license control; prelaunch access never via Stripe; credits need transactional reserve.
 - [Security-token email links](token-email-links.md) — never build verify/reset links from request headers; use APP_BASE_URL or REPLIT_DOMAINS to avoid host-header token leaks.
+- [Lockfile firewall URLs](lockfile-firewall-urls.md) — package-lock entries resolving to package-firewall.replit.local break deploy `npm ci`; rewrite to registry.npmjs.org.
 - [Vitest root quirk](vitest-root.md) — vitest resolves root to `client/` here; run server tests with `npx vitest run --root . <file>` or no test files are found.

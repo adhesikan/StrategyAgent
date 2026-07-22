@@ -27,6 +27,7 @@ function planFeatures(instaTradeName: string): string[] {
     "Defined-risk options controls",
     "Position and results tracking",
     "Analysis-to-live workflow",
+    "Bonus: Congress trade activity from public disclosures, organized with search, sort, and AI integration",
   ];
 }
 

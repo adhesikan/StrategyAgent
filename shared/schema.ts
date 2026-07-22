@@ -2537,3 +2537,139 @@ export const marketDataRequestLog = pgTable("market_data_request_log", {
   idxCreatedAt: index("idx_mdrl_created_at").on(t.createdAt),
 }));
 export type MarketDataRequestLog = typeof marketDataRequestLog.$inferSelect;
+
+// ============================================================
+// Resend Email Service: messages, events, support tickets,
+// suppressions, and admin email settings.
+// ============================================================
+
+export const emailMessages = pgTable("email_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("resend"),
+  providerMessageId: text("provider_message_id"),
+  direction: text("direction").notNull(), // INBOUND | OUTBOUND
+  messageType: text("message_type").notNull().default("general"), // welcome | password_reset | support_ack | support_reply | forward | campaign | ...
+  fromAddress: text("from_address").notNull(),
+  fromName: text("from_name"),
+  toAddresses: text("to_addresses").array().notNull().default(sql`'{}'::text[]`),
+  ccAddresses: text("cc_addresses").array().notNull().default(sql`'{}'::text[]`),
+  bccAddresses: text("bcc_addresses").array().notNull().default(sql`'{}'::text[]`),
+  replyTo: text("reply_to"),
+  subject: text("subject").notNull().default(""),
+  textBody: text("text_body"),
+  sanitizedHtmlBody: text("sanitized_html_body"),
+  status: text("status").notNull().default("QUEUED"), // QUEUED | SENT | DELIVERED | DELAYED | BOUNCED | COMPLAINED | FAILED | RECEIVED
+  receivedAt: timestamp("received_at"),
+  sentAt: timestamp("sent_at"),
+  userId: varchar("user_id"),
+  ticketId: varchar("ticket_id"),
+  threadKey: text("thread_key"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  idxEmailMsgProviderMsg: index("idx_email_msg_provider_msg").on(t.providerMessageId),
+  idxEmailMsgUser: index("idx_email_msg_user").on(t.userId),
+  idxEmailMsgTicket: index("idx_email_msg_ticket").on(t.ticketId),
+  idxEmailMsgStatus: index("idx_email_msg_status").on(t.status),
+  idxEmailMsgCreated: index("idx_email_msg_created").on(t.createdAt),
+}));
+export type EmailMessage = typeof emailMessages.$inferSelect;
+export const insertEmailMessageSchema = createInsertSchema(emailMessages).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEmailMessage = z.infer<typeof insertEmailMessageSchema>;
+
+export const emailEvents = pgTable("email_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("resend"),
+  providerEventId: text("provider_event_id").notNull(),
+  providerMessageId: text("provider_message_id"),
+  eventType: text("event_type").notNull(),
+  payloadMetadata: jsonb("payload_metadata").$type<Record<string, unknown>>().default({}),
+  occurredAt: timestamp("occurred_at"),
+  processedAt: timestamp("processed_at"),
+  processingStatus: text("processing_status").notNull().default("pending"), // pending | processed | failed | skipped_duplicate
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  uqEmailEventProviderEvent: uniqueIndex("uq_email_event_provider_event").on(t.provider, t.providerEventId),
+  idxEmailEventMsg: index("idx_email_event_msg").on(t.providerMessageId),
+  idxEmailEventCreated: index("idx_email_event_created").on(t.createdAt),
+}));
+export type EmailEvent = typeof emailEvents.$inferSelect;
+
+export const supportTickets = pgTable("support_tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketNumber: text("ticket_number").notNull(),
+  userId: varchar("user_id"),
+  requesterEmail: text("requester_email").notNull(),
+  requesterName: text("requester_name"),
+  subject: text("subject").notNull().default(""),
+  category: text("category").notNull().default("General"),
+  priority: text("priority").notNull().default("NORMAL"), // LOW | NORMAL | HIGH | URGENT
+  status: text("status").notNull().default("open"), // open | waiting_on_customer | resolved | closed
+  assignedToUserId: varchar("assigned_to_user_id"),
+  aiSummary: text("ai_summary"),
+  aiSuggestedReply: text("ai_suggested_reply"),
+  internalNotes: jsonb("internal_notes").$type<Array<{ authorId: string; note: string; at: string }>>().default([]),
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  uqTicketNumber: uniqueIndex("uq_support_ticket_number").on(t.ticketNumber),
+  idxTicketRequester: index("idx_support_ticket_requester").on(t.requesterEmail),
+  idxTicketUser: index("idx_support_ticket_user").on(t.userId),
+  idxTicketStatus: index("idx_support_ticket_status").on(t.status),
+  idxTicketCreated: index("idx_support_ticket_created").on(t.createdAt),
+}));
+export type SupportTicket = typeof supportTickets.$inferSelect;
+
+export const supportMessages = pgTable("support_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull(),
+  emailMessageId: varchar("email_message_id"),
+  direction: text("direction").notNull(), // INBOUND | OUTBOUND
+  senderType: text("sender_type").notNull(), // customer | admin | system
+  senderEmail: text("sender_email").notNull(),
+  bodyText: text("body_text"),
+  sanitizedBodyHtml: text("sanitized_body_html"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  idxSupportMsgTicket: index("idx_support_msg_ticket").on(t.ticketId),
+  idxSupportMsgCreated: index("idx_support_msg_created").on(t.createdAt),
+}));
+export type SupportMessage = typeof supportMessages.$inferSelect;
+
+export const emailSuppressions = pgTable("email_suppressions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  emailAddress: text("email_address").notNull(),
+  reason: text("reason").notNull(), // bounced | complained | manual
+  source: text("source").notNull().default("resend"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  uqSuppressionEmail: uniqueIndex("uq_email_suppression_address").on(t.emailAddress),
+}));
+export type EmailSuppression = typeof emailSuppressions.$inferSelect;
+
+export const emailSettings = pgTable("email_settings", {
+  id: varchar("id").primaryKey().default("singleton"),
+  defaultSenderName: text("default_sender_name").notNull().default("VCP Trader AI"),
+  defaultReplyTo: text("default_reply_to").notNull().default("team@vcptrader.com"),
+  forwardingDestination: text("forwarding_destination").notNull().default("support@sunfishtrading.com"),
+  inboundAckEnabled: boolean("inbound_ack_enabled").notNull().default(true),
+  supportForwardingEnabled: boolean("support_forwarding_enabled").notNull().default(true),
+  maxAttachmentSizeMb: integer("max_attachment_size_mb").notNull().default(10),
+  maxAttachmentCount: integer("max_attachment_count").notNull().default(5),
+  allowedAttachmentTypes: text("allowed_attachment_types").array().notNull().default(sql`'{pdf,png,jpg,jpeg,gif,txt,csv,log}'::text[]`),
+  supportCategories: text("support_categories").array().notNull().default(sql`'{Account,Authentication,Billing,Subscription,"Broker Connection","Market Data","Trade Entry","Position Protection","Paper Trading","Bug Report","Feature Request","Research Question",General,Security,Spam}'::text[]`),
+  defaultTicketPriority: text("default_ticket_priority").notNull().default("NORMAL"),
+  expectedResponseWording: text("expected_response_wording"),
+  openTrackingEnabled: boolean("open_tracking_enabled").notNull().default(false),
+  clickTrackingEnabled: boolean("click_tracking_enabled").notNull().default(false),
+  aiClassificationEnabled: boolean("ai_classification_enabled").notNull().default(false),
+  aiReplySuggestionsEnabled: boolean("ai_reply_suggestions_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type EmailSettings = typeof emailSettings.$inferSelect;
+export const updateEmailSettingsSchema = createInsertSchema(emailSettings).omit({ id: true, updatedAt: true }).partial();

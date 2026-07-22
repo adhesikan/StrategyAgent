@@ -27,8 +27,8 @@ export interface SendCampaignResult {
 }
 
 function isProviderConfigured(): { provider: string | null; reason?: string } {
-  if (process.env.SENDGRID_API_KEY) return { provider: "sendgrid" };
   if (process.env.RESEND_API_KEY) return { provider: "resend" };
+  if (process.env.SENDGRID_API_KEY) return { provider: "sendgrid" };
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     return { provider: "smtp" };
   }
@@ -80,6 +80,24 @@ async function sendViaSendGrid(args: SendCampaignArgs): Promise<SendCampaignResu
   return { sent: args.recipients.length, failed: 0, provider: "sendgrid" };
 }
 
+async function sendViaResend(args: SendCampaignArgs): Promise<SendCampaignResult> {
+  const { sendEmail } = await import("./services/email/email-service");
+  let sent = 0;
+  let failed = 0;
+  for (const r of args.recipients) {
+    const result = await sendEmail({
+      to: r.email,
+      subject: args.subject,
+      html: args.html,
+      messageType: "campaign",
+      userId: r.userId || null,
+    });
+    if (result.success) sent++;
+    else failed++;
+  }
+  return { sent, failed, provider: "resend" };
+}
+
 export async function sendCampaign(args: SendCampaignArgs): Promise<SendCampaignResult> {
   if (args.recipients.length === 0) {
     throw new EmailServiceError("No recipients to send to.", "no_recipients");
@@ -87,6 +105,9 @@ export async function sendCampaign(args: SendCampaignArgs): Promise<SendCampaign
   const { provider, reason } = isProviderConfigured();
   if (!provider) {
     throw new EmailServiceError(reason!, "provider_not_configured");
+  }
+  if (provider === "resend") {
+    return sendViaResend(args);
   }
   if (provider === "sendgrid") {
     return sendViaSendGrid(args);

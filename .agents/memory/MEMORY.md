@@ -1,3 +1,4 @@
 - [Position Protection exit safety](position-protection-exit-safety.md) — atomic claim + order-id guard prevent double exit submits; Tradier lacks native trailing stops.
 - [Two-mode customer policy](two-mode-policy.md) — public copy: Analysis Mode / Connected Broker Mode only; keep internal "paper" values; gate trading server-side.
 - [Twelve Data market data](twelve-data-market-data.md) — env vars are the only license control; prelaunch access never via Stripe; credits need transactional reserve.
+- [Vitest root quirk](vitest-root.md) — vitest resolves root to `client/` here; run server tests with `npx vitest run --root . <file>` or no test files are found.

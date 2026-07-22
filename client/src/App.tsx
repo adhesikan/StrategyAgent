@@ -46,6 +46,7 @@ import AdminDisclaimerLogs from "@/pages/admin-disclaimer-logs";
 import AdminUsersPage from "@/pages/admin-users";
 import AdminHomePage from "@/pages/admin-home";
 import AdminEmailsPage from "@/pages/admin-emails";
+import AdminSupportPage from "@/pages/admin-support";
 import AdminSessionsPage from "@/pages/admin-sessions";
 import AdminMarketDataPage from "@/pages/admin-market-data";
 import DailyAnalysisPage from "@/pages/daily-analysis";
@@ -168,6 +169,7 @@ function AppRouter() {
       <Route path="/admin/disclaimer-logs">{() => <AdminOnly><AdminDisclaimerLogs /></AdminOnly>}</Route>
       <Route path="/admin/users">{() => <AdminOnly><AdminUsersPage /></AdminOnly>}</Route>
       <Route path="/admin/emails">{() => <AdminOnly><AdminEmailsPage /></AdminOnly>}</Route>
+      <Route path="/admin/support">{() => <AdminOnly><AdminSupportPage /></AdminOnly>}</Route>
       <Route path="/admin/sessions">{() => <AdminOnly><AdminSessionsPage /></AdminOnly>}</Route>
       <Route path="/admin/market-data">{() => <AdminOnly><AdminMarketDataPage /></AdminOnly>}</Route>
       <Route path="/daily-analysis" component={DailyAnalysisPage} />

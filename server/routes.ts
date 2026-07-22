@@ -199,6 +199,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   const { default: agentTestsRouter } = await import("./routes/admin-agent-tests");
   app.use("/api/admin/agent-tests", isAuthenticated, isAdmin, agentTestsRouter);
 
+  // Admin Support Center (Resend email service): tickets, replies,
+  // suppressions, email settings, and email-service health.
+  const { supportAdminRouter } = await import("./routes/support-admin");
+  app.use("/api/admin/support", isAuthenticated, isAdmin, supportAdminRouter);
+
   startFuturesWorker().then(async () => {
     try {
       const feedInfo = getFeedInfo();
@@ -8453,8 +8458,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         .set({
           status: "sent",
           sentAt: new Date(),
-          sentCount: result.sent,
-          deliveredCount: result.sent - result.failed,
+          sentCount: result.sent + result.failed,
+          deliveredCount: result.sent,
         })
         .where(eq(emailCampaigns.id, campaign.id))
         .returning();

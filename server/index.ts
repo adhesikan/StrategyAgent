@@ -333,6 +333,64 @@ app.post(
   }
 );
 
+// Resend email webhook (inbound + delivery events).
+// Must mount BEFORE express.json() so svix signature verification sees the raw body.
+const resendWebhookHits = new Map<string, { count: number; windowStart: number }>();
+app.post(
+  '/api/webhooks/resend',
+  express.raw({ type: '*/*', limit: '2mb' }),
+  async (req, res) => {
+    try {
+      // Lightweight per-IP rate limit: 120/min.
+      const ip = (req.headers['x-forwarded-for']?.toString().split(',')[0] || req.ip || 'unknown').trim();
+      const now = Date.now();
+      const bucket = resendWebhookHits.get(ip);
+      if (!bucket || now - bucket.windowStart > 60_000) {
+        resendWebhookHits.set(ip, { count: 1, windowStart: now });
+      } else if (++bucket.count > 120) {
+        return res.status(429).json({ error: 'Rate limit exceeded' });
+      }
+      if (resendWebhookHits.size > 5000) resendWebhookHits.clear();
+
+      const secret = process.env.RESEND_WEBHOOK_SECRET;
+      if (!secret) {
+        console.warn('[email] webhook received but RESEND_WEBHOOK_SECRET is not configured');
+        return res.status(503).json({ error: 'Webhook not configured' });
+      }
+      if (!Buffer.isBuffer(req.body)) {
+        return res.status(400).json({ error: 'Invalid payload' });
+      }
+
+      const { Webhook } = await import('svix');
+      let event: any;
+      try {
+        const wh = new Webhook(secret);
+        event = wh.verify(req.body.toString('utf8'), {
+          'svix-id': String(req.headers['svix-id'] || ''),
+          'svix-timestamp': String(req.headers['svix-timestamp'] || ''),
+          'svix-signature': String(req.headers['svix-signature'] || ''),
+        });
+      } catch {
+        console.warn('[email] webhook signature verification failed');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+
+      const providerEventId = String(req.headers['svix-id'] || event?.data?.email_id || '') || `${event?.type}-${Date.now()}`;
+      const { recordAndProcessEvent } = await import('./services/email/inbound-email-service');
+      const { duplicate } = await recordAndProcessEvent({
+        providerEventId,
+        eventType: String(event?.type || 'unknown'),
+        payloadData: event?.data,
+        occurredAt: event?.created_at,
+      });
+      res.status(200).json({ received: true, duplicate });
+    } catch (error: any) {
+      console.error('[email] Resend webhook error:', error?.message);
+      res.status(400).json({ error: 'Webhook processing error' });
+    }
+  }
+);
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -410,6 +468,14 @@ async function restoreBrokerConnections() {
 (async () => {
   // Run migrations first to ensure schema is up to date
   await runStartupMigrations();
+
+  // Validate email service env configuration (logs warnings; non-fatal).
+  try {
+    const { validateEmailEnv } = await import('./services/email/resend-client');
+    validateEmailEnv();
+  } catch (err: any) {
+    console.warn('[email] env validation skipped:', err?.message);
+  }
 
   // Initialize Stripe schema and sync
   try {

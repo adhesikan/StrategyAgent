@@ -29,6 +29,13 @@ const tools = [
     testId: "card-admin-emails",
   },
   {
+    title: "Support Center",
+    description: "Inbound email tickets, replies & delivery health",
+    href: "/admin/support",
+    icon: Mail,
+    testId: "card-admin-support",
+  },
+  {
     title: "Sessions Audit Log",
     description: "Login/logout events with IP, browser & device",
     href: "/admin/sessions",

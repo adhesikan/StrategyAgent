@@ -202,6 +202,11 @@ export function registerAuthRoutes(app: Express): void {
       seedNewUser(user.id);
       recordSessionEvent({ req, userId: user.id, email: user.email, eventType: "register" });
 
+      // Fire-and-forget welcome email (never blocks registration).
+      import("../../services/email/email-service")
+        .then(({ sendWelcomeEmail }) => sendWelcomeEmail(user.email, data.firstName || null, user.id))
+        .catch((err) => console.warn("Welcome email failed:", err?.message || err));
+
       const updatedUser = await authStorage.getUser(user.id);
       const { password: _, ...safeUser } = updatedUser!;
       res.status(201).json(safeUser);

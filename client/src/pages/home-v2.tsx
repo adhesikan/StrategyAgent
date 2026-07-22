@@ -34,6 +34,7 @@ import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { TrialBanner } from "@/components/trial-banner";
 
 interface IndexQuote { symbol: string; name: string; last: number; changePercent: number; }
 interface MoverQuote { symbol: string; last: number; changePercent: number; }
@@ -418,6 +419,7 @@ export default function HomeV2() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="w-full px-4 md:px-8 py-8 md:py-12 space-y-10">
+        <TrialBanner />
         <div>
           <h1 className="text-[26px] font-medium tracking-tight" data-testid="text-home-greeting">
             {greeting}, {firstName}.

@@ -160,6 +160,7 @@ function appBaseUrl(_req: Request): string {
   if (envBase) return envBase.replace(/\/$/, "");
   const replitDomain = (process.env.REPLIT_DOMAINS || "").split(",")[0]?.trim() || process.env.REPLIT_DEV_DOMAIN;
   if (replitDomain) return `https://${replitDomain}`;
+  if (process.env.NODE_ENV === "production") return "https://vcptrader.com";
   return "http://localhost:5000";
 }
 

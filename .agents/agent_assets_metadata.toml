@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "YohjquZon1NZnRFHyOPSo"
+uri = "file://exports/ui-spec/UI-SPECIFICATION.md"
+type = "text"
+title = "VCP Trader AI — UI Specification"
+
+[[outputs]]
+id = "Anfgi5NC6xkOOiZTFBstV"
+uri = "file://exports/ui-spec/landing.jpg"
+type = "image"
+title = "Screenshot — Public landing page"
+
+[[outputs]]
+id = "r-XteEHK6pNAQIKyZXus0"
+uri = "file://exports/ui-spec/auth.jpg"
+type = "image"
+title = "Screenshot — Sign-in page"

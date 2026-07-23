@@ -744,9 +744,9 @@ export default function TradeDetailPage() {
             <div className="flex items-start gap-2 text-xs text-sky-900 dark:text-sky-200">
               <Info className="h-4 w-4 shrink-0 mt-0.5" />
               <p>
-                No broker connected — prices are based on the <strong>last daily close</strong> for {ticker}
-                {quote?.asOf ? ` (as of ${quote.asOf})` : ""}, not a live quote. Connect your broker
-                (Tradier or TradeStation) for real-time prices, and always confirm actual prices before placing any order.
+                Data shown is <strong>daily data</strong> — the latest last trading day closing price for {ticker}
+                {quote?.asOf ? ` (as of ${quote.asOf})` : ""}. Connect your broker (Tradier or TradeStation)
+                for real-time data and options data, and always confirm actual prices before placing any order.
               </p>
             </div>
           </Card>

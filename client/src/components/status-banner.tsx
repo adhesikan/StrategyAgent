@@ -209,7 +209,9 @@ export function StatusBanner() {
     >
       <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
       <span className="text-xs text-muted-foreground">
-        Sample data — connect a broker for live prices.
+        {dataSourceStatus?.dailyCloseEntitled
+          ? "Data shown is daily data (latest trading day close) — connect a broker for real-time data and options data."
+          : "Sample data — connect a broker for live prices."}
       </span>
       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs">
         <Link href="/settings" data-testid="link-connect-broker-banner">

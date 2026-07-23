@@ -18,6 +18,7 @@ interface DataSourceStatus {
   isLive: boolean;
   hasBrokerConnection: boolean;
   brokerProvider: string | null;
+  dailyCloseEntitled?: boolean;
 }
 
 interface DataStatus {

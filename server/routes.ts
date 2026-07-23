@@ -681,7 +681,48 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     try {
       const { ticker, timeframe = "3M" } = req.params;
       const userId = req.session?.userId;
-      
+
+      // Fallback chart data from stored Twelve Data daily bars (real prices,
+      // last trading day close). Gated by the central access-control service.
+      const dailyBarsChartFallback = async () => {
+        try {
+          if (!userId) return null;
+          if (["1m", "5m", "15m", "30m", "1h"].includes(timeframe)) return null;
+          const { canAccessTwelveDataBackedAnalysis } = await import("./services/daily-market-data/access-control");
+          const { authStorage } = await import("./replit_integrations/auth/storage");
+          const user = await authStorage.getUser(userId);
+          const decision = canAccessTwelveDataBackedAnalysis({
+            user: user ? { id: user.id, email: user.email, role: user.role } : null,
+            feature: "chart_daily_bars_fallback",
+          });
+          if (!decision.allowed) return null;
+          const { loadStoredBars } = await import("./services/daily-market-data/ingestion");
+          const barCounts: Record<string, number> = { "1M": 22, "3M": 66, "6M": 130, "1Y": 252, "2Y": 504, "5Y": 1260 };
+          const limit = barCounts[timeframe] ?? 66;
+          const bars = await loadStoredBars(ticker.toUpperCase(), limit);
+          if (!bars.length) return null;
+          const candles = bars.map((b) => ({
+            time: b.tradeDate,
+            open: b.open,
+            high: b.high,
+            low: b.low,
+            close: b.close,
+            volume: b.volume,
+          }));
+          const chartData = processChartData(candles, ticker.toUpperCase());
+          return {
+            ...chartData,
+            isLive: false,
+            requiresBroker: true,
+            dataSource: "daily_close" as const,
+            asOf: bars[bars.length - 1].tradeDate,
+          };
+        } catch (err: any) {
+          console.warn("[Charts] daily-bar fallback failed:", err?.message || err);
+          return null;
+        }
+      };
+
       if (userId) {
         const connection = await storage.getBrokerConnectionWithToken(userId);
         if (connection?.accessToken && connection?.isConnected) {
@@ -691,12 +732,16 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             return res.json({ ...chartData, isLive: true });
           } catch (brokerError: any) {
             console.error("Chart broker fetch failed, using stored data:", brokerError.message);
+            const dailyFallback = await dailyBarsChartFallback();
+            if (dailyFallback) return res.json({ ...dailyFallback, error: brokerError.message });
             const storedData = storage.getChartData(ticker.toUpperCase());
             return res.json({ ...storedData, isLive: false, error: brokerError.message });
           }
         }
       }
-      
+
+      const dailyFallback = await dailyBarsChartFallback();
+      if (dailyFallback) return res.json(dailyFallback);
       const storedData = storage.getChartData(ticker.toUpperCase());
       res.json({ ...storedData, isLive: false, requiresBroker: true });
     } catch (error) {
@@ -2050,12 +2095,30 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         activeProvider = brokerProvider;
       }
       
+      // Whether this user is entitled to Twelve Data daily-close fallback data
+      // (drives truthful banner copy: "daily data" vs "sample data").
+      let dailyCloseEntitled = false;
+      if (userId && !hasBrokerConnection) {
+        try {
+          const { canAccessTwelveDataBackedAnalysis } = await import("./services/daily-market-data/access-control");
+          const { authStorage } = await import("./replit_integrations/auth/storage");
+          const user = await authStorage.getUser(userId);
+          dailyCloseEntitled = canAccessTwelveDataBackedAnalysis({
+            user: user ? { id: user.id, email: user.email, role: user.role } : null,
+            feature: "data_source_status_banner",
+          }).allowed;
+        } catch (entitleErr) {
+          console.error("Error checking daily-close entitlement:", entitleErr);
+        }
+      }
+
       res.json({
         activeSource,
         activeProvider,
         isLive: activeSource !== "mock",
         hasBrokerConnection,
         brokerProvider,
+        dailyCloseEntitled,
       });
     } catch (error) {
       console.error("Error in data-source/status:", error);

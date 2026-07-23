@@ -28,7 +28,7 @@ const DISCLOSURE =
 function attribution() {
   const cfg = getTwelveDataConfig();
   return cfg.attributionEnabled
-    ? "Historical daily market data provided by Twelve Data. Technical analysis, scores, rankings, and AI-generated insights are produced by VCP Trader AI."
+    ? "Historical daily market data provided by licensed third-party data providers. Technical analysis, scores, rankings, and AI-generated insights are produced by VCP Trader AI."
     : null;
 }
 

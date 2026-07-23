@@ -9,8 +9,8 @@ export function DataAttribution({ className = "" }: { className?: string }) {
       className={`text-[11px] leading-snug text-muted-foreground ${className}`}
       data-testid="text-data-attribution"
     >
-      Historical daily market data provided by Twelve Data. Technical analysis, scores,
-      rankings, and AI-generated insights are produced by VCP Trader AI.
+      Historical daily market data provided by licensed third-party data providers.
+      Technical analysis, scores, rankings, and AI-generated insights are produced by VCP Trader AI.
     </p>
   );
 }
@@ -19,7 +19,7 @@ export function DataSourcesList({ className = "" }: { className?: string }) {
   return (
     <div className={`text-[11px] text-muted-foreground space-y-0.5 ${className}`} data-testid="list-data-sources">
       <div className="font-medium text-xs">Data Sources</div>
-      <div>Historical daily market data: Twelve Data</div>
+      <div>Historical daily market data: licensed third-party data providers</div>
       <div>News data: configured news provider</div>
       <div>Analysis and scoring: VCP Trader AI</div>
     </div>

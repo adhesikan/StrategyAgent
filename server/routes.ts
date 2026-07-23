@@ -3119,6 +3119,34 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     }
   });
 
+  // Daily-close scan fallback: runs strategy filters against the stored
+  // Twelve Data daily bars (configured symbols only). Used by the scanner
+  // when no broker is connected. Gated by the central access-control service
+  // — external users in prelaunch mode get 403 and the client falls back to
+  // illustrative examples.
+  app.post("/api/scan/daily-close", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { canAccessTwelveDataBackedAnalysis, SAFE_DENIAL_MESSAGE } = await import("./services/daily-market-data/access-control");
+      const { authStorage } = await import("./replit_integrations/auth/storage");
+      const user = await authStorage.getUser(userId);
+      const decision = canAccessTwelveDataBackedAnalysis({
+        user: user ? { id: user.id, email: user.email, role: user.role } : null,
+        feature: "daily_close_scan",
+      });
+      if (!decision.allowed) {
+        return res.status(403).json({ error: SAFE_DENIAL_MESSAGE, code: "DAILY_ANALYSIS_UNAVAILABLE" });
+      }
+      const strategy = typeof req.body?.strategy === "string" ? req.body.strategy : "VCP";
+      const { scanDailyBars } = await import("./services/daily-market-data/daily-scanner");
+      const { results, asOf } = await scanDailyBars(strategy, 10);
+      res.json({ results, meta: { isLive: false, source: "daily_close", asOf } });
+    } catch (error: any) {
+      console.error("[DailyScan] error:", error.message);
+      res.status(500).json({ error: "Daily scan failed" });
+    }
+  });
+
   app.get("/api/broker/quote/:symbol", isAuthenticatedOrPartner, async (req, res) => {
     try {
       const symbol = req.params.symbol.toUpperCase();

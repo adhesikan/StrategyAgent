@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { HelpLink } from "@/components/help-link";
+import { TwelveDataLink } from "@/components/data-attribution";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -640,13 +641,14 @@ interface ScanResponseMeta {
   symbolsReturned?: number;
   scanTimeMs?: number;
   marketSession?: string;
-  source: "live" | "fallback";
+  source: "live" | "fallback" | "daily_close";
+  asOf?: string | null;
   error?: string;
 }
 
 export default function StrategyScannerPage() {
   const [, navigate] = useLocation();
-  const { isConnected } = useBrokerStatus();
+  const { isConnected, isLoading: brokerLoading } = useBrokerStatus();
   const [filter, setFilter] = useState<"All" | StrategyCategory>("All");
   const [tradeTypes, setTradeTypes] = useState<TradeType[]>(TRADE_TYPES.map((t) => t.id));
   const [selected, setSelected] = useState<Strategy>(STRATEGIES[0]);
@@ -684,6 +686,31 @@ export default function StrategyScannerPage() {
     mutationFn: async (s: Strategy) => {
       const backendStrategy = STRATEGY_BACKEND_MAP[s.id] || "VCP";
       if (!isConnected) {
+        // Try the daily-close scan first: real stored end-of-day data for the
+        // configured symbol universe. 403 (not entitled) or failure falls back
+        // to illustrative examples.
+        try {
+          const res = await apiRequest("POST", "/api/scan/daily-close", { strategy: backendStrategy });
+          const data = await res.json();
+          const mapped: ScanResult[] = (data.results || []).map((r: any) => ({
+            ticker: r.ticker,
+            name: r.name || r.ticker,
+            score: r.score,
+            winProb: r.winProb,
+            reason: r.reason,
+            rvol: typeof r.rvol === "number" ? r.rvol : null,
+            changePercent: typeof r.changePercent === "number" ? r.changePercent : null,
+            price: typeof r.price === "number" ? r.price : null,
+          }));
+          if (mapped.length > 0) {
+            return {
+              results: mapped,
+              meta: { isLive: false, source: "daily_close", asOf: data.meta?.asOf },
+            };
+          }
+        } catch {
+          // Not entitled or scan failed — use illustrative examples below.
+        }
         return {
           results: generateFallbackResults(s.id),
           meta: { isLive: false, source: "fallback" },
@@ -745,6 +772,17 @@ export default function StrategyScannerPage() {
     },
   });
   const running = scanMutation.isPending;
+
+  // Run an initial scan once broker status is known, so no-broker users get
+  // real daily-close results (when entitled) instead of the seeded
+  // illustrative examples — and connected users get a live scan.
+  const initialScanDone = useRef(false);
+  useEffect(() => {
+    if (brokerLoading || initialScanDone.current) return;
+    initialScanDone.current = true;
+    scanMutation.mutate(selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brokerLoading]);
 
   useEffect(() => {
     try {
@@ -1056,11 +1094,17 @@ export default function StrategyScannerPage() {
                 className={
                   meta.source === "live"
                     ? "text-[10px] text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
+                    : meta.source === "daily_close"
+                    ? "text-[10px] text-sky-300 border-sky-500/40 bg-sky-500/10"
                     : "text-[10px] text-amber-300 border-amber-500/40 bg-amber-500/10"
                 }
                 data-testid="badge-scan-source"
               >
-                {meta.source === "live" ? `Live · ${meta.provider ?? "broker"}` : "Illustrative"}
+                {meta.source === "live"
+                  ? `Live · ${meta.provider ?? "broker"}`
+                  : meta.source === "daily_close"
+                  ? "Daily data"
+                  : "Illustrative"}
               </Badge>
               <span className="text-xs text-muted-foreground" data-testid="text-scan-meta">
                 {visibleResults.length}
@@ -1091,6 +1135,16 @@ export default function StrategyScannerPage() {
               </SelectContent>
             </Select>
           </div>
+          {meta.source === "daily_close" && (
+            <div className="mb-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-xs text-sky-100/90 flex items-start gap-2" data-testid="banner-scan-daily-close">
+              <Info className="h-3.5 w-3.5 text-sky-400 mt-0.5 shrink-0" />
+              <div>
+                Results are based on <strong>daily data</strong> — last trading day closing prices
+                {meta.asOf ? ` (as of ${meta.asOf})` : ""} for the covered symbol universe. Connect
+                Tradier or TradeStation for live intraday scan results. <TwelveDataLink short />
+              </div>
+            </div>
+          )}
           {meta.source === "fallback" && (
             <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-100/90 flex items-start gap-2" data-testid="banner-scan-fallback">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />

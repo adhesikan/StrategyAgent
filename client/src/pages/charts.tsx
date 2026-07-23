@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { TwelveDataLink } from "@/components/data-attribution";
 import {
   Select,
   SelectContent,
@@ -156,9 +157,15 @@ export default function Charts() {
         <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2">
           <Plug className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
-            {(chartData as any).dataSource === "daily_close"
-              ? `Data shown is daily data — latest last trading day closing${(chartData as any).asOf ? ` (as of ${(chartData as any).asOf})` : ""}. Connect your broker for real-time data and options data.`
-              : "Showing sample data. Connect your broker for live market data."}
+            {(chartData as any).dataSource === "daily_close" ? (
+              <>
+                Data shown is daily data — latest last trading day closing
+                {(chartData as any).asOf ? ` (as of ${(chartData as any).asOf})` : ""}. Connect your
+                broker for real-time data and options data. <TwelveDataLink short />
+              </>
+            ) : (
+              "Showing sample data. Connect your broker for live market data."
+            )}
           </p>
           <Link href="/settings">
             <Button variant="outline" size="sm" className="gap-1">

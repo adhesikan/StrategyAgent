@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2, AlertCircle, Landmark } from "lucide-react";
 import { CongressFlowEmbed } from "@/components/congressflow-embed";
+import { TwelveDataLink } from "@/components/data-attribution";
 import { StockTradeTicket } from "@/components/stock-trade-ticket";
 import {
   Sheet,
@@ -746,7 +747,8 @@ export default function TradeDetailPage() {
               <p>
                 Data shown is <strong>daily data</strong> — the latest last trading day closing price for {ticker}
                 {quote?.asOf ? ` (as of ${quote.asOf})` : ""}. Connect your broker (Tradier or TradeStation)
-                for real-time data and options data, and always confirm actual prices before placing any order.
+                for real-time data and options data, and always confirm actual prices before placing any order.{" "}
+                <TwelveDataLink short />
               </p>
             </div>
           </Card>

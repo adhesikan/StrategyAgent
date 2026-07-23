@@ -3060,16 +3060,65 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
     try {
       const symbol = req.params.symbol.toUpperCase();
       const userId = req.session.userId!;
+
+      // Fallback when no broker is connected (or the broker quote fails):
+      // use the latest ingested Twelve Data daily close so illustrative
+      // plans are anchored to a real recent price instead of a placeholder.
+      // Gated by the central Twelve Data access-control service — external
+      // users in prelaunch mode never see provider-backed data here.
+      const dailyBarFallback = async () => {
+        try {
+          const { canAccessTwelveDataBackedAnalysis } = await import("./services/daily-market-data/access-control");
+          const { authStorage } = await import("./replit_integrations/auth/storage");
+          const user = await authStorage.getUser(userId);
+          const decision = canAccessTwelveDataBackedAnalysis({
+            user: user ? { id: user.id, email: user.email, role: user.role } : null,
+            feature: "quote_daily_close_fallback",
+          });
+          if (!decision.allowed) return null;
+          const { loadStoredBars } = await import("./services/daily-market-data/ingestion");
+          // loadStoredBars returns bars in ascending date order.
+          const bars = await loadStoredBars(symbol, 2);
+          if (!bars.length) return null;
+          const latest = bars[bars.length - 1];
+          const prev = bars.length > 1 ? bars[bars.length - 2] : undefined;
+          const last = Number(latest.close);
+          const prevClose = prev ? Number(prev.close) : null;
+          const change = prevClose != null ? +(last - prevClose).toFixed(4) : 0;
+          const changePercent = prevClose ? +((change / prevClose) * 100).toFixed(4) : 0;
+          return {
+            symbol,
+            last,
+            volume: Number(latest.volume) || 0,
+            change,
+            changePercent,
+            source: "daily_close" as const,
+            asOf: latest.tradeDate,
+          };
+        } catch (err: any) {
+          console.warn("[Quote] daily-bar fallback failed:", err?.message || err);
+          return null;
+        }
+      };
+
       const connection = await storage.getBrokerConnectionWithToken(userId);
       if (!connection || !connection.isConnected || !connection.accessToken) {
+        const fallback = await dailyBarFallback();
+        if (fallback) return res.json(fallback);
         return res.status(400).json({ error: "No active broker connection" });
       }
-      const quotes = await fetchQuotesFromBroker(connection, [symbol]);
-      const q = quotes.find((qt: any) => qt.symbol === symbol);
-      if (!q) {
-        return res.status(404).json({ error: "Quote not found" });
+      try {
+        const quotes = await fetchQuotesFromBroker(connection, [symbol]);
+        const q = quotes.find((qt: any) => qt.symbol === symbol);
+        if (q) {
+          return res.json({ symbol: q.symbol, last: q.last, volume: q.volume, change: q.change, changePercent: q.changePercent, source: "broker" });
+        }
+      } catch (err: any) {
+        console.warn("[Quote] broker quote failed, trying daily-bar fallback:", err?.message || err);
       }
-      res.json({ symbol: q.symbol, last: q.last, volume: q.volume, change: q.change, changePercent: q.changePercent });
+      const fallback = await dailyBarFallback();
+      if (fallback) return res.json(fallback);
+      return res.status(404).json({ error: "Quote not found" });
     } catch (error: any) {
       console.error("[Quote] error:", error.message);
       res.status(500).json({ error: "Failed to fetch quote" });

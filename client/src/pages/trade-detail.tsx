@@ -40,6 +40,8 @@ interface QuoteResponse {
   volume: number;
   change: number;
   changePercent: number;
+  source?: "broker" | "daily_close";
+  asOf?: string;
 }
 
 interface OptionContract {
@@ -736,6 +738,19 @@ export default function TradeDetailPage() {
             Score: {score}/100
           </Badge>
         </div>
+
+        {livePrice != null && quote?.source === "daily_close" && (
+          <Card className="p-3 border-sky-300 bg-sky-50 dark:bg-sky-950/20" data-testid="banner-daily-close-price">
+            <div className="flex items-start gap-2 text-xs text-sky-900 dark:text-sky-200">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                No broker connected — prices are based on the <strong>last daily close</strong> for {ticker}
+                {quote?.asOf ? ` (as of ${quote.asOf})` : ""}, not a live quote. Connect your broker
+                (Tradier or TradeStation) for real-time prices, and always confirm actual prices before placing any order.
+              </p>
+            </div>
+          </Card>
+        )}
 
         {(quoteError || livePrice == null) && !quoteLoading && (
           <Card className="p-3 border-amber-300 bg-amber-50 dark:bg-amber-950/20" data-testid="banner-no-live-price">

@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
+import { BiasText } from "@/components/bias-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, Check } from "lucide-react";
@@ -984,7 +985,7 @@ export function SimpleIdeaCard({ idea }: Props) {
       <div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="text-sm font-semibold" data-testid={`simple-setup-${idea.id}`}>
-            {setup}
+            <BiasText text={setup} />
           </div>
           {idea.setupCategory && (
             <Badge

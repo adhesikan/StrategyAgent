@@ -3,6 +3,7 @@ import { useLocation, useParams, useSearch } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { BiasText } from "@/components/bias-text";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Bookmark, Send, Sparkles, Check, AlertTriangle, Info, Loader2, AlertCircle, Landmark } from "lucide-react";
 import { CongressFlowEmbed } from "@/components/congressflow-embed";
@@ -907,13 +908,13 @@ export default function TradeDetailPage() {
               {plan.reasons.map((r) => (
                 <li key={r} className="flex items-start gap-2">
                   <Check className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
-                  <span>{r}</span>
+                  <span><BiasText text={r} /></span>
                 </li>
               ))}
               {plan.cautions.map((r) => (
                 <li key={r} className="flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                  <span>{r}</span>
+                  <span><BiasText text={r} /></span>
                 </li>
               ))}
             </ul>

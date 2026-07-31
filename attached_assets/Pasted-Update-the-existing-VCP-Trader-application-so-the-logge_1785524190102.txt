@@ -1,0 +1,805 @@
+Update the existing VCP Trader application so the logged-in homepage becomes an AI Command Center.
+
+IMPORTANT:
+Do not replace or break the existing application architecture.
+Do not remove the current top navigation.
+Do not modify MCP transport/auth/session logic.
+Do not modify production OHLCV integration.
+Do not modify scanner algorithms.
+Do not modify broker execution logic.
+Do not modify InstaTrade execution safeguards.
+Do not enable autonomous trading.
+
+The goal is to make AI the front door to VCP Trader while preserving direct access to power-user pages such as:
+
+Ideas
+Scanner
+Markets
+Congress
+Journal
+Ask AI
+
+The new homepage should help users answer:
+
+"What should I do next?"
+
+while Ask AI remains the deeper research and conversational analysis page.
+
+==================================================
+1. INSPECT EXISTING APP FIRST
+==================================================
+
+Before changing code, inspect the current VCP Trader application and identify:
+
+- current logged-in landing route
+- current /home implementation
+- current defaultLandingPage logic
+- top navigation component
+- Ask AI page
+- Ideas page/data source
+- Scanner page/data source
+- ranked opportunity APIs
+- market-data APIs
+- portfolio/account APIs
+- broker-connected state
+- existing watchlist APIs
+- current route guards
+- current loading/error/empty-state patterns
+- React/Vite layout conventions
+- current responsive behavior
+- existing analytics/event tracking
+- existing recent-analysis/history data if any
+
+Give me a concise architecture summary before implementing.
+
+Reuse existing APIs, services, routes and components wherever possible.
+
+Do not duplicate data-fetching or analysis logic.
+
+==================================================
+2. PRODUCT POSITIONING
+==================================================
+
+The logged-in homepage should become:
+
+VCP Trader AI Command Center
+
+This is NOT just the existing Ask AI page moved to /home.
+
+Think of the two experiences as:
+
+HOME / AI COMMAND CENTER
+→ What should I look at?
+→ What opportunities exist?
+→ What needs attention?
+→ What can VCP Trader help me do now?
+
+ASK AI
+→ Deep analysis
+→ Research
+→ Follow-up questions
+→ Compare opportunities
+→ Understand setups
+→ Build toward a trade candidate
+
+The homepage should orchestrate the product.
+
+Ask AI should remain the deeper conversational research experience.
+
+==================================================
+3. ROUTING
+==================================================
+
+Use:
+
+/home
+
+for the new AI Command Center unless the existing routing architecture strongly requires otherwise.
+
+Clicking the VCP Trader AI logo should navigate to:
+
+/home
+
+Preserve all existing deep links and specialized routes.
+
+Do NOT remove:
+
+Ideas
+Scanner
+Markets
+Congress
+Journal
+Ask AI
+
+from the top navigation.
+
+If a user explicitly selected another defaultLandingPage, preserve that preference.
+
+Users whose landing preference is /home should receive the new AI Command Center.
+
+==================================================
+4. PAGE HERO / AI COMMAND BAR
+==================================================
+
+At the top of /home, make AI the primary interaction.
+
+Headline:
+
+"What do you want VCP Trader to help you do today?"
+
+Subtext:
+
+"Analyze stocks, find opportunities, generate income, or understand your portfolio."
+
+Large AI command input.
+
+Placeholder:
+
+"Ask about a stock, find opportunities, generate income, or review your portfolio..."
+
+Primary CTA:
+
+Ask VCP Trader AI
+
+Submitting should:
+
+- use the existing Ask AI workflow
+- navigate to the existing Ask AI page
+- carry the entered query
+- automatically execute it if consistent with the existing UX
+
+Example:
+
+User enters:
+
+Analyze MU
+
+Flow:
+
+/home
+→ Ask AI
+→ existing /api/ask
+→ deterministic scan_vcp
+→ MCP
+→ structured VCP analysis
+
+Do NOT create a second AI backend or duplicate /api/ask.
+
+==================================================
+5. QUICK ACTIONS
+==================================================
+
+Directly below the command bar, add:
+
+Analyze a Stock
+Find Trades
+Generate Income
+Scan the Market
+
+Behavior:
+
+Analyze a Stock
+→ prompt/ticker flow leading to Ask AI
+→ example intent: "Analyze MU"
+
+Find Trades
+→ Ask AI intent:
+"Find high-quality trade opportunities"
+
+Generate Income
+→ Ask AI intent:
+"Find income opportunities"
+
+Scan the Market
+→ navigate directly to Scanner
+
+Do not hardcode specific tickers.
+
+Do not fabricate trades.
+
+==================================================
+6. TODAY'S OPPORTUNITIES
+==================================================
+
+Add:
+
+Today's Opportunities
+
+Use EXISTING ranked opportunity / scanner / Ideas data.
+
+Do not run expensive MCP scans across hundreds of symbols during homepage render.
+
+Show approximately 3–5 useful candidates.
+
+Potential fields:
+
+Ticker
+Price
+Opportunity/VCP score
+Stage
+Trend
+Setup type
+Confidence
+Status
+
+Example:
+
+CRDO
+91/100
+Pivot Ready
+Strong Uptrend
+Analyze →
+
+NVDA
+82/100
+Contraction
+Uptrend
+Analyze →
+
+MU
+18/100
+No Setup
+Weak
+Watch →
+
+Use real production data only.
+
+Never infer "Pivot Ready" from score alone.
+
+Use the existing standardized VCP stages:
+
+no-setup
+early
+developing
+contraction
+pivot-ready
+
+Display as:
+
+No Setup
+Early
+Developing
+Contraction
+Pivot Ready
+
+==================================================
+7. FUTURE TRADE-CANDIDATE READINESS
+==================================================
+
+Architect Today's Opportunities and the homepage UI so a future API can provide:
+
+stockCandidate
+optionsCandidate
+noTrade
+
+Do NOT build the full Trade Recommendation Engine yet.
+
+The homepage should be ready for future states such as:
+
+Stock Candidate
+Options Candidate
+No Trade
+
+but current logic should continue using existing opportunity/scanner information only.
+
+Do not generate fake trade candidates from the frontend.
+
+Future intended architecture:
+
+Opportunity
+→ Analyze
+→ Trade Candidate Engine
+→ Stock Candidate / Options Candidate / No Trade
+→ Trade Builder
+→ InstaTrade
+→ user confirms execution
+
+AI must never directly place an order.
+
+==================================================
+8. NO TRADE IS A FIRST-CLASS STATE
+==================================================
+
+This is important.
+
+VCP Trader should NOT imply that every ticker or every market session has a trade.
+
+If there are no high-quality opportunities:
+
+Display:
+
+"No high-quality setups currently meet your criteria."
+
+Provide:
+
+Scan the Market
+Review Watchlist
+Ask VCP Trader AI
+
+Do not lower thresholds just to populate the homepage.
+
+If a stock has:
+
+stage = no-setup
+
+do not show:
+
+Open Trade Builder
+
+Prefer:
+
+Analyze
+Watch
+Open Scanner
+
+==================================================
+9. OPPORTUNITY ACTIONS BY STAGE
+==================================================
+
+Make CTAs setup-aware.
+
+NO-SETUP / EARLY
+
+Actions:
+Analyze
+Watch
+Open Scanner
+
+Do NOT emphasize Trade Builder.
+
+DEVELOPING
+
+Actions:
+Analyze
+View Chart
+Open Scanner
+
+CONTRACTION
+
+Actions:
+Analyze
+View Setup
+View Chart
+
+PIVOT-READY
+
+Actions:
+Analyze
+View Setup
+Open Trade Builder
+
+Do not change trading logic.
+
+These are navigation/presentation decisions only.
+
+==================================================
+10. MY PORTFOLIO
+==================================================
+
+Add:
+
+My Portfolio
+
+Use existing authenticated portfolio/account APIs.
+
+Do not expose broker credentials or account identifiers client-side beyond existing safe patterns.
+
+Potential fields when already available:
+
+Portfolio value
+Day P/L
+Position count
+Positions needing attention
+Protection alerts
+Exposure
+Income candidates
+
+Only show insights supported by current production data.
+
+If brokerage is not connected:
+
+Show:
+
+Connect your broker to unlock portfolio intelligence
+
+CTA:
+Connect Broker
+
+If broker is connected but portfolio intelligence isn't yet implemented:
+
+Show a useful summary from existing data and:
+
+Ask AI about my portfolio
+
+Do NOT enable MCP get_positions for the model unless authenticated account scoping is already verified end-to-end.
+
+==================================================
+11. MARKET INTELLIGENCE
+==================================================
+
+Add:
+
+Market Intelligence
+
+Keep this compact.
+
+Reuse existing market services/components.
+
+Potential content:
+
+S&P / Nasdaq
+market direction/regime
+major movers
+earnings
+important market news
+sector strength
+
+Do not create another full Markets dashboard.
+
+CTA:
+
+View Markets →
+
+==================================================
+12. TODAY'S AI BRIEF
+==================================================
+
+If reliable existing data supports it, add:
+
+Today's AI Brief
+
+Example structure:
+
+"Semiconductors remain volatile while three names are forming tighter structures. Two setups are within 5% of actionable pivots."
+
+Do NOT fabricate this.
+
+If there is no reliable data source today:
+
+- build the component boundary
+- hide the card
+- document what backend data would be required later
+
+Do not create a scheduled AI job in this task.
+
+==================================================
+13. CONTINUE / RECENT ACTIVITY
+==================================================
+
+If existing persisted data exists, add a compact section such as:
+
+Continue Research
+
+or
+
+Recent Analyses
+
+Example:
+
+MU
+Analyzed 10 minutes ago
+
+CRDO
+Analyzed yesterday
+
+NVDA
+Analyzed yesterday
+
+Clicking should reopen or rerun the existing Ask AI analysis.
+
+Do not create a new persistence model solely for this homepage.
+
+==================================================
+14. ASK AI REMAINS A FULL RESEARCH PAGE
+==================================================
+
+Keep Ask AI as a separate page.
+
+The homepage AI command input is only the front door.
+
+Do not duplicate rich VCP analysis cards on the homepage.
+
+Homepage:
+
+Discover
+Prioritize
+Navigate
+
+Ask AI:
+
+Analyze
+Explain
+Compare
+Research
+Refine
+Prepare a trade candidate
+
+==================================================
+15. HOME PAGE LAYOUT
+==================================================
+
+Suggested desktop layout:
+
+------------------------------------------------
+
+What do you want VCP Trader to help you do today?
+
+[ Ask about a stock, find opportunities...      ] [ Ask ]
+
+[ Analyze Stock ] [ Find Trades ] [ Generate Income ] [ Scan Market ]
+
+------------------------------------------------
+
+Today's Opportunities                    My Portfolio
+
+CRDO   91   Pivot Ready                  Portfolio overview
+NVDA   82   Contraction                  Alerts / attention items
+MU     18   No Setup                     Portfolio AI CTA
+
+------------------------------------------------
+
+Market Intelligence                      Continue Research
+
+Market regime                            Recent analyses
+Indexes                                  Watchlist/recent work
+Key context
+
+------------------------------------------------
+
+Mobile:
+
+single column
+AI input first
+quick actions
+opportunities
+portfolio
+market intelligence
+recent activity
+
+==================================================
+16. RICH OPPORTUNITY CARDS
+==================================================
+
+Use compact cards/rows, not a dense scanner table.
+
+Potential visual hierarchy:
+
+Ticker
+Price / daily move
+
+Score badge
+Stage badge
+Trend
+
+One concise setup explanation
+
+Primary action
+
+Example:
+
+CRDO
+$XX.XX  +X.X%
+
+91 / 100
+PIVOT READY
+STRONG UPTREND
+
+Tightening contractions with price near actionable pivot.
+
+Analyze →
+
+Do not overwhelm users with all scanner internals on /home.
+
+Deep detail belongs in Ask AI or Scanner.
+
+==================================================
+17. MARKET/TRADE STATUS VISUAL LANGUAGE
+==================================================
+
+Reuse existing design tokens where possible.
+
+Use clear semantic states for:
+
+Strong
+Developing
+Neutral
+Weak
+No Setup
+
+Do not introduce aggressive "BUY NOW" or "SELL NOW" language.
+
+Use:
+
+High Quality
+Pivot Ready
+Developing
+Watch
+No Setup
+
+==================================================
+18. AI AS NAVIGATION
+==================================================
+
+The homepage AI input should support intents such as:
+
+Analyze MU
+
+Find the best VCP setups today
+
+Find bullish opportunities
+
+Find income opportunities
+
+What should I watch today?
+
+Review my portfolio
+
+Which of my positions need attention?
+
+The backend may not support all of these perfectly yet.
+
+Do not fake unsupported capabilities.
+
+When unsupported, route into Ask AI where existing fallback behavior applies.
+
+==================================================
+19. CONTEXTUAL NEXT ACTIONS
+==================================================
+
+Use authenticated product state to choose useful CTAs.
+
+Examples:
+
+No broker:
+Connect Broker
+
+Broker connected:
+Review Portfolio
+
+No qualifying setups:
+Scan Market
+
+Good opportunities:
+Review Opportunities
+
+Recent analysis:
+Continue Research
+
+Do not create personalized investment advice.
+
+==================================================
+20. FAILURE ISOLATION
+==================================================
+
+The homepage must remain usable if any single dependency fails.
+
+Examples:
+
+MCP unavailable
+→ opportunity/AI-enhanced cards degrade gracefully
+
+Portfolio API unavailable
+→ portfolio card shows temporary unavailable state
+
+Market API fails
+→ Market Intelligence card degrades independently
+
+Today's Opportunities empty
+→ valid empty state
+
+Do NOT make /home fail because one panel fails.
+
+==================================================
+21. PERFORMANCE
+==================================================
+
+Do not make /home expensive.
+
+Avoid:
+- hundreds of MCP calls
+- serial data loading
+- duplicated quote requests
+- full scanner recomputation during page load
+
+Prefer:
+- existing ranked opportunities
+- cached data
+- parallel requests
+- TanStack Query/existing query infrastructure
+- lazy loading for lower-priority panels
+
+==================================================
+22. ACCESSIBILITY
+==================================================
+
+Maintain:
+
+keyboard navigation
+visible focus
+screen-reader labels
+semantic headings
+accessible badges
+contrast
+mobile tap targets
+
+==================================================
+23. ANALYTICS
+==================================================
+
+If existing event tracking exists, track:
+
+home_ai_submit
+home_analyze_stock
+home_find_trades
+home_generate_income
+home_scan_market
+home_opportunity_analyze
+home_portfolio_cta
+home_market_cta
+
+Do not introduce a new analytics vendor.
+
+==================================================
+24. TESTS
+==================================================
+
+Add/update tests for:
+
+- logged-in /home renders AI Command Center
+- logo returns to /home
+- top nav remains intact
+- non-/home user landing preference remains respected
+- AI command submission routes to Ask AI
+- Analyze Stock works
+- Find Trades works
+- Generate Income works
+- Scan Market works
+- opportunities render from existing data
+- no-opportunity state works
+- no-setup cards do not emphasize Trade Builder
+- pivot-ready cards may expose Trade Builder navigation
+- portfolio connected/disconnected states
+- market intelligence error state
+- one failed card does not crash homepage
+- mobile layout has no horizontal overflow
+- no autonomous trade execution is introduced
+
+Run relevant existing tests and:
+
+npm run build
+
+Fix regressions.
+
+==================================================
+25. DO NOT PUSH
+==================================================
+
+Do not commit or push automatically.
+
+At completion report:
+
+1. Existing homepage architecture
+2. Files created
+3. Files modified
+4. New /home behavior
+5. AI command flow
+6. Quick-action behavior
+7. Opportunity source
+8. Opportunity-stage CTA behavior
+9. Portfolio source
+10. Market Intelligence source
+11. Recent activity source
+12. Failure isolation
+13. Performance strategy
+14. Mobile behavior
+15. Tests/results
+16. Build result
+17. Compatibility concerns
+18. Screenshot/description of final UI
+19. What backend work is still needed for:
+    - Stock Candidate
+    - Options Candidate
+    - No Trade
+20. Recommended next step
+
+Wait for my approval before commit/push.

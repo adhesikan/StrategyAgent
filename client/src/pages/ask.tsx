@@ -11,6 +11,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { ComplianceFooter } from "@/components/trading-shell";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { VcpAnalysisCards } from "@/components/vcp-analysis-cards";
+import type { VcpAnalysis } from "@/lib/vcp-analysis";
 
 interface AskPick {
   id: string;
@@ -102,6 +104,9 @@ interface AskResponse {
   source: "openai" | "rule_based";
   disclaimer: string;
   referencesUsed?: { id: string; question: string; category: string }[];
+  // Optional structured VCP analysis (stock-analysis intent only, additive)
+  vcpAnalysis?: VcpAnalysis;
+  vcpScanFailed?: boolean;
 }
 
 const CONFIDENCE_TONE: Record<string, string> = {
@@ -263,6 +268,15 @@ export default function AskPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {data.vcpScanFailed && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-vcp-scan-failed">
+                  <Info className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                  <div className="text-amber-100/90">VCP scanner data is temporarily unavailable.</div>
+                </div>
+              )}
+
+              {data.vcpAnalysis && <VcpAnalysisCards analysis={data.vcpAnalysis} />}
+
               <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-ask-answer">
                 {data.answer}
               </p>

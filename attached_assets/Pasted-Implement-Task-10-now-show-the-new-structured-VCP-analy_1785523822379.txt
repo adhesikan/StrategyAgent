@@ -1,0 +1,214 @@
+Implement Task #10 now: show the new structured VCP analysis as rich cards on the Ask AI page.
+
+Do not use the queued task card. Execute this directly.
+
+Context:
+The backend already returns the additive vcpAnalysis object on stock-analysis responses.
+
+Current backend fields include:
+
+vcpAnalysis.analysisSummary
+- vcpScore
+- stage
+- trend
+
+vcpAnalysis.vcpStructure
+- stage
+- base
+- contractions
+- volatility
+- volume
+- higherLows
+- actionablePivot
+- majorHigh
+- baseSupport
+- baseResistance
+
+vcpAnalysis.setupAssessment
+- qualifies
+- strengths[]
+- weaknesses[]
+- improvementConditions[]
+- watchConditions[]
+
+The existing Ask AI page currently renders:
+- headline
+- answer
+- keyPoints
+- riskNote
+- confidence
+- suggestions
+
+Goal:
+Add rich VCP analysis cards BELOW the headline / market summary and ABOVE or alongside the long-form AI narrative for responses where vcpAnalysis exists.
+
+Do not change backend analysis logic.
+Do not change MCP.
+Do not change scan_vcp.
+Do not change buildContext().
+Do not change trading/execution logic.
+
+Requirements:
+
+1. Inspect the existing Ask AI response component and response types first.
+
+2. Add frontend types for the optional vcpAnalysis object.
+
+3. If vcpAnalysis is absent:
+   preserve the existing Ask AI UI exactly.
+
+4. If vcpAnalysis exists:
+   render a dedicated structured section.
+
+Suggested layout:
+
+VCP ANALYSIS
+
+Top summary row/cards:
+- VCP Score: 18/100
+- Stage: No Setup
+- Trend: Weak
+- Setup: Not Qualified
+
+Structure card:
+- Base: No confirmed base
+- Contractions: summarize sequence if available
+- Volatility: Compressed / Not compressed
+- Volume: Contracting / Not contracting
+- Higher lows: Established / Not established
+- Actionable Pivot: None or $X
+- Major High: $X, clearly labeled "Historical context"
+
+Why card:
+If qualifies:
+  show strengths[]
+Else:
+  show weaknesses[]
+
+What Would Improve card:
+show improvementConditions[]
+
+Levels / Conditions to Watch card:
+show watchConditions[]
+
+5. CRITICAL SEMANTICS
+
+majorHigh must always be labeled as historical context.
+
+Never label majorHigh as:
+- pivot
+- breakout
+- buy point
+- entry
+
+Only actionablePivot is an actionable VCP pivot.
+
+If actionablePivot is absent/null:
+show:
+"Actionable Pivot: None"
+
+6. Contraction sequence
+
+If contractions[] exists, show a compact visual/text sequence such as:
+
+17% → 9% → 4.2%
+
+If durations are available, optionally show them in tooltip/subtext.
+
+Do not fabricate contraction values.
+
+7. Stage badge labels
+
+Map:
+
+no-setup → No Setup
+early → Early
+developing → Developing
+contraction → Contraction
+pivot-ready → Pivot Ready
+
+8. Visual design
+
+Use the existing VCP Trader design system:
+- dark cards
+- existing borders
+- compact spacing
+- existing typography
+- existing blue/green/amber status accents
+- no new design system
+
+Do not hardcode colors if semantic tokens/components already exist.
+
+9. Responsive behavior
+
+Desktop:
+- compact card grid
+- summary metrics at top
+- 2-column detail layout if space permits
+
+Mobile:
+- single-column stack
+- no horizontal overflow
+
+10. Preserve AI narrative
+
+Do not remove the existing answer paragraph.
+
+The structured VCP cards should help the user scan the analysis quickly.
+
+The narrative remains useful for explanation.
+
+11. Context-aware suggestions
+
+Preserve the server-provided suggestions.
+
+Do not add Trade Builder manually if the backend did not send it.
+
+12. Failure cases
+
+If:
+vcpScanFailed === true
+
+show a compact non-blocking message:
+
+"VCP scanner data is temporarily unavailable."
+
+Continue rendering the existing AI response.
+
+13. Tests
+
+Add tests covering:
+
+- vcpAnalysis absent → old UI unchanged
+- no-setup card rendering
+- pivot-ready card rendering
+- actionablePivot null → "None"
+- majorHigh labeled historical context
+- contraction sequence rendering
+- strengths vs weaknesses
+- improvement conditions
+- watch conditions
+- vcpScanFailed state
+- mobile-safe layout if test infrastructure supports it
+
+Run relevant frontend tests and:
+
+npm run build
+
+Fix regressions.
+
+14. Do not commit or push.
+
+At completion report:
+
+- files changed
+- component architecture
+- card layout
+- type changes
+- stage mapping
+- contraction sequence behavior
+- failure handling
+- test results
+- build result
+- screenshot or description of final UI
+- compatibility concerns

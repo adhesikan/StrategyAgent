@@ -682,10 +682,14 @@ async function restoreBrokerConnections() {
     throw err;
   });
 
-  // Health check endpoint for Railway/deployment platforms
-  app.get("/health", (_req, res) => {
-    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
-  });
+  // NOTE: /health is registered early in server/routes.ts (first match wins);
+  // it includes the non-fatal MCP dependency indicator.
+
+  // Close the MCP session cleanly on shutdown (no-op when MCP is disabled).
+  try {
+    const { hookMcpShutdown } = await import("./mcp/client");
+    hookMcpShutdown();
+  } catch {}
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route

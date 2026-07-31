@@ -55,6 +55,7 @@ import { registerDailyIdeasRoutes } from "./routes/daily-ideas";
 import { registerJournalRoutes } from "./routes/journal";
 import { registerPositionProtectionRoutes } from "./routes/position-protection";
 import { registerAskRoutes } from "./routes/ask";
+import { registerMcpStatusRoutes } from "./routes/mcp-status";
 import { registerHelpRoutes } from "./routes/help";
 import { registerMarketDataAdminRoutes } from "./routes/market-data-admin";
 import { registerDailyAnalysisRoutes } from "./routes/daily-analysis";
@@ -89,8 +90,20 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true, app: "vcptrader" });
+  // Health for Railway/deployment platforms. MCP status is a NON-FATAL
+  // dependency indicator — the app reports ok even when MCP is down.
+  app.get("/health", async (_req, res) => {
+    let mcp = "disabled";
+    try {
+      const { isMcpEnabled } = await import("./mcp/config");
+      if (isMcpEnabled()) {
+        const { mcpClient } = await import("./mcp/client");
+        mcp = mcpClient.isConnected ? "ok" : "degraded";
+      }
+    } catch {
+      mcp = "degraded";
+    }
+    res.json({ ok: true, app: "vcptrader", dependencies: { mcp } });
   });
 
   const MAINTENANCE_ALLOWED_PATHS = [
@@ -175,6 +188,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerJournalRoutes(app, isAuthenticated);
   registerPositionProtectionRoutes(app, isAuthenticated, isAdmin);
   registerAskRoutes(app, isAuthenticated);
+  registerMcpStatusRoutes(app, isAuthenticated, isAdmin);
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {

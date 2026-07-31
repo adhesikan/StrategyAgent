@@ -15,6 +15,15 @@ import { scoreSetup } from "../services/probability-engine";
 import type { TradeSetup } from "../agent/strategy-engine";
 import { buildLongCallPlan, buildLongPutPlan, buildBullCallSpread, buildBearPutSpread, type OptionPlan } from "../services/options-evaluator";
 import { getOptionExpirations, getOptionChain } from "../broker";
+import { isMcpEnabled } from "../mcp/config";
+
+// Extra system rules injected only when MCP live-data tools are enabled.
+const MCP_SYSTEM_RULES = `Live-data tools:
+- Use the provided tools (get_quote, get_market_history, get_news, scan_vcp) whenever current market prices, price history, news, or VCP scanner results are needed.
+- Never invent current market prices, VCP scores, or portfolio positions.
+- Never claim a tool was called unless you actually received a successful tool result.
+- If a tool result contains an error code (e.g. MCP_TOOL_ERROR), tell the user that live data is temporarily unavailable — do not substitute stale knowledge for the requested live data and do not fabricate values.
+- Trading execution is not available through these tools. Never claim an order was placed; actual trading is user-directed through InstaTrade.`;
 
 // Compact, human-readable trade ticket returned alongside the AI prose so
 // users see real strikes/expiry/credit instead of a vague suggestion. Every
@@ -836,18 +845,79 @@ async function callOpenAi(
       })),
     };
     const userContent = JSON.stringify({ question, context: compact });
-    const completion = await client.chat.completions.create({
+
+    // MCP live-data tools (feature-flagged). When enabled, the model can call
+    // the allowlisted read-only tools (quote / history / news / VCP scan) and
+    // we loop until it produces the final JSON answer. When disabled or when
+    // the MCP service is down, the flow degrades to the plain completion the
+    // app has always used — never crash, never fabricate live data.
+    let mcpTools: any[] = [];
+    let mcpSystemRules = "";
+    if (isMcpEnabled()) {
+      try {
+        const mcp = await import("../mcp/tools");
+        mcpTools = mcp.MCP_OPENAI_TOOLS;
+        mcpSystemRules = MCP_SYSTEM_RULES;
+      } catch (err) {
+        console.warn("[ask] mcp tools unavailable:", (err as Error).message);
+      }
+    }
+
+    const messages: any[] = [
+      { role: "system", content: mcpSystemRules ? `${SYSTEM_PROMPT}\n\n${mcpSystemRules}` : SYSTEM_PROMPT },
+      ...(referenceBlock
+        ? [{ role: "system" as const, content: referenceBlock }]
+        : []),
+      { role: "user", content: userContent },
+    ];
+
+    const MAX_TOOL_ROUNDS = 3;
+    let completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.3,
       response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...(referenceBlock
-          ? [{ role: "system" as const, content: referenceBlock }]
-          : []),
-        { role: "user", content: userContent },
-      ],
+      messages,
+      ...(mcpTools.length > 0 ? { tools: mcpTools } : {}),
     });
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const msg = completion.choices?.[0]?.message;
+      const toolCalls = (msg as any)?.tool_calls;
+      if (!toolCalls || toolCalls.length === 0) break;
+      messages.push(msg as any);
+      const { executeAiToolCall } = await import("../mcp/tools");
+      for (const tc of toolCalls) {
+        let resultPayload: unknown;
+        try {
+          const args = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {};
+          resultPayload = await executeAiToolCall(tc.function?.name ?? "", args);
+        } catch (err: any) {
+          // Normalized failure — the model is instructed to tell the user the
+          // live data is temporarily unavailable rather than inventing values.
+          resultPayload = {
+            code: err?.code ?? "MCP_TOOL_ERROR",
+            tool: tc.function?.name,
+            message: "Live data is temporarily unavailable.",
+          };
+        }
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: JSON.stringify(resultPayload),
+        });
+      }
+      completion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+        messages,
+        // Last round: force a final answer so we never return tool calls.
+        ...(mcpTools.length > 0 && round < MAX_TOOL_ROUNDS - 1
+          ? { tools: mcpTools }
+          : {}),
+      });
+    }
+
     const text = completion.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(text);
     const conf = String(parsed.confidence ?? "low").toLowerCase();

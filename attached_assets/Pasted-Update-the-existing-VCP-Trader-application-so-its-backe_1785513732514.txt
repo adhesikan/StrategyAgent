@@ -1,0 +1,713 @@
+Update the existing VCP Trader application so its backend can communicate with the already-deployed `vcp-trader-mcp` service over authenticated Streamable HTTP MCP.
+
+Important context:
+
+- VCP Trader is an existing production application built in Replit and deployed on Railway.
+- `vcp-trader-mcp` is a separate Railway service in the same overall VCP Trader environment.
+- The MCP server is already built, deployed, healthy, and verified end-to-end over HTTP.
+- Current MCP tools are:
+
+  get_quote
+  get_market_history
+  get_news
+  scan_vcp
+  get_positions
+
+- The MCP endpoint is:
+
+  /mcp
+
+- The health endpoint is:
+
+  /health
+
+- MCP HTTP auth uses:
+
+  Authorization: Bearer <MCP_SERVICE_TOKEN>
+
+- The MCP server uses the current Model Context Protocol SDK with Streamable HTTP and stateful sessions.
+- Do not rebuild or modify the MCP server in this task.
+- Do not add direct browser-to-MCP communication.
+- Do not add autonomous trading.
+- Do not change the existing InstaTrade execution boundary.
+
+Primary goal:
+
+Make the VCP Trader BACKEND an MCP client, then wire the existing AI/chat capability so a user request such as:
+
+"Analyze MU"
+
+can use MCP tools like:
+
+get_quote("MU")
+scan_vcp(["MU"])
+
+and synthesize the results into the existing VCP Trader AI response.
+
+Do not replace the current AI architecture blindly. Inspect the existing code first and integrate MCP into the current design.
+
+--------------------------------------------------
+1. INSPECT THE EXISTING APPLICATION FIRST
+--------------------------------------------------
+
+Before making changes, inspect the current VCP Trader codebase and identify:
+
+- frontend framework
+- backend framework
+- server entry point
+- AI/chat implementation
+- current LLM provider(s)
+- existing AI service/orchestrator
+- existing tool/function-calling logic, if any
+- authentication/session model
+- broker connection model
+- environment variable handling
+- logging/error handling
+- API routes used by the AI frontend
+- existing stock analysis services
+- existing scanner services
+- existing news services
+- existing portfolio services
+
+Give me a concise architecture summary before implementing.
+
+Do not create an entirely parallel AI stack if an existing one can be extended.
+
+--------------------------------------------------
+2. ADD MCP CONFIGURATION
+--------------------------------------------------
+
+Add backend-only environment configuration:
+
+MCP_ENABLED=true
+MCP_BASE_URL=
+MCP_SERVICE_TOKEN=
+MCP_TIMEOUT_MS=10000
+
+The production value of MCP_BASE_URL will point to the MCP service.
+
+If the VCP Trader service can reliably reach the MCP service through Railway private networking, support the private Railway hostname.
+
+Also support the public HTTPS endpoint for development/testing.
+
+Important:
+
+- Never expose MCP_SERVICE_TOKEN to frontend code.
+- Never include it in client bundles.
+- Never return it through APIs.
+- Never log it.
+- Do not expose MCP_BASE_URL to the browser unless there is an existing safe operational reason.
+- All MCP traffic must originate from the VCP Trader backend.
+
+--------------------------------------------------
+3. INSTALL/USE THE CURRENT MCP SDK
+--------------------------------------------------
+
+Use the current official Model Context Protocol TypeScript/JavaScript SDK compatible with the existing application runtime.
+
+Do not assume old SDK syntax.
+
+Inspect the installed/current package APIs and use the supported:
+
+StreamableHTTPClientTransport
+
+or the current equivalent.
+
+The implementation should follow the same client connection pattern already proven by the MCP server's `scripts/smoke-http.mjs`.
+
+--------------------------------------------------
+4. CREATE A REUSABLE MCP CLIENT LAYER
+--------------------------------------------------
+
+Create a small backend-only module such as:
+
+server/mcp/
+  client.ts
+  tools.ts
+  schemas.ts
+  errors.ts
+
+or place it wherever best fits the existing project architecture.
+
+The MCP client should:
+
+- connect lazily
+- authenticate with Bearer token
+- initialize the MCP session
+- discover tools
+- reuse the connection/session where safe
+- reconnect automatically if the session becomes invalid
+- use configurable timeouts
+- avoid crashing the VCP Trader server if MCP is unavailable
+- normalize MCP errors
+- never leak auth credentials
+
+Conceptual interface:
+
+class McpToolsClient {
+  connect()
+  disconnect()
+  listTools()
+  callTool(name, args)
+}
+
+Then expose typed wrappers such as:
+
+getQuote(symbol)
+getMarketHistory(symbol, interval, outputSize)
+getNews(symbol, limit)
+scanVcp(symbols, lookbackDays)
+getPositions(...)
+
+The rest of VCP Trader should not need to know MCP protocol details.
+
+--------------------------------------------------
+5. ADD A TOOL ALLOWLIST
+--------------------------------------------------
+
+Do not dynamically allow every tool returned by MCP.
+
+Add an explicit backend allowlist:
+
+get_quote
+get_market_history
+get_news
+scan_vcp
+get_positions
+
+If the MCP server later exposes new tools, VCP Trader must not automatically allow them without a code/config review.
+
+Reject unknown tools.
+
+--------------------------------------------------
+6. MCP CAPABILITY BOUNDARIES
+--------------------------------------------------
+
+Treat current MCP tools as read-only.
+
+Support conceptually:
+
+market:read
+research:read
+scanner:read
+portfolio:read
+
+Do NOT support:
+
+trade:execute
+
+Do not create order-placement MCP flows.
+
+Do not allow the AI to bypass InstaTrade.
+
+The existing rule remains:
+
+AI may research and analyze automatically.
+
+Actual trading remains user-directed through the approved VCP Trader execution flow.
+
+--------------------------------------------------
+7. USER CONTEXT SECURITY
+--------------------------------------------------
+
+Be careful with get_positions.
+
+Do NOT let the LLM invent arbitrary account IDs.
+
+The backend must derive user/account context from the authenticated VCP Trader session.
+
+If account context is not yet safely supported by the MCP server integration, leave get_positions disabled from AI use for the first production release while still keeping the typed wrapper available.
+
+For Phase 1 VCP integration, prioritize:
+
+get_quote
+get_market_history
+get_news
+scan_vcp
+
+Portfolio access can be enabled after authenticated account context is verified end-to-end.
+
+--------------------------------------------------
+8. INTEGRATE WITH THE EXISTING AI/CHAT ORCHESTRATOR
+--------------------------------------------------
+
+Find the current VCP Trader AI/chat flow.
+
+If it currently looks like:
+
+User message
+  ↓
+LLM
+  ↓
+response
+
+extend it into:
+
+User message
+  ↓
+AI orchestrator
+  ↓
+model determines whether current data/tools are needed
+  ↓
+approved MCP tools
+  ↓
+tool result returned to model
+  ↓
+final answer
+
+Do not replace the existing model/provider unless required.
+
+Use the current model's tool/function calling features if they already exist.
+
+The orchestrator should support multi-tool calls where appropriate.
+
+Example:
+
+User:
+
+"Analyze MU"
+
+The system should be able to obtain:
+
+get_quote({ symbol: "MU" })
+
+and:
+
+scan_vcp({
+  symbols: ["MU"],
+  lookbackDays: 120
+})
+
+Optionally:
+
+get_news({
+  symbol: "MU",
+  limit: 5
+})
+
+Then give those results to the model to synthesize the answer.
+
+--------------------------------------------------
+9. AI SYSTEM RULES
+--------------------------------------------------
+
+Add rules to the current AI system prompt or orchestration instructions.
+
+The AI should know:
+
+- Use MCP tools when current market, scanner, research, or portfolio data is required.
+- Never invent current market prices.
+- Never invent VCP scores.
+- Never invent portfolio positions.
+- Never claim a tool was called unless a successful tool response was received.
+- If a tool fails, say the relevant live data is temporarily unavailable.
+- Do not substitute stale model knowledge for current market data when current data was requested.
+- Research tools may be used automatically.
+- Trading execution is not available through MCP.
+- Never claim an order was placed unless the existing InstaTrade flow actually confirms it.
+
+--------------------------------------------------
+10. START WITH "ANALYZE MU"
+--------------------------------------------------
+
+Implement and test one narrow production path first.
+
+Target user request:
+
+"Analyze MU"
+
+Expected flow:
+
+User
+  ↓
+existing VCP AI API
+  ↓
+AI orchestrator
+  ↓
+get_quote("MU")
+  ↓
+scan_vcp(["MU"])
+  ↓
+model synthesizes results
+  ↓
+existing AI response UI
+
+Do not build a special hardcoded MU endpoint.
+
+This must work through the normal AI request flow.
+
+MU is only the first end-to-end test case.
+
+--------------------------------------------------
+11. TOOL RESPONSE HANDLING
+--------------------------------------------------
+
+MCP tools currently return structured data.
+
+Preserve structured values as long as possible.
+
+Do not stringify tool results unnecessarily before passing them to the model.
+
+Normalize errors into a VCP-side shape such as:
+
+{
+  code: "MCP_TOOL_ERROR",
+  tool: "get_quote",
+  message: "Market data is temporarily unavailable."
+}
+
+Do not show raw MCP protocol errors to users unless useful.
+
+--------------------------------------------------
+12. CONNECTION MANAGEMENT
+--------------------------------------------------
+
+The MCP server uses stateful Streamable HTTP sessions.
+
+Implement robust client lifecycle behavior.
+
+The VCP backend should:
+
+- lazily connect
+- reuse an active MCP client/session when safe
+- reconnect after session expiration or connection failure
+- avoid reconnect storms
+- close cleanly on backend shutdown
+- tolerate temporary MCP service restarts during Railway deploys
+
+Use a small retry strategy with bounded backoff.
+
+Do not infinitely retry requests.
+
+--------------------------------------------------
+13. HEALTH / READINESS
+--------------------------------------------------
+
+If the existing backend has a health/readiness system, add MCP status as a NON-FATAL dependency indicator.
+
+For example:
+
+{
+  "app": "ok",
+  "mcp": "ok"
+}
+
+or:
+
+{
+  "app": "ok",
+  "dependencies": {
+    "mcp": "degraded"
+  }
+}
+
+Do not make the entire VCP Trader frontend unavailable just because MCP is temporarily down.
+
+--------------------------------------------------
+14. LOGGING
+--------------------------------------------------
+
+Add safe structured logs for MCP usage.
+
+Example:
+
+{
+  "event": "mcp_tool_call",
+  "tool": "scan_vcp",
+  "durationMs": 123,
+  "success": true
+}
+
+If user identity is logged, use the existing safe internal identifier conventions.
+
+Never log:
+
+MCP_SERVICE_TOKEN
+Authorization headers
+broker credentials
+API keys
+full sensitive account data
+
+Add correlation/request IDs using the existing request context if one already exists.
+
+--------------------------------------------------
+15. METRICS / OBSERVABILITY
+--------------------------------------------------
+
+If the application already has metrics/telemetry, add:
+
+MCP call count
+MCP tool latency
+MCP failures
+MCP reconnects
+per-tool usage
+
+Do not introduce a large new observability framework solely for this task.
+
+Use existing infrastructure where possible.
+
+--------------------------------------------------
+16. FEATURE FLAG
+--------------------------------------------------
+
+Use:
+
+MCP_ENABLED=true/false
+
+When false:
+
+- application starts normally
+- AI continues functioning without MCP
+- no MCP connection attempted
+- current product behavior remains intact
+
+This gives us a rollback switch in Railway.
+
+--------------------------------------------------
+17. GRACEFUL FALLBACK
+--------------------------------------------------
+
+If MCP is unavailable and the user asks:
+
+"Analyze MU"
+
+do not crash.
+
+Return an appropriate response such as:
+
+"Live market analysis is temporarily unavailable. I can still discuss MU using non-live information, but I cannot verify the current quote or scanner setup right now."
+
+Use language consistent with the existing VCP UI.
+
+Do not silently fabricate live data.
+
+--------------------------------------------------
+18. DO NOT DUPLICATE VCP LOGIC
+--------------------------------------------------
+
+Do not rebuild the VCP scanner inside the VCP Trader application as part of this integration.
+
+The MCP tool is the current contract.
+
+Likewise, avoid duplicating MCP transport logic across AI routes.
+
+Use one centralized McpToolsClient.
+
+--------------------------------------------------
+19. TESTS
+--------------------------------------------------
+
+Add tests appropriate to the existing codebase.
+
+At minimum cover:
+
+1. MCP disabled → app still works.
+2. MCP client connects with valid configuration.
+3. missing MCP token in production produces a safe configuration error if MCP_ENABLED=true.
+4. unknown MCP tool is rejected by allowlist.
+5. get_quote wrapper maps correctly.
+6. scan_vcp wrapper maps correctly.
+7. MCP timeout is normalized.
+8. MCP session failure triggers bounded reconnect.
+9. MCP auth failure is handled safely.
+10. AI "Analyze MU" path can invoke quote + scanner tools.
+11. AI continues responding if MCP is unavailable.
+12. no MCP secrets appear in logs.
+13. frontend bundle does not contain MCP_SERVICE_TOKEN.
+14. get_positions cannot accept arbitrary account IDs from model-generated input.
+
+Mock MCP in most unit tests.
+
+If practical, add one integration test against a local mock Streamable HTTP MCP server.
+
+Do not make automated tests depend on the production Railway MCP deployment.
+
+--------------------------------------------------
+20. OPTIONAL DEVELOPMENT DIAGNOSTIC ENDPOINT
+--------------------------------------------------
+
+Only if appropriate for the current architecture, add an authenticated/admin-only backend diagnostic endpoint such as:
+
+GET /api/internal/mcp/status
+
+that returns safe data like:
+
+{
+  "enabled": true,
+  "connected": true,
+  "tools": [
+    "get_quote",
+    "get_market_history",
+    "get_news",
+    "scan_vcp"
+  ]
+}
+
+Do not expose:
+
+MCP_SERVICE_TOKEN
+session IDs if security-sensitive
+provider secrets
+
+Do not make this publicly accessible to ordinary users.
+
+--------------------------------------------------
+21. RAILWAY VARIABLES
+--------------------------------------------------
+
+Document what must be added to the VCP Trader Railway service:
+
+MCP_ENABLED=true
+
+MCP_BASE_URL=<MCP service URL>
+
+MCP_SERVICE_TOKEN=<same token configured on vcp-trader-mcp>
+
+MCP_TIMEOUT_MS=10000
+
+Do not change the MCP service token itself during this task.
+
+Do not put secrets in source control.
+
+--------------------------------------------------
+22. PRIVATE VS PUBLIC MCP URL
+--------------------------------------------------
+
+Support both environments:
+
+development/testing:
+https://vcp-trader-mcp-production.up.railway.app
+
+production:
+prefer Railway private service networking if the VCP Trader backend and MCP service can communicate reliably that way.
+
+Do not guess the private hostname.
+
+Document the actual Railway private endpoint once known/configured.
+
+The backend should not depend on a browser-accessible domain if private networking is available.
+
+--------------------------------------------------
+23. NO FRONTEND MCP SDK
+--------------------------------------------------
+
+Do NOT import MCP SDK packages into browser/client code.
+
+Do NOT call /mcp from React.
+
+Do NOT expose Bearer tokens through browser network requests.
+
+Correct:
+
+browser
+  ↓
+VCP backend
+  ↓
+MCP
+
+Incorrect:
+
+browser
+  ↓
+MCP
+
+--------------------------------------------------
+24. PRESERVE EXISTING PRODUCT BEHAVIOR
+--------------------------------------------------
+
+Do not break:
+
+authentication
+subscriptions
+broker connections
+scanner UI
+watchlists
+portfolio pages
+InstaTrade
+existing AI chat
+existing production APIs
+
+MCP integration should be additive.
+
+--------------------------------------------------
+25. IMPLEMENT INCREMENTALLY
+--------------------------------------------------
+
+Execution order:
+
+1. inspect application
+2. identify existing AI architecture
+3. add env validation
+4. add McpToolsClient
+5. test connection/listTools
+6. implement typed wrappers
+7. add allowlist
+8. integrate tool execution into AI layer
+9. test get_quote
+10. test scan_vcp
+11. implement "Analyze MU"
+12. add fallback behavior
+13. add tests
+14. run existing full test suite
+15. run build
+16. fix all regressions
+
+Do not stop after scaffolding.
+
+--------------------------------------------------
+26. FIRST PRODUCTION TEST
+--------------------------------------------------
+
+Once implementation is complete, tell me exactly how to test this in Railway.
+
+The first production test should be:
+
+User enters into the existing VCP Trader AI:
+
+Analyze MU
+
+Expected behind the scenes:
+
+get_quote("MU")
+
+scan_vcp(["MU"])
+
+Expected user-facing answer should reference:
+
+- returned price
+- scanner score
+- setup status
+- reasons/warnings if available
+
+It should NOT mention internal MCP protocol details to the user.
+
+--------------------------------------------------
+27. FINAL REPORT
+--------------------------------------------------
+
+When complete, show me:
+
+1. existing architecture you found
+2. files created
+3. files modified
+4. MCP client design
+5. AI orchestration changes
+6. tool allowlist
+7. typed tool wrappers
+8. reconnect/failure behavior
+9. environment variables required
+10. tests added
+11. full test results
+12. build result
+13. exact Railway variables I need to add
+14. exact production test steps
+15. any concerns before enabling MCP_ENABLED=true
+16. recommended next integration after "Analyze MU"
+
+Do not implement new MCP server tools.
+
+Do not implement trade execution.
+
+Do not modify the separate `vcp-trader-mcp` repository.
+
+This task is solely to make the existing VCP Trader application consume the already deployed MCP service safely through its backend AI layer.

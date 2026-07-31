@@ -250,6 +250,63 @@ describe("deriveVcpAnalysis / research-analysis structure", () => {
   });
 });
 
+describe("live MCP payload fixture (captured from production service, 2026-07-31)", () => {
+  // Trimmed real scan_vcp response for MU — locks in the actual field names
+  // the live vcp-trader-mcp service emits (results wrapper, higherLows.detected,
+  // volumeContraction.changePercent, ISO timestamp dates, lowercase trend
+  // classification, explicit nulls in base/actionablePivot).
+  const livePayload = {
+    results: [
+      {
+        symbol: "MU",
+        score: 18,
+        setupDetected: false,
+        stage: "no-setup",
+        majorHigh: { price: 1255, date: "2026-06-25T00:00:00.000Z", distancePercent: -33.39 },
+        base: { detected: false, startDate: null, durationDays: null, high: null, low: null, depthPercent: null, resistance: null, support: null },
+        trend: { classification: "weak", sma20: 912.34, sma50: 965.1, sma200: null, sma20Slope: -10.85 },
+        volatilityCompression: { detected: false, currentAtrPercent: 10.84, priorAtrPercent: 11.84, compressionPercent: 8.45 },
+        volumeContraction: { detected: true, recentAverageVolume: 44349649, baselineAverageVolume: 54421560, changePercent: -18.51 },
+        higherLows: { detected: false, swingLows: [{ date: "2026-07-17T00:00:00.000Z", price: 804 }] },
+        actionablePivot: { detected: false, price: null, source: null, distancePercent: null },
+        factors: [{ name: "trend", points: 4, maxPoints: 25 }, { name: "volume", points: 6, maxPoints: 10 }],
+        pivotPrice: null,
+        distanceToPivotPercent: null,
+        reasons: ["Volume moderately below baseline (19% lower)"],
+        warnings: ["Weak trend structure — price is low in its range or under the 50-day moving average"],
+      },
+    ],
+  };
+
+  it("deriveVcpAnalysis reads every live field correctly", async () => {
+    const { deriveVcpAnalysis } = await import("./analysis-scan");
+    const a = deriveVcpAnalysis(livePayload, "MU")!;
+    expect(a).not.toBeNull();
+    expect(a.analysisSummary).toEqual({ vcpScore: 18, stage: "no-setup", trend: "Weak" });
+    expect(a.vcpStructure.base).toBe("No confirmed base");
+    expect(a.vcpStructure.volatility).toBe("Not sufficiently compressed");
+    expect(a.vcpStructure.volume).toBe("Contracting 19%"); // from changePercent -18.51
+    expect(a.vcpStructure.higherLows).toBe("Not established"); // from higherLows.detected
+    expect(a.vcpStructure.actionablePivot).toEqual({ detected: false, price: null, source: null, distancePercent: null });
+    expect(a.vcpStructure.majorHigh).toEqual({ price: 1255, date: "2026-06-25", distancePercent: -33.39, note: "historical context only" });
+    expect(a.setupAssessment.qualifies).toBe(false);
+    // every deficiency in the live payload produces an improvement condition
+    expect(a.setupAssessment.improvementConditions.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("summarizeVcpScan renders live payload with clean dates and 'None' pivot", async () => {
+    const { summarizeVcpScan } = await import("./analysis-scan");
+    const text = summarizeVcpScan(livePayload, "MU")!;
+    expect(text).toContain("VCP Score: 18/100");
+    expect(text).toContain("Setup: No valid VCP setup");
+    expect(text).toContain("Trend: Weak");
+    expect(text).toContain("on 2026-06-25"); // ISO timestamp normalized
+    expect(text).not.toContain("T00:00:00");
+    expect(text).toContain("33.4% below that high");
+    expect(text).toContain("Actionable VCP pivot: None");
+  });
+});
+
 describe("suggestionsForVcpStage (context-aware next steps)", () => {
   it("no-setup/early: no Trade Builder emphasis", async () => {
     const { suggestionsForVcpStage } = await import("./analysis-scan");

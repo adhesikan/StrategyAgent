@@ -86,6 +86,21 @@ function fmtPrice(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Live MCP service returns full ISO timestamps (e.g. "2026-06-25T00:00:00.000Z");
+// present dates as YYYY-MM-DD.
+function fmtDate(v: unknown): string | null {
+  if (typeof v !== "string" || !v) return null;
+  const d = v.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : v;
+}
+
+// Live service returns lowercase classifications ("weak", "strong uptrend");
+// capitalize the first letter for presentation.
+function fmtTrend(v: unknown): string | null {
+  if (typeof v !== "string" || !v) return null;
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
+
 /**
  * Deterministic plain-English summary of an expanded scan_vcp result, in the
  * spec's structure. Defensive: any missing/unknown fields are simply omitted.
@@ -113,7 +128,7 @@ export function summarizeVcpScan(raw: unknown, fallbackSymbol?: string): string 
     (r.setupDetected === false ? STAGE_LABELS["no-setup"] : r.setupDetected === true ? "Setup detected" : null);
   if (setupLabel) lines.push(`Setup: ${setupLabel}`);
 
-  const trend = typeof r.trend?.classification === "string" ? r.trend.classification : null;
+  const trend = fmtTrend(r.trend?.classification);
   if (trend) lines.push(`Trend: ${trend}`);
 
   // majorHigh — historical context only. Deliberately worded so it can never
@@ -121,7 +136,8 @@ export function summarizeVcpScan(raw: unknown, fallbackSymbol?: string): string 
   const mhPrice = num(r.majorHigh?.price);
   if (mhPrice !== null) {
     let line = `Major high (historical context, not an entry level): ${fmtPrice(mhPrice)}`;
-    if (typeof r.majorHigh?.date === "string" && r.majorHigh.date) line += ` on ${r.majorHigh.date}`;
+    const mhDate = fmtDate(r.majorHigh?.date);
+    if (mhDate) line += ` on ${mhDate}`;
     const below = num(r.majorHigh?.distancePercent ?? r.majorHigh?.percentBelow);
     if (below !== null) line += `; current price is ${Math.abs(below).toFixed(1)}% below that high`;
     lines.push(line);
@@ -243,7 +259,7 @@ export function deriveVcpAnalysis(raw: unknown, fallbackSymbol?: string): VcpAna
 
   const stage = normalizeStage(r.stage);
   const score = num(r.score);
-  const trend = typeof r.trend?.classification === "string" ? r.trend.classification : null;
+  const trend = fmtTrend(r.trend?.classification);
 
   // --- structure ---
   const base = r.base;
@@ -356,7 +372,7 @@ export function deriveVcpAnalysis(raw: unknown, fallbackSymbol?: string): VcpAna
       actionablePivot: { detected: apDetected, price: apDetected ? apPrice : null, source: typeof ap?.source === "string" ? ap.source : null, distancePercent: apDist },
       majorHigh: {
         price: mhPrice,
-        date: typeof r.majorHigh?.date === "string" ? r.majorHigh.date : null,
+        date: fmtDate(r.majorHigh?.date),
         distancePercent: num(r.majorHigh?.distancePercent ?? r.majorHigh?.percentBelow),
         note: "historical context only",
       },

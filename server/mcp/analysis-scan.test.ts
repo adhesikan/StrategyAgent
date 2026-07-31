@@ -264,6 +264,11 @@ describe("live MCP payload fixture (captured from production service, 2026-07-31
         stage: "no-setup",
         majorHigh: { price: 1255, date: "2026-06-25T00:00:00.000Z", distancePercent: -33.39 },
         base: { detected: false, startDate: null, durationDays: null, high: null, low: null, depthPercent: null, resistance: null, support: null },
+        contractions: [
+          { startDate: "2026-06-03T00:00:00.000Z", endDate: "2026-06-09T00:00:00.000Z", high: 1089.29, low: 854.35, depthPercent: 21.57, durationDays: 4, lengthDays: 4 },
+          { startDate: "2026-06-25T00:00:00.000Z", endDate: "2026-07-07T00:00:00.000Z", high: 1255, low: 891.66, depthPercent: 28.95, durationDays: 7, lengthDays: 7 },
+          { startDate: "2026-07-09T00:00:00.000Z", endDate: "2026-07-17T00:00:00.000Z", high: 1035.5, low: 804, depthPercent: 22.36, durationDays: 6, lengthDays: 6 },
+        ],
         trend: { classification: "weak", sma20: 912.34, sma50: 965.1, sma200: null, sma20Slope: -10.85 },
         volatilityCompression: { detected: false, currentAtrPercent: 10.84, priorAtrPercent: 11.84, compressionPercent: 8.45 },
         volumeContraction: { detected: true, recentAverageVolume: 44349649, baselineAverageVolume: 54421560, changePercent: -18.51 },
@@ -292,6 +297,19 @@ describe("live MCP payload fixture (captured from production service, 2026-07-31
     expect(a.setupAssessment.qualifies).toBe(false);
     // every deficiency in the live payload produces an improvement condition
     expect(a.setupAssessment.improvementConditions.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("contractionSequence carries per-contraction depths/durations from the live contractions[] array", async () => {
+    const { deriveVcpAnalysis } = await import("./analysis-scan");
+    const a = deriveVcpAnalysis(livePayload, "MU")!;
+    expect(a.vcpStructure.contractionSequence).toEqual([
+      { depthPercent: 21.57, durationDays: 4 },
+      { depthPercent: 28.95, durationDays: 7 },
+      { depthPercent: 22.36, durationDays: 6 },
+    ]);
+    // absent contractions[] → field omitted entirely, never fabricated
+    const noContr = deriveVcpAnalysis({ results: [{ ...livePayload.results[0], contractions: undefined }] }, "MU")!;
+    expect(noContr.vcpStructure.contractionSequence).toBeUndefined();
   });
 
   it("summarizeVcpScan renders live payload with clean dates and 'None' pivot", async () => {

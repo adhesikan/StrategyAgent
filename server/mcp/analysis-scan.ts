@@ -205,6 +205,8 @@ export interface VcpAnalysis {
     stage: string | null;
     base: string;
     contractions: string | null;
+    /** Per-contraction depth/duration from the scanner's contractions[] — never fabricated; omitted when the scanner supplies none. */
+    contractionSequence?: { depthPercent: number; durationDays: number | null }[];
     volatility: string | null;
     volume: string | null;
     higherLows: string | null;
@@ -360,12 +362,25 @@ export function deriveVcpAnalysis(raw: unknown, fallbackSymbol?: string): VcpAna
 
   const qualifies = stage === "pivot-ready" || stage === "contraction";
 
+  // Per-contraction sequence straight from the scanner's contractions[] array
+  // (live field names: depthPercent, durationDays/lengthDays). Entries without
+  // a numeric depth are skipped; nothing is fabricated.
+  const contractionSequence: { depthPercent: number; durationDays: number | null }[] = [];
+  if (Array.isArray(r.contractions)) {
+    for (const c of r.contractions) {
+      const depth = num(c?.depthPercent);
+      if (depth === null) continue;
+      contractionSequence.push({ depthPercent: depth, durationDays: num(c?.durationDays ?? c?.lengthDays) });
+    }
+  }
+
   return {
     analysisSummary: { vcpScore: score !== null ? Math.round(score) : null, stage, trend },
     vcpStructure: {
       stage: stage ? STAGE_LABELS[stage] ?? stage : null,
       base: baseText,
       contractions: contractionsOk ? "Tightening" : "No valid tightening sequence",
+      ...(contractionSequence.length > 0 ? { contractionSequence } : {}),
       volatility: volComp === true ? "Compressing" : volComp === false ? "Not sufficiently compressed" : null,
       volume: volCon === true ? (volConPct !== null ? `Contracting ${Math.abs(volConPct).toFixed(0)}%` : "Contracting") : volCon === false ? "Not contracting" : null,
       higherLows: hl === true ? "Established" : hl === false ? "Not established" : null,

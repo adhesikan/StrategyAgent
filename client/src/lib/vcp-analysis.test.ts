@@ -5,6 +5,7 @@ import {
   pivotDisplay,
   majorHighDisplay,
   structureRows,
+  contractionSequenceDisplay,
   assessmentItems,
   isRenderableVcpAnalysis,
   type VcpAnalysis,
@@ -123,6 +124,39 @@ describe("structureRows", () => {
     const rows = structureRows({ ...noSetup.vcpStructure, contractions: null, volatility: null, volume: null, higherLows: null });
     const labels = rows.map((r) => r.label);
     expect(labels).toEqual(["Base", "Actionable pivot", "Major high"]);
+  });
+});
+
+describe("contractionSequenceDisplay", () => {
+  it("formats depths as an arrow sequence with durations", () => {
+    const r = contractionSequenceDisplay([
+      { depthPercent: 21.57, durationDays: 4 },
+      { depthPercent: 28.95, durationDays: 7 },
+      { depthPercent: 22.36, durationDays: 6 },
+    ])!;
+    expect(r.sequence).toBe("21.6% → 28.9% → 22.4%");
+    expect(r.durations).toBe("4, 7, 6 days");
+  });
+  it("omits durations line when any duration is missing; null when no sequence", () => {
+    expect(contractionSequenceDisplay([{ depthPercent: 17, durationDays: null }])!.durations).toBeNull();
+    expect(contractionSequenceDisplay([])).toBeNull();
+    expect(contractionSequenceDisplay(undefined)).toBeNull();
+  });
+  it("structureRows appends the sequence to the Contractions row with duration subtext", () => {
+    const rows = structureRows({
+      ...noSetup.vcpStructure,
+      contractionSequence: [
+        { depthPercent: 21.57, durationDays: 4 },
+        { depthPercent: 28.95, durationDays: 7 },
+      ],
+    });
+    const row = rows.find((r) => r.label === "Contractions")!;
+    expect(row.value).toBe("No valid tightening sequence (21.6% → 28.9%)");
+    expect(row.subtext).toBe("4, 7 days");
+    // without a sequence the row is unchanged
+    const plain = structureRows(noSetup.vcpStructure).find((r) => r.label === "Contractions")!;
+    expect(plain.value).toBe("No valid tightening sequence");
+    expect(plain.subtext).toBeUndefined();
   });
 });
 

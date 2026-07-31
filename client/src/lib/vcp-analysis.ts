@@ -18,6 +18,7 @@ export interface VcpAnalysis {
     stage: string | null;
     base: string;
     contractions: string | null;
+    contractionSequence?: { depthPercent: number; durationDays: number | null }[];
     volatility: string | null;
     volume: string | null;
     higherLows: string | null;
@@ -93,13 +94,33 @@ export interface StructureRow {
   value: string;
   /** extra emphasis for the historical-context caveat */
   muted?: boolean;
+  /** optional secondary line (e.g. contraction durations) */
+  subtext?: string;
+}
+
+/** "21.6% → 28.9% → 22.4%" from the scanner's per-contraction depths. Null when absent. */
+export function contractionSequenceDisplay(
+  seq: { depthPercent: number; durationDays: number | null }[] | undefined | null,
+): { sequence: string; durations: string | null } | null {
+  if (!Array.isArray(seq) || seq.length === 0) return null;
+  const sequence = seq.map((c) => `${Math.abs(c.depthPercent).toFixed(1)}%`).join(" → ");
+  const days = seq.map((c) => c.durationDays).filter((d): d is number => d !== null && Number.isFinite(d));
+  const durations = days.length === seq.length ? `${days.join(", ")} days` : null;
+  return { sequence, durations };
 }
 
 /** Rows for the Structure card. Fields the scanner didn't supply are omitted, never invented. */
 export function structureRows(vs: VcpAnalysis["vcpStructure"]): StructureRow[] {
   const rows: StructureRow[] = [];
   if (vs.base) rows.push({ label: "Base", value: vs.base });
-  if (vs.contractions) rows.push({ label: "Contractions", value: vs.contractions });
+  if (vs.contractions) {
+    const seq = contractionSequenceDisplay(vs.contractionSequence);
+    rows.push({
+      label: "Contractions",
+      value: seq ? `${vs.contractions} (${seq.sequence})` : vs.contractions,
+      ...(seq?.durations ? { subtext: seq.durations } : {}),
+    });
+  }
   if (vs.volatility) rows.push({ label: "Volatility", value: vs.volatility });
   if (vs.volume) rows.push({ label: "Volume", value: vs.volume });
   if (vs.higherLows) rows.push({ label: "Higher lows", value: vs.higherLows });

@@ -67,7 +67,10 @@ export function VcpAnalysisCards({ analysis }: { analysis: VcpAnalysis | undefin
             {rows.map((r) => (
               <div key={r.label} className="flex items-start justify-between gap-3 text-sm" data-testid={`row-vcp-structure-${r.label.toLowerCase().replace(/\s+/g, "-")}`}>
                 <span className="text-muted-foreground shrink-0">{r.label}</span>
-                <span className={`text-right min-w-0 break-words ${r.muted ? "text-muted-foreground text-xs mt-0.5" : ""}`}>{r.value}</span>
+                <span className={`text-right min-w-0 break-words ${r.muted ? "text-muted-foreground text-xs mt-0.5" : ""}`}>
+                  {r.value}
+                  {r.subtext && <span className="block text-[10px] text-muted-foreground">{r.subtext}</span>}
+                </span>
               </div>
             ))}
           </CardContent>

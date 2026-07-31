@@ -1,0 +1,361 @@
+Implement the production internal scanner API required by vcp-trader-mcp Sprint 1B.
+
+Do not change scanner algorithms.
+Do not duplicate scanner logic.
+Do not modify MCP code in this task.
+Do not change broker execution or InstaTrade.
+Do not introduce autonomous trading.
+
+The existing MCP StrategyProvider is already implemented and expects three VCP Trader internal endpoints:
+
+1. GET /api/internal/scanner/strategies
+2. GET /api/internal/scanner/setup
+3. GET /api/internal/scanner/opportunities
+
+Goal:
+Expose existing VCP Trader scanner strategy metadata and stored/current scanner results through authenticated backend-only endpoints so the separate vcp-trader-mcp Railway service can consume and normalize them.
+
+Use the existing:
+- scanner services
+- scheduled scan results
+- opportunity storage
+- strategy definitions
+- score/status/direction/timeframe fields
+- VCP_INTERNAL_API_KEY auth pattern
+
+Do not recreate strategy algorithms.
+
+==================================================
+1. INSPECT FIRST
+==================================================
+
+Inspect the existing VCP Trader codebase and identify:
+
+- authoritative scanner strategy definitions
+- all strategy IDs actually supported
+- display names
+- categories
+- directions
+- supported timeframes
+- scheduled/on-demand support
+- opportunity/result storage schema
+- GET /api/opportunities implementation
+- scanner result retrieval methods
+- status/stage fields
+- ranking/order semantics
+- freshness timestamps
+- existing internal bearer-auth middleware/pattern
+
+Report the exact supported production strategies before implementing.
+
+Do not assume the provisional MCP strategy list is correct.
+
+==================================================
+2. AUTH
+==================================================
+
+Protect all three routes with:
+
+Authorization: Bearer <VCP_INTERNAL_API_KEY>
+
+Requirements:
+- backend-only
+- no normal user session required
+- 401 missing token
+- 401/403 invalid token according to existing conventions
+- never log token/header
+- use constant-time comparison if consistent with existing internal auth
+- no browser exposure
+
+Reuse existing internal market-data auth if available.
+
+==================================================
+3. GET /api/internal/scanner/strategies
+==================================================
+
+Return authoritative production strategy metadata.
+
+Target shape:
+
+{
+  strategies: [
+    {
+      id,
+      displayName,
+      direction,
+      category,
+      supportedTimeframes,
+      targetedScan,
+      rankedOpportunities,
+      enabled
+    }
+  ],
+  generatedAt
+}
+
+Use actual strategy IDs and metadata from VCP Trader.
+
+Do not expose strategies that are not truly implemented.
+
+This endpoint is authoritative and will be used by MCP to reconcile its provisional registry.
+
+==================================================
+4. GET /api/internal/scanner/setup
+==================================================
+
+Input:
+
+symbol
+strategy
+timeframe
+
+Example:
+
+GET /api/internal/scanner/setup?symbol=NVDA&strategy=momentum_breakout&timeframe=1d
+
+Purpose:
+Return the current/latest setup for one symbol + strategy.
+
+Prefer:
+- existing stored/current scanner result
+- existing targeted scanner service if already supported
+
+Do not trigger expensive unsupported scanning merely because this endpoint is called.
+
+Target shape:
+
+{
+  setup: {
+    symbol,
+    strategy,
+    strategyDisplayName,
+    direction,
+    score,
+    status,
+    timeframe,
+    trigger,
+    invalidation,
+    technicalObjective,
+    currentPrice,
+    reasons,
+    warnings,
+    detectedAt,
+    source,
+    details
+  },
+  generatedAt,
+  fresh
+}
+
+The exact internal source fields may differ; normalize at the route/service boundary.
+
+Do not fabricate missing trigger/invalidation/objective values.
+
+Return null where appropriate.
+
+Validate symbol, strategy and timeframe.
+
+Unsupported combinations should return a structured validation error.
+
+==================================================
+5. GET /api/internal/scanner/opportunities
+==================================================
+
+Input filters:
+
+strategies?
+direction?
+minScore?
+status?
+timeframe?
+limit?
+
+Example:
+
+GET /api/internal/scanner/opportunities?strategies=vcp,momentum_breakout&direction=bullish&limit=10
+
+Purpose:
+Return existing ranked/stored opportunities.
+
+CRITICAL:
+Do NOT synchronously scan the full market.
+
+Use existing opportunity data.
+
+Preserve production ranking/order.
+
+Do not sort raw cross-strategy scores unless the current production service already does so.
+
+Target response:
+
+{
+  opportunities: [
+    {
+      symbol,
+      strategy,
+      strategyDisplayName,
+      direction,
+      score,
+      status,
+      timeframe,
+      trigger,
+      invalidation,
+      technicalObjective,
+      currentPrice,
+      reasons,
+      warnings,
+      detectedAt,
+      source,
+      details
+    }
+  ],
+  generatedAt,
+  source
+}
+
+Preserve multiple strategies for the same symbol.
+
+Example:
+
+NVDA / VCP
+NVDA / Momentum Breakout
+
+should remain separate entries.
+
+==================================================
+6. FRESHNESS
+==================================================
+
+Expose truthful freshness metadata.
+
+Do not label scheduled/cached results as live.
+
+Use existing timestamps where available.
+
+fresh should reflect whether the result meets an existing/documented freshness threshold.
+
+If no explicit production freshness rule exists, document what is available instead of inventing one.
+
+==================================================
+7. STRATEGY STATUS NORMALIZATION
+==================================================
+
+Inspect existing strategy result status/stage semantics.
+
+Do not force all strategies into VCP stage names.
+
+Normalize only the common fields needed by MCP:
+
+forming
+ready
+triggered
+extended
+invalid
+unknown
+
+If source strategy semantics differ, preserve the raw/original status inside details.
+
+Document exact mappings by strategy family.
+
+==================================================
+8. SCORE SEMANTICS
+==================================================
+
+Do not claim scores across strategies are directly comparable unless production already defines them that way.
+
+Expose raw strategy score.
+
+Preserve existing production ranking separately.
+
+==================================================
+9. DATA SAFETY
+==================================================
+
+Do not expose:
+- user IDs
+- brokerage credentials
+- account IDs
+- tokens
+- internal DB IDs unless required
+- order data
+
+These endpoints expose scanner intelligence only.
+
+==================================================
+10. TESTS
+==================================================
+
+Add tests for:
+
+- missing auth
+- invalid auth
+- strategy list
+- all production strategy IDs
+- disabled strategy behavior
+- valid setup lookup
+- invalid symbol
+- invalid strategy
+- unsupported timeframe
+- missing setup
+- opportunities filters
+- direction filtering
+- strategy filtering
+- status filtering
+- minScore behavior
+- limit enforcement
+- production order preserved
+- duplicate symbol with multiple strategies preserved
+- freshness metadata
+- no sensitive fields
+- malformed stored result handling
+- route does not trigger a full-market scan
+
+Run relevant existing tests and:
+
+npm run build
+
+==================================================
+11. MCP CONTRACT CHECK
+==================================================
+
+Compare the actual implemented response schemas against the already-built vcp-trader-mcp StrategyProvider contract.
+
+Report any mismatch precisely.
+
+Do not modify the MCP repo from this task.
+
+If a mismatch exists, recommend whether to adjust:
+- the VCP internal API
+or
+- the MCP adapter
+
+Prefer the cleaner/stabler contract.
+
+==================================================
+12. DO NOT PUSH
+==================================================
+
+Do not commit.
+Do not push.
+Do not deploy.
+
+At completion report:
+
+1. Actual production strategies discovered
+2. Files created
+3. Files modified
+4. Auth implementation
+5. /scanner/strategies contract
+6. /scanner/setup contract
+7. /scanner/opportunities contract
+8. Status mapping
+9. Ranking behavior
+10. Freshness behavior
+11. Tests/results
+12. Build result
+13. Any MCP contract mismatches
+14. Exact Railway env required
+15. Exact steps to validate MCP with STRATEGY_PROVIDER=vcp
+16. Recommended next step
+
+Wait for my approval.

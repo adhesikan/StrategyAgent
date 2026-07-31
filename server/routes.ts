@@ -57,6 +57,7 @@ import { registerPositionProtectionRoutes } from "./routes/position-protection";
 import { registerAskRoutes } from "./routes/ask";
 import { registerMcpStatusRoutes } from "./routes/mcp-status";
 import { registerInternalMarketRoutes } from "./routes/internal-market";
+import { registerInternalScannerRoutes } from "./routes/internal-scanner";
 import { registerHelpRoutes } from "./routes/help";
 import { registerMarketDataAdminRoutes } from "./routes/market-data-admin";
 import { registerDailyAnalysisRoutes } from "./routes/daily-analysis";
@@ -192,6 +193,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerMcpStatusRoutes(app, isAuthenticated, isAdmin);
   // Service-to-service market data (Bearer VCP_INTERNAL_API_KEY, no user auth)
   registerInternalMarketRoutes(app);
+  registerInternalScannerRoutes(app);
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {

@@ -158,6 +158,153 @@ describe("summarizeVcpScan (expanded scan_vcp presentation)", () => {
   });
 });
 
+describe("deriveVcpAnalysis / research-analysis structure", () => {
+  const load = async () => import("./analysis-scan");
+
+  const weakMu = {
+    symbol: "MU",
+    score: 18,
+    setupDetected: false,
+    stage: "no-setup",
+    trend: { classification: "Weak" },
+    majorHigh: { price: 1255, date: "2026-01-15", distancePercent: 33 },
+    base: { detected: false },
+    volatilityCompression: { detected: false },
+    volumeContraction: { detected: true, percent: 19 },
+    higherLows: { established: false },
+    actionablePivot: { detected: false, price: null },
+    reasons: ["price below key trend levels"],
+    warnings: ["recent pullback remains too deep"],
+  };
+
+  const strongNvda = {
+    symbol: "NVDA",
+    score: 94,
+    setupDetected: true,
+    stage: "pivot-ready",
+    trend: { classification: "Strong uptrend" },
+    majorHigh: { price: 1274.55, date: "2026-05-12", distancePercent: 5 },
+    base: { detected: true, durationDays: 42, depthPercent: 12.5, support: 92.1, resistance: 100.53 },
+    volatilityCompression: { detected: true },
+    volumeContraction: { detected: true, percent: 35 },
+    higherLows: { established: true },
+    actionablePivot: { detected: true, price: 100.53, source: "resistance", distancePercent: 0.75 },
+  };
+
+  it("no-setup: weaknesses + improvements derived from actual deficiencies, no entry level", async () => {
+    const { deriveVcpAnalysis } = await load();
+    const a = deriveVcpAnalysis(weakMu, "MU")!;
+    expect(a.analysisSummary).toEqual({ vcpScore: 18, stage: "no-setup", trend: "Weak" });
+    expect(a.setupAssessment.qualifies).toBe(false);
+    expect(a.vcpStructure.base).toBe("No confirmed base");
+    expect(a.vcpStructure.actionablePivot).toEqual({ detected: false, price: null, source: null, distancePercent: null });
+    expect(a.vcpStructure.volume).toBe("Contracting 19%");
+    // improvement conditions map 1:1 to deficiencies present in the scan
+    const imp = a.setupAssessment.improvementConditions.join(" ");
+    expect(imp).toContain("repair the trend structure");
+    expect(imp).toContain("consolidation base");
+    expect(imp).toContain("progressively shallower");
+    expect(imp).toContain("ATR");
+    expect(imp).not.toContain("Volume should generally decline"); // volume IS contracting
+    // watch conditions never manufacture support/resistance
+    expect(a.setupAssessment.watchConditions.join(" ")).not.toContain("Base support");
+  });
+
+  it("majorHigh carries the historical-context note and is never the pivot", async () => {
+    const { deriveVcpAnalysis } = await load();
+    const a = deriveVcpAnalysis(weakMu, "MU")!;
+    expect(a.vcpStructure.majorHigh).toEqual({ price: 1255, date: "2026-01-15", distancePercent: 33, note: "historical context only" });
+    expect(a.vcpStructure.actionablePivot.price).toBeNull();
+  });
+
+  it("pivot-ready: qualifies with strengths (not failure conditions) and real pivot data", async () => {
+    const { deriveVcpAnalysis } = await load();
+    const a = deriveVcpAnalysis(strongNvda, "NVDA")!;
+    expect(a.setupAssessment.qualifies).toBe(true);
+    expect(a.vcpStructure.actionablePivot).toEqual({ detected: true, price: 100.53, source: "resistance", distancePercent: 0.75 });
+    // pivot comes from actionablePivot, never majorHigh
+    expect(a.vcpStructure.actionablePivot.price).not.toBe(a.vcpStructure.majorHigh.price);
+    const s = a.setupAssessment.strengths.join(" ");
+    for (const expected of ["uptrend", "base", "tightening", "compressing", "Higher lows", "actionable pivot"]) {
+      expect(s.toLowerCase()).toContain(expected.toLowerCase());
+    }
+    expect(a.setupAssessment.weaknesses).toEqual([]);
+    expect(a.setupAssessment.watchConditions.join(" ")).toContain("$100.53");
+    expect(a.setupAssessment.watchConditions.join(" ")).toContain("Base support: $92.10");
+  });
+
+  it("early/developing/contraction stages normalize and drive stage labels", async () => {
+    const { deriveVcpAnalysis } = await load();
+    expect(deriveVcpAnalysis({ ...weakMu, stage: "early" }, "MU")!.analysisSummary.stage).toBe("early");
+    expect(deriveVcpAnalysis({ ...weakMu, stage: "developing" }, "MU")!.analysisSummary.stage).toBe("developing");
+    expect(deriveVcpAnalysis({ ...weakMu, stage: "base-building" }, "MU")!.analysisSummary.stage).toBe("developing");
+    const c = deriveVcpAnalysis({ ...weakMu, stage: "contraction" }, "MU")!;
+    expect(c.analysisSummary.stage).toBe("contraction");
+    expect(c.vcpStructure.contractions).toBe("Tightening");
+  });
+
+  it("unusable payloads return null (no fabricated analysis)", async () => {
+    const { deriveVcpAnalysis } = await load();
+    expect(deriveVcpAnalysis({ truncated: true, preview: "{}" }, "MU")).toBeNull();
+    expect(deriveVcpAnalysis(null, "MU")).toBeNull();
+  });
+});
+
+describe("suggestionsForVcpStage (context-aware next steps)", () => {
+  it("no-setup/early: no Trade Builder emphasis", async () => {
+    const { suggestionsForVcpStage } = await import("./analysis-scan");
+    for (const stage of ["no-setup", "early", null] as const) {
+      const labels = suggestionsForVcpStage(stage, "MU").map((s) => s.label).join("|");
+      expect(labels, String(stage)).not.toContain("Trade Builder");
+      expect(labels).toContain("ranked opportunities");
+    }
+  });
+
+  it("pivot-ready: may show Trade Builder and View setup", async () => {
+    const { suggestionsForVcpStage } = await import("./analysis-scan");
+    const labels = suggestionsForVcpStage("pivot-ready", "NVDA").map((s) => s.label);
+    expect(labels).toContain("Open Trade Builder");
+    expect(labels).toContain("View NVDA setup");
+  });
+
+  it("developing/contraction: scanner + chart + ranked", async () => {
+    const { suggestionsForVcpStage } = await import("./analysis-scan");
+    const labels = suggestionsForVcpStage("contraction", "MU").map((s) => s.label).join("|");
+    expect(labels).toContain("Open Scanner");
+    expect(labels).toContain("View MU chart");
+    expect(labels).not.toContain("Trade Builder");
+  });
+});
+
+describe("confidenceForAnalysis (completeness, not bullishness)", () => {
+  const mk = async (result: any) => (await import("./analysis-scan")).deriveVcpAnalysis(result, result.symbol);
+
+  it("failed scan → low; bearish complete data → high; missing quote → medium", async () => {
+    const { confidenceForAnalysis, deriveVcpAnalysis } = await import("./analysis-scan");
+    expect(confidenceForAnalysis({ scanSucceeded: false, hasLiveQuote: true, analysis: null })).toBe("low");
+    const bearish = deriveVcpAnalysis(
+      { symbol: "MU", score: 18, stage: "no-setup", trend: { classification: "Downtrend" }, base: { detected: false }, actionablePivot: { detected: false, price: null } },
+      "MU",
+    );
+    expect(confidenceForAnalysis({ scanSucceeded: true, hasLiveQuote: true, analysis: bearish })).toBe("high");
+    expect(confidenceForAnalysis({ scanSucceeded: true, hasLiveQuote: false, analysis: bearish })).toBe("medium");
+  });
+
+  it("mixed structural evidence mid-stage → medium; pivot-ready with agreement → high", async () => {
+    const { confidenceForAnalysis, deriveVcpAnalysis } = await import("./analysis-scan");
+    const mixed = deriveVcpAnalysis(
+      { symbol: "X", score: 55, stage: "developing", trend: { classification: "Uptrend" }, base: { detected: true, support: 10, resistance: 12 }, volatilityCompression: { detected: false }, volumeContraction: { detected: false }, higherLows: { established: false }, actionablePivot: { detected: false, price: null } },
+      "X",
+    );
+    expect(confidenceForAnalysis({ scanSucceeded: true, hasLiveQuote: true, analysis: mixed })).toBe("medium");
+    const strong = deriveVcpAnalysis(
+      { symbol: "NVDA", score: 94, stage: "pivot-ready", trend: { classification: "Strong uptrend" }, base: { detected: true }, volatilityCompression: { detected: true }, volumeContraction: { detected: true }, higherLows: { established: true }, actionablePivot: { detected: true, price: 100.53, distancePercent: 0.75 } },
+      "NVDA",
+    );
+    expect(confidenceForAnalysis({ scanSucceeded: true, hasLiveQuote: true, analysis: strong })).toBe("high");
+  });
+});
+
 describe("fetchDeterministicVcpScan", () => {
   it("'Analyze MU' calls scan_vcp exactly once with lookbackDays 120 when MCP is enabled", async () => {
     enableMcp();

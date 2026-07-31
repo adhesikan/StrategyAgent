@@ -1,0 +1,605 @@
+Upgrade the VCP Trader "Ask AI" experience for stock-analysis queries such as:
+
+"Analyze MU"
+"Analyze NVDA"
+"How does CRDO look?"
+"Evaluate AVGO"
+
+The MCP integration and deterministic VCP scanner are now working correctly in production.
+
+Current production architecture:
+
+User → Ask AI
+→ VCP Trader market context
+→ deterministic scan_vcp
+→ MCP Server
+→ VCP production OHLCV
+→ structural VCP engine
+→ Ask AI synthesis
+
+DO NOT modify:
+- MCP transport
+- MCP authentication
+- MCP connection/session management
+- deterministic scan_vcp routing
+- buildContext()
+- VCP production OHLCV integration
+- VcpMarketDataProvider
+- scanner algorithms/scoring
+- InstaTrade
+- broker execution
+- get_positions permissions
+- existing market-data services
+
+This task is about improving how Ask AI interprets and presents the existing analysis.
+
+==================================================
+GOAL
+==================================================
+
+Transform "Analyze <ticker>" from a generic AI paragraph into a concise, professional trading-research analysis.
+
+The response should help the user quickly understand:
+
+1. What is happening?
+2. Is there a valid VCP setup?
+3. Why or why not?
+4. What technical structure currently exists?
+5. What would need to happen for the setup to improve?
+6. What levels/conditions should the user watch?
+
+The AI should behave like a research analyst, not merely summarize indicators.
+
+Do NOT provide personalized financial advice or tell the user to buy/sell.
+
+==================================================
+1. ANALYSIS RESPONSE STRUCTURE
+==================================================
+
+For stock-analysis intent with a successful scan_vcp result, organize the analysis approximately as:
+
+[TICKER] — Technical & VCP Analysis
+
+Market Snapshot
+VCP Structure
+Why the Setup Passes/Fails
+What Would Improve the Setup
+Levels / Conditions to Watch
+Overall Assessment
+
+The existing frontend response contract may constrain exact formatting.
+
+Inspect the existing response schema and UI first.
+
+Preserve backward compatibility.
+
+Prefer adding structured fields to the existing response rather than embedding Markdown that the UI cannot reliably render.
+
+==================================================
+2. MARKET SNAPSHOT
+==================================================
+
+Present key current information concisely.
+
+Example:
+
+MU — Technical & VCP Analysis
+
+Price: $835.65
+Day: -4.46%
+Trend: Weak
+Sentiment: Bearish (-26)
+VCP Score: 18/100
+Setup: No valid VCP setup
+
+Use existing live context.
+
+Do NOT obtain another price from MCP unless required.
+
+Avoid presenting conflicting prices from multiple sources.
+
+==================================================
+3. VCP STRUCTURE
+==================================================
+
+Use the expanded scan_vcp result.
+
+Show when available:
+
+Stage
+Base status
+Base depth
+Base duration
+Contraction sequence
+Volatility compression
+Volume contraction
+Higher-low structure
+Actionable pivot
+Distance to actionable pivot
+Major historical high
+
+Example for MU:
+
+VCP Structure
+
+Stage: No setup
+Base: No confirmed base
+Contractions: No valid tightening sequence
+Volatility: Not sufficiently compressed
+Volume: Contracting 19%
+Higher lows: Not established
+Actionable pivot: None
+Major high: $1,255 — historical context only
+
+CRITICAL:
+
+majorHigh is historical context.
+
+NEVER call majorHigh:
+- pivot
+- breakout level
+- buy point
+- entry
+- resistance that must be broken to trigger a trade
+
+Only actionablePivot represents a valid VCP pivot.
+
+When:
+
+actionablePivot.detected === false
+
+or:
+
+actionablePivot.price === null
+
+show:
+
+Actionable pivot: None
+
+This is valid analysis, not missing data.
+
+==================================================
+4. WHY THE SETUP PASSES OR FAILS
+==================================================
+
+Use scanner factors, reasons, warnings and structural fields.
+
+For a weak setup, explain the primary deficiencies.
+
+Example:
+
+Why it currently fails VCP
+
+• Price is below important trend averages
+• No confirmed consolidation base
+• Recent pullback remains too deep
+• Contractions are not tightening sufficiently
+• Higher-low structure is not established
+• No actionable pivot exists
+
+For a strong setup:
+
+Why it qualifies
+
+• Established uptrend
+• Successive contractions are tightening
+• Volatility is compressing
+• Volume is drying up
+• Higher lows are established
+• Price is approaching a valid actionable pivot
+
+Do not invent reasons.
+
+Use only information supported by scan_vcp and existing market context.
+
+Prioritize the 3–6 most important factors instead of dumping every scanner field.
+
+==================================================
+5. WHAT WOULD IMPROVE THE SETUP
+==================================================
+
+This is an important new capability.
+
+For weak/developing setups, explain what structural changes would improve the VCP setup.
+
+Derive this deterministically from scanner state where possible.
+
+Examples:
+
+If no base:
+"MU first needs to establish a stable consolidation base rather than continue making large directional swings."
+
+If contractions are not tightening:
+"Successive pullbacks would need to become progressively shallower."
+
+If volatility compression is missing:
+"Daily ranges and ATR should begin contracting."
+
+If volume contraction is missing:
+"Volume should generally decline as the consolidation tightens."
+
+If higher lows are missing:
+"The structure would improve if subsequent pullbacks hold above prior swing lows."
+
+If trend is weak/downtrend:
+"Price would need to repair the trend structure and regain important moving averages."
+
+If actionable pivot does not exist:
+"A valid pivot should only emerge after a base and tightening contraction structure form."
+
+If price is far from a valid pivot:
+"The setup may be developing, but price remains too far from the actionable pivot to be considered pivot-ready."
+
+Do NOT invent future price targets.
+
+Do NOT say the stock "will" improve if these occur.
+
+Frame these as conditions that would improve the technical setup.
+
+==================================================
+6. CONDITIONS / LEVELS TO WATCH
+==================================================
+
+Create a concise monitoring section.
+
+Use actual available scanner/context data.
+
+Examples:
+
+Conditions to watch
+
+Trend repair:
+Price regains relevant moving averages and their slopes improve.
+
+Base formation:
+Price establishes a controlled consolidation range.
+
+Contraction quality:
+Pullbacks become progressively shallower.
+
+Volume:
+Trading activity dries up during consolidation.
+
+Pivot:
+No actionable pivot exists yet; wait for the structure to establish one.
+
+When a valid actionablePivot exists:
+
+Actionable pivot: $XXX
+Distance: X.X%
+
+When a base exists:
+
+Base support: $XXX
+Base resistance: $XXX
+
+Do not manufacture support/resistance when those fields are unavailable.
+
+==================================================
+7. STAGE-SPECIFIC ANALYSIS
+==================================================
+
+Use the scanner stages:
+
+no-setup
+early
+developing
+contraction
+pivot-ready
+
+Tailor the analysis accordingly.
+
+NO-SETUP
+
+Focus on:
+- why structure fails
+- what must repair
+- do not present an entry level
+
+EARLY
+
+Focus on:
+- emerging base
+- what structural evidence is still missing
+
+DEVELOPING
+
+Focus on:
+- existing base
+- contraction progression
+- trend/volume/volatility improvements needed
+
+CONTRACTION
+
+Focus on:
+- tightening structure
+- volume/volatility behavior
+- proximity to potential actionable pivot
+
+PIVOT-READY
+
+Focus on:
+- actionable pivot
+- distance to pivot
+- quality of contraction sequence
+- trend confirmation
+- volume/volatility characteristics
+
+A high score alone must NEVER imply pivot-ready.
+
+==================================================
+8. OVERALL ASSESSMENT
+==================================================
+
+Replace generic statements such as:
+
+"The stock may continue to decline."
+
+with a more useful structural assessment.
+
+Weak example:
+
+"MU currently lacks the structural characteristics of a valid VCP setup. The trend remains weak, no confirmed base has formed, and there is no actionable pivot. The setup becomes more interesting if price stabilizes, establishes a base, and subsequent pullbacks tighten on declining volatility and volume."
+
+Strong example:
+
+"NVDA has a mature VCP structure with tightening contractions, supportive trend characteristics and an identified actionable pivot. The key question is whether the structure remains tight as price approaches that level."
+
+Avoid directional predictions unless clearly supported and appropriately qualified.
+
+==================================================
+9. UI / RESPONSE DESIGN
+==================================================
+
+Inspect the current Ask AI response schema and frontend components.
+
+The existing UI currently shows:
+
+headline
+answer
+key points
+risk note
+confidence
+next steps
+
+Preserve compatibility.
+
+Improve the schema only where necessary.
+
+Ideally support structured stock-analysis data such as:
+
+analysisSummary: {
+  price,
+  dayChangePercent,
+  vcpScore,
+  stage,
+  trend,
+  sentiment
+}
+
+vcpStructure: {
+  base,
+  contractions,
+  volatility,
+  volume,
+  higherLows,
+  actionablePivot,
+  majorHigh
+}
+
+setupAssessment: {
+  qualifies,
+  strengths[],
+  weaknesses[],
+  improvementConditions[],
+  watchConditions[]
+}
+
+Do not break existing non-stock Ask AI responses.
+
+If schema changes would be risky, map these concepts into the existing answer/keyPoints/riskNote contract first.
+
+==================================================
+10. HEADLINE
+==================================================
+
+Make the headline communicate setup state.
+
+Examples:
+
+MU has no valid VCP setup as trend structure remains weak.
+
+NVDA is developing a VCP structure but is not pivot-ready.
+
+CRDO is approaching an actionable VCP pivot with tightening structure.
+
+Avoid sensational language.
+
+==================================================
+11. NEXT STEPS
+==================================================
+
+Make next-step actions context-aware.
+
+For no-setup/early:
+
+Possible actions:
+"See ranked opportunities"
+"Open Scanner"
+
+Do NOT emphasize "Open Trade Builder" when there is no actionable setup.
+
+For developing/contraction:
+
+Possible actions:
+"Open Scanner"
+"View chart"
+"See ranked opportunities"
+
+For pivot-ready:
+
+Possible actions:
+"View setup"
+"Open Trade Builder"
+"See ranked opportunities"
+
+Do not modify actual trading/execution logic.
+
+This is presentation/navigation only.
+
+==================================================
+12. CONFIDENCE
+==================================================
+
+Review how confidence is generated.
+
+Confidence should reflect data completeness and analytical agreement, NOT bullishness/bearishness.
+
+For example:
+
+high confidence:
+live market context available + successful scan + consistent indicators
+
+medium:
+scan available but mixed structural evidence
+
+low:
+missing data, failed scan, insufficient history, conflicting inputs
+
+Do not label a bearish conclusion as low confidence merely because it is bearish.
+
+==================================================
+13. FAILURE HANDLING
+==================================================
+
+Preserve current graceful fallback.
+
+If scan_vcp fails:
+
+- do not fabricate score
+- do not fabricate pivot
+- do not fabricate base
+- clearly indicate VCP scanner data is temporarily unavailable
+- continue using existing market context if available
+
+If history is insufficient:
+
+say that structural VCP analysis is limited by insufficient history.
+
+==================================================
+14. TEST MU
+==================================================
+
+Use the current production-like MU case as the primary negative fixture.
+
+Expected conceptual output:
+
+MU — Technical & VCP Analysis
+
+Price: ~$835
+Trend: Weak
+Sentiment: Bearish
+VCP Score: ~18/100
+Setup: No valid VCP setup
+
+VCP Structure
+
+Base: No confirmed base
+Actionable pivot: None
+Major high: ~$1,255 — historical context only
+
+Why it fails
+
+- weak trend structure
+- no confirmed base
+- deep recent pullback
+- insufficient tightening
+- no actionable pivot
+
+What would improve it
+
+- establish a stable base
+- repair trend structure
+- progressively tighten pullbacks
+- reduce volatility
+- maintain/strengthen volume contraction
+- establish higher lows
+
+The exact values must come from live data/scanner output.
+
+Do NOT hardcode MU values.
+
+==================================================
+15. TEST A STRONG VCP
+==================================================
+
+Add a fixture for a strong pivot-ready setup.
+
+Expected presentation:
+
+VCP Score: high
+Stage: Pivot-ready
+Trend: Uptrend/Strong uptrend
+Base: confirmed
+Contractions: tightening
+Volatility: compressed
+Volume: contracting
+Higher lows: established
+Actionable pivot: actual scanner pivot
+Distance: actual scanner distance
+
+Why it qualifies:
+supported by scanner factors.
+
+Do not use majorHigh as the actionable pivot unless the scanner itself independently produces the same price as actionablePivot.
+
+==================================================
+16. TESTS
+==================================================
+
+Add tests covering:
+
+- no-setup presentation
+- early presentation
+- developing presentation
+- contraction presentation
+- pivot-ready presentation
+- majorHigh never described as pivot/entry/buy point
+- actionablePivot null → None
+- improvement conditions derive from actual deficiencies
+- strong setups show strengths instead of failure conditions
+- no Trade Builder emphasis for no-setup
+- pivot-ready may show Trade Builder
+- scanner failure does not fabricate analysis
+- existing non-analysis Ask AI questions remain unchanged
+- exactly one deterministic scan_vcp call for analysis intent
+
+Run:
+
+npx vitest run --root . server/mcp/
+npm run build
+
+Do NOT push automatically.
+
+==================================================
+17. REPORT
+==================================================
+
+At completion report:
+
+1. Files changed
+2. Response/UI architecture changes
+3. Stock-analysis response structure
+4. Stage-specific behavior
+5. Improvement-condition logic
+6. Context-aware next-step behavior
+7. Confidence behavior
+8. Failure handling
+9. MU example output
+10. Strong VCP example output
+11. Tests/results
+12. Build result
+13. Compatibility concerns
+14. Recommended next step
+
+Do not commit or push until I review the results.

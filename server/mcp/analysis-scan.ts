@@ -170,6 +170,254 @@ export function summarizeVcpScan(raw: unknown, fallbackSymbol?: string): string 
   return lines.length ? lines.join("\n") : null;
 }
 
+// ---------------------------------------------------------------------------
+// Structured research-analysis derivation (presentation only — no scanner
+// algorithm/scoring changes). Everything below is derived deterministically
+// from the scan_vcp result so the UI and the model receive consistent,
+// non-fabricated structure.
+// ---------------------------------------------------------------------------
+
+export type VcpStage = "no-setup" | "early" | "developing" | "contraction" | "pivot-ready";
+
+export interface VcpAnalysis {
+  analysisSummary: {
+    vcpScore: number | null;
+    stage: VcpStage | null;
+    trend: string | null;
+  };
+  vcpStructure: {
+    stage: string | null;
+    base: string;
+    contractions: string | null;
+    volatility: string | null;
+    volume: string | null;
+    higherLows: string | null;
+    actionablePivot: { detected: boolean; price: number | null; source: string | null; distancePercent: number | null };
+    majorHigh: { price: number | null; date: string | null; distancePercent: number | null; note: "historical context only" };
+    baseSupport: number | null;
+    baseResistance: number | null;
+  };
+  setupAssessment: {
+    qualifies: boolean;
+    strengths: string[];
+    weaknesses: string[];
+    improvementConditions: string[];
+    watchConditions: string[];
+  };
+}
+
+const KNOWN_STAGES: VcpStage[] = ["no-setup", "early", "developing", "contraction", "pivot-ready"];
+
+function normalizeStage(stage: unknown): VcpStage | null {
+  if (stage === "base-building") return "developing"; // retired stage
+  return KNOWN_STAGES.includes(stage as VcpStage) ? (stage as VcpStage) : null;
+}
+
+/** Defensive truthiness for expanded scanner sub-objects. */
+function featureState(v: any): boolean | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "boolean") return v;
+  const flag = v.detected ?? v.established ?? v.compressed ?? v.contracting ?? v.present;
+  return typeof flag === "boolean" ? flag : null;
+}
+
+function featurePercent(v: any): number | null {
+  if (!v || typeof v !== "object") return null;
+  return num(v.percent ?? v.contractionPercent ?? v.compressionPercent ?? v.changePercent);
+}
+
+/**
+ * Derives the structured analysis payload from an expanded scan_vcp result.
+ * Returns null when the payload is unusable. Never invents values: fields the
+ * scanner didn't supply are null/omitted from prose.
+ */
+export function deriveVcpAnalysis(raw: unknown, fallbackSymbol?: string): VcpAnalysis | null {
+  let r: any = raw;
+  if (Array.isArray(r)) {
+    r = fallbackSymbol
+      ? r.find((x: any) => String(x?.symbol ?? "").toUpperCase() === fallbackSymbol.toUpperCase()) ?? r[0]
+      : r[0];
+  }
+  if (Array.isArray(r?.results)) r = r.results[0];
+  if (!r || typeof r !== "object" || r.truncated) return null;
+
+  const stage = normalizeStage(r.stage);
+  const score = num(r.score);
+  const trend = typeof r.trend?.classification === "string" ? r.trend.classification : null;
+
+  // --- structure ---
+  const base = r.base;
+  const baseDetected = base?.detected === true;
+  const dur = baseDetected ? num(base.durationDays ?? base.lengthDays) : null;
+  const depth = baseDetected ? num(base.depthPercent) : null;
+  const baseSupport = baseDetected ? num(base.support) : null;
+  const baseResistance = baseDetected ? num(base.resistance) : null;
+  const baseText = baseDetected
+    ? ["Confirmed", dur !== null ? `${Math.round(dur)} days` : null, depth !== null ? `${Math.abs(depth).toFixed(1)}% deep` : null]
+        .filter(Boolean)
+        .join(", ")
+    : "No confirmed base";
+
+  const volComp = featureState(r.volatilityCompression);
+  const volCon = featureState(r.volumeContraction);
+  const volConPct = featurePercent(r.volumeContraction);
+  const hl = featureState(r.higherLows);
+  const contractionsOk = stage === "contraction" || stage === "pivot-ready";
+
+  const ap = r.actionablePivot;
+  const apPrice = ap ? num(ap.price) : num(r.pivotPrice);
+  const apDetected = ap ? ap.detected === true && apPrice !== null : apPrice !== null;
+  const apDist = apDetected ? num(ap?.distancePercent ?? r.distanceToPivotPercent) : null;
+
+  const mhPrice = num(r.majorHigh?.price);
+
+  // --- strengths / weaknesses (only from real scanner evidence) ---
+  const strengths: string[] = [];
+  const weaknesses: string[] = [];
+  const improvements: string[] = [];
+  const watch: string[] = [];
+
+  const trendLower = (trend ?? "").toLowerCase();
+  const trendWeak = /down|weak|bear/.test(trendLower);
+  const trendStrong = /up|strong|bull/.test(trendLower) && !trendWeak;
+  if (trend) {
+    (trendStrong ? strengths : trendWeak ? weaknesses : strengths).push(
+      trendStrong ? "Established uptrend" : trendWeak ? "Trend structure is weak" : `Trend: ${trend}`,
+    );
+  }
+  if (trendWeak) {
+    improvements.push("Price would need to repair the trend structure and regain important moving averages.");
+    watch.push("Trend repair: price regains relevant moving averages and their slopes improve.");
+  }
+
+  if (baseDetected) strengths.push("Confirmed consolidation base");
+  else {
+    weaknesses.push("No confirmed consolidation base");
+    improvements.push("A stable consolidation base needs to form rather than continued large directional swings.");
+    watch.push("Base formation: price establishes a controlled consolidation range.");
+  }
+
+  if (contractionsOk) strengths.push("Successive contractions are tightening");
+  else {
+    weaknesses.push("Contractions are not tightening sufficiently");
+    improvements.push("Successive pullbacks would need to become progressively shallower.");
+    watch.push("Contraction quality: pullbacks become progressively shallower.");
+  }
+
+  if (volComp === true) strengths.push("Volatility is compressing");
+  else if (volComp === false) {
+    weaknesses.push("Volatility is not sufficiently compressed");
+    improvements.push("Daily ranges and ATR should begin contracting.");
+  }
+
+  if (volCon === true) strengths.push(volConPct !== null ? `Volume is contracting (${Math.abs(volConPct).toFixed(0)}%)` : "Volume is drying up");
+  else if (volCon === false) {
+    weaknesses.push("Volume is not contracting");
+    improvements.push("Volume should generally decline as the consolidation tightens.");
+    watch.push("Volume: trading activity dries up during consolidation.");
+  }
+
+  if (hl === true) strengths.push("Higher lows are established");
+  else if (hl === false) {
+    weaknesses.push("Higher-low structure is not established");
+    improvements.push("The structure would improve if subsequent pullbacks hold above prior swing lows.");
+  }
+
+  if (apDetected && apPrice !== null) {
+    // Most decision-relevant strength — keep it ahead of the 6-item cap.
+    strengths.unshift(
+      apDist !== null
+        ? `Price is ${Math.abs(apDist).toFixed(2)}% from a valid actionable pivot at ${fmtPrice(apPrice)}`
+        : `A valid actionable pivot exists at ${fmtPrice(apPrice)}`,
+    );
+    watch.push(`Actionable pivot: ${fmtPrice(apPrice)}${apDist !== null ? ` (distance ${Math.abs(apDist).toFixed(2)}%)` : ""}.`);
+    if (apDist !== null && Math.abs(apDist) > 5 && stage !== "pivot-ready") {
+      improvements.push("The setup may be developing, but price remains too far from the actionable pivot to be considered pivot-ready.");
+    }
+  } else {
+    weaknesses.push("No actionable pivot exists");
+    improvements.push("A valid pivot should only emerge after a base and tightening contraction structure form.");
+    watch.push("Pivot: no actionable pivot exists yet; wait for the structure to establish one.");
+  }
+  if (baseSupport !== null) watch.push(`Base support: ${fmtPrice(baseSupport)}.`);
+  if (baseResistance !== null) watch.push(`Base resistance: ${fmtPrice(baseResistance)}.`);
+
+  const qualifies = stage === "pivot-ready" || stage === "contraction";
+
+  return {
+    analysisSummary: { vcpScore: score !== null ? Math.round(score) : null, stage, trend },
+    vcpStructure: {
+      stage: stage ? STAGE_LABELS[stage] ?? stage : null,
+      base: baseText,
+      contractions: contractionsOk ? "Tightening" : "No valid tightening sequence",
+      volatility: volComp === true ? "Compressing" : volComp === false ? "Not sufficiently compressed" : null,
+      volume: volCon === true ? (volConPct !== null ? `Contracting ${Math.abs(volConPct).toFixed(0)}%` : "Contracting") : volCon === false ? "Not contracting" : null,
+      higherLows: hl === true ? "Established" : hl === false ? "Not established" : null,
+      actionablePivot: { detected: apDetected, price: apDetected ? apPrice : null, source: typeof ap?.source === "string" ? ap.source : null, distancePercent: apDist },
+      majorHigh: {
+        price: mhPrice,
+        date: typeof r.majorHigh?.date === "string" ? r.majorHigh.date : null,
+        distancePercent: num(r.majorHigh?.distancePercent ?? r.majorHigh?.percentBelow),
+        note: "historical context only",
+      },
+      baseSupport,
+      baseResistance,
+    },
+    setupAssessment: {
+      qualifies,
+      strengths: strengths.slice(0, 7),
+      weaknesses: weaknesses.slice(0, 6),
+      improvementConditions: qualifies ? improvements.slice(0, 3) : improvements.slice(0, 6),
+      watchConditions: watch.slice(0, 6),
+    },
+  };
+}
+
+/**
+ * Context-aware next-step suggestions. Presentation/navigation only — no
+ * Trade Builder emphasis when there is no actionable setup.
+ */
+export function suggestionsForVcpStage(stage: VcpStage | null, symbol: string): { label: string; href: string }[] {
+  const chart = { label: `View ${symbol} chart`, href: `/charts/${symbol}` };
+  const scanner = { label: "Open Scanner", href: "/trade-finder" };
+  const ranked = { label: "See ranked opportunities", href: "/opportunity-radar" };
+  switch (stage) {
+    case "pivot-ready":
+      return [
+        { label: `View ${symbol} setup`, href: `/charts/${symbol}` },
+        { label: "Open Trade Builder", href: `/trade-finder?symbol=${symbol}` },
+        ranked,
+      ];
+    case "developing":
+    case "contraction":
+      return [scanner, chart, ranked];
+    case "no-setup":
+    case "early":
+    default:
+      return [ranked, scanner];
+  }
+}
+
+/**
+ * Confidence reflects data completeness + analytical agreement — never
+ * bullishness/bearishness. A clearly-failing (bearish) setup with complete
+ * data is HIGH confidence.
+ */
+export function confidenceForAnalysis(input: {
+  scanSucceeded: boolean;
+  hasLiveQuote: boolean;
+  analysis: VcpAnalysis | null;
+}): "low" | "medium" | "high" {
+  if (!input.scanSucceeded || !input.analysis) return "low";
+  const a = input.analysis;
+  if (!input.hasLiveQuote) return "medium";
+  const stage = a.analysisSummary.stage;
+  // Clear-cut structural verdicts with full data → high; mixed evidence → medium.
+  const mixed = a.setupAssessment.strengths.length > 1 && a.setupAssessment.weaknesses.length > 1
+    && stage !== "no-setup" && stage !== "pivot-ready";
+  return mixed ? "medium" : "high";
+}
+
 /**
  * Runs scan_vcp exactly once for the first extracted ticker when MCP is
  * enabled and the question is a stock-analysis ask. Returns null (never

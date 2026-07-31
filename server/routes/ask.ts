@@ -741,6 +741,13 @@ interface AskAnswer {
   // populated by callOpenAi when matches exist; surfaced to users as a
   // transparency footer in /api/ask responses.
   referencesUsed?: { id: string; question: string; category: string }[];
+  // Structured stock-analysis payload derived deterministically from the
+  // scan_vcp result (never model-generated). Optional extra field — the
+  // existing frontend ignores unknown fields, so this is backward compatible.
+  vcpAnalysis?: import("../mcp/analysis-scan").VcpAnalysis;
+  // True when a deterministic scan was attempted for an analysis ask but
+  // failed — drives confidence (low) and honest "scanner unavailable" copy.
+  vcpScanFailed?: boolean;
 }
 
 function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): AskAnswer {
@@ -867,6 +874,9 @@ async function callOpenAi(
           // structured result and this summary.
           const summary = summarizeVcpScan(vcpScan.result, vcpScan.symbol);
           if (summary) (vcpScan as any).summary = summary;
+          const { deriveVcpAnalysis } = await import("../mcp/analysis-scan");
+          const analysis = deriveVcpAnalysis(vcpScan.result, vcpScan.symbol);
+          if (analysis) (vcpScan as any).analysis = analysis;
         }
       } catch (err) {
         console.warn("[ask] deterministic vcp scan unavailable:", (err as Error).message);
@@ -883,6 +893,7 @@ async function callOpenAi(
               lookbackDays: vcpScan.lookbackDays,
               result: vcpScan.result,
               ...((vcpScan as any).summary ? { summary: (vcpScan as any).summary } : {}),
+              ...((vcpScan as any).analysis ? { analysis: (vcpScan as any).analysis } : {}),
             },
           }
         : {}),
@@ -909,10 +920,13 @@ async function callOpenAi(
           mcpSystemRules += `\n- The live VCP scanner is temporarily unavailable for this request. Say so plainly if the user asked about the setup; do not invent a score or setup status and do not call scan_vcp.`;
         }
         if (vcpScan) {
-          mcpSystemRules += `\n- The "vcpScan" field in the user content contains the LIVE VCP scanner result for ${vcpScan.symbol} (already fetched for you). Base the setup assessment on it and present it in this structure when useful: VCP Score X/100; Setup (stage: no-setup, early, developing, contraction, or pivot-ready); Trend (use trend.classification only); Major high; Base (summarize duration/depth/support/resistance if detected, otherwise "No confirmed base"); Actionable VCP pivot; then a concise "Why" using the scanner's reasons/warnings, optionally volatility compression, volume contraction, higher lows, and factor strengths/weaknesses. Plain English only — never raw JSON. Do not call scan_vcp again.
-- majorHigh is HISTORICAL CONTEXT ONLY. Never describe majorHigh as a pivot, breakout level, buy point, or actionable entry.
-- actionablePivot is the ONLY actionable pivot concept. If actionablePivot.detected is false or actionablePivot.price is null, present "Actionable VCP pivot: None" — null is valid data, not missing/error data. Legacy pivotPrice equals actionablePivot.price and may also be null.
-- Never imply that the score alone makes a setup actionable.`;
+          mcpSystemRules += `\n- The "vcpScan" field in the user content contains the LIVE VCP scanner result for ${vcpScan.symbol} (already fetched — do not call scan_vcp again), including a deterministic "analysis" object (structure, strengths, weaknesses, improvementConditions, watchConditions). You are a trading-research analyst. Write the answer as a concise professional analysis covering, in order: (1) Market Snapshot — price, day change, trend, sentiment, VCP score, setup status, using ONLY the live context already supplied (do not fetch another price; never present conflicting prices); (2) VCP Structure — stage, base status/depth/duration, contraction sequence, volatility compression, volume contraction, higher lows, actionable pivot + distance, major historical high; (3) Why the setup passes or fails — the 3-6 most important factors from the scanner's strengths/weaknesses/reasons/warnings, never invented; (4) What would improve the setup — use the provided improvementConditions, framed as conditions that would improve the technical structure (never "the stock will improve", never invented price targets); (5) Levels/conditions to watch — use watchConditions; never manufacture support/resistance the scanner didn't supply; (6) Overall assessment — a structural verdict, not a generic directional prediction. Plain English, never raw JSON.
+- The headline must communicate the setup state (e.g. "${vcpScan.symbol} has no valid VCP setup as trend structure remains weak" / "approaching an actionable VCP pivot with tightening structure"). No sensational language.
+- Stage-specific focus: no-setup → why structure fails and what must repair, never present an entry level; early → emerging base and missing evidence; developing → base + contraction progression + needed improvements; contraction → tightening structure, volume/volatility, proximity to a potential pivot; pivot-ready → the actionable pivot, distance, contraction quality, trend confirmation.
+- majorHigh is HISTORICAL CONTEXT ONLY. Never describe majorHigh as a pivot, breakout level, buy point, entry, or resistance that must be broken to trigger a trade.
+- actionablePivot is the ONLY actionable pivot concept. If actionablePivot.detected is false or actionablePivot.price is null, present "Actionable pivot: None" — valid analysis, not missing data. Legacy pivotPrice equals actionablePivot.price and may also be null.
+- A high score alone must NEVER imply pivot-ready. Never give personalized advice or tell the user to buy/sell.
+- Confidence must reflect data completeness and analytical agreement only — never bullishness/bearishness. A clearly bearish structural verdict with complete data is still high confidence.`;
         }
       } catch (err) {
         console.warn("[ask] mcp tools unavailable:", (err as Error).message);
@@ -977,13 +991,35 @@ async function callOpenAi(
     const text = completion.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(text);
     const conf = String(parsed.confidence ?? "low").toLowerCase();
+    let confidence: "low" | "medium" | "high" = conf === "high" ? "high" : conf === "medium" ? "medium" : "low";
+
+    // Deterministic confidence + structured payload for stock-analysis asks.
+    // Confidence reflects data completeness / analytical agreement — never
+    // bullishness — so it's derived server-side, not left to the model.
+    const vcpAnalysis = (vcpScan as any)?.analysis as import("../mcp/analysis-scan").VcpAnalysis | undefined;
+    const vcpScanFailed = vcpScanAttempted && !vcpScan;
+    if (vcpScanAttempted) {
+      try {
+        const { confidenceForAnalysis } = await import("../mcp/analysis-scan");
+        confidence = confidenceForAnalysis({
+          scanSucceeded: !!vcpScan,
+          hasLiveQuote: ctx.tickers.some((t) => t.last != null),
+          analysis: vcpAnalysis ?? null,
+        });
+      } catch {
+        /* keep model confidence */
+      }
+    }
+
     return {
       headline: typeof parsed.headline === "string" && parsed.headline.trim() ? parsed.headline.trim().slice(0, 160) : "Here's what I found.",
       answer: typeof parsed.answer === "string" ? parsed.answer.trim().slice(0, 1800) : "",
       keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.filter((x: any) => typeof x === "string").slice(0, 5) : [],
       riskNote: typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is software-generated analysis — not investment advice.",
-      confidence: conf === "high" ? "high" : conf === "medium" ? "medium" : "low",
+      confidence,
       referencesUsed: referencesUsed.length > 0 ? referencesUsed : undefined,
+      ...(vcpAnalysis ? { vcpAnalysis } : {}),
+      ...(vcpScanFailed ? { vcpScanFailed: true } : {}),
     };
   } catch (err) {
     console.warn("[ask] openai call failed, falling back:", err);
@@ -1351,6 +1387,20 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         };
       }
 
+      // Stage-aware next steps for stock-analysis answers backed by a live
+      // scan: no Trade Builder emphasis without an actionable setup.
+      // Presentation/navigation only — falls back to the intent-based list.
+      let suggestions = suggestionsForIntent(intent, tickers);
+      const stageForNav = (answer as AskAnswer).vcpAnalysis?.analysisSummary?.stage;
+      if (stageForNav !== undefined && tickers[0]) {
+        try {
+          const { suggestionsForVcpStage } = await import("../mcp/analysis-scan");
+          suggestions = suggestionsForVcpStage(stageForNav, tickers[0]);
+        } catch {
+          /* keep intent-based suggestions */
+        }
+      }
+
       res.json({
         question,
         intent,
@@ -1359,7 +1409,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         ...answer,
         picks,
         tradeDetail,
-        suggestions: suggestionsForIntent(intent, tickers),
+        suggestions,
         source,
         disclaimer: "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
       });

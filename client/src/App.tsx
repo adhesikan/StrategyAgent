@@ -63,6 +63,7 @@ import MarketIntelPage from "@/pages/market-intel";
 import HistoryPage from "@/pages/history";
 import OpportunityRadarPage from "@/pages/opportunity-radar";
 import HomeV2 from "@/pages/home-v2";
+import CommandCenterPage from "@/pages/command-center";
 import StrategyScannerPage from "@/pages/strategy-scanner";
 import TradeDetailPage from "@/pages/trade-detail";
 import InstaTradePage from "@/pages/instatrade-page";
@@ -110,7 +111,9 @@ function DefaultLanding() {
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/home" component={HomeV2} />
+      {/* /home is the AI Command Center; the full ideas dashboard remains at /ideas */}
+      <Route path="/home" component={CommandCenterPage} />
+      <Route path="/ideas" component={HomeV2} />
       <Route path="/ask" component={AskPage} />
       <Route path="/scanner" component={StrategyScannerPage} />
       <Route path="/trade/:ticker" component={TradeDetailPage} />

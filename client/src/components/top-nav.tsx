@@ -31,11 +31,11 @@ interface TopNavItem {
 const NAV_ITEMS: TopNavItem[] = [
   {
     label: "Ideas",
-    href: "/home",
+    href: "/ideas",
     icon: Lightbulb,
     testId: "topnav-ideas",
     matches: (p) =>
-      p === "/home" ||
+      p === "/ideas" ||
       p === "/goal-mode" ||
       p === "/income-mode" ||
       p === "/trade-finder" ||

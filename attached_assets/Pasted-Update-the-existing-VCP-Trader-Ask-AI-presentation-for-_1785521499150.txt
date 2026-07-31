@@ -1,0 +1,130 @@
+Update the existing VCP Trader Ask AI presentation for the expanded scan_vcp MCP result.
+
+Do not modify MCP transport, auth, connection management, deterministic scan routing, buildContext(), InstaTrade, execution logic, or get_positions access.
+
+The new scan_vcp result includes:
+
+majorHigh
+base
+trend
+volatilityCompression
+volumeContraction
+higherLows
+actionablePivot
+factors
+reasons
+warnings
+
+stage values:
+no-setup
+early
+developing
+contraction
+pivot-ready
+
+CRITICAL SEMANTICS:
+
+1. majorHigh is historical context only.
+   Never describe majorHigh as:
+   - pivot
+   - breakout level
+   - buy point
+   - actionable entry
+
+2. actionablePivot is the only actionable pivot concept.
+
+3. When:
+   actionablePivot.detected === false
+   or
+   actionablePivot.price === null
+
+   present:
+   "Actionable VCP pivot: None"
+
+   Do not treat null as missing/error data.
+
+4. Legacy pivotPrice is equivalent to actionablePivot.price and may be null.
+
+5. stage "base-building" no longer exists.
+   Replace any presentation logic expecting it with:
+   early
+   developing
+
+6. trend output must come from trend.classification.
+
+For analysis responses such as "Analyze MU", synthesize scanner output in this structure when useful:
+
+VCP Score: X/100
+Setup: <stage / detected status>
+Trend: <trend.classification>
+
+Major high:
+$X on DATE
+Current price is Y% below that high
+
+Base:
+- if detected: summarize duration, depth, support, resistance
+- otherwise: "No confirmed base"
+
+Actionable VCP pivot:
+- if detected: price, source, and distance
+- otherwise: "None"
+
+Why:
+Use concise reasons and warnings from the scanner.
+Optionally incorporate:
+- volatility compression
+- volume contraction
+- higher lows
+- factor strengths/weaknesses
+
+Do not dump raw JSON.
+
+Examples:
+
+For a weak MU-like setup:
+
+VCP Score: 29/100
+Setup: No valid VCP setup
+Trend: Downtrend
+Major high: $1,274.55, about 33% above current price
+Base: No confirmed base
+Actionable VCP pivot: None
+
+Why:
+- price below key trend levels
+- no valid tightening contraction sequence
+- higher-low structure not established
+- recent action remains too volatile
+
+For a strong setup:
+
+VCP Score: 94/100
+Setup: Pivot-ready
+Trend: Strong uptrend
+Actionable pivot: $100.53
+Distance to pivot: 0.75%
+
+Do not imply that score alone makes a setup actionable.
+
+Add/update tests covering:
+- majorHigh is never labeled pivot
+- null actionablePivot renders as "None"
+- early/developing stage values are handled
+- pivot-ready uses actionablePivot
+- existing Analyze MU flow still performs exactly one deterministic scan_vcp call
+- existing live price/context remains unchanged
+- scanner failure fallback still works
+
+Run:
+npx vitest run --root . server/mcp/
+npm run build
+
+Do not push automatically.
+
+At the end report:
+- files changed
+- presentation logic changed
+- tests/results
+- build result
+- any compatibility concern

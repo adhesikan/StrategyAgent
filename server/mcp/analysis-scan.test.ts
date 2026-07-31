@@ -62,6 +62,102 @@ describe("stock-analysis intent detection", () => {
   });
 });
 
+describe("summarizeVcpScan (expanded scan_vcp presentation)", () => {
+  const load = async () => (await import("./analysis-scan")).summarizeVcpScan;
+
+  const strongResult = {
+    symbol: "NVDA",
+    score: 94,
+    setupDetected: true,
+    stage: "pivot-ready",
+    trend: { classification: "Strong uptrend" },
+    majorHigh: { price: 1274.55, date: "2026-05-12", distancePercent: 33 },
+    base: { detected: true, durationDays: 42, depthPercent: 12.5, support: 92.1, resistance: 100.53 },
+    actionablePivot: { detected: true, price: 100.53, source: "resistance", distancePercent: 0.75 },
+    pivotPrice: 100.53,
+    reasons: ["tightening contraction sequence"],
+    warnings: [],
+  };
+
+  it("majorHigh is never labeled pivot/breakout/buy point/entry", async () => {
+    const summarize = await load();
+    const text = summarize(strongResult, "NVDA")!;
+    const majorHighLine = text.split("\n").find((l) => l.startsWith("Major high"))!;
+    expect(majorHighLine).toContain("$1,274.55");
+    expect(majorHighLine).toContain("historical context, not an entry level");
+    for (const banned of ["pivot", "breakout", "buy point", "actionable entry"]) {
+      expect(majorHighLine.toLowerCase()).not.toContain(banned);
+    }
+  });
+
+  it("pivot-ready uses actionablePivot for the pivot line", async () => {
+    const summarize = await load();
+    const text = summarize(strongResult, "NVDA")!;
+    expect(text).toContain("Setup: Pivot-ready");
+    expect(text).toContain("Actionable VCP pivot: $100.53");
+    expect(text).toContain("0.75% away");
+    expect(text).toContain("Trend: Strong uptrend");
+  });
+
+  it("null/undetected actionablePivot renders as 'None' (valid data, not error)", async () => {
+    const summarize = await load();
+    for (const ap of [
+      { detected: false, price: null },
+      { detected: true, price: null },
+      { detected: false, price: 105.2 },
+    ]) {
+      const text = summarize(
+        { symbol: "MU", score: 29, stage: "no-setup", actionablePivot: ap, reasons: ["price below key trend levels"] },
+        "MU",
+      )!;
+      expect(text).toContain("Actionable VCP pivot: None");
+      expect(text).toContain("VCP Score: 29/100");
+      expect(text).toContain("Setup: No valid VCP setup");
+    }
+    // Legacy pivotPrice: null is equivalent to no actionable pivot.
+    const legacy = summarize({ symbol: "MU", score: 29, stage: "no-setup", pivotPrice: null }, "MU")!;
+    expect(legacy).toContain("Actionable VCP pivot: None");
+  });
+
+  it("handles early/developing stages; retired 'base-building' maps to developing", async () => {
+    const summarize = await load();
+    expect(summarize({ stage: "early", score: 40 }, "MU")).toContain("Setup: Early base formation");
+    expect(summarize({ stage: "developing", score: 55 }, "MU")).toContain("Setup: Developing base");
+    expect(summarize({ stage: "contraction", score: 70 }, "MU")).toContain("Setup: Contraction phase");
+    expect(summarize({ stage: "base-building", score: 55 }, "MU")).toContain("Setup: Developing base");
+  });
+
+  it("base: summarizes when detected, 'No confirmed base' otherwise; Why uses reasons+warnings", async () => {
+    const summarize = await load();
+    const withBase = summarize(strongResult, "NVDA")!;
+    expect(withBase).toContain("Base: 42 days, 12.5% deep, support $92.10, resistance $100.53");
+    const noBase = summarize(
+      { symbol: "MU", score: 29, stage: "no-setup", base: { detected: false }, reasons: ["no valid tightening contraction sequence"], warnings: ["recent action remains too volatile"] },
+      "MU",
+    )!;
+    expect(noBase).toContain("Base: No confirmed base");
+    expect(noBase).toContain("Why:\n- no valid tightening contraction sequence\n- recent action remains too volatile");
+  });
+
+  it("array payloads: picks the entry matching the symbol, else the first", async () => {
+    const summarize = await load();
+    const arr = [
+      { symbol: "AMD", score: 50, stage: "early" },
+      { symbol: "MU", score: 29, stage: "no-setup" },
+    ];
+    expect(summarize(arr, "MU")).toContain("VCP Score: 29/100");
+    expect(summarize(arr, "ZZZZ")).toContain("VCP Score: 50/100");
+    expect(summarize({ results: arr }, "MU")).toContain("VCP Score: 50/100"); // results wrapper takes first
+  });
+
+  it("returns null for unusable payloads (truncated, empty, non-object)", async () => {
+    const summarize = await load();
+    expect(summarize({ truncated: true, preview: "{}" }, "MU")).toBeNull();
+    expect(summarize(null, "MU")).toBeNull();
+    expect(summarize("weird", "MU")).toBeNull();
+  });
+});
+
 describe("fetchDeterministicVcpScan", () => {
   it("'Analyze MU' calls scan_vcp exactly once with lookbackDays 120 when MCP is enabled", async () => {
     enableMcp();

@@ -857,9 +857,17 @@ async function callOpenAi(
     let vcpScanAttempted = false;
     if (isMcpEnabled()) {
       try {
-        const { fetchDeterministicVcpScan, isStockAnalysisAsk } = await import("../mcp/analysis-scan");
+        const { fetchDeterministicVcpScan, isStockAnalysisAsk, summarizeVcpScan } = await import("../mcp/analysis-scan");
         vcpScanAttempted = isStockAnalysisAsk(question) && ctx.tickers.length > 0;
         vcpScan = await fetchDeterministicVcpScan(question, ctx.tickers.map((t) => t.symbol));
+        if (vcpScan) {
+          // Deterministic pre-rendered summary with the spec's presentation
+          // semantics (majorHigh = history only, actionablePivot = the only
+          // actionable pivot, null pivot => "None"). The model gets both the
+          // structured result and this summary.
+          const summary = summarizeVcpScan(vcpScan.result, vcpScan.symbol);
+          if (summary) (vcpScan as any).summary = summary;
+        }
       } catch (err) {
         console.warn("[ask] deterministic vcp scan unavailable:", (err as Error).message);
       }
@@ -869,7 +877,14 @@ async function callOpenAi(
       question,
       context: compact,
       ...(vcpScan
-        ? { vcpScan: { symbol: vcpScan.symbol, lookbackDays: vcpScan.lookbackDays, result: vcpScan.result } }
+        ? {
+            vcpScan: {
+              symbol: vcpScan.symbol,
+              lookbackDays: vcpScan.lookbackDays,
+              result: vcpScan.result,
+              ...((vcpScan as any).summary ? { summary: (vcpScan as any).summary } : {}),
+            },
+          }
         : {}),
     });
 
@@ -894,7 +909,10 @@ async function callOpenAi(
           mcpSystemRules += `\n- The live VCP scanner is temporarily unavailable for this request. Say so plainly if the user asked about the setup; do not invent a score or setup status and do not call scan_vcp.`;
         }
         if (vcpScan) {
-          mcpSystemRules += `\n- The "vcpScan" field in the user content contains the LIVE VCP scanner result for ${vcpScan.symbol} (already fetched for you). Base the setup assessment on it: mention the score, whether a setup was detected, stage/status, pivot price and distance to pivot when present, plus key reasons/warnings — in plain English, never as raw JSON. Do not call scan_vcp again.`;
+          mcpSystemRules += `\n- The "vcpScan" field in the user content contains the LIVE VCP scanner result for ${vcpScan.symbol} (already fetched for you). Base the setup assessment on it and present it in this structure when useful: VCP Score X/100; Setup (stage: no-setup, early, developing, contraction, or pivot-ready); Trend (use trend.classification only); Major high; Base (summarize duration/depth/support/resistance if detected, otherwise "No confirmed base"); Actionable VCP pivot; then a concise "Why" using the scanner's reasons/warnings, optionally volatility compression, volume contraction, higher lows, and factor strengths/weaknesses. Plain English only — never raw JSON. Do not call scan_vcp again.
+- majorHigh is HISTORICAL CONTEXT ONLY. Never describe majorHigh as a pivot, breakout level, buy point, or actionable entry.
+- actionablePivot is the ONLY actionable pivot concept. If actionablePivot.detected is false or actionablePivot.price is null, present "Actionable VCP pivot: None" — null is valid data, not missing/error data. Legacy pivotPrice equals actionablePivot.price and may also be null.
+- Never imply that the score alone makes a setup actionable.`;
         }
       } catch (err) {
         console.warn("[ask] mcp tools unavailable:", (err as Error).message);

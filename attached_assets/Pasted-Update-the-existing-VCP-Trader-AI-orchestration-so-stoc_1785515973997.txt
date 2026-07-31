@@ -1,0 +1,72 @@
+Update the existing VCP Trader AI orchestration so stock-analysis requests deterministically call MCP scan_vcp before producing the final answer.
+
+Do not redesign the current AI architecture.
+
+Current behavior:
+- MCP is enabled and connected in production.
+- /api/internal/mcp/status shows all 5 tools.
+- After "Analyze MU", MCP stats still show calls: 0.
+- The existing buildContext() already supplies live quote, technical indicators, and sentiment.
+- OpenAI tool_choice is currently auto, so the model can answer without invoking MCP.
+
+Goal:
+For clear stock-analysis intent, always call scan_vcp and include the structured result in the final OpenAI synthesis.
+
+Examples:
+"Analyze MU"
+"Analyze NVDA"
+"How does CRDO look?"
+"Give me a technical analysis of AVGO"
+"What's the setup on MU?"
+"Evaluate MU"
+
+Requirements:
+
+1. Keep the existing buildContext() pipeline unchanged.
+2. Do not remove Tradier/current quote/indicator context.
+3. Detect stock-analysis intent and extract the ticker using existing parsing utilities if available.
+4. When MCP_ENABLED=true and a valid ticker is identified:
+   call the existing centralized MCP wrapper:
+   scan_vcp({
+     symbols: [ticker],
+     lookbackDays: 120
+   })
+5. Call scan_vcp exactly once for that request.
+6. Inject its structured result into the final OpenAI context before the final response is generated.
+7. Surface useful fields when available:
+   - score
+   - setupDetected
+   - stage/status
+   - pivotPrice
+   - distanceToPivotPercent
+   - reasons
+   - warnings
+8. Do not dump raw JSON to the user.
+9. Do not force get_quote if the existing VCP context already has a current quote.
+10. Leave existing optional OpenAI tool-calling support in place for other requests.
+11. If MCP is disabled or scan_vcp fails:
+    - preserve the existing Analyze behavior
+    - do not fail the request
+    - do not fabricate scanner results
+12. Do not enable get_positions for the model.
+13. Do not change InstaTrade or any execution code.
+14. Ensure the deterministic scan_vcp call uses the existing McpToolsClient so telemetry increments stats.calls and emits mcp_tool_call logs.
+15. Add tests:
+    - "Analyze MU" calls scan_vcp exactly once when MCP is enabled
+    - final model context contains scanner result
+    - MCP disabled still works with zero MCP calls
+    - scan failure falls back gracefully
+    - non-analysis questions do not trigger scan_vcp
+    - existing live quote/context remains unchanged
+16. Run MCP tests and production build.
+17. Do not push automatically.
+
+At the end report:
+- files changed
+- exact intent-detection rule
+- how ticker extraction works
+- exact call path for "Analyze MU"
+- expected stats.calls change
+- expected Railway log entry
+- test results
+- build result

@@ -844,7 +844,34 @@ async function callOpenAi(
           : null,
       })),
     };
-    const userContent = JSON.stringify({ question, context: compact });
+    // Deterministic VCP scan for clear stock-analysis asks ("Analyze MU",
+    // "how does CRDO look?"). When MCP is enabled we call scan_vcp exactly
+    // ONCE through the centralized client and inject the structured result
+    // into the model context, so the final answer always includes the
+    // scanner score/status. Failure or disabled MCP → null, existing
+    // behavior preserved (buildContext quote/indicators are untouched).
+    let vcpScan: { symbol: string; lookbackDays: number; result: unknown } | null = null;
+    // True once we attempted the deterministic scan (success OR failure) —
+    // scan_vcp is then removed from the optional tool set so a single request
+    // never triggers more than one scan attempt.
+    let vcpScanAttempted = false;
+    if (isMcpEnabled()) {
+      try {
+        const { fetchDeterministicVcpScan, isStockAnalysisAsk } = await import("../mcp/analysis-scan");
+        vcpScanAttempted = isStockAnalysisAsk(question) && ctx.tickers.length > 0;
+        vcpScan = await fetchDeterministicVcpScan(question, ctx.tickers.map((t) => t.symbol));
+      } catch (err) {
+        console.warn("[ask] deterministic vcp scan unavailable:", (err as Error).message);
+      }
+    }
+
+    const userContent = JSON.stringify({
+      question,
+      context: compact,
+      ...(vcpScan
+        ? { vcpScan: { symbol: vcpScan.symbol, lookbackDays: vcpScan.lookbackDays, result: vcpScan.result } }
+        : {}),
+    });
 
     // MCP live-data tools (feature-flagged). When enabled, the model can call
     // the allowlisted read-only tools (quote / history / news / VCP scan) and
@@ -856,8 +883,19 @@ async function callOpenAi(
     if (isMcpEnabled()) {
       try {
         const mcp = await import("../mcp/tools");
-        mcpTools = mcp.MCP_OPENAI_TOOLS;
+        // If we already attempted the deterministic scan (success or
+        // failure), drop scan_vcp from the optional tool set so the request
+        // performs at most one scan attempt.
+        mcpTools = vcpScanAttempted
+          ? mcp.MCP_OPENAI_TOOLS.filter((t: any) => t.function?.name !== "scan_vcp")
+          : mcp.MCP_OPENAI_TOOLS;
         mcpSystemRules = MCP_SYSTEM_RULES;
+        if (vcpScanAttempted && !vcpScan) {
+          mcpSystemRules += `\n- The live VCP scanner is temporarily unavailable for this request. Say so plainly if the user asked about the setup; do not invent a score or setup status and do not call scan_vcp.`;
+        }
+        if (vcpScan) {
+          mcpSystemRules += `\n- The "vcpScan" field in the user content contains the LIVE VCP scanner result for ${vcpScan.symbol} (already fetched for you). Base the setup assessment on it: mention the score, whether a setup was detected, stage/status, pivot price and distance to pivot when present, plus key reasons/warnings — in plain English, never as raw JSON. Do not call scan_vcp again.`;
+        }
       } catch (err) {
         console.warn("[ask] mcp tools unavailable:", (err as Error).message);
       }

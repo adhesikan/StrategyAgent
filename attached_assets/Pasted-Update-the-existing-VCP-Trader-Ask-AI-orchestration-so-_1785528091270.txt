@@ -1,0 +1,684 @@
+Update the existing VCP Trader Ask AI orchestration so opportunity-search intents return specific ranked opportunities from deterministic backend data instead of generic educational prose.
+
+IMPORTANT
+
+Do NOT change:
+- MCP transport/auth/session code
+- production OHLCV integration
+- scanner algorithms
+- InstaTrade execution
+- broker order logic
+- buildContext()
+- deterministic "Analyze <ticker>" scan_vcp flow
+- get_positions access rules
+
+This task is specifically about routing high-value opportunity-search intents into deterministic opportunity/candidate workflows.
+
+Current problem:
+
+"Find high-quality trade opportunities"
+
+currently returns a generic single-stock analysis or generic prose instead of specific ranked opportunities.
+
+"Find income opportunities"
+
+currently returns generic education such as:
+- dividend stocks
+- covered calls
+- REITs
+- bonds
+
+That is not useful enough for VCP Trader.
+
+Desired behavior:
+
+Opportunity requests should return:
+- specific symbols
+- strategy/setup
+- score/status
+- why the setup qualifies
+- relevant trigger/pivot if available
+- risk/warning context
+- whether stock/options/no-trade is appropriate
+- clear next action
+
+The LLM may EXPLAIN deterministic candidates.
+The LLM must NOT invent candidates.
+
+==================================================
+1. INSPECT CURRENT FLOW FIRST
+==================================================
+
+Inspect:
+
+- server/routes/ask.ts
+- current intent classifier
+- current "best trade" / "income" intent logic
+- /api/opportunities
+- scanner/opportunity services
+- MCP client/tool wrappers
+- whether scan_opportunities is currently available from MCP
+- whether build_trade_candidate is currently available from MCP
+- current Suggestions/CTA logic
+- current broker-connected state available to Ask AI
+- existing income-mode APIs/components
+
+Give a concise architecture summary before changes.
+
+If Sprint 1B MCP tools are not yet deployed, do NOT fabricate them.
+
+Use existing production opportunity sources until MCP scan_opportunities becomes available.
+
+Design the routing so the source can later switch cleanly to MCP scan_opportunities.
+
+==================================================
+2. ADD EXPLICIT OPPORTUNITY INTENTS
+==================================================
+
+Add deterministic detection for intents such as:
+
+TRADE_OPPORTUNITIES
+
+Examples:
+"Find high-quality trade opportunities"
+"Find trades"
+"Show me good trades"
+"What are the best setups?"
+"Find opportunities"
+"What should I trade today?"
+
+BULLISH_OPPORTUNITIES
+
+Examples:
+"Find bullish opportunities"
+"Show me bullish setups"
+"Find bullish swing trades"
+
+BEARISH_OPPORTUNITIES
+
+Examples:
+"Find bearish opportunities"
+"Show me bearish setups"
+
+VCP_OPPORTUNITIES
+
+Examples:
+"Find VCP setups"
+"Show me pivot-ready stocks"
+"Find the best VCP names"
+
+INCOME_OPPORTUNITIES
+
+Examples:
+"Find income opportunities"
+"Find option income trades"
+"Generate income"
+"Find covered call opportunities"
+"Find cash-secured put opportunities"
+
+Do not rely only on the LLM to infer these intents.
+
+Use deterministic intent routing first.
+
+==================================================
+3. TRADE OPPORTUNITY FLOW
+==================================================
+
+For:
+
+"Find high-quality trade opportunities"
+
+do NOT pass directly into generic OpenAI analysis.
+
+Instead:
+
+User request
+→ classify opportunity intent
+→ retrieve ranked opportunities
+→ qualify/filter candidates
+→ optionally enrich top candidates
+→ model synthesizes ranked response
+
+Use the best current deterministic production source.
+
+Preferred future source:
+
+MCP scan_opportunities
+
+If not available yet:
+
+reuse:
+GET /api/opportunities
+or the existing backend service behind it.
+
+Do NOT trigger expensive full-market live scans from the request.
+
+Use existing/stored ranked scanner detections.
+
+==================================================
+4. FILTER QUALITY
+==================================================
+
+Do not return every ACTIVE detection.
+
+Apply conservative quality filters based on fields actually available.
+
+Examples:
+- valid/current opportunity status
+- score/confidence threshold if normalized and trustworthy
+- supported setup stage
+- direction matching request
+- not invalidated
+- not stale
+- reasonable freshness
+
+Do NOT invent cross-strategy ranking if scores are not normalized.
+
+If the existing backend already has a ranking/order, preserve it.
+
+If there are no qualifying results:
+
+return:
+
+"No high-quality setups currently meet the criteria."
+
+Then offer:
+- Open Scanner
+- Review Watchlist
+- Ask AI about a symbol
+
+Do NOT fill the response with generic trading education.
+
+==================================================
+5. RETURN MULTIPLE CANDIDATES
+==================================================
+
+Return approximately 3–5 specific opportunities when available.
+
+Do NOT select one arbitrary symbol and analyze only that.
+
+Desired structured backend result conceptually:
+
+{
+  opportunitySearch: {
+    intent: "trade_opportunities",
+    generatedAt,
+    source,
+    opportunities: [
+      {
+        symbol,
+        strategy,
+        score,
+        stage/status,
+        direction,
+        timeframe,
+        trigger,
+        invalidation,
+        objective,
+        reasons[],
+        warnings[],
+        freshness
+      }
+    ]
+  }
+}
+
+Do not require every field.
+
+Use only supported fields.
+
+==================================================
+6. TRADE CANDIDATE ENRICHMENT
+==================================================
+
+If build_trade_candidate is available from the production MCP service:
+
+For the top few opportunities, call it deterministically.
+
+Use it to return:
+
+STOCK
+ESTIMATED_OPTIONS
+NO_TRADE
+
+Do not require it if the MCP version currently deployed does not expose the tool yet.
+
+Feature-detect or use existing MCP tool allowlist.
+
+If build_trade_candidate is unavailable:
+- still return scanner opportunities
+- do not invent candidate state
+
+==================================================
+7. USER-FACING TRADE OPPORTUNITY RESPONSE
+==================================================
+
+The response should be specific.
+
+Example:
+
+Top Trade Opportunities
+
+1. CRDO — VCP
+Score: 91/100
+Stage: Pivot Ready
+Trend: Strong Uptrend
+
+Why it stands out:
+- tightening contractions
+- volume drying up
+- near actionable pivot
+
+Actionable pivot: $X
+Potential approach: Stock candidate / bullish defined-risk option structure if supported by candidate engine
+
+Risk:
+- earnings/event risk ...
+- setup invalidates if ...
+
+2. NVDA — Momentum Breakout
+...
+
+Do NOT generate fake numbers.
+
+Do NOT call a major historical high an actionable pivot.
+
+Do NOT present Trade Builder CTA unless the candidate/setup state supports it.
+
+==================================================
+8. INCOME OPPORTUNITY FLOW
+==================================================
+
+"Find income opportunities" must NOT return generic education.
+
+Instead route deterministically into an income opportunity workflow.
+
+There are two possible modes:
+
+A. USER HAS PORTFOLIO/BROKER CONTEXT
+
+If safe authenticated portfolio/account context is available:
+
+identify opportunities such as:
+- covered call candidate ONLY for shares the user actually owns
+- cash-secured put candidate ONLY if risk/cash context supports it
+- other approved defined-risk income structures if supported
+
+Do not enable model-controlled arbitrary account IDs.
+
+If portfolio MCP access is not yet production-safe, use existing backend portfolio data only.
+
+B. NO BROKER / NO LIVE OPTIONS DATA
+
+Return underlying-based estimated income candidates, not live contracts.
+
+Examples:
+
+NVDA
+Potential income strategy: Cash-Secured Put
+Status: Estimated
+Reason:
+- bullish/neutral technical structure
+- candidate entry below current market
+
+Target DTE: 20–45
+Strike target zone: derived from technical structure/risk model
+
+Then display:
+
+"Live option contracts, premiums, Greeks, liquidity and exact strikes require a Tradier or TradeStation connection."
+
+Do NOT fabricate:
+- premiums
+- exact contract symbols
+- IV
+- delta
+- open interest
+- volume
+- bid/ask
+
+==================================================
+9. INCOME CANDIDATE TYPES
+==================================================
+
+Support only strategies the backend can justify.
+
+Potential states:
+
+COVERED_CALL
+CASH_SECURED_PUT
+CALL_CREDIT_SPREAD
+PUT_CREDIT_SPREAD
+NO_TRADE
+
+But do NOT expose a strategy simply because it exists in this list.
+
+For current implementation:
+- use existing Income Mode logic where reliable
+- use trade-candidate engine if available
+- otherwise return conservative estimated structures
+
+Covered call MUST require known share ownership.
+
+Cash-secured put MUST communicate required cash/risk assumptions.
+
+NO_TRADE must remain valid.
+
+==================================================
+10. BROKER CONNECTIVITY STATE
+==================================================
+
+Use existing broker status.
+
+If Tradier/TradeStation is connected and live option-chain functionality exists:
+
+future/current flow can provide actual contracts.
+
+If no supported broker is connected:
+
+label all options output clearly:
+
+ESTIMATED OPTIONS STRATEGY
+
+and display:
+
+"Connect Tradier or TradeStation to evaluate live contracts, premiums, Greeks and liquidity."
+
+This should be a CTA, not just disclaimer text.
+
+==================================================
+11. STOCK VS OPTIONS
+==================================================
+
+When candidate engine is available:
+
+Trade opportunity cards may show:
+
+Preferred approach:
+Stock
+
+or:
+
+Preferred approach:
+Estimated Call Debit Spread
+
+or:
+
+No Trade
+
+Do NOT have the LLM independently choose instrument type when deterministic candidate output exists.
+
+The model explains the result.
+
+==================================================
+12. RESPONSE CONTRACT
+==================================================
+
+Add optional structured fields to /api/ask such as:
+
+opportunitySearch?: {
+  type:
+    "trade"
+    | "bullish"
+    | "bearish"
+    | "vcp"
+    | "income";
+
+  source: string;
+
+  generatedAt?: string;
+
+  opportunities: Array<{
+    symbol: string;
+    strategy?: string;
+    score?: number;
+    stage?: string;
+    direction?: string;
+    price?: number;
+    trigger?: number | null;
+    actionablePivot?: number | null;
+    candidateState?:
+      "stock"
+      | "estimated_options"
+      | "no_trade"
+      | null;
+    reasons?: string[];
+    warnings?: string[];
+    estimatedOptions?: {
+      strategy?: string;
+      targetDteMin?: number;
+      targetDteMax?: number;
+      longStrikeZone?: {...};
+      shortStrikeZone?: {...};
+      connectionRequiredForLiveContracts?: boolean;
+    } | null;
+  }>;
+}
+
+Exact types should match existing architecture.
+
+Keep fields optional for backward compatibility.
+
+==================================================
+13. FRONTEND PRESENTATION
+==================================================
+
+On Ask AI, when opportunitySearch exists, render ranked opportunity cards.
+
+Do not render only a long AI paragraph.
+
+Example card:
+
+CRDO
+VCP · Pivot Ready
+91/100
+
+Strong uptrend
+
+Why:
+Tightening contractions
+Volume compression
+Near actionable pivot
+
+[Analyze CRDO] [View Setup]
+
+For estimated options:
+
+NVDA
+Estimated Income Strategy
+
+Cash-Secured Put
+Target DTE: 20–45
+Strike zone: $X–$Y
+
+Live options data unavailable
+
+[Connect Broker] [Analyze NVDA]
+
+For NO_TRADE:
+
+MU
+No Trade
+
+Weak trend
+No confirmed setup
+
+[Analyze MU] [Open Scanner]
+
+==================================================
+14. QUICK ACTION FLOW
+==================================================
+
+The Command Center quick actions should now produce useful results:
+
+Find Trades
+→ opportunity-search UI
+
+Generate Income
+→ income-opportunity UI
+
+They should NOT return generic educational content.
+
+==================================================
+15. ASK AI FOLLOW-UPS
+==================================================
+
+Users should be able to follow up naturally.
+
+Example:
+
+"Why is CRDO ranked first?"
+
+The normal Ask AI path may use the candidate context if already present or analyze the ticker.
+
+Do not build a complicated conversational state system in this task if none exists.
+
+==================================================
+16. SAFETY / EXECUTION
+==================================================
+
+Opportunity search is research only.
+
+Do not:
+- place orders
+- submit orders
+- auto-open Trade Builder
+- execute InstaTrade
+- bypass user confirmation
+
+Trade flow remains:
+
+Opportunity
+→ Analyze
+→ candidate
+→ Trade Builder
+→ user reviews
+→ InstaTrade
+→ user confirms
+
+==================================================
+17. NO GENERIC FALLBACK FOR SUCCESSFUL SEARCH
+==================================================
+
+If deterministic opportunity search succeeds:
+
+OpenAI must summarize those specific opportunities.
+
+It must NOT respond with:
+
+"Consider dividend stocks..."
+
+"Look for companies with..."
+
+"Research stocks that..."
+
+unless the user explicitly asks for educational guidance.
+
+Opportunity-search intent requires opportunity-search output.
+
+==================================================
+18. FAILURE FALLBACK
+==================================================
+
+If opportunity retrieval fails:
+
+say:
+
+"Live opportunity data is temporarily unavailable."
+
+Then offer:
+- Open Scanner
+- Ask about a specific ticker
+
+Do not fabricate opportunities.
+
+If no opportunities qualify:
+
+say:
+
+"No high-quality setups currently meet the criteria."
+
+This is not an error.
+
+==================================================
+19. CONFIDENCE
+==================================================
+
+For opportunity searches, confidence should reflect:
+
+- data freshness
+- number of qualifying candidates
+- successful candidate enrichment
+- market-data completeness
+
+Not bullish/bearish direction.
+
+If deterministic opportunity search fails:
+confidence low.
+
+==================================================
+20. TESTS
+==================================================
+
+Add tests covering at least:
+
+1. "Find high-quality trade opportunities" routes deterministically.
+2. It returns multiple candidates, not one arbitrary ticker.
+3. Generic OpenAI answer is not used when deterministic search succeeds.
+4. No-results returns a valid no-opportunity state.
+5. Opportunity retrieval failure does not fabricate symbols.
+6. Bullish intent filters bullish opportunities.
+7. Bearish intent filters bearish opportunities.
+8. VCP intent filters VCP opportunities.
+9. Rankings preserve production ranking.
+10. Candidate enrichment is used when available.
+11. Candidate engine unavailable still returns scanner opportunities.
+12. NO_TRADE is represented.
+13. "Find income opportunities" routes deterministically.
+14. Income response returns specific symbols.
+15. Covered call requires known shares.
+16. No-broker options are clearly estimated.
+17. No fake premiums/Greeks/OI/bid/ask.
+18. Broker-connect CTA appears for estimated options.
+19. Existing Analyze MU flow remains unchanged.
+20. Existing non-opportunity Ask AI prompts remain unchanged.
+21. Command Center Find Trades works.
+22. Command Center Generate Income works.
+23. No execution behavior introduced.
+
+Run relevant frontend/backend tests and:
+
+npm run build
+
+Fix regressions.
+
+==================================================
+21. DO NOT COMMIT OR PUSH
+==================================================
+
+Do not commit.
+Do not push.
+Do not deploy.
+
+At completion report:
+
+1. Existing opportunity architecture found
+2. Existing income architecture found
+3. Intent routing changes
+4. Opportunity data source
+5. Income data source
+6. Structured response contract
+7. Frontend card design
+8. Ranking/filter behavior
+9. Candidate enrichment behavior
+10. Broker-connected behavior
+11. No-broker estimated-options behavior
+12. NO_TRADE behavior
+13. Failure/no-results behavior
+14. Tests/results
+15. Build result
+16. Compatibility concerns
+17. What remains blocked until Sprint 1B MCP is deployed
+18. Recommended next step
+
+Wait for my approval before commit/push.

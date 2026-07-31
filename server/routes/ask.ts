@@ -16,6 +16,13 @@ import type { TradeSetup } from "../agent/strategy-engine";
 import { buildLongCallPlan, buildLongPutPlan, buildBullCallSpread, buildBearPutSpread, type OptionPlan } from "../services/options-evaluator";
 import { getOptionExpirations, getOptionChain } from "../broker";
 import { isMcpEnabled } from "../mcp/config";
+import {
+  shouldRouteOpportunitySearch,
+  runOpportunitySearch,
+  buildOpportunityAnswer,
+  opportunityConfidence,
+  suggestionsForOpportunitySearch,
+} from "./opportunity-search";
 
 // Extra system rules injected only when MCP live-data tools are enabled.
 const MCP_SYSTEM_RULES = `Live-data tools:
@@ -798,7 +805,11 @@ function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): A
 async function callOpenAi(
   question: string,
   ctx: ContextBlock,
-  opts: { useReferenceLibrary?: boolean } = {},
+  opts: {
+    useReferenceLibrary?: boolean;
+    /** Deterministic opportunity-search result — the model may only explain these candidates, never invent others. */
+    opportunitySearch?: import("./opportunity-search").OpportunitySearchResult;
+  } = {},
 ): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
   try {
@@ -886,6 +897,7 @@ async function callOpenAi(
     const userContent = JSON.stringify({
       question,
       context: compact,
+      ...(opts.opportunitySearch ? { opportunitySearch: opts.opportunitySearch } : {}),
       ...(vcpScan
         ? {
             vcpScan: {
@@ -931,6 +943,10 @@ async function callOpenAi(
       } catch (err) {
         console.warn("[ask] mcp tools unavailable:", (err as Error).message);
       }
+    }
+
+    if (opts.opportunitySearch) {
+      mcpSystemRules += `\n- The "opportunitySearch" field in the user content is the DETERMINISTIC result of a production opportunity search. Your job is ONLY to summarize and explain those specific candidates, ranked in the given order. NEVER invent, add, remove, or re-rank candidates. NEVER answer with generic education ("consider dividend stocks", "look for companies with...", "research stocks that..."). NEVER fabricate premiums, exact option contracts, IV, delta, open interest, volume, or bid/ask. If the opportunities array is empty, say plainly that no high-quality setups currently meet the criteria and suggest the Scanner, the watchlist, or asking about a specific symbol. Do not call any tools for this request.`;
     }
 
     const messages: any[] = [
@@ -1063,6 +1079,64 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       const intent = classifyIntent(question);
       const tickers = extractTickers(question);
       const ctx = await buildContext(userId, question, intent, tickers);
+
+      // ---------------------------------------------------------------
+      // Deterministic opportunity-search intents ("Find high-quality trade
+      // opportunities", "Find income opportunities", ...). Routed BEFORE the
+      // generic LLM path so these never fall back to educational prose.
+      // Ticker-specific asks ("Analyze MU", "covered call on NVDA") keep
+      // their existing flows untouched — only broad searches route here.
+      // Intent-first gating with an explicit-ticker check: the general
+      // extractTickers heuristic false-positives on words like "high", so
+      // it must NOT gate this branch.
+      // ---------------------------------------------------------------
+      const oppSearchType = shouldRouteOpportunitySearch(question);
+      if (oppSearchType) {
+        const { search, failed } = await runOpportunitySearch(oppSearchType, {
+          brokerConnected: ctx.brokerConnected,
+          fetchRows: async () => {
+            const { getOpportunities } = await import("../opportunity-service");
+            // Stored statuses are uppercase; order (detectedAt DESC) is the
+            // production ranking and is preserved downstream.
+            return (await getOpportunities(userId, { status: "ACTIVE", limit: 25 })) as any[];
+          },
+          fetchPositions: async () => {
+            const { getBrokerPositions } = await import("../broker/index");
+            const positions = await getBrokerPositions(userId);
+            return positions.map((p: any) => ({ symbol: p.symbol, qty: Number(p.qty ?? p.quantity ?? 0) }));
+          },
+        });
+
+        const deterministic = buildOpportunityAnswer(search, failed);
+        const confidence = opportunityConfidence(search, failed);
+
+        // The model may EXPLAIN the deterministic candidates (never invent).
+        // On failure/no-results we answer deterministically — no LLM round.
+        let answer: AskAnswer | null = null;
+        let source: "openai" | "rule_based" = "rule_based";
+        if (!failed && search && search.opportunities.length > 0) {
+          answer = await callOpenAi(question, ctx, { opportunitySearch: search });
+          if (answer) source = "openai";
+        }
+        if (!answer) answer = { ...deterministic, confidence };
+
+        return res.json({
+          question,
+          intent: `opportunity-search:${oppSearchType}`,
+          // Broad searches carry no specific ticker — the general extractor's
+          // false positives ("high", "pivot") must not surface as badges.
+          tickers: [],
+          brokerConnected: ctx.brokerConnected,
+          ...answer,
+          confidence, // deterministic: freshness/count/completeness, never direction
+          opportunitySearch: search ?? undefined,
+          opportunitySearchFailed: failed || undefined,
+          suggestions: suggestionsForOpportunitySearch(search, failed),
+          source,
+          disclaimer:
+            "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+        });
+      }
 
       // Wheel / income / CSP / covered-call ask + a ticker → build a real
       // option ticket (strike, expiry, credit, max profit/loss) so the

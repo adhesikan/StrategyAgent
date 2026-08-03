@@ -1,0 +1,532 @@
+Create a comprehensive architecture document called:
+
+/docs/VCP_Trader_AI_Architecture_v1.md
+
+This document will become the authoritative design document for the entire VCP Trader AI ecosystem.
+
+IMPORTANT
+
+This is NOT marketing documentation.
+
+This is NOT implementation documentation.
+
+It is the long-term technical and product architecture.
+
+Study the ENTIRE codebase before writing.
+
+Study:
+
+- frontend
+- backend
+- MCP server architecture
+- AI orchestration
+- scanner architecture
+- Trade Builder
+- InstaTrade
+- broker integrations
+- options support
+- Command Center
+- Education
+- Reports
+- existing APIs
+- Railway deployment
+- database
+- scheduled scans
+- background jobs
+
+Also study the current MCP server architecture including:
+
+SetupCandidate
+TradeCandidate
+scan_strategy
+scan_opportunities
+build_trade_candidate
+strategy registry
+provider architecture
+market data provider
+strategy provider
+
+This document should be future-looking while accurately reflecting the current implementation.
+
+==================================================
+SECTION 1
+VISION
+==================================================
+
+Describe the long-term vision.
+
+Example:
+
+VCP Trader AI is an AI Market Intelligence Platform.
+
+It helps traders and investors:
+
+- discover opportunities
+- analyze opportunities
+- manage risk
+- generate income
+- build portfolios
+- continuously monitor markets
+
+The AI explains.
+
+Deterministic engines decide.
+
+Execution always requires explicit user confirmation.
+
+==================================================
+SECTION 2
+DESIGN PRINCIPLES
+==================================================
+
+Document principles including:
+
+AI explains
+Deterministic engines calculate
+
+Never fabricate
+
+No autonomous trading
+
+NO_TRADE is a valid recommendation
+
+Trading and Investing are different domains
+
+Market data providers are replaceable
+
+Strategies are replaceable
+
+Brokerages are replaceable
+
+Everything exposed through MCP tools
+
+Backend owns secrets
+
+Frontend owns experience
+
+==================================================
+SECTION 3
+HIGH LEVEL ARCHITECTURE
+==================================================
+
+Draw architecture diagrams using ASCII.
+
+Show:
+
+User
+
+↓
+
+VCP Trader
+
+↓
+
+Intent Router
+
+↓
+
+MCP
+
+↓
+
+Providers
+
+↓
+
+Brokerages
+
+↓
+
+Execution
+
+==================================================
+SECTION 4
+MCP ARCHITECTURE
+==================================================
+
+Document every MCP domain.
+
+Current
+
+Market
+
+Scanner
+
+Risk
+
+Research
+
+Trade
+
+Future
+
+Investment
+
+Portfolio
+
+Planning
+
+Monitoring
+
+Document:
+
+purpose
+
+tools
+
+inputs
+
+outputs
+
+dependencies
+
+==================================================
+SECTION 5
+DOMAIN MODELS
+==================================================
+
+Document:
+
+SetupCandidate
+
+TradeCandidate
+
+InvestmentCandidate (future)
+
+PortfolioAnalysis (future)
+
+MarketRegime
+
+OptionCandidate
+
+RiskProfile
+
+IncomeCandidate
+
+Explain why these normalized contracts exist.
+
+==================================================
+SECTION 6
+USER INTENTS
+==================================================
+
+Document all supported intent families.
+
+Examples:
+
+Analyze
+
+Find Trades
+
+Find Income
+
+Compare
+
+Invest
+
+Portfolio
+
+Education
+
+Research
+
+Market
+
+Explain how routing works.
+
+==================================================
+SECTION 7
+TRADING ENGINE
+==================================================
+
+Document:
+
+scan_strategy
+
+scan_opportunities
+
+build_trade_candidate
+
+trade risk
+
+market regime
+
+earnings
+
+option analysis
+
+Trade Builder
+
+InstaTrade
+
+Include full diagrams.
+
+==================================================
+SECTION 8
+INVESTMENT ENGINE
+==================================================
+
+Document future architecture.
+
+InvestmentCandidate
+
+quality
+
+growth
+
+valuation
+
+financial strength
+
+themes
+
+thesis
+
+thesis breakers
+
+portfolio allocation
+
+Make clear this is independent from trading.
+
+==================================================
+SECTION 9
+OPTIONS ENGINE
+==================================================
+
+Document:
+
+estimated options
+
+live options
+
+provider abstraction
+
+Tradier
+
+TradeStation
+
+future providers
+
+Explain why estimated mode exists.
+
+==================================================
+SECTION 10
+PORTFOLIO ENGINE
+==================================================
+
+Future architecture.
+
+Portfolio analysis
+
+income generation
+
+hedging
+
+allocation
+
+rebalancing
+
+concentration
+
+Explain interaction with broker integrations.
+
+==================================================
+SECTION 11
+AI COMMAND CENTER
+==================================================
+
+Document homepage philosophy.
+
+Trade
+
+Invest
+
+Income
+
+Portfolio
+
+Research
+
+Example prompts.
+
+Explain that AI is goal-oriented.
+
+==================================================
+SECTION 12
+MCP TOOL TAXONOMY
+==================================================
+
+List current tools.
+
+List planned tools.
+
+Group logically.
+
+Current examples:
+
+get_quote
+
+scan_strategy
+
+scan_opportunities
+
+build_trade_candidate
+
+calculate_trade_risk
+
+Future:
+
+analyze_investment
+
+compare_investments
+
+build_investment_portfolio
+
+prepare_trade_ticket
+
+select_option_contracts
+
+monitor_conditions
+
+etc.
+
+==================================================
+SECTION 13
+SECURITY
+==================================================
+
+Document:
+
+MCP authentication
+
+internal APIs
+
+broker credentials
+
+backend secrets
+
+read-only tools
+
+execution boundaries
+
+==================================================
+SECTION 14
+DATA FLOW
+==================================================
+
+Create diagrams for:
+
+Analyze Stock
+
+Find Trades
+
+Generate Income
+
+Trade Builder
+
+Future Investment Analysis
+
+==================================================
+SECTION 15
+ROADMAP
+==================================================
+
+Create a sprint roadmap.
+
+Sprint 0
+
+Sprint 1
+
+...
+
+Sprint 12
+
+Include:
+
+Objective
+
+Deliverables
+
+Acceptance criteria
+
+Dependencies
+
+==================================================
+SECTION 16
+FUTURE AGENT
+==================================================
+
+Describe the long-term AI planner.
+
+Example:
+
+User Goal
+
+↓
+
+Planner
+
+↓
+
+Multiple MCP tools
+
+↓
+
+Reasoning
+
+↓
+
+Recommendation
+
+↓
+
+Trade Builder
+
+The planner should never execute trades.
+
+==================================================
+SECTION 17
+APPENDIX
+==================================================
+
+Include:
+
+Glossary
+
+Acronyms
+
+Architecture decisions
+
+Naming conventions
+
+Folder organization
+
+Coding standards
+
+Testing philosophy
+
+Versioning strategy
+
+==================================================
+OUTPUT REQUIREMENTS
+==================================================
+
+Generate professional Markdown.
+
+Use diagrams.
+
+Use tables.
+
+Use architecture illustrations.
+
+Include cross references.
+
+This document should be detailed enough that a new senior engineer could understand the entire system after reading it.
+
+Do NOT change application code.
+
+Do NOT commit.
+
+Do NOT push.
+
+Only generate the architecture document.

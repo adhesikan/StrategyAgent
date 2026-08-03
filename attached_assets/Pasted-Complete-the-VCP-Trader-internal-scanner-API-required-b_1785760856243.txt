@@ -1,0 +1,167 @@
+Complete the VCP Trader internal scanner API required by vcp-trader-mcp Sprint 1B.
+
+Do not modify scanner algorithms.
+Do not duplicate scanner logic.
+Do not modify MCP code.
+Do not modify broker execution, Trade Builder, or InstaTrade.
+
+Implement these authenticated backend-only endpoints:
+
+GET /api/internal/scanner/strategies
+GET /api/internal/scanner/setup
+GET /api/internal/scanner/opportunities
+
+Use the existing VCP_INTERNAL_API_KEY bearer-auth implementation already used by:
+
+GET /api/internal/market/history
+
+Reuse existing:
+- strategy definitions
+- scanner services
+- scheduled scan results
+- opportunity database/storage
+- score and confidence fields
+- ranking order
+- freshness timestamps
+- trigger, invalidation and objective fields where actually available
+
+1. /api/internal/scanner/strategies
+
+Return the authoritative strategies actually implemented by VCP Trader:
+
+{
+  "strategies": [
+    {
+      "id": "momentum_breakout",
+      "displayName": "Momentum Breakout",
+      "direction": "bullish",
+      "category": "momentum",
+      "supportedTimeframes": ["1d"],
+      "targetedScan": true,
+      "rankedOpportunities": true,
+      "enabled": true
+    }
+  ],
+  "generatedAt": "ISO timestamp"
+}
+
+Discover the actual production strategy IDs from the codebase.
+Do not expose placeholder or unimplemented strategies.
+
+2. /api/internal/scanner/setup
+
+Input:
+
+symbol
+strategy
+timeframe
+
+Return the latest existing setup or use an existing targeted-analysis service if one already exists.
+
+Do not synchronously scan the full market.
+
+Response:
+
+{
+  "setup": {
+    "symbol": "NVDA",
+    "strategy": "momentum_breakout",
+    "strategyDisplayName": "Momentum Breakout",
+    "direction": "bullish",
+    "score": 88,
+    "status": "ready",
+    "timeframe": "1d",
+    "trigger": {
+      "price": 190,
+      "basis": "breakout level"
+    },
+    "invalidation": {
+      "price": 181,
+      "basis": "setup invalidation"
+    },
+    "technicalObjective": {
+      "price": 205,
+      "basis": "technical objective"
+    },
+    "currentPrice": 187,
+    "reasons": [],
+    "warnings": [],
+    "detectedAt": "ISO timestamp",
+    "source": "vcp_trader",
+    "details": {}
+  },
+  "generatedAt": "ISO timestamp",
+  "fresh": true
+}
+
+Never fabricate unavailable trigger, invalidation or objective values.
+Use null when the source cannot support a field.
+
+3. /api/internal/scanner/opportunities
+
+Support:
+
+strategies
+direction
+minScore
+status
+timeframe
+limit
+
+Return stored/ranked opportunities only.
+
+Preserve existing production ranking.
+Do not sort unrelated strategies solely by raw score unless the current ranking service already makes those scores comparable.
+Preserve multiple strategies for the same symbol.
+
+Response:
+
+{
+  "opportunities": [...normalized setup objects...],
+  "generatedAt": "ISO timestamp",
+  "source": "vcp_trader"
+}
+
+Normalize common statuses to:
+
+forming
+ready
+triggered
+extended
+invalid
+unknown
+
+Preserve original strategy-specific status inside details.
+
+Add tests for:
+
+- missing and invalid bearer token
+- actual strategy registry
+- valid setup lookup
+- missing setup
+- invalid symbol
+- unsupported strategy/timeframe
+- opportunity filtering
+- limit enforcement
+- ranking preservation
+- duplicate symbol with multiple strategies
+- freshness semantics
+- absence of sensitive fields
+- route does not trigger full-market synchronous scanning
+
+Compare the implemented contract with the MCP StrategyProvider contract.
+
+Run all relevant tests and:
+
+npm run build
+
+Do not commit or push automatically.
+
+Report:
+- actual strategies discovered
+- files changed
+- endpoint contracts
+- status mappings
+- ranking/freshness behavior
+- tests and build
+- any mismatch with the MCP contract

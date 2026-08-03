@@ -185,17 +185,18 @@ export default function MarketIntelPage() {
         </p>
       </div>
 
+      {/* 1) Symbol lookup first — the fastest path to "why is X moving?" */}
+      <WhyIsItMovingCard
+        symbol={whySymbol}
+        onSymbolChange={setWhySymbol}
+        onSubmit={submitWhy}
+        activeSymbol={activeWhySymbol}
+        result={whyQuery.data}
+        isLoading={whyQuery.isLoading}
+      />
+
+      {/* 2) Strongest movers by sentiment */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <MorningBriefing
-          articles={morningArticles}
-          isLoading={trendingQuery.isLoading}
-        />
-        <WatchlistSentiment
-          snapshots={sortedWatchlist}
-          symbols={watchlistQuery.data?.symbols ?? []}
-          source={watchlistQuery.data?.source}
-          isLoading={watchlistQuery.isLoading}
-        />
         <ExtremesCard
           title="Strongest Positive"
           icon={TrendingUp}
@@ -216,16 +217,21 @@ export default function MarketIntelPage() {
         />
       </div>
 
-      <TradingViewHeatmap height={480} dataSource="SPX500" />
+      {/* 3) Everything else */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <MorningBriefing
+          articles={morningArticles}
+          isLoading={trendingQuery.isLoading}
+        />
+        <WatchlistSentiment
+          snapshots={sortedWatchlist}
+          symbols={watchlistQuery.data?.symbols ?? []}
+          source={watchlistQuery.data?.source}
+          isLoading={watchlistQuery.isLoading}
+        />
+      </div>
 
-      <WhyIsItMovingCard
-        symbol={whySymbol}
-        onSymbolChange={setWhySymbol}
-        onSubmit={submitWhy}
-        activeSymbol={activeWhySymbol}
-        result={whyQuery.data}
-        isLoading={whyQuery.isLoading}
-      />
+      <TradingViewHeatmap height={480} dataSource="SPX500" />
 
       <ComplianceFooter />
     </div>

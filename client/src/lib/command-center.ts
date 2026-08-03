@@ -123,22 +123,32 @@ export interface HomeOpportunity {
   symbol: string;
   stage: VcpStage | null;
   price: number | null;
+  /** true when `price` is a live/current quote; false when it is the
+   *  detection-time price (stale — label accordingly). */
+  priceIsCurrent: boolean;
   note: string | null;
   detectedAt: string | null;
   candidateState?: CandidateState; // reserved for the future engine — never set client-side
 }
 
-/** Map raw /api/opportunities rows (active scanner detections) to home cards. */
+/** Map raw /api/opportunities rows (active scanner detections) to home cards.
+ *  Prefers the server-enriched `currentPrice` (broker or Twelve Data
+ *  real-time) over the stale detection-time price. */
 export function toHomeOpportunities(rows: any[] | undefined | null, max = 5): HomeOpportunity[] {
   if (!Array.isArray(rows)) return [];
   return rows
     .filter((r) => r && typeof r.symbol === "string")
     .slice(0, max)
-    .map((r) => ({
-      symbol: String(r.symbol).toUpperCase(),
-      stage: normalizeOppStage(r.stageAtDetection),
-      price: typeof r.detectedPrice === "number" && Number.isFinite(r.detectedPrice) ? r.detectedPrice : null,
-      note: typeof r.strategyName === "string" && r.strategyName ? r.strategyName : null,
-      detectedAt: typeof r.detectedAt === "string" ? r.detectedAt : null,
-    }));
+    .map((r) => {
+      const current = typeof r.currentPrice === "number" && Number.isFinite(r.currentPrice) && r.currentPrice > 0 ? r.currentPrice : null;
+      const detected = typeof r.detectedPrice === "number" && Number.isFinite(r.detectedPrice) ? r.detectedPrice : null;
+      return {
+        symbol: String(r.symbol).toUpperCase(),
+        stage: normalizeOppStage(r.stageAtDetection),
+        price: current ?? detected,
+        priceIsCurrent: current !== null,
+        note: typeof r.strategyName === "string" && r.strategyName ? r.strategyName : null,
+        detectedAt: typeof r.detectedAt === "string" ? r.detectedAt : null,
+      };
+    });
 }

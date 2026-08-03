@@ -224,7 +224,10 @@ export default function CommandCenterPage() {
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-mono font-medium">{o.symbol}</span>
                           {o.price !== null && (
-                            <span className="text-xs text-muted-foreground tabular-nums">${o.price.toFixed(2)}</span>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              ${o.price.toFixed(2)}
+                              {!o.priceIsCurrent && <span className="ml-1 text-[10px] opacity-70">at detection</span>}
+                            </span>
                           )}
                           {o.stage && (
                             <Badge variant="outline" className={cn("text-[10px]", stageTone(o.stage))} data-testid={`badge-opp-stage-${o.symbol}`}>

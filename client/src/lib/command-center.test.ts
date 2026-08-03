@@ -93,11 +93,27 @@ describe("toHomeOpportunities — real scanner data only", () => {
     ];
     const opps = toHomeOpportunities(rows);
     expect(opps).toHaveLength(3);
-    expect(opps[0]).toEqual({ symbol: "CRDO", stage: "pivot-ready", price: 91.2, note: "VCP Breakout", detectedAt: "2026-07-30T12:00:00Z" });
+    expect(opps[0]).toEqual({ symbol: "CRDO", stage: "pivot-ready", price: 91.2, priceIsCurrent: false, note: "VCP Breakout", detectedAt: "2026-07-30T12:00:00Z" });
     expect(opps[2].stage).toBeNull(); // never inferred from score or invented
     expect(opps[2].price).toBeNull();
     expect(toHomeOpportunities(rows, 2)).toHaveLength(2);
     expect(toHomeOpportunities(undefined)).toEqual([]);
+  });
+
+  it("prefers server-enriched currentPrice over stale detectedPrice", () => {
+    const rows = [
+      { symbol: "MSFT", stageAtDetection: "pivot-ready", detectedPrice: 463.89, currentPrice: 484.95, strategyName: "Volume Surge", detectedAt: "2026-08-01T12:00:00Z" },
+      { symbol: "OKTA", stageAtDetection: "contraction", detectedPrice: 140.66, currentPrice: 0, detectedAt: "2026-08-01T12:00:00Z" },
+      { symbol: "PYPL", stageAtDetection: "contraction", detectedPrice: 57.27, currentPrice: "bad", detectedAt: "2026-08-01T12:00:00Z" },
+    ];
+    const opps = toHomeOpportunities(rows);
+    expect(opps[0].price).toBe(484.95);
+    expect(opps[0].priceIsCurrent).toBe(true);
+    // zero / invalid enrichment values never override the labeled detection price
+    expect(opps[1].price).toBe(140.66);
+    expect(opps[1].priceIsCurrent).toBe(false);
+    expect(opps[2].price).toBe(57.27);
+    expect(opps[2].priceIsCurrent).toBe(false);
   });
 });
 

@@ -1006,7 +1006,47 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         }
         return { ...opp, daysToResolution };
       });
-      
+
+      // Enrich small ACTIVE result sets (home cards) with a current price so
+      // the UI never presents the stale detection-time price as current.
+      // Broker quotes when connected; otherwise the gated Twelve Data
+      // real-time fallback (live in regular + extended hours). Best-effort —
+      // failures leave rows unenriched (detectedPrice still shown, labeled).
+      const wantsEnrichment = filters.status === "ACTIVE" && opportunitiesWithDays.length > 0 && opportunitiesWithDays.length <= 10;
+      if (wantsEnrichment) {
+        const symbols = Array.from(new Set(opportunitiesWithDays.map((o) => String(o.symbol).toUpperCase())));
+        const priceMap = new Map<string, { price: number; asOf: string; source: string }>();
+        try {
+          const connection = await storage.getBrokerConnectionWithToken(userId);
+          if (connection?.isConnected && connection.accessToken) {
+            const quotes = await fetchQuotesFromBroker(connection, symbols);
+            const now = new Date().toISOString();
+            for (const q of quotes) {
+              if (Number.isFinite(q.last) && q.last > 0) {
+                priceMap.set(q.symbol.toUpperCase(), { price: q.last, asOf: now, source: "broker" });
+              }
+            }
+          } else {
+            const { getRealtimeQuoteForUser } = await import("./services/daily-market-data/realtime-quote");
+            const timeout = new Promise<null>((r) => setTimeout(() => r(null), 6000));
+            await Promise.all(symbols.map(async (sym) => {
+              const rt = await Promise.race([getRealtimeQuoteForUser(userId, sym, "opportunities_enrichment"), timeout]);
+              if (rt && Number.isFinite(rt.last) && rt.last > 0) {
+                priceMap.set(sym, { price: rt.last, asOf: rt.asOf, source: "twelve_data_quote" });
+              }
+            }));
+          }
+        } catch (e: any) {
+          console.warn("[Opportunities] price enrichment failed:", e?.message || e);
+        }
+        if (priceMap.size > 0) {
+          return res.json(opportunitiesWithDays.map((o) => {
+            const p = priceMap.get(String(o.symbol).toUpperCase());
+            return p ? { ...o, currentPrice: p.price, currentPriceAsOf: p.asOf, currentPriceSource: p.source } : o;
+          }));
+        }
+      }
+
       res.json(opportunitiesWithDays);
     } catch (error: any) {
       console.error("Error getting opportunities:", error);

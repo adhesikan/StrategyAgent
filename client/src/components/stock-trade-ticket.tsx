@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, friendlyApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sheet,
@@ -298,21 +298,9 @@ export function StockTradeTicket({
       onOpenChange(false);
     },
     onError: (error: any) => {
-      let description = "Could not place order";
-      try {
-        const jsonMatch = error.message?.match(/\{.*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          description = parsed.error || description;
-        } else {
-          description = error.message || description;
-        }
-      } catch {
-        description = error.message || description;
-      }
       toast({
         title: "Order Failed",
-        description,
+        description: friendlyApiError(error, "Could not place order"),
         variant: "destructive",
       });
     },

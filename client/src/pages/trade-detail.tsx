@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, friendlyApiError, apiErrorCode } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { SaveToWatchlistDialog } from "@/components/save-to-watchlist-dialog";
 import { getStrategyByTradeType } from "@shared/strategy-catalog";
@@ -666,8 +666,8 @@ export default function TradeDetailPage() {
       setOptionAck(false);
     },
     onError: (err: any) => {
-      const msg = err?.message || "Failed to send option order";
-      if (msg.includes("GUARDRAIL_BLOCKED")) {
+      const msg = friendlyApiError(err, "Failed to send option order");
+      if (apiErrorCode(err) === "GUARDRAIL_BLOCKED") {
         toast({ title: "Blocked by your trade limits", description: msg, variant: "destructive" });
       } else {
         toast({ title: "Option order failed", description: msg, variant: "destructive" });

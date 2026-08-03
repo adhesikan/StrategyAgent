@@ -3,7 +3,19 @@
 // exact same detailed card (scores, levels, sentiment, why/risk) as the
 // Radar page — one source of truth, no drift.
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Eye,
   ListChecks,
@@ -16,6 +28,8 @@ import {
   Landmark,
   CheckCircle2,
   ExternalLink,
+  X,
+  Link2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -603,5 +617,200 @@ export function NewsContextDrawer({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scenario action logging + order review dialog (self-contained)
+// ---------------------------------------------------------------------------
+export async function logScenarioAction(scenario: RadarCandidateScenario, action: string, complianceAcknowledged = false) {
+  try {
+    await apiRequest("POST", "/api/radar/scenarios", {
+      action,
+      complianceAcknowledged,
+      scenario: {
+        symbol: scenario.symbol,
+        companyName: scenario.companyName,
+        strategyType: scenario.strategyType,
+        bias: scenario.bias,
+        finalGrade: scenario.finalGrade,
+        finalScore: scenario.finalScore,
+        technicalScore: scenario.technicalScore,
+        sentimentScore: scenario.sentimentScore,
+        momentumScore: scenario.momentumScore,
+        liquidityScore: scenario.liquidityScore,
+        riskScore: scenario.riskScore,
+        thesis: scenario.thesis,
+        mainReason: scenario.mainReason,
+        mainRisk: scenario.mainRisk,
+        entry: scenario.entry,
+        stop: scenario.stop,
+        target: scenario.target,
+        maxLoss: scenario.maxLoss,
+        maxGain: scenario.maxGain,
+        breakeven: scenario.breakeven,
+        capitalRequired: scenario.capitalRequired,
+        expiration: scenario.expiration,
+        strikes: scenario.strikes,
+        dataMode: scenario.dataMode,
+        brokerConnected: false,
+      },
+    });
+    queryClient.invalidateQueries({ queryKey: ["/api/radar/scenarios/history"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/agent/trade-setups"] });
+  } catch (err) {
+    console.error("[Radar] log action failed", err);
+  }
+}
+
+export function OrderReviewDialog({
+  scenario,
+  brokerConnected,
+  onClose,
+}: {
+  scenario: RadarCandidateScenario | null;
+  brokerConnected: boolean;
+  onClose: () => void;
+}) {
+  const open = !!scenario;
+  const [acknowledged, setAcknowledged] = useState(false);
+  const { toast } = useToast();
+
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      if (!scenario) return null;
+      return apiRequest("POST", "/api/radar/scenarios", {
+        action: "sent_order",
+        complianceAcknowledged: true,
+        scenario: {
+          symbol: scenario.symbol,
+          companyName: scenario.companyName,
+          strategyType: scenario.strategyType,
+          bias: scenario.bias,
+          finalGrade: scenario.finalGrade,
+          finalScore: scenario.finalScore,
+          technicalScore: scenario.technicalScore,
+          sentimentScore: scenario.sentimentScore,
+          momentumScore: scenario.momentumScore,
+          liquidityScore: scenario.liquidityScore,
+          riskScore: scenario.riskScore,
+          thesis: scenario.thesis,
+          mainReason: scenario.mainReason,
+          mainRisk: scenario.mainRisk,
+          entry: scenario.entry,
+          stop: scenario.stop,
+          target: scenario.target,
+          maxLoss: scenario.maxLoss,
+          maxGain: scenario.maxGain,
+          breakeven: scenario.breakeven,
+          capitalRequired: scenario.capitalRequired,
+          expiration: scenario.expiration,
+          strikes: scenario.strikes,
+          dataMode: scenario.dataMode,
+          brokerConnected,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/radar/scenarios/history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agent/trade-setups"] });
+      toast({ title: "Self-directed order recorded", description: "Saved to your scenario history." });
+      handleClose();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not send order",
+        description: err?.message ?? "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleClose = () => {
+    setAcknowledged(false);
+    onClose();
+  };
+
+  if (!scenario) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
+      <DialogContent className="max-w-2xl" data-testid="dialog-radar-review">
+        <DialogHeader>
+          <DialogTitle data-testid="text-review-title">Review Scenario — {scenario.symbol}</DialogTitle>
+          <DialogDescription>
+            Confirm every detail. No order is sent until you click {brokerConnected ? "Send to Broker" : "Connect Broker"}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2 text-sm">
+          <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-lg">{scenario.symbol}</span>
+              <Badge variant="outline">{RADAR_STRATEGY_LABEL[scenario.strategyType]}</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground" data-testid="text-review-thesis">{scenario.thesis}</p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+            <Mini label="Bias" value={scenario.bias} />
+            <Mini label="Grade" value={scenario.finalGrade} />
+            <Mini label="Score" value={String(scenario.finalScore)} />
+            <Mini label="Capital" value={`$${Math.round(scenario.capitalRequired).toLocaleString()}`} />
+            <Mini label="Max loss" value={`$${Math.round(scenario.maxLoss).toLocaleString()}`} className="text-rose-300" />
+            <Mini label="Max gain" value={scenario.maxGain != null ? `$${Math.round(scenario.maxGain).toLocaleString()}` : "—"} className="text-emerald-300" />
+            <Mini label="Entry" value={`$${scenario.entry.toFixed(2)}`} />
+            <Mini label="Stop" value={`$${scenario.stop.toFixed(2)}`} />
+            <Mini label="Target" value={`$${scenario.target.toFixed(2)}`} />
+            {scenario.breakeven != null && <Mini label="Breakeven" value={`$${scenario.breakeven.toFixed(2)}`} />}
+            {scenario.expiration && <Mini label="Expiration" value={scenario.expiration} />}
+            {scenario.strikes && <Mini label="Strikes" value={scenario.strikes} />}
+          </div>
+
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex gap-2" data-testid="text-review-warnings">
+            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+            <span>Main risk: {scenario.mainRisk}. Software-generated scenario for self-directed review.</span>
+          </div>
+
+          <label className="flex items-start gap-2 cursor-pointer" data-testid="label-radar-acknowledge">
+            <Checkbox
+              checked={acknowledged}
+              onCheckedChange={(v) => setAcknowledged(!!v)}
+              data-testid="checkbox-radar-acknowledge"
+            />
+            <span className="leading-snug text-xs">
+              I understand this is a self-directed order. VCP Trader AI is not providing investment advice,
+              and I am responsible for this order.
+            </span>
+          </label>
+        </div>
+
+        <DialogFooter className="flex-wrap gap-2">
+          <Button variant="ghost" onClick={handleClose} data-testid="button-radar-cancel">
+            <X className="h-4 w-4 mr-1" />
+            Cancel
+          </Button>
+          {brokerConnected ? (
+            <Button
+              disabled={!acknowledged || sendMutation.isPending}
+              onClick={() => sendMutation.mutate()}
+              data-testid="button-radar-send"
+            >
+              <Send className="h-4 w-4 mr-1" />
+              Send to Broker
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "/settings")}
+              data-testid="button-radar-connect"
+            >
+              <Link2 className="h-4 w-4 mr-1" />
+              Connect Broker to use self-directed InstaTrade
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

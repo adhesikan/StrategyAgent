@@ -36,6 +36,8 @@ import {
   ExplanationDrawer,
   NewsContextDrawer,
   CongressActivityDrawer,
+  OrderReviewDialog,
+  logScenarioAction,
   type RadarCandidateScenario,
 } from "@/components/radar-scenario-card";
 
@@ -118,6 +120,7 @@ export default function CommandCenterPage() {
   const [explainScenario, setExplainScenario] = useState<RadarCandidateScenario | null>(null);
   const [newsScenario, setNewsScenario] = useState<RadarCandidateScenario | null>(null);
   const [congressSymbol, setCongressSymbol] = useState<string | null>(null);
+  const [reviewScenario, setReviewScenario] = useState<RadarCandidateScenario | null>(null);
   const portfolio = useMemo(() => summarizePositions(positionsQuery.data), [positionsQuery.data]);
 
   const submit = (text: string) => {
@@ -226,8 +229,8 @@ export default function CommandCenterPage() {
                     key={c.id ?? `${c.symbol}-${c.rank}`}
                     scenario={c}
                     onExplain={() => { track("home_radar_view_why" as any); setExplainScenario(c); }}
-                    onReview={() => { track("home_radar_review" as any); navigate("/opportunity-radar"); }}
-                    onPrepareOrder={() => { track("home_radar_prepare" as any); navigate("/opportunity-radar"); }}
+                    onReview={() => { track("home_radar_review" as any); setReviewScenario(c); logScenarioAction(c, "reviewed"); }}
+                    onPrepareOrder={() => { track("home_radar_prepare" as any); setReviewScenario(c); logScenarioAction(c, "prepared_order"); }}
                     onViewNews={() => { track("home_radar_view_news" as any); setNewsScenario(c); }}
                     onViewCongress={() => { track("home_radar_view_congress" as any); setCongressSymbol(c.symbol); }}
                   />
@@ -239,6 +242,7 @@ export default function CommandCenterPage() {
         <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
         <NewsContextDrawer scenario={newsScenario} onClose={() => setNewsScenario(null)} />
         <CongressActivityDrawer symbol={congressSymbol} onClose={() => setCongressSymbol(null)} />
+        <OrderReviewDialog scenario={reviewScenario} brokerConnected={isConnected} onClose={() => setReviewScenario(null)} />
 
         {/* ---------- Market Intelligence + Portfolio ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">

@@ -1,17 +1,74 @@
-import { Link } from "wouter";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { TrendingUp, AlertTriangle, Info } from "lucide-react";
+import { TrendingUp, AlertTriangle, Info, Loader2, ClipboardList } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   SEARCH_TITLES,
   candidateStateLabel,
   optionStrategyLabel,
   strikeZoneDisplay,
   cardCtas,
+  prepareEligible,
+  prepareTicketRequest,
+  prepareTradeParams,
+  type OpportunityCard,
   type LiveOptionCandidate,
   type OpportunitySearchResult,
 } from "@/lib/opportunity-search";
+
+/**
+ * "Prepare in Trade Builder" — USER-INITIATED handoff only. Clicking asks the
+ * backend to prepare a ticket prefill (prepare_trade_ticket when available,
+ * otherwise the card's own displayed values), stores it as a draft, and
+ * navigates to the Trade Builder. It never places an order and the Trade
+ * Builder never opens without this explicit click.
+ */
+function PrepareTicketButton({ card }: { card: OpportunityCard }) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [preparing, setPreparing] = useState(false);
+  if (!prepareEligible(card)) return null;
+
+  const onClick = async () => {
+    const body = prepareTicketRequest(card);
+    if (!body) return;
+    setPreparing(true);
+    try {
+      const res = await apiRequest("POST", "/api/trade/prepare-ticket", body);
+      const result = await res.json();
+      if (!result?.ticket?.symbol) throw new Error("Empty ticket");
+      const id = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      sessionStorage.setItem(`tradeTicketPrefill:${id}`, JSON.stringify(result));
+      const { type, strategy } = prepareTradeParams(card);
+      navigate(`/trade/${card.symbol.toUpperCase()}?type=${type}&strategy=${strategy}&prefill=${id}`);
+    } catch {
+      toast({
+        title: "Couldn't prepare the ticket",
+        description: "You can still open the setup with View Setup and enter values manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  return (
+    <Button
+      size="sm"
+      className="h-7 text-xs gap-1.5"
+      disabled={preparing}
+      onClick={onClick}
+      data-testid={`button-opp-search-${card.symbol}-prepare-ticket`}
+    >
+      {preparing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardList className="h-3 w-3" />}
+      Prepare in Trade Builder
+    </Button>
+  );
+}
 
 function fmtUsd(n: number): string {
   return `$${n.toFixed(2)}`;
@@ -217,6 +274,7 @@ export function OpportunitySearchCards({ search }: { search: OpportunitySearchRe
             )}
 
             <div className="flex gap-1.5 flex-wrap">
+              <PrepareTicketButton card={o} />
               {cardCtas(o, search.brokerConnected).map((c) => (
                 <Link key={c.label} href={c.href}>
                   <Button size="sm" variant={c.primary ? "default" : "outline"} className="h-7 text-xs" data-testid={`button-opp-search-${o.symbol}-${c.label.toLowerCase().replace(/\s+/g, "-")}`}>

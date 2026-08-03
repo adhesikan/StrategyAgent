@@ -17,6 +17,7 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -116,6 +117,95 @@ function defaultExpiryLabel(now: Date = new Date()): string {
   const target = new Date(now);
   target.setDate(target.getDate() + 35);
   return target.toLocaleString("en-US", { month: "short", day: "numeric" });
+}
+
+// -----------------------------------------------------------------------
+// Ticket prefill handoff (user-initiated from a qualified Ask AI card).
+// The draft only PREFILLS this page and its InstaTrade ticket — the user
+// reviews all fields, edits freely, and must explicitly continue and
+// confirm. Nothing is ever submitted automatically.
+// -----------------------------------------------------------------------
+interface TicketPrefillLeg {
+  action: "buy" | "sell";
+  type: "call" | "put";
+  strike: number;
+  expiration?: string;
+  optionSymbol?: string;
+  mid?: number;
+}
+
+interface TicketPrefill {
+  symbol: string;
+  assetType: "stock" | "option";
+  strategy?: string;
+  quantity: number;
+  entryPrice?: number;
+  limitPrice?: number;
+  stopPrice?: number;
+  targetPrice?: number;
+  netKind?: "debit" | "credit";
+  estimatedNet?: number;
+  maxLoss?: number | null;
+  maxProfit?: number | null;
+  breakeven?: number[] | null;
+  expiration?: string;
+  legs?: TicketPrefillLeg[];
+}
+
+interface TicketPrefillResult {
+  ticket: TicketPrefill;
+  source: "mcp" | "card";
+  warnings: string[];
+}
+
+function loadTicketPrefill(id: string | null, ticker: string, pageType: TradeType): TicketPrefillResult | null {
+  if (!id || typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(`tradeTicketPrefill:${id}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as TicketPrefillResult;
+    if (!parsed?.ticket?.symbol || parsed.ticket.symbol.toUpperCase() !== ticker.toUpperCase()) return null;
+    // The draft must match this page's asset family — a stale/edited URL must
+    // never apply an option draft to a stock flow or vice versa.
+    const expected: TicketPrefill["assetType"] = pageType === "stock" ? "stock" : "option";
+    if (parsed.ticket.assetType !== expected) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Overlay a prepared option ticket onto the synthetic plan — real legs/premiums replace estimates. */
+function applyTicketPrefillToPlan(plan: TradePlan, prefill: TicketPrefill | undefined): TradePlan {
+  if (!prefill || prefill.assetType !== "option" || !prefill.legs || prefill.legs.length === 0) return plan;
+  const qty = Math.max(1, prefill.quantity ?? 1);
+  const legs: Leg[] = prefill.legs.map((l) => ({
+    side: l.action === "buy" ? "BUY" : "SELL",
+    qty,
+    desc: `$${l.strike} ${l.type}${l.expiration || prefill.expiration ? ` · ${l.expiration ?? prefill.expiration}` : ""}`,
+    delta: 0,
+    price: typeof l.mid === "number" ? (l.action === "buy" ? -l.mid : l.mid) : 0,
+  }));
+  const net = typeof prefill.estimatedNet === "number" ? Math.abs(prefill.estimatedNet) : null;
+  const isCredit = prefill.netKind === "credit";
+  const netPerShare = net != null ? (isCredit ? net : -net) : plan.netPerShare;
+  return {
+    ...plan,
+    legs,
+    netLabel: isCredit ? "Net credit received (live quote)" : "Net debit paid (live quote)",
+    netPerShare,
+    netValue: net != null ? Math.round(netPerShare * 100) : plan.netValue,
+    maxLoss: prefill.maxLoss != null ? `$${Math.abs(prefill.maxLoss).toLocaleString()}` : plan.maxLoss,
+    maxProfit: prefill.maxProfit != null ? `$${Math.abs(prefill.maxProfit).toLocaleString()}` : plan.maxProfit,
+    breakEven:
+      prefill.breakeven && prefill.breakeven.length > 0
+        ? prefill.breakeven.map((b) => `$${b.toFixed(2)}`).join(" / ")
+        : plan.breakEven,
+    cautions: [
+      "Prefilled from your Ask AI candidate — review every leg, premium and quantity before continuing.",
+      ...plan.cautions,
+    ],
+  };
 }
 
 function buildPlan(type: TradeType, ticker: string, price: number): TradePlan {
@@ -495,11 +585,19 @@ export default function TradeDetailPage() {
     retry: false,
   });
 
+  // Load once per mount; the draft was written by the user's explicit
+  // "Prepare in Trade Builder" click on a qualified card.
+  const [prefillResult] = useState<TicketPrefillResult | null>(() => loadTicketPrefill(sp.get("prefill"), ticker, type));
+  const prefillTicket = prefillResult?.ticket;
+
   const livePrice = quote?.last ?? null;
   const fallbackPrice = 100;
-  const planPrice = livePrice ?? fallbackPrice;
+  const planPrice = livePrice ?? prefillTicket?.entryPrice ?? fallbackPrice;
 
-  const plan = useMemo(() => buildPlan(type, ticker, planPrice), [type, ticker, planPrice]);
+  const plan = useMemo(
+    () => applyTicketPrefillToPlan(buildPlan(type, ticker, planPrice), prefillTicket),
+    [type, ticker, planPrice, prefillTicket],
+  );
   const score = 94;
 
   const [ticketOpen, setTicketOpen] = useState(false);
@@ -682,16 +780,20 @@ export default function TradeDetailPage() {
   const isCredit = effectiveNetPerShare > 0;
   const usingLiveChain = liveNetPerShare != null;
 
+  const stockPrefill = prefillTicket?.assetType === "stock" ? prefillTicket : null;
   const scanResult = {
     ticker,
-    price: planPrice,
+    price: stockPrefill?.entryPrice ?? planPrice,
     resistance: +(planPrice * 1.08).toFixed(2),
-    stopLoss: +(planPrice * 0.94).toFixed(2),
+    stopLoss: stockPrefill?.stopPrice ?? +(planPrice * 0.94).toFixed(2),
     stage: "BREAKOUT",
     patternScore: score,
     rvol: 1.4,
-    prefillTarget: +(planPrice * 0.94).toFixed(2),
-    prefillQuantity: type === "stock" ? 100 : 1,
+    // Under a prepared draft, never fabricate a target: without a real card
+    // target the bracket must fall back to the ticket's own resistance/stop
+    // logic instead of a below-entry "take profit".
+    prefillTarget: stockPrefill ? (stockPrefill.targetPrice ?? null) : +(planPrice * 0.94).toFixed(2),
+    prefillQuantity: stockPrefill?.quantity ?? (type === "stock" ? 100 : 1),
   };
 
   return (
@@ -710,6 +812,21 @@ export default function TradeDetailPage() {
         >
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
+
+        {prefillResult && (
+          <Alert data-testid="alert-ticket-prefill">
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <span className="font-medium">Prefilled from your Ask AI candidate</span>
+              {prefillResult.source === "mcp" ? " (prepared by the ticket service)" : " (using the card's displayed values)"}.
+              {" "}Review every field below and edit anything you like — nothing is sent until you explicitly
+              continue to InstaTrade and confirm the order there.
+              {prefillResult.warnings.length > 0 && (
+                <span className="block mt-1 text-amber-500">{prefillResult.warnings.join(" · ")}</span>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">

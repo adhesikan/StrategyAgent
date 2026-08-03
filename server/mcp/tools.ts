@@ -39,6 +39,10 @@ export const MCP_ALLOWED_TOOLS = [
   "analyze_options",
   "select_option_contracts",
   "calculate_trade_risk",
+  // Ticket preparation — backend deterministic orchestration only, invoked
+  // when the USER explicitly clicks "Prepare in Trade Builder" on a qualified
+  // card. Output only prefills the Trade Builder; it never places an order.
+  "prepare_trade_ticket",
 ] as const;
 
 export type McpAllowedTool = (typeof MCP_ALLOWED_TOOLS)[number];
@@ -262,6 +266,36 @@ export async function calculateTradeRisk(args: {
     legs: (args.legs ?? []).slice(0, 6),
     ...(typeof args.quantity === "number" ? { quantity: Math.max(1, Math.floor(args.quantity)) } : {}),
     ...(typeof args.maxRiskDollars === "number" ? { maxRiskDollars: args.maxRiskDollars } : {}),
+  });
+}
+
+export async function prepareTradeTicket(args: {
+  symbol: string;
+  strategy?: string;
+  quantity?: number;
+  entryPrice?: number;
+  stopPrice?: number;
+  targetPrice?: number;
+  maxRiskDollars?: number;
+  legs?: Array<{
+    action: string;
+    type: string;
+    strike: number;
+    expiration?: string;
+    premium?: number;
+  }>;
+  optionsContextToken?: string;
+}): Promise<unknown> {
+  return callAllowedTool("prepare_trade_ticket", {
+    symbol: cleanSymbol(args.symbol),
+    ...(args.strategy ? { strategy: String(args.strategy) } : {}),
+    ...(typeof args.quantity === "number" ? { quantity: Math.max(1, Math.floor(args.quantity)) } : {}),
+    ...(typeof args.entryPrice === "number" ? { entryPrice: args.entryPrice } : {}),
+    ...(typeof args.stopPrice === "number" ? { stopPrice: args.stopPrice } : {}),
+    ...(typeof args.targetPrice === "number" ? { targetPrice: args.targetPrice } : {}),
+    ...(typeof args.maxRiskDollars === "number" ? { maxRiskDollars: args.maxRiskDollars } : {}),
+    ...(args.legs && args.legs.length ? { legs: args.legs.slice(0, 6) } : {}),
+    ...(args.optionsContextToken ? { optionsContextToken: args.optionsContextToken } : {}),
   });
 }
 

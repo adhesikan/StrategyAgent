@@ -141,6 +141,91 @@ export function strikeZoneDisplay(zone: EstimatedOptions["shortStrikeZone"]): st
   return `$${zone.low.toFixed(2)}–$${zone.high.toFixed(2)}`;
 }
 
+// ---------------------------------------------------------------------------
+// "Prepare in Trade Builder" handoff — USER-INITIATED ONLY.
+// A card is prepare-eligible only when its data is deterministic enough to
+// prefill a real ticket: a live option candidate (every leg priced from the
+// live chain) or a stock candidate with a risk estimate. The handoff only
+// PREFILLS the Trade Builder; the user reviews/edits everything and must
+// explicitly continue and confirm through InstaTrade.
+// ---------------------------------------------------------------------------
+
+export function prepareEligible(card: OpportunityCard): boolean {
+  if (card.candidateState === "live_options" && card.liveOption && card.liveOption.legs.length > 0) return true;
+  if (card.candidateState === "stock" && card.riskEstimate?.stopPrice != null) return true;
+  return false;
+}
+
+/** Body for POST /api/trade/prepare-ticket, built only from displayed card data. */
+export function prepareTicketRequest(card: OpportunityCard): Record<string, unknown> | null {
+  const sym = card.symbol.toUpperCase();
+  if (card.candidateState === "live_options" && card.liveOption) {
+    const lo = card.liveOption;
+    return {
+      symbol: sym,
+      assetType: "option",
+      strategy: lo.strategy,
+      netKind: lo.netKind,
+      estimatedNet: lo.estimatedNet,
+      maxLoss: lo.maxLoss ?? null,
+      maxProfit: lo.maxProfit ?? null,
+      breakeven: lo.breakeven ?? null,
+      expiration: lo.expiration,
+      legs: lo.legs.map((l) => ({
+        action: l.action,
+        type: l.type,
+        strike: l.strike,
+        ...(l.expiration ? { expiration: l.expiration } : {}),
+        ...(l.optionSymbol ? { optionSymbol: l.optionSymbol } : {}),
+        ...(typeof l.mid === "number" && l.mid > 0 ? { mid: l.mid } : {}),
+      })),
+    };
+  }
+  if (card.candidateState === "stock" && card.riskEstimate) {
+    const re = card.riskEstimate;
+    return {
+      symbol: sym,
+      assetType: "stock",
+      strategy: "stock_swing",
+      ...(typeof card.trigger === "number" && card.trigger > 0
+        ? { entryPrice: card.trigger }
+        : typeof card.price === "number" && card.price > 0
+          ? { entryPrice: card.price }
+          : {}),
+      ...(typeof re.stopPrice === "number" && re.stopPrice > 0 ? { stopPrice: re.stopPrice } : {}),
+      ...(card.technicalObjective && card.technicalObjective.price > 0
+        ? { targetPrice: card.technicalObjective.price }
+        : {}),
+      ...(typeof re.suggestedMaxShares === "number" && re.suggestedMaxShares >= 1
+        ? { quantity: Math.floor(re.suggestedMaxShares) }
+        : {}),
+      ...(typeof re.maxRiskDollars === "number" && re.maxRiskDollars > 0
+        ? { maxRiskDollars: re.maxRiskDollars }
+        : {}),
+    };
+  }
+  return null;
+}
+
+/** Trade Builder URL params for a prepare-eligible card. */
+export function prepareTradeParams(card: OpportunityCard): { type: string; strategy: string } {
+  if (card.candidateState === "live_options" && card.liveOption) {
+    const s = card.liveOption.strategy.toLowerCase();
+    const isCredit = card.liveOption.netKind === "credit";
+    // Credit vs debit matters: a credit spread routed as "debit-spread" would
+    // mislabel the structure in the Trade Builder.
+    if (s.includes("spread") || s.includes("vertical")) {
+      return { type: "vertical", strategy: isCredit ? "short-premium" : "debit-spread" };
+    }
+    if (s.includes("covered")) return { type: "short-premium", strategy: "covered-call" };
+    if (s.includes("cash") || s.includes("secured")) return { type: "short-premium", strategy: "cash-secured-put" };
+    if (isCredit) return { type: "short-premium", strategy: "short-premium" };
+    if (s.includes("put")) return { type: "long-put", strategy: "long-put" };
+    return { type: "long-call", strategy: "long-call" };
+  }
+  return { type: "stock", strategy: "stock-swing" };
+}
+
 export interface CardCta {
   label: string;
   href: string;

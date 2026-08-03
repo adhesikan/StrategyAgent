@@ -4,6 +4,9 @@ import {
   optionStrategyLabel,
   strikeZoneDisplay,
   cardCtas,
+  prepareEligible,
+  prepareTicketRequest,
+  prepareTradeParams,
   SEARCH_TITLES,
   type OpportunityCard,
 } from "./opportunity-search";
@@ -137,5 +140,71 @@ describe("live option candidates", () => {
     };
     const ctas = cardCtas(card as any, false);
     expect(ctas[0]).toMatchObject({ label: "Connect Broker", href: "/settings", primary: true });
+  });
+});
+
+describe("prepare-in-trade-builder handoff (user-initiated only)", () => {
+  const liveCard = {
+    symbol: "mu",
+    candidateState: "live_options" as const,
+    reasons: [],
+    warnings: [],
+    liveOption: {
+      status: "live" as const,
+      strategy: "bull_call_spread",
+      expiration: "2026-09-18",
+      legs: [
+        { action: "buy" as const, type: "call" as const, strike: 125, mid: 4.1, optionSymbol: "MU260918C00125000" },
+        { action: "sell" as const, type: "call" as const, strike: 130, mid: 2.25 },
+      ],
+      priceBasis: "mid" as const,
+      estimatedNet: -1.85,
+      netKind: "debit" as const,
+      maxLoss: 185,
+      maxProfit: 315,
+      breakeven: [126.85],
+      rankReasons: [],
+    },
+  };
+  const stockCard = {
+    symbol: "NVDA",
+    candidateState: "stock" as const,
+    trigger: 120.5,
+    technicalObjective: { price: 138 },
+    reasons: [],
+    warnings: [],
+    riskEstimate: { stopPrice: 114, suggestedMaxShares: 16, maxRiskDollars: 500 },
+  };
+
+  it("gates eligibility to live options and stocks with a stop", () => {
+    expect(prepareEligible(liveCard as any)).toBe(true);
+    expect(prepareEligible(stockCard as any)).toBe(true);
+    expect(prepareEligible({ ...stockCard, riskEstimate: {} } as any)).toBe(false);
+    expect(prepareEligible({ symbol: "X", candidateState: "estimated_options", reasons: [], warnings: [] } as any)).toBe(false);
+    expect(prepareEligible({ symbol: "X", candidateState: "no_trade", reasons: [], warnings: [] } as any)).toBe(false);
+  });
+
+  it("builds an option request only from displayed card data", () => {
+    const body = prepareTicketRequest(liveCard as any)!;
+    expect(body.symbol).toBe("MU");
+    expect(body.assetType).toBe("option");
+    expect((body.legs as any[])).toHaveLength(2);
+    expect((body.legs as any[])[0].mid).toBe(4.1);
+    expect(body.estimatedNet).toBe(-1.85);
+    expect(body.expiration).toBe("2026-09-18");
+  });
+
+  it("builds a stock request with entry/stop/target/quantity", () => {
+    const body = prepareTicketRequest(stockCard as any)!;
+    expect(body).toMatchObject({ symbol: "NVDA", assetType: "stock", entryPrice: 120.5, stopPrice: 114, targetPrice: 138, quantity: 16, maxRiskDollars: 500 });
+  });
+
+  it("maps strategies to trade-builder params", () => {
+    expect(prepareTradeParams(liveCard as any)).toEqual({ type: "vertical", strategy: "debit-spread" });
+    expect(prepareTradeParams(stockCard as any)).toEqual({ type: "stock", strategy: "stock-swing" });
+    const cc = { ...liveCard, liveOption: { ...liveCard.liveOption, strategy: "covered_call" } };
+    expect(prepareTradeParams(cc as any)).toEqual({ type: "short-premium", strategy: "covered-call" });
+    const lp = { ...liveCard, liveOption: { ...liveCard.liveOption, strategy: "long_put" } };
+    expect(prepareTradeParams(lp as any)).toEqual({ type: "long-put", strategy: "long-put" });
   });
 });

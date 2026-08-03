@@ -1,0 +1,287 @@
+Perform a complete stability and user-flow audit of VCP Trader Steps 1–9 before we begin the separate Investment Intelligence domain.
+
+Do not add new product features.
+Do not redesign the UI.
+Do not modify scanner algorithms.
+Do not modify execution logic.
+Do not commit, push or deploy automatically.
+
+GOAL
+
+Validate the integrated VCP Trader experience from:
+
+Command Center
+→ Ask AI
+→ MCP tools
+→ structured analysis/candidates
+→ Trade Builder handoff
+
+==================================================
+1. INVENTORY
+==================================================
+
+Inspect and report:
+
+- logged-in routes
+- AI Command Center
+- Ask AI orchestration
+- MCP client and tool allowlist
+- internal market/scanner/options APIs
+- opportunity-search flow
+- VCP analysis cards
+- trade/option candidate cards
+- broker capability state
+- Trade Builder integration
+- InstaTrade confirmation boundary
+- current test suites
+- known TODOs
+
+==================================================
+2. RUN COMPLETE VALIDATION
+==================================================
+
+Run all relevant test suites, including:
+
+- internal scanner API tests
+- MCP client/orchestration tests
+- Command Center tests
+- VCP analysis presentation tests
+- opportunity-search tests
+- option-candidate presentation tests
+- Trade Builder handoff tests
+- auth/security tests
+
+Run:
+
+npm run check
+npm run build
+
+If npm run check has known pre-existing errors, classify each:
+- related to Steps 1–9
+- unrelated legacy issue
+
+Do not ignore new errors.
+
+==================================================
+3. INTERNAL API CONTRACT TESTS
+==================================================
+
+Validate directly in automated integration tests:
+
+GET /api/internal/market/history
+GET /api/internal/scanner/strategies
+GET /api/internal/scanner/setup
+GET /api/internal/scanner/opportunities
+
+And any options-context/internal options endpoints currently implemented.
+
+Test:
+
+- auth
+- schema
+- filters
+- null fields
+- ranking
+- freshness
+- no sensitive fields
+- no scan-on-read
+- malformed stored data
+- provider errors
+
+==================================================
+4. ASK AI DETERMINISTIC ROUTING
+==================================================
+
+Test these intents:
+
+- Analyze MU
+- Find the best setups right now
+- Find 3 bullish trades
+- Find VCP setups
+- Find Momentum Breakout setups
+- Find a trade with maximum loss of $300
+- Find an options trade under $500
+- Find income opportunities
+- normal educational question
+
+Assert the correct deterministic route is taken.
+
+Opportunity queries must not fall back to generic educational prose when deterministic search succeeds.
+
+==================================================
+5. STRUCTURED RESPONSE AUDIT
+==================================================
+
+Validate:
+
+- vcpAnalysis
+- vcpScanFailed
+- opportunitySearch
+- trade candidate
+- estimated options
+- live options if available
+- NO_TRADE
+- no-results
+
+Ensure the frontend safely handles:
+
+- missing optional fields
+- null trigger
+- empty reasons
+- stale data
+- failed scanner
+- failed MCP
+- delayed/partial option data
+
+==================================================
+6. COMMAND CENTER AUDIT
+==================================================
+
+Validate:
+
+- /home loads
+- logo returns to /home
+- Ideas remains accessible
+- Ask command routing works
+- Find Trades works
+- Generate Income works
+- Scan Market works
+- opportunities panel renders real data
+- no-opportunity state
+- portfolio connected/disconnected state
+- market panel failure isolation
+- mobile layout
+- no expensive scan triggered on page load
+
+==================================================
+7. ASK AI PRESENTATION AUDIT
+==================================================
+
+Validate:
+
+- VCP rich cards
+- majorHigh historical-context labeling
+- actionable pivot semantics
+- contraction sequence
+- improvement conditions
+- opportunity ranking cards
+- specific stocks and reasons
+- estimated/live option distinction
+- broker-connect CTA
+- no fake premiums/Greeks
+- stage-aware Trade Builder CTA
+- confidence meaning data quality, not bullishness
+
+==================================================
+8. TRADE BUILDER HANDOFF AUDIT
+==================================================
+
+Validate:
+
+- stock prefill
+- live option prefill if supported
+- estimated option cannot masquerade as a live contract
+- all values editable
+- stale source warning
+- user review required
+- explicit confirmation required
+- no automatic execution
+- failed handoff does not submit anything
+
+==================================================
+9. SECURITY AUDIT
+==================================================
+
+Verify:
+
+- MCP token backend-only
+- internal API token backend-only
+- broker tokens backend-only
+- no sensitive data in frontend bundle
+- account/context IDs are not model-controlled
+- admin status endpoints remain protected
+- logs do not include credentials
+- no new write path was introduced
+
+==================================================
+10. FAILURE-INJECTION TESTS
+==================================================
+
+Test the UI/backend under:
+
+- MCP unavailable
+- internal scanner API failure
+- no opportunities
+- scanner returns null setup
+- stale opportunity
+- options provider unavailable
+- options context expired
+- malformed MCP payload
+- OpenAI unavailable
+
+The app must remain usable and must not fabricate data.
+
+==================================================
+11. CREATE UAT CHECKLIST
+==================================================
+
+Create:
+
+docs/TRADING_PLATFORM_UAT.md
+
+Include 12 manual user scenarios:
+
+1. Analyze MU
+2. Find best setups
+3. Find bullish trades
+4. Find risk-limited trade
+5. Estimated options without broker
+6. Live options with broker
+7. Income without holdings
+8. Income with holdings
+9. NO_TRADE
+10. Stock Trade Builder handoff
+11. Option Trade Builder handoff
+12. Dependency failure
+
+For each include:
+
+- prerequisites
+- exact prompt/actions
+- expected UI
+- expected backend/MCP telemetry
+- pass/fail field
+- notes field
+
+==================================================
+12. CREATE STABILITY REPORT
+==================================================
+
+Create:
+
+docs/VCP_TRADER_STABILITY_REPORT.md
+
+Classify:
+
+PASS
+PASS_WITH_LIMITATIONS
+FAIL
+MANUAL_TEST_REQUIRED
+
+Recommend:
+
+GO
+CONDITIONAL_GO
+NO_GO
+
+for beginning Investment Intelligence.
+
+Do not commit or push.
+
+Report:
+- tests/build
+- failures found
+- fixes made
+- manual tests required
+- broker requirement
+- final recommendation

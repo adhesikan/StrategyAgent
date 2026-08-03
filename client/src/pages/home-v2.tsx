@@ -235,13 +235,13 @@ export default function HomeV2() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="w-full px-4 md:px-8 py-8 md:py-12 space-y-10">
+      <div className="w-full max-w-6xl mx-auto px-4 md:px-8 py-5 md:py-6 space-y-6">
         <TrialBanner />
         <div>
-          <h1 className="text-[26px] font-medium tracking-tight" data-testid="text-home-greeting">
+          <h1 className="text-xl md:text-2xl font-medium tracking-tight" data-testid="text-home-greeting">
             {greeting}, {firstName}.
           </h1>
-          <p className="text-[15px] text-muted-foreground mt-1" data-testid="text-home-subtitle">
+          <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-home-subtitle">
             {radarQuery.isLoading
               ? "Scanning for trade candidates…"
               : `${ideas.length} ${ideas.length === 1 ? "candidate" : "candidates"} ready to review — nothing sent without your approval.`}

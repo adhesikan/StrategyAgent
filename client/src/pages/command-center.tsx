@@ -34,6 +34,8 @@ import { Radar } from "lucide-react";
 import {
   ScenarioCard,
   ExplanationDrawer,
+  NewsContextDrawer,
+  CongressActivityDrawer,
   type RadarCandidateScenario,
 } from "@/components/radar-scenario-card";
 
@@ -114,6 +116,8 @@ export default function CommandCenterPage() {
     [radarQuery.data],
   );
   const [explainScenario, setExplainScenario] = useState<RadarCandidateScenario | null>(null);
+  const [newsScenario, setNewsScenario] = useState<RadarCandidateScenario | null>(null);
+  const [congressSymbol, setCongressSymbol] = useState<string | null>(null);
   const portfolio = useMemo(() => summarizePositions(positionsQuery.data), [positionsQuery.data]);
 
   const submit = (text: string) => {
@@ -224,8 +228,8 @@ export default function CommandCenterPage() {
                     onExplain={() => { track("home_radar_view_why" as any); setExplainScenario(c); }}
                     onReview={() => { track("home_radar_review" as any); navigate("/opportunity-radar"); }}
                     onPrepareOrder={() => { track("home_radar_prepare" as any); navigate("/opportunity-radar"); }}
-                    onViewNews={() => navigate("/opportunity-radar")}
-                    onViewCongress={() => navigate("/opportunity-radar")}
+                    onViewNews={() => { track("home_radar_view_news" as any); setNewsScenario(c); }}
+                    onViewCongress={() => { track("home_radar_view_congress" as any); setCongressSymbol(c.symbol); }}
                   />
                 ))}
               </div>
@@ -233,6 +237,8 @@ export default function CommandCenterPage() {
           </CardContent>
         </Card>
         <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
+        <NewsContextDrawer scenario={newsScenario} onClose={() => setNewsScenario(null)} />
+        <CongressActivityDrawer symbol={congressSymbol} onClose={() => setCongressSymbol(null)} />
 
         {/* ---------- Market Intelligence + Portfolio ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">

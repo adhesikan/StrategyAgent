@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { fetchQuotesFromBroker } from "../broker-service";
+import { getRealtimeQuoteForUser } from "../services/daily-market-data/realtime-quote";
 
 interface SnapshotItem {
   symbol: string;
@@ -172,6 +173,31 @@ export function registerHomeSnapshotRoutes(
             }
           } catch (e: any) {
             console.warn("[home-snapshot] broker quote fetch failed:", e?.message);
+          }
+        }
+
+        // Twelve Data real-time fallback: no broker connection, or the broker
+        // fetch failed / returned nothing usable. Indices only (3 symbols) to
+        // keep credit usage bounded — the TD quote layer caches for 30s.
+        if (!indices.some((i) => i.last > 0)) {
+          const indexSymbols: Array<{ symbol: string; name: string }> = [
+            { symbol: "SPY", name: "S&P 500" },
+            { symbol: "QQQ", name: "Nasdaq 100" },
+            { symbol: "IWM", name: "Russell 2000" },
+          ];
+          const results = await Promise.all(
+            indexSymbols.map(async ({ symbol, name }) => {
+              const q = await Promise.race([
+                getRealtimeQuoteForUser(userId, symbol, "home-snapshot"),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+              ]).catch(() => null);
+              if (!q || !(q.last > 0)) return { symbol, name, last: 0, changePercent: 0 };
+              return { symbol, name, last: q.last, changePercent: Number(q.changePercent.toFixed(2)) };
+            }),
+          );
+          if (results.some((r) => r.last > 0)) {
+            indices = results;
+            dataMode = "live";
           }
         }
       }

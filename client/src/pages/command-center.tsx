@@ -186,7 +186,55 @@ export default function CommandCenterPage() {
           </div>
         </section>
 
-        {/* ---------- Opportunity Radar (top trades) + Portfolio ---------- */}
+        {/* ---------- Opportunity Radar — Top Trades ---------- */}
+        <Card data-testid="card-home-radar">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                <Radar className="h-4 w-4 text-primary" /> Opportunity Radar — Top Trades
+              </CardTitle>
+              <Button size="sm" variant="ghost" onClick={() => { track("home_radar_open" as any); navigate("/opportunity-radar"); }} data-testid="button-open-radar">
+                Open Radar <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {radarQuery.isLoading ? (
+              <div className="grid gap-2 md:grid-cols-2">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </div>
+            ) : radarQuery.isError ? (
+              <p className="text-xs text-muted-foreground py-3" data-testid="text-radar-error">
+                Radar data is temporarily unavailable. Open the Radar page to retry.
+              </p>
+            ) : radarTrades.length === 0 ? (
+              <div className="py-3 space-y-3" data-testid="text-no-radar-trades">
+                <p className="text-sm">No radar trade candidates right now.</p>
+                <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")}>
+                  Open Opportunity Radar
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2" data-testid="grid-radar-trades">
+                {radarTrades.map((c) => (
+                  <ScenarioCard
+                    key={c.id ?? `${c.symbol}-${c.rank}`}
+                    scenario={c}
+                    onExplain={() => { track("home_radar_view_why" as any); setExplainScenario(c); }}
+                    onReview={() => { track("home_radar_review" as any); navigate("/opportunity-radar"); }}
+                    onPrepareOrder={() => { track("home_radar_prepare" as any); navigate("/opportunity-radar"); }}
+                    onViewNews={() => navigate("/opportunity-radar")}
+                    onViewCongress={() => navigate("/opportunity-radar")}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
+
+        {/* ---------- Market Intelligence + Portfolio ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">
           <Card data-testid="card-home-portfolio">
             <CardHeader className="pb-2">
@@ -239,58 +287,6 @@ export default function CommandCenterPage() {
               )}
             </CardContent>
           </Card>
-        </div>
-
-        {/* ---------- Opportunity Radar — Top Trades ---------- */}
-        <Card data-testid="card-home-radar">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-                <Radar className="h-4 w-4 text-primary" /> Opportunity Radar — Top Trades
-              </CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => { track("home_radar_open" as any); navigate("/opportunity-radar"); }} data-testid="button-open-radar">
-                Open Radar <ArrowRight className="h-3.5 w-3.5 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {radarQuery.isLoading ? (
-              <div className="grid gap-2 md:grid-cols-2">
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            ) : radarQuery.isError ? (
-              <p className="text-xs text-muted-foreground py-3" data-testid="text-radar-error">
-                Radar data is temporarily unavailable. Open the Radar page to retry.
-              </p>
-            ) : radarTrades.length === 0 ? (
-              <div className="py-3 space-y-3" data-testid="text-no-radar-trades">
-                <p className="text-sm">No radar trade candidates right now.</p>
-                <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")}>
-                  Open Opportunity Radar
-                </Button>
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2" data-testid="grid-radar-trades">
-                {radarTrades.map((c) => (
-                  <ScenarioCard
-                    key={c.id ?? `${c.symbol}-${c.rank}`}
-                    scenario={c}
-                    onExplain={() => { track("home_radar_view_why" as any); setExplainScenario(c); }}
-                    onReview={() => { track("home_radar_review" as any); navigate("/opportunity-radar"); }}
-                    onPrepareOrder={() => { track("home_radar_prepare" as any); navigate("/opportunity-radar"); }}
-                    onViewNews={() => navigate("/opportunity-radar")}
-                    onViewCongress={() => navigate("/opportunity-radar")}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
-
-        {/* ---------- Market Intelligence + boundaries ---------- */}
-        <div className="grid gap-4 lg:grid-cols-2">
           <Card data-testid="card-home-market-intel">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between gap-2">

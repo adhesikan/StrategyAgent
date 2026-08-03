@@ -111,9 +111,13 @@ export interface CardCta {
 export function cardCtas(card: OpportunityCard, brokerConnected: boolean): CardCta[] {
   const sym = card.symbol.toUpperCase();
   const analyze: CardCta = { label: `Analyze ${sym}`, href: `/ask?q=${encodeURIComponent(`Analyze ${sym}`)}`, primary: true };
+  // "View Setup" always opens the trade setup page (/trade/:symbol) —
+  // charts/research live behind "View Chart" (/market-intel) instead.
+  const viewSetup: CardCta = { label: "View Setup", href: `/trade/${sym}` };
   if (card.candidateState === "no_trade") {
-    // NO_TRADE is a valid, honest verdict — research navigation only.
-    return [analyze, { label: "View Setup", href: `/market-intel?symbol=${sym}` }, { label: "Open Scanner", href: "/scanner" }];
+    // NO_TRADE is a valid, honest verdict — the setup page still shows the
+    // levels/why-not; order actions remain gated there.
+    return [analyze, viewSetup, { label: "Open Scanner", href: "/scanner" }];
   }
   if (card.candidateState === "estimated_options") {
     const ctas: CardCta[] = [];
@@ -127,10 +131,10 @@ export function cardCtas(card: OpportunityCard, brokerConnected: boolean): CardC
   }
   const stage = (card.stage ?? "").toLowerCase();
   if (card.candidateState === "stock" || stage === "pivot-ready") {
-    return [analyze, { label: "View Setup", href: `/market-intel?symbol=${sym}` }, { label: "Open Trade Builder", href: `/trade/${sym}` }];
+    return [analyze, viewSetup, { label: "View Chart", href: `/market-intel?symbol=${sym}` }];
   }
   if (stage === "contraction") {
-    return [analyze, { label: "View Setup", href: `/market-intel?symbol=${sym}` }];
+    return [analyze, viewSetup];
   }
   return [analyze, { label: "View Chart", href: `/market-intel?symbol=${sym}` }];
 }

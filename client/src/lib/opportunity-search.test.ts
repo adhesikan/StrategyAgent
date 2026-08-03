@@ -38,9 +38,11 @@ describe("labels", () => {
 });
 
 describe("cardCtas — Trade Builder gating (spec §7/§13, test 23: research navigation only)", () => {
-  it("pivot-ready exposes Trade Builder", () => {
-    const labels = cardCtas(base, true).map((c) => c.label);
-    expect(labels).toEqual(["Analyze CRDO", "View Setup", "Open Trade Builder"]);
+  it("pivot-ready: View Setup opens the trade setup page, chart is separate", () => {
+    const ctas = cardCtas(base, true);
+    expect(ctas.map((c) => c.label)).toEqual(["Analyze CRDO", "View Setup", "View Chart"]);
+    expect(ctas[1].href).toBe("/trade/CRDO");
+    expect(ctas[2].href).toBe("/market-intel?symbol=CRDO");
   });
   it("developing/early never expose Trade Builder", () => {
     for (const stage of ["developing", "early", undefined]) {
@@ -55,9 +57,10 @@ describe("cardCtas — Trade Builder gating (spec §7/§13, test 23: research na
       "Open Scanner",
     ]);
   });
-  it("MCP STOCK verdict (candidateState stock) exposes Trade Builder even without pivot-ready stage", () => {
-    const labels = cardCtas({ ...base, stage: "ready", candidateState: "stock", verdict: "STOCK" }, true).map((c) => c.label);
-    expect(labels).toEqual(["Analyze CRDO", "View Setup", "Open Trade Builder"]);
+  it("MCP STOCK verdict (candidateState stock) links View Setup to the trade page even without pivot-ready stage", () => {
+    const ctas = cardCtas({ ...base, stage: "ready", candidateState: "stock", verdict: "STOCK" }, true);
+    expect(ctas.map((c) => c.label)).toEqual(["Analyze CRDO", "View Setup", "View Chart"]);
+    expect(ctas[1].href).toBe("/trade/CRDO");
   });
   it("estimated options without broker → Connect Broker CTA first (test 18)", () => {
     const ctas = cardCtas(

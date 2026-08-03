@@ -143,6 +143,8 @@ export interface McpOpportunitySearch {
   brokerConnected: boolean;
   /** Risk budget parsed from the question, when present. */
   maxRiskDollars?: number | null;
+  /** Explicit result count parsed from the question (clamped), when present. */
+  requestedCount?: number | null;
   opportunities: RankedOpportunity[];
   /** Count excluded by the user's risk budget (honest disclosure). */
   excludedByRisk?: number;
@@ -167,6 +169,26 @@ export function parseMaxRisk(question: string): number | null {
     }
   }
   return null;
+}
+
+const COUNT_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+/**
+ * Parses an explicit requested result count ("find 3 bullish trades",
+ * "show 5 setups", "give me the top 2 opportunities"). Returns null when the
+ * question doesn't name a count. Callers clamp to the platform safe maximum.
+ */
+export function parseRequestedCount(question: string): number | null {
+  const q = question.toLowerCase();
+  const m = q.match(
+    /\b(?:top|best|find|show|give me|list|first)?\s*(?:me\s+)?(?:the\s+)?(?:top\s+)?(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:[a-z-]+\s+){0,2}?(?:trades?|setups?|opportunit(?:y|ies)|candidates?|ideas?|plays?)\b/,
+  );
+  if (!m) return null;
+  const n = COUNT_WORDS[m[1]] ?? Number.parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return n;
 }
 
 /** Optional strategy filter derived from the question (deterministic). */
@@ -460,9 +482,17 @@ export async function runMcpOpportunitySearch(
 ): Promise<McpOpportunitySearch> {
   const now = deps.now ?? new Date();
   const maxRiskDollars = parseMaxRisk(question);
+  // Explicit count is the final visible limit, clamped to the platform safe max.
+  const requestedCount = (() => {
+    const n = parseRequestedCount(question);
+    return n == null ? null : Math.min(n, CANDIDATE_DEPTH);
+  })();
+  const depth = requestedCount ?? CANDIDATE_DEPTH;
 
   const filters: { strategies?: string[]; direction?: "bullish" | "bearish"; limit?: number } = {
-    limit: 10,
+    // Retrieval honors the requested count with headroom for the direction
+    // filter; the final visible slice below is exactly `depth`.
+    limit: requestedCount != null ? Math.min(requestedCount + 5, 25) : 10,
     direction: type === "bearish" ? "bearish" : "bullish",
   };
   const strategies = strategyFilterFor(question, type);
@@ -474,7 +504,7 @@ export async function runMcpOpportunitySearch(
   // Preserve the MCP's returned ranking exactly; apply only honest hard
   // filters (direction must match what was asked — never repurpose).
   const wantDirection = type === "bearish" ? "bearish" : "bullish";
-  const setups = scanned.filter((s) => !s.direction || s.direction === wantDirection).slice(0, CANDIDATE_DEPTH);
+  const setups = scanned.filter((s) => !s.direction || s.direction === wantDirection).slice(0, depth);
 
   const ranked: RankedOpportunity[] = await Promise.all(
     setups.map(async (setup, i): Promise<RankedOpportunity> => {
@@ -580,6 +610,7 @@ export async function runMcpOpportunitySearch(
     generatedAt: now.toISOString(),
     brokerConnected: deps.brokerConnected,
     maxRiskDollars,
+    requestedCount,
     opportunities: final,
     ...(excludedByRisk > 0 ? { excludedByRisk } : {}),
   };
@@ -710,6 +741,24 @@ const TYPE_LABELS: Record<string, string> = {
   vcp: "VCP setups",
 };
 
+/** Direction/strategy adjective for headlines ("bullish setups", "VCP setups"). */
+const TYPE_ADJECTIVES: Record<string, string> = {
+  trade: "",
+  bullish: "bullish ",
+  bearish: "bearish ",
+  vcp: "VCP ",
+};
+
+const NUMBER_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+function countWord(n: number): string {
+  return n >= 0 && n <= 10 ? NUMBER_WORDS[n] : String(n);
+}
+
+/** A card counts as a qualified trade candidate only for real verdicts. */
+function isQualifiedState(state: McpOpportunityCard["candidateState"]): boolean {
+  return state === "stock" || state === "live_options" || state === "estimated_options";
+}
+
 function fmt(n: number): string {
   return `$${n.toFixed(2)}`;
 }
@@ -726,8 +775,11 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
   riskNote: string;
 } {
   const label = TYPE_LABELS[search.intent] ?? "opportunities";
+  const adj = TYPE_ADJECTIVES[search.intent] ?? "";
   const cards = search.opportunities.map((o) => toMcpOpportunityCard(o, search.brokerConnected));
   const displayable = cards; // NO_TRADE stays visible — it is a valid result
+  const qualifiedCount = displayable.filter((c) => isQualifiedState(c.candidateState)).length;
+  const noTradeCount = displayable.filter((c) => c.candidateState === "no_trade").length;
 
   if (displayable.length === 0) {
     const riskNote =
@@ -735,7 +787,7 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
         ? `Setups were found, but none fit a ${fmt(search.maxRiskDollars)} maximum risk budget — the minimum risk per share exceeded it. Widening the budget or waiting for tighter setups are the honest options.`
         : "Forcing a trade when no setup qualifies is a common way to give back gains. No trade is a valid position.";
     return {
-      headline: "No high-quality setups currently meet your criteria.",
+      headline: `No qualifying ${adj}setups currently meet the criteria.`,
       answer: `No high-quality setups currently meet your criteria.${
         search.intent === "bearish" ? " The deterministic scanners currently track long (bullish) setups only, so bearish candidates are not available." : ""
       }${
@@ -787,20 +839,64 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
       ? `\n\n${search.excludedByRisk} additional candidate${search.excludedByRisk === 1 ? "" : "s"} excluded: risk per share exceeded your ${fmt(search.maxRiskDollars)} budget.`
       : "";
 
+  // Headline distinguishes scanner setups from qualified trade candidates —
+  // NO_TRADE results are never called trades.
+  const n = displayable.length;
+  let headline: string;
+  if (qualifiedCount === 0) {
+    headline = `${countWord(n)} ${adj}setup${n === 1 ? "" : "s"} found, but none currently qualify as trades.`;
+  } else if (qualifiedCount === n) {
+    headline = `${countWord(n)} ${adj}trade candidate${n === 1 ? "" : "s"} identified.`;
+  } else {
+    headline = `${countWord(n)} ${adj}setup${n === 1 ? "" : "s"} reviewed; ${countWord(qualifiedCount).toLowerCase()} currently ${
+      qualifiedCount === 1 ? "qualifies as a trade" : "qualify as trades"
+    }.`;
+  }
+
+  const countSummary = `Reviewed ${n} scanner setup${n === 1 ? "" : "s"}: ${qualifiedCount} qualified as trade candidate${
+    qualifiedCount === 1 ? "" : "s"
+  }${noTradeCount > 0 ? `, ${noTradeCount} did not qualify (NO TRADE)` : ""}${
+    n - qualifiedCount - noTradeCount > 0 ? `, ${n - qualifiedCount - noTradeCount} could not be evaluated by the candidate engine` : ""
+  }. Scanner detections are not recommendations.`;
+
   return {
-    headline: `Top ${label} from the live multi-strategy scan (${displayable.length}).`,
-    answer: `Here are the current ${label}, in the scanner's own ranking:\n\n${lines.join("\n\n")}${exclusionNote}`,
+    headline,
+    answer: `${countSummary}\n\nHere are the current ${label}, in the scanner's own ranking:\n\n${lines.join("\n\n")}${exclusionNote}`,
     keyPoints: displayable.slice(0, 5).map((c) => `${c.symbol}${c.verdict ? ` — ${c.verdict.replace(/_/g, " ")}` : ""}${c.score != null ? ` (${c.score}/100)` : ""}`),
     riskNote:
       "These are software-detected candidates, not recommendations. Verdicts and levels are deterministic engine output — re-verify each setup in your own broker before acting.",
   };
 }
 
-/** Deterministic confidence: data completeness, never direction. */
+/**
+ * Deterministic confidence: data quality and completeness, never direction.
+ * Mock-sourced data or missing underlying market data can never be "high".
+ */
 export function mcpOpportunityConfidence(search: McpOpportunitySearch): "low" | "medium" | "high" {
   const n = search.opportunities.length;
   if (n === 0) return "low";
-  const withCandidates = search.opportunities.filter((o) => o.candidate != null).length;
-  if (n >= 3 && withCandidates >= 3) return "high";
+
+  // Mock or synthetic source anywhere in the result set → low confidence.
+  const hasMock = search.opportunities.some((o) => {
+    const s = (o.setup.source ?? "").toLowerCase();
+    const c = String((o.candidate as { source?: string } | null)?.source ?? "").toLowerCase();
+    return s.includes("mock") || s.includes("synthetic") || c.includes("mock") || c.includes("synthetic");
+  });
+  if (hasMock) return "low";
+
+  const withCandidates = search.opportunities.filter((o) => o.candidate != null);
+  // Candidate engine failed for everything → low.
+  if (withCandidates.length === 0) return "low";
+
+  // "Complete" = candidate engine succeeded AND underlying market data (entry
+  // trigger + invalidation, or an honest NO_TRADE verdict) is present.
+  const complete = withCandidates.filter((o) => {
+    if (normVerdict(o.candidate?.verdict) === "NO_TRADE") return true;
+    const entry = o.candidate?.stockCandidate?.trigger?.price ?? o.setup.trigger?.price;
+    const stop = o.candidate?.stockCandidate?.riskPlan?.suggestedStopZone?.low ?? o.setup.invalidation?.price;
+    return typeof entry === "number" && typeof stop === "number";
+  }).length;
+
+  if (n >= 3 && withCandidates.length >= 3 && complete >= 3) return "high";
   return "medium";
 }

@@ -1,0 +1,129 @@
+Fix the remaining opportunity-search consistency issues discovered during manual UAT.
+
+Do not redesign the workflow.
+Do not change scanner algorithms.
+Do not change MCP transport or execution logic.
+
+Observed issue:
+
+The user asked:
+
+"Find 3 bullish trades"
+
+The response headline said:
+
+"Three bullish trade setups identified."
+
+But the structured cards displayed five opportunities.
+
+All five also had candidate verdict NO_TRADE, making the word "trades" misleading.
+
+Implement the following:
+
+1. Enforce requested count consistently.
+
+Parse explicit requested counts such as:
+
+find 3 bullish trades
+show 5 setups
+give me the top 2 opportunities
+
+Use the parsed count as the final visible candidate limit, subject to the platform's existing safe maximum.
+
+Apply the same limit to:
+
+- opportunity retrieval
+- candidate qualification
+- opportunitySearch.opportunities
+- frontend cards
+- AI summary
+- headline
+
+2. Distinguish scanner setups from qualified trades.
+
+Use these concepts:
+
+Scanner setup:
+A strategy detection returned by scan_opportunities.
+
+Trade candidate:
+A setup that build_trade_candidate qualifies as STOCK, LIVE_OPTIONS, or ESTIMATED_OPTIONS.
+
+No-trade setup:
+A scanner setup that build_trade_candidate rejects as NO_TRADE.
+
+3. Headline rules.
+
+If at least one qualified candidate exists:
+
+"Three bullish trade candidates identified."
+
+If setups exist but all are NO_TRADE:
+
+"Three bullish setups found, but none currently qualify as trades."
+
+If a mix exists:
+
+"Three bullish setups reviewed; one currently qualifies as a trade."
+
+If none exist:
+
+"No qualifying bullish setups currently meet the criteria."
+
+Never call NO_TRADE results actual trades.
+
+4. Summary rules.
+
+The AI narrative must accurately state:
+
+- number of scanner setups reviewed
+- number of qualified trade candidates
+- number rejected as NO_TRADE
+
+Do not claim that a bullish scanner signal is a recommendation.
+
+5. Confidence.
+
+Confidence must reflect:
+
+- real vs mock source
+- market-data availability
+- setup freshness
+- candidate-engine success
+- completeness of risk inputs
+
+Mock data or unavailable underlying market data must not produce high confidence.
+
+6. Duplicate-symbol presentation.
+
+When the same symbol appears under multiple strategies:
+
+- preserve each SetupCandidate
+- show the strategy clearly
+- optionally group them visually under the symbol
+- do not treat the duplicate as an error
+- do not claim confluence unless the confluence engine actually qualifies it
+
+7. Add tests for:
+
+- explicit count 3 produces exactly 3 visible cards
+- count applied to structured response and narrative
+- all NO_TRADE results use "setups," not "trade candidates"
+- mixed verdict headline
+- zero qualifying results
+- duplicate symbol with multiple strategies
+- mock data cannot produce high confidence
+- unavailable underlying data cannot produce high confidence
+- existing Analyze MU flow unchanged
+
+Run relevant tests and npm run build.
+
+Do not commit or push automatically.
+
+Report:
+- files changed
+- count parsing behavior
+- headline rules
+- confidence rules
+- tests
+- build result

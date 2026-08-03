@@ -28,6 +28,7 @@ import {
   toMcpOpportunityCard,
   buildMcpOpportunityAnswer,
   mcpOpportunityConfidence,
+  parseRequestedCount,
   type McpOpportunitySearch,
 } from "./opportunity-search-mcp";
 
@@ -1215,6 +1216,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
 
         const { search, failed } = await runOpportunitySearch(oppSearchType, {
           brokerConnected: ctx.brokerConnected,
+          maxResults: parseRequestedCount(question),
           fetchRows: async () => {
             const { getOpportunities } = await import("../opportunity-service");
             // Stored statuses are uppercase; order (detectedAt DESC) is the

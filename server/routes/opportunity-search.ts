@@ -428,6 +428,8 @@ export interface RunOpportunitySearchDeps {
   fetchPositions: () => Promise<PositionLike[]>;
   brokerConnected: boolean;
   now?: Date;
+  /** Explicit user-requested result count (already clamped by the caller). */
+  maxResults?: number | null;
 }
 
 /**
@@ -459,7 +461,8 @@ export async function runOpportunitySearch(
     }
     opportunities = buildIncomeCandidates({ rows: qualified, positions, brokerConnected: deps.brokerConnected, now });
   } else {
-    opportunities = qualified.slice(0, 5).map((r) => toOpportunityCard(r, now));
+    const cap = deps.maxResults != null ? Math.min(Math.max(deps.maxResults, 1), 5) : 5;
+    opportunities = qualified.slice(0, cap).map((r) => toOpportunityCard(r, now));
   }
   return {
     search: {

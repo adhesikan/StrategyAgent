@@ -14,6 +14,7 @@ import {
   type McpCandidate,
   type McpSearchDeps,
 } from "./opportunity-search-mcp";
+import { parseRequestedCount } from "./opportunity-search-mcp";
 import { classifyOpportunitySearch, shouldRouteOpportunitySearch } from "./opportunity-search";
 
 function setup(symbol: string, strategy: string, score: number, status = "ready"): McpSetup {
@@ -258,7 +259,7 @@ describe("cards and answers", () => {
     const a = buildMcpOpportunityAnswer({
       intent: "trade", source: "mcp", generatedAt: "x", brokerConnected: false, maxRiskDollars: null, opportunities: [],
     });
-    expect(a.headline).toBe("No high-quality setups currently meet your criteria.");
+    expect(a.headline).toBe("No qualifying setups currently meet the criteria.");
     expect(a.answer).toContain("No high-quality setups currently meet your criteria.");
     expect(a.answer).not.toMatch(/consider dividend|research stocks|look for companies/i);
   });
@@ -646,5 +647,89 @@ describe("live options pipeline", () => {
     } as McpSearchDeps);
     expect(called).toBe(0);
     expect(r.opportunities[0].liveOption).toBeNull();
+  });
+});
+
+describe("count enforcement, setup-vs-trade headlines, confidence quality (UAT fixes)", () => {
+  const NO_TRADE: McpCandidate = { verdict: "NO_TRADE", noTradeReasons: ["regime risk-off"] };
+
+  it("parses explicit counts from natural phrasings", () => {
+    expect(parseRequestedCount("Find 3 bullish trades")).toBe(3);
+    expect(parseRequestedCount("show 5 setups")).toBe(5);
+    expect(parseRequestedCount("give me the top 2 opportunities")).toBe(2);
+    expect(parseRequestedCount("find three bullish trades")).toBe(3);
+    expect(parseRequestedCount("Find bullish trades")).toBeNull();
+    expect(parseRequestedCount("Find trades under $500 maximum risk")).toBeNull();
+  });
+
+  it("explicit count 3 produces exactly 3 visible cards", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85), setup("D", "vcp", 80), setup("E", "vcp", 75)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 3 bullish trades", deps({ setups }));
+    expect(r.requestedCount).toBe(3);
+    expect(r.opportunities).toHaveLength(3);
+    expect(r.opportunities.map((o) => o.setup.symbol)).toEqual(["A", "B", "C"]);
+  });
+
+  it("count is reflected in the structured response and narrative", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85), setup("D", "vcp", 80)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 3 bullish trades", deps({ setups }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Three bullish trade candidates identified.");
+    expect(a.answer).toContain("Reviewed 3 scanner setups: 3 qualified as trade candidates");
+    expect(a.answer).not.toContain("4.");
+  });
+
+  it("all NO_TRADE results use 'setups', never 'trade candidates'", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 3 bullish trades", deps({ setups, candidates: { A: NO_TRADE, B: NO_TRADE, C: NO_TRADE } }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Three bullish setups found, but none currently qualify as trades.");
+    expect(a.headline).not.toMatch(/trade candidates identified/);
+    expect(a.answer).toContain("0 qualified as trade candidates, 3 did not qualify (NO TRADE)");
+  });
+
+  it("mixed verdicts get the 'reviewed; N qualify' headline", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 3 bullish trades", deps({ setups, candidates: { B: NO_TRADE, C: NO_TRADE } }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Three bullish setups reviewed; one currently qualifies as a trade.");
+  });
+
+  it("zero qualifying results use the no-qualifying-setups headline", () => {
+    const a = buildMcpOpportunityAnswer({
+      intent: "bullish", source: "mcp", generatedAt: "x", brokerConnected: false, maxRiskDollars: null, opportunities: [],
+    });
+    expect(a.headline).toBe("No qualifying bullish setups currently meet the criteria.");
+  });
+
+  it("duplicate symbol across strategies is preserved with distinct strategy labels, no confluence claims", async () => {
+    const setups = [setup("NVDA", "momentum_breakout", 92), setup("NVDA", "vcp", 88)];
+    const r = await runMcpOpportunitySearch("trade", "Find 2 trades", deps({ setups }));
+    expect(r.opportunities.map((o) => `${o.setup.symbol}:${o.setup.strategy}`)).toEqual(["NVDA:momentum_breakout", "NVDA:vcp"]);
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.answer).toContain("momentum_breakout");
+    expect(a.answer).toContain("vcp");
+    expect(a.answer).not.toMatch(/confluence/i);
+  });
+
+  it("mock-sourced data cannot produce high confidence", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)].map((s) => ({ ...s, source: "mock" }));
+    const r = await runMcpOpportunitySearch("trade", "Find trades", deps({ setups }));
+    expect(mcpOpportunityConfidence(r)).toBe("low");
+  });
+
+  it("missing underlying market data cannot produce high confidence", async () => {
+    const bare = (sym: string): McpSetup => ({ ...setup(sym, "vcp", 90), trigger: null, invalidation: null });
+    const noLevels: McpCandidate = { verdict: "STOCK", stockCandidate: { trigger: null, riskPlan: null } };
+    const setups = [bare("A"), bare("B"), bare("C")];
+    const r = await runMcpOpportunitySearch("trade", "Find trades", deps({ setups, candidates: { A: noLevels, B: noLevels, C: noLevels } }));
+    expect(mcpOpportunityConfidence(r)).not.toBe("high");
+  });
+
+  it("candidate-engine failure for everything → low confidence", async () => {
+    const err = new Error("engine down");
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
+    const r = await runMcpOpportunitySearch("trade", "Find trades", deps({ setups, candidates: { A: err, B: err, C: err } }));
+    expect(mcpOpportunityConfidence(r)).toBe("low");
   });
 });

@@ -1115,16 +1115,52 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         // -------------------------------------------------------------
         if (oppSearchType !== "income" && isMcpEnabled()) {
           let mcpSearch: McpOpportunitySearch | null = null;
+          // Live-options capability: connected users with an options-capable
+          // broker get a short-lived OPAQUE context token forwarded to
+          // build_trade_candidate so MCP can call back into
+          // /api/internal/options/* for a real chain. The token is minted
+          // server-side, never logged, never sent to the browser or the LLM,
+          // and revoked as soon as orchestration completes. Disconnected
+          // users get estimated-options mode (no token → MCP has no live
+          // data path).
+          let liveOptions: { liveOptionsAvailable: boolean; provider?: string } = { liveOptionsAvailable: false };
+          let optionsContextToken: string | undefined;
+          try {
+            const { capabilityForUser } = await import("./internal-options");
+            const { issueOptionsContext } = await import("../services/options-context");
+            if (!userId) throw new Error("no session user");
+            liveOptions = await capabilityForUser(userId, {
+              getBrokerConnection: async (uid) => {
+                const conn = await storage.getBrokerConnection(uid);
+                return conn ? { provider: conn.provider, isConnected: !!conn.isConnected } : null;
+              },
+            });
+            if (liveOptions.liveOptionsAvailable) {
+              optionsContextToken = issueOptionsContext(userId).token;
+            }
+          } catch {
+            liveOptions = { liveOptionsAvailable: false };
+          }
           try {
             const tools = await import("../mcp/tools");
             mcpSearch = await runMcpOpportunitySearch(oppSearchType, question, {
               scanOpportunities: (f) => tools.scanOpportunities(f),
-              buildTradeCandidate: (s, st) => tools.buildTradeCandidate(s, st),
+              buildTradeCandidate: (s, st, oct) => tools.buildTradeCandidate(s, st, oct),
               calculatePositionRisk: (a) => tools.calculatePositionRisk(a),
               brokerConnected: ctx.brokerConnected,
+              ...(optionsContextToken ? { optionsContextToken } : {}),
             });
           } catch {
             mcpSearch = null; // fall through to the stored-detection path
+          } finally {
+            // Context tokens are single-request: revoke immediately so a
+            // captured token cannot be replayed after this Ask completes.
+            if (optionsContextToken) {
+              try {
+                const { revokeOptionsContext } = await import("../services/options-context");
+                revokeOptionsContext(optionsContextToken);
+              } catch {}
+            }
           }
           if (mcpSearch) {
             const cards = mcpSearch.opportunities.map((o) => toMcpOpportunityCard(o, mcpSearch!.brokerConnected));
@@ -1138,6 +1174,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               source: "mcp",
               generatedAt: mcpSearch.generatedAt,
               brokerConnected: mcpSearch.brokerConnected,
+              liveOptions,
               ...(mcpSearch.maxRiskDollars != null ? { maxRiskDollars: mcpSearch.maxRiskDollars } : {}),
               ...(mcpSearch.excludedByRisk ? { excludedByRisk: mcpSearch.excludedByRisk } : {}),
               opportunities: cards,

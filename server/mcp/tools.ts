@@ -144,10 +144,23 @@ export async function scanStrategy(symbol: string, strategy: string, timeframe?:
   return callAllowedTool("scan_strategy", args);
 }
 
-export async function buildTradeCandidate(symbol: string, strategy: string): Promise<unknown> {
+/**
+ * `optionsContextToken` is a short-lived OPAQUE context token minted by
+ * server/services/options-context.ts — never a broker OAuth token. It lets
+ * the MCP service call back into /api/internal/options/* (with its own
+ * VCP_INTERNAL_API_KEY) to fetch a live option chain for the requesting
+ * user. Backend-only: this wrapper is not in MCP_AI_TOOLS, so the model can
+ * never supply or observe this argument.
+ */
+export async function buildTradeCandidate(
+  symbol: string,
+  strategy: string,
+  optionsContextToken?: string,
+): Promise<unknown> {
   return callAllowedTool("build_trade_candidate", {
     symbol: cleanSymbol(symbol),
     strategy: String(strategy),
+    ...(optionsContextToken ? { optionsContextToken } : {}),
   });
 }
 

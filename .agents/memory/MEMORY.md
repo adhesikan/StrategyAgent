@@ -6,3 +6,4 @@
 - [User lookup — authStorage vs storage](user-lookup-storage.md) — storage.getUser is an in-memory stub; real user rows (role/email) come from authStorage.getUser.
 - [Vitest root quirk](vitest-root.md) — vitest resolves root to `client/` here; run server tests with `npx vitest run --root . <file>` or no test files are found.
 - [MCP Sprint-2 tools](mcp-sprint2-tools.md) — calculate_position_risk needs `symbol` + `maxRiskDollars` (not riskBudget); MCP may serve `source:"mock"` data; dev has MCP_ENABLED unset.
+- [Options-context trust boundary](options-context-boundary.md) — MCP gets an opaque 5-min token, never broker OAuth; all MCP responses are deep-scrubbed before reaching client/LLM.

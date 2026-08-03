@@ -141,7 +141,7 @@ export interface McpSearchDeps {
     direction?: "bullish" | "bearish";
     limit?: number;
   }) => Promise<unknown>;
-  buildTradeCandidate: (symbol: string, strategy: string) => Promise<unknown>;
+  buildTradeCandidate: (symbol: string, strategy: string, optionsContextToken?: string) => Promise<unknown>;
   calculatePositionRisk: (args: {
     symbol: string;
     entryPrice: number;
@@ -150,12 +150,40 @@ export interface McpSearchDeps {
     maxRiskDollars?: number;
   }) => Promise<unknown>;
   brokerConnected: boolean;
+  /**
+   * Short-lived OPAQUE options-context token (server/services/options-context.ts)
+   * minted only when the user has a connected options-capable broker. It is
+   * forwarded to build_trade_candidate so the MCP service can call back into
+   * /api/internal/options/* for a live chain. NEVER a broker OAuth token; the
+   * LLM never sees this value (backend orchestration only).
+   */
+  optionsContextToken?: string;
   now?: Date;
 }
 
 function normVerdict(v: unknown): CandidateVerdict | null {
   const s = String(v ?? "").toUpperCase();
   return s === "STOCK" || s === "ESTIMATED_OPTIONS" || s === "NO_TRADE" ? (s as CandidateVerdict) : null;
+}
+
+/**
+ * Deep-scrub untrusted MCP responses before they can reach the browser or
+ * the LLM: recursively drop any key that looks like a context/credential
+ * echo. Defense-in-depth — even if the MCP service ever echoes request
+ * arguments (e.g. optionsContextToken) or debug fields, they are removed
+ * here, at the trust boundary, not by convention.
+ */
+const SCRUB_KEY_RE = /(optionscontext|token|apikey|api_key|authorization|secret|credential|password)/i;
+
+export function scrubUntrusted<T>(value: T, depth = 0): T {
+  if (depth > 8 || value == null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((v) => scrubUntrusted(v, depth + 1)) as unknown as T;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (SCRUB_KEY_RE.test(k)) continue;
+    out[k] = scrubUntrusted(v, depth + 1);
+  }
+  return out as T;
 }
 
 function isValidSetup(s: unknown): s is McpSetup {
@@ -182,7 +210,7 @@ export async function runMcpOpportunitySearch(
   const strategies = strategyFilterFor(question, type);
   if (strategies) filters.strategies = strategies;
 
-  const raw = (await deps.scanOpportunities(filters)) as any;
+  const raw = scrubUntrusted((await deps.scanOpportunities(filters)) as any);
   const scanned: McpSetup[] = Array.isArray(raw?.opportunities) ? raw.opportunities.filter(isValidSetup) : [];
 
   // Preserve the MCP's returned ranking exactly; apply only honest hard
@@ -194,7 +222,7 @@ export async function runMcpOpportunitySearch(
     setups.map(async (setup, i): Promise<RankedOpportunity> => {
       let candidate: McpCandidate | null = null;
       try {
-        candidate = (await deps.buildTradeCandidate(setup.symbol, setup.strategy)) as McpCandidate;
+        candidate = scrubUntrusted((await deps.buildTradeCandidate(setup.symbol, setup.strategy, deps.optionsContextToken)) as McpCandidate);
         if (!normVerdict(candidate?.verdict)) candidate = null; // unusable shape — honest null
       } catch {
         candidate = null;

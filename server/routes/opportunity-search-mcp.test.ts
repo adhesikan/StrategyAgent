@@ -72,6 +72,7 @@ function deps(overrides: Partial<McpSearchDeps> & { setups?: McpSetup[]; candida
         warnings: [],
       })),
     brokerConnected: overrides.brokerConnected ?? false,
+    ...(overrides.optionsContextToken ? { optionsContextToken: overrides.optionsContextToken } : {}),
     now: new Date("2026-08-03T14:00:00Z"),
   };
 }
@@ -278,6 +279,68 @@ describe("cards and answers", () => {
     const r = await runMcpOpportunitySearch("trade", "Find trades", deps({ setups }));
     expect(mcpOpportunityConfidence(r)).toBe("high");
     expect(mcpOpportunityConfidence({ ...r, opportunities: [] })).toBe("low");
+  });
+});
+
+describe("options context pass-through (broker-connected live options)", () => {
+  it("forwards the opaque context token to build_trade_candidate when supplied", async () => {
+    const seen: Array<string | undefined> = [];
+    const setups = [setup("NVDA", "vcp", 90)];
+    await runMcpOpportunitySearch(
+      "trade",
+      "Find trades",
+      deps({
+        setups,
+        buildTradeCandidate: async (s: string, _st: string, oct?: string) => (seen.push(oct), stockCandidate(s)),
+        brokerConnected: true,
+        optionsContextToken: "a".repeat(64),
+      } as any),
+    );
+    expect(seen).toEqual(["a".repeat(64)]);
+  });
+
+  it("disconnected users pass no token — estimated-options mode", async () => {
+    const seen: Array<string | undefined> = [];
+    const setups = [setup("NVDA", "vcp", 90)];
+    const r = await runMcpOpportunitySearch(
+      "trade",
+      "Find trades",
+      deps({ setups, buildTradeCandidate: async (s: string, _st: string, oct?: string) => (seen.push(oct), stockCandidate(s)) }),
+    );
+    expect(seen).toEqual([undefined]);
+    expect(r.brokerConnected).toBe(false);
+  });
+
+  it("scrubs MCP echoes: a candidate/setup echoing the context token never reaches cards or the LLM payload", async () => {
+    const token = "c".repeat(64);
+    const echoedSetup = { ...setup("NVDA", "vcp", 90), optionsContextToken: token } as any;
+    const r = await runMcpOpportunitySearch(
+      "trade",
+      "Find trades",
+      deps({
+        setups: [echoedSetup],
+        buildTradeCandidate: async (s: string) =>
+          ({ ...stockCandidate(s), optionsContextToken: token, debug: { requestArgs: { optionsContextToken: token, authorization: "Bearer xyz" } } } as any),
+        optionsContextToken: token,
+      } as any),
+    );
+    const card = toMcpOpportunityCard(r.opportunities[0], true);
+    const serialized = JSON.stringify({ r, card, answer: buildMcpOpportunityAnswer(r) });
+    expect(serialized).not.toContain(token);
+    expect(serialized).not.toContain("Bearer xyz");
+    // legitimate fields survive the scrub
+    expect(card.symbol).toBe("NVDA");
+    expect(card.verdict).toBe("STOCK");
+    expect(card.trigger).toBe(100);
+  });
+
+  it("the context token never appears in cards or answers", async () => {
+    const token = "b".repeat(64);
+    const setups = [setup("NVDA", "vcp", 90)];
+    const r = await runMcpOpportunitySearch("trade", "Find trades", deps({ setups, optionsContextToken: token } as any));
+    const card = toMcpOpportunityCard(r.opportunities[0], true);
+    const answer = buildMcpOpportunityAnswer(r);
+    expect(JSON.stringify({ r, card, answer })).not.toContain(token);
   });
 });
 

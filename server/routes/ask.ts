@@ -23,6 +23,13 @@ import {
   opportunityConfidence,
   suggestionsForOpportunitySearch,
 } from "./opportunity-search";
+import {
+  runMcpOpportunitySearch,
+  toMcpOpportunityCard,
+  buildMcpOpportunityAnswer,
+  mcpOpportunityConfidence,
+  type McpOpportunitySearch,
+} from "./opportunity-search-mcp";
 
 // Extra system rules injected only when MCP live-data tools are enabled.
 const MCP_SYSTEM_RULES = `Live-data tools:
@@ -808,7 +815,9 @@ async function callOpenAi(
   opts: {
     useReferenceLibrary?: boolean;
     /** Deterministic opportunity-search result — the model may only explain these candidates, never invent others. */
-    opportunitySearch?: import("./opportunity-search").OpportunitySearchResult;
+    opportunitySearch?:
+      | import("./opportunity-search").OpportunitySearchResult
+      | Record<string, unknown>; // MCP-backed search payload (cards + intent)
   } = {},
 ): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
@@ -946,6 +955,10 @@ async function callOpenAi(
     }
 
     if (opts.opportunitySearch) {
+      // Hard technical enforcement, not just a prompt rule: with a
+      // deterministic opportunity payload the model gets NO tools at all —
+      // it cannot fetch out-of-band symbols or re-scan. Explanation only.
+      mcpTools = [];
       mcpSystemRules += `\n- The "opportunitySearch" field in the user content is the DETERMINISTIC result of a production opportunity search. Your job is ONLY to summarize and explain those specific candidates, ranked in the given order. NEVER invent, add, remove, or re-rank candidates. NEVER answer with generic education ("consider dividend stocks", "look for companies with...", "research stocks that..."). NEVER fabricate premiums, exact option contracts, IV, delta, open interest, volume, or bid/ask. If the opportunities array is empty, say plainly that no high-quality setups currently meet the criteria and suggest the Scanner, the watchlist, or asking about a specific symbol. Do not call any tools for this request.`;
     }
 
@@ -1092,6 +1105,71 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // ---------------------------------------------------------------
       const oppSearchType = shouldRouteOpportunitySearch(question);
       if (oppSearchType) {
+        // -------------------------------------------------------------
+        // Preferred source: deployed MCP multi-strategy tools
+        // (scan_opportunities → build_trade_candidate → position risk).
+        // Deterministic orchestration — the LLM never picks symbols or
+        // strategies. Income stays on the stored/positions path (covered
+        // calls require real holdings). On MCP failure or MCP disabled we
+        // fall back to stored detections below — never fabricate.
+        // -------------------------------------------------------------
+        if (oppSearchType !== "income" && isMcpEnabled()) {
+          let mcpSearch: McpOpportunitySearch | null = null;
+          try {
+            const tools = await import("../mcp/tools");
+            mcpSearch = await runMcpOpportunitySearch(oppSearchType, question, {
+              scanOpportunities: (f) => tools.scanOpportunities(f),
+              buildTradeCandidate: (s, st) => tools.buildTradeCandidate(s, st),
+              calculatePositionRisk: (a) => tools.calculatePositionRisk(a),
+              brokerConnected: ctx.brokerConnected,
+            });
+          } catch {
+            mcpSearch = null; // fall through to the stored-detection path
+          }
+          if (mcpSearch) {
+            const cards = mcpSearch.opportunities.map((o) => toMcpOpportunityCard(o, mcpSearch!.brokerConnected));
+            const deterministic = buildMcpOpportunityAnswer(mcpSearch);
+            const confidence = mcpOpportunityConfidence(mcpSearch);
+            // Frontend-facing payload: same field the cards component reads,
+            // plus the raw structured {setup, candidate, rank} contract.
+            const searchPayload = {
+              type: mcpSearch.intent,
+              intent: mcpSearch.intent,
+              source: "mcp",
+              generatedAt: mcpSearch.generatedAt,
+              brokerConnected: mcpSearch.brokerConnected,
+              ...(mcpSearch.maxRiskDollars != null ? { maxRiskDollars: mcpSearch.maxRiskDollars } : {}),
+              ...(mcpSearch.excludedByRisk ? { excludedByRisk: mcpSearch.excludedByRisk } : {}),
+              opportunities: cards,
+            };
+            let answer: AskAnswer | null = null;
+            let source: "openai" | "rule_based" = "rule_based";
+            if (cards.length > 0) {
+              answer = await callOpenAi(question, ctx, { opportunitySearch: searchPayload });
+              if (answer) source = "openai";
+            }
+            if (!answer) answer = { ...deterministic, confidence };
+            return res.json({
+              question,
+              intent: `opportunity-search:${oppSearchType}`,
+              tickers: [],
+              brokerConnected: ctx.brokerConnected,
+              ...answer,
+              confidence,
+              opportunitySearch: searchPayload,
+              suggestions: suggestionsForOpportunitySearch(
+                cards.length > 0
+                  ? ({ type: oppSearchType, source: "mcp", generatedAt: mcpSearch.generatedAt, brokerConnected: ctx.brokerConnected, opportunities: cards as any } as any)
+                  : null,
+                cards.length === 0,
+              ),
+              source,
+              disclaimer:
+                "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+            });
+          }
+        }
+
         const { search, failed } = await runOpportunitySearch(oppSearchType, {
           brokerConnected: ctx.brokerConnected,
           fetchRows: async () => {

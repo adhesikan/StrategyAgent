@@ -48,8 +48,16 @@ describe("cardCtas — Trade Builder gating (spec §7/§13, test 23: research na
       expect(labels.join("|")).not.toContain("Trade Builder");
     }
   });
-  it("no_trade → Analyze + Scanner only", () => {
-    expect(cardCtas({ ...base, candidateState: "no_trade" }, true).map((c) => c.label)).toEqual(["Analyze CRDO", "Open Scanner"]);
+  it("no_trade → research navigation only (View Setup, never Trade Builder)", () => {
+    expect(cardCtas({ ...base, candidateState: "no_trade" }, true).map((c) => c.label)).toEqual([
+      "Analyze CRDO",
+      "View Setup",
+      "Open Scanner",
+    ]);
+  });
+  it("MCP STOCK verdict (candidateState stock) exposes Trade Builder even without pivot-ready stage", () => {
+    const labels = cardCtas({ ...base, stage: "ready", candidateState: "stock", verdict: "STOCK" }, true).map((c) => c.label);
+    expect(labels).toEqual(["Analyze CRDO", "View Setup", "Open Trade Builder"]);
   });
   it("estimated options without broker → Connect Broker CTA first (test 18)", () => {
     const ctas = cardCtas(

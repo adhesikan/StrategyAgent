@@ -37,7 +37,7 @@ export function OpportunitySearchCards({ search }: { search: OpportunitySearchRe
         return (
           <div key={`${o.symbol}-${i}`} className="rounded-lg border p-3 space-y-2 min-w-0" data-testid={`card-opp-search-${o.symbol}`}>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground tabular-nums">{i + 1}.</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{o.rank ?? i + 1}.</span>
               <span className="font-mono font-medium">{o.symbol}</span>
               {o.strategy && <span className="text-xs text-muted-foreground">{o.strategy}</span>}
               {o.stage && (
@@ -64,10 +64,20 @@ export function OpportunitySearchCards({ search }: { search: OpportunitySearchRe
               )}
             </div>
 
-            {(o.trigger != null || o.freshness) && (
-              <div className="text-xs text-muted-foreground flex gap-3 flex-wrap">
+            {(o.trigger != null || o.invalidation || o.technicalObjective || o.freshness) && (
+              <div className="text-xs text-muted-foreground flex gap-3 flex-wrap" data-testid={`row-opp-search-levels-${o.symbol}`}>
                 {o.trigger != null && <span className="tabular-nums">Entry trigger: ${o.trigger.toFixed(2)}</span>}
+                {o.invalidation && <span className="tabular-nums">Invalidation: ${o.invalidation.price.toFixed(2)}</span>}
+                {o.technicalObjective && <span className="tabular-nums">Objective: ${o.technicalObjective.price.toFixed(2)}</span>}
                 {o.freshness && <span>{o.freshness}</span>}
+              </div>
+            )}
+
+            {o.riskEstimate && o.riskEstimate.suggestedMaxShares != null && (
+              <div className="text-xs text-muted-foreground" data-testid={`row-opp-search-risk-${o.symbol}`}>
+                Risk sizing: up to {o.riskEstimate.suggestedMaxShares} share{o.riskEstimate.suggestedMaxShares === 1 ? "" : "s"}
+                {o.riskEstimate.maxRiskDollars != null && <> within a ${o.riskEstimate.maxRiskDollars.toFixed(0)} budget</>}
+                {o.riskEstimate.riskPerShare != null && <> · ${o.riskEstimate.riskPerShare.toFixed(2)}/share at the stop</>}
               </div>
             )}
 

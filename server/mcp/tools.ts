@@ -21,6 +21,16 @@ export const MCP_ALLOWED_TOOLS = [
   "get_news",
   "scan_vcp",
   "get_positions",
+  // Sprint 2 multi-strategy tools — backend deterministic orchestration only.
+  // Deliberately NOT in MCP_AI_TOOLS: the model never picks symbols or
+  // strategies; the opportunity-search orchestrator calls these itself.
+  "scan_strategy",
+  "scan_opportunities",
+  "build_trade_candidate",
+  "calculate_position_risk",
+  "get_market_regime",
+  "get_earnings",
+  "get_fundamentals",
 ] as const;
 
 export type McpAllowedTool = (typeof MCP_ALLOWED_TOOLS)[number];
@@ -101,6 +111,76 @@ export async function scanVcp(symbols: string[], lookbackDays?: number): Promise
  */
 export async function getPositions(): Promise<unknown> {
   return callAllowedTool("get_positions", {});
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2 multi-strategy tools (backend-only deterministic orchestration).
+// Argument shapes verified against the deployed vcp-trader-mcp service.
+// ---------------------------------------------------------------------------
+
+export interface ScanOpportunitiesFilters {
+  strategies?: string[];
+  direction?: "bullish" | "bearish";
+  minScore?: number;
+  status?: string;
+  timeframe?: string;
+  limit?: number;
+}
+
+export async function scanOpportunities(filters: ScanOpportunitiesFilters = {}): Promise<unknown> {
+  const args: Record<string, unknown> = {};
+  if (filters.strategies?.length) args.strategies = filters.strategies.slice(0, 20).map((s) => String(s));
+  if (filters.direction) args.direction = filters.direction;
+  if (typeof filters.minScore === "number") args.minScore = filters.minScore;
+  if (filters.status) args.status = filters.status;
+  if (filters.timeframe) args.timeframe = filters.timeframe;
+  if (filters.limit != null) args.limit = Math.max(1, Math.min(25, Math.floor(filters.limit)));
+  return callAllowedTool("scan_opportunities", args);
+}
+
+export async function scanStrategy(symbol: string, strategy: string, timeframe?: string): Promise<unknown> {
+  const args: Record<string, unknown> = { symbol: cleanSymbol(symbol), strategy: String(strategy) };
+  if (timeframe) args.timeframe = timeframe;
+  return callAllowedTool("scan_strategy", args);
+}
+
+export async function buildTradeCandidate(symbol: string, strategy: string): Promise<unknown> {
+  return callAllowedTool("build_trade_candidate", {
+    symbol: cleanSymbol(symbol),
+    strategy: String(strategy),
+  });
+}
+
+export interface PositionRiskArgs {
+  symbol: string;
+  entryPrice: number;
+  stopPrice: number;
+  targetPrice?: number;
+  /** User-supplied risk budget in dollars → shares sizing on the MCP side. */
+  maxRiskDollars?: number;
+}
+
+export async function calculatePositionRisk(a: PositionRiskArgs): Promise<unknown> {
+  const args: Record<string, unknown> = {
+    symbol: cleanSymbol(a.symbol),
+    entryPrice: a.entryPrice,
+    stopPrice: a.stopPrice,
+  };
+  if (typeof a.targetPrice === "number") args.targetPrice = a.targetPrice;
+  if (typeof a.maxRiskDollars === "number") args.maxRiskDollars = a.maxRiskDollars;
+  return callAllowedTool("calculate_position_risk", args);
+}
+
+export async function getMarketRegime(): Promise<unknown> {
+  return callAllowedTool("get_market_regime", {});
+}
+
+export async function getEarnings(symbol: string): Promise<unknown> {
+  return callAllowedTool("get_earnings", { symbol: cleanSymbol(symbol) });
+}
+
+export async function getFundamentals(symbol: string): Promise<unknown> {
+  return callAllowedTool("get_fundamentals", { symbol: cleanSymbol(symbol) });
 }
 
 // ---------------------------------------------------------------------------

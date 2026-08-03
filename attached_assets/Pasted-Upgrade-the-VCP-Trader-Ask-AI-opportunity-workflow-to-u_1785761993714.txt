@@ -1,0 +1,118 @@
+Upgrade the VCP Trader Ask AI opportunity workflow to use the deployed MCP multi-strategy tools.
+
+Do not modify scanner algorithms.
+Do not modify MCP transport or authentication.
+Do not modify execution code.
+
+Available MCP tools now include:
+
+scan_strategy
+scan_opportunities
+build_trade_candidate
+calculate_position_risk
+get_market_regime
+get_earnings
+get_fundamentals
+
+Implement deterministic orchestration for:
+
+- Find Trades
+- Find high-quality trade opportunities
+- Find bullish setups
+- Find bearish setups
+- Find VCP setups
+- Find momentum breakout setups
+- Find trades under $X maximum risk
+- What should I trade today?
+- Generate Income
+
+Trade-opportunity flow:
+
+intent
+→ scan_opportunities
+→ preserve returned ranking
+→ build_trade_candidate for the top 3–5 opportunities
+→ calculate/validate risk when the user provides a risk budget
+→ return structured candidates
+→ AI explains those candidates
+
+Do not ask the LLM to invent symbols or choose strategies independently.
+
+Return an optional structured field:
+
+{
+  "opportunitySearch": {
+    "intent": "trade",
+    "source": "mcp",
+    "generatedAt": "...",
+    "opportunities": [
+      {
+        "setup": {},
+        "candidate": {},
+        "rank": 1
+      }
+    ]
+  }
+}
+
+The possible candidate verdicts are:
+
+STOCK
+ESTIMATED_OPTIONS
+NO_TRADE
+
+NO_TRADE is a valid result and must be displayed honestly.
+
+When zero candidates qualify, return:
+
+"No high-quality setups currently meet your criteria."
+
+Do not substitute generic educational prose.
+
+Update Ask AI cards to show:
+
+- rank
+- symbol
+- primary strategy
+- direction
+- setup status
+- score when meaningful
+- trigger
+- invalidation
+- technical objective
+- reasons
+- warnings
+- candidate verdict
+- risk estimate
+- Analyze CTA
+- View Setup CTA
+- Trade Builder CTA only when appropriate
+
+The AI narrative should explain deterministic results, not override them.
+
+Add tests for:
+
+- multiple strategy opportunity retrieval
+- ranking preservation
+- candidate qualification
+- max-risk filtering
+- NO_TRADE
+- no-results
+- MCP failure
+- no fabricated symbols
+- existing Analyze MU path
+- non-opportunity prompts unchanged
+- no execution behavior
+
+Run all relevant tests and:
+
+npm run build
+
+Do not push automatically.
+
+Report:
+- orchestration path
+- response contract
+- UI design
+- example output
+- tests/build

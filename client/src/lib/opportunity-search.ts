@@ -10,27 +10,55 @@ export interface EstimatedOptions {
   connectionRequiredForLiveContracts: boolean;
 }
 
+export interface PriceLevel {
+  price: number;
+  basis?: string;
+}
+
+export interface RiskEstimate {
+  riskPerShare?: number | null;
+  suggestedMaxShares?: number | null;
+  maxRiskDollars?: number | null;
+  stopPrice?: number | null;
+  stopBasis?: string | null;
+  warnings?: string[];
+}
+
+export type CandidateVerdict = "STOCK" | "ESTIMATED_OPTIONS" | "NO_TRADE";
+
 export interface OpportunityCard {
+  /** 1-based rank from the deterministic search (MCP-backed searches). */
+  rank?: number;
   symbol: string;
   strategy?: string;
   score?: number;
   stage?: string;
+  /** Normalized setup status from the MCP scan (forming/ready/...). */
+  status?: string;
   direction?: string;
   timeframe?: string;
   price?: number;
   trigger?: number | null;
+  invalidation?: PriceLevel | null;
+  technicalObjective?: PriceLevel | null;
   reasons: string[];
   warnings: string[];
   freshness?: string;
   candidateState?: "stock" | "estimated_options" | "no_trade" | null;
+  /** Deterministic engine verdict (MCP build_trade_candidate). */
+  verdict?: CandidateVerdict | null;
+  riskEstimate?: RiskEstimate | null;
   estimatedOptions?: EstimatedOptions | null;
 }
 
 export interface OpportunitySearchResult {
   type: "trade" | "bullish" | "bearish" | "vcp" | "income";
+  intent?: string;
   source: string;
   generatedAt: string;
   brokerConnected: boolean;
+  maxRiskDollars?: number | null;
+  excludedByRisk?: number;
   opportunities: OpportunityCard[];
 }
 
@@ -84,7 +112,8 @@ export function cardCtas(card: OpportunityCard, brokerConnected: boolean): CardC
   const sym = card.symbol.toUpperCase();
   const analyze: CardCta = { label: `Analyze ${sym}`, href: `/ask?q=${encodeURIComponent(`Analyze ${sym}`)}`, primary: true };
   if (card.candidateState === "no_trade") {
-    return [analyze, { label: "Open Scanner", href: "/scanner" }];
+    // NO_TRADE is a valid, honest verdict — research navigation only.
+    return [analyze, { label: "View Setup", href: `/market-intel?symbol=${sym}` }, { label: "Open Scanner", href: "/scanner" }];
   }
   if (card.candidateState === "estimated_options") {
     const ctas: CardCta[] = [];

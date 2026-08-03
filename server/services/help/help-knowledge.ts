@@ -51,7 +51,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "radar",
     title: "Top Opportunities (Radar)",
     keywords: ["radar", "opportunity", "opportunities", "scanner", "ideas", "rank", "grade", "score"],
-    text: "Top Opportunities (/opportunity-radar) shows AI-ranked candidate scenarios across the chosen stock list. Composite score weights: technical 28, momentum 22, sentiment 20, liquidity 15, risk 15; grades A+/A/B/C, anything under 60 is hidden. Every scenario is software-generated analysis — orders still require your review and acknowledgment. A card/list view toggle is available.",
+    text: "Top Opportunities (/opportunity-radar) shows AI-ranked candidate scenarios across the chosen stock list. Composite score weights: technical 28, momentum 22, sentiment 20, liquidity 15, risk 15; grades A+/A/B/C, anything under 60 is hidden. Every scenario is AI-generated analysis — orders still require your review and acknowledgment. A card/list view toggle is available.",
   },
   {
     id: "instatrade",
@@ -111,7 +111,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "compliance",
     title: "Compliance & Disclaimers",
     keywords: ["compliance", "advice", "disclaimer", "legal", "fiduciary", "guarantee"],
-    text: "All output is software-generated analysis, never investment advice. VCP Trader AI is not a broker-dealer or investment adviser. The app never auto-trades for customers; every live order requires user review and an acknowledgment checkbox. Past performance does not guarantee future results.",
+    text: "All output is AI-generated analysis, never investment advice. VCP Trader AI is not a broker-dealer or investment adviser. The app never auto-trades for customers; every live order requires user review and an acknowledgment checkbox. Past performance does not guarantee future results.",
   },
   {
     id: "faq",

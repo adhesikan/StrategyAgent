@@ -238,7 +238,7 @@ export function LivePositionsPanel() {
           </div>
         )}
         <p className="mt-3 text-[11px] text-muted-foreground/70">
-          Software-generated view of broker data. Confirm fills and current positions in your broker portal.
+          AI-generated view of broker data. Confirm fills and current positions in your broker portal.
           Close orders are placed as standard market orders for the full quantity.
         </p>
       </CardContent>

@@ -365,7 +365,7 @@ export default function OpportunityRadarPage() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground" data-testid="text-radar-compliance-microcopy">
-          Scenarios are software-generated for informational and educational purposes only. They are not
+          Scenarios are AI-generated for informational and educational purposes only. They are not
           investment advice or recommendations. You decide whether to place any order.
         </p>
       </header>

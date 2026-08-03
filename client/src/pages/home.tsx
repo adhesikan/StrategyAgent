@@ -245,7 +245,7 @@ function MockSetupCard() {
 
           <p className="text-[10px] text-muted-foreground border-t pt-2 flex items-center gap-1">
             <Activity className="h-3 w-3" />
-            Software-generated scenario. Review before acting.
+            AI-generated scenario. Review before acting.
           </p>
         </CardContent>
       </Card>
@@ -922,7 +922,7 @@ function OptionsIncomeSection({ onStartTrial }: { onStartTrial: () => void }) {
               <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Breakeven</p><p className="font-semibold">$422.55</p></div>
               <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Max Risk</p><p className="font-semibold">$42,255</p></div>
             </div>
-            <p className="text-[10px] text-muted-foreground border-t pt-2">Software-generated scenario. Review before acting.</p>
+            <p className="text-[10px] text-muted-foreground border-t pt-2">AI-generated scenario. Review before acting.</p>
           </div>
         </MockPanel>
       </div>
@@ -1061,7 +1061,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
             VCP Trader AI does not provide a separate live market data feed. Live data availability depends on your connected brokerage account, broker entitlements, and market data permissions.
           </p>
           <p>
-            All scenarios are software-generated for informational and educational purposes only. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice.
+            All scenarios are AI-generated for informational and educational purposes only. VCP Trader AI is not a broker-dealer or investment adviser and does not provide personalized investment advice.
           </p>
           <p data-testid="text-trademark-notice-pricing">{instaTradeFooterNotice}</p>
         </div>
@@ -1081,7 +1081,7 @@ function ComplianceSection() {
           <CardContent className="pt-6 text-center">
             <ShieldCheck className="h-8 w-8 text-primary mx-auto mb-3" />
             <p className="text-sm text-muted-foreground" data-testid="text-compliance">
-              VCP Trader AI provides software-generated trading scenarios, market context, and workflow tools for educational and informational purposes only. It is not a broker-dealer, investment adviser, or fiduciary and does not provide personalized investment advice. Trading stocks and options involves risk, including loss of principal. Live market data and order submission are available only through supported connected brokerage accounts. You are responsible for every trading decision and order submitted.
+              VCP Trader AI provides AI-generated trading scenarios, market context, and workflow tools for educational and informational purposes only. It is not a broker-dealer, investment adviser, or fiduciary and does not provide personalized investment advice. Trading stocks and options involves risk, including loss of principal. Live market data and order submission are available only through supported connected brokerage accounts. You are responsible for every trading decision and order submitted.
             </p>
           </CardContent>
         </Card>
@@ -1117,7 +1117,7 @@ function FAQSection() {
     },
     {
       q: "Is this investment advice?",
-      a: "No. VCP Trader AI provides software-generated scenarios and market context for educational and informational purposes only. You remain responsible for every trading decision.",
+      a: "No. VCP Trader AI provides AI-generated scenarios and market context for educational and informational purposes only. You remain responsible for every trading decision.",
     },
     {
       q: "Which brokers are supported?",

@@ -98,7 +98,7 @@ export function TodaysOpportunities() {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground -mt-1">
-        Software-generated candidate scenarios ranked by composite score. Not investment advice.
+        AI-generated candidate scenarios ranked by composite score. Not investment advice.
       </p>
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

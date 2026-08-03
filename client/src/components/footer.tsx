@@ -15,7 +15,7 @@ export function Footer() {
         <ShieldAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
         <p>
           <span className="font-medium">Important — Not Investment Advice.</span>{" "}
-          VCP Trader AI provides software-generated trading scenarios, market context,
+          VCP Trader AI provides AI-generated trading scenarios, market context,
           and order preparation tools for educational and
           informational purposes only. VCP Trader AI is not a broker-dealer, investment
           adviser, fiduciary, or data vendor and does not provide personalized investment

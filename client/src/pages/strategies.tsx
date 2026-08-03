@@ -87,7 +87,7 @@ export default function StrategiesPage() {
       )}
 
       <p className="text-[10px] text-muted-foreground/60 text-center" data-testid="text-disclaimer">
-        Software-generated setup for informational purposes only. Not investment advice or a recommendation.
+        AI-generated setup for informational purposes only. Not investment advice or a recommendation.
       </p>
     </div>
   );

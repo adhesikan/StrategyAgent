@@ -316,7 +316,7 @@ export function MarketingOnboardingWizard({ open, onClose }: MarketingOnboarding
                   )}
                   <div className="text-[10px] text-muted-foreground border-t pt-2 flex items-center gap-1">
                     <Activity className="h-3 w-3" />
-                    Software-generated, not investment advice.
+                    AI-generated, not investment advice.
                   </div>
                 </CardContent>
               </Card>

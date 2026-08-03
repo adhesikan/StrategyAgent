@@ -144,7 +144,7 @@ export interface DailyIdeasResult {
 }
 
 const DISCLAIMER =
-  "Software-generated candidate scenarios for informational use only. Not investment advice. Review before acting — nothing is sent without your explicit approval.";
+  "AI-generated candidate scenarios for informational use only. Not investment advice. Review before acting — nothing is sent without your explicit approval.";
 
 function classifyInstrument(strategy: CandidateScenario["strategyType"]): DailyIdeaInstrument {
   switch (strategy) {

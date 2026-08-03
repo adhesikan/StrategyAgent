@@ -137,7 +137,7 @@ function toPick(c: CandidateScenario): BestTradePick {
 }
 
 const DISCLAIMER =
-  "Software-generated candidate scenarios for informational use only. Not investment advice. Defined-risk-only filter applied — review before acting; nothing is sent without your explicit approval.";
+  "AI-generated candidate scenarios for informational use only. Not investment advice. Defined-risk-only filter applied — review before acting; nothing is sent without your explicit approval.";
 
 export async function findBestTrades(
   userId: string,

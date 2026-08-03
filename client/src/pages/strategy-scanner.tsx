@@ -1056,7 +1056,7 @@ export default function StrategyScannerPage() {
                 </ol>
               </div>
               <p className="italic">
-                Software-generated educational analysis — not investment advice. Confirm every order in your own broker before acting.
+                AI-generated educational analysis — not investment advice. Confirm every order in your own broker before acting.
               </p>
             </CollapsibleContent>
           </Card>
@@ -1284,7 +1284,7 @@ export default function StrategyScannerPage() {
                 </section>
 
                 <p className="text-[11px] text-muted-foreground border-t pt-3">
-                  Informational only — not investment advice. Strategy outputs are software-generated analysis to support self-directed research.
+                  Informational only — not investment advice. Strategy outputs are AI-generated analysis to support self-directed research.
                 </p>
               </div>
             </>

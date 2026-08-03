@@ -177,7 +177,7 @@ export function PositionProtectionPanel() {
         </CardTitle>
         <CardDescription>
           We monitor these positions during market hours and submit your exit order when a rule triggers.
-          Software-generated order routing — fills aren't guaranteed.
+          AI-generated order routing — fills aren't guaranteed.
         </CardDescription>
       </CardHeader>
       <CardContent>

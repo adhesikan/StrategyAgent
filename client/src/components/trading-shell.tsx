@@ -153,7 +153,7 @@ export function ComplianceFooter() {
         <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
         <p>
           <span className="font-medium text-foreground">Not investment advice.</span>{" "}
-          VCP Trader AI provides software-generated trading scenarios, market context,
+          VCP Trader AI provides AI-generated trading scenarios, market context,
           and order preparation tools for educational and informational purposes only.
           VCP Trader AI is not a broker-dealer, investment adviser, fiduciary, or data
           vendor and does not provide personalized investment advice. Trading stocks and

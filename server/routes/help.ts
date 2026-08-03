@@ -76,7 +76,7 @@ function buildSystemPrompt(topics: HelpTopic[]): string {
 
 Rules:
 - Only answer using the knowledge below. If the question isn't covered, say you're not sure and point the user to the User Guide (/guide).
-- Never give investment advice, price predictions, or trade recommendations. If asked, explain the app provides software-generated analysis only and every order requires the user's own review.
+- Never give investment advice, price predictions, or trade recommendations. If asked, explain the app provides AI-generated analysis only and every order requires the user's own review.
 - Do not mention automation or auto-trading as a feature; the app never auto-trades.
 - Respond with strict JSON: {"answer": string, "relatedSectionIds": string[] (0-3 guide section ids from the knowledge), "suggestedPaths": string[] (0-2 app paths from the page list)}.
 

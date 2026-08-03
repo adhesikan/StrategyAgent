@@ -506,7 +506,7 @@ export function TradeSetupCard({ setup, onOpenChart, onSendToInstatrade, onRevie
         </div>
 
         <p className="text-[10px] text-muted-foreground/60 leading-tight" data-testid="text-disclaimer">
-          Software-generated setup for informational purposes only. Not investment advice or a recommendation.
+          AI-generated setup for informational purposes only. Not investment advice or a recommendation.
         </p>
         {setup.dataSource && (
           <p className="text-[10px] text-muted-foreground/40" data-testid="text-data-source">

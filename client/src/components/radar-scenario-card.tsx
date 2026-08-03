@@ -502,7 +502,7 @@ export function NewsContextDrawer({
                 News context — {scenario.symbol}
               </SheetTitle>
               <SheetDescription>
-                Recent articles and software-generated sentiment summary. Informational only.
+                Recent articles and AI-generated sentiment summary. Informational only.
               </SheetDescription>
             </SheetHeader>
             <div className="space-y-4 mt-4 text-sm">
@@ -788,7 +788,7 @@ export function OrderReviewDialog({
 
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex gap-2" data-testid="text-review-warnings">
             <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-            <span>Main risk: {scenario.mainRisk}. Software-generated scenario for self-directed review.</span>
+            <span>Main risk: {scenario.mainRisk}. AI-generated scenario for self-directed review.</span>
           </div>
 
           <label className="flex items-start gap-2 cursor-pointer" data-testid="label-radar-acknowledge">

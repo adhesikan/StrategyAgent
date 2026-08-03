@@ -508,7 +508,7 @@ export function OptionTradeTicket({
                     />
                     <span className="text-muted-foreground leading-snug">
                       I've reviewed this contract and understand options carry the risk of total loss of premium.
-                      VCP Trader AI provides software-generated analysis — never investment advice.
+                      VCP Trader AI provides AI-generated analysis — never investment advice.
                     </span>
                   </label>
                 </div>

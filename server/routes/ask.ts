@@ -670,7 +670,7 @@ function suggestionsForIntent(intent: ReturnType<typeof classifyIntent>, tickers
 const SYSTEM_PROMPT = `You are VCP Trader AI, an assistant for self-directed retail traders inside the VCP Trader AI app.
 
 Strict rules:
-- You provide software-generated educational analysis. You NEVER give personalized investment advice, price predictions, or guarantees.
+- You provide AI-generated educational analysis. You NEVER give personalized investment advice, price predictions, or guarantees.
 - Always include a brief risk note when discussing a specific trade idea.
 - Keep answers concise (max ~180 words) and structured. Use plain English; avoid jargon unless asked.
 - If the user mentions a ticker, anchor your answer to the supplied live quote, computed indicators (RSI, MACD, SMA/EMA, Bollinger, ATR, VWAP, volume, support/resistance), and sentiment context. Do not invent prices or invent indicator values.
@@ -802,7 +802,7 @@ function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): A
   }
   return {
     headline: "Here's where to look inside VCP Trader AI.",
-    answer: "Use the Trade Builder to express a setup in plain English, the Opportunity Radar for ranked candidates, or Market Intel for news and sentiment. Every idea is software-generated analysis, not a recommendation.",
+    answer: "Use the Trade Builder to express a setup in plain English, the Opportunity Radar for ranked candidates, or Market Intel for news and sentiment. Every idea is AI-generated analysis, not a recommendation.",
     keyPoints: ["Trade Builder for custom setups", "Opportunity Radar for ranked ideas", "Market Intel for news context"],
     riskNote: "All output is informational only — confirm with your own plan before trading.",
     confidence: "low",
@@ -1044,7 +1044,7 @@ async function callOpenAi(
       headline: typeof parsed.headline === "string" && parsed.headline.trim() ? parsed.headline.trim().slice(0, 160) : "Here's what I found.",
       answer: typeof parsed.answer === "string" ? parsed.answer.trim().slice(0, 1800) : "",
       keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.filter((x: any) => typeof x === "string").slice(0, 5) : [],
-      riskNote: typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is software-generated analysis — not investment advice.",
+      riskNote: typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is AI-generated analysis — not investment advice.",
       confidence,
       referencesUsed: referencesUsed.length > 0 ? referencesUsed : undefined,
       ...(vcpAnalysis ? { vcpAnalysis } : {}),
@@ -1208,7 +1208,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               ),
               source,
               disclaimer:
-                "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+                "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
             });
           }
         }
@@ -1255,7 +1255,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           suggestions: suggestionsForOpportunitySearch(search, failed),
           source,
           disclaimer:
-            "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+            "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
         });
       }
 
@@ -1606,7 +1606,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         tradeDetail,
         suggestions,
         source,
-        disclaimer: "Software-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+        disclaimer: "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
       });
     } catch (err: any) {
       console.error("[POST /api/ask]", err);

@@ -609,7 +609,7 @@ export function StockTradeTicket({
                 <p className="text-[11px] text-muted-foreground leading-snug">
                   After your order fills, we monitor this position during market hours and
                   submit your exit order when one of your rules triggers — including trailing
-                  stops your broker can't place natively. This is software-generated order
+                  stops your broker can't place natively. This is AI-generated order
                   routing, not investment advice, and fills aren't guaranteed.
                 </p>
 

@@ -20,7 +20,7 @@ const refreshBody = z.object({
 });
 
 const COMPLIANCE_FOOTER =
-  "News sentiment is software-generated informational analysis based on public articles. It is not investment advice.";
+  "News sentiment is AI-generated informational analysis based on public articles. It is not investment advice.";
 
 export function registerNewsSentimentRoutes(
   app: Express,

@@ -51,7 +51,7 @@ export interface HomeSnapshotResponse {
 }
 
 const DISCLAIMER =
-  "Snapshot is software-generated informational context — not investment advice.";
+  "Snapshot is AI-generated informational context — not investment advice.";
 
 const FALLBACK_INDICES: IndexQuote[] = [
   { symbol: "SPY", name: "S&P 500", last: 0, changePercent: 0 },

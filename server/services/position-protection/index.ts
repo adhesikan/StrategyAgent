@@ -738,7 +738,7 @@ async function notifyUser(
       if (user?.email) {
         await sendCampaign({
           subject: opts.subject,
-          html: `<p>${opts.body}</p><p>This is software-generated order routing, not investment advice.</p>`,
+          html: `<p>${opts.body}</p><p>This is AI-generated order routing, not investment advice.</p>`,
           recipients: [{ email: user.email, userId: plan.userId }],
         });
       }
@@ -785,7 +785,7 @@ async function notifyTrigger(
       if (user?.email) {
         await sendCampaign({
           subject: `${plan.symbol} — ${label} (Exit Protection)`,
-          html: `<p>${body}</p><p>Trigger: <strong>${reason}</strong>${simulated ? " (paper / simulated)" : ""}.</p><p>This is software-generated order routing, not investment advice. Fills aren't guaranteed.</p>`,
+          html: `<p>${body}</p><p>Trigger: <strong>${reason}</strong>${simulated ? " (paper / simulated)" : ""}.</p><p>This is AI-generated order routing, not investment advice. Fills aren't guaranteed.</p>`,
           recipients: [{ email: user.email, userId: plan.userId }],
         });
       }

@@ -596,7 +596,7 @@ function pickMainRisk(earningsInDays: number | null, avoidDays: number, riskScor
 function buildThesis(strategy: Exclude<StrategyType, "any">, bias: Bias, symbol: string, price: number): string {
   const direction = bias === "bullish" ? "upside continuation" : bias === "bearish" ? "downside continuation" : "range-bound behavior";
   const strategyLabel = strategy.replace(/_/g, " ");
-  return `Software-generated ${strategyLabel} candidate on ${symbol} (last $${price}) based on ${direction} signals from selected filters. Review and decide whether to act.`;
+  return `AI-generated ${strategyLabel} candidate on ${symbol} (last $${price}) based on ${direction} signals from selected filters. Review and decide whether to act.`;
 }
 
 function nextMonthlyExpiration(horizon: TimeHorizon | undefined): string {

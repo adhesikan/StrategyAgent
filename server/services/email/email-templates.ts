@@ -5,7 +5,7 @@ const SUPPORT_ADDR = "team@vcptrader.com";
 const COMPANY = "Sunfish Technologies LLC";
 
 const RESEARCH_DISCLAIMER =
-  "The information in this email is software-generated and provided for informational and educational reference only. It is not financial, investment, legal, or tax advice, and it is not a recommendation to buy or sell any security.";
+  "The information in this email is AI-generated and provided for informational and educational reference only. It is not financial, investment, legal, or tax advice, and it is not a recommendation to buy or sell any security.";
 
 export type FooterKind = "transactional" | "research" | "marketing" | "support";
 

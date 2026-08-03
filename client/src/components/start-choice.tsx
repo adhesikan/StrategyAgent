@@ -95,7 +95,7 @@ export function StartChoiceDialog() {
                 <div className="flex-1">
                   <p className="text-sm font-medium">Explore Market Analysis</p>
                   <p className="text-xs text-muted-foreground">
-                    See software-generated candidates and market intel in Analysis Mode.
+                    See AI-generated candidates and market intel in Analysis Mode.
                   </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -310,7 +310,7 @@ export function IncompletePreferencesDisclosure() {
   if (isLoading || prefs?.quickSetupCompleted || prefs?.fullPersonalizationCompleted) return null;
   return (
     <p className="text-xs text-muted-foreground" data-testid="text-incomplete-prefs-disclosure">
-      These are general software-generated market candidates and have not been filtered using your
+      These are general AI-generated market candidates and have not been filtered using your
       complete trading preferences or financial circumstances.
     </p>
   );

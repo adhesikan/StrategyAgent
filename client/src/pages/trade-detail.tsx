@@ -1370,7 +1370,7 @@ export default function TradeDetailPage() {
                 data-testid="checkbox-option-ack"
               />
               <Label htmlFor="option-ack" className="text-xs leading-relaxed font-normal">
-                I have reviewed all legs, strikes, expiry and premium. I understand this is software-generated
+                I have reviewed all legs, strikes, expiry and premium. I understand this is AI-generated
                 analysis — not investment advice — and I'm responsible for the order.
               </Label>
             </div>

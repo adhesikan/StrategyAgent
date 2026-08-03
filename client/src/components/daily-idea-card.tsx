@@ -825,7 +825,7 @@ export function DailyIdeaCard({ idea }: Props) {
               {idea.symbol} — {INSTRUMENT_LABEL[idea.instrumentType]}
             </SheetTitle>
             <SheetDescription className="text-xs">
-              Software-generated context for your review. Not investment advice.
+              AI-generated context for your review. Not investment advice.
             </SheetDescription>
           </SheetHeader>
 

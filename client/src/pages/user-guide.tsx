@@ -808,7 +808,7 @@ const SECTIONS: Section[] = [
           </div>
           <div>
             <dt className="font-semibold">Is this investment advice?</dt>
-            <dd className="text-muted-foreground">No. It is software-generated analysis only.</dd>
+            <dd className="text-muted-foreground">No. It is AI-generated analysis only.</dd>
           </div>
           <div>
             <dt className="font-semibold">Can I trade options?</dt>

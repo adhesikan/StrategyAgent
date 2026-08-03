@@ -166,7 +166,7 @@ export function LiveTradingSetupDialog({
               data-testid="checkbox-lts-disclosure"
             />
             <span>
-              I understand all candidates are software-generated analysis, not investment advice. Every order
+              I understand all candidates are AI-generated analysis, not investment advice. Every order
               is reviewed and submitted by me through my connected broker, and fills, prices, and outcomes are
               not guaranteed.
             </span>

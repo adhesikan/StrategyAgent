@@ -17,6 +17,13 @@ export interface MarketSnapshot {
   quote: StockQuote | null;
   indicators: IndicatorBundle | null;
   barsCount: number;
+  /** Where the quote came from: a broker, or the gated Twelve Data
+   *  real-time fallback (no-broker users, regular + extended hours). */
+  quoteSource?: "broker" | "twelve_data_quote";
+  /** Present on Twelve Data fallback quotes: market session + whether the
+   *  price is an extended-hours (pre/post) print. */
+  quoteSession?: "pre" | "regular" | "after" | "closed";
+  quoteExtendedHours?: boolean;
 }
 
 interface ResolvedBrokerAuth {
@@ -52,7 +59,41 @@ export async function getMarketSnapshot(userId: string, symbol: string): Promise
   const empty: MarketSnapshot = { symbol: sym, provider: null, isPaper: false, quote: null, indicators: null, barsCount: 0 };
 
   const auth = await resolveBrokerAuth(userId);
-  if (!auth) return empty;
+  if (!auth) {
+    // No connected brokerage: real-time price via the gated Twelve Data
+    // /quote fallback (prepost=true → live in regular AND extended hours).
+    // Access-denied or provider failure → the historical empty snapshot.
+    try {
+      const { getRealtimeQuoteForUser } = await import("./daily-market-data/realtime-quote");
+      const rt = await getRealtimeQuoteForUser(userId, sym, "market_snapshot_fallback");
+      if (rt) {
+        const quote: StockQuote = {
+          symbol: rt.symbol,
+          last: rt.last,
+          change: rt.change,
+          changePercent: rt.changePercent,
+          volume: rt.volume,
+          bid: 0,
+          ask: 0,
+          open: 0,
+          high: 0,
+          low: 0,
+          prevClose: rt.previousClose ?? 0,
+          avgVolume: 0,
+        };
+        return {
+          ...empty,
+          quote,
+          quoteSource: "twelve_data_quote",
+          quoteSession: rt.session,
+          quoteExtendedHours: rt.extendedHours,
+        };
+      }
+    } catch (e) {
+      console.warn(`[market-data] realtime fallback failed for ${sym}:`, (e as Error).message);
+    }
+    return empty;
+  }
 
   let quote: StockQuote | null = null;
   let bars: Bar[] = [];

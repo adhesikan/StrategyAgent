@@ -3174,10 +3174,32 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
       const userId = req.session.userId!;
 
       // Fallback when no broker is connected (or the broker quote fails):
-      // use the latest ingested Twelve Data daily close so illustrative
-      // plans are anchored to a real recent price instead of a placeholder.
-      // Gated by the central Twelve Data access-control service — external
-      // users in prelaunch mode never see provider-backed data here.
+      // FIRST try a real-time Twelve Data /quote (prepost=true, so it is
+      // live during regular AND extended pre/post sessions), then fall back
+      // to the latest ingested daily close. Both paths are gated by the
+      // central Twelve Data access-control service — external users in
+      // prelaunch mode never see provider-backed data here.
+      const realtimeFallback = async () => {
+        try {
+          const { getRealtimeQuoteForUser } = await import("./services/daily-market-data/realtime-quote");
+          const q = await getRealtimeQuoteForUser(userId, symbol, "quote_realtime_fallback");
+          if (!q) return null;
+          return {
+            symbol: q.symbol,
+            last: q.last,
+            volume: q.volume,
+            change: q.change,
+            changePercent: q.changePercent,
+            source: "twelve_data_quote" as const,
+            session: q.session,
+            extendedHours: q.extendedHours,
+            asOf: q.asOf,
+          };
+        } catch (err: any) {
+          console.warn("[Quote] realtime fallback failed:", err?.message || err);
+          return null;
+        }
+      };
       const dailyBarFallback = async () => {
         try {
           const { canAccessTwelveDataBackedAnalysis } = await import("./services/daily-market-data/access-control");
@@ -3215,6 +3237,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
       const connection = await storage.getBrokerConnectionWithToken(userId);
       if (!connection || !connection.isConnected || !connection.accessToken) {
+        const live = await realtimeFallback();
+        if (live) return res.json(live);
         const fallback = await dailyBarFallback();
         if (fallback) return res.json(fallback);
         return res.status(400).json({ error: "No active broker connection" });
@@ -3226,8 +3250,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           return res.json({ symbol: q.symbol, last: q.last, volume: q.volume, change: q.change, changePercent: q.changePercent, source: "broker" });
         }
       } catch (err: any) {
-        console.warn("[Quote] broker quote failed, trying daily-bar fallback:", err?.message || err);
+        console.warn("[Quote] broker quote failed, trying realtime/daily fallback:", err?.message || err);
       }
+      const live = await realtimeFallback();
+      if (live) return res.json(live);
       const fallback = await dailyBarFallback();
       if (fallback) return res.json(fallback);
       return res.status(404).json({ error: "Quote not found" });

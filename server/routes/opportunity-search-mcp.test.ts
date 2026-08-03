@@ -355,3 +355,296 @@ describe("safety boundaries", () => {
     expect(src).not.toMatch(/mcpClient|callTool\(/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live options pipeline (get_options_chain → analyze_options →
+// select_option_contracts → calculate_trade_risk)
+// ---------------------------------------------------------------------------
+
+function estimatedOptionsCandidate(symbol: string): McpCandidate {
+  return {
+    symbol,
+    verdict: "ESTIMATED_OPTIONS",
+    direction: "bullish",
+    optionsCandidate: {
+      strategy: "long_call",
+      status: "estimated",
+      targetDte: { min: 30, max: 45 },
+      shortStrikeZone: null,
+      longStrikeZone: { low: 100, high: 105, basis: "structure" },
+      limitations: ["No live chain evaluated"],
+      connectionRequiredForLiveContracts: true,
+      liveContractDataAvailable: false,
+    },
+    earningsRisk: { status: "clear", nextEarningsDate: null, daysUntilEarnings: null },
+  };
+}
+
+function liveOptionTools(overrides: Partial<McpSearchDeps> = {}): Partial<McpSearchDeps> {
+  return {
+    getOptionsChain: async () => ({ available: true, expirations: ["2026-09-18"] }),
+    analyzeOptions: async () => ({
+      ivRank: 32,
+      liquidity: { quality: "good", notes: ["Penny-wide markets near the money"] },
+      reasons: ["IV rank moderate — long premium reasonable"],
+    }),
+    selectOptionContracts: async () => ({
+      expiration: "2026-09-18",
+      dte: 46,
+      legs: [
+        {
+          action: "buy", type: "call", strike: 105, expiration: "2026-09-18",
+          bid: 4.1, ask: 4.3, delta: 0.48, theta: -0.05, iv: 0.34,
+          volume: 1250, openInterest: 8900, optionSymbol: "NVDA260918C00105000",
+        },
+      ],
+      netDebit: 4.2,
+      maxLoss: 420,
+      maxProfit: null,
+      breakeven: [109.2],
+      liquidity: { quality: "good" },
+      reasons: ["Highest score among bullish candidates fitting the risk budget"],
+    }),
+    calculateTradeRisk: async () => ({
+      maxLoss: 420,
+      maxProfit: null,
+      breakeven: [109.2],
+      warnings: [],
+    }),
+    ...overrides,
+  };
+}
+
+describe("live options pipeline", () => {
+  const token = "t".repeat(64);
+
+  async function run(question: string, toolOverrides: Partial<McpSearchDeps> = {}, extra: any = {}) {
+    const setups = [setup("NVDA", "vcp", 90)];
+    return runMcpOpportunitySearch(
+      "bullish",
+      question,
+      {
+        ...deps({
+          setups,
+          candidates: { NVDA: estimatedOptionsCandidate("NVDA") },
+          brokerConnected: true,
+          optionsContextToken: token,
+          ...extra,
+        } as any),
+        ...liveOptionTools(toolOverrides),
+      } as McpSearchDeps,
+    );
+  }
+
+  it("full pipeline success produces a LIVE candidate with all contract fields", async () => {
+    const r = await run("Find 3 bullish option trades under $500 maximum loss");
+    const o = r.opportunities[0];
+    expect(o.liveOption).not.toBeNull();
+    const live = o.liveOption!;
+    expect(live.status).toBe("live");
+    expect(live.strategy).toBe("long_call");
+    expect(live.expiration).toBe("2026-09-18");
+    expect(live.dte).toBe(46);
+    expect(live.legs).toHaveLength(1);
+    expect(live.legs[0]).toMatchObject({
+      action: "buy", type: "call", strike: 105, bid: 4.1, ask: 4.3,
+      delta: 0.48, theta: -0.05, iv: 0.34, volume: 1250, openInterest: 8900,
+    });
+    expect(live.legs[0].mid).toBeCloseTo(4.2);
+    expect(live.priceBasis).toBe("bid_ask");
+    expect(live.netKind).toBe("debit");
+    expect(Math.abs(live.estimatedNet)).toBeCloseTo(4.2);
+    expect(live.maxLoss).toBe(420);
+    expect(live.maxProfit).toBeNull();
+    expect(live.breakeven).toEqual([109.2]);
+    expect(live.liquidityQuality).toBe("good");
+    expect(live.rankReasons.join(" ")).toContain("risk budget");
+  });
+
+  it("card is labeled live_options and never shows an estimated box for a live candidate", async () => {
+    const r = await run("Find bullish option trades under $500 maximum risk");
+    const card = toMcpOpportunityCard(r.opportunities[0], true);
+    expect(card.candidateState).toBe("live_options");
+    expect(card.liveOption).not.toBeNull();
+    expect(card.estimatedOptions).toBeNull();
+  });
+
+  it("chain unavailable → estimated card only, never labeled live", async () => {
+    const r = await run("Find bullish option trades", { getOptionsChain: async () => ({ available: false }) });
+    const o = r.opportunities[0];
+    expect(o.liveOption).toBeNull();
+    const card = toMcpOpportunityCard(o, true);
+    expect(card.candidateState).toBe("estimated_options");
+    expect(card.estimatedOptions).toMatchObject({ status: "estimated", strategy: "long_call" });
+    expect(card.estimatedOptions?.limitations?.length).toBeGreaterThan(0);
+    expect(card.estimatedOptions?.riskStyle).toBe("defined-risk");
+    expect(card.estimatedOptions?.longStrikeZone).toEqual({ low: 100, high: 105, basis: "structure" });
+  });
+
+  it("chain tool failure → estimated, not live", async () => {
+    const r = await run("Find bullish option trades", { getOptionsChain: async () => { throw new Error("boom"); } });
+    expect(r.opportunities[0].liveOption).toBeNull();
+    expect(toMcpOpportunityCard(r.opportunities[0], true).candidateState).toBe("estimated_options");
+  });
+
+  it("selection failure or empty/invalid legs → estimated, not live", async () => {
+    for (const sel of [
+      async () => { throw new Error("no contracts"); },
+      async () => ({ legs: [] }),
+      async () => ({ expiration: "2026-09-18", legs: [{ action: "hold", type: "call", strike: 105 }] }),
+      async () => ({ expiration: "2026-09-18", legs: [{ action: "buy", type: "call" }] }),
+    ]) {
+      const r = await run("Find bullish option trades", { selectOptionContracts: sel as any });
+      expect(r.opportunities[0].liveOption).toBeNull();
+    }
+  });
+
+  it("no options context token (disconnected) → never calls chain tools, stays estimated", async () => {
+    let chainCalled = 0;
+    const setups = [setup("NVDA", "vcp", 90)];
+    const r = await runMcpOpportunitySearch("bullish", "Find bullish option trades", {
+      ...deps({ setups, candidates: { NVDA: estimatedOptionsCandidate("NVDA") } } as any),
+      ...liveOptionTools({ getOptionsChain: async () => (chainCalled++, { available: true }) }),
+    } as McpSearchDeps);
+    expect(chainCalled).toBe(0);
+    expect(r.opportunities[0].liveOption).toBeNull();
+  });
+
+  it("analyze_options failure → NOT live (full pipeline required)", async () => {
+    const r = await run("Find bullish option trades", { analyzeOptions: async () => { throw new Error("iv svc down"); } });
+    expect(r.opportunities[0].liveOption).toBeNull();
+    expect(toMcpOpportunityCard(r.opportunities[0], true).candidateState).toBe("estimated_options");
+  });
+
+  it("calculate_trade_risk failure → NOT live (full pipeline required)", async () => {
+    const r = await run("Find bullish option trades", { calculateTradeRisk: async () => { throw new Error("risk svc down"); } });
+    expect(r.opportunities[0].liveOption).toBeNull();
+    expect(toMcpOpportunityCard(r.opportunities[0], true).candidateState).toBe("estimated_options");
+  });
+
+  it("any missing pipeline tool → NOT live, even when the rest succeed", async () => {
+    for (const missing of ["getOptionsChain", "analyzeOptions", "selectOptionContracts", "calculateTradeRisk"] as const) {
+      const tools = liveOptionTools();
+      delete (tools as any)[missing];
+      const setups = [setup("NVDA", "vcp", 90)];
+      const r = await runMcpOpportunitySearch("bullish", "Find bullish option trades", {
+        ...deps({ setups, candidates: { NVDA: estimatedOptionsCandidate("NVDA") }, brokerConnected: true, optionsContextToken: token } as any),
+        ...tools,
+      } as McpSearchDeps);
+      expect(r.opportunities[0].liveOption, missing).toBeNull();
+    }
+  });
+
+  it("legs without live premiums → NOT live, even with aggregate net figures", async () => {
+    const r = await run("Find bullish option trades", {
+      selectOptionContracts: async () => ({
+        expiration: "2026-09-18", dte: 46,
+        legs: [{ action: "buy", type: "call", strike: 105 }], // no bid/ask/mid
+        netDebit: 4.2, maxLoss: 420, breakeven: [109.2],
+      }),
+    });
+    expect(r.opportunities[0].liveOption).toBeNull();
+  });
+
+  it("strict budget: estimated options are excluded under a budgeted query (risk unverifiable)", async () => {
+    const r = await run("Find bullish option trades under $500 maximum risk", {
+      getOptionsChain: async () => ({ available: false }),
+    });
+    expect(r.opportunities).toHaveLength(0);
+    expect(r.excludedByRisk).toBe(1);
+  });
+
+  it("missing max loss everywhere → NOT presented as live", async () => {
+    const r = await run("Find bullish option trades", {
+      selectOptionContracts: async () => ({
+        expiration: "2026-09-18",
+        legs: [{ action: "buy", type: "call", strike: 105, bid: 4.1, ask: 4.3 }],
+      }),
+      calculateTradeRisk: async () => ({}),
+    });
+    expect(r.opportunities[0].liveOption).toBeNull();
+  });
+
+  it("risk budget enforced: live candidates over max loss are excluded and disclosed", async () => {
+    const r = await run("Find 3 bullish option trades under $300 maximum risk", {
+      selectOptionContracts: async () => ({
+        expiration: "2026-09-18", dte: 46,
+        legs: [{ action: "buy", type: "call", strike: 105, bid: 4.1, ask: 4.3 }],
+        netDebit: 4.2, maxLoss: 420, breakeven: [109.2],
+      }),
+      calculateTradeRisk: async () => ({ maxLoss: 420, breakeven: [109.2] }),
+    });
+    expect(r.maxRiskDollars).toBe(300);
+    expect(r.opportunities).toHaveLength(0);
+    expect(r.excludedByRisk).toBe(1);
+  });
+
+  it("risk budget satisfied: live candidate under the limit is surfaced", async () => {
+    const r = await run("Find 3 bullish option trades under $500 maximum risk");
+    expect(r.opportunities).toHaveLength(1);
+    expect(r.opportunities[0].liveOption?.maxLoss).toBe(420);
+    expect(r.excludedByRisk).toBeUndefined();
+  });
+
+  it("credit structures: net sign and kind are correct", async () => {
+    const r = await run("Find bullish option trades", {
+      selectOptionContracts: async () => ({
+        expiration: "2026-09-18", dte: 46,
+        legs: [
+          { action: "sell", type: "put", strike: 95, bid: 2.4, ask: 2.6 },
+          { action: "buy", type: "put", strike: 90, bid: 1.1, ask: 1.3 },
+        ],
+        netCredit: 1.3, maxLoss: 370, maxProfit: 130, breakeven: [93.7],
+      }),
+      calculateTradeRisk: async () => ({ maxLoss: 370, maxProfit: 130, breakeven: [93.7] }),
+    });
+    const live = r.opportunities[0].liveOption!;
+    expect(live.netKind).toBe("credit");
+    expect(live.estimatedNet).toBeCloseTo(1.3);
+    expect(live.maxProfit).toBe(130);
+    expect(live.legs).toHaveLength(2);
+  });
+
+  it("deterministic answer text includes the live line and never calls estimated structures live", async () => {
+    const rLive = await run("Find bullish option trades under $500 maximum risk");
+    const aLive = buildMcpOpportunityAnswer(rLive);
+    expect(aLive.answer).toContain("LIVE long call");
+    expect(aLive.answer).toContain("max loss $420.00");
+    expect(aLive.answer).toContain("breakeven $109.20");
+
+    const rEst = await run("Find bullish option trades", { getOptionsChain: async () => ({ available: false }) });
+    const aEst = buildMcpOpportunityAnswer(rEst);
+    expect(aEst.answer).toContain("estimated structure, not a live trade");
+    expect(aEst.answer).not.toContain("LIVE ");
+  });
+
+  it("token echoes in chain/analysis/selection responses are scrubbed from all outputs", async () => {
+    const r = await run("Find bullish option trades under $500 maximum risk", {
+      getOptionsChain: async () => ({ available: true, optionsContextToken: token }),
+      analyzeOptions: async () => ({ reasons: ["ok"], debug: { authorization: "Bearer leak" } }),
+      selectOptionContracts: async () => ({
+        expiration: "2026-09-18", dte: 46,
+        legs: [{ action: "buy", type: "call", strike: 105, bid: 4.1, ask: 4.3 }],
+        netDebit: 4.2, maxLoss: 420, breakeven: [109.2],
+        optionsContextToken: token,
+      }),
+    });
+    const card = toMcpOpportunityCard(r.opportunities[0], true);
+    const serialized = JSON.stringify({ r, card, answer: buildMcpOpportunityAnswer(r) });
+    expect(serialized).not.toContain(token);
+    expect(serialized).not.toContain("Bearer leak");
+    expect(card.liveOption?.legs[0].strike).toBe(105);
+  });
+
+  it("NO_TRADE candidates never run the options pipeline", async () => {
+    let called = 0;
+    const setups = [setup("NVDA", "vcp", 90)];
+    const noTrade: McpCandidate = { symbol: "NVDA", verdict: "NO_TRADE", noTradeReasons: ["regime risk-off"], optionsCandidate: { strategy: "long_call" } as any };
+    const r = await runMcpOpportunitySearch("bullish", "Find bullish option trades", {
+      ...deps({ setups, candidates: { NVDA: noTrade }, brokerConnected: true, optionsContextToken: token } as any),
+      ...liveOptionTools({ getOptionsChain: async () => (called++, { available: true }) }),
+    } as McpSearchDeps);
+    expect(called).toBe(0);
+    expect(r.opportunities[0].liveOption).toBeNull();
+  });
+});

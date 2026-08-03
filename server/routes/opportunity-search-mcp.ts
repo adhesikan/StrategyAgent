@@ -80,12 +80,60 @@ export interface RiskEstimate {
   warnings?: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Live option candidate — produced ONLY when the full options pipeline
+// (get_options_chain → analyze_options → select_option_contracts →
+// calculate_trade_risk) succeeded against a live chain. Anything less is an
+// ESTIMATED options strategy and must never be labeled live.
+// ---------------------------------------------------------------------------
+
+export interface LiveOptionLeg {
+  action: "buy" | "sell";
+  type: "call" | "put";
+  strike: number;
+  expiration?: string | null;
+  /** Live quote at selection time. */
+  bid?: number | null;
+  ask?: number | null;
+  mid?: number | null;
+  delta?: number | null;
+  theta?: number | null;
+  iv?: number | null;
+  volume?: number | null;
+  openInterest?: number | null;
+  optionSymbol?: string | null;
+}
+
+export interface LiveOptionCandidate {
+  status: "live";
+  strategy: string;
+  expiration: string;
+  dte?: number | null;
+  legs: LiveOptionLeg[];
+  /** "mid" when premiums are midpoint assumptions, "bid_ask" when NBBO used. */
+  priceBasis: "mid" | "bid_ask";
+  /** Net per contract: positive = credit received, negative = debit paid. */
+  estimatedNet: number;
+  netKind: "debit" | "credit";
+  maxLoss?: number | null;
+  /** Null/undefined when unlimited or not applicable. */
+  maxProfit?: number | null;
+  breakeven?: number[] | null;
+  liquidityQuality?: string | null;
+  liquidityNotes?: string[];
+  /** Deterministic explanation of why this candidate ranked highly. */
+  rankReasons: string[];
+  warnings?: string[];
+}
+
 export interface RankedOpportunity {
   rank: number;
   setup: McpSetup;
   /** Null when build_trade_candidate failed for this symbol — shown honestly. */
   candidate: McpCandidate | null;
   riskEstimate?: RiskEstimate | null;
+  /** Present ONLY when the live options pipeline fully succeeded. */
+  liveOption?: LiveOptionCandidate | null;
 }
 
 export interface McpOpportunitySearch {
@@ -149,6 +197,32 @@ export interface McpSearchDeps {
     targetPrice?: number;
     maxRiskDollars?: number;
   }) => Promise<unknown>;
+  /**
+   * Options pipeline tools (all optional — when absent or failing, candidates
+   * degrade honestly to ESTIMATED options; live cards are never fabricated).
+   */
+  getOptionsChain?: (args: { symbol: string; optionsContextToken?: string }) => Promise<unknown>;
+  analyzeOptions?: (args: {
+    symbol: string;
+    strategy?: string;
+    direction?: "bullish" | "bearish";
+    optionsContextToken?: string;
+  }) => Promise<unknown>;
+  selectOptionContracts?: (args: {
+    symbol: string;
+    strategy: string;
+    direction?: "bullish" | "bearish";
+    targetDte?: { min: number; max: number };
+    maxRiskDollars?: number;
+    optionsContextToken?: string;
+  }) => Promise<unknown>;
+  calculateTradeRisk?: (args: {
+    symbol: string;
+    strategy: string;
+    legs: Array<{ action: string; type: string; strike: number; expiration?: string; premium?: number }>;
+    quantity?: number;
+    maxRiskDollars?: number;
+  }) => Promise<unknown>;
   brokerConnected: boolean;
   /**
    * Short-lived OPAQUE options-context token (server/services/options-context.ts)
@@ -190,6 +264,190 @@ function isValidSetup(s: unknown): s is McpSetup {
   return !!s && typeof s === "object" && typeof (s as any).symbol === "string" && !!(s as any).symbol && typeof (s as any).strategy === "string";
 }
 
+// ---------------------------------------------------------------------------
+// Live options pipeline (per candidate):
+//   get_options_chain (when available) → analyze_options →
+//   select_option_contracts → calculate_trade_risk → LiveOptionCandidate.
+// Any missing tool, failure or unusable shape → null (estimated card only).
+// ---------------------------------------------------------------------------
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function normalizeLeg(raw: any): LiveOptionLeg | null {
+  const action = String(raw?.action ?? raw?.side ?? "").toLowerCase();
+  const type = String(raw?.type ?? raw?.optionType ?? "").toLowerCase();
+  const strike = num(raw?.strike);
+  if ((action !== "buy" && action !== "sell") || (type !== "call" && type !== "put") || strike == null) return null;
+  const bid = num(raw?.bid);
+  const ask = num(raw?.ask);
+  const mid = num(raw?.mid) ?? (bid != null && ask != null ? +((bid + ask) / 2).toFixed(2) : null);
+  return {
+    action: action as "buy" | "sell",
+    type: type as "call" | "put",
+    strike,
+    expiration: typeof raw?.expiration === "string" ? raw.expiration : null,
+    bid,
+    ask,
+    mid,
+    delta: num(raw?.delta ?? raw?.greeks?.delta),
+    theta: num(raw?.theta ?? raw?.greeks?.theta),
+    iv: num(raw?.iv ?? raw?.impliedVolatility ?? raw?.greeks?.iv),
+    volume: num(raw?.volume),
+    openInterest: num(raw?.openInterest ?? raw?.open_interest ?? raw?.oi),
+    optionSymbol: typeof raw?.optionSymbol === "string" ? raw.optionSymbol : typeof raw?.symbol === "string" ? raw.symbol : null,
+  };
+}
+
+async function buildLiveOptionCandidate(
+  setup: McpSetup,
+  candidate: McpCandidate,
+  deps: McpSearchDeps,
+  direction: "bullish" | "bearish",
+  maxRiskDollars: number | null,
+): Promise<LiveOptionCandidate | null> {
+  const opt = candidate.optionsCandidate;
+  if (!opt?.strategy) return null;
+  // Live contracts require the FULL pipeline (chain → analyze → select →
+  // risk) AND a live-chain context. Partial pipelines never produce "live".
+  if (
+    !deps.optionsContextToken ||
+    !deps.getOptionsChain ||
+    !deps.analyzeOptions ||
+    !deps.selectOptionContracts ||
+    !deps.calculateTradeRisk
+  ) {
+    return null;
+  }
+
+  try {
+    // 1) Chain availability check — cheap gate before deeper analysis.
+    const chain = scrubUntrusted((await deps.getOptionsChain({
+      symbol: setup.symbol,
+      optionsContextToken: deps.optionsContextToken,
+    })) as any);
+    const chainOk =
+      !!chain &&
+      typeof chain === "object" &&
+      (chain.available === true ||
+        (Array.isArray(chain.expirations) && chain.expirations.length > 0) ||
+        (Array.isArray(chain.contracts) && chain.contracts.length > 0) ||
+        (Array.isArray(chain.options) && chain.options.length > 0));
+    if (!chainOk) return null;
+
+    // 2) Analysis pass (IV environment, liquidity screen). Required — a
+    //    failure here means the pipeline did not fully succeed, so the
+    //    candidate stays estimated (outer catch → null).
+    const analysis = scrubUntrusted((await deps.analyzeOptions({
+      symbol: setup.symbol,
+      strategy: opt.strategy,
+      direction,
+      optionsContextToken: deps.optionsContextToken,
+    })) as any);
+
+    // 3) Contract selection — must yield real legs with strikes/premiums.
+    const sel = scrubUntrusted((await deps.selectOptionContracts({
+      symbol: setup.symbol,
+      strategy: opt.strategy,
+      direction,
+      ...(opt.targetDte ? { targetDte: opt.targetDte } : {}),
+      ...(maxRiskDollars != null ? { maxRiskDollars } : {}),
+      optionsContextToken: deps.optionsContextToken,
+    })) as any);
+    const rawLegs: any[] = Array.isArray(sel?.legs) ? sel.legs : [];
+    const legs = rawLegs.map(normalizeLeg).filter((l): l is LiveOptionLeg => l != null);
+    if (legs.length === 0 || legs.length !== rawLegs.length) return null;
+    // Every leg must carry a real live premium (bid/ask or mid). Aggregate
+    // net figures alone are not evidence of live contract data.
+    if (!legs.every((l) => l.mid != null)) return null;
+    const expiration =
+      (typeof sel?.expiration === "string" && sel.expiration) ||
+      legs.find((l) => l.expiration)?.expiration ||
+      null;
+    if (!expiration) return null;
+
+    // Net per contract from selection or from leg midpoints (sign: credit +).
+    let estimatedNet = num(sel?.netCredit) ?? (num(sel?.netDebit) != null ? -(num(sel?.netDebit) as number) : null);
+    if (estimatedNet == null) {
+      let net = 0;
+      for (const l of legs) net += (l.action === "sell" ? 1 : -1) * (l.mid as number);
+      estimatedNet = +net.toFixed(2);
+    }
+
+    // 4) Risk math — the deterministic risk tool MUST succeed (its failure
+    //    aborts the live candidate); selection-provided figures only fill
+    //    fields the risk tool omitted. Without a max-loss figure the
+    //    candidate cannot be risk-validated and is NOT presented as live.
+    let maxLoss = num(sel?.maxLoss);
+    let maxProfit = num(sel?.maxProfit ?? sel?.maxGain);
+    let breakeven: number[] | null = Array.isArray(sel?.breakeven)
+      ? sel.breakeven.map(num).filter((n: number | null): n is number => n != null)
+      : num(sel?.breakeven) != null
+        ? [num(sel?.breakeven) as number]
+        : null;
+    const riskWarnings: string[] = [];
+    const risk = scrubUntrusted((await deps.calculateTradeRisk({
+      symbol: setup.symbol,
+      strategy: opt.strategy,
+      legs: legs.map((l) => ({
+        action: l.action,
+        type: l.type,
+        strike: l.strike,
+        ...(l.expiration ? { expiration: l.expiration } : { expiration }),
+        ...(l.mid != null ? { premium: l.mid } : {}),
+      })),
+      quantity: 1,
+      ...(maxRiskDollars != null ? { maxRiskDollars } : {}),
+    })) as any);
+    maxLoss = num(risk?.maxLoss) ?? maxLoss;
+    maxProfit = num(risk?.maxProfit ?? risk?.maxGain) ?? maxProfit;
+    if (Array.isArray(risk?.breakeven)) {
+      const b = risk.breakeven.map(num).filter((n: number | null): n is number => n != null);
+      if (b.length > 0) breakeven = b;
+    } else if (num(risk?.breakeven) != null) {
+      breakeven = [num(risk?.breakeven) as number];
+    }
+    if (Array.isArray(risk?.warnings)) riskWarnings.push(...risk.warnings.map(String));
+    if (maxLoss == null) return null;
+
+    const dte = num(sel?.dte ?? sel?.daysToExpiration);
+    const liquidityQuality =
+      (typeof sel?.liquidity?.quality === "string" && sel.liquidity.quality) ||
+      (typeof sel?.liquidityQuality === "string" && sel.liquidityQuality) ||
+      (typeof analysis?.liquidity?.quality === "string" && analysis.liquidity.quality) ||
+      null;
+    const liquidityNotes = [
+      ...(Array.isArray(sel?.liquidity?.notes) ? sel.liquidity.notes.map(String) : []),
+      ...(Array.isArray(analysis?.liquidity?.notes) ? analysis.liquidity.notes.map(String) : []),
+    ];
+    const rankReasons = [
+      ...(Array.isArray(sel?.reasons) ? sel.reasons.map(String) : []),
+      ...(Array.isArray(analysis?.reasons) ? analysis.reasons.map(String) : []),
+    ];
+
+    return {
+      status: "live",
+      strategy: opt.strategy,
+      expiration,
+      dte,
+      legs,
+      priceBasis: legs.every((l) => l.bid != null && l.ask != null) ? "bid_ask" : "mid",
+      estimatedNet,
+      netKind: estimatedNet >= 0 ? "credit" : "debit",
+      maxLoss,
+      maxProfit,
+      breakeven,
+      liquidityQuality,
+      ...(liquidityNotes.length ? { liquidityNotes } : {}),
+      rankReasons,
+      ...(riskWarnings.length ? { warnings: riskWarnings } : {}),
+    };
+  } catch {
+    return null; // any pipeline failure → estimated card only, never fabricated
+  }
+}
+
 /**
  * Runs one MCP-backed opportunity search. Throws on scan failure (caller
  * decides fallback). Individual candidate/risk failures degrade per-item,
@@ -228,6 +486,13 @@ export async function runMcpOpportunitySearch(
         candidate = null;
       }
 
+      // Live options pipeline — only for options-relevant candidates and only
+      // when a live-chain context exists. Failure → estimated card, honestly.
+      let liveOption: LiveOptionCandidate | null = null;
+      if (candidate && candidate.optionsCandidate?.strategy && normVerdict(candidate.verdict) !== "NO_TRADE") {
+        liveOption = await buildLiveOptionCandidate(setup, candidate, deps, wantDirection, maxRiskDollars);
+      }
+
       // Risk validation only when the user supplied a budget and the
       // deterministic candidate gives a real entry+stop.
       let riskEstimate: RiskEstimate | null = null;
@@ -258,7 +523,7 @@ export async function runMcpOpportunitySearch(
         }
       }
 
-      return { rank: i + 1, setup, candidate, riskEstimate };
+      return { rank: i + 1, setup, candidate, riskEstimate, liveOption };
     }),
   );
 
@@ -267,17 +532,43 @@ export async function runMcpOpportunitySearch(
   let excludedByRisk = 0;
   let final = ranked;
   if (maxRiskDollars != null) {
+    // Strict enforcement: under a budgeted query, only candidates whose risk
+    // was actually validated against the budget are surfaced. Candidates with
+    // unverifiable risk (estimated options, failed builds, stock setups with
+    // no risk figures) are excluded and disclosed — never shown as fitting.
     final = ranked.filter((o) => {
-      if (o.riskEstimate && typeof o.riskEstimate.suggestedMaxShares === "number" && o.riskEstimate.suggestedMaxShares < 1) {
+      const verdict = normVerdict(o.candidate?.verdict);
+      // Live option candidates: validated max loss must fit the budget.
+      if (o.liveOption) {
+        if (typeof o.liveOption.maxLoss === "number" && o.liveOption.maxLoss <= maxRiskDollars) return true;
         excludedByRisk += 1;
         return false;
+      }
+      // NO_TRADE is a valid, honest verdict — not a trade, so no risk check.
+      if (verdict === "NO_TRADE") return true;
+      // Estimated options: no live premiums → risk cannot be validated.
+      if (verdict === "ESTIMATED_OPTIONS") {
+        excludedByRisk += 1;
+        return false;
+      }
+      if (o.riskEstimate && typeof o.riskEstimate.suggestedMaxShares === "number") {
+        if (o.riskEstimate.suggestedMaxShares < 1) {
+          excludedByRisk += 1;
+          return false;
+        }
+        return true;
       }
       const rps = o.candidate?.stockCandidate?.riskPlan?.riskPerShare;
-      if (normVerdict(o.candidate?.verdict) === "STOCK" && typeof rps === "number" && rps > maxRiskDollars) {
-        excludedByRisk += 1;
-        return false;
+      if (verdict === "STOCK" && typeof rps === "number") {
+        if (rps > maxRiskDollars) {
+          excludedByRisk += 1;
+          return false;
+        }
+        return true;
       }
-      return true;
+      // Risk unverifiable under a budget → excluded, disclosed.
+      excludedByRisk += 1;
+      return false;
     });
     // Re-rank sequentially after exclusion (order otherwise preserved).
     final = final.map((o, i) => ({ ...o, rank: i + 1 }));
@@ -315,15 +606,22 @@ export interface McpOpportunityCard {
   reasons: string[];
   warnings: string[];
   freshness?: string;
-  candidateState?: "stock" | "estimated_options" | "no_trade" | null;
+  candidateState?: "stock" | "estimated_options" | "live_options" | "no_trade" | null;
   verdict?: CandidateVerdict | null;
   riskEstimate?: RiskEstimate | null;
+  /** Present ONLY when the full live options pipeline succeeded. */
+  liveOption?: LiveOptionCandidate | null;
   estimatedOptions?: {
     strategy: string;
     status: "estimated";
     targetDteMin: number;
     targetDteMax: number;
     shortStrikeZone?: { low: number; high: number } | null;
+    longStrikeZone?: { low: number; high: number } | null;
+    /** Explicit limitations of an estimated (no live chain) structure. */
+    limitations?: string[];
+    /** Deterministic risk style hint, e.g. "defined-risk" / "undefined-risk". */
+    riskStyle?: string | null;
     connectionRequiredForLiveContracts: boolean;
   } | null;
   /** Raw deterministic objects (spec response contract). */
@@ -336,6 +634,14 @@ function verdictToState(v: CandidateVerdict | null): McpOpportunityCard["candida
   if (v === "ESTIMATED_OPTIONS") return "estimated_options";
   if (v === "NO_TRADE") return "no_trade";
   return null;
+}
+
+/** Deterministic risk-style hint from the strategy name. */
+export function optionRiskStyle(strategy: string): string {
+  const s = strategy.toLowerCase();
+  if (/naked|short_call\b|uncovered/.test(s)) return "undefined-risk";
+  if (/cash_secured|cash-secured|covered/.test(s)) return "collateralized";
+  return "defined-risk";
 }
 
 export function toMcpOpportunityCard(o: RankedOpportunity, brokerConnected: boolean): McpOpportunityCard {
@@ -352,7 +658,9 @@ export function toMcpOpportunityCard(o: RankedOpportunity, brokerConnected: bool
   if (verdict === "NO_TRADE" && candidate?.noTradeReasons?.length) {
     warnings.push(...candidate.noTradeReasons.map(String));
   }
-  const opt = verdict === "ESTIMATED_OPTIONS" ? candidate?.optionsCandidate : null;
+  // Estimated structure only shown when there is NO live candidate — a card
+  // is either LIVE (full pipeline succeeded) or ESTIMATED, never both.
+  const opt = verdict === "ESTIMATED_OPTIONS" && !o.liveOption ? candidate?.optionsCandidate : null;
   return {
     rank: o.rank,
     symbol: setup.symbol.toUpperCase(),
@@ -367,9 +675,10 @@ export function toMcpOpportunityCard(o: RankedOpportunity, brokerConnected: bool
     technicalObjective: setup.technicalObjective ?? null,
     reasons: [...(setup.reasons ?? [])],
     warnings,
-    candidateState: verdictToState(verdict),
+    candidateState: o.liveOption ? "live_options" : verdictToState(verdict),
     verdict,
     riskEstimate: o.riskEstimate ?? null,
+    liveOption: o.liveOption ?? null,
     estimatedOptions:
       opt && opt.strategy
         ? {
@@ -378,6 +687,14 @@ export function toMcpOpportunityCard(o: RankedOpportunity, brokerConnected: bool
             targetDteMin: opt.targetDte?.min ?? 0,
             targetDteMax: opt.targetDte?.max ?? 0,
             shortStrikeZone: opt.shortStrikeZone ?? null,
+            longStrikeZone: opt.longStrikeZone ?? null,
+            limitations:
+              Array.isArray(opt.limitations) && opt.limitations.length > 0
+                ? opt.limitations.map(String)
+                : [
+                    "Strike zones and DTE are estimates from technical levels — no live premiums, Greeks or liquidity were evaluated.",
+                  ],
+            riskStyle: optionRiskStyle(opt.strategy),
             connectionRequiredForLiveContracts: opt.connectionRequiredForLiveContracts ?? !brokerConnected,
           }
         : null,
@@ -445,8 +762,19 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
             c.riskEstimate.riskPerShare != null ? ` (${fmt(c.riskEstimate.riskPerShare)}/share)` : ""
           }`
         : null,
+      c.liveOption
+        ? `LIVE ${c.liveOption.strategy.replace(/_/g, " ").toLowerCase()} · exp ${c.liveOption.expiration}${
+            c.liveOption.dte != null ? ` (${c.liveOption.dte} DTE)` : ""
+          } · legs: ${c.liveOption.legs
+            .map((l) => `${l.action.toUpperCase()} ${fmt(l.strike)} ${l.type}`)
+            .join(" / ")} · est. ${c.liveOption.netKind} ${fmt(Math.abs(c.liveOption.estimatedNet))}/contract${
+            c.liveOption.maxLoss != null ? ` · max loss ${fmt(c.liveOption.maxLoss)}` : ""
+          }${c.liveOption.maxProfit != null ? ` · max profit ${fmt(c.liveOption.maxProfit)}` : ""}${
+            c.liveOption.breakeven?.length ? ` · breakeven ${c.liveOption.breakeven.map(fmt).join(" / ")}` : ""
+          }`
+        : null,
       c.estimatedOptions
-        ? `Estimated ${c.estimatedOptions.strategy.replace(/_/g, " ").toLowerCase()} · target DTE ${c.estimatedOptions.targetDteMin}–${c.estimatedOptions.targetDteMax}`
+        ? `Estimated ${c.estimatedOptions.strategy.replace(/_/g, " ").toLowerCase()} · target DTE ${c.estimatedOptions.targetDteMin}–${c.estimatedOptions.targetDteMax} — estimated structure, not a live trade`
         : null,
       c.reasons.length ? `Why: ${c.reasons.join("; ")}` : null,
       c.warnings.length ? `Risk: ${c.warnings.join("; ")}` : null,

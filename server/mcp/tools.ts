@@ -31,6 +31,14 @@ export const MCP_ALLOWED_TOOLS = [
   "get_market_regime",
   "get_earnings",
   "get_fundamentals",
+  // Options pipeline tools — backend deterministic orchestration only.
+  // Called (in order) after build_trade_candidate when a live chain is
+  // reachable: get_options_chain → analyze_options → select_option_contracts
+  // → calculate_trade_risk. Never exposed to the AI (not in MCP_AI_TOOLS).
+  "get_options_chain",
+  "analyze_options",
+  "select_option_contracts",
+  "calculate_trade_risk",
 ] as const;
 
 export type McpAllowedTool = (typeof MCP_ALLOWED_TOOLS)[number];
@@ -182,6 +190,79 @@ export async function calculatePositionRisk(a: PositionRiskArgs): Promise<unknow
   if (typeof a.targetPrice === "number") args.targetPrice = a.targetPrice;
   if (typeof a.maxRiskDollars === "number") args.maxRiskDollars = a.maxRiskDollars;
   return callAllowedTool("calculate_position_risk", args);
+}
+
+// ---------------------------------------------------------------------------
+// Options pipeline tools (backend-only). All take the same short-lived OPAQUE
+// optionsContextToken as build_trade_candidate — never a broker OAuth token.
+// Availability is best-effort: the orchestrator treats any failure as "live
+// contracts unavailable" and degrades to the estimated-options card.
+// ---------------------------------------------------------------------------
+
+export async function getOptionsChain(args: {
+  symbol: string;
+  expiration?: string;
+  optionsContextToken?: string;
+}): Promise<unknown> {
+  return callAllowedTool("get_options_chain", {
+    symbol: cleanSymbol(args.symbol),
+    ...(args.expiration ? { expiration: String(args.expiration) } : {}),
+    ...(args.optionsContextToken ? { optionsContextToken: args.optionsContextToken } : {}),
+  });
+}
+
+export async function analyzeOptions(args: {
+  symbol: string;
+  strategy?: string;
+  direction?: "bullish" | "bearish";
+  optionsContextToken?: string;
+}): Promise<unknown> {
+  return callAllowedTool("analyze_options", {
+    symbol: cleanSymbol(args.symbol),
+    ...(args.strategy ? { strategy: String(args.strategy) } : {}),
+    ...(args.direction ? { direction: args.direction } : {}),
+    ...(args.optionsContextToken ? { optionsContextToken: args.optionsContextToken } : {}),
+  });
+}
+
+export async function selectOptionContracts(args: {
+  symbol: string;
+  strategy: string;
+  direction?: "bullish" | "bearish";
+  targetDte?: { min: number; max: number };
+  maxRiskDollars?: number;
+  optionsContextToken?: string;
+}): Promise<unknown> {
+  return callAllowedTool("select_option_contracts", {
+    symbol: cleanSymbol(args.symbol),
+    strategy: String(args.strategy),
+    ...(args.direction ? { direction: args.direction } : {}),
+    ...(args.targetDte ? { targetDte: args.targetDte } : {}),
+    ...(typeof args.maxRiskDollars === "number" ? { maxRiskDollars: args.maxRiskDollars } : {}),
+    ...(args.optionsContextToken ? { optionsContextToken: args.optionsContextToken } : {}),
+  });
+}
+
+export async function calculateTradeRisk(args: {
+  symbol: string;
+  strategy: string;
+  legs: Array<{
+    action: string;
+    type: string;
+    strike: number;
+    expiration?: string;
+    premium?: number;
+  }>;
+  quantity?: number;
+  maxRiskDollars?: number;
+}): Promise<unknown> {
+  return callAllowedTool("calculate_trade_risk", {
+    symbol: cleanSymbol(args.symbol),
+    strategy: String(args.strategy),
+    legs: (args.legs ?? []).slice(0, 6),
+    ...(typeof args.quantity === "number" ? { quantity: Math.max(1, Math.floor(args.quantity)) } : {}),
+    ...(typeof args.maxRiskDollars === "number" ? { maxRiskDollars: args.maxRiskDollars } : {}),
+  });
 }
 
 export async function getMarketRegime(): Promise<unknown> {

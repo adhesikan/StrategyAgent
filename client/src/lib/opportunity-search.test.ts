@@ -86,3 +86,56 @@ describe("cardCtas — Trade Builder gating (spec §7/§13, test 23: research na
     expect(ctas.map((c) => c.label)).not.toContain("Connect Broker");
   });
 });
+
+describe("live option candidates", () => {
+  const liveCard = {
+    symbol: "NVDA",
+    reasons: [],
+    warnings: [],
+    candidateState: "live_options" as const,
+    liveOption: {
+      status: "live" as const,
+      strategy: "long_call",
+      expiration: "2026-09-18",
+      dte: 46,
+      legs: [{ action: "buy" as const, type: "call" as const, strike: 105, bid: 4.1, ask: 4.3, mid: 4.2 }],
+      priceBasis: "bid_ask" as const,
+      estimatedNet: -4.2,
+      netKind: "debit" as const,
+      maxLoss: 420,
+      maxProfit: null,
+      breakeven: [109.2],
+      rankReasons: ["fits risk budget"],
+    },
+  };
+
+  it("labels live option candidates distinctly from estimated", () => {
+    expect(candidateStateLabel("live_options")).toBe("Live Option Candidate");
+    expect(candidateStateLabel("estimated_options")).toBe("Estimated Options Strategy");
+    expect(candidateStateLabel("live_options")).not.toBe(candidateStateLabel("estimated_options"));
+  });
+
+  it("live option CTAs lead with View Setup, no Connect Broker CTA", () => {
+    const ctas = cardCtas(liveCard as any, true);
+    expect(ctas[0]).toMatchObject({ label: "View Setup", primary: true });
+    expect(ctas.map((c) => c.label)).not.toContain("Connect Broker");
+  });
+
+  it("estimated options without a broker keep the Connect Broker CTA", () => {
+    const card = {
+      symbol: "NVDA",
+      reasons: [],
+      warnings: [],
+      candidateState: "estimated_options" as const,
+      estimatedOptions: {
+        strategy: "long_call",
+        status: "estimated" as const,
+        targetDteMin: 30,
+        targetDteMax: 45,
+        connectionRequiredForLiveContracts: true,
+      },
+    };
+    const ctas = cardCtas(card as any, false);
+    expect(ctas[0]).toMatchObject({ label: "Connect Broker", href: "/settings", primary: true });
+  });
+});

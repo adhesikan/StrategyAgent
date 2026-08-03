@@ -1147,6 +1147,12 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               scanOpportunities: (f) => tools.scanOpportunities(f),
               buildTradeCandidate: (s, st, oct) => tools.buildTradeCandidate(s, st, oct),
               calculatePositionRisk: (a) => tools.calculatePositionRisk(a),
+              // Options pipeline (live contracts) — best-effort; the
+              // orchestrator degrades to estimated cards on any failure.
+              getOptionsChain: (a) => tools.getOptionsChain(a),
+              analyzeOptions: (a) => tools.analyzeOptions(a),
+              selectOptionContracts: (a) => tools.selectOptionContracts(a),
+              calculateTradeRisk: (a) => tools.calculateTradeRisk(a),
               brokerConnected: ctx.brokerConnected,
               ...(optionsContextToken ? { optionsContextToken } : {}),
             });

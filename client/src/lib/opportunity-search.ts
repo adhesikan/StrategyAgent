@@ -7,7 +7,48 @@ export interface EstimatedOptions {
   targetDteMin: number;
   targetDteMax: number;
   shortStrikeZone?: { low: number; high: number } | null;
+  longStrikeZone?: { low: number; high: number } | null;
+  /** Explicit limitations of an estimated (no live chain) structure. */
+  limitations?: string[];
+  /** e.g. "defined-risk" / "undefined-risk" / "collateralized". */
+  riskStyle?: string | null;
   connectionRequiredForLiveContracts: boolean;
+}
+
+export interface LiveOptionLeg {
+  action: "buy" | "sell";
+  type: "call" | "put";
+  strike: number;
+  expiration?: string | null;
+  bid?: number | null;
+  ask?: number | null;
+  mid?: number | null;
+  delta?: number | null;
+  theta?: number | null;
+  iv?: number | null;
+  volume?: number | null;
+  openInterest?: number | null;
+  optionSymbol?: string | null;
+}
+
+/** Present ONLY when the backend's full live options pipeline succeeded. */
+export interface LiveOptionCandidate {
+  status: "live";
+  strategy: string;
+  expiration: string;
+  dte?: number | null;
+  legs: LiveOptionLeg[];
+  priceBasis: "mid" | "bid_ask";
+  /** Net per contract: positive = credit received, negative = debit paid. */
+  estimatedNet: number;
+  netKind: "debit" | "credit";
+  maxLoss?: number | null;
+  maxProfit?: number | null;
+  breakeven?: number[] | null;
+  liquidityQuality?: string | null;
+  liquidityNotes?: string[];
+  rankReasons: string[];
+  warnings?: string[];
 }
 
 export interface PriceLevel {
@@ -44,10 +85,11 @@ export interface OpportunityCard {
   reasons: string[];
   warnings: string[];
   freshness?: string;
-  candidateState?: "stock" | "estimated_options" | "no_trade" | null;
+  candidateState?: "stock" | "estimated_options" | "live_options" | "no_trade" | null;
   /** Deterministic engine verdict (MCP build_trade_candidate). */
   verdict?: CandidateVerdict | null;
   riskEstimate?: RiskEstimate | null;
+  liveOption?: LiveOptionCandidate | null;
   estimatedOptions?: EstimatedOptions | null;
 }
 
@@ -76,6 +118,8 @@ export function candidateStateLabel(state: OpportunityCard["candidateState"]): s
       return "Stock Candidate";
     case "estimated_options":
       return "Estimated Options Strategy";
+    case "live_options":
+      return "Live Option Candidate";
     case "no_trade":
       return "No Trade";
     default:
@@ -118,6 +162,14 @@ export function cardCtas(card: OpportunityCard, brokerConnected: boolean): CardC
     // NO_TRADE is a valid, honest verdict — the setup page still shows the
     // levels/why-not; order actions remain gated there.
     return [analyze, viewSetup, { label: "Open Scanner", href: "/scanner" }];
+  }
+  if (card.candidateState === "live_options") {
+    // Live candidate — order actions stay in the trade setup page.
+    return [
+      { ...viewSetup, primary: true },
+      { ...analyze, primary: false },
+      { label: "View Chart", href: `/market-intel?symbol=${sym}` },
+    ];
   }
   if (card.candidateState === "estimated_options") {
     const ctas: CardCta[] = [];

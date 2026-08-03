@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CongressFlowEmbed } from "@/components/congressflow-embed";
+import { STRATEGY_KEY_TO_SLUG } from "@shared/strategy-catalog";
 
 // ---------------------------------------------------------------------------
 // Types (shared shape of /api/radar/scenarios candidates)
@@ -623,6 +624,24 @@ export function NewsContextDrawer({
 // ---------------------------------------------------------------------------
 // Scenario action logging + order review dialog (self-contained)
 // ---------------------------------------------------------------------------
+// Maps a radar scenario to the trade-setup page URL — the same destination the
+// legacy daily-idea "Review setup" button used, so Review behaves uniformly on
+// every page that renders these cards.
+const SCENARIO_TRADE_TYPE: Record<RadarStrategyType, string> = {
+  stock_swing: "stock",
+  long_call: "long-call",
+  long_put: "long-put",
+  debit_spread: "vertical",
+  covered_call: "short-premium",
+  cash_secured_put: "short-premium",
+};
+
+export function tradeUrlForScenario(scenario: RadarCandidateScenario): string {
+  const type = SCENARIO_TRADE_TYPE[scenario.strategyType] ?? "stock";
+  const slug = STRATEGY_KEY_TO_SLUG[scenario.strategyType] ?? "stock-swing";
+  return `/trade/${scenario.symbol}?type=${type}&strategy=${slug}`;
+}
+
 export async function logScenarioAction(scenario: RadarCandidateScenario, action: string, complianceAcknowledged = false) {
   try {
     await apiRequest("POST", "/api/radar/scenarios", {

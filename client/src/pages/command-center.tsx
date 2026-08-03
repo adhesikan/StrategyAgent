@@ -53,6 +53,7 @@ import {
   CongressActivityDrawer,
   OrderReviewDialog,
   logScenarioAction,
+  tradeUrlForScenario,
   type RadarCandidateScenario,
 } from "@/components/radar-scenario-card";
 
@@ -305,7 +306,7 @@ export default function CommandCenterPage() {
                     key={c.id ?? `${c.symbol}-${c.rank}`}
                     scenario={c}
                     onExplain={() => { track("home_radar_view_why" as any); setExplainScenario(c); }}
-                    onReview={() => { track("home_radar_review" as any); setReviewScenario(c); logScenarioAction(c, "reviewed"); }}
+                    onReview={() => { track("home_radar_review" as any); logScenarioAction(c, "reviewed"); navigate(tradeUrlForScenario(c)); }}
                     onPrepareOrder={() => { track("home_radar_prepare" as any); setReviewScenario(c); logScenarioAction(c, "prepared_order"); }}
                     onViewNews={() => { track("home_radar_view_news" as any); setNewsScenario(c); }}
                     onViewCongress={() => { track("home_radar_view_congress" as any); setCongressSymbol(c.symbol); }}

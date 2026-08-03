@@ -21,6 +21,7 @@ import {
   CongressActivityDrawer,
   OrderReviewDialog,
   logScenarioAction,
+  tradeUrlForScenario,
   type RadarCandidateScenario,
 } from "@/components/radar-scenario-card";
 import { useAuth } from "@/hooks/use-auth";
@@ -319,7 +320,7 @@ export default function HomeV2() {
                   key={c.id ?? `${c.symbol}-${c.rank}`}
                   scenario={c}
                   onExplain={() => setExplainScenario(c)}
-                  onReview={() => { setExplainScenario(c); logScenarioAction(c, "reviewed"); }}
+                  onReview={() => { logScenarioAction(c, "reviewed"); navigate(tradeUrlForScenario(c)); }}
                   onPrepareOrder={() => { setReviewScenario(c); logScenarioAction(c, "prepared_order"); }}
                   onViewNews={() => setNewsScenario(c)}
                   onViewCongress={() => setCongressSymbol(c.symbol)}

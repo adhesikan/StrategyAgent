@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { ViewToggle, useViewMode } from "@/components/view-toggle";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -65,6 +66,7 @@ import {
   CongressActivityDrawer,
   OrderReviewDialog,
   logScenarioAction,
+  tradeUrlForScenario,
 } from "@/components/radar-scenario-card";
 
 type Bias = "any" | "bullish" | "bearish" | "neutral";
@@ -307,6 +309,7 @@ function applyClientFilters(candidates: CandidateScenario[], f: RadarFilters): C
 }
 
 export default function OpportunityRadarPage() {
+  const [, navigate] = useLocation();
   const [filters, setFilters] = useState<RadarFilters>(DEFAULT_FILTERS);
   const [explainScenario, setExplainScenario] = useState<CandidateScenario | null>(null);
   const [reviewScenario, setReviewScenario] = useState<CandidateScenario | null>(null);
@@ -394,8 +397,8 @@ export default function OpportunityRadarPage() {
           logScenarioAction(s, "reviewed");
         }}
         onReview={(s) => {
-          setReviewScenario(s);
           logScenarioAction(s, "reviewed");
+          navigate(tradeUrlForScenario(s));
         }}
         onPrepareOrder={(s) => {
           setReviewScenario(s);

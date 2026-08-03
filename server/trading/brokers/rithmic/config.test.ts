@@ -1,20 +1,11 @@
+import { describe, test } from "vitest";
 import { resolveRithmicConfig } from "./config";
-
-function test(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`  PASS: ${name}`);
-  } catch (err: any) {
-    console.error(`  FAIL: ${name} - ${err.message}`);
-    process.exitCode = 1;
-  }
-}
 
 function assert(condition: boolean, msg: string) {
   if (!condition) throw new Error(msg);
 }
 
-console.log("\n--- resolveRithmicConfig tests ---\n");
+describe("resolveRithmicConfig", () => {
 
 test("Protocol mode: RITHMIC_WS_URL present", () => {
   const cfg = resolveRithmicConfig({
@@ -94,5 +85,4 @@ test("Protocol mode takes priority over plant URIs when RITHMIC_WS_URL is set", 
   assert(cfg.wsUrl === "wss://protocol.rithmic.com:443", "Should use RITHMIC_WS_URL");
   assert(cfg.missing.length === 0, "No missing vars expected");
 });
-
-console.log("\n--- All tests complete ---\n");
+});

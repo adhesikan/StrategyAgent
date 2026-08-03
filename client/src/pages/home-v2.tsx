@@ -319,7 +319,7 @@ export default function HomeV2() {
                   key={c.id ?? `${c.symbol}-${c.rank}`}
                   scenario={c}
                   onExplain={() => setExplainScenario(c)}
-                  onReview={() => { setReviewScenario(c); logScenarioAction(c, "reviewed"); }}
+                  onReview={() => { setExplainScenario(c); logScenarioAction(c, "reviewed"); }}
                   onPrepareOrder={() => { setReviewScenario(c); logScenarioAction(c, "prepared_order"); }}
                   onViewNews={() => setNewsScenario(c)}
                   onViewCongress={() => setCongressSymbol(c.symbol)}

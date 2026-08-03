@@ -155,10 +155,18 @@ export function SchwabByoPanel() {
             <Label htmlFor="schwab-client-id">Client ID</Label>
             <Input
               id="schwab-client-id"
+              // Browsers treat a text input followed by a password input as a
+              // login form and autofill the user's saved email/password,
+              // ignoring autoComplete="off". "one-time-code" plus a
+              // non-credential name reliably opts out of password managers.
+              name="schwab-api-app-id"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder={status?.clientIdMasked || "Paste your Schwab Client ID"}
-              autoComplete="off"
+              autoComplete="one-time-code"
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore
               data-testid="input-schwab-client-id"
             />
             {status?.hasClientId && !clientId && (
@@ -170,10 +178,16 @@ export function SchwabByoPanel() {
             <Input
               id="schwab-client-secret"
               type="password"
+              name="schwab-api-app-secret"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               placeholder={status?.hasClientSecret ? "•••••••• (saved)" : "Paste your Schwab Client Secret"}
-              autoComplete="off"
+              // "new-password" tells the browser this is NOT a login password,
+              // so it must not autofill the user's saved credential here.
+              autoComplete="new-password"
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore
               data-testid="input-schwab-client-secret"
             />
             <p className="text-[11px] text-muted-foreground">Your secret is encrypted at rest and never displayed back.</p>
@@ -182,9 +196,13 @@ export function SchwabByoPanel() {
             <Label htmlFor="schwab-redirect-uri">Redirect URI</Label>
             <Input
               id="schwab-redirect-uri"
+              name="schwab-redirect-uri"
               value={redirectUri}
               onChange={(e) => setRedirectUri(e.target.value)}
               placeholder="https://your-domain.example.com/api/schwab/callback"
+              autoComplete="off"
+              data-form-type="other"
+              data-lpignore="true"
               data-testid="input-schwab-redirect-uri"
             />
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">

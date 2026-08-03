@@ -1,19 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Settings2, Star } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Radar } from "lucide-react";
+import { useBrokerStatus } from "@/hooks/use-broker-status";
+import {
+  filterRadarCandidates,
+  sortRadarCandidates,
+  RADAR_UNIVERSE_OPTIONS,
+  RADAR_TYPE_OPTIONS,
+  RADAR_SORT_OPTIONS,
+  type RadarUniverse,
+  type RadarTypeFilter,
+  type RadarSort,
+} from "@/lib/command-center";
+import {
+  ScenarioCard,
+  ExplanationDrawer,
+  NewsContextDrawer,
+  CongressActivityDrawer,
+  OrderReviewDialog,
+  logScenarioAction,
+  type RadarCandidateScenario,
+} from "@/components/radar-scenario-card";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search,
@@ -26,11 +40,7 @@ import {
   Activity,
   AlertTriangle,
   Info,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
-import { DailyIdeaRow, SimpleIdeaCard, GRADE_WEIGHTS, type DailyIdea } from "@/components/daily-idea-card";
-import { ViewToggle, type ViewMode } from "@/components/view-toggle";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -88,23 +98,6 @@ interface DailyMarketRegime {
   hint: string;
 }
 
-interface IdeasResponse {
-  ideas: DailyIdea[];
-  brokerConnected: boolean;
-  dataMode: "live" | "simulated" | "mixed";
-  marketRegime?: DailyMarketRegime;
-  asOf: string;
-  disclaimer: string;
-}
-
-const REGIME_TONE: Record<DailyMarketRegime["tone"], string> = {
-  bullish: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
-  bearish: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30",
-  mixed: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  low_vol: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30",
-  high_vol: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30",
-};
-
 type ScanUniverseId =
   | "default"
   | "watchlist"
@@ -125,52 +118,6 @@ const SCAN_UNIVERSE_OPTIONS: { value: ScanUniverseId; label: string; hint: strin
   { value: "options_liquid", label: "Options Liquid", hint: "Best for option ideas" },
   { value: "custom", label: "Custom symbols…", hint: "Enter your own list" },
 ];
-
-interface ScanPrefs {
-  universe: ScanUniverseId;
-  customSymbols: string;
-}
-
-function decodeScanPrefs(raw: string | null | undefined): ScanPrefs {
-  if (!raw || raw === "all") return { universe: "default", customSymbols: "" };
-  if (raw.startsWith("custom:")) {
-    return { universe: "custom", customSymbols: raw.slice("custom:".length) };
-  }
-  const valid = SCAN_UNIVERSE_OPTIONS.map((o) => o.value);
-  if (valid.includes(raw as ScanUniverseId)) {
-    return { universe: raw as ScanUniverseId, customSymbols: "" };
-  }
-  return { universe: "default", customSymbols: "" };
-}
-
-function encodeScanPrefs(p: ScanPrefs): string {
-  if (p.universe === "default") return "all";
-  if (p.universe === "custom") {
-    const list = p.customSymbols
-      .split(",")
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 30)
-      .join(",");
-    return list ? `custom:${list}` : "all";
-  }
-  return p.universe;
-}
-
-function buildIdeasUrl(bucket: string, p: ScanPrefs): string {
-  const params = new URLSearchParams({ bucket });
-  if (p.universe === "custom") {
-    const list = p.customSymbols
-      .split(",")
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 30);
-    if (list.length > 0) params.set("customSymbols", list.join(","));
-  } else if (p.universe !== "default") {
-    params.set("universe", p.universe);
-  }
-  return `/api/daily-ideas?${params.toString()}`;
-}
 
 const ACTIONS = [
   {
@@ -220,71 +167,8 @@ const PLACEHOLDERS = [
 // bucket and Income/Options overlapped (income strategies are
 // option-based). Collapsed to four meaningful tabs so users see
 // distinct results, not duplicates.
-type SortKey = "grade" | "score" | "risk_low" | "risk_high" | "symbol";
-
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "grade", label: "Best Setup Match" },
-  { value: "risk_low", label: "Lowest cost" },
-  { value: "risk_high", label: "Highest cost" },
-  { value: "symbol", label: "Symbol A→Z" },
-];
-
 // Higher = better. A+ > A > B > C > anything else.
 const GRADE_RANK: Record<string, number> = { "A+": 4, A: 3, B: 2, C: 1 };
-
-type InstrumentFilter = "all" | "stock" | "long_options" | "defined_risk";
-
-const INSTRUMENT_FILTERS: { value: InstrumentFilter; label: string; hint: string }[] = [
-  { value: "all", label: "All", hint: "Stocks plus every options structure." },
-  { value: "stock", label: "Stocks", hint: "Long-share swing setups (no options)." },
-  { value: "long_options", label: "Long Calls/Puts", hint: "Long calls and long puts — single-leg, premium-paid, defined-risk-by-premium." },
-  { value: "defined_risk", label: "Spreads", hint: "Vertical spreads, covered calls, and cash-secured puts — every position has a known max loss." },
-];
-
-function matchesInstrumentFilter(t: DailyIdea["instrumentType"], f: InstrumentFilter): boolean {
-  switch (f) {
-    case "all":
-      return true;
-    case "stock":
-      return t === "stock";
-    case "long_options":
-      return t === "long_call" || t === "long_put";
-    case "defined_risk":
-      return t === "spread" || t === "covered_call" || t === "cash_secured_put";
-  }
-}
-
-function sortIdeas<T extends { grade: string; score: number; maxRisk: number; symbol: string }>(
-  ideas: T[],
-  key: SortKey,
-): T[] {
-  const arr = ideas.slice();
-  arr.sort((a, b) => {
-    switch (key) {
-      case "grade": {
-        const diff = (GRADE_RANK[b.grade] ?? 0) - (GRADE_RANK[a.grade] ?? 0);
-        return diff !== 0 ? diff : b.score - a.score;
-      }
-      case "score":
-        return b.score - a.score;
-      case "risk_low":
-        return a.maxRisk - b.maxRisk;
-      case "risk_high":
-        return b.maxRisk - a.maxRisk;
-      case "symbol":
-        return a.symbol.localeCompare(b.symbol);
-    }
-  });
-  return arr;
-}
-
-const TABS: { value: string; label: string; bucket: string; hint: string }[] = [
-  { value: "all", label: "All", bucket: "all", hint: "Top ideas across stocks and options" },
-  { value: "stocks", label: "Stocks", bucket: "stocks", hint: "Stock swing setups (growth and trend)" },
-  { value: "options", label: "Options", bucket: "options", hint: "Defined-risk options — directional and income" },
-  { value: "watchlist", label: "Watchlist", bucket: "watchlist", hint: "Ideas only on your watchlist symbols" },
-  { value: "alerts", label: "Market Alerts", bucket: "alerts", hint: "Heads-up notices on market events" },
-];
 
 function routeFor(prompt: string): string {
   const trimmed = prompt.trim();
@@ -296,109 +180,41 @@ export default function HomeV2() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState("all");
-  // Lower "More trade ideas" section is collapsed by default so the Top 3
-  // hero stays the focus — keeps the dashboard pointed and less intimidating
-  // when 9+ ideas would otherwise spill below the fold.
-  const [showMoreIdeas, setShowMoreIdeas] = useState(false);
-  const [ideasView, setIdeasView] = useState<ViewMode>(() => {
-    if (typeof window === "undefined") return "card";
-    const v = window.localStorage.getItem("home.ideasView");
-    return v === "list" || v === "card" ? v : "card";
+  // Radar-backed trade ideas — the SAME engine, cards, and actions as /home
+  // (shared cache key with the home Market Signals section).
+  const { isConnected } = useBrokerStatus();
+  const [radarUniverse, setRadarUniverse] = useState<RadarUniverse>(() => {
+    if (typeof window === "undefined") return "watchlist";
+    const v = window.localStorage.getItem("ideas.radarUniverse");
+    return v === "watchlist" || v === "large_cap" || v === "high_volume" || v === "options_liquid" ? v : "watchlist";
   });
-  const [sortBy, setSortBy] = useState<SortKey>("grade");
-  // Default filter loaded on login. Separate from the session-active filter
-  // so switching mid-session doesn't silently overwrite the user's default.
-  const [defaultInstrumentFilter, setDefaultInstrumentFilter] = useState<InstrumentFilter>(() => {
-    if (typeof window === "undefined") return "all";
-    const v = window.localStorage.getItem("home.defaultInstrumentFilter");
-    if (v === "all" || v === "stock" || v === "long_options" || v === "defined_risk") return v;
-    // Back-compat: migrate the old auto-persisted key into the default.
-    const legacy = window.localStorage.getItem("home.instrumentFilter");
-    return legacy === "all" || legacy === "stock" || legacy === "long_options" || legacy === "defined_risk"
-      ? legacy
-      : "all";
+  useEffect(() => {
+    window.localStorage.setItem("ideas.radarUniverse", radarUniverse);
+  }, [radarUniverse]);
+  const [radarTypeFilter, setRadarTypeFilter] = useState<RadarTypeFilter>("all");
+  const [radarSort, setRadarSort] = useState<RadarSort>("rank");
+  const radarQueryString = `timeHorizon=1_4w&universe=${radarUniverse}&maxLoss=2000`;
+  const radarQuery = useQuery<{ candidates: RadarCandidateScenario[]; dataMode?: string }>({
+    queryKey: ["/api/radar/scenarios", radarQueryString],
+    queryFn: async () => {
+      const r = await fetch(`/api/radar/scenarios?${radarQueryString}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load trade ideas");
+      return r.json();
+    },
+    staleTime: 5 * 60_000, // radar scans are expensive — don't rescan on every visit
   });
-  const [instrumentFilter, setInstrumentFilter] = useState<InstrumentFilter>(defaultInstrumentFilter);
-  // Synchronously collapse "More trade ideas" on tab/filter change so stale
-  // placeholder data from the previous tab can't render the expanded tabs
-  // block for even a single frame. Wrapping the setters (instead of using a
-  // useEffect) avoids the post-render timing window.
-  const changeTab = (next: string) => {
-    setShowMoreIdeas(false);
-    setTab(next);
-  };
-  const changeInstrumentFilter = (next: InstrumentFilter) => {
-    setShowMoreIdeas(false);
-    setInstrumentFilter(next);
-  };
-  useEffect(() => {
-    window.localStorage.setItem("home.ideasView", ideasView);
-  }, [ideasView]);
-  useEffect(() => {
-    window.localStorage.setItem("home.defaultInstrumentFilter", defaultInstrumentFilter);
-  }, [defaultInstrumentFilter]);
-  const { toast } = useToast();
-  const [scanPrefs, setScanPrefs] = useState<ScanPrefs>({ universe: "default", customSymbols: "" });
-  const [customDraft, setCustomDraft] = useState("");
+  const ideas = useMemo(
+    () => sortRadarCandidates(filterRadarCandidates(radarQuery.data?.candidates ?? [], radarTypeFilter), radarSort),
+    [radarQuery.data, radarTypeFilter, radarSort],
+  );
+  const [explainScenario, setExplainScenario] = useState<RadarCandidateScenario | null>(null);
+  const [newsScenario, setNewsScenario] = useState<RadarCandidateScenario | null>(null);
+  const [congressSymbol, setCongressSymbol] = useState<string | null>(null);
+  const [reviewScenario, setReviewScenario] = useState<RadarCandidateScenario | null>(null);
 
   const { data: snap } = useQuery<Snapshot>({
     queryKey: ["/api/home/snapshot"],
     refetchInterval: 60_000,
-  });
-
-  const { data: settingsData } = useQuery<{ scanUniverse?: string | null }>({
-    queryKey: ["/api/user/settings"],
-  });
-
-  useEffect(() => {
-    if (!settingsData) return;
-    const decoded = decodeScanPrefs(settingsData.scanUniverse);
-    setScanPrefs(decoded);
-    setCustomDraft(decoded.customSymbols);
-  }, [settingsData]);
-
-  const saveScanUniverse = useMutation({
-    mutationFn: async (raw: string) => {
-      return apiRequest("PATCH", "/api/user/settings", { scanUniverse: raw });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user/settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/daily-ideas"] });
-    },
-    onError: () => {
-      toast({ title: "Couldn't save scan source", description: "Your selection is active for this session.", variant: "destructive" });
-    },
-  });
-
-  const applyPrefs = (next: ScanPrefs) => {
-    setScanPrefs(next);
-    saveScanUniverse.mutate(encodeScanPrefs(next));
-  };
-
-  const activeBucket = TABS.find((t) => t.value === tab)?.bucket ?? "beginner";
-  // Top picks must be tab-independent — the Top 3 hero, subtitle count, and
-  // instrument filter chips all anchor to the canonical "all" view so they
-  // never disappear when the user clicks Stocks/Options/Watchlist/Alerts.
-  const { data: topPicksResp, isLoading: topPicksLoading } = useQuery<IdeasResponse>({
-    queryKey: ["/api/daily-ideas", { bucket: "all", universe: scanPrefs.universe, custom: scanPrefs.customSymbols }],
-    queryFn: async () => {
-      const r = await fetch(buildIdeasUrl("all", scanPrefs), { credentials: "include" });
-      if (!r.ok) throw new Error("Failed to load ideas");
-      return r.json();
-    },
-  });
-  // Per-tab ideas — powers ONLY the "More trade ideas" grid below the hero.
-  // When the user clicks a tab, only this grid refetches; the Top 3 hero
-  // remains stable.
-  const { data: ideasResp, isLoading: ideasLoading } = useQuery<IdeasResponse>({
-    queryKey: ["/api/daily-ideas", { bucket: activeBucket, universe: scanPrefs.universe, custom: scanPrefs.customSymbols }],
-    queryFn: async () => {
-      const r = await fetch(buildIdeasUrl(activeBucket, scanPrefs), { credentials: "include" });
-      if (!r.ok) throw new Error("Failed to load ideas");
-      return r.json();
-    },
-    placeholderData: (prev) => prev,
   });
 
   const submit = (text: string) => {
@@ -425,554 +241,96 @@ export default function HomeV2() {
             {greeting}, {firstName}.
           </h1>
           <p className="text-[15px] text-muted-foreground mt-1" data-testid="text-home-subtitle">
-            {topPicksLoading
-              ? "Loading today's ideas…"
-              : `${topPicksResp?.ideas.length ?? 0} ${(topPicksResp?.ideas.length ?? 0) === 1 ? "idea" : "ideas"} ready to review — nothing sent without your approval.`}
+            {radarQuery.isLoading
+              ? "Scanning for trade candidates…"
+              : `${ideas.length} ${ideas.length === 1 ? "candidate" : "candidates"} ready to review — nothing sent without your approval.`}
           </p>
-          {topPicksResp?.marketRegime && (
-            <div
-              className={cn(
-                "mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs",
-                REGIME_TONE[topPicksResp.marketRegime.tone],
-              )}
-              data-testid="banner-market-regime"
-            >
-              <span className="font-semibold" data-testid="text-market-regime-label">
-                Market Environment: {topPicksResp.marketRegime.label}
-              </span>
-              <span className="opacity-80 hidden sm:inline">— {topPicksResp.marketRegime.hint}</span>
-            </div>
-          )}
         </div>
 
-        <section>
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-            <div>
+        <section data-testid="section-trade-ideas">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
             <h2 className="text-base font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Today's Best Setups
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground"
-                      data-testid="button-grading-help"
-                      aria-label="How grades are calculated"
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" align="start" className="max-w-sm text-xs space-y-2">
-                    <p className="font-semibold text-sm">How grades are calculated</p>
-                    <p className="text-muted-foreground">
-                      Each idea gets a 0–100 composite score from five weighted factors, then bucketed into a letter grade:
-                    </p>
-                    <ul className="space-y-0.5 pl-3 list-disc marker:text-primary/60">
-                      <li>Technical setup — {GRADE_WEIGHTS.technical}%</li>
-                      <li>Momentum — {GRADE_WEIGHTS.momentum}%</li>
-                      <li>News sentiment — {GRADE_WEIGHTS.sentiment}%</li>
-                      <li>Liquidity — {GRADE_WEIGHTS.liquidity}%</li>
-                      <li>Risk fit — {GRADE_WEIGHTS.risk}%</li>
-                    </ul>
-                    <div className="text-muted-foreground space-y-0.5 pt-1 border-t">
-                      <p><span className="text-foreground font-medium">A+</span> ≥ 90 · strongest agreement</p>
-                      <p><span className="text-foreground font-medium">A</span> 80–89 · strong agreement</p>
-                      <p><span className="text-foreground font-medium">B</span> 70–79 · moderate agreement</p>
-                      <p><span className="text-foreground font-medium">C</span> 50–69 · mixed signals — most ideas land here on quiet days</p>
-                    </div>
-                    <p className="text-muted-foreground italic pt-1 border-t">
-                      Hover any idea's grade badge for the per-factor breakdown. Higher = more factors agree, not a price target.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Radar className="h-4 w-4 text-primary" />
+              Market Signals
             </h2>
-            <p className="text-xs text-muted-foreground mt-1" data-testid="text-ideas-subtitle">
-              AI-ranked opportunities based on your selected market and strategy filters.
-            </p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {ideasResp?.dataMode === "simulated" && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] border-blue-500/30 text-blue-300/90 bg-blue-500/5"
-                  title="Analysis Mode uses delayed, end-of-day, or snapshot reference prices refreshed daily. Connect a broker for broker-authorized market data."
-                  data-testid="badge-simulated"
-                >
-                  Delayed reference data
-                </Badge>
-              )}
-              <span className="text-xs text-muted-foreground hidden sm:inline">Sort by</span>
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-                <SelectTrigger className="h-8 w-[150px] text-xs" data-testid="select-ideas-sort">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} data-testid={`option-sort-${opt.value}`}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <ViewToggle value={ideasView} onChange={setIdeasView} testId="view-toggle-ideas" />
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label="Default view settings"
-                    data-testid="button-ideas-defaults"
-                  >
-                    <Settings2 className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-64 space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold mb-1">Defaults</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Saved on this device — applied next time you open the home page.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Default view</Label>
-                    <RadioGroup
-                      value={ideasView}
-                      onValueChange={(v) => setIdeasView(v as ViewMode)}
-                      className="gap-1"
-                    >
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="card" id="def-view-card" data-testid="radio-default-view-card" />
-                        <Label htmlFor="def-view-card" className="text-xs font-normal cursor-pointer">Card view</Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="list" id="def-view-list" data-testid="radio-default-view-list" />
-                        <Label htmlFor="def-view-list" className="text-xs font-normal cursor-pointer">List view</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Default show on login</Label>
-                    <RadioGroup
-                      value={defaultInstrumentFilter}
-                      onValueChange={(v) => {
-                        const next = v as InstrumentFilter;
-                        setDefaultInstrumentFilter(next);
-                        changeInstrumentFilter(next);
-                        const label = INSTRUMENT_FILTERS.find((f) => f.value === next)?.label ?? next;
-                        toast({
-                          title: "Default filter saved",
-                          description: `“${label}” will load when you open the dashboard.`,
-                        });
-                      }}
-                      className="gap-1"
-                    >
-                      {INSTRUMENT_FILTERS.map((f) => (
-                        <div key={f.value} className="flex items-center gap-2">
-                          <RadioGroupItem value={f.value} id={`def-filter-${f.value}`} data-testid={`radio-default-filter-${f.value}`} />
-                          <Label htmlFor={`def-filter-${f.value}`} className="text-xs font-normal cursor-pointer">{f.label}</Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                    <p className="text-[10px] text-muted-foreground leading-snug">
-                      Loads automatically next time you open the dashboard. You can still switch
-                      filters anytime for this session.
-                    </p>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <span className="text-xs text-muted-foreground hidden sm:inline">Market universe</span>
-              <Select
-                value={scanPrefs.universe}
-                onValueChange={(v) => {
-                  const next: ScanPrefs = { universe: v as ScanUniverseId, customSymbols: scanPrefs.customSymbols };
-                  if (next.universe !== "custom") {
-                    applyPrefs({ ...next, customSymbols: "" });
-                    setCustomDraft("");
-                  } else {
-                    setScanPrefs(next);
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 w-[180px] text-xs" data-testid="select-scan-universe">
-                  <SelectValue placeholder="Auto" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCAN_UNIVERSE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} data-testid={`option-universe-${opt.value}`}>
-                      <span className="font-medium">{opt.label}</span>
-                      <span className="block text-[10px] text-muted-foreground">{opt.hint}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Button size="sm" variant="ghost" onClick={() => navigate("/opportunity-radar")} data-testid="button-ideas-open-radar">
+              Open Radar <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
           </div>
-          {scanPrefs.universe === "custom" && (
-            <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
-              <Input
-                value={customDraft}
-                onChange={(e) => setCustomDraft(e.target.value)}
-                placeholder="e.g. AAPL, MSFT, NVDA, TSLA"
-                className="h-8 max-w-md text-xs"
-                data-testid="input-custom-symbols"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    applyPrefs({ universe: "custom", customSymbols: customDraft });
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8"
-                onClick={() => applyPrefs({ universe: "custom", customSymbols: customDraft })}
-                data-testid="button-save-custom-symbols"
-              >
-                Apply
+          <p className="text-xs text-muted-foreground mb-3">
+            Trade candidates surfaced from current market data and your selected screening criteria — the same cards and actions as the home page.
+          </p>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <Select value={radarUniverse} onValueChange={(v) => setRadarUniverse(v as RadarUniverse)}>
+              <SelectTrigger className="h-8 w-[150px] text-xs" data-testid="select-ideas-universe">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RADAR_UNIVERSE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={radarTypeFilter} onValueChange={(v) => setRadarTypeFilter(v as RadarTypeFilter)}>
+              <SelectTrigger className="h-8 w-[120px] text-xs" data-testid="select-ideas-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RADAR_TYPE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={radarSort} onValueChange={(v) => setRadarSort(v as RadarSort)}>
+              <SelectTrigger className="h-8 w-[170px] text-xs" data-testid="select-ideas-sort">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RADAR_SORT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {radarQuery.isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : radarQuery.isError ? (
+            <p className="text-xs text-muted-foreground py-3" data-testid="text-ideas-error">
+              Radar data is temporarily unavailable. Open the Radar page to retry.
+            </p>
+          ) : ideas.length === 0 ? (
+            <div className="py-3 space-y-3" data-testid="text-no-ideas">
+              <p className="text-sm">
+                {(radarQuery.data?.candidates?.length ?? 0) > 0 && radarTypeFilter !== "all"
+                  ? "No candidates match this type filter. Try \u201CAll types\u201D or another source."
+                  : "No trade candidates right now."}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")}>
+                Open Opportunity Radar
               </Button>
-              <span className="text-muted-foreground">Comma-separated, up to 30 tickers.</span>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2" data-testid="grid-ideas-cards">
+              {ideas.map((c) => (
+                <ScenarioCard
+                  key={c.id ?? `${c.symbol}-${c.rank}`}
+                  scenario={c}
+                  onExplain={() => setExplainScenario(c)}
+                  onReview={() => { setReviewScenario(c); logScenarioAction(c, "reviewed"); }}
+                  onPrepareOrder={() => { setReviewScenario(c); logScenarioAction(c, "prepared_order"); }}
+                  onViewNews={() => setNewsScenario(c)}
+                  onViewCongress={() => setCongressSymbol(c.symbol)}
+                />
+              ))}
             </div>
           )}
-          {topPicksResp && topPicksResp.ideas.length > 0 && (() => {
-            const activeFilter = INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!;
-            const filteredCount = topPicksResp.ideas.filter((i) =>
-              matchesInstrumentFilter(i.instrumentType, instrumentFilter),
-            ).length;
-            const isDefault = instrumentFilter === defaultInstrumentFilter;
-            return (
-              <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="filter-instrument">
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground mr-1">Show</span>
-                <TooltipProvider delayDuration={150}>
-                  {INSTRUMENT_FILTERS.map((f) => {
-                    const active = instrumentFilter === f.value;
-                    const isDefaultChip = defaultInstrumentFilter === f.value;
-                    return (
-                      <Tooltip key={f.value}>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            onClick={() => changeInstrumentFilter(f.value)}
-                            data-testid={`filter-instrument-${f.value}`}
-                            className={cn(
-                              "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-colors border",
-                              active
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-muted/40 hover:bg-muted text-foreground/80 border-border",
-                            )}
-                          >
-                            {isDefaultChip && (
-                              <Star
-                                className={cn(
-                                  "h-3 w-3 fill-current",
-                                  active ? "text-primary-foreground" : "text-amber-500",
-                                )}
-                                aria-label="Default filter on login"
-                              />
-                            )}
-                            {f.label}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-snug">
-                          {f.hint}
-                          {isDefaultChip && (
-                            <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-300">
-                              Loaded by default when you open the dashboard.
-                            </div>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  })}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={isDefault}
-                        onClick={() => {
-                          setDefaultInstrumentFilter(instrumentFilter);
-                          toast({
-                            title: "Default filter saved",
-                            description: `“${activeFilter.label}” will load when you open the dashboard.`,
-                          });
-                        }}
-                        data-testid="button-set-default-instrument-filter"
-                        className={cn(
-                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] transition-colors border",
-                          isDefault
-                            ? "border-transparent text-muted-foreground/70 cursor-default"
-                            : "border-border bg-background hover:bg-muted text-foreground/80",
-                        )}
-                      >
-                        <Star className={cn("h-3 w-3", isDefault && "fill-current text-amber-500")} />
-                        {isDefault ? "Default" : "Set as default"}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[240px] text-xs leading-snug">
-                      {isDefault
-                        ? `“${activeFilter.label}” is your login default.`
-                        : `Make “${activeFilter.label}” load by default when you open the dashboard.`}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <span className="text-[11px] text-muted-foreground ml-1" data-testid="text-instrument-filter-count">
-                  {filteredCount} of {topPicksResp.ideas.length} match "{activeFilter.label}"
-                </span>
-              </div>
-            );
-          })()}
-          {(() => {
-            const filteredIdeas = topPicksResp
-              ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
-              : [];
-            return filteredIdeas.length >= 3;
-          })() && (() => {
-            const filteredIdeas = topPicksResp!.ideas.filter((i) =>
-              matchesInstrumentFilter(i.instrumentType, instrumentFilter),
-            );
-            const top3 = sortIdeas(filteredIdeas, sortBy).slice(0, 3);
-            const rankBadge = (i: number) =>
-              i === 0
-                ? "bg-amber-500/15 text-amber-400 border-amber-500/40"
-                : i === 1
-                  ? "bg-zinc-400/15 text-zinc-300 border-zinc-400/40"
-                  : "bg-orange-700/15 text-orange-400 border-orange-700/40";
-            return (
-              <div className="mb-5 rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card p-4" data-testid="section-top-picks">
-                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    <div>
-                      <h3 className="text-sm font-semibold">Top 3 AI-Ranked Setups</h3>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Review only what fits your risk and account settings.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">You stay in control. No order is placed without your approval.</span>
-                </div>
-                {ideasView === "card" ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {top3.map((idea, i) => (
-                      <div key={idea.id} className="relative" data-testid={`top-pick-${i + 1}`}>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "absolute -top-2 -left-2 z-10 text-[10px] font-bold px-1.5 py-0.5 shadow-sm",
-                            rankBadge(i),
-                          )}
-                        >
-                          #{i + 1}
-                        </Badge>
-                        <SimpleIdeaCard idea={idea} />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {top3.map((idea, i) => (
-                      <div key={idea.id} className="relative pl-7" data-testid={`top-pick-${i + 1}`}>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "absolute top-1/2 -translate-y-1/2 left-0 z-10 text-[10px] font-bold px-1.5 py-0.5 shadow-sm",
-                            rankBadge(i),
-                          )}
-                        >
-                          #{i + 1}
-                        </Badge>
-                        <DailyIdeaRow idea={idea} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          {(() => {
-            // Top 3 hero anchors to the "all" view (topPicksResp). The lower
-            // tabs section is per-tab (ideasResp). When the hero is visible
-            // we collapse the tabs behind a single toggle so the dashboard
-            // stays pointed; when the hero is hidden (< 3 top picks) we
-            // always show the tabs so users see SOMETHING.
-            const topFiltered = topPicksResp
-              ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
-              : [];
-            const topThreeShown = topFiltered.length >= 3;
-            const top3Ids = new Set(sortIdeas(topFiltered, sortBy).slice(0, 3).map((i) => i.id));
-            // For the badge, count what the current tab actually adds beyond
-            // the Top 3 (deduped + instrument-filtered). Cap at 9 to match
-            // what the grid actually renders.
-            const tabExtras = ideasResp
-              ? ideasResp.ideas.filter(
-                  (i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter) && !top3Ids.has(i.id),
-                ).length
-              : 0;
-            const moreCount = Math.min(9, tabExtras);
-            // Hide the toggle entirely when the Top 3 is shown and this tab
-            // has no real extras (and we're not loading). Without a Top 3 we
-            // render tabs directly (no toggle) so we return null here.
-            if (!topThreeShown) return null;
-            if (moreCount === 0 && !ideasLoading) return null;
-            return (
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={() => setShowMoreIdeas((v) => !v)}
-                  className="w-full flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 hover:bg-card transition-colors px-4 py-2.5 text-left"
-                  data-testid="button-toggle-more-ideas"
-                  aria-expanded={showMoreIdeas}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium">More trade ideas</span>
-                    {moreCount > 0 && (
-                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5" data-testid="badge-more-ideas-count">
-                        {moreCount}
-                      </Badge>
-                    )}
-                    <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
-                      {showMoreIdeas ? "Browse by stocks, options, watchlist, alerts" : "Tap to browse the rest of today's setups"}
-                    </span>
-                  </div>
-                  {showMoreIdeas ? (
-                    <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                  )}
-                </button>
-              </div>
-            );
-          })()}
-          {(() => {
-            // Render the tabs block when:
-            //   - the Top 3 hero is hidden (< 3 top picks) so the user always
-            //     sees SOMETHING (matching cards or the empty-state Card), OR
-            //   - the user has explicitly expanded "More trade ideas" AND the
-            //     CURRENT tab has dedupe'd extras to show (prevents a stale
-            //     `showMoreIdeas=true` from a prior tab leaking the empty
-            //     tabs block onto a tab that has no extras of its own).
-            const topFiltered = topPicksResp
-              ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
-              : [];
-            const topThreeShown = topFiltered.length >= 3;
-            const top3Ids = new Set(sortIdeas(topFiltered, sortBy).slice(0, 3).map((i) => i.id));
-            const hasTabExtras = ideasResp
-              ? ideasResp.ideas.some(
-                  (i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter) && !top3Ids.has(i.id),
-                )
-              : false;
-            return !topThreeShown || (showMoreIdeas && hasTabExtras);
-          })() && (
-          <Tabs value={tab} onValueChange={changeTab} className="mt-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <TooltipProvider delayDuration={150}>
-                <TabsList className="flex-wrap h-auto" data-testid="tabs-daily-ideas">
-                  {TABS.map((t) => (
-                    <Tooltip key={t.value}>
-                      <TooltipTrigger asChild>
-                        <TabsTrigger value={t.value} data-testid={`tab-${t.value}`}>
-                          {t.label}
-                        </TabsTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-[240px] text-xs leading-snug">
-                        {t.hint}
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                </TabsList>
-              </TooltipProvider>
-            </div>
-            {TABS.map((t) => (
-              <TabsContent key={t.value} value={t.value} className="mt-4">
-                {ideasLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {[0, 1, 2].map((i) => (
-                      <Skeleton key={i} className="h-56 rounded-lg" />
-                    ))}
-                  </div>
-                ) : ideasResp && ideasResp.ideas.length > 0 ? (
-                  (() => {
-                    // Dedupe against the Top 3 hero so the "All" tab doesn't
-                    // show the same cards twice — but ONLY when the hero is
-                    // actually visible. If fewer than 3 top picks exist the
-                    // hero is hidden, so we must NOT subtract those ideas
-                    // from the grid (otherwise users lose valid ideas).
-                    const topFiltered = topPicksResp
-                      ? topPicksResp.ideas.filter((i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter))
-                      : [];
-                    const heroVisible = topFiltered.length >= 3;
-                    const top3Ids = heroVisible
-                      ? new Set(sortIdeas(topFiltered, sortBy).slice(0, 3).map((i) => i.id))
-                      : new Set<string>();
-                    const filteredIdeas = ideasResp.ideas.filter(
-                      (i) => matchesInstrumentFilter(i.instrumentType, instrumentFilter) && !top3Ids.has(i.id),
-                    );
-                    if (filteredIdeas.length === 0) {
-                      return (
-                        <div className="text-sm text-muted-foreground py-6 text-center" data-testid="text-no-ideas-for-filter">
-                          {heroVisible
-                            ? `No additional ideas match the "${INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!.label}" filter in this tab beyond the Top 3 above. Try a different filter or tab.`
-                            : `No ideas match the "${INSTRUMENT_FILTERS.find((f) => f.value === instrumentFilter)!.label}" filter in this tab. Try a different filter or tab.`}
-                        </div>
-                      );
-                    }
-                    const visible = sortIdeas(filteredIdeas, sortBy).slice(0, 9);
-                    if (visible.length === 0) return null;
-                    return ideasView === "card" ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {visible.map((idea) => (
-                          <SimpleIdeaCard key={idea.id} idea={idea} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {visible.map((idea) => (
-                          <DailyIdeaRow key={idea.id} idea={idea} />
-                        ))}
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <Card className="p-6 space-y-3" data-testid="text-no-ideas">
-                    <div className="flex items-start gap-2 text-sm">
-                      <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="font-medium">No ideas in this category right now.</p>
-                        <p className="text-xs text-muted-foreground">
-                          {ideasResp?.brokerConnected === false
-                            ? "Your broker isn't connected, so we're showing educational examples with delayed reference data — and the strict filters for this tab didn't surface anything. "
-                            : "The filters for this tab didn't surface anything in the current scan. "}
-                          Try another tab, build a watchlist, or connect your broker for live data.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {tab !== "all" && (
-                        <Button size="sm" variant="outline" onClick={() => changeTab("all")} data-testid="button-empty-try-all">
-                          Try All ideas
-                        </Button>
-                      )}
-                      <Button size="sm" variant="outline" onClick={() => navigate("/settings/universes")} data-testid="button-empty-build-watchlist">
-                        Build watchlist
-                      </Button>
-                      {ideasResp?.brokerConnected === false && (
-                        <Button size="sm" variant="outline" onClick={() => navigate("/settings")} data-testid="button-empty-connect-broker" title="Currently showing example data anchored to Yahoo Finance daily closes. Connect a broker for live data.">
-                          Connect broker
-                        </Button>
-                      )}
-                      <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")} data-testid="button-empty-open-radar">
-                        Open Opportunity Radar
-                      </Button>
-                    </div>
-                  </Card>
-                )}
-              </TabsContent>
-            ))}
-          </Tabs>
-          )}
+          <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
+          <NewsContextDrawer scenario={newsScenario} onClose={() => setNewsScenario(null)} />
+          <CongressActivityDrawer symbol={congressSymbol} onClose={() => setCongressSymbol(null)} />
+          <OrderReviewDialog scenario={reviewScenario} brokerConnected={isConnected} onClose={() => setReviewScenario(null)} />
         </section>
 
         <section>

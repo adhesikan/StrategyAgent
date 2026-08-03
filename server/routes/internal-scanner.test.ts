@@ -170,11 +170,11 @@ describe("GET /api/internal/scanner/setup", () => {
       score: 82,
       status: "ready",
       timeframe: "1d",
-      trigger: null, // entryTriggerPrice not stored — truthfully null
-      invalidation: 117.2,
-      technicalObjective: 125,
+      trigger: null, // entryTriggerPrice not stored — truthfully null (never fabricated)
+      invalidation: { price: 117.2, basis: "setup invalidation (stop reference)" },
+      technicalObjective: { price: 125, basis: "technical objective (resistance)" },
       currentPrice: 121.3,
-      source: "scheduled-scan-store",
+      source: "vcp_trader",
     });
     expect(body.setup.details.rawStage).toBe("READY");
     const text = JSON.stringify(body);
@@ -231,7 +231,7 @@ describe("GET /api/internal/scanner/opportunities", () => {
     const body = await res.json();
     // detectedAt DESC preserved — NOT sorted by score
     expect(body.opportunities.map((o: any) => o.symbol)).toEqual(["NVDA", "AMD", "MU"]);
-    expect(body.source).toBe("scheduled-scan-store");
+    expect(body.source).toBe("vcp_trader");
     const req = fetchOpportunityRows.mock.calls[0][0];
     // default: ACTIVE lifecycle only; never triggers a scan — reads store only
     expect(req.branches).toEqual([{ status: "ACTIVE" }]);

@@ -144,6 +144,12 @@ export function normalizeStatus(row: Pick<Opportunity, "status" | "stageAtDetect
 // Row -> wire shape (scanner intelligence only; no user/account/internal ids)
 // ---------------------------------------------------------------------------
 
+/** A price level with its basis. Never fabricated: absent source data -> null level. */
+export interface PriceLevel {
+  price: number;
+  basis: string;
+}
+
 export interface InternalSetup {
   symbol: string;
   strategy: string;
@@ -152,14 +158,14 @@ export interface InternalSetup {
   score: number | null;
   status: NormalizedStatus;
   timeframe: string;
-  trigger: number | null;
-  invalidation: number | null;
-  technicalObjective: number | null;
+  trigger: PriceLevel | null;
+  invalidation: PriceLevel | null;
+  technicalObjective: PriceLevel | null;
   currentPrice: number | null;
   reasons: string[];
   warnings: string[];
   detectedAt: string | null;
-  source: "scheduled-scan-store";
+  source: "vcp_trader";
   details: {
     rawStage: string | null;
     lifecycleStatus: string | null;
@@ -178,6 +184,11 @@ export function isRowFresh(row: Pick<Opportunity, "status" | "detectedAt">, now:
 
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function level(v: unknown, basis: string): PriceLevel | null {
+  const price = num(v);
+  return price === null ? null : { price, basis };
 }
 
 /** Maps a stored opportunity row to the wire shape. Returns null for rows too malformed to represent truthfully. */
@@ -200,16 +211,16 @@ export function toInternalSetup(row: Opportunity): InternalSetup | null {
     timeframe: row.timeframe || "1d",
     // Real stored levels only — never fabricated. entryTriggerPrice is null
     // for most scheduled ingests; that null is truthful.
-    trigger: num(row.entryTriggerPrice),
-    invalidation: num(row.stopReferencePrice),
-    technicalObjective: num(row.resistancePrice),
+    trigger: level(row.entryTriggerPrice, "breakout level"),
+    invalidation: level(row.stopReferencePrice, "setup invalidation (stop reference)"),
+    technicalObjective: level(row.resistancePrice, "technical objective (resistance)"),
     currentPrice: num(row.lastPrice) ?? num(row.detectedPrice),
     // reasons/warnings prose is not persisted by the scheduled scanner; empty
     // arrays are the truthful representation (do not invent narratives).
     reasons: [],
     warnings,
     detectedAt: detected && !Number.isNaN(detected.getTime()) ? detected.toISOString() : null,
-    source: "scheduled-scan-store",
+    source: "vcp_trader",
     details: {
       rawStage: row.stageAtDetection ?? null,
       lifecycleStatus: row.status ?? null,
@@ -449,7 +460,7 @@ export function registerInternalScannerRoutes(app: Express, deps: InternalScanne
     if (direction === "bearish" || branches === null) {
       // No bearish strategies exist in production, and "extended" is never
       // emitted from stored data — truthfully empty rather than mislabeled.
-      return res.json({ opportunities: [], generatedAt: new Date().toISOString(), source: "scheduled-scan-store" });
+      return res.json({ opportunities: [], generatedAt: new Date().toISOString(), source: "vcp_trader" });
     }
 
     try {
@@ -488,7 +499,7 @@ export function registerInternalScannerRoutes(app: Express, deps: InternalScanne
       return res.json({
         opportunities: result,
         generatedAt: new Date().toISOString(),
-        source: "scheduled-scan-store",
+        source: "vcp_trader",
       });
     } catch (err: any) {
       console.error("[InternalScanner] opportunities lookup failed:", err?.message);

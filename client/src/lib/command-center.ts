@@ -152,3 +152,87 @@ export function toHomeOpportunities(rows: any[] | undefined | null, max = 5): Ho
       };
     });
 }
+
+// -- Home Opportunity Radar controls -----------------------------------------
+// The home radar section reuses the Radar page's scan (shared cache key) but
+// lets the user change the symbol source and filter/sort the ranked results
+// without leaving the home page.
+
+/** Symbol sources the backend radar scan accepts (subset shown on home —
+ *  "custom" needs a symbol input and stays on the full Radar page). */
+export type RadarUniverse = "watchlist" | "large_cap" | "high_volume" | "options_liquid";
+
+export const RADAR_UNIVERSE_OPTIONS: Array<{ value: RadarUniverse; label: string }> = [
+  { value: "watchlist", label: "My Watchlist" },
+  { value: "large_cap", label: "Large Cap" },
+  { value: "high_volume", label: "High Volume" },
+  { value: "options_liquid", label: "Options Liquid" },
+];
+
+export type RadarTypeFilter = "all" | "stock" | "options" | "spreads";
+
+export const RADAR_TYPE_OPTIONS: Array<{ value: RadarTypeFilter; label: string }> = [
+  { value: "all", label: "All types" },
+  { value: "stock", label: "Stocks" },
+  { value: "options", label: "Options" },
+  { value: "spreads", label: "Spreads" },
+];
+
+export type RadarSort = "rank" | "price_asc" | "price_desc" | "name";
+
+export const RADAR_SORT_OPTIONS: Array<{ value: RadarSort; label: string }> = [
+  { value: "rank", label: "Top ranked" },
+  { value: "price_asc", label: "Price: low to high" },
+  { value: "price_desc", label: "Price: high to low" },
+  { value: "name", label: "Name (A–Z)" },
+];
+
+/** Minimal candidate shape the filter/sort helpers rely on. */
+export interface RadarFilterableCandidate {
+  symbol: string;
+  companyName?: string;
+  strategyType: string;
+  rank: number;
+  entry: number;
+}
+
+/** Instrument bucket from the scan's strategyType. Spreads are their own
+ *  bucket (multi-leg); "options" covers all remaining option strategies. */
+export function radarInstrumentType(strategyType: unknown): "stock" | "options" | "spreads" {
+  const s = typeof strategyType === "string" ? strategyType : "";
+  if (s === "stock_swing" || s === "") return "stock"; // unknown/missing → safest bucket
+  if (s.includes("spread")) return "spreads";
+  return "options";
+}
+
+export function filterRadarCandidates<T extends RadarFilterableCandidate>(
+  candidates: T[],
+  type: RadarTypeFilter,
+): T[] {
+  if (type === "all") return candidates;
+  return candidates.filter((c) => radarInstrumentType(c.strategyType) === type);
+}
+
+/** Stable sort; "rank" preserves the server's ranking order. Price sorts use
+ *  the entry price; candidates without a finite entry sink to the end. */
+export function sortRadarCandidates<T extends RadarFilterableCandidate>(
+  candidates: T[],
+  sort: RadarSort,
+): T[] {
+  const list = [...candidates];
+  const price = (c: T) => (Number.isFinite(c.entry) ? c.entry : null);
+  switch (sort) {
+    case "price_asc":
+      return list.sort((a, b) => (price(a) ?? Infinity) - (price(b) ?? Infinity) || a.rank - b.rank);
+    case "price_desc":
+      return list.sort((a, b) => (price(b) ?? -Infinity) - (price(a) ?? -Infinity) || a.rank - b.rank);
+    case "name":
+      return list.sort(
+        (a, b) =>
+          (a.companyName ?? a.symbol).localeCompare(b.companyName ?? b.symbol) ||
+          a.symbol.localeCompare(b.symbol),
+      );
+    default:
+      return list.sort((a, b) => a.rank - b.rank);
+  }
+}

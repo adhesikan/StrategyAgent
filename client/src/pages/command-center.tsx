@@ -9,6 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sparkles,
   ArrowRight,
   Search,
@@ -28,7 +35,15 @@ import {
   askRoute,
   QUICK_ACTIONS,
   summarizePositions,
+  filterRadarCandidates,
+  sortRadarCandidates,
+  RADAR_UNIVERSE_OPTIONS,
+  RADAR_TYPE_OPTIONS,
+  RADAR_SORT_OPTIONS,
   type BrokerPositionLike,
+  type RadarUniverse,
+  type RadarTypeFilter,
+  type RadarSort,
 } from "@/lib/command-center";
 import { Radar } from "lucide-react";
 import {
@@ -101,7 +116,11 @@ export default function CommandCenterPage() {
   });
   // Opportunity Radar top trades — same default scan as the Radar page
   // (shared cache key) so opening /opportunity-radar is instant afterwards.
-  const radarQueryString = "timeHorizon=1_4w&universe=watchlist&maxLoss=2000";
+  // Users can change the symbol source (default: watchlist) right here.
+  const [radarUniverse, setRadarUniverse] = useState<RadarUniverse>("watchlist");
+  const [radarTypeFilter, setRadarTypeFilter] = useState<RadarTypeFilter>("all");
+  const [radarSort, setRadarSort] = useState<RadarSort>("rank");
+  const radarQueryString = `timeHorizon=1_4w&universe=${radarUniverse}&maxLoss=2000`;
   const radarQuery = useQuery<{ candidates: RadarCandidateScenario[]; dataMode?: string }>({
     queryKey: ["/api/radar/scenarios", radarQueryString],
     queryFn: async () => {
@@ -112,11 +131,12 @@ export default function CommandCenterPage() {
     staleTime: 5 * 60_000, // radar scans are expensive — don't rescan on every visit
   });
 
-  // Top radar candidates, exactly as ranked by the server — detailed cards.
-  const radarTrades = useMemo(
-    () => (Array.isArray(radarQuery.data?.candidates) ? radarQuery.data!.candidates.slice(0, 4) : []),
-    [radarQuery.data],
-  );
+  // Top radar candidates: instrument filter + sort applied client-side to the
+  // server-ranked scan, then the best 4 of what remains are shown.
+  const radarTrades = useMemo(() => {
+    const all = Array.isArray(radarQuery.data?.candidates) ? radarQuery.data!.candidates : [];
+    return sortRadarCandidates(filterRadarCandidates(all, radarTypeFilter), radarSort).slice(0, 4);
+  }, [radarQuery.data, radarTypeFilter, radarSort]);
   const [explainScenario, setExplainScenario] = useState<RadarCandidateScenario | null>(null);
   const [newsScenario, setNewsScenario] = useState<RadarCandidateScenario | null>(null);
   const [congressSymbol, setCongressSymbol] = useState<string | null>(null);
@@ -204,6 +224,47 @@ export default function CommandCenterPage() {
                 Open Radar <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <Select
+                value={radarUniverse}
+                onValueChange={(v) => { track("home_radar_universe" as any); setRadarUniverse(v as RadarUniverse); }}
+              >
+                <SelectTrigger className="h-8 w-[150px] text-xs" data-testid="select-home-radar-universe">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RADAR_UNIVERSE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={radarTypeFilter}
+                onValueChange={(v) => { track("home_radar_type_filter" as any); setRadarTypeFilter(v as RadarTypeFilter); }}
+              >
+                <SelectTrigger className="h-8 w-[120px] text-xs" data-testid="select-home-radar-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RADAR_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={radarSort}
+                onValueChange={(v) => { track("home_radar_sort" as any); setRadarSort(v as RadarSort); }}
+              >
+                <SelectTrigger className="h-8 w-[170px] text-xs" data-testid="select-home-radar-sort">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RADAR_SORT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             {radarQuery.isLoading ? (
@@ -217,7 +278,11 @@ export default function CommandCenterPage() {
               </p>
             ) : radarTrades.length === 0 ? (
               <div className="py-3 space-y-3" data-testid="text-no-radar-trades">
-                <p className="text-sm">No radar trade candidates right now.</p>
+                <p className="text-sm">
+                  {(radarQuery.data?.candidates?.length ?? 0) > 0 && radarTypeFilter !== "all"
+                    ? "No candidates match this type filter. Try \u201CAll types\u201D or another source."
+                    : "No radar trade candidates right now."}
+                </p>
                 <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")}>
                   Open Opportunity Radar
                 </Button>

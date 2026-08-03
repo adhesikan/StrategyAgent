@@ -7,6 +7,9 @@ import {
   summarizePositions,
   toHomeOpportunities,
   CANDIDATE_LABELS,
+  radarInstrumentType,
+  filterRadarCandidates,
+  sortRadarCandidates,
 } from "./command-center";
 
 describe("askRoute — AI command routes into the existing Ask AI page", () => {
@@ -125,5 +128,49 @@ describe("future trade-candidate readiness", () => {
     // toHomeOpportunities never sets candidateState from current data
     const opps = toHomeOpportunities([{ symbol: "X", stageAtDetection: "pivot-ready" }]);
     expect(opps[0]).not.toHaveProperty("candidateState");
+  });
+});
+
+describe("home radar filter/sort", () => {
+  const c = (symbol: string, strategyType: string, rank: number, entry: number, companyName?: string) =>
+    ({ symbol, strategyType, rank, entry, companyName });
+  const list = [
+    c("NVDA", "stock_swing", 1, 180, "NVIDIA"),
+    c("AAPL", "long_call", 2, 230, "Apple"),
+    c("MU", "debit_spread", 3, 120, "Micron"),
+    c("AMD", "cash_secured_put", 4, 160, "Advanced Micro Devices"),
+  ];
+
+  it("buckets instruments: stock vs options vs spreads", () => {
+    expect(radarInstrumentType("stock_swing")).toBe("stock");
+    expect(radarInstrumentType("debit_spread")).toBe("spreads");
+    expect(radarInstrumentType("long_call")).toBe("options");
+    expect(radarInstrumentType("covered_call")).toBe("options");
+  });
+
+  it("filters by type; 'all' passes everything through", () => {
+    expect(filterRadarCandidates(list, "all")).toHaveLength(4);
+    expect(filterRadarCandidates(list, "stock").map((x) => x.symbol)).toEqual(["NVDA"]);
+    expect(filterRadarCandidates(list, "options").map((x) => x.symbol)).toEqual(["AAPL", "AMD"]);
+    expect(filterRadarCandidates(list, "spreads").map((x) => x.symbol)).toEqual(["MU"]);
+  });
+
+  it("sorts by rank, price (both directions), and name", () => {
+    expect(sortRadarCandidates(list, "rank").map((x) => x.symbol)).toEqual(["NVDA", "AAPL", "MU", "AMD"]);
+    expect(sortRadarCandidates(list, "price_asc").map((x) => x.symbol)).toEqual(["MU", "AMD", "NVDA", "AAPL"]);
+    expect(sortRadarCandidates(list, "price_desc").map((x) => x.symbol)).toEqual(["AAPL", "NVDA", "AMD", "MU"]);
+    expect(sortRadarCandidates(list, "name").map((x) => x.symbol)).toEqual(["AMD", "AAPL", "MU", "NVDA"]);
+  });
+
+  it("candidates without a usable entry price sink to the end of price sorts", () => {
+    const withBad = [...list, c("ZZZ", "long_put", 5, NaN)];
+    expect(sortRadarCandidates(withBad, "price_asc").at(-1)!.symbol).toBe("ZZZ");
+    expect(sortRadarCandidates(withBad, "price_desc").at(-1)!.symbol).toBe("ZZZ");
+  });
+
+  it("does not mutate the input array", () => {
+    const copy = [...list];
+    sortRadarCandidates(list, "price_asc");
+    expect(list).toEqual(copy);
   });
 });

@@ -32,8 +32,10 @@ import {
   stageTone,
   summarizePositions,
   toHomeOpportunities,
+  toHomeRadarTrades,
   type BrokerPositionLike,
 } from "@/lib/command-center";
+import { Radar } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // AI Command Center (/home). AI is the front door: the command bar routes into
@@ -102,8 +104,21 @@ export default function CommandCenterPage() {
     queryKey: ["/api/broker/positions"],
     enabled: isConnected,
   });
+  // Opportunity Radar top trades — same default scan as the Radar page
+  // (shared cache key) so opening /opportunity-radar is instant afterwards.
+  const radarQueryString = "timeHorizon=1_4w&universe=watchlist&maxLoss=2000";
+  const radarQuery = useQuery<{ candidates: any[]; dataMode?: string }>({
+    queryKey: ["/api/radar/scenarios", radarQueryString],
+    queryFn: async () => {
+      const r = await fetch(`/api/radar/scenarios?${radarQueryString}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load radar trades");
+      return r.json();
+    },
+    staleTime: 5 * 60_000, // radar scans are expensive — don't rescan on every visit
+  });
 
   const opportunities = useMemo(() => toHomeOpportunities(opportunitiesQuery.data), [opportunitiesQuery.data]);
+  const radarTrades = useMemo(() => toHomeRadarTrades(radarQuery.data?.candidates), [radarQuery.data]);
   const portfolio = useMemo(() => summarizePositions(positionsQuery.data), [positionsQuery.data]);
 
   const submit = (text: string) => {
@@ -310,6 +325,89 @@ export default function CommandCenterPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* ---------- Opportunity Radar — Top Trades ---------- */}
+        <Card data-testid="card-home-radar">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                <Radar className="h-4 w-4 text-primary" /> Opportunity Radar — Top Trades
+              </CardTitle>
+              <Button size="sm" variant="ghost" onClick={() => { track("home_radar_open" as any); navigate("/opportunity-radar"); }} data-testid="button-open-radar">
+                Open Radar <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {radarQuery.isLoading ? (
+              <div className="grid gap-2 md:grid-cols-2">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </div>
+            ) : radarQuery.isError ? (
+              <p className="text-xs text-muted-foreground py-3" data-testid="text-radar-error">
+                Radar data is temporarily unavailable. Open the Radar page to retry.
+              </p>
+            ) : radarTrades.length === 0 ? (
+              <div className="py-3 space-y-3" data-testid="text-no-radar-trades">
+                <p className="text-sm">No radar trade candidates right now.</p>
+                <Button size="sm" variant="outline" onClick={() => navigate("/opportunity-radar")}>
+                  Open Opportunity Radar
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-2 md:grid-cols-2" data-testid="grid-radar-trades">
+                {radarTrades.map((t) => (
+                  <div key={`${t.symbol}-${t.rank}`} className="rounded-lg border p-3 space-y-1.5" data-testid={`card-radar-${t.symbol}`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs text-muted-foreground tabular-nums">#{t.rank}</span>
+                        <span className="font-mono font-medium">{t.symbol}</span>
+                        <Badge variant="outline" className="text-[10px]">{t.grade}</Badge>
+                        {t.bias && (
+                          <span className={cn(
+                            "text-[10px] uppercase tracking-wide",
+                            t.bias === "bullish" ? "text-emerald-400" : t.bias === "bearish" ? "text-rose-400" : "text-muted-foreground",
+                          )}>
+                            {t.bias}
+                          </span>
+                        )}
+                      </div>
+                      {t.strategyLabel && <span className="text-[10px] text-muted-foreground">{t.strategyLabel}</span>}
+                    </div>
+                    <div className="text-xs text-muted-foreground tabular-nums flex gap-3 flex-wrap">
+                      <span>Entry ${t.entry.toFixed(2)}</span>
+                      {t.stop !== null && <span>Stop ${t.stop.toFixed(2)}</span>}
+                      {t.target !== null && <span>Target ${t.target.toFixed(2)}</span>}
+                      {t.rewardRisk !== null && <span>R:R {t.rewardRisk.toFixed(1)}</span>}
+                    </div>
+                    {t.thesis && <p className="text-xs text-muted-foreground line-clamp-2">{t.thesis}</p>}
+                    <div className="flex gap-1.5 flex-wrap pt-0.5">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-7 text-xs"
+                        onClick={() => { track("home_radar_view_setup" as any); navigate(`/trade/${t.symbol}`); }}
+                        data-testid={`button-radar-${t.symbol}-view-setup`}
+                      >
+                        View Setup
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => navigate(askRoute(`Analyze ${t.symbol}`))}
+                        data-testid={`button-radar-${t.symbol}-analyze`}
+                      >
+                        Analyze {t.symbol}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* ---------- Market Intelligence + boundaries ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">

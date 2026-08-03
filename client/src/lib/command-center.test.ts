@@ -127,3 +127,33 @@ describe("future trade-candidate readiness", () => {
     expect(opps[0]).not.toHaveProperty("candidateState");
   });
 });
+
+describe("toHomeRadarTrades — radar top trades on home", () => {
+  const cand = (over: any = {}) => ({
+    symbol: "nvda", rank: 1, finalGrade: "A", finalScore: 88, strategyType: "stock_swing",
+    bias: "bullish", entry: 360.5, stop: 349.2, target: 402.1, rewardRisk: 3.6,
+    thesis: "Tight base above rising 50-day.", dataMode: "live", ...over,
+  });
+  it("maps ranked candidates and caps the list", async () => {
+    const { toHomeRadarTrades } = await import("./command-center");
+    const rows = [cand(), cand({ symbol: "MU", rank: 2 }), cand({ symbol: "AMD", rank: 3 }), cand({ symbol: "TSLA", rank: 4 }), cand({ symbol: "PLTR", rank: 5 })];
+    const out = toHomeRadarTrades(rows);
+    expect(out).toHaveLength(4);
+    expect(out[0]).toMatchObject({ symbol: "NVDA", grade: "A", strategyLabel: "Stock Swing", bias: "bullish", entry: 360.5, rewardRisk: 3.6 });
+  });
+  it("drops rows without a symbol or numeric entry — never fabricates", async () => {
+    const { toHomeRadarTrades } = await import("./command-center");
+    expect(toHomeRadarTrades([cand({ entry: null }), cand({ symbol: undefined }), { junk: true }])).toEqual([]);
+    expect(toHomeRadarTrades(undefined)).toEqual([]);
+    expect(toHomeRadarTrades(null)).toEqual([]);
+  });
+  it("nulls out unknown strategy/bias and non-positive R:R instead of guessing", async () => {
+    const { toHomeRadarTrades } = await import("./command-center");
+    const [t] = toHomeRadarTrades([cand({ strategyType: "mystery", bias: "sideways", rewardRisk: 0, stop: "bad", finalScore: NaN })]);
+    expect(t.strategyLabel).toBeNull();
+    expect(t.bias).toBeNull();
+    expect(t.rewardRisk).toBeNull();
+    expect(t.stop).toBeNull();
+    expect(t.score).toBeNull();
+  });
+});

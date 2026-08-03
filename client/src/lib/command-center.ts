@@ -105,56 +105,6 @@ export function summarizePositions(positions: BrokerPositionLike[] | undefined |
 }
 
 // ---------------------------------------------------------------------------
-// Opportunity Radar — home "Top Trades" cards. Maps /api/radar/scenarios
-// candidates (already ranked/scored server-side) to compact home cards.
-// Never fabricates: rows without a symbol/entry are dropped.
-// ---------------------------------------------------------------------------
-export interface HomeRadarTrade {
-  symbol: string;
-  rank: number;
-  grade: string;
-  score: number | null;
-  strategyLabel: string | null;
-  bias: "bullish" | "bearish" | "neutral" | null;
-  entry: number;
-  stop: number | null;
-  target: number | null;
-  rewardRisk: number | null;
-  thesis: string | null;
-  dataMode: "live" | "simulated" | "mixed" | null;
-}
-
-const RADAR_STRATEGY_LABELS: Record<string, string> = {
-  stock_swing: "Stock Swing",
-  long_call: "Long Call",
-  long_put: "Long Put",
-  debit_spread: "Debit Spread",
-  covered_call: "Covered Call",
-  cash_secured_put: "Cash-Secured Put",
-};
-
-export function toHomeRadarTrades(candidates: any[] | undefined | null, max = 4): HomeRadarTrade[] {
-  if (!Array.isArray(candidates)) return [];
-  return candidates
-    .filter((c) => c && typeof c.symbol === "string" && typeof c.entry === "number" && Number.isFinite(c.entry))
-    .slice(0, max)
-    .map((c, i) => ({
-      symbol: String(c.symbol).toUpperCase(),
-      rank: typeof c.rank === "number" ? c.rank : i + 1,
-      grade: typeof c.finalGrade === "string" ? c.finalGrade : "—",
-      score: typeof c.finalScore === "number" && Number.isFinite(c.finalScore) ? c.finalScore : null,
-      strategyLabel: RADAR_STRATEGY_LABELS[String(c.strategyType)] ?? null,
-      bias: c.bias === "bullish" || c.bias === "bearish" || c.bias === "neutral" ? c.bias : null,
-      entry: c.entry,
-      stop: typeof c.stop === "number" && Number.isFinite(c.stop) ? c.stop : null,
-      target: typeof c.target === "number" && Number.isFinite(c.target) ? c.target : null,
-      rewardRisk: typeof c.rewardRisk === "number" && Number.isFinite(c.rewardRisk) && c.rewardRisk > 0 ? c.rewardRisk : null,
-      thesis: typeof c.thesis === "string" && c.thesis ? c.thesis : null,
-      dataMode: c.dataMode === "live" || c.dataMode === "simulated" || c.dataMode === "mixed" ? c.dataMode : null,
-    }));
-}
-
-// ---------------------------------------------------------------------------
 // Future trade-candidate readiness (spec §7): the opportunity card model below
 // accepts an optional candidateState so a future Trade Candidate Engine API
 // can light up "Stock Candidate" / "Options Candidate" / "No Trade" states

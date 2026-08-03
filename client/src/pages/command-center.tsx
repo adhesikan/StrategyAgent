@@ -27,15 +27,15 @@ import { TrialBanner } from "@/components/trial-banner";
 import {
   askRoute,
   QUICK_ACTIONS,
-  stageCtas,
-  stageLabel,
-  stageTone,
   summarizePositions,
-  toHomeOpportunities,
-  toHomeRadarTrades,
   type BrokerPositionLike,
 } from "@/lib/command-center";
 import { Radar } from "lucide-react";
+import {
+  ScenarioCard,
+  ExplanationDrawer,
+  type RadarCandidateScenario,
+} from "@/components/radar-scenario-card";
 
 // ---------------------------------------------------------------------------
 // AI Command Center (/home). AI is the front door: the command bar routes into
@@ -87,15 +87,6 @@ export default function CommandCenterPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // --- data (parallel, cached, cheap — no MCP scans on render) ---
-  const opportunitiesQuery = useQuery<any[]>({
-    queryKey: ["/api/opportunities", { status: "ACTIVE", limit: 5 }],
-    queryFn: async () => {
-      // Stored detection statuses are uppercase (ACTIVE/RESOLVED) and the filter is exact-match.
-      const r = await fetch("/api/opportunities?status=ACTIVE&limit=5&sortBy=detectedAt&sortOrder=desc", { credentials: "include" });
-      if (!r.ok) throw new Error("Failed to load opportunities");
-      return r.json();
-    },
-  });
   const snapshotQuery = useQuery<Snapshot>({
     queryKey: ["/api/home/snapshot"],
     refetchInterval: 60_000,
@@ -107,7 +98,7 @@ export default function CommandCenterPage() {
   // Opportunity Radar top trades — same default scan as the Radar page
   // (shared cache key) so opening /opportunity-radar is instant afterwards.
   const radarQueryString = "timeHorizon=1_4w&universe=watchlist&maxLoss=2000";
-  const radarQuery = useQuery<{ candidates: any[]; dataMode?: string }>({
+  const radarQuery = useQuery<{ candidates: RadarCandidateScenario[]; dataMode?: string }>({
     queryKey: ["/api/radar/scenarios", radarQueryString],
     queryFn: async () => {
       const r = await fetch(`/api/radar/scenarios?${radarQueryString}`, { credentials: "include" });
@@ -117,8 +108,12 @@ export default function CommandCenterPage() {
     staleTime: 5 * 60_000, // radar scans are expensive — don't rescan on every visit
   });
 
-  const opportunities = useMemo(() => toHomeOpportunities(opportunitiesQuery.data), [opportunitiesQuery.data]);
-  const radarTrades = useMemo(() => toHomeRadarTrades(radarQuery.data?.candidates), [radarQuery.data]);
+  // Top radar candidates, exactly as ranked by the server — detailed cards.
+  const radarTrades = useMemo(
+    () => (Array.isArray(radarQuery.data?.candidates) ? radarQuery.data!.candidates.slice(0, 4) : []),
+    [radarQuery.data],
+  );
+  const [explainScenario, setExplainScenario] = useState<RadarCandidateScenario | null>(null);
   const portfolio = useMemo(() => summarizePositions(positionsQuery.data), [positionsQuery.data]);
 
   const submit = (text: string) => {
@@ -191,88 +186,8 @@ export default function CommandCenterPage() {
           </div>
         </section>
 
-        {/* ---------- Opportunities + Portfolio ---------- */}
+        {/* ---------- Opportunity Radar (top trades) + Portfolio ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card data-testid="card-home-opportunities">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-                  <TrendingUp className="h-4 w-4 text-primary" /> Today's Opportunities
-                </CardTitle>
-                <Button size="sm" variant="ghost" onClick={() => navigate("/scanner")} data-testid="button-open-scanner">
-                  Open Scanner <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {opportunitiesQuery.isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-14 w-full" />
-                  <Skeleton className="h-14 w-full" />
-                  <Skeleton className="h-14 w-full" />
-                </div>
-              ) : opportunitiesQuery.isError ? (
-                <p className="text-xs text-muted-foreground py-3" data-testid="text-opportunities-error">
-                  Opportunity data is temporarily unavailable. Try the Scanner directly.
-                </p>
-              ) : opportunities.length === 0 ? (
-                <div className="py-3 space-y-3" data-testid="text-no-opportunities">
-                  <p className="text-sm">No high-quality setups currently meet your criteria.</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { track("home_scan_market" as any); navigate("/scanner"); }}>
-                      Scan the Market
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => navigate("/watchlists")}>
-                      Review Watchlist
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => inputRef.current?.focus()}>
-                      Ask VCP Trader AI
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                opportunities.map((o) => {
-                  const ctas = stageCtas(o.stage, o.symbol);
-                  return (
-                    <div key={`${o.symbol}-${o.detectedAt}`} className="rounded-lg border p-3" data-testid={`row-opportunity-${o.symbol}`}>
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-mono font-medium">{o.symbol}</span>
-                          {o.price !== null && (
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              ${o.price.toFixed(2)}
-                              {!o.priceIsCurrent && <span className="ml-1 text-[10px] opacity-70">at detection</span>}
-                            </span>
-                          )}
-                          {o.stage && (
-                            <Badge variant="outline" className={cn("text-[10px]", stageTone(o.stage))} data-testid={`badge-opp-stage-${o.symbol}`}>
-                              {stageLabel(o.stage)}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {ctas.map((c) => (
-                            <Button
-                              key={c.label}
-                              size="sm"
-                              variant={c.primary ? "default" : "ghost"}
-                              className="h-7 text-xs"
-                              onClick={() => { track("home_opportunity_analyze" as any); navigate(c.href); }}
-                              data-testid={`button-opp-${o.symbol}-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
-                            >
-                              {c.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      {o.note && <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">{o.note}</p>}
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
-
           <Card data-testid="card-home-portfolio">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-1.5">
@@ -356,58 +271,23 @@ export default function CommandCenterPage() {
                 </Button>
               </div>
             ) : (
-              <div className="grid gap-2 md:grid-cols-2" data-testid="grid-radar-trades">
-                {radarTrades.map((t) => (
-                  <div key={`${t.symbol}-${t.rank}`} className="rounded-lg border p-3 space-y-1.5" data-testid={`card-radar-${t.symbol}`}>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs text-muted-foreground tabular-nums">#{t.rank}</span>
-                        <span className="font-mono font-medium">{t.symbol}</span>
-                        <Badge variant="outline" className="text-[10px]">{t.grade}</Badge>
-                        {t.bias && (
-                          <span className={cn(
-                            "text-[10px] uppercase tracking-wide",
-                            t.bias === "bullish" ? "text-emerald-400" : t.bias === "bearish" ? "text-rose-400" : "text-muted-foreground",
-                          )}>
-                            {t.bias}
-                          </span>
-                        )}
-                      </div>
-                      {t.strategyLabel && <span className="text-[10px] text-muted-foreground">{t.strategyLabel}</span>}
-                    </div>
-                    <div className="text-xs text-muted-foreground tabular-nums flex gap-3 flex-wrap">
-                      <span>Entry ${t.entry.toFixed(2)}</span>
-                      {t.stop !== null && <span>Stop ${t.stop.toFixed(2)}</span>}
-                      {t.target !== null && <span>Target ${t.target.toFixed(2)}</span>}
-                      {t.rewardRisk !== null && <span>R:R {t.rewardRisk.toFixed(1)}</span>}
-                    </div>
-                    {t.thesis && <p className="text-xs text-muted-foreground line-clamp-2">{t.thesis}</p>}
-                    <div className="flex gap-1.5 flex-wrap pt-0.5">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="h-7 text-xs"
-                        onClick={() => { track("home_radar_view_setup" as any); navigate(`/trade/${t.symbol}`); }}
-                        data-testid={`button-radar-${t.symbol}-view-setup`}
-                      >
-                        View Setup
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs"
-                        onClick={() => navigate(askRoute(`Analyze ${t.symbol}`))}
-                        data-testid={`button-radar-${t.symbol}-analyze`}
-                      >
-                        Analyze {t.symbol}
-                      </Button>
-                    </div>
-                  </div>
+              <div className="grid gap-3 md:grid-cols-2" data-testid="grid-radar-trades">
+                {radarTrades.map((c) => (
+                  <ScenarioCard
+                    key={c.id ?? `${c.symbol}-${c.rank}`}
+                    scenario={c}
+                    onExplain={() => { track("home_radar_view_why" as any); setExplainScenario(c); }}
+                    onReview={() => { track("home_radar_review" as any); navigate("/opportunity-radar"); }}
+                    onPrepareOrder={() => { track("home_radar_prepare" as any); navigate("/opportunity-radar"); }}
+                    onViewNews={() => navigate("/opportunity-radar")}
+                    onViewCongress={() => navigate("/opportunity-radar")}
+                  />
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+        <ExplanationDrawer scenario={explainScenario} onClose={() => setExplainScenario(null)} />
 
         {/* ---------- Market Intelligence + boundaries ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">

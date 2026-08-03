@@ -56,6 +56,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { HelpLink } from "@/components/help-link";
 import { CongressFlowEmbed } from "@/components/congressflow-embed";
+import { ScenarioCard as CandidateCard, ExplanationDrawer, Mini, SentimentChip } from "@/components/radar-scenario-card";
 
 type Bias = "any" | "bullish" | "bearish" | "neutral";
 type StrategyType =
@@ -875,165 +876,10 @@ function RankedList({
   );
 }
 
-function CandidateCard({
-  scenario,
-  onExplain,
-  onReview,
-  onPrepareOrder,
-  onViewNews,
-  onViewCongress,
-}: {
-  scenario: CandidateScenario;
-  onExplain: () => void;
-  onReview: () => void;
-  onPrepareOrder: () => void;
-  onViewNews: () => void;
-  onViewCongress: () => void;
-}) {
-  return (
-    <Card className="hover-elevate" data-testid={`card-scenario-${scenario.symbol}`}>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground" data-testid={`text-rank-${scenario.symbol}`}>#{scenario.rank}</span>
-              <span className="font-bold text-lg" data-testid={`text-symbol-${scenario.symbol}`}>{scenario.symbol}</span>
-              <Badge variant="outline" className={GRADE_BADGE[scenario.finalGrade]} data-testid={`badge-grade-${scenario.symbol}`}>
-                {scenario.finalGrade}
-              </Badge>
-              <Badge variant="outline" className={BIAS_BADGE[scenario.bias]} data-testid={`badge-bias-${scenario.symbol}`}>
-                {scenario.bias}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground" data-testid={`text-company-${scenario.symbol}`}>
-              {scenario.companyName ?? ""}
-            </p>
-            <p className="text-xs mt-1" data-testid={`text-strategy-${scenario.symbol}`}>
-              {STRATEGY_LABEL[scenario.strategyType]}
-              {scenario.strikes ? ` · ${scenario.strikes}` : ""}
-              {scenario.expiration ? ` · ${scenario.expiration}` : ""}
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground">Score</div>
-            <div className="text-2xl font-bold" data-testid={`text-final-score-${scenario.symbol}`}>{scenario.finalScore}</div>
-          </div>
-        </div>
 
-        <SentimentChip scenario={scenario} onViewNews={onViewNews} />
 
-        <div className="grid grid-cols-5 gap-1 text-[10px]">
-          <SubScore label="Tech" value={scenario.technicalScore} />
-          <SubScore label="Senti" value={scenario.sentimentScore} />
-          <SubScore label="Mom" value={scenario.momentumScore} />
-          <SubScore label="Liq" value={scenario.liquidityScore} />
-          <SubScore label="Risk" value={scenario.riskScore} />
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-          <Mini label="Capital" value={`$${Math.round(scenario.capitalRequired).toLocaleString()}`} testId={`mini-capital-${scenario.symbol}`} />
-          <Mini label="Max loss" value={`$${Math.round(scenario.maxLoss).toLocaleString()}`} className="text-rose-300" testId={`mini-maxloss-${scenario.symbol}`} />
-          <Mini label="Max gain" value={scenario.maxGain != null ? `$${Math.round(scenario.maxGain).toLocaleString()}` : "—"} className="text-emerald-300" testId={`mini-maxgain-${scenario.symbol}`} />
-          <Mini label="Entry" value={`$${scenario.entry.toFixed(2)}`} testId={`mini-entry-${scenario.symbol}`} />
-          <Mini label="Stop" value={`$${scenario.stop.toFixed(2)}`} testId={`mini-stop-${scenario.symbol}`} />
-          <Mini label="Target" value={`$${scenario.target.toFixed(2)}`} testId={`mini-target-${scenario.symbol}`} />
-          {scenario.breakeven != null && <Mini label="Breakeven" value={`$${scenario.breakeven.toFixed(2)}`} testId={`mini-breakeven-${scenario.symbol}`} />}
-          <Mini label="R/R" value={scenario.rewardRisk > 0 ? `${scenario.rewardRisk.toFixed(2)}x` : "—"} testId={`mini-rr-${scenario.symbol}`} />
-        </div>
 
-        <div className="space-y-1 text-xs">
-          <p data-testid={`text-main-reason-${scenario.symbol}`}><span className="text-muted-foreground">Why it ranked:</span> {scenario.mainReason}</p>
-          <p className="text-amber-300/90 flex gap-1"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /><span data-testid={`text-main-risk-${scenario.symbol}`}>{scenario.mainRisk}</span></p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-1">
-          <Button size="sm" variant="outline" onClick={onExplain} data-testid={`button-view-why-${scenario.symbol}`}>
-            <Eye className="h-4 w-4 mr-1" />
-            View Why
-          </Button>
-          <Button size="sm" variant="outline" onClick={onReview} data-testid={`button-review-${scenario.symbol}`}>
-            <ListChecks className="h-4 w-4 mr-1" />
-            Review Scenario
-          </Button>
-          <Button size="sm" variant="outline" onClick={onViewCongress} data-testid={`button-congress-${scenario.symbol}`}>
-            <Landmark className="h-4 w-4 mr-1" />
-            Congress Activity
-          </Button>
-          <Button size="sm" onClick={onPrepareOrder} data-testid={`button-prepare-${scenario.symbol}`}>
-            <Send className="h-4 w-4 mr-1" />
-            Prepare Order
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SubScore({ label, value }: { label: string; value: number }) {
-  const tone = value >= 80 ? "bg-emerald-500/15 text-emerald-300" : value >= 60 ? "bg-amber-500/10 text-amber-300" : "bg-zinc-500/10 text-zinc-300";
-  return (
-    <div className={`rounded px-1.5 py-0.5 text-center ${tone}`}>
-      <div className="opacity-70">{label}</div>
-      <div className="font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function Mini({ label, value, className, testId }: { label: string; value: string; className?: string; testId?: string }) {
-  return (
-    <div data-testid={testId}>
-      <div className="text-[10px] text-muted-foreground uppercase">{label}</div>
-      <div className={`font-medium ${className ?? ""}`}>{value}</div>
-    </div>
-  );
-}
-
-function ExplanationDrawer({ scenario, onClose }: { scenario: CandidateScenario | null; onClose: () => void }) {
-  const open = !!scenario;
-  return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto" data-testid="sheet-explanation">
-        {scenario && (
-          <>
-            <SheetHeader>
-              <SheetTitle data-testid="text-explanation-title">
-                Why {scenario.symbol} ranked {scenario.finalGrade} ({scenario.finalScore})
-              </SheetTitle>
-              <SheetDescription>{scenario.thesis}</SheetDescription>
-            </SheetHeader>
-            <div className="space-y-4 mt-4 text-sm">
-              <FactorBlock title="Technical factors" items={scenario.factors.technical} />
-              <FactorBlock title="Sentiment factors" items={scenario.factors.sentiment} />
-              <FactorBlock title="Liquidity factors" items={scenario.factors.liquidity} />
-              <FactorBlock title="Risk factors" items={scenario.factors.risk} />
-              <FactorBlock title="What could invalidate this scenario" items={scenario.factors.invalidators} />
-              <div className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200" data-testid="text-explanation-compliance">
-                These factors describe how the scenario was generated by the software. They are not a recommendation
-                or a prediction. Past behavior of similar setups does not guarantee future results.
-              </div>
-            </div>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function FactorBlock({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="space-y-1">
-      <h4 className="text-xs uppercase tracking-wide text-muted-foreground">{title}</h4>
-      <ul className="space-y-1">
-        {items.map((it, i) => (
-          <li key={i} className="flex gap-2">
-            <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-            <span>{it}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 function OrderReviewDialog({
   scenario,
@@ -1295,77 +1141,6 @@ function SentimentSortBar({
   );
 }
 
-function SentimentChip({
-  scenario,
-  onViewNews,
-}: {
-  scenario: CandidateScenario;
-  onViewNews: () => void;
-}) {
-  const s = scenario.sentiment;
-  if (!s || !s.available) {
-    return (
-      <div
-        className="flex items-center justify-between rounded border border-zinc-500/30 bg-zinc-500/5 px-2 py-1.5 text-xs"
-        data-testid={`chip-sentiment-${scenario.symbol}`}
-      >
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Newspaper className="h-3.5 w-3.5" />
-          <span>No recent headline coverage</span>
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-xs"
-          onClick={onViewNews}
-          data-testid={`button-news-${scenario.symbol}`}
-        >
-          Refresh news
-        </Button>
-      </div>
-    );
-  }
-  const tone = SENTIMENT_BADGE[s.label];
-  return (
-    <div
-      className={`rounded border px-2 py-1.5 text-xs space-y-1 ${tone}`}
-      data-testid={`chip-sentiment-${scenario.symbol}`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {sentimentIcon(s.label)}
-          <span className="font-semibold capitalize">{s.label}</span>
-          <span className="opacity-80">
-            {s.rawScore > 0 ? "+" : ""}
-            {Math.round(s.rawScore)}
-          </span>
-          <span className="opacity-70">
-            · {s.articleCount} article{s.articleCount === 1 ? "" : "s"}
-          </span>
-          <span className="opacity-70">· impact {s.impactLevel}</span>
-          {s.biasAlignment === "opposed" && (
-            <Badge variant="outline" className="border-amber-500/40 text-amber-300 text-[10px] py-0 h-4">
-              caveat
-            </Badge>
-          )}
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-xs"
-          onClick={onViewNews}
-          data-testid={`button-news-${scenario.symbol}`}
-        >
-          <Newspaper className="h-3.5 w-3.5 mr-1" />
-          View News Context
-        </Button>
-      </div>
-      <p className="opacity-90 leading-snug" data-testid={`text-sentiment-reason-${scenario.symbol}`}>
-        {s.miniReason}
-      </p>
-    </div>
-  );
-}
 
 function CongressActivityDrawer({
   symbol,

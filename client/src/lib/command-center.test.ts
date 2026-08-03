@@ -10,6 +10,7 @@ import {
   radarInstrumentType,
   filterRadarCandidates,
   sortRadarCandidates,
+  greetingForHour,
 } from "./command-center";
 
 describe("askRoute — AI command routes into the existing Ask AI page", () => {
@@ -172,5 +173,28 @@ describe("home radar filter/sort", () => {
     const copy = [...list];
     sortRadarCandidates(list, "price_asc");
     expect(list).toEqual(copy);
+  });
+});
+
+describe("greetingForHour", () => {
+  it("maps local hours to the right greeting", () => {
+    expect(greetingForHour(5)).toBe("Good morning");
+    expect(greetingForHour(9)).toBe("Good morning");
+    expect(greetingForHour(11)).toBe("Good morning");
+    expect(greetingForHour(12)).toBe("Good afternoon");
+    expect(greetingForHour(16)).toBe("Good afternoon");
+    expect(greetingForHour(17)).toBe("Good evening");
+    expect(greetingForHour(23)).toBe("Good evening");
+    expect(greetingForHour(0)).toBe("Good evening");
+    expect(greetingForHour(4)).toBe("Good evening");
+  });
+});
+
+describe("quick actions carry research-oriented descriptions", () => {
+  it("every action has a concise description", () => {
+    for (const a of QUICK_ACTIONS) {
+      expect(a.description.length).toBeGreaterThan(10);
+      expect(a.description.toLowerCase()).not.toContain("recommend");
+    }
   });
 });

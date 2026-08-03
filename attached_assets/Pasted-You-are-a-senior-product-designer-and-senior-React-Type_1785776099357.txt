@@ -1,0 +1,565 @@
+You are a senior product designer and senior React/TypeScript engineer.
+
+Update the existing VCP Trader AI logged-in homepage shown in the current application.
+
+This is a focused UI/UX refactor. Preserve all existing APIs, routes, data fetching, authentication, trading workflows, scoring logic, and button functionality.
+
+The main goals are:
+
+1. Make the homepage feel like a personal AI trading research assistant.
+2. Use the identity “VCP AI.”
+3. Avoid the word “recommendations” everywhere.
+4. Move Market Signals much higher so users can immediately find active trade candidates.
+5. Reduce the amount of content users must scroll through before seeing actionable market information.
+6. Keep the product clearly positioned as research and decision support, not personalized financial advice.
+
+CURRENT PAGE STRUCTURE
+
+The current homepage includes:
+
+- Large greeting/question
+- Search input
+- Ask VCP Trader AI button
+- Four quick-action buttons
+- Opportunity Radar with trade cards
+- Existing card actions such as View Why, Review Scenario, Congress Activity, and Prepare Order
+
+Preserve all of this functionality, but reorganize the page.
+
+--------------------------------------------------
+NEW PAGE HIERARCHY
+--------------------------------------------------
+
+Use this order:
+
+1. Compact personalized AI greeting
+2. Large Ask VCP AI input
+3. Quick actions
+4. Market Signals
+5. Compact Market Brief
+6. AI Market Summary
+7. Any secondary portfolio, watchlist, educational, or additional dashboard content
+
+Market Signals must appear above the fold on a typical desktop display whenever practical.
+
+Do not place a large Market Brief or long AI summary above Market Signals.
+
+The most valuable information on login is:
+
+- What signals are active?
+- Which stocks or strategies deserve review?
+- What changed?
+- What should the user investigate first?
+
+--------------------------------------------------
+1. COMPACT HERO GREETING
+--------------------------------------------------
+
+Replace the current heading:
+
+“What do you want VCP Trader to help you do today, {firstName}?”
+
+with a more personal but compact greeting:
+
+“Good morning, {firstName}.”
+
+Second line:
+
+“I’m VCP AI, your trading research assistant.”
+
+Supporting text:
+
+“Ask about a stock, explore market signals, find trade candidates, generate income strategies, or review your portfolio.”
+
+Use the user’s local time to display:
+
+- Good morning
+- Good afternoon
+- Good evening
+
+Do not use an emoji unless it fits the existing premium design.
+
+Do not use language such as:
+
+- My recommendation
+- Recommended trade
+- Best trade
+- Top pick
+- You should buy
+- You should sell
+
+Keep the hero section visually compact. It should not consume excessive vertical space.
+
+Optional small status badge:
+
+“VCP AI Ready”
+
+Use the existing blue accent color.
+
+--------------------------------------------------
+2. ASK VCP AI INPUT
+--------------------------------------------------
+
+Keep the existing AI input near the top of the page.
+
+Use this placeholder:
+
+“Ask about a stock, market signals, options strategies, your portfolio, earnings, or today’s market…”
+
+Keep the existing button functionality.
+
+Rename the button from:
+
+“Ask VCP Trader AI”
+
+to:
+
+“Ask VCP AI”
+
+The input should be visually prominent but not oversized enough to push Market Signals below the fold.
+
+Support Enter to submit if already supported.
+
+Preserve all current query handling and navigation behavior.
+
+--------------------------------------------------
+3. QUICK ACTIONS
+--------------------------------------------------
+
+Keep these four actions immediately below the AI input:
+
+- Analyze a Stock
+- Find Trades
+- Generate Income
+- Scan the Market
+
+Use compact premium action cards or buttons.
+
+Each should contain:
+
+- Existing icon
+- Title
+- One concise description
+
+Suggested descriptions:
+
+Analyze a Stock
+“Review technicals, fundamentals, news, and market context.”
+
+Find Trades
+“Explore trade candidates matching selected criteria.”
+
+Generate Income
+“Research covered calls, cash-secured puts, and income strategies.”
+
+Scan the Market
+“Search for emerging technical and options setups.”
+
+Keep these actions in one row on desktop when space allows.
+
+Do not make these cards overly tall.
+
+--------------------------------------------------
+4. MOVE MARKET SIGNALS DIRECTLY BELOW QUICK ACTIONS
+--------------------------------------------------
+
+Move the existing Opportunity Radar section upward so it appears immediately after the quick actions.
+
+Rename the section:
+
+“Market Signals”
+
+Subtitle:
+
+“Trade candidates surfaced from current market data and your selected screening criteria.”
+
+Alternative subtitle when personalization is available:
+
+“Signals surfaced using current market data, strategy filters, and your saved preferences.”
+
+Do not use the word “recommendations.”
+
+The section should be visually dominant and easy to scan.
+
+Use this header structure:
+
+Market Signals                         Open Radar →
+
+Trade candidates surfaced from current market data and selected screening criteria.
+
+Optional status chips:
+
+- Updated 3 min ago
+- 6 active signals
+- Market open
+- Filters: Swing, Options, Large Cap
+
+Only show chips when real data exists.
+
+--------------------------------------------------
+5. MARKET SIGNAL CARD IMPROVEMENTS
+--------------------------------------------------
+
+Preserve all existing signal cards and business logic.
+
+Keep:
+
+- Rank
+- Ticker
+- Company name
+- Grade
+- Bullish, bearish, neutral, or mixed label
+- Score
+- Strategy name
+- Expiration
+- News context
+- Component scores
+- Capital
+- Maximum loss
+- Maximum gain
+- Entry
+- Stop
+- Target
+- Breakeven
+- Risk/reward
+- Why it ranked
+- Risk warning
+- View Why
+- Review Scenario
+- Congress Activity
+- Prepare Order
+
+Improve visual hierarchy so the user can understand each card within a few seconds.
+
+Prioritize the following information visually:
+
+1. Ticker and strategy
+2. Signal score and directional bias
+3. Entry, stop, target, maximum loss, and capital
+4. Why it surfaced
+5. Actions
+
+Reduce unnecessary borders and visual noise.
+
+Use consistent spacing and alignment.
+
+Keep “Prepare Order” visually distinct, but do not make it imply an AI endorsement.
+
+Consider adding a small label above it:
+
+“Review and prepare”
+
+Do not automatically submit or execute anything.
+
+--------------------------------------------------
+6. ABOVE-THE-FOLD REQUIREMENT
+--------------------------------------------------
+
+On a desktop viewport around 1440 × 900:
+
+- Greeting should be visible
+- AI input should be visible
+- Quick actions should be visible
+- Market Signals heading should be visible
+- At least the top portion of the first signal cards should be visible
+
+Reduce excessive top margins, padding, and card heights as needed.
+
+Do not sacrifice readability.
+
+The user should not have to scroll past a large market summary before seeing Market Signals.
+
+--------------------------------------------------
+7. COMPACT MARKET BRIEF BELOW SIGNALS
+--------------------------------------------------
+
+Place “Today’s Market Brief” below Market Signals.
+
+Keep it compact and useful.
+
+Suggested fields:
+
+- Market tone
+- S&P 500 trend
+- Nasdaq trend
+- Volatility
+- Leading sectors or themes
+- Major events
+- Market status
+
+Example layout:
+
+Today’s Market Brief
+
+Market tone       Constructive
+Nasdaq trend      Positive
+Volatility        Moderate
+Leading theme     Semiconductors
+Key event         Fed speaker at 2:00 PM
+
+Use live data when already available.
+
+If data is unavailable, hide the unavailable field or show a clearly labeled placeholder in development only.
+
+Do not fabricate production market data.
+
+--------------------------------------------------
+8. AI MARKET SUMMARY
+--------------------------------------------------
+
+Place the AI Market Summary below the Market Brief.
+
+Title:
+
+“AI Market Summary”
+
+Subtitle:
+
+“Research context generated from current market, technical, news, and options data.”
+
+The summary should be concise, ideally three to five bullets or a short paragraph.
+
+Use cautious research language such as:
+
+- “Market data indicates…”
+- “The scanner is detecting…”
+- “Several candidates are approaching…”
+- “Options activity appears…”
+- “Volatility remains…”
+
+Avoid:
+
+- “Buy”
+- “Sell”
+- “Guaranteed”
+- “Best opportunity”
+- “VCP AI recommends”
+- “You should enter”
+
+If live AI-generated content is not yet connected, use mock data only in development and label the data source appropriately.
+
+--------------------------------------------------
+9. OPTIONAL PERSONALIZATION
+--------------------------------------------------
+
+When real data exists, show small personalized indicators near Market Signals or below the hero:
+
+- “3 new signals since your last visit”
+- “2 watchlist stocks triggered alerts”
+- “1 portfolio position requires review”
+- “24 stocks monitored”
+
+Do not show empty placeholders.
+
+Do not create fake personalization.
+
+--------------------------------------------------
+10. TERMINOLOGY RULES
+--------------------------------------------------
+
+Globally avoid the word:
+
+“recommendations”
+
+Also avoid:
+
+- Recommended
+- Top Picks
+- Best Trades
+- Buy Now
+- AI Pick
+- Winning Trade
+- Guaranteed
+- Safe Trade
+
+Preferred terminology:
+
+- Market Signals
+- Trade Candidates
+- Research Insights
+- Market Intelligence
+- Technical Setups
+- Options Activity
+- Screening Results
+- Opportunity Radar
+- Candidates for Review
+- Research Context
+
+Update visible homepage copy accordingly.
+
+Do not rename database fields, API contracts, or internal identifiers unless necessary.
+
+--------------------------------------------------
+11. DESIGN DIRECTION
+--------------------------------------------------
+
+Preserve the current VCP Trader AI dark theme.
+
+Use:
+
+- Existing blue accent
+- Near-black background
+- Subtle borders
+- Strong typography hierarchy
+- Compact card spacing
+- Moderate corner radius
+- Clear hover and focus states
+- Accessible contrast
+- Professional institutional-fintech appearance
+
+Avoid:
+
+- Excessive gradients
+- Large empty hero areas
+- Decorative illustrations
+- Overuse of glassmorphism
+- Excessive animations
+- Consumer-gaming aesthetics
+
+The design should feel like a modern AI-native trading workstation.
+
+--------------------------------------------------
+12. RESPONSIVE BEHAVIOR
+--------------------------------------------------
+
+Desktop:
+
+- Quick actions in four columns
+- Signal cards in two columns when space allows
+- Market Signals visible early
+
+Tablet:
+
+- Quick actions in two columns
+- Signal cards one or two columns based on width
+
+Mobile:
+
+- Compact greeting
+- Full-width AI input
+- Quick actions in two columns or horizontal scroll
+- Signal cards in one column
+- Important signal data visible before secondary details
+- Sticky or clearly accessible primary actions where appropriate
+
+Do not introduce horizontal overflow.
+
+--------------------------------------------------
+13. COMPONENT STRUCTURE
+--------------------------------------------------
+
+Refactor into reusable components where appropriate.
+
+Suggested components:
+
+- PersonalizedGreeting.tsx
+- AskVCPAI.tsx
+- QuickActionGrid.tsx
+- MarketSignalsSection.tsx
+- MarketSignalCard.tsx
+- MarketBrief.tsx
+- AIMarketSummary.tsx
+- PersonalizedStatusChips.tsx
+
+Do not force these names if the project already has an established component structure.
+
+Prefer modifying and extracting existing components rather than duplicating them.
+
+Use TypeScript interfaces for:
+
+- MarketSignal
+- MarketBriefData
+- AIMarketSummaryData
+- QuickAction
+- UserMarketStatus
+
+--------------------------------------------------
+14. DATA AND LOGIC CONSTRAINTS
+--------------------------------------------------
+
+Do not replace existing live data with mock data.
+
+Do not break:
+
+- Existing signal ranking
+- Existing news context
+- Existing trade scenario review
+- Existing Congress Activity links
+- Existing order preparation workflow
+- Existing search behavior
+- Existing authentication
+- Existing portfolio integrations
+- Existing API calls
+
+Reuse the current Opportunity Radar data for the new Market Signals section.
+
+This is primarily a presentation and information-hierarchy update.
+
+--------------------------------------------------
+15. IMPLEMENTATION PROCESS
+--------------------------------------------------
+
+Before changing code:
+
+1. Inspect the existing homepage component and routing.
+2. Identify the component currently rendering Opportunity Radar.
+3. Identify all live data hooks and API calls used by the homepage.
+4. Reuse those components and hooks.
+5. Create a short implementation plan.
+6. Then make the changes.
+
+After implementation:
+
+1. Run TypeScript checks.
+2. Run linting.
+3. Run the application.
+4. Verify desktop, tablet, and mobile layouts.
+5. Verify all existing buttons still work.
+6. Verify Market Signals appears higher on the page.
+7. Verify the word “recommendations” does not appear anywhere in the updated homepage.
+8. Verify no fabricated production data was introduced.
+9. Summarize files changed and major UX improvements.
+
+--------------------------------------------------
+FINAL TARGET LAYOUT
+--------------------------------------------------
+
+Good morning, Dhesikan.
+
+I’m VCP AI, your trading research assistant.
+
+Ask about a stock, explore market signals, find trade candidates,
+generate income strategies, or review your portfolio.
+
+[ Ask VCP AI input                                      ] [ Ask VCP AI ]
+
+[ Analyze a Stock ] [ Find Trades ] [ Generate Income ] [ Scan the Market ]
+
+--------------------------------------------------
+
+Market Signals                                      Open Radar →
+
+Trade candidates surfaced from current market data
+and your selected screening criteria.
+
+[ AAPL signal card ]        [ META signal card ]
+
+[ Additional signal cards ]
+
+--------------------------------------------------
+
+Today’s Market Brief
+
+[ Market tone ] [ Volatility ] [ Leading theme ] [ Major event ]
+
+--------------------------------------------------
+
+AI Market Summary
+
+• Concise research insight
+• Concise technical insight
+• Concise risk or event context
+
+--------------------------------------------------
+
+Secondary dashboard content

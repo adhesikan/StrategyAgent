@@ -15,6 +15,8 @@ export function askRoute(q: string): string {
 export interface QuickAction {
   id: string;
   label: string;
+  /** one-line research-oriented description shown under the title */
+  description: string;
   /** analytics event name (existing track() helper) */
   event: string;
   /** navigation target; intents route into Ask AI, Scan goes straight to Scanner */
@@ -22,11 +24,19 @@ export interface QuickAction {
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
-  { id: "analyze", label: "Analyze a Stock", event: "home_analyze_stock", href: "" }, // prefills the command bar with "Analyze " — user supplies the ticker (no hardcoded tickers)
-  { id: "find-trades", label: "Find Trades", event: "home_find_trades", href: askRoute("Find high-quality trade opportunities") },
-  { id: "income", label: "Generate Income", event: "home_generate_income", href: askRoute("Find income opportunities") },
-  { id: "scan", label: "Scan the Market", event: "home_scan_market", href: "/scanner" },
+  { id: "analyze", label: "Analyze a Stock", description: "Review technicals, fundamentals, news, and market context.", event: "home_analyze_stock", href: "" }, // prefills the command bar with "Analyze " — user supplies the ticker (no hardcoded tickers)
+  { id: "find-trades", label: "Find Trades", description: "Explore trade candidates matching selected criteria.", event: "home_find_trades", href: askRoute("Find high-quality trade opportunities") },
+  { id: "income", label: "Generate Income", description: "Research covered calls, cash-secured puts, and income strategies.", event: "home_generate_income", href: askRoute("Find income opportunities") },
+  { id: "scan", label: "Scan the Market", description: "Search for emerging technical and options setups.", event: "home_scan_market", href: "/scanner" },
 ];
+
+/** Time-of-day greeting for the hero ("Good morning" / "afternoon" / "evening").
+ *  Uses the user's local hour (0–23). */
+export function greetingForHour(hour: number): string {
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 /** Normalize a stored opportunity stage to the standard VCP stages (or null). */
 export function normalizeOppStage(raw: string | null | undefined): VcpStage | null {

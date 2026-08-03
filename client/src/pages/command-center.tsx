@@ -25,7 +25,6 @@ import {
   Wallet,
   Activity,
   Newspaper,
-  AlertTriangle,
   LineChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +33,7 @@ import { TrialBanner } from "@/components/trial-banner";
 import {
   askRoute,
   QUICK_ACTIONS,
+  greetingForHour,
   summarizePositions,
   filterRadarCandidates,
   sortRadarCandidates,
@@ -165,65 +165,76 @@ export default function CommandCenterPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="w-full max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 space-y-8">
+      <div className="w-full max-w-6xl mx-auto px-4 md:px-8 py-5 md:py-6 space-y-5">
         <TrialBanner />
 
-        {/* ---------- Hero / AI command bar ---------- */}
+        {/* ---------- Compact hero / Ask VCP AI ---------- */}
         <section aria-labelledby="home-hero-title">
-          <h1 id="home-hero-title" className="text-2xl md:text-[28px] font-medium tracking-tight" data-testid="text-home-headline">
-            What do you want VCP Trader to help you do today{firstName ? `, ${firstName}` : ""}?
-          </h1>
-          <p className="text-[15px] text-muted-foreground mt-1" data-testid="text-home-subtext">
-            Analyze stocks, find opportunities, generate income, or understand your portfolio.
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 id="home-hero-title" className="text-xl md:text-2xl font-medium tracking-tight" data-testid="text-home-headline">
+              {greetingForHour(new Date().getHours())}{firstName ? `, ${firstName}` : ""}.
+            </h1>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px]" data-testid="badge-vcp-ai-ready">
+              VCP AI Ready
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-home-subtext">
+            I&rsquo;m VCP AI, your trading research assistant. Ask about a stock, explore market signals, find trade candidates, generate income strategies, or review your portfolio.
           </p>
-          <div className="relative mt-4">
+          <div className="relative mt-3">
             <Search className="h-4 w-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <Input
               ref={inputRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit(q)}
-              placeholder="Ask about a stock, find opportunities, generate income, or review your portfolio..."
-              aria-label="Ask VCP Trader AI"
-              className="h-14 pl-11 pr-40 text-[15px] rounded-[14px]"
+              placeholder="Ask about a stock, market signals, options strategies, your portfolio, earnings, or today's market…"
+              aria-label="Ask VCP AI"
+              className="h-12 pl-11 pr-36 text-[15px] rounded-[14px]"
               data-testid="input-home-ai-command"
             />
-            <Button onClick={() => submit(q)} className="absolute right-2 top-2 h-10 rounded-[10px] gap-2" data-testid="button-home-ai-ask">
-              Ask VCP Trader AI <ArrowRight className="h-4 w-4" />
+            <Button onClick={() => submit(q)} className="absolute right-1.5 top-1.5 h-9 rounded-[10px] gap-2" data-testid="button-home-ai-ask">
+              Ask VCP AI <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
 
           {/* Quick actions */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3" data-testid="row-quick-actions">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2.5" data-testid="row-quick-actions">
             {QUICK_ACTIONS.map((a) => (
-              <Button
+              <button
                 key={a.id}
-                variant="outline"
-                className="justify-start gap-2 h-10"
+                type="button"
+                className="text-left rounded-lg border bg-card/50 px-3 py-2 hover-elevate transition-colors"
                 onClick={() => onQuickAction(a.id, a.event, a.href)}
                 data-testid={`button-quick-${a.id}`}
               >
-                {a.id === "analyze" && <Sparkles className="h-4 w-4 text-primary" />}
-                {a.id === "find-trades" && <Search className="h-4 w-4 text-sky-400" />}
-                {a.id === "income" && <DollarSign className="h-4 w-4 text-amber-400" />}
-                {a.id === "scan" && <LineChart className="h-4 w-4 text-emerald-400" />}
-                <span className="text-sm">{a.label}</span>
-              </Button>
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {a.id === "analyze" && <Sparkles className="h-4 w-4 text-primary" />}
+                  {a.id === "find-trades" && <Search className="h-4 w-4 text-sky-400" />}
+                  {a.id === "income" && <DollarSign className="h-4 w-4 text-amber-400" />}
+                  {a.id === "scan" && <LineChart className="h-4 w-4 text-emerald-400" />}
+                  {a.label}
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground line-clamp-2">{a.description}</span>
+              </button>
             ))}
           </div>
         </section>
 
-        {/* ---------- Opportunity Radar — Top Trades ---------- */}
+        {/* ---------- Market Signals (Opportunity Radar data) ---------- */}
         <Card data-testid="card-home-radar">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-                <Radar className="h-4 w-4 text-primary" /> Opportunity Radar — Top Trades
+                <Radar className="h-4 w-4 text-primary" /> Market Signals
               </CardTitle>
               <Button size="sm" variant="ghost" onClick={() => { track("home_radar_open" as any); navigate("/opportunity-radar"); }} data-testid="button-open-radar">
                 Open Radar <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground" data-testid="text-signals-subtitle">
+              Trade candidates surfaced from current market data and your selected screening criteria.
+            </p>
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <Select
                 value={radarUniverse}
@@ -309,8 +320,104 @@ export default function CommandCenterPage() {
         <CongressActivityDrawer symbol={congressSymbol} onClose={() => setCongressSymbol(null)} />
         <OrderReviewDialog scenario={reviewScenario} brokerConnected={isConnected} onClose={() => setReviewScenario(null)} />
 
-        {/* ---------- Market Intelligence + Portfolio ---------- */}
+        {/* ---------- Today's Market Brief (below signals, compact) ---------- */}
         <div className="grid gap-4 lg:grid-cols-2">
+          <Card data-testid="card-home-market-intel">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                  <Activity className="h-4 w-4 text-primary" /> Today&rsquo;s Market Brief
+                </CardTitle>
+                <Button size="sm" variant="ghost" onClick={() => { track("home_market_cta" as any); navigate("/markets"); }} data-testid="button-view-markets">
+                  View Markets <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {snapshotQuery.isLoading ? (
+                <div className="space-y-2"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
+              ) : snapshotQuery.isError || !snapshotQuery.data ? (
+                <p className="text-xs text-muted-foreground py-3" data-testid="text-market-error">
+                  Market data is temporarily unavailable.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Market tone</span>
+                    <Badge variant="outline" className={cn("capitalize", TONE_CLASS[snapshotQuery.data.marketTone])} data-testid="badge-market-tone">
+                      {snapshotQuery.data.marketTone}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground line-clamp-1">{snapshotQuery.data.marketToneReason}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(snapshotQuery.data.indices ?? []).slice(0, 3).map((idx) => {
+                      const up = idx.changePercent >= 0;
+                      return (
+                        <div key={idx.symbol} className="rounded-lg border bg-card/50 p-2" data-testid={`tile-index-${idx.symbol}`}>
+                          <div className="text-[10px] uppercase text-muted-foreground">{idx.name}</div>
+                          <div className="flex items-baseline justify-between gap-1">
+                            <span className="text-sm font-medium tabular-nums">{idx.last > 0 ? idx.last.toFixed(2) : "—"}</span>
+                            <span className={cn("text-xs tabular-nums flex items-center", idx.last === 0 ? "text-muted-foreground" : up ? "text-emerald-400" : "text-rose-400")}>
+                              {idx.last === 0 ? "" : up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
+                              {idx.last === 0 ? "—" : `${up ? "+" : ""}${idx.changePercent.toFixed(2)}%`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(snapshotQuery.data.topNews ?? []).slice(0, 2).map((n, i) => (
+                    <div key={`${n.symbol}-${i}`} className="flex items-start gap-2 text-xs" data-testid={`row-market-news-${n.symbol}`}>
+                      <Newspaper className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                      <span className="line-clamp-2"><span className="font-mono font-medium">{n.symbol}</span> — {n.whyItMatters}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ---------- AI Market Summary (real snapshot data, cautious research language) ---------- */}
+          {snapshotQuery.data && (
+            <Card data-testid="card-home-ai-summary">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-primary" /> AI Market Summary
+                  </CardTitle>
+                  {snapshotQuery.data.dataMode === "simulated" && (
+                    <Badge variant="outline" className="text-[10px]" data-testid="badge-ai-summary-mode">Simulated data</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Research context generated from current market, technical, news, and options data.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-xs leading-relaxed" data-testid="list-ai-summary">
+                  <li className="flex gap-2">
+                    <span className="text-primary shrink-0">•</span>
+                    <span>Market data indicates a {snapshotQuery.data.marketTone} tone — {snapshotQuery.data.marketToneReason}</span>
+                  </li>
+                  {(snapshotQuery.data.indices ?? []).filter((idx) => idx.last > 0).slice(0, 1).map((idx) => (
+                    <li key={idx.symbol} className="flex gap-2">
+                      <span className="text-primary shrink-0">•</span>
+                      <span>
+                        {idx.name} is {idx.changePercent >= 0 ? "up" : "down"} {Math.abs(idx.changePercent).toFixed(2)}% on the session; index trend remains a key input for setup quality.
+                      </span>
+                    </li>
+                  ))}
+                  {(snapshotQuery.data.topNews ?? []).slice(0, 3).map((n, i) => (
+                    <li key={`${n.symbol}-${i}`} className="flex gap-2">
+                      <span className="text-primary shrink-0">•</span>
+                      <span><span className="font-mono font-medium">{n.symbol}</span>: {n.whyItMatters}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           <Card data-testid="card-home-portfolio">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-1.5">
@@ -362,68 +469,14 @@ export default function CommandCenterPage() {
               )}
             </CardContent>
           </Card>
-          <Card data-testid="card-home-market-intel">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-                  <Activity className="h-4 w-4 text-primary" /> Market Intelligence
-                </CardTitle>
-                <Button size="sm" variant="ghost" onClick={() => { track("home_market_cta" as any); navigate("/markets"); }} data-testid="button-view-markets">
-                  View Markets <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {snapshotQuery.isLoading ? (
-                <div className="space-y-2"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
-              ) : snapshotQuery.isError || !snapshotQuery.data ? (
-                <p className="text-xs text-muted-foreground py-3" data-testid="text-market-error">
-                  Market data is temporarily unavailable.
-                </p>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="outline" className={cn("capitalize", TONE_CLASS[snapshotQuery.data.marketTone])} data-testid="badge-market-tone">
-                      {snapshotQuery.data.marketTone}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground line-clamp-1">{snapshotQuery.data.marketToneReason}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(snapshotQuery.data.indices ?? []).slice(0, 3).map((idx) => {
-                      const up = idx.changePercent >= 0;
-                      return (
-                        <div key={idx.symbol} className="rounded-lg border bg-card/50 p-2" data-testid={`tile-index-${idx.symbol}`}>
-                          <div className="text-[10px] uppercase text-muted-foreground">{idx.name}</div>
-                          <div className="flex items-baseline justify-between gap-1">
-                            <span className="text-sm font-medium tabular-nums">{idx.last > 0 ? idx.last.toFixed(2) : "—"}</span>
-                            <span className={cn("text-xs tabular-nums flex items-center", idx.last === 0 ? "text-muted-foreground" : up ? "text-emerald-400" : "text-rose-400")}>
-                              {idx.last === 0 ? "" : up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-                              {idx.last === 0 ? "—" : `${up ? "+" : ""}${idx.changePercent.toFixed(2)}%`}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {(snapshotQuery.data.topNews ?? []).slice(0, 2).map((n, i) => (
-                    <div key={`${n.symbol}-${i}`} className="flex items-start gap-2 text-xs" data-testid={`row-market-news-${n.symbol}`}>
-                      <Newspaper className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                      <span className="line-clamp-2"><span className="font-mono font-medium">{n.symbol}</span> — {n.whyItMatters}</span>
-                    </div>
-                  ))}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Hidden boundaries — see comments above the components */}
           <AiBriefCard />
           <ContinueResearchCard />
         </div>
 
         <p className="text-xs text-muted-foreground pt-6 border-t leading-relaxed" data-testid="text-home-disclaimer">
-          These insights are for educational and informational purposes only. They are not investment advice or personalized
-          recommendations. Nothing is traded without your explicit confirmation.
+          These research insights are for educational and informational purposes only. They are not investment advice
+          and are not personalized to your financial situation. Nothing is traded without your explicit confirmation.
         </p>
       </div>
     </div>

@@ -226,12 +226,20 @@ export function computeTradeStatusDirect(opts: {
   const code = rejectionReasonCode ?? "";
   const base = code.split(":")[0].trim();
 
-  if (verdict === "STOCK" || verdict === "LIVE_OPTIONS" || verdict === "ESTIMATED_OPTIONS") {
+  if (verdict === "STOCK" || verdict === "LIVE_OPTIONS") {
     if (triggerState === "TRIGGERED") return "TRIGGERED";
     if (triggerState === "AWAITING_TRIGGER" || triggerState === "UNKNOWN" || triggerState === "EVENT_CONFIRMATION") {
       return "AWAITING_BREAKOUT";
     }
     return "TRADE_READY"; // NO_TRIGGER — qualified, no specific price trigger
+  }
+
+  if (verdict === "ESTIMATED_OPTIONS") {
+    // ESTIMATED_OPTIONS has no live contract — cannot be trade-ready.
+    // Even with NO_TRIGGER, the underlying may qualify but the options chain is estimated.
+    // Display as AWAITING_BREAKOUT to signal the setup exists but is not yet actionable.
+    if (triggerState === "TRIGGERED") return "TRIGGERED";
+    return "AWAITING_BREAKOUT";
   }
 
   if (verdict === "WATCH") {

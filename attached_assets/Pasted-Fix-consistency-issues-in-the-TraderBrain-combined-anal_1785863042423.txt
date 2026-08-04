@@ -1,0 +1,265 @@
+Fix consistency issues in the TraderBrain combined analysis-and-recommendation presentation.
+
+Do not modify MCP algorithms, scanner logic, recommendation policies, ranking, risk calculations, portfolio policy, or execution.
+
+Do not commit, push, or deploy automatically.
+
+OBSERVED COMBINED RESULT
+
+Prompt:
+
+"Analyze BA and recommend a trade"
+
+The page currently shows conflicting information:
+
+- Recommendation badge: Trade Ready
+- Recommendation summary: 1 setup is actionable now
+- Entry trigger: No trigger
+- Decision factor: Entry Trigger Missing
+- Multi-strategy analysis: valid trigger present at approximately $239.02
+- Multi-strategy analysis: setup is older than the freshness window
+- Options structure: estimated only, no live chain
+- Recommendation confidence appears as both High and Medium
+- AI explanation says all ten strategies matched positively, while structured evidence shows only a subset qualified
+
+GOAL
+
+Make the combined response use one canonical set of deterministic fields and tell one internally consistent story.
+
+==================================================
+1. TRACE FIELD OWNERSHIP
+==================================================
+
+Trace exactly where these displayed values come from:
+
+- Trade Ready
+- actionable now
+- entry trigger
+- Entry Trigger Missing
+- recommendation confidence
+- analysis confidence
+- freshness
+- strategy confluence count
+- estimated-options status
+
+Identify every mapping between:
+
+- TraderBrain evidence
+- strategyRecommendation
+- multiStrategyAnalysis
+- combined-response builder
+- frontend TradePlanViewModel
+- Decision Factors
+- AI prompt content
+
+Report the trace before changing behavior.
+
+==================================================
+2. CANONICAL TRIGGER RESOLUTION
+==================================================
+
+Create one combined-response helper that resolves the canonical trigger.
+
+Precedence:
+
+1. recommendation candidate trigger, when valid
+2. recommendation setup trigger, when valid
+3. primary multi-strategy analysis trigger, when it refers to the same symbol and compatible setup
+4. null
+
+Never show "Entry Trigger Missing" when a valid canonical trigger exists.
+
+Never silently borrow a trigger from an unrelated strategy or direction.
+
+Return:
+
+canonicalTrigger: {
+  price,
+  basis,
+  source,
+  strategy
+} | null
+
+==================================================
+3. ACTIONABILITY RULES
+==================================================
+
+Separate:
+
+UNDERLYING_SETUP_ACTIONABLE
+OPTIONS_STRUCTURE_ESTIMATED
+OPTIONS_CONTRACT_LIVE
+TRADE_TICKET_READY
+
+For the observed BA result:
+
+- underlying setup may be qualified
+- options strategy is estimated
+- live contract is unavailable
+- trade ticket is not ready
+
+Do not label the full recommendation "Trade Ready" unless all required implementation fields exist.
+
+Use wording such as:
+
+"Underlying setup qualified"
+
+"Estimated options strategy"
+
+"Connect a provider to select a live contract"
+
+==================================================
+4. FRESHNESS GATING
+==================================================
+
+A setup older than the freshness window must not appear as immediately actionable without revalidation.
+
+Apply the existing freshness policy consistently.
+
+If stale:
+
+- display REVALIDATION REQUIRED or WATCH
+- explain that the setup must be refreshed
+- suppress Trade Ready and Trade Builder eligibility
+- preserve the historical analysis as context
+
+Do not change the underlying MCP freshness rule; correctly consume it.
+
+==================================================
+5. CONFIDENCE OWNERSHIP
+==================================================
+
+Use one page-level Recommendation Confidence derived from the deterministic recommendation.
+
+If analysis confidence is shown separately, label it:
+
+Analysis Confidence
+
+Do not render multiple unlabeled confidence badges.
+
+For estimated options with mixed data, do not display High recommendation confidence unless the MCP payload explicitly supports it under the current confidence policy.
+
+==================================================
+6. STRATEGY EVIDENCE LANGUAGE
+==================================================
+
+Build the AI explanation from actual strategy categories:
+
+- qualified/confirming
+- forming
+- rejected
+- unavailable/unknown
+- contextual only
+
+Do not say "all ten matched positively" unless all ten actually qualified as positive evidence.
+
+For the observed result, language should resemble:
+
+"Three strategies qualified as confirming evidence, several supplied contextual signals, one remains forming, and one was unavailable."
+
+Use exact counts from structured evidence.
+
+==================================================
+7. ESTIMATED OPTIONS LANGUAGE
+==================================================
+
+When verdict is ESTIMATED_OPTIONS:
+
+Allowed:
+
+- underlying setup
+- strategy type
+- target DTE range
+- conceptual strike zone
+- limitations
+- connect-provider CTA
+
+Not allowed:
+
+- Trade Ready
+- live contract ready
+- ticket ready
+- exact premium
+- exact max loss based on a nonexistent contract
+- exact Greeks/liquidity claims
+
+If the underlying setup is actionable, say:
+
+"The underlying setup qualifies, but the options implementation remains estimated."
+
+==================================================
+8. PORTFOLIO FIT LANGUAGE
+==================================================
+
+If buying power is reported sufficient but cash requirement is unverified:
+
+- present those as separate facts
+- do not imply full affordability
+- explain that contract cost cannot be verified without a live chain
+
+Do not convert buying-power sufficiency into trade readiness.
+
+==================================================
+9. COMBINED HEADLINE
+==================================================
+
+Generate the headline using this precedence:
+
+1. live actionable recommendation
+2. stock actionable recommendation
+3. estimated options with qualified underlying
+4. watch/revalidation required
+5. no trade
+6. unavailable
+
+For the observed result, an appropriate headline is:
+
+"BA has a qualified bullish setup; the options strategy remains estimated."
+
+If stale:
+
+"BA has a bullish setup that requires fresh confirmation before action."
+
+==================================================
+10. TESTS
+==================================================
+
+Add regression tests for:
+
+1. analysis trigger fills a missing compatible recommendation trigger
+2. unrelated strategy trigger is not borrowed
+3. valid trigger removes Entry Trigger Missing
+4. stale setup cannot display Trade Ready
+5. estimated options cannot display ticket-ready language
+6. qualified underlying + estimated options gets the correct headline
+7. one recommendation confidence badge
+8. analysis confidence is separately labeled
+9. strategy-count prose matches structured categories
+10. buying power sufficient + cash unverified does not imply affordability
+11. OpenAI cannot override canonical trigger or freshness
+12. OpenAI failure preserves the corrected deterministic response
+13. existing plain Analyze flow remains unchanged
+14. existing single-symbol recommendation remains unchanged
+15. no execution behavior
+
+Run:
+
+npm test
+npm run build
+
+Do not commit or push.
+
+Report:
+
+1. exact root causes
+2. files changed
+3. trigger precedence
+4. actionability model
+5. freshness handling
+6. confidence handling
+7. AI explanation changes
+8. tests and totals
+9. build result
+10. before/after result for "Analyze BA and recommend a trade"
+
+Wait for review.

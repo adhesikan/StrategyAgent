@@ -763,6 +763,10 @@ interface AskAnswer {
   // True when a deterministic scan was attempted for an analysis ask but
   // failed — drives confidence (low) and honest "scanner unavailable" copy.
   vcpScanFailed?: boolean;
+  // Structured multi-strategy symbol analysis (generic "Analyze MU" asks) —
+  // derived deterministically from scan_strategy/build_trade_candidate, never
+  // model-generated. Optional additive field: existing clients ignore it.
+  multiStrategyAnalysis?: import("../mcp/multi-strategy-analysis").MultiStrategyAnalysis;
 }
 
 function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): AskAnswer {
@@ -883,7 +887,62 @@ async function callOpenAi(
     // scan_vcp is then removed from the optional tool set so a single request
     // never triggers more than one scan attempt.
     let vcpScanAttempted = false;
-    if (isMcpEnabled()) {
+
+    // ------------------------------------------------------------------
+    // Deterministic analysis-intent split (before OpenAI):
+    //   GENERIC ("Analyze MU")              → multi-strategy analysis
+    //   EXPLICIT_STRATEGY ("… Volume Surge") → that one strategy only
+    //   EXPLICIT_VCP ("Analyze MU using VCP")→ existing detailed VCP path
+    // The LLM never picks strategies; on any failure here the flow falls
+    // back to the pre-existing VCP-only behavior — never crashes an ask.
+    // ------------------------------------------------------------------
+    let multiStrategy: import("../mcp/multi-strategy-analysis").MultiStrategyAnalysis | null = null;
+    let multiStrategyAttempted = false;
+    let unresolvedStrategyAsk: { raw: string; supported: string[] } | null = null;
+    if (isMcpEnabled() && !opts.opportunitySearch && ctx.tickers.length > 0) {
+      try {
+        const msa = await import("../mcp/multi-strategy-analysis");
+        const registry = await msa.getCachedStrategyRegistry();
+        const analysisIntent = msa.classifyAnalysisIntent(question, registry);
+        if (analysisIntent && analysisIntent.kind !== "EXPLICIT_VCP") {
+          if (analysisIntent.kind === "EXPLICIT_STRATEGY" && analysisIntent.unresolvedStrategy) {
+            unresolvedStrategyAsk = {
+              raw: analysisIntent.unresolvedStrategy,
+              supported: registry.filter((s) => s.enabled && s.targetedScan).map((s) => s.displayName),
+            };
+          } else {
+            multiStrategyAttempted = true;
+            const tools = await import("../mcp/tools");
+            multiStrategy = await msa.runMultiStrategyAnalysis(
+              ctx.tickers[0].symbol,
+              {
+                scanStrategy: (s, st, tf) => tools.scanStrategy(s, st, tf),
+                buildTradeCandidate: (s, st) => tools.buildTradeCandidate(s, st),
+              },
+              analysisIntent.kind === "EXPLICIT_STRATEGY" ? analysisIntent.strategyId : undefined,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[ask] multi-strategy analysis unavailable:", (err as Error).message);
+        multiStrategy = null; // fall through to the pre-existing VCP path below
+        multiStrategyAttempted = false;
+      }
+    }
+
+    // Unknown strategy named explicitly → answer safely with supported names,
+    // no scans, no LLM guessing.
+    if (unresolvedStrategyAsk) {
+      return {
+        headline: `"${unresolvedStrategyAsk.raw}" isn't a strategy I can scan.`,
+        answer: `I couldn't match "${unresolvedStrategyAsk.raw}" to a supported scanner strategy. Supported strategies: ${unresolvedStrategyAsk.supported.join(", ")}. Ask again with one of those names, or just say "Analyze ${ctx.tickers[0]?.symbol ?? "the symbol"}" to check every eligible strategy.`,
+        keyPoints: unresolvedStrategyAsk.supported.slice(0, 5).map((s) => `Supported: ${s}`),
+        riskNote: "AI-generated educational analysis — not investment advice.",
+        confidence: "high",
+      };
+    }
+
+    if (isMcpEnabled() && !multiStrategyAttempted) {
       try {
         const { fetchDeterministicVcpScan, isStockAnalysisAsk, summarizeVcpScan } = await import("../mcp/analysis-scan");
         vcpScanAttempted = isStockAnalysisAsk(question) && ctx.tickers.length > 0;
@@ -908,6 +967,7 @@ async function callOpenAi(
       question,
       context: compact,
       ...(opts.opportunitySearch ? { opportunitySearch: opts.opportunitySearch } : {}),
+      ...(multiStrategy ? { multiStrategyAnalysis: multiStrategy } : {}),
       ...(vcpScan
         ? {
             vcpScan: {
@@ -953,6 +1013,13 @@ async function callOpenAi(
       } catch (err) {
         console.warn("[ask] mcp tools unavailable:", (err as Error).message);
       }
+    }
+
+    if (multiStrategy) {
+      // Hard technical enforcement: the model explains the deterministic
+      // multi-strategy result only — no tools, no extra scans, no invention.
+      mcpTools = [];
+      mcpSystemRules += `\n- The "multiStrategyAnalysis" field in the user content is the DETERMINISTIC result of scanning ${multiStrategy.symbol} across every eligible scanner strategy, plus trade-candidate qualification. Your job is ONLY to explain it. Rules: (1) Name the primary strategy (primarySetup) and clearly distinguish it from supporting evidence (supportingSetups). (2) State the deterministic overallVerdict (${multiStrategy.overallVerdict}) — you may NEVER override, soften, or contradict it, and never contradict a candidate's NO_TRADE verdict. (3) Explain why the trade qualifies or fails using ONLY the provided selectionReasons, reasons, warnings, and noTradeReasons. (4) Mention earnings/market-regime/risk warnings when present in marketContext or candidate data. (5) Scanner detections are AI-generated analysis, not recommendations — never tell the user to buy/sell. (6) NEVER invent triggers, stops, targets, scores, or strategy matches that are not in the payload; if a level is missing, say it is not available. (7) NEVER compare raw scores across different strategies as if they were equivalent. (8) Do not call any tools.`;
     }
 
     if (opts.opportunitySearch) {
@@ -1028,7 +1095,14 @@ async function callOpenAi(
     // bullishness — so it's derived server-side, not left to the model.
     const vcpAnalysis = (vcpScan as any)?.analysis as import("../mcp/analysis-scan").VcpAnalysis | undefined;
     const vcpScanFailed = vcpScanAttempted && !vcpScan;
-    if (vcpScanAttempted) {
+    if (multiStrategyAttempted && multiStrategy) {
+      try {
+        const { multiStrategyConfidence } = await import("../mcp/multi-strategy-analysis");
+        confidence = multiStrategyConfidence(multiStrategy);
+      } catch {
+        /* keep model confidence */
+      }
+    } else if (vcpScanAttempted) {
       try {
         const { confidenceForAnalysis } = await import("../mcp/analysis-scan");
         confidence = confidenceForAnalysis({
@@ -1050,6 +1124,7 @@ async function callOpenAi(
       referencesUsed: referencesUsed.length > 0 ? referencesUsed : undefined,
       ...(vcpAnalysis ? { vcpAnalysis } : {}),
       ...(vcpScanFailed ? { vcpScanFailed: true } : {}),
+      ...(multiStrategy ? { multiStrategyAnalysis: multiStrategy } : {}),
     };
   } catch (err) {
     console.warn("[ask] openai call failed, falling back:", err);
@@ -1588,8 +1663,16 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // scan: no Trade Builder emphasis without an actionable setup.
       // Presentation/navigation only — falls back to the intent-based list.
       let suggestions = suggestionsForIntent(intent, tickers);
+      const msaForNav = (answer as AskAnswer).multiStrategyAnalysis;
       const stageForNav = (answer as AskAnswer).vcpAnalysis?.analysisSummary?.stage;
-      if (stageForNav !== undefined && tickers[0]) {
+      if (msaForNav) {
+        try {
+          const { suggestionsForMultiStrategy } = await import("../mcp/multi-strategy-analysis");
+          suggestions = suggestionsForMultiStrategy(msaForNav);
+        } catch {
+          /* keep intent-based suggestions */
+        }
+      } else if (stageForNav !== undefined && tickers[0]) {
         try {
           const { suggestionsForVcpStage } = await import("../mcp/analysis-scan");
           suggestions = suggestionsForVcpStage(stageForNav, tickers[0]);

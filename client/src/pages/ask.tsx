@@ -12,6 +12,8 @@ import { ComplianceFooter } from "@/components/trading-shell";
 import { HelpLink } from "@/components/help-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { VcpAnalysisCards } from "@/components/vcp-analysis-cards";
+import { MultiStrategyAnalysisCards } from "@/components/multi-strategy-analysis-cards";
+import type { MultiStrategyAnalysis } from "@/lib/multi-strategy-analysis";
 import { OpportunitySearchCards } from "@/components/opportunity-search-cards";
 import type { OpportunitySearchResult } from "@/lib/opportunity-search";
 import type { VcpAnalysis } from "@/lib/vcp-analysis";
@@ -109,6 +111,8 @@ interface AskResponse {
   // Optional structured VCP analysis (stock-analysis intent only, additive)
   vcpAnalysis?: VcpAnalysis;
   vcpScanFailed?: boolean;
+  // Optional deterministic multi-strategy analysis (generic "Analyze X", additive)
+  multiStrategyAnalysis?: MultiStrategyAnalysis;
   // Optional deterministic opportunity-search payload (additive)
   opportunitySearch?: OpportunitySearchResult;
   opportunitySearchFailed?: boolean;
@@ -281,6 +285,8 @@ export default function AskPage() {
               )}
 
               {data.vcpAnalysis && <VcpAnalysisCards analysis={data.vcpAnalysis} />}
+
+              {data.multiStrategyAnalysis && <MultiStrategyAnalysisCards analysis={data.multiStrategyAnalysis} />}
 
               {data.opportunitySearchFailed && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-opp-search-failed">

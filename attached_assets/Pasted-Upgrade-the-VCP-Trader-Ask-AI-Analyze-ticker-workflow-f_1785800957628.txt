@@ -1,0 +1,462 @@
+Upgrade the VCP Trader Ask AI "Analyze <ticker>" workflow from VCP-only analysis to a deterministic multi-strategy symbol analysis.
+
+IMPORTANT
+
+Do not remove or break the existing detailed VCP analysis.
+Do not change scanner algorithms.
+Do not change MCP transport/authentication.
+Do not change market-data providers.
+Do not change broker execution, Trade Builder or InstaTrade.
+Do not allow the LLM to invent strategy matches, scores, triggers or trade verdicts.
+
+CURRENT BEHAVIOR
+
+A generic request such as:
+
+"Analyze MU"
+
+always runs the deterministic scan_vcp workflow and presents only VCP analysis.
+
+The MCP service now supports:
+
+- scan_vcp
+- scan_strategy
+- scan_opportunities
+- rank_trade_candidates, if currently exposed
+- build_trade_candidate
+- market/research/risk tools
+
+The VCP Trader internal strategy registry exposes authoritative strategy metadata, including targetedScan and supportedTimeframes.
+
+GOAL
+
+Change generic stock analysis into:
+
+quote/history/context
++
+all eligible targeted scanner strategies for the symbol
++
+strategy comparison
++
+trade-candidate qualification
++
+AI explanation
+
+Keep explicit VCP requests on the detailed VCP path.
+
+==================================================
+1. INSPECT CURRENT ROUTING
+==================================================
+
+Inspect:
+
+- server/routes/ask.ts
+- deterministic Analyze intent detection
+- analysis-scan.ts
+- scan_vcp call path
+- MCP tool allowlist/wrappers
+- strategy registry endpoint/client
+- scan_strategy contract
+- rank_trade_candidates availability
+- build_trade_candidate contract
+- current VCP rich-card frontend contract
+- current general analysis response contract
+
+Report the current exact path before changing it.
+
+==================================================
+2. SPLIT ANALYSIS INTENTS
+==================================================
+
+Introduce deterministic intent distinctions:
+
+A. GENERIC_MULTI_STRATEGY_ANALYSIS
+
+Examples:
+
+- Analyze MU
+- Evaluate NVDA
+- How does CRDO look?
+- Technical analysis of AMD
+- What is the setup on TSLA?
+
+B. EXPLICIT_VCP_ANALYSIS
+
+Examples:
+
+- Analyze MU using VCP
+- Run a VCP scan on NVDA
+- Is CRDO pivot-ready?
+- Show MU's VCP structure
+- Analyze MU's contractions and pivot
+
+C. EXPLICIT_STRATEGY_ANALYSIS
+
+Examples:
+
+- Analyze MU using Volume Surge
+- Check NVDA for Power Breakout
+- Evaluate AMD with Precision Pullback
+- Run Institutional Reclaim on TSLA
+
+Use deterministic routing before OpenAI.
+
+==================================================
+3. GENERIC MULTI-STRATEGY FLOW
+==================================================
+
+For generic analysis:
+
+1. Extract one ticker using the existing safe ticker extraction.
+
+2. Retrieve the authoritative strategy registry.
+
+3. Select only strategies where:
+   - enabled = true
+   - targetedScan = true
+   - requested/default timeframe is supported
+
+4. Call scan_strategy once per eligible strategy.
+
+Use bounded concurrency.
+
+Do not make uncontrolled parallel calls.
+
+Use an appropriate concurrency limit such as 3–4.
+
+5. Treat these as valid outcomes:
+   - setup returned
+   - setup:null
+   - unsupported/no result
+   - one strategy failure while others succeed
+
+One strategy failure must not fail the entire analysis.
+
+6. Preserve every returned SetupCandidate independently.
+
+Do not collapse multiple strategies for the same symbol.
+
+7. Do not compare raw strategy scores unless the system explicitly provides normalized ranking.
+
+8. Determine the strongest setup using deterministic evidence in this order:
+
+   a. qualified result from rank_trade_candidates, if available
+   b. actionable status: triggered/ready before forming
+   c. valid trigger present
+   d. freshness
+   e. market-regime compatibility
+   f. candidate qualification
+   g. source/production ranking
+   h. raw score only within the same strategy family when valid
+
+9. Run build_trade_candidate for:
+   - the strongest actionable setup
+   - optionally the next one or two setups for comparison
+   - never more than a safe bounded maximum
+
+10. Produce a structured multiStrategyAnalysis response.
+
+==================================================
+4. STRUCTURED RESPONSE CONTRACT
+==================================================
+
+Add an optional additive field such as:
+
+multiStrategyAnalysis?: {
+  symbol: string;
+  generatedAt?: string;
+  timeframe?: string;
+
+  strategiesChecked: number;
+  strategiesMatched: number;
+  strategiesFailed: number;
+
+  overallVerdict:
+    "TRADE_CANDIDATE"
+    | "WATCH"
+    | "NO_TRADE"
+    | "INSUFFICIENT_DATA";
+
+  primarySetup?: {
+    setup: SetupCandidate;
+    candidate?: TradeCandidate | null;
+    selectionReasons: string[];
+  } | null;
+
+  supportingSetups: Array<{
+    setup: SetupCandidate;
+    candidate?: TradeCandidate | null;
+  }>;
+
+  noMatchStrategies?: string[];
+
+  failedStrategies?: Array<{
+    strategy: string;
+    safeErrorCode: string;
+  }>;
+
+  marketContext?: {
+    price?: number | null;
+    trend?: string | null;
+    marketRegime?: string | null;
+    earningsRisk?: string | null;
+  };
+
+  dataQuality: {
+    source: string;
+    realMarketData: boolean;
+    fresh: boolean | null;
+    complete: boolean;
+  };
+}
+
+Use actual existing types where practical.
+
+Keep all new fields optional for backward compatibility.
+
+==================================================
+5. OVERALL VERDICT RULES
+==================================================
+
+Use deterministic rules.
+
+TRADE_CANDIDATE:
+At least one setup is qualified by build_trade_candidate as:
+- STOCK
+- LIVE_OPTIONS
+- ESTIMATED_OPTIONS
+
+WATCH:
+No qualified trade exists, but at least one fresh setup is ready, triggered or forming with meaningful evidence.
+
+NO_TRADE:
+Setups were evaluated, but all were explicitly rejected.
+
+INSUFFICIENT_DATA:
+No usable strategy or market context could be obtained.
+
+Do not allow the LLM to override these verdicts.
+
+==================================================
+6. EXPLICIT VCP FLOW
+==================================================
+
+Preserve the existing detailed VCP analysis for explicit VCP requests.
+
+Continue returning:
+
+- VCP score
+- stage
+- trend
+- base
+- contraction sequence
+- volatility/volume compression
+- higher lows
+- actionable pivot
+- major high as historical context only
+- strengths/weaknesses
+- improvement/watch conditions
+
+Do not degrade this path into a generic strategy card.
+
+==================================================
+7. EXPLICIT NON-VCP STRATEGY FLOW
+==================================================
+
+For an explicit strategy request:
+
+- resolve friendly aliases through the authoritative registry/alias map
+- call only that strategy through scan_strategy
+- show the strategy-specific SetupCandidate
+- run build_trade_candidate for that setup
+- do not also run VCP unless the user asks for comparison
+
+Unknown or unsupported strategy:
+Return supported strategy names safely.
+
+==================================================
+8. PRESENTATION
+==================================================
+
+On the Ask AI page, when multiStrategyAnalysis exists, render:
+
+Header:
+
+MU — Multi-Strategy Analysis
+
+Summary metrics:
+
+- Strategies checked
+- Matches found
+- Overall verdict
+- Data freshness
+
+Primary setup card:
+
+- strategy display name
+- status
+- direction
+- score when meaningful
+- trigger
+- invalidation
+- objective
+- candidate verdict
+- selection reasons
+- warnings
+
+Supporting strategy cards:
+
+- strategy
+- status
+- score
+- concise reason
+- candidate verdict
+
+Example:
+
+MU — Multi-Strategy Analysis
+
+Overall: WATCH
+
+Primary setup:
+Volume Surge
+Forming
+No qualified trade yet
+
+Supporting evidence:
+Momentum Breakout — Ready, missing trigger
+Precision Pullback — No current setup
+VCP — No Setup
+
+Do not overwhelm novice users with all failed strategies.
+
+Place no-match/failed-strategy details in a collapsible advanced section.
+
+==================================================
+9. AI NARRATIVE RULES
+==================================================
+
+The model receives the structured result and may explain it.
+
+It must:
+
+- name the primary strategy
+- distinguish primary and supporting evidence
+- state the deterministic verdict
+- explain why a trade qualifies or fails
+- mention important earnings/market/risk warnings
+- avoid presenting scanner detections as recommendations
+- never invent missing trigger or levels
+- never compare raw scores as if universally equivalent
+- never contradict TradeCandidate/NO_TRADE
+
+==================================================
+10. PERFORMANCE AND RESILIENCE
+==================================================
+
+- Cache authoritative strategy metadata.
+- Use bounded parallel scan_strategy calls.
+- Apply per-tool timeout.
+- Permit partial success.
+- Do not rerun full-market scan_opportunities for a single-symbol analysis.
+- Do not call strategies that do not support targeted scans.
+- Avoid duplicate quote/history calls.
+- Cap the number of candidate-enrichment calls.
+
+==================================================
+11. CONFIDENCE
+==================================================
+
+Server-derived confidence should reflect:
+
+- number of successful strategy scans
+- market-data completeness
+- setup freshness
+- candidate-engine success
+- consistency of evidence
+
+Do not use high confidence when:
+
+- most strategies failed
+- market data is unavailable
+- results are mock/synthetic
+- freshness is unknown or stale
+- primary setup is ambiguous
+
+Bearish or NO_TRADE does not automatically mean low confidence.
+
+==================================================
+12. SUGGESTIONS / CTAS
+==================================================
+
+If TRADE_CANDIDATE:
+
+- View Setup
+- Open Trade Builder only if candidate is actionable
+- Compare Strategies
+
+If WATCH:
+
+- Add to Watchlist
+- View Setup
+- Open Scanner
+
+If NO_TRADE:
+
+- Open Scanner
+- Find Other Opportunities
+- Set a Watch Condition, if supported
+
+If explicit VCP:
+
+Preserve existing VCP stage-aware suggestions.
+
+==================================================
+13. TESTS
+==================================================
+
+Add tests covering:
+
+1. Analyze MU routes to multi-strategy analysis.
+2. Analyze MU using VCP preserves VCP-only detailed flow.
+3. Explicit non-VCP strategy calls only that strategy.
+4. Only enabled targetedScan strategies are called.
+5. Unsupported timeframes are skipped/rejected safely.
+6. Partial strategy failure still returns analysis.
+7. setup:null handled safely.
+8. Multiple matching strategies preserved.
+9. Raw cross-strategy scores are not simply sorted.
+10. Ready/triggered setup with trigger outranks forming setup where appropriate.
+11. build_trade_candidate determines trade verdict.
+12. All rejected setups → NO_TRADE.
+13. Forming evidence without trade → WATCH.
+14. No usable results → INSUFFICIENT_DATA.
+15. No fabricated triggers.
+16. Explicit VCP rich cards remain unchanged.
+17. Bounded concurrency.
+18. Strategy registry caching.
+19. Confidence degrades for missing/stale data.
+20. No execution behavior introduced.
+21. Existing opportunity-search tests remain green.
+22. Existing Analyze MU VCP tests are updated only where generic routing intentionally changes.
+
+Run all relevant tests and:
+
+npm run build
+
+Do not commit or push automatically.
+
+At completion report:
+
+1. Previous Analyze path
+2. New intent routing
+3. Strategies eligible for targeted analysis
+4. Tool-call sequence
+5. Primary-setup selection logic
+6. Overall-verdict rules
+7. Response contract
+8. UI changes
+9. Resilience/performance
+10. Tests/results
+11. Build result
+12. Compatibility concerns

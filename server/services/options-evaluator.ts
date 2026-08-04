@@ -18,7 +18,13 @@ export interface OptionLeg {
   mid: number;
   openInterest: number;
   volume: number;
-  side: "long" | "short";
+  /** "buy" = long leg (debit), "sell" = short leg (credit). */
+  side: "buy" | "sell";
+  /** ISO date string matching the plan's expiry — copied onto each leg so
+   *  the UI can render it per-row without needing the parent plan. */
+  expiration: string;
+  /** Convenience alias kept for server-side logic that references it. */
+  expiry: string;
 }
 
 export interface OptionPlan {
@@ -113,7 +119,7 @@ function approximatePremium(strike: number, spot: number, type: "call" | "put", 
   return parseFloat((intrinsic + timeValue * moneynessFactor).toFixed(2));
 }
 
-function buildLeg(strike: number, type: "call" | "put", spot: number, dte: number, iv: number, side: "long" | "short"): OptionLeg {
+function buildLeg(strike: number, type: "call" | "put", spot: number, dte: number, iv: number, side: "buy" | "sell", expiry: string): OptionLeg {
   const mid = approximatePremium(strike, spot, type, dte, iv);
   const spread = Math.max(0.05, mid * 0.04);
   const bid = parseFloat((mid - spread / 2).toFixed(2));
@@ -129,6 +135,8 @@ function buildLeg(strike: number, type: "call" | "put", spot: number, dte: numbe
     openInterest: 500 + Math.floor(Math.random() * 1500),
     volume: 100 + Math.floor(Math.random() * 600),
     side,
+    expiration: expiry,
+    expiry,
   };
 }
 
@@ -157,7 +165,7 @@ export function buildLongCallPlan(setup: TradeSetup, ctx: OptionsContext = {}): 
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
   const { expiry, dte } = pickExpiry(21, ctx.requestedDte);
   const strike = roundStrike(spot * 0.99); // slightly ITM
-  const leg = buildLeg(strike, "call", spot, dte, iv, "long");
+  const leg = buildLeg(strike, "call", spot, dte, iv, "buy", expiry);
   const netDebit = leg.mid;
   const breakeven = parseFloat((strike + netDebit).toFixed(2));
   const target = setup.targets?.[0] ?? spot * 1.05;
@@ -187,7 +195,7 @@ export function buildLongPutPlan(setup: TradeSetup, ctx: OptionsContext = {}): O
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
   const { expiry, dte } = pickExpiry(21, ctx.requestedDte);
   const strike = roundStrike(spot * 1.01);
-  const leg = buildLeg(strike, "put", spot, dte, iv, "long");
+  const leg = buildLeg(strike, "put", spot, dte, iv, "buy", expiry);
   const netDebit = leg.mid;
   const breakeven = parseFloat((strike - netDebit).toFixed(2));
   const target = setup.targets?.[0] ?? spot * 0.95;
@@ -217,8 +225,8 @@ export function buildBullCallSpread(setup: TradeSetup, ctx: OptionsContext = {})
   const { expiry, dte } = pickExpiry(30, ctx.requestedDte);
   const longStrike = roundStrike(spot * 0.99);
   const shortStrike = roundStrike((setup.targets?.[0] ?? spot * 1.05));
-  const longLeg = buildLeg(longStrike, "call", spot, dte, iv, "long");
-  const shortLeg = buildLeg(Math.max(shortStrike, longStrike + 1), "call", spot, dte, iv, "short");
+  const longLeg = buildLeg(longStrike, "call", spot, dte, iv, "buy", expiry);
+  const shortLeg = buildLeg(Math.max(shortStrike, longStrike + 1), "call", spot, dte, iv, "sell", expiry);
   const netDebit = parseFloat((longLeg.mid - shortLeg.mid).toFixed(2));
   const width = shortLeg.strike - longLeg.strike;
   const maxProfit = parseFloat((width - netDebit).toFixed(2));
@@ -253,8 +261,8 @@ export function buildBearPutSpread(setup: TradeSetup, ctx: OptionsContext = {}):
   const { expiry, dte } = pickExpiry(30, ctx.requestedDte);
   const longStrike = roundStrike(spot * 1.01);
   const shortStrike = roundStrike((setup.targets?.[0] ?? spot * 0.95));
-  const longLeg = buildLeg(longStrike, "put", spot, dte, iv, "long");
-  const shortLeg = buildLeg(Math.min(shortStrike, longStrike - 1), "put", spot, dte, iv, "short");
+  const longLeg = buildLeg(longStrike, "put", spot, dte, iv, "buy", expiry);
+  const shortLeg = buildLeg(Math.min(shortStrike, longStrike - 1), "put", spot, dte, iv, "sell", expiry);
   const netDebit = parseFloat((longLeg.mid - shortLeg.mid).toFixed(2));
   const width = longLeg.strike - shortLeg.strike;
   const maxProfit = parseFloat((width - netDebit).toFixed(2));
@@ -293,7 +301,7 @@ export function buildCashSecuredPutPlan(setup: TradeSetup, ctx: OptionsContext =
   const { expiry, dte } = pickExpiry(35);
   // Target ~5% OTM put — a typical wheel CSP entry, well below the spot.
   const strike = roundStrike(spot * 0.95);
-  const leg = buildLeg(strike, "put", spot, dte, iv, "short");
+  const leg = buildLeg(strike, "put", spot, dte, iv, "sell", expiry);
   const credit = leg.mid;
   const netDebit = parseFloat((-credit).toFixed(2));
   const breakeven = parseFloat((strike - credit).toFixed(2));
@@ -330,7 +338,7 @@ export function buildCoveredCallPlan(setup: TradeSetup, ctx: OptionsContext = {}
   const iv = ctx.ivRank ? 0.25 + (ctx.ivRank / 100) * 0.6 : 0.35;
   const { expiry, dte } = pickExpiry(35);
   const strike = roundStrike(spot * 1.05);
-  const leg = buildLeg(strike, "call", spot, dte, iv, "short");
+  const leg = buildLeg(strike, "call", spot, dte, iv, "sell", expiry);
   const credit = leg.mid;
   const netDebit = parseFloat((-credit).toFixed(2));
   // Max profit = appreciation up to strike + premium; max loss approximates

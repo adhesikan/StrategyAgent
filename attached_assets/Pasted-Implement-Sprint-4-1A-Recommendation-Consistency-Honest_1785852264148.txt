@@ -1,0 +1,190 @@
+Implement Sprint 4.1A — Recommendation Consistency & Honest Messaging.
+
+IMPORTANT
+
+This sprint is UI/Presentation only.
+
+Do NOT change:
+
+- scanner algorithms
+- MCP ranking
+- recommendation engine
+- risk calculations
+- broker logic
+- portfolio logic
+
+Do not commit or push.
+
+----------------------------------------------------
+GOAL
+----------------------------------------------------
+
+Every recommendation page should tell one consistent story.
+
+A user should never see contradictory statements.
+
+----------------------------------------------------
+1. REMOVE FALSE FALLBACK MESSAGE
+----------------------------------------------------
+
+Today we sometimes display:
+
+"Market-wide trade ranking is temporarily unavailable."
+
+while simultaneously showing ranked opportunities.
+
+This must never happen.
+
+Audit:
+
+rankedTradeSearchFailed
+fallbackReason
+rankingUnavailable
+standardSearchFallback
+
+Create explicit response modes:
+
+RANKED_SEARCH_SUCCESS
+RANKED_SEARCH_EMPTY
+RANKED_SEARCH_FAILED
+STANDARD_SEARCH_SUCCESS
+
+Only show:
+
+"Ranking temporarily unavailable"
+
+when
+
+- MCP actually failed
+
+AND
+
+- standard search replaced it.
+
+Never show it because:
+
+- zero qualified candidates
+- rejected candidates
+- watch candidates
+
+----------------------------------------------------
+2. DIFFERENT EMPTY STATES
+----------------------------------------------------
+
+Support distinct outcomes:
+
+A)
+
+No opportunities detected
+
+Example:
+
+"No bullish opportunities were detected."
+
+B)
+
+Opportunities detected but none qualify
+
+Example:
+
+"Three bullish setups were reviewed, but none currently qualify as trades."
+
+C)
+
+Market unavailable
+
+Example:
+
+"Live market information could not be retrieved."
+
+D)
+
+Fallback
+
+Example:
+
+"Ranking temporarily unavailable. Showing standard opportunity search."
+
+Each state should have:
+
+headline
+subtitle
+icon
+CTA
+
+----------------------------------------------------
+3. REMOVE INTERNAL WORDING
+----------------------------------------------------
+
+Replace phrases like
+
+"underlying market data unavailable"
+
+with deterministic user language.
+
+Examples:
+
+Candidate confirmation unavailable
+
+Required market confirmation missing
+
+Options data unavailable
+
+Market regime unavailable
+
+Data freshness insufficient
+
+Never expose internal implementation wording.
+
+----------------------------------------------------
+4. EXPLANATION SECTION
+----------------------------------------------------
+
+For every rejected candidate show:
+
+Reason
+
+What would make it actionable
+
+Examples:
+
+"Price must exceed $213.14"
+
+"Wait for breakout confirmation"
+
+"Wait until earnings pass"
+
+"Options chain required"
+
+----------------------------------------------------
+5. TESTS
+----------------------------------------------------
+
+Add snapshot/UI tests covering:
+
+successful ranked search
+
+empty ranked search
+
+fallback
+
+market unavailable
+
+rejected candidates
+
+watch candidates
+
+No backend behavior changes.
+
+Run:
+
+npm test
+npm run build
+
+Report:
+
+files changed
+tests
+screenshots
+
+Do not commit.

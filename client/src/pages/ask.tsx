@@ -344,7 +344,13 @@ export default function AskPage() {
                 </div>
               )}
 
-              {data.rankedTradeSearch && <RankedTradeSearchCards search={data.rankedTradeSearch} question={data.question} />}
+              {data.rankedTradeSearch && (
+                <RankedTradeSearchCards
+                  search={data.rankedTradeSearch}
+                  question={data.question}
+                  source={data.rankedSearchSource}
+                />
+              )}
 
               {data.opportunitySearchFailed && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-opp-search-failed">

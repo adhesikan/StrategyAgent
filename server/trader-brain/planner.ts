@@ -181,11 +181,26 @@ function planPortfolioTrade(req: NormalizedBrainRequest): ToolPlan {
 
 function planCombinedAnalysisRecommendation(req: NormalizedBrainRequest): ToolPlan {
   const symbol = req.symbol ?? req.tickers[0] ?? "";
-  // Analysis runs first; recommendation depends on it (so MCP has VCP context).
+  // Analysis and recommendation run concurrently with no dependency between them.
+  // Either step failing does not abort the other — partial results are preserved.
+  // Failure policy for each: "skip_section" → the section is omitted + warned,
+  // and the other section is still returned to the user.
+  //
+  // OpenAI depends on nothing (dependsOn: []) so it always runs and can explain
+  // whichever sections succeeded. The composer builds the explanation using only
+  // the sections that are present.
   const steps: ToolPlanStep[] = [
-    multiStrategyStep(symbol),
-    { ...recommendStep(req, ["analysis"]), required: true },
-    openAiStep("explanation", ["analysis", "recommend"]),
+    {
+      ...multiStrategyStep(symbol),
+      required: false,
+      failurePolicy: "skip_section" as const,
+    },
+    {
+      ...recommendStep(req),        // no dependsOn — runs regardless of analysis
+      required: false,
+      failurePolicy: "skip_section" as const,
+    },
+    openAiStep("explanation", []),  // independent — always runs, sees all evidence
   ];
   return {
     intent: req.intent,

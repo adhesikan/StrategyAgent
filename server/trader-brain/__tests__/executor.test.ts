@@ -164,9 +164,14 @@ describe("executeToolPlan — required step failure aborts", () => {
     expect(["skipped", undefined].includes(oaiEv?.status ?? "skipped")).toBe(true);
   });
 
-  it("COMBINED: required recommend step failure skips openai", async () => {
+  it("COMBINED: optional recommend step failure does NOT abort openai", async () => {
+    // Post-migration: both analysis and recommend are non-required (skip_section).
+    // OpenAI has no dependsOn, so it runs regardless of whether MCP steps succeed.
     const req = makeReq({ intent: "COMBINED_ANALYSIS_RECOMMENDATION", symbol: "BA", tickers: ["BA"] });
     const plan = buildToolPlan(req);
+    // Verify the new invariant: recommend step is NOT required
+    const recStep = plan.steps.find((s) => s.tool === "recommend_trade_strategy")!;
+    expect(recStep.required).toBe(false);
     const deps = makeSuccessDeps({
       runRecommendation: vi.fn().mockRejectedValue(
         Object.assign(new Error("timeout"), { code: "BRAIN_TOOL_TIMEOUT" }),
@@ -176,9 +181,11 @@ describe("executeToolPlan — required step failure aborts", () => {
     const recEv = evidence.find((e) => e.stepId === "recommend")!;
     expect(recEv.status).toBe("failed");
     expect(recEv.safeErrorCode).toBe("BRAIN_TOOL_TIMEOUT");
-    // No openai step should have status "ok"
+    // OpenAI has no dependsOn — it is still attempted (may succeed or fail based on deps)
     const oaiEv = evidence.find((e) => e.stepId === "openai");
-    expect(oaiEv?.status).not.toBe("ok");
+    // Executor reached the openai step (not "aborted" / missing from evidence)
+    expect(oaiEv).toBeDefined();
+    expect(["ok", "failed"]).toContain(oaiEv?.status);
   });
 });
 

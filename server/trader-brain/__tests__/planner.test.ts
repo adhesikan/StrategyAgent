@@ -196,24 +196,21 @@ describe("buildToolPlan — PLAN_PORTFOLIO_TRADE", () => {
 });
 
 // ---------------------------------------------------------------------------
-// COMBINED_ANALYSIS_RECOMMENDATION plan
+// COMBINED_ANALYSIS_RECOMMENDATION plan (legacy assertions — superseded below)
+// The migration makes both steps independent; tests consolidated into the
+// "migration invariants" suite later in this file.
 // ---------------------------------------------------------------------------
-describe("buildToolPlan — COMBINED_ANALYSIS_RECOMMENDATION", () => {
+describe("buildToolPlan — COMBINED_ANALYSIS_RECOMMENDATION (basic)", () => {
   it("includes both multi_strategy_analysis and recommend_trade_strategy", () => {
     const tools = toolsIn(COMBINED_REQ);
     expect(tools).toContain("multi_strategy_analysis");
     expect(tools).toContain("recommend_trade_strategy");
   });
-  it("recommend step depends on analysis step", () => {
+  // Post-migration: recommend runs independently — it does NOT depend on analysis.
+  it("recommend step does NOT depend on analysis (independent after migration)", () => {
     const plan = buildToolPlan(COMBINED_REQ);
     const recStep = plan.steps.find((s) => s.tool === "recommend_trade_strategy")!;
-    expect(recStep.dependsOn).toContain("analysis");
-  });
-  it("analysis runs before recommend (ordering)", () => {
-    const plan = buildToolPlan(COMBINED_REQ);
-    const analysisIdx = plan.steps.findIndex((s) => s.tool === "multi_strategy_analysis");
-    const recIdx      = plan.steps.findIndex((s) => s.tool === "recommend_trade_strategy");
-    expect(analysisIdx).toBeLessThan(recIdx);
+    expect(recStep.dependsOn).not.toContain("analysis");
   });
 });
 
@@ -243,6 +240,70 @@ describe("buildToolPlan — EDUCATION_PLUS_ACTION", () => {
     );
     expect(hasMcp).toBe(true);
     expect(tools).toContain("openai_explanation");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COMBINED_ANALYSIS_RECOMMENDATION plan — migration invariants
+// ---------------------------------------------------------------------------
+describe("buildToolPlan — COMBINED_ANALYSIS_RECOMMENDATION", () => {
+  it("includes both multi_strategy_analysis and recommend_trade_strategy", () => {
+    const tools = toolsIn(COMBINED_REQ);
+    expect(tools).toContain("multi_strategy_analysis");
+    expect(tools).toContain("recommend_trade_strategy");
+  });
+
+  it("analysis step is NOT required (skip_section on failure)", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const step = plan.steps.find((s) => s.tool === "multi_strategy_analysis")!;
+    expect(step.required).toBe(false);
+    expect(step.failurePolicy).toBe("skip_section");
+  });
+
+  it("recommend step is NOT required (skip_section on failure)", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const step = plan.steps.find((s) => s.tool === "recommend_trade_strategy")!;
+    expect(step.required).toBe(false);
+    expect(step.failurePolicy).toBe("skip_section");
+  });
+
+  it("recommend step does NOT depend on analysis (independent execution)", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const step = plan.steps.find((s) => s.tool === "recommend_trade_strategy")!;
+    expect(step.dependsOn).not.toContain("analysis");
+  });
+
+  it("analysis step does NOT depend on recommend (independent execution)", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const step = plan.steps.find((s) => s.tool === "multi_strategy_analysis")!;
+    expect(step.dependsOn).not.toContain("recommend");
+  });
+
+  it("openai_explanation step has no dependsOn (runs regardless of sections)", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const oaiStep = plan.steps.find((s) => s.tool === "openai_explanation")!;
+    expect(oaiStep).toBeDefined();
+    expect(oaiStep.dependsOn).toHaveLength(0);
+  });
+
+  it("symbol is forwarded to analysis step args", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const step = plan.steps.find((s) => s.tool === "multi_strategy_analysis")!;
+    expect(step.arguments.symbol).toBe("AAPL");
+  });
+
+  it("symbol is forwarded to recommend step args", () => {
+    const plan = buildToolPlan(COMBINED_REQ);
+    const step = plan.steps.find((s) => s.tool === "recommend_trade_strategy")!;
+    expect(step.arguments.symbol).toBe("AAPL");
+  });
+
+  it("openai step is optional (required: false)", () => {
+    expect(openAiStepIsOptional(buildToolPlan(COMBINED_REQ))).toBe(true);
+  });
+
+  it("dependency DAG is valid (no forward references)", () => {
+    expect(planDepsAreValid(buildToolPlan(COMBINED_REQ))).toBe(true);
   });
 });
 

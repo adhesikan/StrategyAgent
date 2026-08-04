@@ -1865,58 +1865,140 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         }
       } catch { /* no portfolio context — graceful degradation to market-only */ }
 
-      // TraderBrain shadow mode (Phase 0): runs in parallel with callOpenAi.
-      // Only active when TRADER_BRAIN_ENABLED is set (default: off).
-      // Adds an additive `traderBrain` field to the response — never alters
-      // any existing field. Evidence envelopes are stripped before the field
-      // is serialized to the client. Never throws.
+      // ---------------------------------------------------------------------------
+      // TraderBrain routing: COMBINED_ANALYSIS_RECOMMENDATION is authoritative.
+      // All other intents use shadow mode (Phase 0) alongside callOpenAi.
+      // ---------------------------------------------------------------------------
       const brainCtx: import("../trader-brain/types").TrustedContext = {
         userId,
         tickers,
         brokerConnected: ctx.brokerConnected,
         // Phase 0: no dedicated brain tokens — brain runs market-only.
-        // Portfolio / options tokens are wired in Phase 1 when the brain
-        // takes over these paths.
+        // Phase 1 wires portfolio / options tokens for constrained intents.
         portfolioToken: undefined,
         optionsToken: undefined,
         portfolioAwareness: pfAwareness ?? undefined,
       };
       const brainRequestId = `ask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const brainShadowPromise = import("../trader-brain/service").then(
-        ({ runBrainShadowFull }) => runBrainShadowFull(brainRequestId, question, brainCtx),
-      ).catch(() => ({ field: undefined, result: undefined }));
+
+      // Classify intent for routing (pure, no I/O)
+      let brainIntent: import("../trader-brain/types").TraderBrainIntent | null = null;
+      try {
+        const { classifyBrainIntent } = await import("../trader-brain/intent-classifier");
+        brainIntent = classifyBrainIntent(question, tickers);
+      } catch { /* classification failure → shadow path */ }
 
       let answer: AskAnswer | null = null;
       let traderBrainField: import("../trader-brain/types").TraderBrainResponseField | undefined;
       let brainFullResult: import("../trader-brain/types").TraderBrainResult | undefined;
-      let brainShadowOut: { field: typeof traderBrainField; result: typeof brainFullResult };
-      [answer, brainShadowOut] = await Promise.all([
-        callOpenAi(question, ctx, { portfolioContextToken: pfCtxToken }),
-        brainShadowPromise,
-      ]);
-      traderBrainField = brainShadowOut.field;
-      brainFullResult = brainShadowOut.result;
 
-      // Shadow validation: compare Brain output against legacy path.
-      // Fire-and-forget — never alters response, never throws.
-      if (brainFullResult) {
-        import("../trader-brain/shadow-validator").then(({ extractBrainSnapshot, extractLegacySnapshot, compareSnapshots, logShadowComparison }) => {
-          try {
-            const brainSnap = extractBrainSnapshot(brainFullResult!);
-            const legacySnap = extractLegacySnapshot(intent, tickers, answer);
-            const comparison = compareSnapshots(brainSnap, legacySnap, brainRequestId);
-            logShadowComparison(comparison);
-          } catch { /* never fail the request */ }
-        }).catch(() => { /* import failure — ignore */ });
+      // -----------------------------------------------------------------------
+      // Authoritative path: COMBINED_ANALYSIS_RECOMMENDATION → TraderBrain Core
+      // -----------------------------------------------------------------------
+      if (brainIntent === "COMBINED_ANALYSIS_RECOMMENDATION") {
+        try {
+          const { TraderBrainService } = await import("../trader-brain/service");
+          const { projectToResponseField } = await import("../trader-brain/composer");
+          const svc = new TraderBrainService();
+          const brainResult = await svc.execute(
+            { requestId: brainRequestId, question },
+            brainCtx,
+          );
+          brainFullResult = brainResult;
+
+          // Focused OpenAI explanation: optional, never delays or blocks the
+          // deterministic sections. Falls through on any failure.
+          let openAiExplanation: string | null = null;
+          const hasAnySections = !!(brainResult.sections.analysis || brainResult.sections.recommendation);
+          if (isOpenAiConfigured() && hasAnySections) {
+            try {
+              const { buildCombinedSystemPrompt, buildCombinedUserContent } = await import("../trader-brain/combined-response-builder");
+              const sysPr = buildCombinedSystemPrompt(brainResult);
+              const usrCt = buildCombinedUserContent(brainResult, question);
+              if (sysPr && usrCt) {
+                const { default: OpenAI } = await import("openai");
+                const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                const comp = await Promise.race([
+                  oai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    temperature: 0.3,
+                    max_tokens: 600,
+                    messages: [
+                      { role: "system" as const, content: sysPr },
+                      { role: "user" as const, content: usrCt },
+                    ],
+                  }),
+                  new Promise<never>((_, rej) =>
+                    setTimeout(() => rej(new Error("openai_combined_timeout")), 15_000),
+                  ),
+                ]);
+                openAiExplanation = (comp as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content?.trim() ?? null;
+              }
+            } catch (err) {
+              console.warn("[ask] COMBINED openai explanation unavailable:", (err as Error).message);
+            }
+          }
+
+          const { buildCombinedAskAnswer } = await import("../trader-brain/combined-response-builder");
+          answer = await buildCombinedAskAnswer(brainResult, openAiExplanation);
+          traderBrainField = projectToResponseField(brainResult);
+
+          // Revoke portfolio context token — Brain doesn't use it in Phase 0
+          if (pfCtxToken) {
+            try {
+              const { revokePortfolioContext } = await import("../services/portfolio-context");
+              revokePortfolioContext(pfCtxToken);
+            } catch { /* ignore */ }
+            pfCtxToken = undefined;
+          }
+        } catch (err) {
+          console.warn("[ask] Brain COMBINED authoritative path failed, falling back to legacy:", (err as Error).message);
+          // answer = null → falls through to callOpenAi + shadow below
+        }
       }
 
-      // Revoke portfolio context token immediately after callOpenAi completes
-      if (pfCtxToken) {
-        try {
-          const { revokePortfolioContext } = await import("../services/portfolio-context");
-          revokePortfolioContext(pfCtxToken);
-        } catch { /* ignore */ }
-        pfCtxToken = undefined;
+      // -----------------------------------------------------------------------
+      // Shadow mode + callOpenAi: all intents except COMBINED (or COMBINED
+      // catastrophic fallback when answer is still null after Brain failed).
+      // -----------------------------------------------------------------------
+      if (!answer) {
+        // Shadow only for non-COMBINED intents to avoid double-running Brain
+        const brainShadowPromise = (brainIntent !== "COMBINED_ANALYSIS_RECOMMENDATION"
+          ? import("../trader-brain/service")
+              .then(({ runBrainShadowFull }) => runBrainShadowFull(brainRequestId, question, brainCtx))
+              .catch(() => ({ field: undefined as typeof traderBrainField, result: undefined as typeof brainFullResult }))
+          : Promise.resolve({ field: undefined as typeof traderBrainField, result: undefined as typeof brainFullResult })
+        );
+
+        let brainShadowOut: { field: typeof traderBrainField; result: typeof brainFullResult };
+        [answer, brainShadowOut] = await Promise.all([
+          callOpenAi(question, ctx, { portfolioContextToken: pfCtxToken }),
+          brainShadowPromise,
+        ]);
+        traderBrainField = brainShadowOut.field;
+        brainFullResult = brainShadowOut.result;
+
+        // Revoke portfolio context token immediately after callOpenAi completes
+        if (pfCtxToken) {
+          try {
+            const { revokePortfolioContext } = await import("../services/portfolio-context");
+            revokePortfolioContext(pfCtxToken);
+          } catch { /* ignore */ }
+          pfCtxToken = undefined;
+        }
+
+        // Shadow validation: compare Brain output against legacy (non-COMBINED only).
+        // Fire-and-forget — never alters response, never throws.
+        if (brainFullResult && brainIntent !== "COMBINED_ANALYSIS_RECOMMENDATION") {
+          import("../trader-brain/shadow-validator").then(({ extractBrainSnapshot, extractLegacySnapshot, compareSnapshots, logShadowComparison }) => {
+            try {
+              const brainSnap = extractBrainSnapshot(brainFullResult!);
+              const legacySnap = extractLegacySnapshot(intent, tickers, answer);
+              const comparison = compareSnapshots(brainSnap, legacySnap, brainRequestId);
+              logShadowComparison(comparison);
+            } catch { /* never fail the request */ }
+          }).catch(() => { /* import failure — ignore */ });
+        }
       }
 
       // Defensive second layer of the mutual exclusion above: never present a

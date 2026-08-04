@@ -53,20 +53,43 @@ Shadow mode added to the general path (the main non-early-return `res.json`).
 `server/trader-brain/__tests__/shadow-validator.test.ts` — 88 tests, all passing.
 `docs/TRADER_BRAIN_SHADOW_REPORT.md` — fixture-suite analysis, migration roadmap.
 
-**Wiring:** `runBrainShadowFull()` added to service.ts; general path in ask.ts uses it;
-shadow comparison is fire-and-forget after Promise.all; never delays or alters response.
-
 **Wiring gap:** Ranked-trade-search and portfolio-trade-plan early-return branches do NOT
 emit live shadow comparisons yet (fixture suite only). Phase 1 work required.
 
-**Migration-ready intents:** RECOMMEND_SYMBOL_TRADE, COMBINED_ANALYSIS_RECOMMENDATION
-(all 8 dimensions MATCH in fixture suite; general path wired; no blocking mismatches).
+**Log event:** `BRAIN_SHADOW_COMPARISON` JSON — monitor for `overallVerdict:"MISMATCH"` (non-COMBINED intents only; COMBINED is now authoritative).
 
-**Log event:** `BRAIN_SHADOW_COMPARISON` JSON — monitor for `overallVerdict:"MISMATCH"`.
+## COMBINED_ANALYSIS_RECOMMENDATION Migration (Phase 1 — complete)
 
-## Phase 0 Limitation
+**COMBINED is now authoritative** — Brain Core runs as the primary path. `callOpenAi` is bypassed for this intent.
 
-No dedicated portfolio/options tokens wired to Brain in Phase 0. Brain runs market-only (no portfolio context). Tokens wired in Phase 1 when Brain takes over the affected ask.ts paths.
+### New files
+- `server/trader-brain/combined-response-builder.ts` — pure builders: `buildCombinedAskAnswer()`, `buildCombinedSystemPrompt()`, `buildCombinedUserContent()`
+- `server/trader-brain/__tests__/combined-response-builder.test.ts` — 65 tests covering all 4 partial-failure cases
+
+### Planner change
+COMBINED plan: both analysis + recommend steps are now `required: false, failurePolicy: "skip_section"` with **no dependency between them** (run concurrently). OpenAI step has `dependsOn: []` so it always runs.
+
+**Why:** spec requires independent partial-failure handling: analysis fail → still show rec; rec fail → still show analysis. The old sequential dependsOn design would skip recommend when analysis failed.
+
+### ask.ts routing (lines ~1868+)
+- `classifyBrainIntent` called first to detect COMBINED intent
+- COMBINED → authoritative Brain path → focused OpenAI explanation → `buildCombinedAskAnswer` → response
+- Non-COMBINED → unchanged shadow mode + callOpenAi
+- Catastrophic Brain failure → falls through to callOpenAi (legacy fallback preserved)
+- Shadow comparison skipped for COMBINED (Brain is already authoritative)
+
+### 4 partial-failure behaviors
+1. Both OK → headline+confidence from recommendation; both sections; OpenAI prose
+2. Analysis OK, rec failed → analysis section; `recommendationFailed: true`; honest disclosure
+3. Rec OK, analysis failed → recommendation section; analysis limitation disclosed in answer
+4. Both failed → honest unavailable; `recommendationFailed: true`; confidence: "low"
+
+### MultiStrategyAnalysis shape reminder
+No `.strategies[]` field — use `.primarySetup`, `.supportingSetups[]`, `.strategiesMatched`, `.strategiesChecked`, `.overallVerdict`.
+
+## Phase 0 Limitation (still applies for non-COMBINED intents)
+
+No dedicated portfolio/options tokens wired to Brain for non-COMBINED paths. Brain runs market-only. Phase 1 token wiring pending for RECOMMEND and PLAN_PORTFOLIO_TRADE.
 
 ## Intent Classifier Priority
 

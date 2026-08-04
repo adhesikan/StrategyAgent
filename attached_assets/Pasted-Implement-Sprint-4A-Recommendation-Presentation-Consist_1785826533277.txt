@@ -1,0 +1,162 @@
+Implement Sprint 4A — Recommendation Presentation Consistency in StrategyAgent/VCP Trader.
+
+IMPORTANT
+
+Do not modify MCP recommendation, ranking, scanner, options, or risk algorithms.
+
+Do not add portfolio features yet.
+
+Do not add execution.
+
+Do not commit, push, or deploy automatically.
+
+GOAL
+
+Make every deterministic result internally consistent before portfolio-awareness is introduced.
+
+==================================================
+1. REMOVE INCORRECT FALLBACK BANNERS
+==================================================
+
+Trace the ranked-search fallback state.
+
+The page currently may show:
+
+"Market-wide trade ranking is temporarily unavailable"
+
+while also showing successfully returned ranked or standard-search results.
+
+Create explicit source states:
+
+RANKED_MCP_SUCCESS
+RANKED_MCP_EMPTY
+RANKED_MCP_FAILED_WITH_FALLBACK
+STANDARD_SEARCH
+RULE_BASED_SUMMARY
+
+Show the unavailable/fallback banner only when:
+
+- rank_market_trade_candidates actually threw or failed validation
+- and a standard-search fallback result is being displayed
+
+Do not show it merely because zero ranked candidates were returned.
+
+==================================================
+2. FIX TRIGGER AVAILABILITY SEMANTICS
+==================================================
+
+Audit every use of:
+
+- trigger
+- triggerPrice
+- entryTrigger
+- entryTriggerPrice
+- triggerMissing
+- entryTriggerMissing
+
+Create one presentation helper:
+
+hasActionableTrigger(candidate)
+
+It must read the validated canonical trigger field.
+
+If a valid trigger exists, never display:
+
+"Entry Trigger Missing"
+
+If the current price has already crossed the trigger, display:
+
+"Trigger confirmed"
+
+If the price is below the trigger:
+
+"Awaiting breakout"
+
+If trigger semantics are not price-based:
+
+"Event confirmation required"
+
+==================================================
+3. SEPARATE STRATEGY SCORE FROM FINAL RANK
+==================================================
+
+Rename the displayed raw scanner score to:
+
+"Strategy Score"
+
+Add a separate:
+
+"Rank #1"
+"Rank #2"
+
+Do not imply the highest scanner score must rank first.
+
+Where available, explain selection using:
+
+- actionable status
+- trigger availability
+- candidate qualification
+- risk fit
+- freshness
+- earnings risk
+- data completeness
+- confluence
+
+Never expose proprietary weight calculations unless already intended.
+
+==================================================
+4. REPLACE GENERIC NO TRADE
+==================================================
+
+Use specific statuses:
+
+WAITING FOR TRIGGER
+RISK LIMIT EXCEEDED
+EARNINGS RISK
+STALE SETUP
+DATA UNAVAILABLE
+DIRECTION CONFLICT
+NO VALID SETUP
+UNSUPPORTED STRUCTURE
+
+The main card may still carry the verdict NO_TRADE, but it must show the primary rejection reason.
+
+==================================================
+5. TERMINOLOGY
+==================================================
+
+Use consistent terms:
+
+Scanner Setup
+Trade Candidate
+Watch Candidate
+Rejected
+Unavailable
+Excluded
+
+Do not call a rejected scanner setup a trade idea.
+
+==================================================
+6. TESTS
+==================================================
+
+Add tests for:
+
+- successful ranking has no fallback banner
+- actual MCP failure with fallback shows the banner
+- valid trigger never shows Entry Trigger Missing
+- crossed trigger shows Trigger Confirmed
+- missing trigger shows Awaiting Trigger or No Trigger
+- strategy score is distinct from rank
+- NO_TRADE has a specific reason
+- existing analysis and recommendation flows remain unchanged
+- no execution behavior
+
+Run:
+
+npm test
+npm run build
+
+Report files, root causes, tests, build, and screenshots.
+
+Do not commit or push.

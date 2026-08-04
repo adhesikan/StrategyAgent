@@ -1,0 +1,519 @@
+Integrate the deployed MCP recommend_trade_strategy tool into VCP Trader Ask AI and the AI Command Center.
+
+CURRENT STATE
+
+The MCP server now exposes 19 read-only tools, including:
+
+recommend_trade_strategy
+
+The tool is implemented, audited, and deployed.
+
+VCP Trader has not yet integrated it.
+
+The current generic Analyze flow still uses the existing multi-strategy analysis path. Preserve that behavior for now.
+
+GOAL
+
+Add deterministic recommendation routing for explicit trade-seeking requests while preserving analysis and education flows.
+
+Do not duplicate MCP recommendation policies.
+Do not modify scanner algorithms.
+Do not change MCP transport/authentication.
+Do not add execution behavior.
+Do not auto-open Trade Builder.
+Do not allow OpenAI to override MCP verdicts.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. VERIFY MCP TOOL AVAILABILITY
+==================================================
+
+Inspect the MCP tool discovery/status path.
+
+Confirm recommend_trade_strategy is present.
+
+If unavailable:
+
+- do not enable recommendation routing
+- return a safe temporary-unavailable result
+- do not fall back to invented GPT recommendations
+
+Update tool-count assertions from 18 to 19 where necessary.
+
+==================================================
+2. KEEP ANALYSIS AND RECOMMENDATION DISTINCT
+==================================================
+
+A. ANALYSIS INTENTS
+
+Examples:
+
+- Analyze NVDA
+- Analyze MU
+- How does BA look?
+- Technical analysis of AMD
+- What setups exist for CRM?
+
+Continue using the existing multi-strategy analysis flow.
+
+Do not automatically call recommend_trade_strategy for a plain analysis request.
+
+B. RECOMMENDATION INTENTS
+
+Examples:
+
+- Find a trade for NVDA
+- Recommend a trade for MU
+- What should I trade today?
+- Find 3 bullish trades
+- Find a stock trade under $300 risk
+- Find a bullish option trade
+- Find an option trade under $500 max loss
+- Find a credit spread
+- Find a call debit spread
+- Find a covered call
+- Find a cash-secured put
+
+Route these to recommend_trade_strategy.
+
+C. COMBINED INTENTS
+
+Examples:
+
+- Analyze NVDA and recommend a trade
+- Analyze MU and tell me whether to trade it
+- Evaluate BA and find the best strategy
+
+Run:
+
+1. existing multi-strategy analysis
+2. recommend_trade_strategy
+
+Return both sections without blending their scores or verdicts.
+
+D. EDUCATION INTENTS
+
+Examples:
+
+- What is a credit spread?
+- Explain covered calls
+- How does a debit spread work?
+
+Keep these educational.
+
+E. MIXED EDUCATION + SEARCH
+
+Example:
+
+- Explain credit spreads and find one
+
+Return:
+
+1. short educational explanation
+2. deterministic recommendation result
+
+==================================================
+3. NORMALIZE TRADE GOALS
+==================================================
+
+Create one centralized parser/normalizer for:
+
+- symbol
+- objective
+- requestedStrategy
+- direction
+- instrumentPreference
+- maxRiskDollars
+- maxRiskPercent
+- accountSize when safely known
+- targetDTE
+- numberOfIdeas
+
+Examples:
+
+"find a credit spread"
+→ objective: income
+→ requestedStrategy: credit_spread
+→ direction: either
+→ instrumentPreference: options
+
+"find a bull put spread under $500 max loss"
+→ requestedStrategy: bull_put_credit_spread
+→ direction: bullish
+→ instrumentPreference: options
+→ maxRiskDollars: 500
+
+"find a stock trade for NVDA under $300 risk"
+→ symbol: NVDA
+→ requestedStrategy: stock
+→ instrumentPreference: stock
+→ maxRiskDollars: 300
+
+"find 3 bullish option trades"
+→ direction: bullish
+→ instrumentPreference: options
+→ numberOfIdeas: 3
+
+Do not scatter phrase aliases across route handlers.
+
+==================================================
+4. MCP CALL PATH
+==================================================
+
+For recommendation intents call:
+
+recommend_trade_strategy
+
+Pass only the supported model-safe arguments.
+
+Do not pass:
+
+- accountId
+- userId
+- connectionId
+- broker credentials
+- access tokens
+- internal API keys
+
+Inject any trusted options/portfolio context through the existing backend-controlled context mechanism.
+
+Use one deterministic call per normalized recommendation request unless the MCP contract explicitly supports multiple candidates internally.
+
+Do not ask OpenAI to choose symbols before MCP.
+
+==================================================
+5. STRUCTURED API RESPONSE
+==================================================
+
+Add an optional additive field to /api/ask:
+
+strategyRecommendation
+
+Preserve the validated MCP output, including available fields such as:
+
+- request
+- tradeGoal
+- overallVerdict or verdict
+- recommendedStrategy
+- primaryStrategy
+- supportingStrategies
+- strategySummary
+- setup
+- tradeCandidate
+- riskAssessment
+- optionAnalysis
+- recommendedPosition
+- alternatives
+- reasons
+- warnings
+- confidence
+- dataQuality
+
+Add:
+
+recommendationFailed?: boolean
+
+Validate defensively.
+
+A malformed response must not crash Ask AI.
+
+==================================================
+6. VERDICT PRESENTATION
+==================================================
+
+Render distinct recommendation cards for:
+
+LIVE_OPTIONS
+ESTIMATED_OPTIONS
+STOCK
+WATCH
+NO_TRADE
+UNSUPPORTED
+
+LIVE_OPTIONS
+
+Show only fields supplied by MCP:
+
+- symbol
+- underlying setup
+- structure
+- expiration
+- legs
+- bid/ask or midpoint assumptions
+- debit/credit
+- max loss
+- max profit when available
+- breakeven
+- DTE
+- Greeks/IV when available
+- volume/open interest
+- liquidity
+- warnings
+- risk-limit result
+
+If dataQuality says mock, synthetic, fixture, or simulated:
+
+- display a prominent Simulated Development Data badge
+- do not call it a live market trade
+- do not allow a real Trade Builder ticket unless the app is explicitly in paper/development mode
+
+ESTIMATED_OPTIONS
+
+Show:
+
+- prominent Estimated badge
+- symbol
+- underlying setup
+- structure
+- target DTE
+- strike zones or delta ranges actually supplied
+- trigger
+- invalidation/support
+- objective
+- limitations
+- Connect a supported brokerage or options-data provider CTA
+
+Never display missing live-only fields such as:
+
+- contract symbol
+- exact listed expiration
+- premium
+- bid/ask
+- IV
+- Greeks
+- volume
+- open interest
+
+STOCK
+
+Show:
+
+- symbol
+- strategy
+- trigger
+- invalidation
+- objective
+- risk per share
+- quantity
+- max risk
+- reasons and warnings
+
+WATCH
+
+Show:
+
+- strongest setup
+- why it is not actionable
+- exact condition that would improve it
+- no Trade Builder CTA
+
+NO_TRADE
+
+Show:
+
+- disqualifiers
+- risk/data/event reasons
+- what would need to change
+- no Trade Builder CTA
+
+UNSUPPORTED
+
+Show:
+
+- requested strategy
+- concise explanation
+- only MCP-qualified alternatives
+- no invented recommendation
+
+==================================================
+7. HEADLINE RULES
+==================================================
+
+Use the MCP verdict as the source of truth.
+
+LIVE_OPTIONS with real chain:
+"One live options trade candidate identified."
+
+LIVE_OPTIONS using mock/synthetic data:
+"One simulated options candidate generated for development testing."
+
+ESTIMATED_OPTIONS:
+"One estimated options strategy identified."
+
+STOCK:
+"One stock trade candidate identified."
+
+WATCH:
+"One potential setup is worth watching, but it is not actionable yet."
+
+NO_TRADE:
+"Setups were reviewed, but none currently qualify for this request."
+
+UNSUPPORTED:
+"This strategy is not yet supported by the current recommendation engine."
+
+For multiple ideas, use the actual returned count.
+
+Narrative, headline, cards, and CTA states must agree.
+
+==================================================
+8. OPENAI ROLE
+==================================================
+
+OpenAI may explain the structured recommendation.
+
+It must not:
+
+- change the verdict
+- invent a symbol
+- invent a contract
+- invent premium or Greeks
+- invent probability of profit
+- present estimated/mock output as live
+- turn WATCH into a trade
+- override NO_TRADE
+- recommend covered calls without verified holdings
+- create bearish evidence when MCP found none
+
+If OpenAI fails after MCP succeeds:
+
+- render the recommendation cards
+- use a concise deterministic server-generated summary
+- do not discard the MCP result
+
+==================================================
+9. CTA GATING
+==================================================
+
+Real LIVE_OPTIONS:
+
+Show Trade Builder only if:
+
+- exact contracts exist
+- candidate is fresh
+- risk is complete
+- data is real rather than mock/synthetic
+
+Simulated LIVE_OPTIONS:
+
+- allow Analyze / View Setup
+- optionally allow Paper Trade only if such a mode already exists
+- no real order ticket
+
+ESTIMATED_OPTIONS:
+
+- Analyze Underlying
+- View Setup
+- Connect Provider
+- Save/Watch
+- no live option ticket
+
+STOCK:
+
+Trade Builder only if fresh, actionable, and risk-complete.
+
+WATCH / NO_TRADE / UNSUPPORTED:
+
+No Trade Builder.
+
+Never open Trade Builder automatically.
+
+==================================================
+10. COMMAND CENTER
+==================================================
+
+Update recommendation-related quick actions:
+
+- Find a Trade
+- Find a Bullish Trade
+- Find a Stock Trade
+- Find an Options Trade
+- Find a Credit Spread
+- Find a Trade Under $500 Risk
+- Find an Income Trade
+
+Keep Analyze a Stock routed to analysis rather than recommendation.
+
+Do not hardcode symbols.
+
+==================================================
+11. FAILURE HANDLING
+==================================================
+
+Handle:
+
+- recommend_trade_strategy not discovered
+- MCP unavailable
+- MCP timeout
+- malformed recommendation payload
+- no qualifying setup
+- unsupported strategy
+- options provider unavailable
+- trusted context expired
+- OpenAI unavailable after MCP success
+
+Never replace a failed deterministic recommendation with a generic GPT-selected trade.
+
+==================================================
+12. TESTS
+==================================================
+
+Add tests for:
+
+1. Analyze NVDA remains on analysis flow.
+2. Find a trade for NVDA calls recommend_trade_strategy.
+3. Analyze and recommend runs both flows.
+4. Find a credit spread calls recommendation engine.
+5. What is a credit spread remains educational.
+6. Explain and find returns both.
+7. Symbol extraction.
+8. Strategy alias normalization.
+9. Direction normalization.
+10. Max-risk parsing.
+11. Count parsing.
+12. LIVE_OPTIONS real-data rendering.
+13. LIVE_OPTIONS synthetic-data badge.
+14. ESTIMATED_OPTIONS rendering.
+15. Estimated output has no live-only fields.
+16. STOCK rendering.
+17. WATCH rendering.
+18. NO_TRADE rendering.
+19. UNSUPPORTED rendering.
+20. MCP verdict cannot be overridden.
+21. OpenAI failure preserves cards.
+22. Malformed payload handled safely.
+23. Trade Builder CTA gating.
+24. No automatic execution.
+25. Existing Find 3 Bullish Trades remains compatible or is deliberately migrated with updated tests.
+26. Existing detailed VCP analysis unchanged.
+27. Existing education flows unchanged.
+28. No secrets in frontend or logs.
+
+Run:
+
+npm test
+npm run build
+
+Also run all focused Ask AI, Command Center, recommendation UI, and MCP-client suites.
+
+Do not commit.
+Do not push.
+Do not deploy.
+
+At completion report:
+
+1. Previous routing
+2. New intent distinctions
+3. Goal normalization
+4. MCP invocation
+5. Structured response
+6. Cards and headlines
+7. Simulated/live/estimated behavior
+8. CTA gating
+9. Failure behavior
+10. Tests
+11. Build
+12. Compatibility concerns
+13. Manual UAT prompts
+
+Wait for review.

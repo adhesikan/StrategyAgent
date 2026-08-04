@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { VcpAnalysisCards } from "@/components/vcp-analysis-cards";
 import { MultiStrategyAnalysisCards } from "@/components/multi-strategy-analysis-cards";
 import type { MultiStrategyAnalysis } from "@/lib/multi-strategy-analysis";
+import { StrategyRecommendationCards } from "@/components/strategy-recommendation-cards";
+import type { StrategyRecommendation } from "@/lib/strategy-recommendation";
 import { OpportunitySearchCards } from "@/components/opportunity-search-cards";
 import type { OpportunitySearchResult } from "@/lib/opportunity-search";
 import type { VcpAnalysis } from "@/lib/vcp-analysis";
@@ -116,6 +118,9 @@ interface AskResponse {
   // Optional deterministic opportunity-search payload (additive)
   opportunitySearch?: OpportunitySearchResult;
   opportunitySearchFailed?: boolean;
+  // Optional deterministic trade-strategy recommendation (additive)
+  strategyRecommendation?: StrategyRecommendation;
+  recommendationFailed?: boolean;
 }
 
 const CONFIDENCE_TONE: Record<string, string> = {
@@ -297,6 +302,7 @@ export default function AskPage() {
 
               {data.vcpAnalysis && <VcpAnalysisCards analysis={data.vcpAnalysis} />}
 
+              {data.strategyRecommendation && <StrategyRecommendationCards recommendation={data.strategyRecommendation} />}
               {data.multiStrategyAnalysis && <MultiStrategyAnalysisCards analysis={data.multiStrategyAnalysis} />}
 
               {data.opportunitySearchFailed && (

@@ -43,6 +43,11 @@ export const MCP_ALLOWED_TOOLS = [
   // when the USER explicitly clicks "Prepare in Trade Builder" on a qualified
   // card. Output only prefills the Trade Builder; it never places an order.
   "prepare_trade_ticket",
+  // Deterministic recommendation engine — backend orchestration only, invoked
+  // for explicit trade-seeking asks ("find a trade for NVDA", "find a credit
+  // spread"). Research output only; never executes. NOT in MCP_AI_TOOLS: the
+  // model never chooses when to call it or what arguments to pass.
+  "recommend_trade_strategy",
 ] as const;
 
 export type McpAllowedTool = (typeof MCP_ALLOWED_TOOLS)[number];
@@ -297,6 +302,56 @@ export async function prepareTradeTicket(args: {
     ...(args.legs && args.legs.length ? { legs: args.legs.slice(0, 6) } : {}),
     ...(args.optionsContextToken ? { optionsContextToken: args.optionsContextToken } : {}),
   });
+}
+
+export type McpTradeObjective = "growth" | "income" | "capital_preservation" | "hedging" | "speculative";
+export type McpRequestedStrategy =
+  | "stock"
+  | "long_call"
+  | "long_put"
+  | "covered_call"
+  | "cash_secured_put"
+  | "bull_put_credit_spread"
+  | "bear_call_credit_spread"
+  | "call_debit_spread"
+  | "put_debit_spread";
+
+export interface RecommendTradeStrategyArgs {
+  /** Omit for a market-wide search ("find 3 bullish trades"). */
+  symbol?: string;
+  objective?: McpTradeObjective;
+  instrumentPreference?: "stock" | "options" | "either";
+  direction?: "bullish" | "bearish" | "neutral" | "either";
+  requestedStrategy?: McpRequestedStrategy;
+  maxRiskDollars?: number;
+  maxRiskPercent?: number;
+  targetDTE?: number;
+  accountSize?: number;
+  numberOfIdeas?: number;
+  /** Short-lived OPAQUE backend-minted context token — never a broker OAuth token. */
+  optionsContextToken?: string;
+}
+
+/**
+ * Deterministic trade-strategy recommendation (verdict per idea:
+ * LIVE_OPTIONS / ESTIMATED_OPTIONS / STOCK / WATCH / NO_TRADE / UNSUPPORTED).
+ * Backend-only: never exposed to the AI; args are model-safe only — no
+ * account ids, user ids, connection ids, or credentials are ever passed.
+ */
+export async function recommendTradeStrategy(a: RecommendTradeStrategyArgs): Promise<unknown> {
+  const args: Record<string, unknown> = {};
+  if (a.symbol) args.symbol = cleanSymbol(a.symbol);
+  if (a.objective) args.objective = a.objective;
+  if (a.instrumentPreference) args.instrumentPreference = a.instrumentPreference;
+  if (a.direction) args.direction = a.direction;
+  if (a.requestedStrategy) args.requestedStrategy = a.requestedStrategy;
+  if (typeof a.maxRiskDollars === "number" && a.maxRiskDollars > 0) args.maxRiskDollars = a.maxRiskDollars;
+  if (typeof a.maxRiskPercent === "number" && a.maxRiskPercent > 0 && a.maxRiskPercent <= 100) args.maxRiskPercent = a.maxRiskPercent;
+  if (typeof a.targetDTE === "number" && a.targetDTE > 0) args.targetDTE = Math.floor(a.targetDTE);
+  if (typeof a.accountSize === "number" && a.accountSize > 0) args.accountSize = a.accountSize;
+  if (typeof a.numberOfIdeas === "number") args.numberOfIdeas = Math.max(1, Math.min(10, Math.floor(a.numberOfIdeas)));
+  if (a.optionsContextToken) args.optionsContextToken = a.optionsContextToken;
+  return callAllowedTool("recommend_trade_strategy", args);
 }
 
 export async function getMarketRegime(): Promise<unknown> {

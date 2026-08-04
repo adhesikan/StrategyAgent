@@ -34,6 +34,16 @@ describe("QUICK_ACTIONS", () => {
     expect(byId["analyze"].href).toBe("");
     for (const a of QUICK_ACTIONS) expect(a.event.startsWith("home_")).toBe(true);
   });
+  it("trade-seeking actions route into Ask AI with recommendation intents (no hardcoded tickers)", () => {
+    const byId = Object.fromEntries(QUICK_ACTIONS.map((a) => [a.id, a]));
+    expect(byId["find-trade"].href).toBe("/ask?q=Find%20a%20trade");
+    expect(byId["find-bullish"].href).toBe("/ask?q=Find%20a%20bullish%20trade");
+    expect(byId["find-options"].href).toBe("/ask?q=Find%20an%20options%20trade");
+    expect(byId["find-credit-spread"].href).toBe("/ask?q=Find%20a%20credit%20spread");
+    expect(byId["find-small-risk"].href).toBe("/ask?q=Find%20a%20trade%20under%20%24500%20max%20loss");
+    // no hardcoded ticker symbols in any quick-action query
+    for (const a of QUICK_ACTIONS) expect(a.href).not.toMatch(/\b(NVDA|AAPL|TSLA|MU|SPY)\b/);
+  });
 });
 
 describe("normalizeOppStage", () => {

@@ -767,6 +767,14 @@ interface AskAnswer {
   // derived deterministically from scan_strategy/build_trade_candidate, never
   // model-generated. Optional additive field: existing clients ignore it.
   multiStrategyAnalysis?: import("../mcp/multi-strategy-analysis").MultiStrategyAnalysis;
+  // Deterministic trade-strategy recommendation (explicit trade-seeking asks
+  // like "find a trade for NVDA" / "find a credit spread") — the validated
+  // recommend_trade_strategy result, never model-generated. Additive field.
+  strategyRecommendation?: import("../mcp/strategy-recommendation").StrategyRecommendation;
+  // True when a trade-seeking ask was routed to the recommendation engine but
+  // the engine failed — drives honest "temporarily unavailable" copy; the LLM
+  // never invents a replacement trade.
+  recommendationFailed?: boolean;
 }
 
 function ruleBasedAnswer(question: string, intent: string, ctx: ContextBlock): AskAnswer {
@@ -826,6 +834,10 @@ async function callOpenAi(
   } = {},
 ): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
+  // Declared outside the try so the catch can still return the deterministic
+  // recommendation (never discarded because prose generation failed).
+  let strategyRec: import("../mcp/strategy-recommendation").StrategyRecommendation | null = null;
+  let tradeReqKind: import("../mcp/strategy-recommendation").TradeRequestKind | null = null;
   try {
     const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -896,10 +908,48 @@ async function callOpenAi(
     // The LLM never picks strategies; on any failure here the flow falls
     // back to the pre-existing VCP-only behavior — never crashes an ask.
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // Deterministic trade-strategy recommendation (before OpenAI):
+    // explicit trade-seeking asks ("find a trade for NVDA", "find a credit
+    // spread", "what should I trade today") route through the MCP
+    // recommend_trade_strategy engine. The LLM never selects trades; on
+    // engine failure we return an honest "unavailable" answer — the model
+    // is never allowed to invent a replacement recommendation.
+    // Broad multi-idea asks ("find 3 bullish trades") were already routed
+    // to the opportunity-search flow upstream (opts.opportunitySearch) and
+    // are deliberately retained there.
+    // ------------------------------------------------------------------
+    if (isMcpEnabled() && !opts.opportunitySearch) {
+      let recAttempted = false;
+      try {
+        const sr = await import("../mcp/strategy-recommendation");
+        const reqIntent = sr.classifyTradeRequest(question, ctx.tickers.map((t) => t.symbol));
+        if (reqIntent) {
+          tradeReqKind = reqIntent.kind;
+          recAttempted = true;
+          const tools = await import("../mcp/tools");
+          strategyRec = await sr.runStrategyRecommendation(reqIntent.goal, {
+            recommend: (args) => tools.recommendTradeStrategy(args as import("../mcp/tools").RecommendTradeStrategyArgs),
+          });
+        }
+      } catch (err) {
+        console.warn("[ask] strategy recommendation unavailable:", (err as Error).message);
+        if (recAttempted) {
+          // Engine failed AFTER we committed to the recommendation route:
+          // honest unavailable copy, no GPT-invented trade.
+          const sr = await import("../mcp/strategy-recommendation");
+          return { ...sr.buildRecommendationUnavailableAnswer(), confidence: "low", recommendationFailed: true };
+        }
+        tradeReqKind = null; // classification itself failed → existing flows
+      }
+    }
+
     let multiStrategy: import("../mcp/multi-strategy-analysis").MultiStrategyAnalysis | null = null;
     let multiStrategyAttempted = false;
     let unresolvedStrategyAsk: { raw: string; supported: string[] } | null = null;
-    if (isMcpEnabled() && !opts.opportunitySearch && ctx.tickers.length > 0) {
+    // Pure recommendation asks skip the multi-strategy analysis scan; a
+    // "combined" ask ("Analyze NVDA and recommend a trade") runs both.
+    if (isMcpEnabled() && !opts.opportunitySearch && ctx.tickers.length > 0 && (tradeReqKind === null || tradeReqKind === "combined")) {
       try {
         const msa = await import("../mcp/multi-strategy-analysis");
         const registry = await msa.getCachedStrategyRegistry();
@@ -967,6 +1017,7 @@ async function callOpenAi(
       question,
       context: compact,
       ...(opts.opportunitySearch ? { opportunitySearch: opts.opportunitySearch } : {}),
+      ...(strategyRec ? { strategyRecommendation: strategyRec } : {}),
       ...(multiStrategy ? { multiStrategyAnalysis: multiStrategy } : {}),
       ...(vcpScan
         ? {
@@ -1020,6 +1071,14 @@ async function callOpenAi(
       // multi-strategy result only — no tools, no extra scans, no invention.
       mcpTools = [];
       mcpSystemRules += `\n- The "multiStrategyAnalysis" field in the user content is the DETERMINISTIC result of scanning ${multiStrategy.symbol} across every eligible scanner strategy, plus trade-candidate qualification. Your job is ONLY to explain it. Rules: (1) Name the primary strategy (primarySetup) and clearly distinguish it from supporting evidence (supportingSetups). (2) State the deterministic overallVerdict (${multiStrategy.overallVerdict}) — you may NEVER override, soften, or contradict it, and never contradict a candidate's NO_TRADE verdict. (3) Explain why the trade qualifies or fails using ONLY the provided selectionReasons, reasons, warnings, and noTradeReasons. (4) Mention earnings/market-regime/risk warnings when present in marketContext or candidate data. (5) Scanner detections are AI-generated analysis, not recommendations — never tell the user to buy/sell. (6) NEVER invent triggers, stops, targets, scores, or strategy matches that are not in the payload; if a level is missing, say it is not available. (7) NEVER compare raw scores across different strategies as if they were equivalent. (8) Do not call any tools.`;
+    }
+
+    if (strategyRec) {
+      // Hard technical enforcement: with a deterministic recommendation the
+      // model gets NO tools — it explains the MCP verdict, nothing more.
+      mcpTools = [];
+      const verdicts = strategyRec.recommendations.map((r) => r.overallVerdict).join(", ");
+      mcpSystemRules += `\n- The "strategyRecommendation" field in the user content is the DETERMINISTIC output of the platform's recommendation engine for this trade-seeking request. Your job is ONLY to explain it. Rules: (1) The verdict(s) [${verdicts}] are the source of truth — you may NEVER override, soften, upgrade, or contradict them. A WATCH or NO_TRADE verdict must never be presented as an actionable trade. (2) Explain the recommendation using ONLY the provided strategySummary, reasons, warnings, setup, riskAssessment, optionAnalysis, and recommendedPosition fields; if a field is missing, say it is not available. (3) NEVER fabricate premiums, contract symbols, strikes, expirations, Greeks, IV, bid/ask, open interest, volume, probabilities, entries, stops, or targets not present in the payload. (4) ESTIMATED_OPTIONS means no live options chain was used — present strike zones and DTE as estimates and never quote live-only fields. (5) UNSUPPORTED means the requested structure is not yet supported — present the provided safer alternatives only. (6) This is AI-generated research, not investment advice — never tell the user to buy or sell.${tradeReqKind === "education_plus_search" ? " (7) The user also asked for an explanation of the concept — give a brief educational explanation FIRST, then present the deterministic recommendation result." : ""} Do not call any tools.`;
     }
 
     if (opts.opportunitySearch) {
@@ -1095,7 +1154,14 @@ async function callOpenAi(
     // bullishness — so it's derived server-side, not left to the model.
     const vcpAnalysis = (vcpScan as any)?.analysis as import("../mcp/analysis-scan").VcpAnalysis | undefined;
     const vcpScanFailed = vcpScanAttempted && !vcpScan;
-    if (multiStrategyAttempted && multiStrategy) {
+    if (strategyRec) {
+      try {
+        const { recommendationConfidence } = await import("../mcp/strategy-recommendation");
+        confidence = recommendationConfidence(strategyRec);
+      } catch {
+        /* keep model confidence */
+      }
+    } else if (multiStrategyAttempted && multiStrategy) {
       try {
         const { multiStrategyConfidence } = await import("../mcp/multi-strategy-analysis");
         confidence = multiStrategyConfidence(multiStrategy);
@@ -1115,8 +1181,20 @@ async function callOpenAi(
       }
     }
 
+    // Deterministic verdict-driven headline for pure recommendation asks —
+    // the MCP verdict, not the model, decides what the headline claims.
+    let recHeadline: string | null = null;
+    if (strategyRec && tradeReqKind === "recommendation") {
+      try {
+        const { recommendationHeadline } = await import("../mcp/strategy-recommendation");
+        recHeadline = recommendationHeadline(strategyRec);
+      } catch {
+        /* keep model headline */
+      }
+    }
+
     return {
-      headline: typeof parsed.headline === "string" && parsed.headline.trim() ? parsed.headline.trim().slice(0, 160) : "Here's what I found.",
+      headline: recHeadline ?? (typeof parsed.headline === "string" && parsed.headline.trim() ? parsed.headline.trim().slice(0, 160) : "Here's what I found."),
       answer: typeof parsed.answer === "string" ? parsed.answer.trim().slice(0, 1800) : "",
       keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.filter((x: any) => typeof x === "string").slice(0, 5) : [],
       riskNote: typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is AI-generated analysis — not investment advice.",
@@ -1125,9 +1203,24 @@ async function callOpenAi(
       ...(vcpAnalysis ? { vcpAnalysis } : {}),
       ...(vcpScanFailed ? { vcpScanFailed: true } : {}),
       ...(multiStrategy ? { multiStrategyAnalysis: multiStrategy } : {}),
+      ...(strategyRec ? { strategyRecommendation: strategyRec } : {}),
     };
   } catch (err) {
     console.warn("[ask] openai call failed, falling back:", err);
+    // A successful deterministic recommendation is never discarded because
+    // prose generation failed — return a server-generated summary instead.
+    if (strategyRec) {
+      try {
+        const { buildRecommendationFallbackAnswer, recommendationConfidence } = await import("../mcp/strategy-recommendation");
+        return {
+          ...buildRecommendationFallbackAnswer(strategyRec),
+          confidence: recommendationConfidence(strategyRec),
+          strategyRecommendation: strategyRec,
+        };
+      } catch {
+        /* fall through to null */
+      }
+    }
     return null;
   }
 }
@@ -1345,7 +1438,23 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // the signals AGREE with their intent.
       type DirectionalKind = "long_call" | "long_put" | "bull_call_spread" | "bear_put_spread";
       let directionalBias: { direction: DirectionalKind; bias: "bullish" | "bearish" | "neutral"; biasReason: string } | null = null;
+      // Hard mutual exclusion: when this ask classifies as a deterministic
+      // recommendation request (and MCP is enabled, so the engine will handle
+      // it — or fail honestly), the legacy ticket builder must NOT run. A
+      // second, conflicting trade presentation (or a ticket after an honest
+      // "unavailable" answer) is exactly what the recommendation flow exists
+      // to prevent. Same classifier callOpenAi uses — pure and deterministic.
+      let recommendationHandled = false;
+      if (isMcpEnabled()) {
+        try {
+          const sr = await import("../mcp/strategy-recommendation");
+          recommendationHandled = !!sr.classifyTradeRequest(question, tickers);
+        } catch {
+          /* classification unavailable → legacy behavior */
+        }
+      }
       try {
+        if (recommendationHandled) throw Object.assign(new Error("skip"), { code: "REC_HANDLED" });
         const parsedPrompt = parsePrompt(question);
         const lower = question.toLowerCase();
         if (parsedPrompt.incomeIntent && tickers.length > 0) {
@@ -1429,7 +1538,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           }
         }
       } catch (err) {
-        console.warn("[ask] trade detail build failed:", err);
+        if ((err as any)?.code !== "REC_HANDLED") console.warn("[ask] trade detail build failed:", err);
       }
 
       // If the user has a connected broker, replace the synthetic premium/
@@ -1498,6 +1607,10 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       }
 
       let answer = await callOpenAi(question, ctx);
+      // Defensive second layer of the mutual exclusion above: never present a
+      // legacy ticket alongside (or after the failure of) a deterministic
+      // recommendation.
+      if (answer && (answer.strategyRecommendation || answer.recommendationFailed)) tradeDetail = null;
       const source: "openai" | "rule_based" = answer ? "openai" : "rule_based";
       if (!answer) answer = ruleBasedAnswer(question, intent, ctx);
 
@@ -1664,8 +1777,18 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // Presentation/navigation only — falls back to the intent-based list.
       let suggestions = suggestionsForIntent(intent, tickers);
       const msaForNav = (answer as AskAnswer).multiStrategyAnalysis;
+      const recForNav = (answer as AskAnswer).strategyRecommendation;
       const stageForNav = (answer as AskAnswer).vcpAnalysis?.analysisSummary?.stage;
-      if (msaForNav) {
+      if (recForNav) {
+        // Verdict-gated CTAs: no Trade Builder handoff for WATCH / NO_TRADE /
+        // UNSUPPORTED / estimated or simulated data.
+        try {
+          const { suggestionsForRecommendation } = await import("../mcp/strategy-recommendation");
+          suggestions = suggestionsForRecommendation(recForNav);
+        } catch {
+          /* keep intent-based suggestions */
+        }
+      } else if (msaForNav) {
         try {
           const { suggestionsForMultiStrategy } = await import("../mcp/multi-strategy-analysis");
           suggestions = suggestionsForMultiStrategy(msaForNav);

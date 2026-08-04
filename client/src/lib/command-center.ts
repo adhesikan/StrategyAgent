@@ -27,6 +27,13 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { id: "analyze", label: "Analyze a Stock", description: "Review technicals, fundamentals, news, and market context.", event: "home_analyze_stock", href: "" }, // prefills the command bar with "Analyze " — user supplies the ticker (no hardcoded tickers)
   { id: "find-trades", label: "Find Trades", description: "Explore trade candidates matching selected criteria.", event: "home_find_trades", href: askRoute("Find high-quality trade opportunities") },
   { id: "income", label: "Generate Income", description: "Research covered calls, cash-secured puts, and income strategies.", event: "home_generate_income", href: askRoute("Find income opportunities") },
+  // Recommendation-engine intents — each routes into Ask AI where the
+  // deterministic recommend_trade_strategy flow answers. No hardcoded tickers.
+  { id: "find-trade", label: "Find a Trade", description: "Research the single strongest setup available right now.", event: "home_find_trade", href: askRoute("Find a trade") },
+  { id: "find-bullish", label: "Find a Bullish Trade", description: "Research the strongest bullish setup available today.", event: "home_find_bullish_trade", href: askRoute("Find a bullish trade") },
+  { id: "find-options", label: "Find an Options Trade", description: "Research an options structure matched to current setups.", event: "home_find_options_trade", href: askRoute("Find an options trade") },
+  { id: "find-credit-spread", label: "Find a Credit Spread", description: "Evaluate defined-risk credit-spread candidates.", event: "home_find_credit_spread", href: askRoute("Find a credit spread") },
+  { id: "find-small-risk", label: "Trade Under $500 Risk", description: "Research a defined-risk idea capped at $500 of risk.", event: "home_find_small_risk_trade", href: askRoute("Find a trade under $500 max loss") },
   { id: "scan", label: "Scan the Market", description: "Search for emerging technical and options setups.", event: "home_scan_market", href: "/scanner" },
 ];
 

@@ -1,11 +1,16 @@
 // Sprint 4.1B — Institutional Trade Card logic tests.
-// Sprint 4.1C — Unified Trade Status System tests (computeTradeStatus, tradeStatusLabel,
-//               tradeStatusBadgeClass, computeTradeStatusDirect).
+// Sprint 4.1C — Unified Trade Status System tests.
+// Sprint 4.1D — Ranking Transparency tests (computeRankingReasons,
+//               computeCandidateQuality, CandidateQuality, fitsRiskBudget).
 // Pure-function tests — no React, no DOM, no server calls.
 
 import { describe, it, expect } from "vitest";
 import {
+  CANDIDATE_QUALITY_CLASS,
+  CANDIDATE_QUALITY_LABEL,
+  computeCandidateQuality,
   computeDistanceToTrigger,
+  computeRankingReasons,
   computeTradeStatus,
   computeTradeStatusDirect,
   extractLevelPrice,
@@ -16,6 +21,7 @@ import {
   tradePlanCtas,
   tradeStatusBadgeClass,
   tradeStatusLabel,
+  type CandidateQuality,
   type TradeCardStatus,
   type TradePlanViewModel,
 } from "./trade-plan-view-model";
@@ -741,5 +747,380 @@ describe("tradeStatus end-to-end through mappers", () => {
   it("fromRecIdea WATCH + no code → 'Waiting for Confirmation'", () => {
     const vm = fromRecIdea(makeRecIdea({ overallVerdict: "WATCH" }));
     expect(tradeStatusLabel(vm)).toBe("Waiting for Confirmation");
+  });
+});
+
+// ===========================================================================
+// Sprint 4.1D — Ranking Transparency
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// computeCandidateQuality — all four tiers
+// ---------------------------------------------------------------------------
+
+describe("computeCandidateQuality", () => {
+  // Helpers that build minimal objects accepted by computeCandidateQuality
+  function qOpts(overrides: Partial<Parameters<typeof computeCandidateQuality>[0]> = {}) {
+    return {
+      verdict:       "STOCK" as const,
+      tradeStatus:   "TRADE_READY" as const,
+      confidence:    "High",
+      dataQuality:   "LIVE",
+      earningsRisk:  undefined as boolean | undefined,
+      warnings:      [] as string[],
+      ...overrides,
+    };
+  }
+
+  it("PRIME: triggered + high confidence + live data + 0 warnings", () => {
+    expect(computeCandidateQuality(qOpts({ tradeStatus: "TRIGGERED" }))).toBe("PRIME");
+  });
+
+  it("PRIME: triggered + medium confidence counts", () => {
+    expect(computeCandidateQuality(qOpts({ tradeStatus: "TRIGGERED", confidence: "Medium" }))).toBe("PRIME");
+  });
+
+  it("STRONG: qualified + high confidence + 1 warning", () => {
+    expect(computeCandidateQuality(qOpts({ warnings: ["Minor liquidity concern"] }))).toBe("STRONG");
+  });
+
+  it("STRONG: qualified + medium confidence + 0 warnings", () => {
+    expect(computeCandidateQuality(qOpts({ confidence: "Medium" }))).toBe("STRONG");
+  });
+
+  it("MODERATE: triggered + high confidence + 2 warnings → drops to STRONG (≤1 threshold)", () => {
+    // Triggered + high conf + 2 warnings → not PRIME (warning count), check ≤1 rule
+    const result = computeCandidateQuality(qOpts({
+      tradeStatus: "TRIGGERED",
+      warnings: ["Warning A", "Warning B"],
+    }));
+    // 2 warnings → not PRIME; isQualified = true but warningCount > 1 → MODERATE
+    expect(result).toBe("MODERATE");
+  });
+
+  it("MODERATE: WATCH-list (not in qualified set)", () => {
+    expect(computeCandidateQuality(qOpts({
+      verdict: "WATCH" as any,
+      tradeStatus: "WATCH" as any,
+    }))).toBe("SPECULATIVE");
+  });
+
+  it("SPECULATIVE: ESTIMATED_OPTIONS always → SPECULATIVE regardless of confidence", () => {
+    expect(computeCandidateQuality(qOpts({
+      verdict: "ESTIMATED_OPTIONS" as any,
+      tradeStatus: "TRADE_READY" as any,
+    }))).toBe("SPECULATIVE");
+  });
+
+  it("SPECULATIVE: low confidence", () => {
+    expect(computeCandidateQuality(qOpts({ confidence: "Low" }))).toBe("SPECULATIVE");
+  });
+
+  it("SPECULATIVE: earnings risk present", () => {
+    expect(computeCandidateQuality(qOpts({ earningsRisk: true }))).toBe("SPECULATIVE");
+  });
+
+  it("SPECULATIVE: stale data quality", () => {
+    expect(computeCandidateQuality(qOpts({ dataQuality: "STALE" }))).toBe("SPECULATIVE");
+  });
+
+  it("SPECULATIVE: estimated data quality", () => {
+    expect(computeCandidateQuality(qOpts({ dataQuality: "ESTIMATED" }))).toBe("SPECULATIVE");
+  });
+
+  it("SPECULATIVE: missing data quality", () => {
+    expect(computeCandidateQuality(qOpts({ dataQuality: undefined }))).toBe("SPECULATIVE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CANDIDATE_QUALITY_LABEL and CANDIDATE_QUALITY_CLASS — completeness
+// ---------------------------------------------------------------------------
+
+describe("CANDIDATE_QUALITY_LABEL / CANDIDATE_QUALITY_CLASS", () => {
+  const ALL_TIERS: CandidateQuality[] = ["PRIME", "STRONG", "MODERATE", "SPECULATIVE"];
+
+  it.each(ALL_TIERS)("label is non-empty for %s", (tier) => {
+    expect(CANDIDATE_QUALITY_LABEL[tier]).toBeTruthy();
+  });
+
+  it.each(ALL_TIERS)("badge class is non-empty for %s", (tier) => {
+    expect(CANDIDATE_QUALITY_CLASS[tier]).toBeTruthy();
+  });
+
+  it("PRIME label is 'Prime'", () => {
+    expect(CANDIDATE_QUALITY_LABEL.PRIME).toBe("Prime");
+  });
+
+  it("STRONG label is 'Strong'", () => {
+    expect(CANDIDATE_QUALITY_LABEL.STRONG).toBe("Strong");
+  });
+
+  it("MODERATE label is 'Moderate'", () => {
+    expect(CANDIDATE_QUALITY_LABEL.MODERATE).toBe("Moderate");
+  });
+
+  it("SPECULATIVE label is 'Speculative'", () => {
+    expect(CANDIDATE_QUALITY_LABEL.SPECULATIVE).toBe("Speculative");
+  });
+
+  it("PRIME badge uses emerald tones", () => {
+    expect(CANDIDATE_QUALITY_CLASS.PRIME).toContain("emerald");
+  });
+
+  it("SPECULATIVE badge uses muted tones", () => {
+    expect(CANDIDATE_QUALITY_CLASS.SPECULATIVE).toContain("muted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeRankingReasons — all observable reason phrases
+// ---------------------------------------------------------------------------
+
+describe("computeRankingReasons", () => {
+  function rankVM(overrides: Partial<Parameters<typeof computeRankingReasons>[0]> = {}) {
+    return {
+      rank:          1 as number | undefined,
+      verdict:       "STOCK" as const,
+      triggerState:  "AWAITING_TRIGGER" as const,
+      tradeStatus:   "AWAITING_BREAKOUT" as const,
+      dataQuality:   "LIVE",
+      rewardRisk:    undefined as number | undefined,
+      earningsRisk:  undefined as boolean | undefined,
+      reasons:       [] as string[],
+      maxRiskIsExact: undefined as boolean | undefined,
+      fitsRiskBudget: undefined as boolean | undefined,
+      warnings:      [] as string[],
+      ...overrides,
+    };
+  }
+
+  it("returns empty array when rank is undefined (non-ranked source)", () => {
+    expect(computeRankingReasons(rankVM({ rank: undefined }))).toEqual([]);
+  });
+
+  it("'Actionable' present when triggerState is TRIGGERED", () => {
+    const reasons = computeRankingReasons(rankVM({ triggerState: "TRIGGERED", tradeStatus: "TRIGGERED" as const }));
+    expect(reasons).toContain("Actionable");
+  });
+
+  it("'Actionable' present when triggerState is AWAITING_TRIGGER", () => {
+    expect(computeRankingReasons(rankVM())).toContain("Actionable");
+  });
+
+  it("'Actionable' present when tradeStatus is TRADE_READY", () => {
+    const reasons = computeRankingReasons(rankVM({ triggerState: "NO_TRIGGER" as const, tradeStatus: "TRADE_READY" as const }));
+    expect(reasons).toContain("Actionable");
+  });
+
+  it("'Actionable' absent when triggerState is NO_TRIGGER and tradeStatus is WATCH", () => {
+    const reasons = computeRankingReasons(rankVM({
+      triggerState: "NO_TRIGGER" as const,
+      tradeStatus:  "WATCH" as const,
+    }));
+    expect(reasons).not.toContain("Actionable");
+  });
+
+  it("'Fresh data' present when dataQuality is LIVE", () => {
+    expect(computeRankingReasons(rankVM())).toContain("Fresh data");
+  });
+
+  it("'Fresh data' present when dataQuality is HIGH", () => {
+    expect(computeRankingReasons(rankVM({ dataQuality: "HIGH" }))).toContain("Fresh data");
+  });
+
+  it("'Fresh data' absent when dataQuality is STALE", () => {
+    expect(computeRankingReasons(rankVM({ dataQuality: "STALE" }))).not.toContain("Fresh data");
+  });
+
+  it("'Fresh data' absent when dataQuality is ESTIMATED", () => {
+    expect(computeRankingReasons(rankVM({ dataQuality: "ESTIMATED" }))).not.toContain("Fresh data");
+  });
+
+  it("'Fresh data' absent when dataQuality is undefined", () => {
+    expect(computeRankingReasons(rankVM({ dataQuality: undefined }))).not.toContain("Fresh data");
+  });
+
+  it("'Better reward/risk' present when rewardRisk ≥ 2.5", () => {
+    expect(computeRankingReasons(rankVM({ rewardRisk: 2.5 }))).toContain("Better reward/risk");
+    expect(computeRankingReasons(rankVM({ rewardRisk: 3.2 }))).toContain("Better reward/risk");
+  });
+
+  it("'Better reward/risk' absent when rewardRisk < 2.5", () => {
+    expect(computeRankingReasons(rankVM({ rewardRisk: 2.4 }))).not.toContain("Better reward/risk");
+    expect(computeRankingReasons(rankVM({ rewardRisk: 1.0 }))).not.toContain("Better reward/risk");
+  });
+
+  it("'Better reward/risk' absent when rewardRisk is undefined", () => {
+    expect(computeRankingReasons(rankVM({ rewardRisk: undefined }))).not.toContain("Better reward/risk");
+  });
+
+  it("'Lower earnings risk' present when earningsRisk is falsy and no earnings warning", () => {
+    expect(computeRankingReasons(rankVM())).toContain("Lower earnings risk");
+  });
+
+  it("'Lower earnings risk' absent when earningsRisk is true", () => {
+    expect(computeRankingReasons(rankVM({ earningsRisk: true }))).not.toContain("Lower earnings risk");
+  });
+
+  it("'Lower earnings risk' absent when warnings contain 'earnings'", () => {
+    const reasons = computeRankingReasons(rankVM({ warnings: ["Upcoming earnings event"] }));
+    expect(reasons).not.toContain("Lower earnings risk");
+  });
+
+  it("'Higher confluence' present when reasons.length ≥ 3", () => {
+    expect(computeRankingReasons(rankVM({ reasons: ["A", "B", "C"] }))).toContain("Higher confluence");
+    expect(computeRankingReasons(rankVM({ reasons: ["A", "B", "C", "D", "E"] }))).toContain("Higher confluence");
+  });
+
+  it("'Higher confluence' absent when reasons.length < 3", () => {
+    expect(computeRankingReasons(rankVM({ reasons: ["A", "B"] }))).not.toContain("Higher confluence");
+    expect(computeRankingReasons(rankVM({ reasons: [] }))).not.toContain("Higher confluence");
+  });
+
+  it("'Fits risk parameters' present when fitsRiskBudget is true", () => {
+    expect(computeRankingReasons(rankVM({ fitsRiskBudget: true }))).toContain("Fits risk parameters");
+  });
+
+  it("'Fits risk parameters' absent when fitsRiskBudget is false", () => {
+    expect(computeRankingReasons(rankVM({ fitsRiskBudget: false }))).not.toContain("Fits risk parameters");
+  });
+
+  it("'Fits risk parameters' absent when fitsRiskBudget is undefined", () => {
+    expect(computeRankingReasons(rankVM({ fitsRiskBudget: undefined }))).not.toContain("Fits risk parameters");
+  });
+
+  it("'Exact sizing available' present when maxRiskIsExact is true", () => {
+    expect(computeRankingReasons(rankVM({ maxRiskIsExact: true }))).toContain("Exact sizing available");
+  });
+
+  it("'Exact sizing available' absent when maxRiskIsExact is false/undefined", () => {
+    expect(computeRankingReasons(rankVM({ maxRiskIsExact: false }))).not.toContain("Exact sizing available");
+    expect(computeRankingReasons(rankVM({ maxRiskIsExact: undefined }))).not.toContain("Exact sizing available");
+  });
+
+  it("multiple reasons accumulate correctly", () => {
+    const reasons = computeRankingReasons(rankVM({
+      triggerState:   "TRIGGERED" as const,
+      tradeStatus:    "TRIGGERED" as const,
+      dataQuality:    "LIVE",
+      rewardRisk:     3.0,
+      earningsRisk:   undefined,
+      reasons:        ["Signal A", "Signal B", "Signal C"],
+      fitsRiskBudget: true,
+      maxRiskIsExact: true,
+    }));
+    expect(reasons).toContain("Actionable");
+    expect(reasons).toContain("Fresh data");
+    expect(reasons).toContain("Better reward/risk");
+    expect(reasons).toContain("Lower earnings risk");
+    expect(reasons).toContain("Higher confluence");
+    expect(reasons).toContain("Fits risk parameters");
+    expect(reasons).toContain("Exact sizing available");
+    expect(reasons.length).toBe(7);
+  });
+
+  it("all negative inputs yield empty reasons list (but array not undefined)", () => {
+    const reasons = computeRankingReasons(rankVM({
+      triggerState:   "NO_TRIGGER" as const,
+      tradeStatus:    "WATCH" as const,
+      dataQuality:    "STALE",
+      rewardRisk:     1.0,
+      earningsRisk:   true,
+      reasons:        [],
+      fitsRiskBudget: false,
+      maxRiskIsExact: false,
+    }));
+    expect(reasons).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 4.1D integration: fromRankedCandidate populates quality + reasons
+// ---------------------------------------------------------------------------
+
+describe("Sprint 4.1D integration through fromRankedCandidate", () => {
+  it("candidateQuality is populated after fromRankedCandidate", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      confidence: "High",
+      dataQuality: "LIVE",
+    }));
+    expect(vm.candidateQuality).toBeDefined();
+    expect(["PRIME", "STRONG", "MODERATE", "SPECULATIVE"]).toContain(vm.candidateQuality);
+  });
+
+  it("rankingReasons is populated after fromRankedCandidate (ranked candidate)", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      rank: 1,
+      dataQuality: "LIVE",
+    }));
+    expect(vm.rankingReasons).toBeDefined();
+    expect(Array.isArray(vm.rankingReasons)).toBe(true);
+  });
+
+  it("rankingReasons contains 'Fresh data' when dataQuality is LIVE", () => {
+    const vm = fromRankedCandidate(makeCandidate({ dataQuality: "LIVE" }));
+    expect(vm.rankingReasons).toContain("Fresh data");
+  });
+
+  it("rankingReasons contains 'Better reward/risk' when rewardRisk ≥ 2.5", () => {
+    const vm = fromRankedCandidate(makeCandidate({ rewardRisk: 3.0 }));
+    expect(vm.rankingReasons).toContain("Better reward/risk");
+  });
+
+  it("rankingReasons contains 'Higher confluence' when whySelected has ≥ 3 items", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      whySelected: ["EMA aligned", "Volume expansion", "Stage 2 base"],
+    }));
+    expect(vm.rankingReasons).toContain("Higher confluence");
+  });
+
+  it("rankingReasons does not contain 'Lower earnings risk' when earnings warning present", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      warnings: ["Earnings in 3 days"],
+    }));
+    expect(vm.rankingReasons).not.toContain("Lower earnings risk");
+  });
+
+  it("fitsRiskBudget is mapped from candidate and contributes to rankingReasons", () => {
+    const vm = fromRankedCandidate(makeCandidate({ fitsRiskBudget: true }));
+    expect(vm.fitsRiskBudget).toBe(true);
+    expect(vm.rankingReasons).toContain("Fits risk parameters");
+  });
+
+  it("candidateQuality is PRIME for triggered + high confidence + live data + 0 warnings", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      confidence:  "High",
+      dataQuality: "LIVE",
+      warnings:    [],
+      // trigger causes TRIGGERED state when currentPrice ≥ triggerPrice
+      trigger:     "Break above $150",
+      currentPrice: 155,
+    }));
+    expect(vm.tradeStatus).toBe("TRIGGERED");
+    expect(vm.candidateQuality).toBe("PRIME");
+  });
+
+  it("candidateQuality is SPECULATIVE for ESTIMATED_OPTIONS", () => {
+    const vm = fromRankedCandidate(makeCandidate({ instrument: "option", maxRiskIsExact: false }));
+    expect(vm.verdict).toBe("ESTIMATED_OPTIONS");
+    expect(vm.candidateQuality).toBe("SPECULATIVE");
+  });
+
+  it("candidateQuality is SPECULATIVE when earnings risk present", () => {
+    const vm = fromRankedCandidate(makeCandidate({ warnings: ["Earnings event upcoming"] }));
+    expect(vm.candidateQuality).toBe("SPECULATIVE");
+  });
+
+  it("fromRankedWatchCandidate does not populate rankingReasons (no rank)", () => {
+    const vm = fromRankedWatchCandidate(makeWatchCandidate());
+    // Watch candidates have no rank → reasons array should be empty or undefined
+    expect(!vm.rankingReasons || vm.rankingReasons.length === 0).toBe(true);
+  });
+
+  it("fromRecIdea does not populate candidateQuality (recommendation source)", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "STOCK" }));
+    // Recommendation ideas have no rank-based quality tier
+    expect(vm.candidateQuality).toBeUndefined();
   });
 });

@@ -7,6 +7,11 @@
 //   Never fabricate values — map only what the server supplied.
 //   All optional fields use undefined (not null or "") when absent.
 //   Source ("ranked" | "recommendation" | "analysis") controls CTA eligibility.
+//
+// Sprint 4.1D — Ranking Transparency:
+//   rankingReasons  — deterministic observable phrases explaining the ranking.
+//   candidateQuality — tier label derived from quality signals, NOT a score alias.
+//   Neither field exposes proprietary weighting or implies score == rank.
 
 import type { RankedTradeCandidate, RankedWatchCandidate } from "@/lib/ranked-trade-search";
 import type { RecIdea, RecommendationVerdict } from "@/lib/strategy-recommendation";
@@ -25,6 +30,155 @@ export type TradePlanTriggerState =
 
 /** Unified verdict — superset of RecommendationVerdict. */
 export type TradePlanVerdict = RecommendationVerdict | "UNAVAILABLE";
+
+// ---------------------------------------------------------------------------
+// Sprint 4.1D — Ranking Transparency
+// ---------------------------------------------------------------------------
+
+/**
+ * Observable quality tier for a ranked candidate.
+ *
+ * Derived from confidence, data quality, trigger state, earnings risk, and
+ * warning count. NOT a score alias — a high-scoring setup may land in
+ * MODERATE if data is partial or earnings risk is present.
+ *
+ * PRIME      — triggered + high/medium confidence + live data + no earnings risk
+ * STRONG     — qualified setup + solid confidence + few warnings
+ * MODERATE   — watch-list or qualified with gaps / low confidence
+ * SPECULATIVE — estimated-options data, low confidence, stale data, or earnings risk
+ */
+export type CandidateQuality = "PRIME" | "STRONG" | "MODERATE" | "SPECULATIVE";
+
+/** Human label for each quality tier (never implies a numeric score). */
+export const CANDIDATE_QUALITY_LABEL: Record<CandidateQuality, string> = {
+  PRIME:       "Prime",
+  STRONG:      "Strong",
+  MODERATE:    "Moderate",
+  SPECULATIVE: "Speculative",
+};
+
+/** Tailwind badge classes per quality tier. */
+export const CANDIDATE_QUALITY_CLASS: Record<CandidateQuality, string> = {
+  PRIME:       "border-emerald-500/50 text-emerald-300 bg-emerald-500/10",
+  STRONG:      "border-sky-500/40 text-sky-300 bg-sky-500/8",
+  MODERATE:    "border-amber-500/40 text-amber-300 bg-amber-500/8",
+  SPECULATIVE: "border-muted-foreground/30 text-muted-foreground bg-muted/8",
+};
+
+/**
+ * Derives the candidate quality tier from observable VM fields.
+ * Never exposes proprietary weights.
+ */
+export function computeCandidateQuality(vm: Pick<
+  TradePlanViewModel,
+  | "verdict"
+  | "tradeStatus"
+  | "confidence"
+  | "dataQuality"
+  | "earningsRisk"
+  | "warnings"
+>): CandidateQuality {
+  const isEstimated = vm.verdict === "ESTIMATED_OPTIONS";
+  const isEarnings  = !!vm.earningsRisk;
+  const isStaleData = !vm.dataQuality || /estimat|partial|mock|stale|unavailable/i.test(vm.dataQuality);
+  const isLowConf   = !vm.confidence || /low/i.test(vm.confidence);
+  const isHighConf  = !isLowConf && !!vm.confidence && /high/i.test(vm.confidence);
+  const isMedConf   = !isLowConf && !isHighConf;
+  const warningCount = (vm.warnings ?? []).length;
+  const isTriggered = vm.tradeStatus === "TRIGGERED";
+  const isQualified =
+    vm.verdict === "STOCK" || vm.verdict === "LIVE_OPTIONS" || vm.verdict === "ESTIMATED_OPTIONS";
+
+  // Speculative: estimated options, stale/absent data, earnings risk, or low confidence
+  if (isEstimated || isStaleData || isEarnings || isLowConf) return "SPECULATIVE";
+
+  // Prime: triggered + high/medium confidence + live data + zero warnings
+  if (isTriggered && (isHighConf || isMedConf) && !isStaleData && !isEarnings && warningCount === 0) {
+    return "PRIME";
+  }
+
+  // Strong: qualified + (high/medium confidence) + ≤1 warnings
+  if (isQualified && (isHighConf || isMedConf) && warningCount <= 1) return "STRONG";
+
+  // Moderate: watch-list or qualified with gaps
+  if (isQualified) return "MODERATE";
+
+  return "SPECULATIVE";
+}
+
+/**
+ * Returns deterministic, human-readable reasons explaining why a candidate
+ * achieved its ranking position.
+ *
+ * Rules:
+ *   • Each phrase is observable from the VM — nothing fabricated.
+ *   • Phrases describe observable advantages, not internal weights.
+ *   • An empty array is returned when no rank is set (non-ranked sources).
+ *   • Never implies that the highest score automatically ranks first.
+ */
+export function computeRankingReasons(vm: Pick<
+  TradePlanViewModel,
+  | "rank"
+  | "verdict"
+  | "triggerState"
+  | "tradeStatus"
+  | "dataQuality"
+  | "rewardRisk"
+  | "earningsRisk"
+  | "reasons"
+  | "maxRiskIsExact"
+  | "fitsRiskBudget"
+  | "warnings"
+>): string[] {
+  // Only ranked candidates get ranking reasons
+  if (vm.rank == null) return [];
+
+  const phrases: string[] = [];
+
+  // 1. Actionable — has a defined entry trigger (not a vague "watch" state)
+  if (
+    vm.triggerState === "TRIGGERED" ||
+    vm.triggerState === "AWAITING_TRIGGER" ||
+    vm.triggerState === "UNKNOWN" ||
+    vm.tradeStatus === "TRIGGERED" ||
+    vm.tradeStatus === "AWAITING_BREAKOUT" ||
+    vm.tradeStatus === "TRADE_READY"
+  ) {
+    phrases.push("Actionable");
+  }
+
+  // 2. Fresh data — data quality field present and not stale/estimated
+  if (vm.dataQuality && !/estimat|partial|mock|stale|unavailable/i.test(vm.dataQuality)) {
+    phrases.push("Fresh data");
+  }
+
+  // 3. Better reward/risk — R:R ≥ 2.5
+  if (vm.rewardRisk != null && vm.rewardRisk >= 2.5) {
+    phrases.push("Better reward/risk");
+  }
+
+  // 4. Lower earnings risk — no earnings event flagged
+  if (!vm.earningsRisk && !(vm.warnings ?? []).some((w) => /earnings/i.test(w))) {
+    phrases.push("Lower earnings risk");
+  }
+
+  // 5. Higher confluence — ≥ 3 supporting signals
+  if ((vm.reasons ?? []).length >= 3) {
+    phrases.push("Higher confluence");
+  }
+
+  // 6. Fits risk parameters — risk budget confirmed
+  if (vm.fitsRiskBudget === true) {
+    phrases.push("Fits risk parameters");
+  }
+
+  // 7. Exact sizing available — live contract data present
+  if (vm.maxRiskIsExact === true) {
+    phrases.push("Exact sizing available");
+  }
+
+  return phrases;
+}
 
 // ---------------------------------------------------------------------------
 // Sprint 4.1C — Unified Trade Status System
@@ -225,6 +379,24 @@ export interface TradePlanViewModel {
   rejectionReasonCode?: string | null;
   /** Sprint 4.1C: unified deterministic status — replaces generic "No Trade" label. */
   tradeStatus?: TradeCardStatus;
+  // Sprint 4.1D — Ranking Transparency
+  /**
+   * Observable quality tier for this setup — NOT a score alias or rank proxy.
+   * Derived from confidence, data quality, trigger state, earnings risk, and
+   * warnings. Only populated for ranked candidates.
+   */
+  candidateQuality?: CandidateQuality;
+  /**
+   * Deterministic phrases explaining why this candidate achieved its rank.
+   * Each phrase is observable (never reveals internal weights). Empty for
+   * non-ranked sources. Examples: "Actionable", "Fresh data", "Better reward/risk".
+   */
+  rankingReasons?: string[];
+  /**
+   * Whether the candidate's max-risk estimate fits within the user's risk
+   * budget (as determined by the ranking engine).
+   */
+  fitsRiskBudget?: boolean;
   // Source tag — controls CTA set and Trade Builder eligibility.
   source: "ranked" | "recommendation" | "analysis";
 }
@@ -385,6 +557,7 @@ export function fromRankedCandidate(
     targetPrice: extractLevelPrice(c.objective ?? undefined),
     maxRisk: c.maxRisk,
     maxRiskIsExact: c.maxRiskIsExact,
+    fitsRiskBudget: c.fitsRiskBudget,
     suggestedQuantity: c.quantity,
     rewardRisk: c.rewardRisk,
     confidence: c.confidence ?? undefined,
@@ -396,6 +569,9 @@ export function fromRankedCandidate(
   };
   vm.distanceToTrigger = computeDistanceToTrigger(vm) ?? undefined;
   vm.tradeStatus = computeTradeStatus(vm);
+  // Sprint 4.1D — populate quality tier and ranking reasons after status/trigger are set
+  vm.candidateQuality = computeCandidateQuality(vm);
+  vm.rankingReasons   = computeRankingReasons(vm);
   return vm;
 }
 

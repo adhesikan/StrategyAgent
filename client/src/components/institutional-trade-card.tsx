@@ -28,11 +28,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  CANDIDATE_QUALITY_CLASS,
+  CANDIDATE_QUALITY_LABEL,
   computeTradeStatus,
   isTradePlanBuilderEligible,
   tradePlanCtas,
   tradeStatusBadgeClass,
   tradeStatusLabel,
+  type CandidateQuality,
   type TradeCardStatus,
   type TradePlanViewModel,
 } from "@/lib/trade-plan-view-model";
@@ -237,73 +240,124 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
       role="article"
     >
       {/* ── §1 HEADER ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2" data-testid={`header-institutional-${vm.symbol}`}>
-        {vm.rank != null && (
+      <div className="space-y-2" data-testid={`header-institutional-${vm.symbol}`}>
+        {/* Row 1: symbol + status + direction + instrument */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="font-bold text-lg tracking-tight"
+            data-testid={`text-inst-symbol-${vm.symbol}`}
+          >
+            {vm.symbol}
+          </span>
+          {vm.direction && (
+            <Badge
+              variant="outline"
+              className="border-indigo-500/40 text-indigo-300 bg-indigo-500/10"
+              data-testid={`badge-inst-direction-${vm.symbol}`}
+            >
+              {vm.direction}
+            </Badge>
+          )}
+          {/* Primary status badge — unified TradeCardStatus, never generic "No Trade" */}
           <Badge
             variant="outline"
-            className="border-sky-500/40 text-sky-300 bg-sky-500/10 font-mono"
-            data-testid={`badge-inst-rank-${vm.symbol}`}
-            aria-label={`Ranked number ${vm.rank}`}
+            className={statusBadge}
+            data-testid={`badge-inst-status-${vm.symbol}`}
+            aria-label={`Status: ${statusLbl}`}
           >
-            #{vm.rank}
+            {statusLbl}
           </Badge>
-        )}
-        <span
-          className="font-bold text-lg tracking-tight"
-          data-testid={`text-inst-symbol-${vm.symbol}`}
-        >
-          {vm.symbol}
-        </span>
-        {vm.direction && (
-          <Badge
-            variant="outline"
-            className="border-indigo-500/40 text-indigo-300 bg-indigo-500/10"
-            data-testid={`badge-inst-direction-${vm.symbol}`}
+          {/* Secondary instrument-type badge for options variants or unsupported */}
+          {instrumentLbl && (
+            <Badge
+              variant="outline"
+              className="border-muted-foreground/30 text-muted-foreground/80 bg-muted/10 text-[10px]"
+              data-testid={`badge-inst-verdict-${vm.symbol}`}
+            >
+              {instrumentLbl}
+            </Badge>
+          )}
+          {vm.simulatedData && (
+            <Badge
+              variant="outline"
+              className="text-[10px] text-purple-300 border-purple-500/40 bg-purple-500/10"
+              data-testid={`badge-inst-simulated-${vm.symbol}`}
+            >
+              Simulated Data
+            </Badge>
+          )}
+          {vm.verdict === "ESTIMATED_OPTIONS" && (
+            <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/40 bg-amber-500/10">
+              Estimates — no live chain
+            </Badge>
+          )}
+        </div>
+
+        {/* Row 2: Sprint 4.1D — Rank · Strategy Score · Candidate Quality (three separate items) */}
+        {(vm.rank != null || vm.strategyScore != null || vm.candidateQuality != null || vm.confidence) && (
+          <div
+            className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]"
+            data-testid={`row-inst-ranking-${vm.symbol}`}
           >
-            {vm.direction}
-          </Badge>
+            {/* Rank — positional order; determined by multiple factors, not score alone */}
+            {vm.rank != null && (
+              <div className="flex items-center gap-1.5" data-testid={`badge-inst-rank-${vm.symbol}`} aria-label={`Ranked number ${vm.rank}`}>
+                <span className="text-muted-foreground/50 uppercase tracking-widest text-[9px] font-semibold">Rank</span>
+                <span className="font-mono font-bold text-foreground">#{vm.rank}</span>
+              </div>
+            )}
+            {/* Strategy Score — raw setup quality from the scanner; separate from rank */}
+            {vm.strategyScore != null && (
+              <div className="flex items-center gap-1.5" data-testid={`badge-inst-score-${vm.symbol}`}>
+                <span className="text-muted-foreground/50 uppercase tracking-widest text-[9px] font-semibold">Strategy Score</span>
+                <span className="font-mono font-medium text-foreground">{vm.strategyScore}</span>
+              </div>
+            )}
+            {/* Candidate Quality — tier label derived from multiple quality signals */}
+            {vm.candidateQuality && (
+              <div className="flex items-center gap-1.5" data-testid={`badge-inst-quality-${vm.symbol}`}>
+                <span className="text-muted-foreground/50 uppercase tracking-widest text-[9px] font-semibold">Quality</span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] ${CANDIDATE_QUALITY_CLASS[vm.candidateQuality as CandidateQuality] ?? ""}`}
+                >
+                  {CANDIDATE_QUALITY_LABEL[vm.candidateQuality as CandidateQuality] ?? vm.candidateQuality}
+                </Badge>
+              </div>
+            )}
+            {/* Confidence — keep alongside quality when present */}
+            {vm.confidence && (
+              <div className="flex items-center gap-1.5" data-testid={`badge-inst-confidence-${vm.symbol}`}>
+                <span className="text-muted-foreground/50 uppercase tracking-widest text-[9px] font-semibold">Confidence</span>
+                <span className="text-muted-foreground font-medium">{vm.confidence}</span>
+              </div>
+            )}
+          </div>
         )}
-        {/* Primary status badge — unified TradeCardStatus, never generic "No Trade" */}
-        <Badge
-          variant="outline"
-          className={statusBadge}
-          data-testid={`badge-inst-status-${vm.symbol}`}
-          aria-label={`Status: ${statusLbl}`}
-        >
-          {statusLbl}
-        </Badge>
-        {/* Secondary instrument-type badge for options variants or unsupported */}
-        {instrumentLbl && (
-          <Badge
-            variant="outline"
-            className="border-muted-foreground/30 text-muted-foreground/80 bg-muted/10 text-[10px]"
-            data-testid={`badge-inst-verdict-${vm.symbol}`}
+
+        {/* Row 3: Sprint 4.1D — Ranking reasons ("Ranked #N because: …")
+            Only rendered for ranked candidates with at least one reason.
+            Phrased as observable advantages — never reveals internal weights.
+            Disclaimer note: score ≠ rank. */}
+        {vm.rank != null && vm.rankingReasons && vm.rankingReasons.length > 0 && (
+          <div
+            className="text-[10px] text-muted-foreground/70 flex flex-wrap items-baseline gap-x-1"
+            data-testid={`row-inst-ranking-reasons-${vm.symbol}`}
+            aria-label={`Ranked #${vm.rank} because: ${vm.rankingReasons.join(", ")}`}
           >
-            {instrumentLbl}
-          </Badge>
-        )}
-        {vm.confidence && (
-          <Badge
-            variant="outline"
-            className="border-muted-foreground/30 text-muted-foreground"
-            data-testid={`badge-inst-confidence-${vm.symbol}`}
-          >
-            {vm.confidence} confidence
-          </Badge>
-        )}
-        {vm.simulatedData && (
-          <Badge
-            variant="outline"
-            className="text-[10px] text-purple-300 border-purple-500/40 bg-purple-500/10"
-            data-testid={`badge-inst-simulated-${vm.symbol}`}
-          >
-            Simulated Data
-          </Badge>
-        )}
-        {vm.verdict === "ESTIMATED_OPTIONS" && (
-          <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/40 bg-amber-500/10">
-            Estimates — no live chain
-          </Badge>
+            <span className="text-muted-foreground/50">Ranked #{vm.rank} because:</span>
+            {vm.rankingReasons.map((r, i) => (
+              <span key={r} className="text-foreground/60">
+                {r}{i < vm.rankingReasons!.length - 1 ? " ·" : ""}
+              </span>
+            ))}
+            {/* Non-intrusive disclaimer that score alone doesn't determine rank */}
+            {vm.strategyScore != null && (
+              <span className="ml-1 text-muted-foreground/35 italic" data-testid={`text-inst-score-disclaimer-${vm.symbol}`}>
+                (strategy score is one of several factors)
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -404,7 +458,8 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
       </div>
 
       {/* ── §3 SUPPORTING EVIDENCE ────────────────────────────── */}
-      {(vm.strategy || vm.instrument || vm.dataQuality || vm.strategyScore != null || confluenceCount > 0 || vm.status) && (
+      {/* Sprint 4.1D: strategyScore moved to header — condition updated */}
+      {(vm.strategy || vm.instrument || vm.dataQuality || confluenceCount > 0 || vm.status) && (
         <div
           className="rounded-lg border border-border/40 bg-background/40 p-3 space-y-2.5"
           data-testid={`section-inst-evidence-${vm.symbol}`}
@@ -412,7 +467,8 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
         >
           <SectionLabel>Supporting Evidence</SectionLabel>
 
-          {/* Meta row: strategy, instrument, score, data */}
+          {/* Meta row: strategy, instrument, data quality, status */}
+          {/* Sprint 4.1D: strategyScore moved to header Rank row — not repeated here */}
           <div className="flex flex-wrap items-center gap-2">
             {vm.strategy && (
               <Badge
@@ -426,15 +482,6 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
             {vm.instrument && (
               <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground text-[10px]">
                 {vm.instrument}
-              </Badge>
-            )}
-            {vm.strategyScore != null && (
-              <Badge
-                variant="outline"
-                className="border-muted-foreground/30 text-muted-foreground text-[10px]"
-                data-testid={`badge-inst-score-${vm.symbol}`}
-              >
-                Score {vm.strategyScore}
               </Badge>
             )}
             {vm.dataQuality && (

@@ -511,7 +511,12 @@ export async function runMcpOpportunitySearch(
       let candidate: McpCandidate | null = null;
       try {
         candidate = scrubUntrusted((await deps.buildTradeCandidate(setup.symbol, setup.strategy, deps.optionsContextToken)) as McpCandidate);
-        if (!normVerdict(candidate?.verdict)) candidate = null; // unusable shape — honest null
+        // Unusable shape (no verdict string at all) → honest null (UNAVAILABLE).
+        // A candidate with an UNRECOGNIZED verdict string is kept: it is a real
+        // engine response we can't classify positively, so it categorizes as
+        // WATCH ("unknown never positive") rather than data-unavailable. No
+        // positive downstream path fires for it — they all check known verdicts.
+        if (typeof candidate?.verdict !== "string" || candidate.verdict.trim() === "") candidate = null;
       } catch {
         candidate = null;
       }
@@ -638,6 +643,17 @@ export interface McpOpportunityCard {
   warnings: string[];
   freshness?: string;
   candidateState?: "stock" | "estimated_options" | "live_options" | "no_trade" | null;
+  /**
+   * Truthful result semantics (stabilization contract). A scanner setup is
+   * not automatically a trade idea:
+   * - ACTIONABLE_TRADE — passed candidate qualification (STOCK / options / live)
+   * - WATCH            — engine responded but did not qualify it positively
+   * - SCANNER_SETUP    — qualification was never attempted (not produced by
+   *                       this flow today; every displayed card is evaluated)
+   * - REJECTED         — candidate qualification returned NO_TRADE
+   * - UNAVAILABLE      — qualification could not run / unusable response
+   */
+  resultCategory: OpportunityResultCategory;
   verdict?: CandidateVerdict | null;
   riskEstimate?: RiskEstimate | null;
   /** Present ONLY when the full live options pipeline succeeded. */
@@ -658,6 +674,46 @@ export interface McpOpportunityCard {
   /** Raw deterministic objects (spec response contract). */
   setup: McpSetup;
   candidate: McpCandidate | null;
+}
+
+export type OpportunityResultCategory =
+  | "ACTIONABLE_TRADE"
+  | "WATCH"
+  | "SCANNER_SETUP"
+  | "REJECTED"
+  | "UNAVAILABLE";
+
+/** Truthful per-card category — the single source for counts, headlines and badges. */
+export function opportunityResultCategory(o: RankedOpportunity): OpportunityResultCategory {
+  if (o.liveOption) return "ACTIONABLE_TRADE";
+  const verdict = normVerdict(o.candidate?.verdict);
+  if (verdict === "STOCK" || verdict === "ESTIMATED_OPTIONS") return "ACTIONABLE_TRADE";
+  if (verdict === "NO_TRADE") return "REJECTED";
+  // Engine responded with a verdict we don't recognize → never positive, but
+  // also not "data unavailable": the setup is real and worth monitoring.
+  if (o.candidate) return "WATCH";
+  return "UNAVAILABLE";
+}
+
+export interface OpportunityResultCounts {
+  setupsReviewed: number;
+  actionable: number;
+  watch: number;
+  rejected: number;
+  unavailable: number;
+}
+
+/** Truthful counts from card categories — headline/narrative/UI must all use this. */
+export function buildOpportunityCounts(cards: Pick<McpOpportunityCard, "resultCategory">[]): OpportunityResultCounts {
+  const c: OpportunityResultCounts = { setupsReviewed: cards.length, actionable: 0, watch: 0, rejected: 0, unavailable: 0 };
+  for (const card of cards) {
+    if (card.resultCategory === "ACTIONABLE_TRADE") c.actionable += 1;
+    else if (card.resultCategory === "WATCH") c.watch += 1;
+    else if (card.resultCategory === "REJECTED") c.rejected += 1;
+    else if (card.resultCategory === "UNAVAILABLE") c.unavailable += 1;
+    // SCANNER_SETUP counts only toward setupsReviewed.
+  }
+  return c;
 }
 
 function verdictToState(v: CandidateVerdict | null): McpOpportunityCard["candidateState"] {
@@ -707,6 +763,7 @@ export function toMcpOpportunityCard(o: RankedOpportunity, brokerConnected: bool
     reasons: [...(setup.reasons ?? [])],
     warnings,
     candidateState: o.liveOption ? "live_options" : verdictToState(verdict),
+    resultCategory: opportunityResultCategory(o),
     verdict,
     riskEstimate: o.riskEstimate ?? null,
     liveOption: o.liveOption ?? null,
@@ -778,8 +835,9 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
   const adj = TYPE_ADJECTIVES[search.intent] ?? "";
   const cards = search.opportunities.map((o) => toMcpOpportunityCard(o, search.brokerConnected));
   const displayable = cards; // NO_TRADE stays visible — it is a valid result
-  const qualifiedCount = displayable.filter((c) => isQualifiedState(c.candidateState)).length;
-  const noTradeCount = displayable.filter((c) => c.candidateState === "no_trade").length;
+  const counts = buildOpportunityCounts(displayable);
+  const qualifiedCount = counts.actionable;
+  const noTradeCount = counts.rejected;
 
   if (displayable.length === 0) {
     const riskNote =
@@ -843,8 +901,10 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
   // NO_TRADE results are never called trades.
   const n = displayable.length;
   let headline: string;
-  if (qualifiedCount === 0) {
-    headline = `${countWord(n)} ${adj}setup${n === 1 ? "" : "s"} found, but none currently qualify as trades.`;
+  if (qualifiedCount === 0 && counts.watch > 0 && counts.rejected === 0 && counts.unavailable === 0) {
+    headline = `${countWord(n)} ${adj}setup${n === 1 ? " is" : "s are"} worth monitoring, but none are actionable yet.`;
+  } else if (qualifiedCount === 0) {
+    headline = `${countWord(n)} ${adj}setup${n === 1 ? " was" : "s were"} found, but none currently qualify as trades.`;
   } else if (qualifiedCount === n) {
     headline = `${countWord(n)} ${adj}trade candidate${n === 1 ? "" : "s"} identified.`;
   } else {
@@ -855,8 +915,10 @@ export function buildMcpOpportunityAnswer(search: McpOpportunitySearch): {
 
   const countSummary = `Reviewed ${n} scanner setup${n === 1 ? "" : "s"}: ${qualifiedCount} qualified as trade candidate${
     qualifiedCount === 1 ? "" : "s"
-  }${noTradeCount > 0 ? `, ${noTradeCount} did not qualify (NO TRADE)` : ""}${
-    n - qualifiedCount - noTradeCount > 0 ? `, ${n - qualifiedCount - noTradeCount} could not be evaluated by the candidate engine` : ""
+  }${counts.watch > 0 ? `, ${counts.watch} ${counts.watch === 1 ? "is a watch candidate" : "are watch candidates"}` : ""}${
+    noTradeCount > 0 ? `, ${noTradeCount} ${noTradeCount === 1 ? "was" : "were"} rejected (NO TRADE)` : ""
+  }${
+    counts.unavailable > 0 ? `, ${counts.unavailable} could not be evaluated by the candidate engine` : ""
   }. Scanner detections are not recommendations.`;
 
   return {

@@ -1,0 +1,151 @@
+Perform a focused stabilization pass on VCP Trader opportunity-search and recommendation-result semantics.
+
+Do not add new strategies.
+Do not modify scanner algorithms.
+Do not modify MCP recommendation logic.
+Do not commit, push, or deploy automatically.
+
+CURRENT ISSUES
+
+Observed examples:
+
+- "Find three bullish trades" returns three scanner setups, but all are marked NO_TRADE.
+- The headline still says "Three bullish trade ideas identified."
+- Recommendation requests sometimes show Rejected: 1 even though many setups or strategies were evaluated.
+- Market-wide requests do not clearly distinguish:
+  - scanner setup
+  - watch candidate
+  - qualified trade candidate
+  - rejected candidate
+  - unavailable data
+
+GOAL
+
+Make all counts, labels, headlines, and cards semantically truthful.
+
+==================================================
+1. DEFINE RESULT TYPES
+==================================================
+
+Use explicit categories:
+
+ACTIONABLE_TRADE
+WATCH
+SCANNER_SETUP
+REJECTED
+UNAVAILABLE
+
+A scanner setup is not automatically a trade idea.
+
+A setup may become:
+
+- ACTIONABLE_TRADE after candidate and risk qualification
+- WATCH when developing or missing confirmation
+- REJECTED when candidate qualification fails
+- UNAVAILABLE when qualification cannot run
+
+==================================================
+2. FIX HEADLINES
+==================================================
+
+Examples:
+
+Three actionable:
+"Three bullish trade candidates identified."
+
+Mixed:
+"Three bullish setups reviewed; one currently qualifies as a trade."
+
+All watch:
+"Three bullish setups are worth monitoring, but none are actionable yet."
+
+All rejected:
+"Three bullish setups were found, but none currently qualify as trades."
+
+No results:
+"No qualifying bullish setups currently meet the criteria."
+
+Never call NO_TRADE cards "trade ideas."
+
+==================================================
+3. FIX COUNTS
+==================================================
+
+Expose truthful counts:
+
+{
+  setupsReviewed,
+  actionable,
+  watch,
+  rejected,
+  unavailable
+}
+
+For market-wide recommendation searches, counts must describe candidate qualification results.
+
+For symbol analysis, counts may describe strategies evaluated.
+
+Do not mix strategy counts and opportunity counts.
+
+==================================================
+4. CARD LABELS
+==================================================
+
+Use:
+
+TRADE
+WATCH
+SETUP
+NO TRADE
+UNAVAILABLE
+
+Do not use NO_TRADE as a secondary badge while the page headline calls the same item a trade idea.
+
+==================================================
+5. NARRATIVE
+==================================================
+
+The AI narrative must use the same result categories and counts.
+
+Examples:
+
+"Reviewed 3 scanner setups. None passed candidate qualification."
+
+"Reviewed 5 setups. One qualified, two are watch candidates, and two were rejected."
+
+==================================================
+6. TESTS
+==================================================
+
+Add tests for:
+
+- all actionable
+- all watch
+- all rejected
+- mixed outcomes
+- no results
+- exact requested count
+- duplicate symbols under different strategies
+- headline/card agreement
+- narrative/count agreement
+- Find three bullish trades
+- Find five bearish setups
+- recommendation requests remain unchanged
+
+Run:
+
+npm test
+npm run build
+
+Report:
+
+1. Previous ambiguity
+2. New result categories
+3. Count contract
+4. Headline changes
+5. Card changes
+6. Tests
+7. Build
+8. Manual UAT prompts
+
+Do not commit or push until review.

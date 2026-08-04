@@ -9,6 +9,7 @@ import {
   runMcpOpportunitySearch,
   toMcpOpportunityCard,
   buildMcpOpportunityAnswer,
+  buildOpportunityCounts,
   mcpOpportunityConfidence,
   type McpSetup,
   type McpCandidate,
@@ -683,9 +684,9 @@ describe("count enforcement, setup-vs-trade headlines, confidence quality (UAT f
     const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
     const r = await runMcpOpportunitySearch("bullish", "Find 3 bullish trades", deps({ setups, candidates: { A: NO_TRADE, B: NO_TRADE, C: NO_TRADE } }));
     const a = buildMcpOpportunityAnswer(r);
-    expect(a.headline).toBe("Three bullish setups found, but none currently qualify as trades.");
+    expect(a.headline).toBe("Three bullish setups were found, but none currently qualify as trades.");
     expect(a.headline).not.toMatch(/trade candidates identified/);
-    expect(a.answer).toContain("0 qualified as trade candidates, 3 did not qualify (NO TRADE)");
+    expect(a.answer).toContain("0 qualified as trade candidates, 3 were rejected (NO TRADE)");
   });
 
   it("mixed verdicts get the 'reviewed; N qualify' headline", async () => {
@@ -731,5 +732,75 @@ describe("count enforcement, setup-vs-trade headlines, confidence quality (UAT f
     const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
     const r = await runMcpOpportunitySearch("trade", "Find trades", deps({ setups, candidates: { A: err, B: err, C: err } }));
     expect(mcpOpportunityConfidence(r)).toBe("low");
+  });
+});
+
+describe("truthful result categories and counts (stabilization pass)", () => {
+  const NO_TRADE: McpCandidate = { verdict: "NO_TRADE", noTradeReasons: ["regime risk-off"] };
+  const UNKNOWN: McpCandidate = { verdict: "PENDING_REVIEW" as any };
+
+  function cardsOf(r: Awaited<ReturnType<typeof runMcpOpportunitySearch>>) {
+    return r.opportunities.map((o) => toMcpOpportunityCard(o, r.brokerConnected));
+  }
+
+  it("category mapping: qualified → ACTIONABLE_TRADE, NO_TRADE → REJECTED, engine failure → UNAVAILABLE, unknown verdict → WATCH", async () => {
+    const err = new Error("engine down");
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85), setup("D", "vcp", 80)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 4 bullish trades", deps({ setups, candidates: { B: NO_TRADE, C: err, D: UNKNOWN } }));
+    const cats = cardsOf(r).map((c) => c.resultCategory);
+    expect(cats).toEqual(["ACTIONABLE_TRADE", "REJECTED", "UNAVAILABLE", "WATCH"]);
+  });
+
+  it("counts contract matches card categories exactly (mixed outcomes)", async () => {
+    const err = new Error("engine down");
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85), setup("D", "vcp", 80)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 4 bullish trades", deps({ setups, candidates: { B: NO_TRADE, C: err, D: UNKNOWN } }));
+    expect(buildOpportunityCounts(cardsOf(r))).toEqual({ setupsReviewed: 4, actionable: 1, watch: 1, rejected: 1, unavailable: 1 });
+  });
+
+  it("all actionable: headline and counts agree", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
+    const r = await runMcpOpportunitySearch("bullish", "Find three bullish trades", deps({ setups }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Three bullish trade candidates identified.");
+    expect(buildOpportunityCounts(cardsOf(r))).toEqual({ setupsReviewed: 3, actionable: 3, watch: 0, rejected: 0, unavailable: 0 });
+    expect(a.answer).toContain("Reviewed 3 scanner setups: 3 qualified as trade candidates");
+  });
+
+  it("all watch: 'worth monitoring' headline, never 'trade candidates identified'", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
+    const r = await runMcpOpportunitySearch("bullish", "Find three bullish trades", deps({ setups, candidates: { A: UNKNOWN, B: UNKNOWN, C: UNKNOWN } }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Three bullish setups are worth monitoring, but none are actionable yet.");
+    expect(a.answer).toContain("0 qualified as trade candidates, 3 are watch candidates");
+    expect(buildOpportunityCounts(cardsOf(r)).watch).toBe(3);
+  });
+
+  it("all rejected: headline/narrative/counts agree and never say 'trade ideas'", async () => {
+    const setups = [setup("A", "vcp", 95), setup("B", "vcp", 90), setup("C", "vcp", 85)];
+    const r = await runMcpOpportunitySearch("bullish", "Find three bullish trades", deps({ setups, candidates: { A: NO_TRADE, B: NO_TRADE, C: NO_TRADE } }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Three bullish setups were found, but none currently qualify as trades.");
+    expect(a.headline).not.toMatch(/trade ideas/i);
+    expect(a.answer).toContain("3 were rejected (NO TRADE)");
+    expect(buildOpportunityCounts(cardsOf(r))).toEqual({ setupsReviewed: 3, actionable: 0, watch: 0, rejected: 3, unavailable: 0 });
+  });
+
+  it("'Find five bearish setups' — bearish adjective, exact count, truthful mixed headline", async () => {
+    const bearish = (sym: string, score: number) => ({ ...setup(sym, "vcp", score), direction: "bearish" });
+    const setups = [bearish("A", 95), bearish("B", 90), bearish("C", 85), bearish("D", 80), bearish("E", 75)];
+    const r = await runMcpOpportunitySearch("bearish", "Find five bearish setups", deps({ setups, candidates: { D: NO_TRADE, E: NO_TRADE } }));
+    expect(r.opportunities).toHaveLength(5);
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("Five bearish setups reviewed; three currently qualify as trades.");
+    expect(buildOpportunityCounts(cardsOf(r))).toEqual({ setupsReviewed: 5, actionable: 3, watch: 0, rejected: 2, unavailable: 0 });
+  });
+
+  it("singular grammar: one rejected setup", async () => {
+    const setups = [setup("A", "vcp", 95)];
+    const r = await runMcpOpportunitySearch("bullish", "Find 1 bullish trade", deps({ setups, candidates: { A: NO_TRADE } }));
+    const a = buildMcpOpportunityAnswer(r);
+    expect(a.headline).toBe("One bullish setup was found, but none currently qualify as trades.");
+    expect(a.answer).toContain("1 was rejected (NO TRADE)");
   });
 });

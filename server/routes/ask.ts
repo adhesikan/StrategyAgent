@@ -26,6 +26,7 @@ import {
 import {
   runMcpOpportunitySearch,
   toMcpOpportunityCard,
+  buildOpportunityCounts,
   buildMcpOpportunityAnswer,
   mcpOpportunityConfidence,
   parseRequestedCount,
@@ -1041,7 +1042,7 @@ async function callOpenAi(
       // deterministic opportunity payload the model gets NO tools at all —
       // it cannot fetch out-of-band symbols or re-scan. Explanation only.
       mcpTools = [];
-      mcpSystemRules += `\n- The "opportunitySearch" field in the user content is the DETERMINISTIC result of a production opportunity search. Your job is ONLY to summarize and explain those specific candidates, ranked in the given order. NEVER invent, add, remove, or re-rank candidates. NEVER answer with generic education ("consider dividend stocks", "look for companies with...", "research stocks that..."). NEVER fabricate premiums, exact option contracts, IV, delta, open interest, volume, or bid/ask. If the opportunities array is empty, say plainly that no high-quality setups currently meet the criteria and suggest the Scanner, the watchlist, or asking about a specific symbol. Do not call any tools for this request.`;
+      mcpSystemRules += `\n- The "opportunitySearch" field in the user content is the DETERMINISTIC result of a production opportunity search. Your job is ONLY to summarize and explain those specific candidates, ranked in the given order. NEVER invent, add, remove, or re-rank candidates. NEVER answer with generic education ("consider dividend stocks", "look for companies with...", "research stocks that..."). NEVER fabricate premiums, exact option contracts, IV, delta, open interest, volume, or bid/ask. If the opportunities array is empty, say plainly that no high-quality setups currently meet the criteria and suggest the Scanner, the watchlist, or asking about a specific symbol. Use the "counts" field and each card's "resultCategory" verbatim: only ACTIONABLE_TRADE cards may be called trade candidates or trade ideas; REJECTED (NO TRADE), WATCH, and UNAVAILABLE cards must never be described as trade ideas, and your stated counts must match the counts field exactly. Do not call any tools for this request.`;
     }
 
     const messages: any[] = [
@@ -1343,6 +1344,9 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               liveOptions,
               ...(mcpSearch.maxRiskDollars != null ? { maxRiskDollars: mcpSearch.maxRiskDollars } : {}),
               ...(mcpSearch.excludedByRisk ? { excludedByRisk: mcpSearch.excludedByRisk } : {}),
+              // Truthful result counts — the single contract the headline,
+              // narrative, and UI must agree on.
+              counts: buildOpportunityCounts(cards),
               opportunities: cards,
             };
             let answer: AskAnswer | null = null;

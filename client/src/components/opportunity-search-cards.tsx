@@ -11,6 +11,8 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   SEARCH_TITLES,
   candidateStateLabel,
+  resultCategoryLabel,
+  countsSummaryLine,
   optionStrategyLabel,
   strikeZoneDisplay,
   cardCtas,
@@ -152,6 +154,15 @@ function LiveOptionBox({ symbol, live }: { symbol: string; live: LiveOptionCandi
   );
 }
 
+/** Truthful category badge tones — TRADE / WATCH / SETUP / NO TRADE / UNAVAILABLE. */
+const CATEGORY_TONE: Record<string, string> = {
+  ACTIONABLE_TRADE: "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
+  WATCH: "border-amber-500/40 text-amber-300 bg-amber-500/10",
+  SCANNER_SETUP: "border-sky-500/40 text-sky-300 bg-sky-500/10",
+  REJECTED: "border-rose-500/40 text-rose-300 bg-rose-500/10",
+  UNAVAILABLE: "border-muted-foreground/40 text-muted-foreground bg-muted/30",
+};
+
 const STAGE_TONE: Record<string, string> = {
   "pivot-ready": "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
   contraction: "border-sky-500/40 text-sky-300 bg-sky-500/10",
@@ -166,13 +177,22 @@ const STAGE_TONE: Record<string, string> = {
  */
 export function OpportunitySearchCards({ search }: { search: OpportunitySearchResult }) {
   if (!search || !Array.isArray(search.opportunities) || search.opportunities.length === 0) return null;
+  const countsLine = countsSummaryLine(search.counts);
   return (
     <div className="space-y-2" data-testid="cards-opportunity-search">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
         <TrendingUp className="h-3.5 w-3.5" /> {SEARCH_TITLES[search.type] ?? "Opportunities"}
       </div>
+      {countsLine && (
+        <div className="text-xs text-muted-foreground" data-testid="text-opp-search-counts">
+          {countsLine}
+        </div>
+      )}
       {search.opportunities.map((o, i) => {
-        const stateLabel = candidateStateLabel(o.candidateState);
+        const categoryLabel = resultCategoryLabel(o.resultCategory);
+        // Legacy stored searches have no resultCategory — fall back to the
+        // old candidate-state badge so nothing silently disappears.
+        const stateLabel = categoryLabel ? null : candidateStateLabel(o.candidateState);
         const zone = o.estimatedOptions ? strikeZoneDisplay(o.estimatedOptions.shortStrikeZone) : null;
         const longZone = o.estimatedOptions ? strikeZoneDisplay(o.estimatedOptions.longStrikeZone) : null;
         return (
@@ -186,6 +206,15 @@ export function OpportunitySearchCards({ search }: { search: OpportunitySearchRe
                   {o.stage && (
                     <Badge variant="outline" className={cn("text-[10px] capitalize", STAGE_TONE[o.stage.toLowerCase()] ?? "")} data-testid={`badge-opp-search-stage-${o.symbol}`}>
                       {o.stage.replace(/-/g, " ")}
+                    </Badge>
+                  )}
+                  {categoryLabel && (
+                    <Badge
+                      variant="outline"
+                      className={cn("text-[10px]", CATEGORY_TONE[o.resultCategory ?? ""] ?? "")}
+                      data-testid={`badge-opp-search-category-${o.symbol}`}
+                    >
+                      {categoryLabel}
                     </Badge>
                   )}
                   {stateLabel && (

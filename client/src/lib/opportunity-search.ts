@@ -67,6 +67,22 @@ export interface RiskEstimate {
 
 export type CandidateVerdict = "STOCK" | "ESTIMATED_OPTIONS" | "NO_TRADE";
 
+/** Truthful per-card result semantics — a scanner setup is not automatically a trade idea. */
+export type OpportunityResultCategory =
+  | "ACTIONABLE_TRADE"
+  | "WATCH"
+  | "SCANNER_SETUP"
+  | "REJECTED"
+  | "UNAVAILABLE";
+
+export interface OpportunityResultCounts {
+  setupsReviewed: number;
+  actionable: number;
+  watch: number;
+  rejected: number;
+  unavailable: number;
+}
+
 export interface OpportunityCard {
   /** 1-based rank from the deterministic search (MCP-backed searches). */
   rank?: number;
@@ -86,6 +102,8 @@ export interface OpportunityCard {
   warnings: string[];
   freshness?: string;
   candidateState?: "stock" | "estimated_options" | "live_options" | "no_trade" | null;
+  /** Truthful result category (server-derived; absent on legacy stored searches). */
+  resultCategory?: OpportunityResultCategory;
   /** Deterministic engine verdict (MCP build_trade_candidate). */
   verdict?: CandidateVerdict | null;
   riskEstimate?: RiskEstimate | null;
@@ -101,7 +119,38 @@ export interface OpportunitySearchResult {
   brokerConnected: boolean;
   maxRiskDollars?: number | null;
   excludedByRisk?: number;
+  /** Truthful counts contract; headline/narrative/cards must agree with it. */
+  counts?: OpportunityResultCounts;
   opportunities: OpportunityCard[];
+}
+
+/** Spec card labels: TRADE / WATCH / SETUP / NO TRADE / UNAVAILABLE. */
+export function resultCategoryLabel(cat: OpportunityResultCategory | undefined): string | null {
+  switch (cat) {
+    case "ACTIONABLE_TRADE":
+      return "TRADE";
+    case "WATCH":
+      return "WATCH";
+    case "SCANNER_SETUP":
+      return "SETUP";
+    case "REJECTED":
+      return "NO TRADE";
+    case "UNAVAILABLE":
+      return "UNAVAILABLE";
+    default:
+      return null;
+  }
+}
+
+/** One-line truthful summary of the counts contract for the cards header. */
+export function countsSummaryLine(counts: OpportunityResultCounts | undefined): string | null {
+  if (!counts || counts.setupsReviewed === 0) return null;
+  const parts = [`${counts.setupsReviewed} setup${counts.setupsReviewed === 1 ? "" : "s"} reviewed`];
+  if (counts.actionable > 0) parts.push(`${counts.actionable} trade${counts.actionable === 1 ? "" : "s"}`);
+  if (counts.watch > 0) parts.push(`${counts.watch} watch`);
+  if (counts.rejected > 0) parts.push(`${counts.rejected} no trade`);
+  if (counts.unavailable > 0) parts.push(`${counts.unavailable} unavailable`);
+  return parts.join(" · ");
 }
 
 export const SEARCH_TITLES: Record<OpportunitySearchResult["type"], string> = {

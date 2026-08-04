@@ -314,6 +314,13 @@ export default function AskPage() {
 
               {data.opportunitySearch && <OpportunitySearchCards search={data.opportunitySearch} />}
 
+              {/* GPT narrative supports the deterministic recommendation —
+                  labeled and rendered after it, never competing with it. */}
+              {data.strategyRecommendation && (
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground" data-testid="text-ask-ai-explanation-label">
+                  AI Explanation
+                </div>
+              )}
               <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-ask-answer">
                 {data.answer}
               </p>

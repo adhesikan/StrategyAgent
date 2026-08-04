@@ -1,0 +1,504 @@
+Implement Recommendation Experience 2.0 for VCP Trader.
+
+IMPORTANT
+
+Do NOT modify:
+
+- recommendation algorithms
+- ranking algorithms
+- scanner algorithms
+- risk calculations
+- MCP
+- Trade Builder
+- broker execution
+
+This sprint is purely about presenting deterministic recommendation results in a professional trading decision-support interface.
+
+Everything must remain additive.
+
+Do not commit, push or deploy automatically.
+
+----------------------------------------------------------
+GOAL
+----------------------------------------------------------
+
+A trader should understand the recommendation in under 5 seconds.
+
+The recommendation should become the primary artifact.
+
+The GPT narrative should support it—not compete with it.
+
+----------------------------------------------------------
+1. REDESIGN THE RECOMMENDATION CARD
+----------------------------------------------------------
+
+Replace the dense recommendation block with a structured summary.
+
+Example layout:
+
+----------------------------------------------------------
+
+Recommendation
+
+WATCH
+
+META
+
+Strategy
+
+Downtrend Breakdown
+
+Structure
+
+Long Put
+
+Status
+
+FORMING
+
+Recommendation Confidence
+
+Medium
+
+----------------------------------------------------------
+
+Summary
+
+One bearish setup is forming.
+
+Confirmation has not occurred.
+
+No trade is recommended yet.
+
+----------------------------------------------------------
+
+This becomes the primary visual element.
+
+----------------------------------------------------------
+2. DECISION SUMMARY
+----------------------------------------------------------
+
+Immediately below:
+
+Decision Summary
+
+Actionable
+0
+
+Watch
+1
+
+Rejected
+11
+
+Data Quality
+Mixed
+
+Environment
+
+Market regime unavailable
+
+No options provider
+
+Upcoming earnings
+
+Everything comes from deterministic engine data.
+
+----------------------------------------------------------
+3. WHY THIS DECISION
+----------------------------------------------------------
+
+Create a section:
+
+Why?
+
+Example:
+
+✓ bearish structure detected
+
+✓ trend breakdown forming
+
+✕ trigger not reached
+
+✕ earnings inside trade horizon
+
+✕ market regime unavailable
+
+Only deterministic reasons.
+
+----------------------------------------------------------
+4. BECOME ACTIONABLE WHEN
+----------------------------------------------------------
+
+For WATCH and NO_TRADE
+
+Add:
+
+Become Actionable When
+
+Examples
+
+□ closes below trigger
+
+□ confirms with volume
+
+□ earnings complete
+
+□ volatility contracts
+
+□ market regime available
+
+Never invent conditions.
+
+Only expose existing deterministic engine evidence.
+
+----------------------------------------------------------
+5. RECOMMENDATION CONFIDENCE
+----------------------------------------------------------
+
+Replace
+
+Recommendation Confidence
+
+Medium
+
+with
+
+Recommendation Confidence
+
+Medium
+
+Expand:
+
+Why?
+
+✓ strategy evaluated
+
+✓ deterministic recommendation
+
+✓ scanner completed
+
+✕ market regime unavailable
+
+✕ options provider unavailable
+
+Do NOT expose chain-of-thought.
+
+Only expose evidence quality.
+
+----------------------------------------------------------
+6. STRATEGY EVALUATION PANEL
+----------------------------------------------------------
+
+Collapsed by default.
+
+Header:
+
+Strategies Evaluated
+
+12
+
+Actionable
+0
+
+Watch
+1
+
+Rejected
+11
+
+Expand:
+
+Momentum Breakout
+
+Rejected
+
+Reason
+
+No breakout
+
+--------------------------------
+
+Trend Continuation
+
+Rejected
+
+Reason
+
+Risk/Reward below threshold
+
+--------------------------------
+
+Downtrend Breakdown
+
+WATCH
+
+Reason
+
+Trigger not reached
+
+Continue for every evaluated strategy.
+
+----------------------------------------------------------
+7. DECISION FACTORS
+----------------------------------------------------------
+
+Current section is too generic.
+
+Replace with chips.
+
+Examples
+
+Entry Trigger Missing
+
+Poor Reward/Risk
+
+Upcoming Earnings
+
+High Volatility
+
+Market Regime Missing
+
+No Options Provider
+
+Each chip expands into a short explanation.
+
+----------------------------------------------------------
+8. GPT NARRATIVE
+----------------------------------------------------------
+
+Rewrite layout.
+
+Instead of:
+
+Market analysis first
+
+Use:
+
+Recommendation Summary
+
+Market Context
+
+Technical Context
+
+Risk Factors
+
+Never let GPT change:
+
+verdict
+
+strategy
+
+structure
+
+confidence
+
+decision factors
+
+watch conditions
+
+These come only from the deterministic recommendation.
+
+GPT explains.
+
+It never recommends.
+
+----------------------------------------------------------
+9. NEXT STEPS
+----------------------------------------------------------
+
+Make CTAs verdict-aware.
+
+WATCH
+
+View Chart
+
+Add Watchlist
+
+Open Scanner
+
+Show Trigger Level
+
+NO_TRADE
+
+Explain Why
+
+Find Similar Opportunities
+
+Open Scanner
+
+WATCH Similar Setups
+
+LIVE_OPTIONS
+
+Review Trade
+
+View Option Chain
+
+Build Trade Ticket
+
+Risk Analysis
+
+STOCK
+
+Review Stock Plan
+
+Risk Analysis
+
+Build Trade Ticket
+
+UNSUPPORTED
+
+Show Supported Strategies
+
+Learn Strategy
+
+Open Scanner
+
+----------------------------------------------------------
+10. COLOR SYSTEM
+----------------------------------------------------------
+
+WATCH
+
+Amber
+
+LIVE
+
+Green
+
+NO_TRADE
+
+Gray
+
+UNSUPPORTED
+
+Blue
+
+Decision Factors
+
+Warning colors
+
+Environment issues
+
+Orange
+
+Data quality
+
+Purple
+
+Recommendation Confidence
+
+Green
+
+Yellow
+
+Red
+
+----------------------------------------------------------
+11. INFORMATION HIERARCHY
+----------------------------------------------------------
+
+Final layout:
+
+Recommendation
+
+Decision Summary
+
+Why?
+
+Become Actionable When
+
+Recommendation Confidence
+
+Strategy Evaluation
+
+Decision Factors
+
+GPT Explanation
+
+Next Steps
+
+Legal Disclaimer
+
+Everything above the fold should fit on a normal laptop.
+
+----------------------------------------------------------
+12. RESPONSIVE DESIGN
+----------------------------------------------------------
+
+Desktop
+
+2-column where appropriate
+
+Mobile
+
+single-column
+
+Recommendation card always first.
+
+----------------------------------------------------------
+13. TESTS
+----------------------------------------------------------
+
+Add UI tests verifying:
+
+WATCH
+
+NO_TRADE
+
+LIVE_OPTIONS
+
+ESTIMATED_OPTIONS
+
+UNSUPPORTED
+
+Recommendation card
+
+Decision summary
+
+Confidence
+
+Watch conditions
+
+Expandable strategy list
+
+Verdict-aware buttons
+
+Responsive layout
+
+Accessibility
+
+No regression.
+
+----------------------------------------------------------
+14. COMPLETION REPORT
+----------------------------------------------------------
+
+Report:
+
+1. Files changed
+
+2. Components added
+
+3. UI hierarchy
+
+4. Recommendation card redesign
+
+5. Decision Summary
+
+6. Confidence redesign
+
+7. Strategy Evaluation
+
+8. GPT layout
+
+9. CTA changes
+
+10. Tests
+
+11. Build
+
+12. Before/After screenshots
+
+Wait for my review before committing.

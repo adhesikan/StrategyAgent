@@ -15,6 +15,7 @@
 
 import type { RankedTradeCandidate, RankedWatchCandidate } from "@/lib/ranked-trade-search";
 import type { RecIdea, RecommendationVerdict } from "@/lib/strategy-recommendation";
+import type { SafePortfolioAwareness } from "@/lib/portfolio-awareness";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -397,6 +398,20 @@ export interface TradePlanViewModel {
    * budget (as determined by the ranking engine).
    */
   fitsRiskBudget?: boolean;
+  /**
+   * Sprint 4.2 — Portfolio Fit.
+   *
+   * Populated by the caller after fromRankedCandidate (awareness comes back
+   * from the Ask AI route alongside the candidate list, not inside it).
+   *
+   *   undefined  — section not rendered (no portfolio context attempted)
+   *   null       — "No brokerage connected" state
+   *   object     — show portfolio fit rows from SafePortfolioAwareness
+   *
+   * Never contains account IDs, raw balances, or broker tokens.
+   * All display values come from the trusted server-derived SafePortfolioAwareness.
+   */
+  portfolioAwareness?: SafePortfolioAwareness | null;
   // Source tag — controls CTA set and Trade Builder eligibility.
   source: "ranked" | "recommendation" | "analysis";
 }
@@ -525,7 +540,15 @@ export function tradePlanCtas(vm: TradePlanViewModel): TradePlanCta[] {
 
 export function fromRankedCandidate(
   c: RankedTradeCandidate,
-  opts: { requestedMax?: number } = {},
+  opts: {
+    requestedMax?: number;
+    /**
+     * Sprint 4.2: Pass the SafePortfolioAwareness returned by the Ask AI
+     * route for this symbol, or null when the user has no broker connected.
+     * When omitted (undefined) the Portfolio Fit section is hidden entirely.
+     */
+    portfolioAwareness?: SafePortfolioAwareness | null;
+  } = {},
 ): TradePlanViewModel {
   const isOptions = /option/i.test(c.instrument ?? "");
   const verdict: TradePlanVerdict = !isOptions
@@ -566,6 +589,8 @@ export function fromRankedCandidate(
     reasons: c.whySelected ?? [],
     warnings: c.warnings ?? [],
     source: "ranked",
+    // Sprint 4.2: portfolio awareness — undefined = hidden; null = disconnected; object = data
+    portfolioAwareness: opts.portfolioAwareness,
   };
   vm.distanceToTrigger = computeDistanceToTrigger(vm) ?? undefined;
   vm.tradeStatus = computeTradeStatus(vm);

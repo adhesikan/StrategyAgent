@@ -39,6 +39,11 @@ import {
   type TradeCardStatus,
   type TradePlanViewModel,
 } from "@/lib/trade-plan-view-model";
+import {
+  CONCENTRATION_LEVEL_CLASS,
+  portfolioFitRows,
+  portfolioFitState,
+} from "@/lib/portfolio-fit-display";
 
 // ---------------------------------------------------------------------------
 // Verdict display maps
@@ -568,7 +573,115 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
         </div>
       )}
 
-      {/* ── §5 DECISION ───────────────────────────────────────── */}
+      {/* ── §5 PORTFOLIO FIT ──────────────────────────────────── */}
+      {/* Sprint 4.2: only rendered when portfolioAwareness is explicitly set
+          (undefined = hidden; null = no broker; object = live awareness rows).
+          No account IDs, no raw balances, no broker tokens ever shown here. */}
+      {vm.portfolioAwareness !== undefined && (() => {
+        const pfState = portfolioFitState(vm.portfolioAwareness, vm.suggestedQuantity);
+        if (pfState === "hidden") return null;
+
+        return (
+          <div
+            className="rounded-lg border border-border/40 bg-background/40 p-3 space-y-2.5"
+            data-testid={`section-inst-portfolio-fit-${vm.symbol}`}
+            aria-label="Portfolio fit"
+          >
+            <SectionLabel>Portfolio Fit</SectionLabel>
+
+            {/* State: no broker connected */}
+            {pfState === "disconnected" && (
+              <p
+                className="text-xs text-muted-foreground/70"
+                data-testid={`text-inst-pf-disconnected-${vm.symbol}`}
+              >
+                No brokerage connected — connect a broker to see position sizing,
+                buying power, and concentration checks for this trade.
+              </p>
+            )}
+
+            {/* State: broker connected but no position data to show */}
+            {pfState === "no-position" && (
+              <p
+                className="text-xs text-muted-foreground/70"
+                data-testid={`text-inst-pf-no-position-${vm.symbol}`}
+              >
+                No existing position found for {vm.symbol}.
+              </p>
+            )}
+
+            {/* State: rows available */}
+            {pfState === "show" && (() => {
+              const rows = portfolioFitRows(vm.portfolioAwareness!, vm.suggestedQuantity);
+              const alertRows = rows.filter((r) => r.isAlert);
+              return (
+                <div className="space-y-2">
+                  {/* Alert rows at top (existing position, high concentration, adjustments) */}
+                  {alertRows.length > 0 && (
+                    <div className="space-y-1.5">
+                      {alertRows.map((row) => (
+                        <div
+                          key={row.testId}
+                          className="flex items-start gap-1.5 text-xs"
+                          data-testid={row.testId}
+                        >
+                          <span className="text-muted-foreground/60 min-w-[130px] shrink-0">
+                            {row.label}
+                          </span>
+                          {row.badgeClass ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className={`font-medium ${row.valueClass}`}>{row.value}</span>
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] py-0 ${row.badgeClass}`}
+                              >
+                                {/* concentration level label extracted from value */}
+                                {vm.portfolioAwareness?.concentrationWarning?.level}
+                              </Badge>
+                            </span>
+                          ) : (
+                            <span className={`font-medium ${row.valueClass}`}>{row.value}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Non-alert rows in a grid */}
+                  {rows.filter((r) => !r.isAlert).length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs border-t border-border/30 pt-2">
+                      {rows.filter((r) => !r.isAlert).map((row) => (
+                        <div key={row.testId} data-testid={row.testId} className="min-w-0">
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                            {row.label}
+                          </div>
+                          <div className={`font-medium truncate ${row.valueClass}`}>
+                            {row.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Freshness footer — read-only data provenance; no raw balances */}
+                  {vm.portfolioAwareness?.contextFreshness && (
+                    <div className="text-[9px] text-muted-foreground/40 border-t border-border/20 pt-1">
+                      Portfolio context read-only · refreshed{" "}
+                      {new Date(vm.portfolioAwareness.contextFreshness).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      · No account numbers shown
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
+      {/* ── §6 DECISION ───────────────────────────────────────── */}
       <div
         className={`rounded-lg border ${decisionCfg.border} ${decisionCfg.bg} px-3 py-2 flex items-center gap-2`}
         data-testid={`section-inst-decision-${vm.symbol}`}

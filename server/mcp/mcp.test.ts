@@ -137,6 +137,51 @@ describe("tool allowlist and wrappers", () => {
     expect(callTool).toHaveBeenCalledWith("get_positions", {});
   });
 
+  it("scan_strategy wrapper applies the contract adapter (registry id + '1d' → MCP slug + '1day')", async () => {
+    const { tools, callTool } = await withMockedClient();
+    await tools.scanStrategy("ba", "VCP_MULTIDAY", "1d");
+    expect(callTool).toHaveBeenCalledWith("scan_strategy", {
+      symbol: "BA",
+      strategy: "power_breakout",
+      timeframe: "1day",
+    });
+  });
+
+  it("scan_strategy wrapper is idempotent for MCP slugs/timeframes", async () => {
+    const { tools, callTool } = await withMockedClient();
+    await tools.scanStrategy("BA", "vcp", "1day");
+    expect(callTool).toHaveBeenCalledWith("scan_strategy", { symbol: "BA", strategy: "vcp", timeframe: "1day" });
+  });
+
+  it("scan_strategy wrapper rejects unknown strategy locally — MCP never called", async () => {
+    const { tools, callTool } = await withMockedClient();
+    await expect(tools.scanStrategy("BA", "NOT_A_STRATEGY", "1d")).rejects.toMatchObject({
+      code: "UNSUPPORTED_STRATEGY_MAPPING",
+    });
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
+  it("scan_strategy wrapper rejects unsupported timeframe locally — MCP never called", async () => {
+    const { tools, callTool } = await withMockedClient();
+    await expect(tools.scanStrategy("BA", "VCP", "1w")).rejects.toMatchObject({
+      code: "UNSUPPORTED_TIMEFRAME",
+    });
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
+  it("scan_strategy wrapper rejects blank/whitespace timeframe locally — MCP never called", async () => {
+    const { tools, callTool } = await withMockedClient();
+    await expect(tools.scanStrategy("BA", "VCP", "")).rejects.toMatchObject({ code: "UNSUPPORTED_TIMEFRAME" });
+    await expect(tools.scanStrategy("BA", "VCP", "   ")).rejects.toMatchObject({ code: "UNSUPPORTED_TIMEFRAME" });
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
+  it("scan_strategy wrapper omits timeframe only when undefined", async () => {
+    const { tools, callTool } = await withMockedClient();
+    await tools.scanStrategy("BA", "VCP");
+    expect(callTool).toHaveBeenCalledWith("scan_strategy", { symbol: "BA", strategy: "vcp" });
+  });
+
   it("AI tool calls route through typed wrappers (get_quote / scan_vcp)", async () => {
     const { tools, callTool } = await withMockedClient();
     await tools.executeAiToolCall("get_quote", { symbol: "mu" });

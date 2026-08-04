@@ -3,7 +3,18 @@
 // into this stable structure.
 
 export interface McpNormalizedError {
-  code: "MCP_DISABLED" | "MCP_CONFIG_ERROR" | "MCP_UNAVAILABLE" | "MCP_TIMEOUT" | "MCP_AUTH_ERROR" | "MCP_TOOL_ERROR" | "MCP_TOOL_NOT_ALLOWED";
+  code:
+    | "MCP_DISABLED"
+    | "MCP_CONFIG_ERROR"
+    | "MCP_UNAVAILABLE"
+    | "MCP_TIMEOUT"
+    | "MCP_AUTH_ERROR"
+    | "MCP_TOOL_ERROR"
+    | "MCP_TOOL_NOT_ALLOWED"
+    // Local contract-adapter rejections (strategy-contract-adapter.ts) —
+    // raised BEFORE any MCP call, never by the MCP service itself.
+    | "UNSUPPORTED_STRATEGY_MAPPING"
+    | "UNSUPPORTED_TIMEFRAME";
   tool?: string;
   message: string;
 }

@@ -1,5 +1,5 @@
 // Tests for the deterministic multi-strategy symbol analysis (spec §13).
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import {
   classifyAnalysisIntent,
   runMultiStrategyAnalysis,
@@ -396,5 +396,62 @@ describe("suggestions", () => {
 
     const noTrade = await runMultiStrategyAnalysis("MU", deps({ scans: {} }));
     expect(suggestionsForMultiStrategy(noTrade).map((l) => l.label)).toContain("Open Scanner");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scan_strategy_failed diagnostic logging (contract-adapter sprint)
+// ---------------------------------------------------------------------------
+
+describe("scan_strategy_failed logging", () => {
+  test("logs include original registry ID and mapped MCP slug with a specific cause", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const err = Object.assign(new Error("Upstream provider request failed (vcp:history, HTTP 429)."), {
+        code: "MCP_TOOL_ERROR",
+      });
+      await runMultiStrategyAnalysis("MU", deps({ scans: { VCP: err } }));
+      const lines = warnSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.includes("scan_strategy_failed"))
+        .map((s) => JSON.parse(s));
+      expect(lines.length).toBe(1);
+      expect(lines[0]).toMatchObject({
+        symbol: "MU",
+        strategyRequested: "VCP",
+        resolvedStrategyId: "vcp",
+        cause: "PROVIDER_RATE_LIMITED",
+        code: "MCP_TOOL_ERROR",
+      });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("unmapped strategy logs UNSUPPORTED_STRATEGY_MAPPING with null slug", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const registry = [
+        { id: "SOME_NEW_STRATEGY", displayName: "New Strat", supportedTimeframes: ["1d"], targetedScan: true, enabled: true },
+      ];
+      const err = Object.assign(new Error('Strategy "SOME_NEW_STRATEGY" has no MCP scan_strategy mapping.'), {
+        code: "UNSUPPORTED_STRATEGY_MAPPING",
+      });
+      await runMultiStrategyAnalysis(
+        "MU",
+        deps({ listStrategies: async () => registry, scans: { SOME_NEW_STRATEGY: err } }),
+      );
+      const line = warnSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.includes("scan_strategy_failed"))
+        .map((s) => JSON.parse(s))[0];
+      expect(line).toMatchObject({
+        strategyRequested: "SOME_NEW_STRATEGY",
+        resolvedStrategyId: null,
+        cause: "UNSUPPORTED_STRATEGY_MAPPING",
+      });
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

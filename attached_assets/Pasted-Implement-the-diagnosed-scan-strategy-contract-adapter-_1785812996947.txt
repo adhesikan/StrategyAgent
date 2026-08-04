@@ -1,0 +1,310 @@
+Implement the diagnosed scan_strategy contract adapter fix in StrategyAgent/VCP Trader.
+
+DIAGNOSIS
+
+The live multi-strategy Analyze flow fails before reaching the MCP provider or internal scanner.
+
+Two confirmed contract mismatches exist:
+
+1. Timeframe mismatch
+
+VCP Trader registry advertises:
+
+"1d"
+
+MCP scan_strategy accepts:
+
+"5min" | "15min" | "1h" | "1day"
+
+Every strategy currently fails schema validation because StrategyAgent passes "1d" verbatim.
+
+2. Strategy ID namespace mismatch
+
+VCP Trader registry IDs:
+
+VCP
+VCP_MULTIDAY
+ORB5
+ORB15
+HIGH_RVOL
+GAP_AND_GO
+CLASSIC_PULLBACK
+TREND_CONTINUATION
+VWAP_RECLAIM
+VOLATILITY_SQUEEZE
+
+MCP scan_strategy expects:
+
+vcp
+power_breakout
+open_drive_5m
+open_drive_15m
+volume_surge
+gap_force
+precision_pullback
+trend_pilot
+institutional_reclaim
+pressure_break
+
+Only VCP currently succeeds accidentally after lowercasing.
+
+Confirmed healthy and out of scope:
+
+- MCP connectivity
+- authentication
+- /api/internal/scanner/setup
+- /api/internal/scanner/opportunities
+- /api/internal/market/history
+- provider selection
+- rate limiting
+- scanner algorithms
+- recommendation engine
+
+Do not modify the MCP server.
+Do not modify scanner algorithms.
+Do not change the internal scanner registry IDs.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. CREATE A CENTRAL CONTRACT ADAPTER
+==================================================
+
+Create one central module for translating VCP Trader scanner metadata into the MCP scan_strategy contract.
+
+Suggested file:
+
+server/mcp/strategy-contract-adapter.ts
+
+Export pure functions such as:
+
+toMcpStrategyId(registryStrategyId: string): McpStrategyId
+
+toMcpTimeframe(registryTimeframe: string): McpStrategyTimeframe
+
+Do not scatter mappings across routes or orchestration functions.
+
+==================================================
+2. TIMEFRAME MAPPING
+==================================================
+
+Implement explicit mappings:
+
+"1d" → "1day"
+"1day" → "1day"
+"5m" → "5min"
+"5min" → "5min"
+"15m" → "15min"
+"15min" → "15min"
+"1h" → "1h"
+
+Reject unsupported values with a stable local error before calling MCP.
+
+Do not pass unchecked timeframe strings into scan_strategy.
+
+==================================================
+3. STRATEGY ID MAPPING
+==================================================
+
+Implement the authoritative mapping:
+
+VCP → vcp
+
+VCP_MULTIDAY → power_breakout
+
+ORB5 → open_drive_5m
+
+ORB15 → open_drive_15m
+
+HIGH_RVOL → volume_surge
+
+GAP_AND_GO → gap_force
+
+CLASSIC_PULLBACK → precision_pullback
+
+TREND_CONTINUATION → trend_pilot
+
+VWAP_RECLAIM → institutional_reclaim
+
+VOLATILITY_SQUEEZE → pressure_break
+
+Also accept the MCP slug itself as an idempotent input where helpful.
+
+Do not infer mappings from display names at runtime.
+
+Use an explicit typed map.
+
+Unknown registry IDs must fail locally with a clear safe error such as:
+
+UNSUPPORTED_STRATEGY_MAPPING
+
+and must not call MCP.
+
+==================================================
+4. APPLY AT THE CLIENT BOUNDARY
+==================================================
+
+Update the multi-strategy path so every scan_strategy call receives:
+
+{
+  symbol,
+  strategy: toMcpStrategyId(meta.id),
+  timeframe: toMcpTimeframe(meta.supportedTimeframes[0] or requested timeframe)
+}
+
+The structured result returned to the rest of StrategyAgent should preserve:
+
+- original registry strategy ID
+- display name
+- MCP slug used
+- original timeframe
+- MCP timeframe used
+
+Do not leak implementation-only aliases into the user-facing UI unless useful in an advanced diagnostic view.
+
+==================================================
+5. KEEP SINGLE-STRATEGY FLOWS CONSISTENT
+==================================================
+
+Audit all StrategyAgent call sites of scan_strategy.
+
+Apply the same adapter to:
+
+- generic Analyze multi-strategy flow
+- explicit strategy analysis
+- any recommendation enrichment path that calls scan_strategy
+- diagnostics or background jobs
+- future callers through the wrapper
+
+No code path should call scan_strategy with raw internal registry IDs or "1d".
+
+Prefer enforcing this inside the typed scanStrategy wrapper so callers cannot bypass it.
+
+==================================================
+6. PRESERVE ERROR CLASSIFICATION
+==================================================
+
+Keep the newly added scan_strategy_failed logging and cause classifier.
+
+After the fix:
+
+- schema-validation failures should disappear for valid registry entries
+- unknown mappings should log UNSUPPORTED_STRATEGY_MAPPING
+- downstream provider errors should still retain their real causes
+- logs should include both registry ID and MCP slug safely
+
+Do not log credentials or raw provider payloads.
+
+==================================================
+7. UPDATE TYPES
+==================================================
+
+Add narrow types for:
+
+McpStrategyId
+
+McpStrategyTimeframe
+
+RegistryStrategyId where practical
+
+Avoid broad string casts.
+
+The compiler should prevent unsupported values from reaching the MCP wrapper.
+
+==================================================
+8. TESTS
+==================================================
+
+Add tests for:
+
+1. "1d" maps to "1day"
+2. "1day" is idempotent
+3. intraday timeframe mappings
+4. unsupported timeframe rejected locally
+5. all 10 registry IDs map to the correct MCP slugs
+6. MCP slugs are idempotent when accepted
+7. unknown strategy ID rejected locally
+8. no MCP call occurs on unknown mapping
+9. Analyze BA sends 10 valid MCP calls
+10. Analyze BA includes VCP forming result from the live-contract fixture
+11. VCP_MULTIDAY routes to power_breakout
+12. CLASSIC_PULLBACK routes to precision_pullback
+13. VWAP_RECLAIM routes to institutional_reclaim
+14. ORB5/ORB15 mappings
+15. existing explicit strategy analysis works
+16. scan_strategy_failed logs include original ID and mapped slug
+17. no valid registry strategy produces MCP_SCHEMA_VALIDATION
+18. existing recommendation and opportunity-search flows remain unchanged
+
+Use fixture/provider doubles for deterministic tests.
+
+==================================================
+9. LIVE CONTRACT VERIFICATION
+==================================================
+
+After tests pass, run one live development verification using the deployed MCP:
+
+Analyze BA
+
+Capture:
+
+- 10 strategy calls
+- mapped strategy IDs
+- timeframe sent as "1day"
+- success/failure for each
+- returned status
+- trigger availability
+- normalized match count
+- overall verdict
+
+Expected minimum:
+
+- VCP call succeeds
+- no call fails because of invalid timeframe or unknown strategy
+- any remaining failures identify genuine downstream causes
+
+Also test:
+
+Analyze BA using Momentum Breakout
+
+Analyze BA using Power Breakout
+
+Analyze BA using Precision Pullback
+
+==================================================
+10. VALIDATION
+==================================================
+
+Run:
+
+npm test
+npm run build
+
+Also run focused suites for:
+
+- strategy contract adapter
+- multi-strategy analysis
+- explicit strategy routing
+- MCP tools wrapper
+- Ask AI Analyze flow
+
+Do not commit or push.
+
+==================================================
+11. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. Files changed
+2. Final timeframe map
+3. Final strategy-ID map
+4. Call sites updated
+5. Type-safety changes
+6. Logging/error behavior
+7. Tests and counts
+8. Build result
+9. Live Analyze BA result
+10. Remaining genuine provider/data failures
+11. Compatibility concerns
+
+Wait for my review before committing or pushing.

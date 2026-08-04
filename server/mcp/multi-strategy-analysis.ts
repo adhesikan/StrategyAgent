@@ -260,6 +260,8 @@ export function classifyScanFailure(code: unknown, message: string): string {
   if (/scanner\/setup/.test(m)) return "INTERNAL_SCANNER_SETUP";
   if (/scanner\/opportunit/.test(m)) return "INTERNAL_SCANNER_OPPORTUNITIES";
   if (/provider request failed|provider/.test(m)) return "PROVIDER_SELECTION";
+  if (code === "UNSUPPORTED_STRATEGY_MAPPING") return "UNSUPPORTED_STRATEGY_MAPPING";
+  if (code === "UNSUPPORTED_TIMEFRAME") return "UNSUPPORTED_TIMEFRAME";
   if (code === "MCP_TIMEOUT") return "MCP_TIMEOUT";
   if (code === "MCP_UNAVAILABLE") return "MCP_UNAVAILABLE";
   return "UNCLASSIFIED_TOOL_ERROR";
@@ -406,12 +408,20 @@ export async function runMultiStrategyAnalysis(
       // MCP_TOOL_ERROR. Message is engine/provider error text (no secrets);
       // truncated defensively. Behavior unchanged — outcome still "failed".
       const message = String(err?.message ?? "").slice(0, 500);
+      // Best-effort mapped slug for the log (adapter may itself be the failure).
+      let mcpSlug: string | null = null;
+      try {
+        const { toMcpStrategyId } = await import("./strategy-contract-adapter");
+        mcpSlug = toMcpStrategyId(meta.id);
+      } catch {
+        /* unmapped — leave null */
+      }
       console.warn(
         JSON.stringify({
           event: "scan_strategy_failed",
           symbol: sym,
           strategyRequested: meta.id,
-          resolvedStrategyId: meta.id, // client sends registry id as-is; alias mapping happens MCP-side
+          resolvedStrategyId: mcpSlug, // MCP slug sent by the contract adapter (null when unmapped)
           timeframe,
           code: String(err?.code ?? "SCAN_FAILED"),
           cause: classifyScanFailure(err?.code, message),

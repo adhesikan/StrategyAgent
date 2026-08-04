@@ -163,8 +163,20 @@ export async function scanOpportunities(filters: ScanOpportunitiesFilters = {}):
 }
 
 export async function scanStrategy(symbol: string, strategy: string, timeframe?: string): Promise<unknown> {
-  const args: Record<string, unknown> = { symbol: cleanSymbol(symbol), strategy: String(strategy) };
-  if (timeframe) args.timeframe = timeframe;
+  // Contract adapter enforced at the wrapper boundary: internal registry IDs
+  // ("VCP_MULTIDAY") and timeframes ("1d") are translated to the MCP contract
+  // (power_breakout / 1day). Unknown values throw locally
+  // (UNSUPPORTED_STRATEGY_MAPPING / UNSUPPORTED_TIMEFRAME) — MCP is never
+  // called with raw registry values.
+  const { toMcpStrategyId, toMcpTimeframe } = await import("./strategy-contract-adapter");
+  const args: Record<string, unknown> = {
+    symbol: cleanSymbol(symbol),
+    strategy: toMcpStrategyId(strategy),
+  };
+  // Validate whenever a timeframe was PROVIDED (including "" / whitespace) —
+  // only `undefined` means "let MCP default". Blank strings must reject
+  // locally, never silently drop the argument.
+  if (timeframe !== undefined) args.timeframe = toMcpTimeframe(timeframe);
   return callAllowedTool("scan_strategy", args);
 }
 

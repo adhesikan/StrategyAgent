@@ -1,0 +1,459 @@
+Fix the remaining recommendation-output contradiction in the StrategyAgent/VCP Trader application.
+
+IMPORTANT CONTEXT
+
+This repository is the VCP Trader application.
+
+It contains:
+
+- Ask AI backend orchestration
+- OpenAI prompt construction
+- React frontend
+- recommendation cards
+- legacy opportunity/trade-detail rendering
+- Top defined-risk picks
+- Trade Builder and Next Steps presentation
+
+The separate vcp-trader-mcp repository is already correct and returns a deterministic structured recommendation.
+
+OBSERVED PRODUCTION RESULT
+
+The user asked:
+
+"Find a trade for NVDA"
+
+The page correctly rendered the MCP recommendation card:
+
+NO_TRADE
+
+Reason:
+
+- No qualifying setup found for NVDA
+- No actionable strategy evidence across evaluated strategies
+
+But the same page then contradicted it by rendering:
+
+- headline: "NVDA looks bullish — here are the best stock and option trades"
+- GPT narrative describing an AI-generated debit spread
+- "Best option trade: Defined-risk debit spread"
+- 66% confidence
+- max loss $330
+- exact expiration 2026-09-18
+- a "Top defined-risk picks" section
+- a debit-spread candidate
+
+This is unacceptable.
+
+The deterministic MCP recommendation verdict must be the sole source of truth for recommendation requests.
+
+Do not modify vcp-trader-mcp.
+Do not change scanner algorithms.
+Do not add execution behavior.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. TRACE EVERY OUTPUT SOURCE
+==================================================
+
+Trace the complete StrategyAgent request path for:
+
+"Find a trade for NVDA"
+
+Identify exact files and functions responsible for:
+
+1. MCP strategyRecommendation card
+2. page headline
+3. GPT answer narrative
+4. key points
+5. risk-note banner
+6. Top defined-risk picks section
+7. confidence percentage
+8. Grade C
+9. max-loss value
+10. exact expiration
+11. Next Steps buttons
+12. legacy opportunity/trade-detail result
+
+Search for:
+
+- strategyRecommendation
+- recommendationFailed
+- opportunitySearch
+- tradeDetail
+- bestTrade
+- best option trade
+- defined-risk
+- Top defined-risk picks
+- Grade
+- confidence
+- expires
+- riskNote
+- keyPoints
+- suggestions
+- build_trade_candidate
+- existing ticket-builder route
+- Open Trade Builder
+- Opportunity Radar
+
+Produce the trace before changing behavior.
+
+==================================================
+2. ESTABLISH EXCLUSIVE RECOMMENDATION MODE
+==================================================
+
+When the deterministic recommendation classifier routes a request to:
+
+recommend_trade_strategy
+
+set a request-level state such as:
+
+recommendationMode = true
+
+When recommendationMode is true:
+
+- strategyRecommendation is the only recommendation source
+- legacy best-trade generation must not run
+- legacy option-candidate generation must not run
+- legacy trade-detail builder must not run
+- generic opportunity fallback must not run
+- GPT must not create a separate recommendation
+- legacy Top Picks must not render
+- legacy generated candidate sections must not render
+
+This exclusivity must apply even when:
+
+- MCP returns NO_TRADE
+- MCP returns WATCH
+- MCP returns UNSUPPORTED
+- MCP returns ESTIMATED_OPTIONS
+- MCP fails
+- OpenAI fails
+
+Do not allow a failure to reactivate a legacy recommendation path.
+
+==================================================
+3. SERVER-SIDE RESPONSE OWNERSHIP
+==================================================
+
+For pure recommendation requests, derive these fields from the deterministic MCP payload:
+
+- headline
+- confidence
+- answer summary
+- keyPoints
+- riskNote
+- suggestions
+
+Do not let OpenAI contradict them.
+
+OpenAI may supply explanation prose only within strict constraints.
+
+Preferred behavior:
+
+A. Generate a deterministic server-side response shell from strategyRecommendation.
+
+B. Optionally ask OpenAI to explain only the supplied verdict/reasons.
+
+C. If OpenAI output contains unsupported recommendation language, ignore it and use the deterministic shell.
+
+For NO_TRADE, deterministic output should resemble:
+
+headline:
+"No qualifying trade setup was found for NVDA."
+
+answer:
+"The recommendation engine evaluated the available strategy evidence and did not find a current setup that qualifies as a stock or options trade."
+
+keyPoints:
+- actual reasons from MCP
+- actual warnings from MCP
+- actual improvement/watch conditions when supplied
+
+riskNote:
+"No trade is recommended from the available evidence."
+
+Do not mention a debit spread, best trade, exact expiration, grade, probability, or confidence percentage unless supplied by MCP under a compatible verdict.
+
+==================================================
+4. VERDICT-LEVEL ALLOWLISTS
+==================================================
+
+Create centralized presentation allowlists.
+
+NO_TRADE may display only:
+
+- verdict
+- symbol
+- strategies evaluated
+- reasons
+- disqualifiers
+- warnings
+- missing conditions
+- what would need to improve
+- data-quality information
+- scanner/find-other-opportunities actions
+
+NO_TRADE must never display:
+
+- stock candidate
+- option candidate
+- Top Picks
+- Trade Builder
+- entry/stop/target candidate card
+- premium
+- max loss for a nonexistent trade
+- expiration
+- Greeks
+- confidence percentage
+- grade
+
+WATCH may display only:
+
+- setup being watched
+- current status
+- missing trigger/condition
+- reasons/warnings
+- watchlist/view-setup/scanner actions
+
+WATCH must not display a tradable candidate.
+
+UNSUPPORTED may display only:
+
+- requested strategy
+- unsupported reason
+- MCP-supplied qualified alternatives
+- education/scanner actions
+
+ESTIMATED_OPTIONS may display only:
+
+- Estimated badge
+- structure
+- DTE range
+- strike zones
+- underlying trigger/support/objective
+- limitations
+- connect-provider action
+
+ESTIMATED_OPTIONS must not display:
+
+- exact expiration
+- exact contract symbol
+- premium
+- bid/ask
+- Greeks
+- IV
+- open interest
+- volume
+- liquidity claim
+- premium-derived breakeven
+- probability
+- grade
+
+LIVE_OPTIONS may display only fields present in the MCP live candidate.
+
+STOCK may display only fields present in the MCP stock candidate.
+
+==================================================
+5. REMOVE OR GATE LEGACY TOP-PICKS RENDERING
+==================================================
+
+Find the component that rendered:
+
+"Top defined-risk picks"
+
+Determine what response field activates it.
+
+When strategyRecommendation exists:
+
+- do not render that legacy section
+- do not merge old candidates into the page
+- do not infer compatibility from symbol overlap
+
+Preserve the legacy section for unrelated legacy flows only when appropriate.
+
+Add a clear component-level gate.
+
+==================================================
+6. FIX HEADLINE AND NARRATIVE CONTRADICTION
+==================================================
+
+The headline must be generated from the deterministic verdict.
+
+For the observed NVDA result:
+
+NO_TRADE
+
+the headline must not say:
+
+"here are the best stock and option trades"
+
+Use:
+
+"No qualifying trade setup was found for NVDA."
+
+The narrative must not say:
+
+- AI-generated debit spread candidate
+- best option trade
+- acceptable liquidity
+- review both before acting
+
+unless those statements are directly supported by MCP and the verdict is compatible.
+
+==================================================
+7. KEY POINTS AND RISK NOTE
+==================================================
+
+When strategyRecommendation exists:
+
+- keyPoints must be derived from MCP reasons/warnings
+- riskNote must be derived from MCP verdict/warnings
+- no legacy market-analysis key points may imply a trade exists
+- no generic bullish sentiment statement may override NO_TRADE
+
+Market context can still appear as context, but it must be subordinate:
+
+"Although sentiment is bullish, the deterministic engine found no qualifying setup."
+
+==================================================
+8. CONFIDENCE
+==================================================
+
+Use only the recommendation engine's confidence/data-quality output.
+
+Do not display:
+
+- model-generated probability
+- Grade A/B/C
+- legacy confidence percentages
+
+unless they belong to an explicitly different, clearly labeled non-recommendation analysis section.
+
+The page-level confidence badge must reflect the deterministic recommendation result for a recommendation request.
+
+==================================================
+9. CTA GATING
+==================================================
+
+NO_TRADE:
+- Open Scanner
+- Find Other Opportunities
+- optionally Add to Watchlist
+- no Trade Builder
+
+WATCH:
+- Add to Watchlist
+- View Setup
+- Open Scanner
+- no Trade Builder
+
+UNSUPPORTED:
+- Learn About Strategy
+- Open Scanner
+- no Trade Builder
+
+ESTIMATED_OPTIONS:
+- Analyze Underlying
+- View Setup
+- Connect Supported Provider
+- no live Trade Builder
+
+LIVE_OPTIONS/STOCK:
+Trade Builder only when the MCP payload contains a complete, fresh, actionable candidate and all existing execution safeguards pass.
+
+Never open Trade Builder automatically.
+
+==================================================
+10. FAILURE EXCLUSIVITY
+==================================================
+
+If recommend_trade_strategy fails after the request was classified as recommendationMode:
+
+- return recommendationFailed=true
+- render a deterministic unavailable message
+- do not invoke the legacy best-trade path
+- do not invoke generic GPT recommendation
+- do not render Top Picks
+- do not render Trade Builder
+
+==================================================
+11. REGRESSION TESTS
+==================================================
+
+Add tests reproducing the exact NVDA contradiction.
+
+At minimum:
+
+1. recommendationMode + NO_TRADE:
+   - recommendation card shown
+   - no Top Picks
+   - no debit spread
+   - no exact expiration
+   - no grade
+   - no confidence percentage
+   - no Trade Builder
+   - headline says no qualifying trade
+
+2. recommendationMode + WATCH:
+   - watch content only
+   - no trade candidate sections
+
+3. recommendationMode + UNSUPPORTED:
+   - only MCP alternatives
+   - no legacy fallback
+
+4. recommendationMode + ESTIMATED_OPTIONS:
+   - estimated fields only
+   - no live-only fields
+
+5. recommendationMode + LIVE_OPTIONS:
+   - only MCP-provided contract data
+
+6. recommendationMode + MCP failure:
+   - unavailable state
+   - no legacy recommendation
+
+7. OpenAI contradicts NO_TRADE:
+   - contradictory prose discarded or constrained
+   - deterministic shell displayed
+
+8. legacy Top Picks still works only for its intended non-recommendation flow
+
+9. existing Analyze NVDA flow remains unchanged
+
+10. existing Find 3 Bullish Trades flow remains unchanged unless intentionally migrated
+
+11. education flows unchanged
+
+12. no execution behavior introduced
+
+Run:
+
+npm test
+npm run build
+
+Do not commit.
+Do not push.
+Do not deploy automatically.
+
+==================================================
+12. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. Exact files generating each contradictory section
+2. Legacy paths found
+3. Server-side exclusivity changes
+4. Frontend gates added
+5. Headline/narrative changes
+6. Key-point/risk-note changes
+7. Confidence changes
+8. CTA gating
+9. Failure behavior
+10. Tests/results
+11. Build result
+12. Remaining compatibility concerns
+13. Manual UAT prompts
+
+Wait for my review before committing or pushing.

@@ -514,6 +514,69 @@ export function buildRecommendationFallbackAnswer(rec: StrategyRecommendation): 
   };
 }
 
+/**
+ * Deterministic key points derived ONLY from MCP reasons/warnings (spec:
+ * when strategyRecommendation exists, keyPoints must come from the payload —
+ * never from model-generated market sentiment that could imply a trade).
+ */
+export function recommendationKeyPoints(rec: StrategyRecommendation): string[] {
+  const points: string[] = [];
+  for (const idea of rec.recommendations.slice(0, 3)) {
+    for (const r of idea.reasons ?? []) if (typeof r === "string" && r.trim()) points.push(r.trim());
+  }
+  for (const idea of rec.recommendations.slice(0, 3)) {
+    for (const w of idea.warnings ?? []) if (typeof w === "string" && w.trim()) points.push(w.trim());
+  }
+  for (const w of rec.warnings ?? []) if (typeof w === "string" && w.trim()) points.push(w.trim());
+  // De-dupe, cap at 5 (UI limit).
+  return Array.from(new Set(points)).slice(0, 5);
+}
+
+/** Deterministic verdict-driven risk note — never model-generated. */
+export function recommendationRiskNote(rec: StrategyRecommendation): string {
+  const v = rec.recommendations[0]?.overallVerdict ?? "NO_TRADE";
+  const base =
+    v === "NO_TRADE"
+      ? "No trade is recommended from the available evidence."
+      : v === "WATCH"
+        ? "Not actionable yet — no trade is recommended until the watch conditions are met."
+        : v === "UNSUPPORTED"
+          ? "The requested strategy isn't supported by the recommendation engine — only the listed safer alternatives were evaluated."
+          : v === "ESTIMATED_OPTIONS"
+            ? "Estimated structure only — no live options chain was used. Confirm real contracts, premiums, and liquidity with a connected provider before acting."
+            : "Deterministic recommendation engine output — verify every level in your own broker before acting.";
+  const sim = rec.simulatedData ? " Data source is simulated development data — not live market data." : "";
+  return `${base}${sim} AI-generated research, not investment advice.`.slice(0, 280);
+}
+
+// Actionable-trade language that must never accompany a non-actionable
+// verdict. Kept deliberately narrow: educational mentions of a strategy name
+// are fine; claiming a concrete "best trade" with numbers is not.
+const CONTRADICTION_RES: RegExp[] = [
+  /\bbest (stock|option) trade\b/i,
+  /\bhere (are|is) the best\b/i,
+  /\blooks (bullish|bearish)\s*[—-]/i,
+  /\bmax loss\s*(of|is|:)?\s*\$\d/i,
+  /\bexpir(es|ation|y)\b[^.\n]{0,20}\d{4}-\d{2}-\d{2}/i,
+  /\b\d{1,3}%\s*(confidence|probability)\b/i,
+  /\brecommended (entry|buy|sell|trade)\b/i,
+  /\bgrade\s*[ABC]\b/i,
+];
+
+const ACTIONABLE_VERDICTS: ReadonlySet<string> = new Set(["LIVE_OPTIONS", "ESTIMATED_OPTIONS", "STOCK"]);
+
+/**
+ * True when model prose asserts an actionable trade that the deterministic
+ * verdicts do not support (spec §3C: discard contradictory prose and use the
+ * deterministic shell instead).
+ */
+export function answerContradictsRecommendation(text: string, rec: StrategyRecommendation): boolean {
+  if (!text) return false;
+  const anyActionable = rec.recommendations.some((i) => ACTIONABLE_VERDICTS.has(i.overallVerdict));
+  if (anyActionable) return false; // actionable verdicts may legitimately carry trade language
+  return CONTRADICTION_RES.some((re) => re.test(text));
+}
+
 /** Safe deterministic answer when the recommendation engine is unavailable. */
 export function buildRecommendationUnavailableAnswer(): {
   headline: string;

@@ -359,7 +359,10 @@ export default function AskPage() {
             </CardContent>
           </Card>
 
-          {data.tradeDetail && (
+          {/* Legacy ticket/picks never render alongside a deterministic
+              recommendation (or its honest failure state) — the MCP verdict
+              is the sole recommendation source for those asks. */}
+          {data.tradeDetail && !data.strategyRecommendation && !data.recommendationFailed && (
             <Card data-testid="card-ask-trade-detail" className="border-emerald-500/30 bg-emerald-500/[0.03]">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -549,7 +552,7 @@ export default function AskPage() {
             </Card>
           )}
 
-          {data.picks && data.picks.length > 0 && (
+          {data.picks && data.picks.length > 0 && !data.strategyRecommendation && !data.recommendationFailed && (
             <Card data-testid="card-ask-picks">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Top defined-risk picks</CardTitle>

@@ -1181,23 +1181,59 @@ async function callOpenAi(
       }
     }
 
-    // Deterministic verdict-driven headline for pure recommendation asks —
-    // the MCP verdict, not the model, decides what the headline claims.
+    // Deterministic response shell for recommendation asks — the MCP verdict,
+    // not the model, decides what the headline / key points / risk note claim.
+    // The model contributes explanation prose only; if that prose asserts an
+    // actionable trade the verdicts don't support, it is discarded for the
+    // deterministic fallback summary (never a contradiction on the page).
     let recHeadline: string | null = null;
-    if (strategyRec && tradeReqKind === "recommendation") {
+    let recKeyPoints: string[] | null = null;
+    let recRiskNote: string | null = null;
+    let recAnswerOverride: string | null = null;
+    if (strategyRec) {
       try {
-        const { recommendationHeadline } = await import("../mcp/strategy-recommendation");
-        recHeadline = recommendationHeadline(strategyRec);
+        const sr = await import("../mcp/strategy-recommendation");
+        const pureRec = tradeReqKind === "recommendation" || tradeReqKind === "education_plus_search";
+        const mcpPoints = sr.recommendationKeyPoints(strategyRec);
+        if (pureRec) {
+          // Pure recommendation asks: full deterministic shell. The model's
+          // prose is discarded if it asserts a trade the verdicts don't back.
+          recHeadline = sr.recommendationHeadline(strategyRec);
+          recKeyPoints = mcpPoints;
+          recRiskNote = sr.recommendationRiskNote(strategyRec);
+          const prose = typeof parsed.answer === "string" ? parsed.answer : "";
+          if (sr.answerContradictsRecommendation(prose, strategyRec)) {
+            recAnswerOverride = sr.buildRecommendationFallbackAnswer(strategyRec).answer;
+          }
+        } else {
+          // Combined analysis+recommendation asks: the analysis prose and key
+          // points are legitimate (e.g. "% confidence" in strategy scans), so
+          // no prose replacement. Merge: recommendation facts lead, analysis
+          // points keep their slots; riskNote stays deterministic only when
+          // no verdict is actionable (so analysis sentiment can't imply a
+          // trade the engine refused).
+          const modelPoints = Array.isArray(parsed.keyPoints)
+            ? parsed.keyPoints.filter((x: any) => typeof x === "string")
+            : [];
+          const merged = Array.from(new Set([...mcpPoints.slice(0, 2), ...modelPoints])).slice(0, 5);
+          if (merged.length > 0) recKeyPoints = merged;
+          const actionable = strategyRec.recommendations.some(
+            (i) => i.overallVerdict === "LIVE_OPTIONS" || i.overallVerdict === "ESTIMATED_OPTIONS" || i.overallVerdict === "STOCK",
+          );
+          if (!actionable) recRiskNote = sr.recommendationRiskNote(strategyRec);
+        }
       } catch {
-        /* keep model headline */
+        /* keep model fields */
       }
     }
 
     return {
       headline: recHeadline ?? (typeof parsed.headline === "string" && parsed.headline.trim() ? parsed.headline.trim().slice(0, 160) : "Here's what I found."),
-      answer: typeof parsed.answer === "string" ? parsed.answer.trim().slice(0, 1800) : "",
-      keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.filter((x: any) => typeof x === "string").slice(0, 5) : [],
-      riskNote: typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is AI-generated analysis — not investment advice.",
+      answer: recAnswerOverride ?? (typeof parsed.answer === "string" ? parsed.answer.trim().slice(0, 1800) : ""),
+      keyPoints: recKeyPoints && recKeyPoints.length > 0
+        ? recKeyPoints
+        : Array.isArray(parsed.keyPoints) ? parsed.keyPoints.filter((x: any) => typeof x === "string").slice(0, 5) : [],
+      riskNote: recRiskNote ?? (typeof parsed.riskNote === "string" ? parsed.riskNote.trim().slice(0, 280) : "All output is AI-generated analysis — not investment advice."),
       confidence,
       referencesUsed: referencesUsed.length > 0 ? referencesUsed : undefined,
       ...(vcpAnalysis ? { vcpAnalysis } : {}),
@@ -1567,7 +1603,11 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         stockPick?: BestTradePick | null;
         optionPick?: BestTradePick | null;
       } | null = null;
-      if (intent === "best-trade") {
+      // Exclusive recommendation mode: the legacy best-trade scanner (and its
+      // headline/narrative override below) never runs when the deterministic
+      // recommendation engine owns this ask — even for NO_TRADE/WATCH verdicts
+      // or engine failure, no legacy pick may reappear.
+      if (intent === "best-trade" && !recommendationHandled) {
         try {
           if (tickers.length > 0) {
             const sym = tickers[0];
@@ -1608,9 +1648,13 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
 
       let answer = await callOpenAi(question, ctx);
       // Defensive second layer of the mutual exclusion above: never present a
-      // legacy ticket alongside (or after the failure of) a deterministic
-      // recommendation.
-      if (answer && (answer.strategyRecommendation || answer.recommendationFailed)) tradeDetail = null;
+      // legacy ticket, legacy picks, or the legacy best-trade narrative
+      // alongside (or after the failure of) a deterministic recommendation.
+      if (answer && (answer.strategyRecommendation || answer.recommendationFailed)) {
+        tradeDetail = null;
+        picks = [];
+        bestTradeMeta = null;
+      }
       const source: "openai" | "rule_based" = answer ? "openai" : "rule_based";
       if (!answer) answer = ruleBasedAnswer(question, intent, ctx);
 

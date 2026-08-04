@@ -17,6 +17,9 @@ import {
   tradeBuilderEligible,
   buildRecommendationFallbackAnswer,
   buildRecommendationUnavailableAnswer,
+  recommendationKeyPoints,
+  recommendationRiskNote,
+  answerContradictsRecommendation,
   type StrategyRecommendation,
   type RecommendationIdea,
 } from "./strategy-recommendation";
@@ -263,6 +266,65 @@ describe("CTA gating — no trade ticket for non-actionable or simulated results
   it("ESTIMATED_OPTIONS suggests connecting a broker", () => {
     const labels = suggestionsForRecommendation(recWith("ESTIMATED_OPTIONS")).map((s) => s.label);
     expect(labels).toContain("Connect Broker");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deterministic response shell — the NVDA contradiction regression
+// (NO_TRADE card + bullish "best stock and option trades" prose must never
+// coexist; keyPoints/riskNote come from the MCP payload, not the model)
+// ---------------------------------------------------------------------------
+
+describe("recommendationKeyPoints — derived only from MCP reasons/warnings", () => {
+  it("uses idea reasons and warnings, deduped, capped at 5", () => {
+    const rec = validateRecommendationPayload({
+      recommendations: [{ ...goodIdea, overallVerdict: "NO_TRADE", reasons: ["No qualifying setup found for NVDA", "No qualifying setup found for NVDA"], warnings: ["Low data quality"] }],
+      warnings: ["Engine-level warning"],
+    });
+    const pts = recommendationKeyPoints(rec);
+    expect(pts).toEqual(["No qualifying setup found for NVDA", "Low data quality", "Engine-level warning"]);
+    expect(pts.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("recommendationRiskNote — verdict-driven, never model prose", () => {
+  it("NO_TRADE says no trade is recommended", () => {
+    expect(recommendationRiskNote(recWith("NO_TRADE"))).toMatch(/no trade is recommended/i);
+  });
+  it("WATCH says not actionable yet", () => {
+    expect(recommendationRiskNote(recWith("WATCH"))).toMatch(/not actionable yet/i);
+  });
+  it("UNSUPPORTED mentions unsupported strategy", () => {
+    expect(recommendationRiskNote(recWith("UNSUPPORTED"))).toMatch(/isn't supported/i);
+  });
+  it("ESTIMATED_OPTIONS flags estimated structure, no live chain", () => {
+    expect(recommendationRiskNote(recWith("ESTIMATED_OPTIONS"))).toMatch(/no live options chain/i);
+  });
+  it("simulated data is called out", () => {
+    expect(recommendationRiskNote(recWith("LIVE_OPTIONS", {}, true))).toMatch(/simulated development data/i);
+  });
+});
+
+describe("answerContradictsRecommendation — contradictory prose is detected", () => {
+  const bullishProse =
+    "NVDA looks bullish — here are the best stock and option trades. Best option trade: Defined-risk debit spread (66% confidence, max loss $330, expires 2026-09-18).";
+
+  it("the exact production NVDA contradiction is flagged against NO_TRADE", () => {
+    expect(answerContradictsRecommendation(bullishProse, recWith("NO_TRADE"))).toBe(true);
+  });
+  it("flagged against WATCH and UNSUPPORTED too", () => {
+    expect(answerContradictsRecommendation(bullishProse, recWith("WATCH"))).toBe(true);
+    expect(answerContradictsRecommendation(bullishProse, recWith("UNSUPPORTED"))).toBe(true);
+  });
+  it("actionable verdicts may legitimately carry trade language", () => {
+    expect(answerContradictsRecommendation(bullishProse, recWith("LIVE_OPTIONS"))).toBe(false);
+    expect(answerContradictsRecommendation(bullishProse, recWith("STOCK"))).toBe(false);
+  });
+  it("plain educational prose about a strategy is NOT flagged", () => {
+    const education =
+      "A credit spread is an options strategy where you sell one option and buy another to define your risk. The engine did not find a qualifying setup.";
+    expect(answerContradictsRecommendation(education, recWith("UNSUPPORTED"))).toBe(false);
+    expect(answerContradictsRecommendation("", recWith("NO_TRADE"))).toBe(false);
   });
 });
 

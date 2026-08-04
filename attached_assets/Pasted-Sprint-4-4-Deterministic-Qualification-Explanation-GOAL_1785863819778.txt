@@ -1,0 +1,224 @@
+Sprint 4.4 — Deterministic Qualification Explanation
+
+GOAL
+
+Improve transparency of market-wide deterministic search without changing ranking, risk, scanner logic, qualification rules, MCP tools, API contracts, database schema, or execution.
+
+This task is for the VCP Trader application presentation layer.
+
+Do not modify algorithms.
+Do not modify the MCP server.
+Do not change deterministic decisions or counts.
+Do not commit, push, or deploy automatically.
+
+Use only fields already returned by the backend.
+
+--------------------------------------------------
+1. EXCLUSION BREAKDOWN
+--------------------------------------------------
+
+Replace:
+
+"42 excluded"
+
+with grouped deterministic reasons.
+
+Example:
+
+Excluded Before Qualification
+
+18 Not yet triggered
+11 Outside freshness window
+7 Reward/risk below threshold
+4 Earnings risk
+2 Duplicate confluence
+
+Use the existing exclusionSummary reason codes returned by the backend.
+
+Never fabricate categories, counts, or reasons.
+
+If exclusionSummary is absent, show only:
+
+"42 excluded before qualification"
+
+Do not infer the breakdown.
+
+--------------------------------------------------
+2. UNAVAILABLE SECTION
+--------------------------------------------------
+
+Unavailable candidates must not appear under Rejected.
+
+Create a dedicated section:
+
+Unavailable Candidates
+
+Examples:
+
+BA — Market snapshot unavailable
+TSLA — Provider timeout
+AAPL — Missing quote
+
+Use only backend-supplied unavailable candidate details.
+
+If only unavailableCount is supplied and no candidate details exist, show a grouped summary rather than inventing symbols.
+
+--------------------------------------------------
+3. REJECTED SECTION
+--------------------------------------------------
+
+Only show true qualification failures.
+
+Examples:
+
+Risk exceeds limit
+Concentration exceeded
+Portfolio policy restriction
+Reward/risk below threshold
+
+Never include:
+
+- provider failures
+- missing quotes
+- timeouts
+- unavailable market data
+
+Do not render a Rejected section when rejectedCount is zero.
+
+--------------------------------------------------
+4. CLOSEST MATCHES
+--------------------------------------------------
+
+If zero qualified candidates exist, show Closest Matches only when the backend already returns deterministic near-miss candidates or sufficient fields to identify them truthfully.
+
+Examples:
+
+Needs lower risk
+Needs trigger confirmation
+Waiting for breakout
+Earnings inside the trade horizon
+
+Never manufacture a closest-candidate list from excluded or unavailable counts.
+
+Never suggest bypassing risk or qualification rules.
+
+If no near-miss data exists, omit this section.
+
+--------------------------------------------------
+5. WHY NOTHING QUALIFIED
+--------------------------------------------------
+
+Add a deterministic summary.
+
+Example:
+
+No opportunity satisfied every required gate:
+
+- actionable trigger
+- freshness
+- reward/risk
+- portfolio policy
+- risk budget
+- required market data
+
+The engine intentionally returned no trade rather than lowering its standards.
+
+Only mention gates supported by the returned result.
+
+Do not display checkmarks that imply a gate passed unless the backend confirms it.
+
+--------------------------------------------------
+6. PORTFOLIO LANGUAGE
+--------------------------------------------------
+
+Present these separately:
+
+- Buying power
+- Cash verification
+- Risk budget
+- Position concentration
+- Existing exposure
+
+Do not imply affordability unless the required cash or buying power was verified.
+
+Examples:
+
+Buying power: Sufficient
+Cash requirement: Not verified
+Risk ceiling applied: $500
+Concentration impact: Unknown
+
+Do not combine "buying power sufficient" and "cash unverified" into "trade affordable."
+
+--------------------------------------------------
+7. COUNT SEMANTICS
+--------------------------------------------------
+
+Preserve the distinction between:
+
+- stored opportunities reviewed
+- post-confluence candidates
+- qualified
+- excluded before qualification
+- rejected after qualification
+- unavailable
+
+Do not require these counts to sum unless the backend contract says they represent the same population.
+
+Never recalculate or overwrite backend counts in the frontend.
+
+--------------------------------------------------
+8. AI EXPLANATION
+--------------------------------------------------
+
+The AI explanation may summarize the deterministic result but must not:
+
+- change counts
+- promote an excluded, rejected, or unavailable setup
+- invent closest matches
+- invent rejection reasons
+- claim a trade qualifies
+- reinterpret unavailable as rejected
+
+If AI explanation fails, preserve a rule-based deterministic summary.
+
+--------------------------------------------------
+9. TESTS
+--------------------------------------------------
+
+Add regression tests for:
+
+- unavailable is not rejected
+- rejected section hidden when rejectedCount is zero
+- exclusion summaries render correctly
+- absent exclusionSummary does not create fabricated reasons
+- closest matches render only with backend-supported data
+- closest matches remain hidden when unsupported
+- zero-qualified explanation
+- accurate deterministic counts
+- buying power and cash verification remain separate
+- OpenAI cannot alter deterministic categories
+- existing qualified-trade rendering remains unchanged
+- no execution behavior
+
+Run:
+
+npm test
+npm run build
+
+Report:
+
+1. files changed
+2. UI sections changed
+3. exclusion reason mapping
+4. unavailable versus rejected handling
+5. closest-match data requirements
+6. tests and totals
+7. build result
+8. screenshots
+
+No algorithm changes.
+No MCP changes.
+No API changes.
+No database changes.
+No commits or automatic deployment.

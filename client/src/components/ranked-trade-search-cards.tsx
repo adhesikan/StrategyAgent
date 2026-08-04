@@ -17,9 +17,12 @@ import { Button } from "@/components/ui/button";
 import {
   actionableHint,
   buildEmptyState,
+  dataRejectionGroups,
   exclusionCtas,
+  qualificationGatesMissed,
   rankedCountsLine,
-  translateExclusionReason,
+  shortExclusionLabel,
+  trueRejectionGroups,
   translateRejectionReason,
   unavailableCtas,
   type RankedExclusionGroup,
@@ -113,7 +116,7 @@ function WatchCard({ w }: { w: RankedWatchCandidate }) {
 }
 
 // ---------------------------------------------------------------------------
-// Exclusion section
+// Exclusion section (§1 — count-first format, short labels)
 // ---------------------------------------------------------------------------
 
 function ExclusionSection({ groups, totalExcluded }: { groups: RankedExclusionGroup[]; totalExcluded: number }) {
@@ -125,20 +128,113 @@ function ExclusionSection({ groups, totalExcluded }: { groups: RankedExclusionGr
       </summary>
       <div className="mt-2 space-y-1.5">
         <div className="text-xs text-muted-foreground">
-          These opportunities were filtered out before confluence or quality assessment — they are not rejections.
+          These opportunities were filtered before confluence or quality assessment — they are not rejections.
         </div>
-        {groups.length === 0 && (
-          <div className="text-xs text-muted-foreground">{totalExcluded} {totalExcluded === 1 ? "opportunity was" : "opportunities were"} excluded.</div>
-        )}
-        {groups.map((g) => (
-          <div key={g.reason} className="text-xs" data-testid={`row-ranked-exclusion-${g.reason}`}>
-            <span className="text-foreground/80">{translateExclusionReason(g.reason)}</span>
-            <span className="text-muted-foreground"> — {g.count}</span>
+        {groups.length === 0 ? (
+          <div className="text-xs text-muted-foreground">
+            {totalExcluded} {totalExcluded === 1 ? "opportunity was" : "opportunities were"} excluded before qualification.
           </div>
-        ))}
+        ) : (
+          groups.map((g) => (
+            <div key={g.reason} className="text-xs flex items-center gap-2" data-testid={`row-ranked-exclusion-${g.reason}`}>
+              <span className="tabular-nums font-semibold text-foreground/70 w-6 text-right shrink-0">{g.count}</span>
+              <span className="text-muted-foreground">{shortExclusionLabel(g.reason)}</span>
+            </div>
+          ))
+        )}
         <CtaRow ctas={exclusionCtas()} testId="ctas-ranked-excluded" />
       </div>
     </details>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// §5 — Why Nothing Qualified (deterministic gate summary)
+// ---------------------------------------------------------------------------
+
+/** Shows the gates that weren't passed. Only rendered when qualifiedCount = 0
+ *  and there is evidence of at least one specific gate failure. */
+function WhyNothingQualifiedSection({ search }: { search: RankedTradeSearch }) {
+  if (search.qualifiedCount > 0) return null;
+  const gates = qualificationGatesMissed(search);
+  if (gates.length === 0) return null;
+  return (
+    <div
+      className="rounded-lg border border-border/50 bg-muted/10 p-3 text-xs space-y-2"
+      data-testid="section-ranked-why-nothing"
+    >
+      <div className="font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
+        Why Nothing Qualified
+      </div>
+      <div className="text-muted-foreground">
+        No opportunity satisfied every required gate:
+      </div>
+      <ul className="space-y-0.5 pl-4 list-disc text-muted-foreground/80">
+        {gates.map((g) => (
+          <li key={g}>{g}</li>
+        ))}
+      </ul>
+      <div className="text-muted-foreground/50 text-[10px]">
+        The engine intentionally returned no trade rather than lowering its standards.
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// §2 — Unavailable Candidates (separate from Rejected)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dedicated "Unavailable Candidates" section — never mixed with Rejected.
+ * Shows unavailableCount + any data-unavailability rejection groups.
+ * Spec §2: "Unavailable candidates must not appear under Rejected."
+ */
+function UnavailableCandidatesSection({
+  search,
+  question,
+}: {
+  search: RankedTradeSearch;
+  question?: string;
+}) {
+  const extraGroups = dataRejectionGroups(search.rejectionSummary);
+  const extraCount = extraGroups.reduce((s, g) => s + g.count, 0);
+  const totalUnavailable = search.unavailableCount + extraCount;
+  if (totalUnavailable === 0 && extraGroups.length === 0) return null;
+  return (
+    <div
+      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs space-y-1.5"
+      data-testid="section-ranked-unavailable"
+    >
+      <div className="font-medium uppercase tracking-wide text-muted-foreground text-[10px]">
+        Unavailable Candidates
+      </div>
+      <div className="text-amber-100/90">
+        {totalUnavailable}{" "}
+        {totalUnavailable === 1 ? "setup" : "setups"} could not be evaluated because market data
+        was unavailable from the provider. Nothing was fabricated to fill the gap.
+      </div>
+      {extraGroups.map((g) => (
+        <div
+          key={g.reason}
+          className="text-amber-100/70"
+          data-testid={`row-ranked-unavailable-reason-${g.reason}`}
+        >
+          {translateRejectionReason(g.reason)}
+          {g.symbols.length > 0 && (
+            <span className="text-amber-100/50 ml-1">
+              ({g.symbols.slice(0, 3).join(", ")}
+              {g.symbols.length > 3 ? "…" : ""})
+            </span>
+          )}
+          <span className="text-amber-100/50 ml-1">— {g.count}</span>
+        </div>
+      ))}
+      <CtaRow
+        ctas={unavailableCtas(question ?? "Find the best trades today")}
+        testId="ctas-ranked-unavailable"
+      />
+    </div>
   );
 }
 
@@ -168,22 +264,7 @@ function RejectionRow({ g }: { g: RankedRejectionGroup }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Data limitations section
-// ---------------------------------------------------------------------------
-
-function DataLimitationsSection({ search, question }: { search: RankedTradeSearch; question?: string }) {
-  if (search.unavailableCount === 0) return null;
-  return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs space-y-1.5" data-testid="section-ranked-data-limitations">
-      <div className="font-medium uppercase tracking-wide text-muted-foreground">Data limitations</div>
-      <div className="text-amber-100/90">
-        {search.unavailableCount} {search.unavailableCount === 1 ? "setup" : "setups"} could not be evaluated because market data was unavailable from the provider. Nothing was fabricated to fill the gap.
-      </div>
-      <CtaRow ctas={unavailableCtas(question ?? "Find the best trades today")} testId="ctas-ranked-unavailable" />
-    </div>
-  );
-}
+// (DataLimitationsSection replaced by UnavailableCandidatesSection above — §2)
 
 // ---------------------------------------------------------------------------
 // Main export
@@ -201,7 +282,36 @@ export function RankedTradeSearchCards({
 }) {
   const hasResults = search.candidates.length > 0 || search.watchCandidates.length > 0;
   const hasExclusions = (search.excludedCount ?? 0) > 0;
-  const hasRejections = search.rejectionSummary.length > 0 || search.rejectedCount > 0;
+
+  // §3: Only true qualification failures appear in the Rejected section.
+  // Data-unavailability groups move to UnavailableCandidatesSection (§2).
+  const trueRejections = trueRejectionGroups(search.rejectionSummary);
+  const trueRejectedCount = trueRejections.reduce((s, g) => s + g.count, 0);
+  const hasRejections = trueRejections.length > 0 || trueRejectedCount > 0;
+
+  // Shared rejection section JSX used in both empty and normal states.
+  const RejectionSection = () =>
+    hasRejections ? (
+      <details className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3" data-testid="section-ranked-rejections">
+        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
+          <ChevronDown className="h-3.5 w-3.5" />
+          Why setups were rejected ({trueRejectedCount})
+        </summary>
+        <div className="mt-2 space-y-2">
+          <div className="text-[11px] text-muted-foreground/80">
+            These setups reached qualification but were rejected because they didn't meet all required conditions.
+          </div>
+          {trueRejections.length === 0 && (
+            <div className="text-xs text-muted-foreground">
+              {trueRejectedCount} {trueRejectedCount === 1 ? "setup was" : "setups were"} rejected during evaluation.
+            </div>
+          )}
+          {trueRejections.map((g) => (
+            <RejectionRow key={g.reason} g={g} />
+          ))}
+        </div>
+      </details>
+    ) : null;
 
   // Empty state: derive the correct state (A/B/C/D) and render it
   // instead of the normal candidate sections.
@@ -214,30 +324,18 @@ export function RankedTradeSearchCards({
             {rankedCountsLine(search)}
           </div>
           <EmptyStateCard state={state} />
-          {/* Still show rejections/exclusions for context when present */}
+          {/* §5 — Why nothing qualified */}
+          <WhyNothingQualifiedSection search={search} />
+          {/* Still show exclusions/rejections/unavailable for context */}
           {hasExclusions && (
             <ExclusionSection
               groups={search.exclusionSummary ?? []}
               totalExcluded={search.excludedCount!}
             />
           )}
-          {hasRejections && (
-            <details className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3" data-testid="section-ranked-rejections">
-              <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
-                <ChevronDown className="h-3.5 w-3.5" />
-                Why setups were rejected ({search.rejectedCount})
-              </summary>
-              <div className="mt-2 space-y-2">
-                {search.rejectionSummary.length === 0 && (
-                  <div className="text-xs text-muted-foreground">{search.rejectedCount} {search.rejectedCount === 1 ? "setup was" : "setups were"} rejected during evaluation.</div>
-                )}
-                {search.rejectionSummary.map((g) => (
-                  <RejectionRow key={g.reason} g={g} />
-                ))}
-              </div>
-            </details>
-          )}
-          <DataLimitationsSection search={search} question={question} />
+          <RejectionSection />
+          {/* §2 — Unavailable Candidates (never mixed into Rejected) */}
+          <UnavailableCandidatesSection search={search} question={question} />
         </div>
       );
     }
@@ -278,24 +376,11 @@ export function RankedTradeSearchCards({
         />
       )}
 
-      {hasRejections && (
-        <details className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3" data-testid="section-ranked-rejections">
-          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
-            <ChevronDown className="h-3.5 w-3.5" />
-            Rejection Summary — Post-Confluence ({search.rejectedCount})
-          </summary>
-          <div className="mt-2 space-y-2">
-            {search.rejectionSummary.length === 0 && (
-              <div className="text-xs text-muted-foreground">{search.rejectedCount} {search.rejectedCount === 1 ? "setup was" : "setups were"} rejected during evaluation.</div>
-            )}
-            {search.rejectionSummary.map((g) => (
-              <RejectionRow key={g.reason} g={g} />
-            ))}
-          </div>
-        </details>
-      )}
+      {/* §3 — Rejected: true qualification failures only */}
+      <RejectionSection />
 
-      <DataLimitationsSection search={search} question={question} />
+      {/* §2 — Unavailable Candidates: data issues never under Rejected */}
+      <UnavailableCandidatesSection search={search} question={question} />
     </div>
   );
 }

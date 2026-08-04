@@ -285,6 +285,103 @@ export function rankedCountsLine(s: RankedTradeSearch): string {
 }
 
 // ---------------------------------------------------------------------------
+// §4.4 — Data-unavailability vs. true-rejection classification (§2, §3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rejection reason codes that indicate market data unavailability — NOT true
+ * qualification failures. These must appear in the Unavailable Candidates
+ * section, never under "Rejected". Spec §3: "Never include: provider failures,
+ * missing quotes, timeouts, unavailable market data."
+ */
+export const DATA_UNAVAILABILITY_CODES: ReadonlySet<string> = new Set([
+  "DATA_UNAVAILABLE",
+  "UNDERLYING_MARKET_DATA_UNAVAILABLE",
+  "OPTIONS_DATA_UNAVAILABLE",
+  "DATA_FRESHNESS_INSUFFICIENT",
+  "CANDIDATE_CONFIRMATION_UNAVAILABLE",
+  "MARKET_REGIME_UNAVAILABLE",
+]);
+
+/** Returns true when a rejection reason code represents a data-unavailability
+ *  issue, not a true qualification failure. */
+export function isDataUnavailabilityRejection(reason: string): boolean {
+  const base = reason.split(":")[0].trim();
+  return DATA_UNAVAILABILITY_CODES.has(base);
+}
+
+/**
+ * Filters a rejection summary to only true qualification failures.
+ * Data-unavailability reasons are stripped — they belong in the Unavailable
+ * Candidates section.
+ */
+export function trueRejectionGroups(summary: RankedRejectionGroup[]): RankedRejectionGroup[] {
+  return summary.filter((g) => !isDataUnavailabilityRejection(g.reason));
+}
+
+/**
+ * Filters a rejection summary to only data-unavailability reason groups.
+ * Used to populate the Unavailable Candidates section when the backend
+ * puts these in rejectionSummary rather than a dedicated unavailable array.
+ */
+export function dataRejectionGroups(summary: RankedRejectionGroup[]): RankedRejectionGroup[] {
+  return summary.filter((g) => isDataUnavailabilityRejection(g.reason));
+}
+
+/**
+ * Short label for an exclusion reason — for the count-first display format:
+ *   "18 Not yet triggered"  (not "No actionable trigger was available — 18")
+ */
+export function shortExclusionLabel(reason: string): string {
+  switch (reason) {
+    case "NOT_ACTIONABLE_NO_TRIGGER":   return "Not yet triggered";
+    case "STALE":                       return "Outside freshness window";
+    case "DIRECTION_MISMATCH":          return "Direction mismatch";
+    case "INVALID_SETUP":               return "Invalid setup";
+    case "SIMULATED_DATA_NOT_ELIGIBLE": return "Simulated data only";
+    default:
+      // Humanize unknown codes without exposing raw implementation names.
+      return reason.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
+/**
+ * Derives the qualification gates that were not met, for the §5 "Why nothing
+ * qualified" summary. Only returns gates evidenced by the returned result —
+ * never invented. Returns [] when result carries no evidence.
+ */
+export function qualificationGatesMissed(search: RankedTradeSearch): string[] {
+  const gates: string[] = [];
+  const excl = new Set((search.exclusionSummary ?? []).map((g) => g.reason));
+  const rej = new Set(search.rejectionSummary.map((g) => g.reason.split(":")[0].trim()));
+
+  if (excl.has("NOT_ACTIONABLE_NO_TRIGGER")) gates.push("Actionable entry trigger");
+  if (excl.has("STALE") || rej.has("DATA_FRESHNESS_INSUFFICIENT")) gates.push("Setup freshness");
+  if (rej.has("RISK_LIMIT_EXCEEDED")) gates.push("Risk budget");
+  if (rej.has("EARNINGS_RISK")) gates.push("Earnings clearance");
+  if (rej.has("DIRECTION_CONFLICT") || excl.has("DIRECTION_MISMATCH")) gates.push("Direction alignment with market regime");
+  if (
+    search.unavailableCount > 0 ||
+    rej.has("DATA_UNAVAILABLE") ||
+    rej.has("UNDERLYING_MARKET_DATA_UNAVAILABLE") ||
+    rej.has("OPTIONS_DATA_UNAVAILABLE")
+  ) {
+    gates.push("Required market data");
+  }
+  if (rej.has("WAITING_FOR_TRIGGER")) gates.push("Price trigger confirmation");
+  if (rej.has("NO_VALID_SETUP") || excl.has("INVALID_SETUP")) gates.push("Valid setup pattern");
+  if (
+    search.groupedCandidateCount !== undefined &&
+    search.groupedCandidateCount < search.reviewedCount &&
+    search.reviewedCount > 0
+  ) {
+    gates.push("Confluence requirements");
+  }
+
+  return gates;
+}
+
+// ---------------------------------------------------------------------------
 // §7 — Rejection reason translation + "what would make it actionable"
 // ---------------------------------------------------------------------------
 

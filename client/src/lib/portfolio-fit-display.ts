@@ -205,11 +205,13 @@ export function portfolioFitRows(
     });
   }
 
-  // 5. Cash Available — show when explicitly returned (including "unknown").
+  // 5. Cash Requirement — show when explicitly returned (including "unknown").
+  //    "Cash Requirement" is the spec label (§6): buying power and cash verification
+  //    remain separate rows — never combined into a single "trade affordable" statement.
   if (awareness.cashSufficiency != null) {
     const cs = awareness.cashSufficiency;
     rows.push({
-      label: "Cash Available",
+      label: "Cash Requirement",
       value: SUFFICIENCY_LABEL[cs] ?? cs,
       valueClass: SUFFICIENCY_CLASS[cs] ?? "text-muted-foreground",
       badgeClass: "",

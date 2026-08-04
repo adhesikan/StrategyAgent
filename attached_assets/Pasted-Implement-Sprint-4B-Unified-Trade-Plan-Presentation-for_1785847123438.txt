@@ -1,0 +1,175 @@
+Implement Sprint 4B — Unified Trade Plan Presentation for VCP Trader.
+
+IMPORTANT
+
+This is a presentation-layer refactor.
+
+Do not modify MCP algorithms.
+Do not change recommendation verdicts.
+Do not change risk formulas.
+Do not add broker writes.
+Do not commit, push, or deploy automatically.
+
+GOAL
+
+Create one reusable TradePlanCard used by:
+
+- Analyze Symbol when a trade candidate exists
+- Find a trade for SYMBOL
+- market-wide ranked candidates
+- future portfolio-aware recommendations
+
+==================================================
+1. CREATE A CANONICAL VIEW MODEL
+==================================================
+
+Create a frontend-only TradePlanViewModel:
+
+{
+  symbol,
+  rank?,
+  verdict,
+  status,
+  strategy,
+  strategyScore?,
+  direction,
+  instrument,
+  currentPrice?,
+  trigger?,
+  triggerState?,
+  distanceToTrigger?,
+  invalidation?,
+  objective?,
+  riskPerUnit?,
+  suggestedQuantity?,
+  maxRisk?,
+  rewardRisk?,
+  confidence,
+  dataQuality,
+  earningsRisk?,
+  reasons,
+  warnings,
+  source
+}
+
+Only map supplied deterministic fields.
+
+Never fabricate values.
+
+==================================================
+2. CARD LAYOUT
+==================================================
+
+Top row:
+
+- Rank
+- Symbol
+- Verdict
+- Direction
+- Confidence
+
+Primary metrics:
+
+- Current Price
+- Entry Trigger
+- Distance to Trigger
+- Invalidation
+- Objective
+- Risk/Reward
+
+Risk section:
+
+- Maximum Risk
+- Suggested Quantity
+- Earnings Risk
+- Data Quality
+
+Decision section:
+
+- Why selected
+- Why not actionable
+- What would change the verdict
+
+==================================================
+3. TRIGGER STATE
+==================================================
+
+Support:
+
+TRIGGERED
+AWAITING_TRIGGER
+EVENT_CONFIRMATION
+NO_TRIGGER
+UNKNOWN
+
+Show both dollar and percentage distance where possible.
+
+==================================================
+4. VERDICT-AWARE CTAS
+==================================================
+
+Qualified stock/live option:
+
+- Analyze
+- Review Risk
+- Trade Builder when all safeguards pass
+
+Estimated options:
+
+- View Setup
+- Connect Provider
+- no real ticket
+
+Watch:
+
+- View Chart
+- Add Watchlist
+- Show Trigger
+- no Trade Builder
+
+Rejected:
+
+- Explain Rejection
+- Find Similar Opportunities
+- no Trade Builder
+
+==================================================
+5. USE ACROSS FLOWS
+==================================================
+
+Adopt the shared component without merging backend workflows.
+
+Preserve:
+
+Analyze BA
+→ analysis backend
+
+Find a trade for BA
+→ recommendation backend
+
+Find three bullish trades
+→ market-ranking backend
+
+Only the visual representation is unified.
+
+==================================================
+6. TESTS
+==================================================
+
+Test:
+
+- stock candidate
+- live options
+- estimated options
+- watch
+- rejected
+- unavailable
+- trigger distance
+- missing optional fields
+- CTA gating
+- responsive layout
+- accessibility
+
+Run tests and build.
+
+Do not commit or push.

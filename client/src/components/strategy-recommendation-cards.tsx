@@ -42,6 +42,8 @@ import {
   type StrategyRecommendation,
 } from "@/lib/strategy-recommendation";
 import { translateNoTradeReason } from "@/lib/ranked-trade-search";
+import { fromRecIdea } from "@/lib/trade-plan-view-model";
+import { TradePlanCard } from "@/components/trade-plan-card";
 
 // Color system (spec §10): WATCH amber · LIVE green · NO_TRADE gray ·
 // UNSUPPORTED blue · environment orange · data quality purple.
@@ -557,14 +559,42 @@ export function StrategyRecommendationCards({ recommendation }: { recommendation
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* §11 hierarchy, single column on mobile, hero always first. */}
-          <HeroCard idea={primary} rec={rec} evidence={evidence} />
+          {/* §11 hierarchy, single column on mobile, TradePlanCard (§4B) first.
+              showDecision=false because WhySection + BecomeActionable below
+              already render a richer decision view. */}
+          <TradePlanCard
+            vm={fromRecIdea(primary, {
+              symbol: recIdeaSymbol(primary) ?? undefined,
+              simulatedData: rec.simulatedData,
+              watchConditions: evidence?.watchConditions,
+            })}
+            showDecision={false}
+            headerExtra={evidence ? (
+              <Badge
+                variant="outline"
+                className={`text-[10px] ${
+                  evidence.confidence.level === "HIGH"
+                    ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                    : evidence.confidence.level === "MEDIUM"
+                      ? "border-yellow-500/40 text-yellow-300 bg-yellow-500/10"
+                      : "border-red-500/40 text-red-300 bg-red-500/10"
+                }`}
+                data-testid="badge-rec-hero-confidence"
+              >
+                {evidence.confidence.level.charAt(0) + evidence.confidence.level.slice(1).toLowerCase()} confidence
+              </Badge>
+            ) : undefined}
+          />
           {evidence && <DecisionSummary evidence={evidence} rec={rec} />}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
             <WhySection idea={primary} />
             {showBecomeActionable && evidence && <BecomeActionable evidence={evidence} />}
           </div>
-          <TradeDetailSection idea={primary} />
+          {/* OptionDetail kept for live/estimated options: DTE, strike, premium,
+              delta, IV — fields outside the unified TradePlanCard scope. */}
+          {(primary.overallVerdict === "LIVE_OPTIONS" || primary.overallVerdict === "ESTIMATED_OPTIONS") && (
+            <TradeDetailSection idea={primary} />
+          )}
           {evidence && <ConfidenceSection evidence={evidence} rec={rec} />}
           {evidence && <StrategyEvaluationPanel evidence={evidence} />}
           {evidence && <DecisionFactorChips evidence={evidence} />}

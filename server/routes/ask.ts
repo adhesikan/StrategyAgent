@@ -1865,9 +1865,33 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         }
       } catch { /* no portfolio context — graceful degradation to market-only */ }
 
-      let answer = await callOpenAi(question, ctx, {
-        portfolioContextToken: pfCtxToken,
-      });
+      // TraderBrain shadow mode (Phase 0): runs in parallel with callOpenAi.
+      // Only active when TRADER_BRAIN_ENABLED is set (default: off).
+      // Adds an additive `traderBrain` field to the response — never alters
+      // any existing field. Evidence envelopes are stripped before the field
+      // is serialized to the client. Never throws.
+      const brainCtx: import("../trader-brain/types").TrustedContext = {
+        userId,
+        tickers,
+        brokerConnected: ctx.brokerConnected,
+        // Phase 0: no dedicated brain tokens — brain runs market-only.
+        // Portfolio / options tokens are wired in Phase 1 when the brain
+        // takes over these paths.
+        portfolioToken: undefined,
+        optionsToken: undefined,
+        portfolioAwareness: pfAwareness ?? undefined,
+      };
+      const brainRequestId = `ask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const brainShadowPromise = import("../trader-brain/service").then(
+        ({ runBrainShadow }) => runBrainShadow(brainRequestId, question, brainCtx),
+      ).catch(() => undefined);
+
+      let answer: AskAnswer | null = null;
+      let traderBrainField: import("../trader-brain/types").TraderBrainResponseField | undefined;
+      [answer, traderBrainField] = await Promise.all([
+        callOpenAi(question, ctx, { portfolioContextToken: pfCtxToken }),
+        brainShadowPromise,
+      ]);
 
       // Revoke portfolio context token immediately after callOpenAi completes
       if (pfCtxToken) {
@@ -2093,6 +2117,10 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         suggestions,
         source,
         disclaimer: "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+        // TraderBrain shadow field (Phase 0): additive only. Present when
+        // TRADER_BRAIN_ENABLED is set. Evidence envelopes stripped. Existing
+        // fields are never altered.
+        ...(traderBrainField ? { traderBrain: traderBrainField } : {}),
       });
     } catch (err: any) {
       console.error("[POST /api/ask]", err);

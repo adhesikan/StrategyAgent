@@ -1,0 +1,343 @@
+Implement TraderBrain Core foundation in StrategyAgent/VCP Trader.
+
+Use the approved design from:
+
+docs/TRADER_BRAIN_CORE_ARCHITECTURE.md
+
+IMPORTANT
+
+Build a thin orchestration layer.
+
+Do not reimplement:
+
+- scanner logic
+- strategy semantics
+- candidate qualification
+- recommendation policies
+- market ranking
+- risk calculations
+- options selection
+- portfolio policy
+- broker logic
+
+Do not add execution.
+Do not auto-open Trade Builder.
+Do not expose account IDs, credentials, context tokens, or private portfolio data.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. CREATE MODULE STRUCTURE
+==================================================
+
+Create a focused module structure such as:
+
+server/trader-brain/
+  types.ts
+  intent-classifier.ts
+  request-normalizer.ts
+  planner.ts
+  executor.ts
+  evidence.ts
+  composer.ts
+  fallbacks.ts
+  observability.ts
+  service.ts
+
+Keep modules small and testable.
+
+==================================================
+2. CREATE CORE TYPES
+==================================================
+
+Implement narrow types for:
+
+TraderBrainIntent
+NormalizedBrainRequest
+ToolPlan
+ToolPlanStep
+ToolEvidence
+TraderBrainSection
+TraderBrainResult
+BrainExecutionStatus
+BrainFailurePolicy
+
+Avoid broad any or unchecked string unions.
+
+==================================================
+3. IMPLEMENT INTENT CLASSIFIER
+==================================================
+
+Centralize existing deterministic intent logic.
+
+Initially support:
+
+- ANALYZE_SYMBOL
+- RECOMMEND_SYMBOL_TRADE
+- RANK_MARKET_TRADES
+- PLAN_PORTFOLIO_TRADE
+- COMBINED_ANALYSIS_RECOMMENDATION
+- EXPLAIN_CONCEPT
+- EDUCATION_PLUS_ACTION
+
+Reuse existing parsers and classifiers rather than rewriting their behavior.
+
+Preserve:
+
+- false ticker protections
+- count parsing
+- risk parsing
+- strategy aliases
+- symbol validation
+- education/action distinctions
+
+==================================================
+4. IMPLEMENT REQUEST NORMALIZER
+==================================================
+
+Produce one NormalizedBrainRequest containing only relevant fields:
+
+{
+  rawPrompt,
+  intent,
+  symbol?,
+  direction?,
+  instrumentPreference?,
+  objective?,
+  requestedStrategy?,
+  maxRiskDollars?,
+  maxRiskPercent?,
+  numberOfIdeas?,
+  timeframe?,
+  portfolioConstraints?,
+  educationTopic?
+}
+
+Do not add fields that were not deterministically parsed.
+
+==================================================
+5. IMPLEMENT DETERMINISTIC PLANNER
+==================================================
+
+Create TraderBrainPlanner.plan(normalizedRequest).
+
+Initial mappings:
+
+ANALYZE_SYMBOL
+→ existing multi-strategy analysis service
+
+RECOMMEND_SYMBOL_TRADE
+→ recommend_trade_strategy
+
+RANK_MARKET_TRADES
+→ rank_market_trade_candidates
+
+PLAN_PORTFOLIO_TRADE
+→ plan_portfolio_trade
+
+COMBINED_ANALYSIS_RECOMMENDATION
+→ analysis first, recommendation second
+
+EXPLAIN_CONCEPT
+→ education/OpenAI only, no trading MCP recommendation
+
+EDUCATION_PLUS_ACTION
+→ educational explanation plus the matching deterministic action tool
+
+The planner must not use OpenAI to choose tools.
+
+==================================================
+6. TRUSTED CONTEXT REQUIREMENTS
+==================================================
+
+Each tool-plan step must declare required trusted scopes:
+
+NONE
+OPTIONS_CONTEXT
+PORTFOLIO_CONTEXT
+BROKER_READ_CONTEXT
+
+The Brain requests these contexts from existing backend services.
+
+The model must never supply or choose trusted context.
+
+If context is unavailable:
+
+- follow the step's declared failure policy
+- do not fabricate context
+- do not expose opaque tokens to the frontend
+
+==================================================
+7. IMPLEMENT EXECUTOR
+==================================================
+
+Execute tool-plan steps with:
+
+- dependency ordering
+- bounded concurrency for independent steps
+- tool-specific timeouts
+- existing MCP allowlist
+- existing secret scrubbing
+- existing safe retries
+- request-level deduplication
+
+Do not create a generic unrestricted MCP caller.
+
+Only known planned tools may execute.
+
+==================================================
+8. IMPLEMENT EVIDENCE COLLECTOR
+==================================================
+
+Wrap each result as ToolEvidence.
+
+Preserve the validated original payload under data.
+
+Capture safely:
+
+- source
+- status
+- warnings
+- dataQuality
+- duration
+- generatedAt
+- safe error code
+
+Do not log payloads containing trusted context or private portfolio data.
+
+==================================================
+9. IMPLEMENT RESPONSE COMPOSER
+==================================================
+
+Compose existing structured sections without changing their deterministic content.
+
+Examples:
+
+ANALYZE_SYMBOL:
+- analysis section
+
+RECOMMEND_SYMBOL_TRADE:
+- recommendation section
+
+COMBINED:
+- analysis section
+- recommendation section
+
+PLAN_PORTFOLIO_TRADE:
+- goal
+- feasibility
+- candidates
+- portfolio impact
+
+OpenAI may create explanation prose only after deterministic sections exist.
+
+If OpenAI fails, use server-generated summaries.
+
+==================================================
+10. BACKWARD-COMPATIBLE API
+==================================================
+
+Do not replace /api/ask yet.
+
+Add a protected or feature-flagged integration path such as:
+
+TRADER_BRAIN_ENABLED=false by default
+
+or an internal function called from selected intents.
+
+Preserve existing response fields.
+
+Add optional:
+
+traderBrain?: {
+  intent,
+  status,
+  sections,
+  warnings,
+  generatedAt
+}
+
+Do not require frontend changes during this task.
+
+==================================================
+11. OBSERVABILITY
+==================================================
+
+Add safe structured events:
+
+trader_brain_request
+trader_brain_plan
+trader_brain_step
+trader_brain_complete
+trader_brain_failure
+
+Log only:
+
+- request ID
+- intent
+- planned tool names
+- step status
+- duration
+- safe error code
+- section names
+
+Never log:
+
+- prompt content when sensitive
+- account IDs
+- broker tokens
+- context tokens
+- positions
+- cash
+- buying power
+- complete tool payloads
+
+==================================================
+12. TESTS
+==================================================
+
+Add tests for:
+
+1. each supported intent
+2. deterministic tool plans
+3. no OpenAI-selected tools
+4. combined flow ordering
+5. optional supporting-step failure
+6. required-step failure
+7. MCP timeout
+8. trusted context missing
+9. OpenAI failure
+10. payload preservation
+11. backward-compatible API
+12. false ticker protections
+13. count and risk normalization
+14. tool allowlist
+15. context isolation
+16. secret leakage
+17. no execution
+18. deterministic repeatability
+
+Run:
+
+npm test
+npm run build
+
+Also run focused Ask AI and MCP-client suites.
+
+Do not commit or push.
+
+Report:
+
+1. files created
+2. supported intents
+3. planner mappings
+4. executor behavior
+5. trusted context
+6. evidence contract
+7. response composition
+8. feature flag
+9. tests
+10. build
+11. compatibility concerns
+12. recommended first migrated flow
+
+Wait for review.

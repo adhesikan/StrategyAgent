@@ -10,10 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   exclusionCtas,
+  hasActionableTrigger,
   qualifiedCtas,
   rankedCountsLine,
   riskFitLine,
   translateExclusionReason,
+  triggerStatusLabel,
   unavailableCtas,
   watchCtas,
   type RankedExclusionGroup,
@@ -46,17 +48,60 @@ function Field({ label, value }: { label: string; value: string | number | null 
 
 function QualifiedCard({ c, requestedMax }: { c: RankedTradeCandidate; requestedMax?: number }) {
   const risk = riskFitLine(c, requestedMax);
+  const triggerLabel = triggerStatusLabel(c);
+  const actionableTrigger = hasActionableTrigger(c);
   return (
     <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3 space-y-1.5" data-testid={`card-ranked-candidate-${c.symbol}`}>
+      {/* §3 — Rank badge labelled "Rank #N"; strategy score shown separately if present */}
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">#{c.rank}</Badge>
+        <Badge variant="outline" className="border-sky-500/40 text-sky-300 bg-sky-500/10" data-testid={`badge-ranked-rank-${c.symbol}`}>
+          Rank #{c.rank}
+        </Badge>
         <span className="font-semibold">{c.symbol}</span>
         <Badge variant="outline" className="border-emerald-500/40 text-emerald-300 bg-emerald-500/10">TRADE CANDIDATE</Badge>
         {c.strategy && <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">{c.strategy}</Badge>}
         {c.setupStatus && <Badge variant="outline" className="border-sky-500/40 text-sky-300 bg-sky-500/10">{c.setupStatus}</Badge>}
+        {/* §5 — Strategy Score distinct from Rank */}
+        {c.strategyScore != null && (
+          <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground" data-testid={`badge-ranked-score-${c.symbol}`}>
+            Strategy Score {c.strategyScore}
+          </Badge>
+        )}
       </div>
+
+      {/* §5 — Rank explanation note */}
+      {c.strategyScore != null && (
+        <div className="text-[10px] text-muted-foreground/70 italic" data-testid={`text-ranked-score-note-${c.symbol}`}>
+          Rank reflects qualification, trigger availability, risk fit, and data completeness — not scanner score alone.
+        </div>
+      )}
+
       <Field label="Instrument" value={c.structure ?? c.instrument} />
-      <Field label="Trigger" value={c.trigger} />
+
+      {/* §4 — Trigger with semantic label; never "Entry Trigger Missing" when trigger exists */}
+      {actionableTrigger ? (
+        <div className="text-xs" data-testid={`field-ranked-trigger-${c.symbol}`}>
+          <span className="text-muted-foreground">Trigger: </span>
+          <span>{c.trigger}</span>
+          <span
+            className={`ml-1.5 text-[10px] font-medium ${
+              triggerLabel === "Trigger confirmed"
+                ? "text-emerald-400"
+                : triggerLabel === "Event confirmation required"
+                  ? "text-amber-400"
+                  : "text-sky-400"
+            }`}
+            data-testid={`badge-ranked-trigger-status-${c.symbol}`}
+          >
+            ({triggerLabel})
+          </span>
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground/60" data-testid={`field-ranked-trigger-${c.symbol}`}>
+          Trigger: <span className="italic">Awaiting trigger</span>
+        </div>
+      )}
+
       <Field label="Invalidation" value={c.invalidation} />
       <Field label="Objective" value={c.objective} />
       <Field label="Reward/Risk" value={c.rewardRisk} />

@@ -234,6 +234,24 @@ function sanitizeCandidate(raw: unknown, index: number): RankedTradeCandidate | 
     ...(fits !== undefined ? { fitsRiskBudget: fits } : {}),
     whySelected: strArray(o.whySelected ?? o.reasons ?? o.rankReasons),
     warnings: strArray(o.warnings),
+    // §5 — Strategy Score: raw scanner score, distinct from rank.
+    // Multiple key aliases for forward-compat with MCP response variants.
+    ...(() => {
+      const s = pickNum(o, "strategyScore", "scannerScore", "patternScore", "score");
+      return s != null && s >= 0 ? { strategyScore: Math.round(s) } : {};
+    })(),
+    // §3 — Current price: enables triggerStatusLabel to determine whether
+    // the trigger has already been crossed. Present only when supplied by MCP.
+    ...(() => {
+      const p = pickNum(o, "currentPrice", "lastPrice", "price");
+      return p != null && p > 0 ? { currentPrice: p } : {};
+    })(),
+    // §3 — Trigger type: "event" for session-based triggers (ORB, gap-up)
+    // that require event confirmation rather than a price breakout.
+    ...(() => {
+      const t = pickStr(o, "triggerType", "trigger_type");
+      return t === "price" || t === "event" ? { triggerType: t as "price" | "event" } : {};
+    })(),
   };
 }
 

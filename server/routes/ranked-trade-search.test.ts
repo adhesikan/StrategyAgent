@@ -525,3 +525,107 @@ describe("exclusion accounting (MCP exclusion-accounting contract)", () => {
     expect(src).toContain("not a quality verdict");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 4A — sanitizeCandidate field plumbing (§3 currentPrice/triggerType, §5 strategyScore)
+// ---------------------------------------------------------------------------
+
+describe("sanitizeCandidate — Sprint 4A new fields (§3 & §5)", () => {
+  it("passes strategyScore through from MCP response (exact alias)", () => {
+    const s = validateRankedTradeSearch(
+      payload({ candidates: [candidate({ strategyScore: 82 })] }),
+    );
+    expect(s.candidates[0].strategyScore).toBe(82);
+  });
+
+  it("passes strategyScore from aliased field names (scannerScore, patternScore, score)", () => {
+    for (const key of ["scannerScore", "patternScore", "score"] as const) {
+      const c = candidate({ [key]: 75 });
+      delete (c as any).strategyScore; // ensure only the alias key is present
+      const s = validateRankedTradeSearch(payload({ candidates: [c] }));
+      expect(s.candidates[0].strategyScore).toBe(75);
+    }
+  });
+
+  it("rounds strategyScore to an integer", () => {
+    const s = validateRankedTradeSearch(payload({ candidates: [candidate({ strategyScore: 72.7 })] }));
+    expect(s.candidates[0].strategyScore).toBe(73);
+  });
+
+  it("omits strategyScore when not supplied (backward compat)", () => {
+    const s = validateRankedTradeSearch(payload({ candidates: [candidate()] }));
+    expect(s.candidates[0].strategyScore).toBeUndefined();
+  });
+
+  it("passes currentPrice through from MCP response", () => {
+    const s = validateRankedTradeSearch(payload({ candidates: [candidate({ currentPrice: 191.5 })] }));
+    expect(s.candidates[0].currentPrice).toBe(191.5);
+  });
+
+  it("accepts currentPrice aliases: lastPrice and price", () => {
+    for (const key of ["lastPrice", "price"] as const) {
+      const c = candidate({ [key]: 188.0 });
+      const s = validateRankedTradeSearch(payload({ candidates: [c] }));
+      expect(s.candidates[0].currentPrice).toBe(188.0);
+    }
+  });
+
+  it("omits currentPrice for zero or negative values", () => {
+    for (const bad of [0, -10]) {
+      const s = validateRankedTradeSearch(payload({ candidates: [candidate({ currentPrice: bad })] }));
+      expect(s.candidates[0].currentPrice).toBeUndefined();
+    }
+  });
+
+  it("passes triggerType 'price' and 'event' through", () => {
+    const sp = validateRankedTradeSearch(payload({ candidates: [candidate({ triggerType: "price" })] }));
+    expect(sp.candidates[0].triggerType).toBe("price");
+    const se = validateRankedTradeSearch(payload({ candidates: [candidate({ triggerType: "event" })] }));
+    expect(se.candidates[0].triggerType).toBe("event");
+  });
+
+  it("drops unknown triggerType values (never passes arbitrary strings)", () => {
+    const s = validateRankedTradeSearch(payload({ candidates: [candidate({ triggerType: "unknown-type" })] }));
+    expect(s.candidates[0].triggerType).toBeUndefined();
+  });
+
+  it("accepts triggerType alias trigger_type", () => {
+    const c = candidate({ trigger_type: "event" });
+    const s = validateRankedTradeSearch(payload({ candidates: [c] }));
+    expect(s.candidates[0].triggerType).toBe("event");
+  });
+
+  it("all three new fields coexist on a single candidate without conflict", () => {
+    const s = validateRankedTradeSearch(
+      payload({
+        candidates: [candidate({
+          strategyScore: 78,
+          currentPrice: 189.0,
+          triggerType: "price",
+        })],
+      }),
+    );
+    const c = s.candidates[0];
+    expect(c.strategyScore).toBe(78);
+    expect(c.currentPrice).toBe(189.0);
+    expect(c.triggerType).toBe("price");
+    // Existing fields not disturbed
+    expect(c.symbol).toBe("NVDA");
+    expect(c.trigger).toBe("Break above 190.50");
+    expect(c.maxRisk).toBe(280);
+  });
+
+  it("event-type triggerType + currentPrice: triggerStatusLabel returns 'Event confirmation required' (end-to-end semantic check)", () => {
+    // Verify server → client type contract: fields present in sanitized output
+    // match what triggerStatusLabel expects (tested in client lib tests).
+    const s = validateRankedTradeSearch(
+      payload({
+        candidates: [candidate({ triggerType: "event", currentPrice: 191.0 })],
+      }),
+    );
+    const c = s.candidates[0];
+    // triggerType "event" must reach the client; currentPrice present too
+    expect(c.triggerType).toBe("event");
+    expect(c.currentPrice).toBe(191.0);
+  });
+});

@@ -24,6 +24,7 @@ import {
   type MsaSupportGroup,
   type MultiStrategyAnalysis,
 } from "@/lib/multi-strategy-analysis";
+import { translateNoTradeReason } from "@/lib/ranked-trade-search";
 
 const VERDICT_TONE: Record<string, string> = {
   TRADE_CANDIDATE: "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
@@ -133,6 +134,23 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                   <span className={CANDIDATE_TONE[p.candidateCheck?.status ?? "UNAVAILABLE"] ?? ""}>
                     {msaCandidateCheckLabel(p)}
                   </span>
+                  {/* §6 — Specific rejection reason chip. Maps the candidateCheck.reason
+                      code (e.g. "WAITING_FOR_TRIGGER") to a trader-facing label. Only
+                      shown when the reason matches a known code — prose reasons are
+                      already shown in the "Why it's not actionable" section below. */}
+                  {(a.overallVerdict === "NO_TRADE" || a.overallVerdict === "WATCH") &&
+                    (() => {
+                      const label = translateNoTradeReason(p.candidateCheck?.reason);
+                      return label ? (
+                        <Badge
+                          variant="outline"
+                          className="ml-1.5 text-[9px] border-amber-500/40 text-amber-300 bg-amber-500/10"
+                          data-testid="badge-msa-no-trade-reason"
+                        >
+                          {label}
+                        </Badge>
+                      ) : null;
+                    })()}
                 </div>
               )}
               {(a.overallVerdict === "WATCH" || a.overallVerdict === "NO_TRADE") &&

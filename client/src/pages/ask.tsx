@@ -123,6 +123,12 @@ interface AskResponse {
   // Optional deterministic ranked market trade search (additive)
   rankedTradeSearch?: RankedTradeSearch;
   rankedTradeSearchFailed?: boolean;
+  /**
+   * Explicit source state from the server. Drives the fallback banner.
+   * The banner is shown ONLY when this equals "RANKED_MCP_FAILED_WITH_FALLBACK".
+   * A value of "RANKED_MCP_EMPTY" means MCP succeeded with zero results — no banner.
+   */
+  rankedSearchSource?: string;
   // Optional deterministic trade-strategy recommendation (additive)
   strategyRecommendation?: StrategyRecommendation;
   recommendationFailed?: boolean;
@@ -310,7 +316,7 @@ export default function AskPage() {
               {data.strategyRecommendation && <StrategyRecommendationCards recommendation={data.strategyRecommendation} />}
               {data.multiStrategyAnalysis && <MultiStrategyAnalysisCards analysis={data.multiStrategyAnalysis} />}
 
-              {data.rankedTradeSearchFailed && (
+              {data.rankedSearchSource === "RANKED_MCP_FAILED_WITH_FALLBACK" && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-ranked-search-failed">
                   <Info className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
                   <div className="text-amber-100/90">Market-wide trade ranking is temporarily unavailable — showing the standard search instead.</div>

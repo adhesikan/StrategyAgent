@@ -25,6 +25,17 @@ export interface RecIdea {
   warnings?: string[];
   confidence?: number | null;
   dataQuality?: Record<string, unknown> | null;
+  /**
+   * Optional structured rejection reason code for NO_TRADE / WATCH verdicts.
+   * Maps to a specific chip label via `translateNoTradeReason` from ranked-trade-search.ts.
+   * Additive — older server responses that don't include this field render safely
+   * (the chip is simply omitted).
+   *
+   * Known codes: WAITING_FOR_TRIGGER · RISK_LIMIT_EXCEEDED · EARNINGS_RISK ·
+   *              STALE_SETUP · DATA_UNAVAILABLE · DIRECTION_CONFLICT ·
+   *              NO_VALID_SETUP · UNSUPPORTED_STRUCTURE
+   */
+  rejectionReasonCode?: string | null;
 }
 
 /** Additive transparency payload derived server-side from engine data only. */

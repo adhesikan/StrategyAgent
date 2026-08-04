@@ -1311,6 +1311,14 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               if (answer) source = "openai";
             }
             if (!answer) answer = { ...deterministic };
+            // rankedSearchSource distinguishes a successful (possibly empty)
+            // MCP response from an actual failure. The client banner must
+            // only appear on RANKED_MCP_FAILED_WITH_FALLBACK — never on
+            // zero-candidate results.
+            const rankedSearchSource: string =
+              search.candidates.length === 0 && search.watchCandidates.length === 0
+                ? "RANKED_MCP_EMPTY"
+                : "RANKED_MCP_SUCCESS";
             return res.json({
               question,
               intent: "ranked-trade-search",
@@ -1323,6 +1331,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               headline: deterministic.headline,
               confidence: deterministic.confidence,
               rankedTradeSearch: search,
+              rankedSearchSource,
               suggestions: rts.rankedTradeSearchSuggestions(search),
               source,
               disclaimer:
@@ -1434,7 +1443,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               brokerConnected: ctx.brokerConnected,
               ...answer,
               confidence,
-              ...(rankedTradeSearchFailed ? { rankedTradeSearchFailed: true } : {}),
+              ...(rankedTradeSearchFailed ? { rankedTradeSearchFailed: true, rankedSearchSource: "RANKED_MCP_FAILED_WITH_FALLBACK" } : {}),
               opportunitySearch: searchPayload,
               suggestions: suggestionsForOpportunitySearch(
                 cards.length > 0
@@ -1487,7 +1496,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           brokerConnected: ctx.brokerConnected,
           ...answer,
           confidence, // deterministic: freshness/count/completeness, never direction
-          ...(rankedTradeSearchFailed ? { rankedTradeSearchFailed: true } : {}),
+          ...(rankedTradeSearchFailed ? { rankedTradeSearchFailed: true, rankedSearchSource: "RANKED_MCP_FAILED_WITH_FALLBACK" } : {}),
           opportunitySearch: search ?? undefined,
           opportunitySearchFailed: failed || undefined,
           suggestions: suggestionsForOpportunitySearch(search, failed),

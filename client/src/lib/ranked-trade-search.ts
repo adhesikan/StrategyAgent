@@ -25,6 +25,27 @@ export interface RankedTradeCandidate {
   fitsRiskBudget?: boolean;
   whySelected: string[];
   warnings: string[];
+  /**
+   * Raw scanner score for this setup (pattern quality / stage confidence).
+   * Distinct from rank — a high-scoring setup may rank lower than a lower-
+   * scoring one because rank also weights trigger availability, risk fit,
+   * data completeness, and freshness.
+   */
+  strategyScore?: number;
+  /**
+   * Last known price for the underlying (used by triggerStatusLabel to
+   * determine whether the trigger has already been crossed).
+   */
+  currentPrice?: number;
+  /**
+   * "price"  — trigger is a specific price level (breakout above $X).
+   * "event"  — trigger requires a non-price event (earnings beat, gap-up
+   *            open, opening-range breakout). "Trigger confirmed" / "Awaiting
+   *            breakout" do not apply; "Event confirmation required" is shown.
+   * Absent   — treat as "price" (backward compat with MCP responses that
+   *            don't include this field).
+   */
+  triggerType?: "price" | "event";
 }
 
 export interface RankedWatchCandidate {
@@ -135,6 +156,104 @@ export function exclusionCtas(): RankedCta[] {
     { label: "Run a Fresh Scan", href: "/scanner?run=1" },
     { label: "View Stored Setups", href: "/opportunities" },
   ];
+}
+
+// ---------------------------------------------------------------------------
+// §2 — Source state type (drives fallback-banner logic in ask.tsx)
+// ---------------------------------------------------------------------------
+
+/**
+ * Explicit source state for the ranked trade search result.
+ *
+ * RANKED_MCP_SUCCESS          — rank_market_trade_candidates returned ≥1 candidate or watch entry.
+ * RANKED_MCP_EMPTY            — rank_market_trade_candidates returned successfully but all buckets empty.
+ * RANKED_MCP_FAILED_WITH_FALLBACK — the MCP call threw; the UI is showing a standard-search fallback.
+ * STANDARD_SEARCH             — the request was routed to opportunity-search (no ranked call attempted).
+ * RULE_BASED_SUMMARY          — fully deterministic rule-based answer (no LLM, no MCP call).
+ */
+export type RankedSearchSource =
+  | "RANKED_MCP_SUCCESS"
+  | "RANKED_MCP_EMPTY"
+  | "RANKED_MCP_FAILED_WITH_FALLBACK"
+  | "STANDARD_SEARCH"
+  | "RULE_BASED_SUMMARY";
+
+// ---------------------------------------------------------------------------
+// §3 — Trigger-state helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the candidate has an actionable trigger field.
+ * A trigger is actionable when the `trigger` string is present and non-empty.
+ * Absent trigger → false; present → true (regardless of current price).
+ *
+ * "Entry Trigger Missing" must NEVER be shown when this returns true.
+ */
+export function hasActionableTrigger(c: RankedTradeCandidate): boolean {
+  return typeof c.trigger === "string" && c.trigger.trim().length > 0;
+}
+
+/**
+ * Human-readable trigger status label for display in cards.
+ *
+ * Rules:
+ *  - triggerType === "event"  → "Event confirmation required"
+ *  - no trigger               → "No trigger"
+ *  - currentPrice >= trigger  → "Trigger confirmed"   (price already crossed)
+ *  - currentPrice < trigger   → "Awaiting breakout"
+ *  - trigger present but currentPrice unknown → "Awaiting breakout" (conservative default)
+ *
+ * The trigger field is a free-form string from MCP so we extract a price
+ * from it with a best-effort regex; if we can't find one we fall back to
+ * "Awaiting breakout" rather than "Entry Trigger Missing".
+ */
+export function triggerStatusLabel(c: RankedTradeCandidate): string {
+  if (!hasActionableTrigger(c)) return "No trigger";
+  if (c.triggerType === "event") return "Event confirmation required";
+
+  // Best-effort price extraction from the trigger string (e.g. "Break above 190.50").
+  const match = /[\d,]+(?:\.\d+)?/.exec(c.trigger!.replace(/,/g, ""));
+  const triggerPrice = match ? parseFloat(match[0]) : null;
+
+  if (triggerPrice != null && c.currentPrice != null) {
+    return c.currentPrice >= triggerPrice ? "Trigger confirmed" : "Awaiting breakout";
+  }
+  return "Awaiting breakout";
+}
+
+// ---------------------------------------------------------------------------
+// §6 — NO_TRADE specific reason labels
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps MCP rejection-reason codes to trader-facing chip labels.
+ * Used in strategy-recommendation-cards and multi-strategy-analysis-cards
+ * so traders see a specific reason rather than only the generic NO_TRADE verdict.
+ */
+export const NO_TRADE_REASON_LABELS: Record<string, string> = {
+  WAITING_FOR_TRIGGER:  "Waiting for Trigger",
+  RISK_LIMIT_EXCEEDED:  "Risk Limit Exceeded",
+  EARNINGS_RISK:        "Earnings Risk",
+  STALE_SETUP:          "Stale Setup",
+  DATA_UNAVAILABLE:     "Data Unavailable",
+  DIRECTION_CONFLICT:   "Direction Conflict",
+  NO_VALID_SETUP:       "No Valid Setup",
+  UNSUPPORTED_STRUCTURE: "Unsupported Structure",
+};
+
+/**
+ * Returns a specific trader-facing label for a NO_TRADE / WATCH rejection reason code,
+ * or null when the reason is absent or generic (so callers can choose not to render a chip).
+ */
+export function translateNoTradeReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  // Exact match first.
+  if (NO_TRADE_REASON_LABELS[reason]) return NO_TRADE_REASON_LABELS[reason];
+  // Prefix match for reason codes with suffixes (e.g. "EARNINGS_RISK:NVDA").
+  for (const [key, label] of Object.entries(NO_TRADE_REASON_LABELS)) {
+    if (reason.startsWith(key)) return label;
+  }
+  return null;
 }
 
 /** Human-readable label for a known MCP exclusion reason code. */

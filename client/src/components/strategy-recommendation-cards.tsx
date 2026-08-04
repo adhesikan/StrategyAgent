@@ -41,6 +41,7 @@ import {
   type RecommendationEvidence,
   type StrategyRecommendation,
 } from "@/lib/strategy-recommendation";
+import { translateNoTradeReason } from "@/lib/ranked-trade-search";
 
 // Color system (spec §10): WATCH amber · LIVE green · NO_TRADE gray ·
 // UNSUPPORTED blue · environment orange · data quality purple.
@@ -134,6 +135,23 @@ function HeroCard({ idea, rec, evidence }: { idea: RecIdea; rec: StrategyRecomme
             Simulated Development Data
           </Badge>
         )}
+        {/* §6 — Specific NO_TRADE / WATCH reason chip. Shows the primary
+            rejection reason alongside the verdict instead of only the generic
+            "No trade" label. Only rendered when a structured reason code is
+            present (idea.rejectionReasonCode) — older responses omit it
+            gracefully. */}
+        {(v === "NO_TRADE" || v === "WATCH") && (() => {
+          const label = translateNoTradeReason(idea.rejectionReasonCode);
+          return label ? (
+            <Badge
+              variant="outline"
+              className="text-[10px] border-amber-500/40 text-amber-300 bg-amber-500/10"
+              data-testid="badge-rec-no-trade-reason"
+            >
+              {label}
+            </Badge>
+          ) : null;
+        })()}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm" data-testid="grid-rec-hero-fields">
         {fields.map(([k, val]) => (

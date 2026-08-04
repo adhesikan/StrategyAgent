@@ -155,14 +155,27 @@ export interface RankedRejectionGroup {
   symbols: string[];
 }
 
+/** Pre-confluence exclusion — happens BEFORE bucket assignment.
+ *  Not a quality rejection; an excluded opportunity never reached qualification. */
+export interface RankedExclusionGroup {
+  reason: string;
+  count: number;
+}
+
 export interface RankedTradeSearch {
   request: Record<string, unknown>;
   /** RAW STORED OPPORTUNITIES reviewed — not the post-confluence population. */
   reviewedCount: number;
+  /** Confluence groups formed from stored opportunities (0 = nothing passed pre-qualification). */
+  groupedCandidateCount?: number;
   qualifiedCount: number;
   watchCount: number;
   rejectedCount: number;
   unavailableCount: number;
+  /** Opportunities excluded BEFORE confluence/qualification — not the same as rejection. */
+  excludedCount?: number;
+  /** Breakdown of why opportunities were excluded before qualification. */
+  exclusionSummary?: RankedExclusionGroup[];
   candidates: RankedTradeCandidate[];
   watchCandidates: RankedWatchCandidate[];
   rejectionSummary: RankedRejectionGroup[];
@@ -248,6 +261,21 @@ function sanitizeRejection(raw: unknown): RankedRejectionGroup | null {
   return { reason, count: c != null && c >= 0 ? Math.floor(c) : symbols.length, symbols };
 }
 
+function sanitizeExclusionSummary(raw: unknown): RankedExclusionGroup[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .slice(0, 20)
+    .map((e): RankedExclusionGroup | null => {
+      if (!e || typeof e !== "object") return null;
+      const o = e as Record<string, unknown>;
+      const reason = str(o.reason ?? o.category, 120);
+      if (!reason) return null;
+      const c = num(o.count);
+      return { reason, count: c != null && c >= 0 ? Math.floor(c) : 0 };
+    })
+    .filter((e): e is RankedExclusionGroup => e !== null);
+}
+
 /** Model-safe echo of the request the MCP service acted on. */
 function sanitizeRequest(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object") return {};
@@ -299,13 +327,18 @@ export function validateRankedTradeSearch(raw: unknown, goal?: TradeGoal): Ranke
     .slice(0, 12)
     .map(sanitizeRejection)
     .filter((g): g is RankedRejectionGroup => g !== null);
+  const groupedRaw = num(o.groupedCandidateCount);
+  const excludedRaw = num(o.excludedCount);
   return {
     request: sanitizeRequest(o.request),
     reviewedCount: count(o.reviewedCount),
+    ...(groupedRaw != null ? { groupedCandidateCount: Math.max(0, Math.floor(groupedRaw)) } : {}),
     qualifiedCount: count(o.qualifiedCount),
     watchCount: count(o.watchCount),
     rejectedCount: count(o.rejectedCount),
     unavailableCount: count(o.unavailableCount),
+    ...(excludedRaw != null ? { excludedCount: Math.max(0, Math.floor(excludedRaw)) } : {}),
+    ...(Array.isArray(o.exclusionSummary) ? { exclusionSummary: sanitizeExclusionSummary(o.exclusionSummary) } : {}),
     candidates,
     watchCandidates,
     rejectionSummary,
@@ -349,6 +382,57 @@ function directionWord(goal?: TradeGoal): string {
   return goal?.direction ? `${goal.direction} ` : "";
 }
 
+/** Human-readable label for a known MCP exclusion reason code. */
+export function translateExclusionReason(reason: string): string {
+  switch (reason) {
+    case "NOT_ACTIONABLE_NO_TRIGGER": return "No actionable trigger was available";
+    case "STALE":                     return "Stored setup was stale";
+    case "DIRECTION_MISMATCH":        return "Setup direction did not match the request";
+    case "INVALID_SETUP":             return "Stored setup was not structurally valid";
+    case "SIMULATED_DATA_NOT_ELIGIBLE": return "Only simulated data was available";
+    default:
+      // Humanize unknown/future codes conservatively — no invented meaning.
+      // Lower-case first so title-casing works regardless of input case.
+      return reason.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
+/** Primary exclusion reason (highest count) from the summary, or undefined. */
+function primaryExclusionReason(search: RankedTradeSearch): string | undefined {
+  if (!search.exclusionSummary?.length) return undefined;
+  return search.exclusionSummary.reduce((a, b) => b.count > a.count ? b : a).reason;
+}
+
+/** Headline for the "all excluded, no grouping" case. */
+function exclusionHeadline(reason: string | undefined): string {
+  switch (reason) {
+    case "NOT_ACTIONABLE_NO_TRIGGER":
+      return "Stored setups were reviewed, but none had an actionable entry trigger.";
+    case "STALE":
+      return "Stored setups were reviewed, but all were stale.";
+    case "DIRECTION_MISMATCH":
+      return "Stored setups were reviewed, but none matched the requested direction.";
+    case "SIMULATED_DATA_NOT_ELIGIBLE":
+      return "Stored setups were reviewed, but only simulated data was available.";
+    case "INVALID_SETUP":
+      return "Stored setups were reviewed, but none were structurally valid.";
+    default:
+      return "Stored setups were reviewed, but none formed actionable candidates.";
+  }
+}
+
+/** True when all stored opportunities were excluded before confluence grouping. */
+function allExcludedBeforeGrouping(search: RankedTradeSearch): boolean {
+  return (
+    (search.excludedCount ?? 0) > 0 &&
+    (search.groupedCandidateCount ?? 0) === 0 &&
+    search.candidates.length === 0 &&
+    search.watchCandidates.length === 0 &&
+    search.rejectedCount === 0 &&
+    search.unavailableCount === 0
+  );
+}
+
 /** Deterministic page headline. The LLM may never override this. */
 export function rankedTradeSearchHeadline(search: RankedTradeSearch, goal?: TradeGoal): string {
   const q = search.candidates.length;
@@ -368,11 +452,17 @@ export function rankedTradeSearchHeadline(search: RankedTradeSearch, goal?: Trad
     // instead of a bare "no setup" (spec §8).
     return `No candidate met the $${search.maxRiskDollars.toLocaleString("en-US")} maximum-risk limit.`;
   }
-  if (search.unavailableCount > 0 && search.rejectedCount === 0) {
-    return "Trade ranking is temporarily limited by unavailable market data.";
+  // Pre-confluence exclusion (no trigger, stale, etc.) — semantically distinct
+  // from a quality rejection: the opportunities never reached qualification.
+  if (allExcludedBeforeGrouping(search)) {
+    return exclusionHeadline(primaryExclusionReason(search));
   }
+  if (search.unavailableCount > 0 && search.rejectedCount === 0 && (search.excludedCount ?? 0) === 0) {
+    return "Candidates could not be qualified because required data was unavailable.";
+  }
+  // Qualification ran but nothing passed — a genuine quality/risk verdict.
   if (search.rejectedCount > 0 || search.reviewedCount > 0) {
-    return "Setups were reviewed, but none currently qualify as trades.";
+    return "Candidates were evaluated, but none currently qualify as trades.";
   }
   return `No qualifying ${dir}setups currently meet the criteria.`;
 }
@@ -394,9 +484,17 @@ export function buildRankedTradeSearchAnswer(search: RankedTradeSearch, goal?: T
   const lines: string[] = [];
   // reviewedCount is RAW stored opportunities — never implied to be the
   // bucket population (buckets may not sum to it).
-  lines.push(
-    `Stored opportunities reviewed: ${search.reviewedCount}. Post-confluence results: ${search.qualifiedCount} qualified, ${search.watchCount} worth watching, ${search.rejectedCount} rejected, ${search.unavailableCount} unavailable. (Bucket counts reflect post-confluence evaluation and may not sum to the reviewed total.)`,
-  );
+  // Count semantics block — never implies reviewed = post-confluence.
+  const countLines = [
+    `Stored opportunities reviewed: ${search.reviewedCount}`,
+    ...(search.groupedCandidateCount !== undefined ? [`Post-confluence candidates: ${search.groupedCandidateCount}`] : []),
+    `Qualified: ${search.qualifiedCount}`,
+    `Worth watching: ${search.watchCount}`,
+    `Rejected: ${search.rejectedCount}`,
+    `Unavailable: ${search.unavailableCount}`,
+    ...(search.excludedCount !== undefined ? [`Excluded before qualification: ${search.excludedCount}`] : []),
+  ];
+  lines.push(countLines.join(" · ") + ". (Stored opportunities are raw scanner records. Candidate buckets are formed after confluence and actionability checks.)");
   if (search.candidates.length > 0) {
     lines.push("Top trade candidates (deterministic ranking — order preserved):");
     for (const c of search.candidates) {
@@ -420,9 +518,14 @@ export function buildRankedTradeSearchAnswer(search: RankedTradeSearch, goal?: T
       lines.push(`- ${bits.join(" — ")}`);
     }
   }
+  if (search.exclusionSummary?.length) {
+    // Exclusions are pre-confluence — they are NOT quality rejections.
+    const parts = search.exclusionSummary.map((g) => `${translateExclusionReason(g.reason)} (${g.count})`).join("; ");
+    lines.push(`Excluded before qualification: ${parts}. These were filtered out before any quality or risk assessment — they are not rejections.`);
+  }
   if (search.rejectionSummary.length > 0) {
     const grouped = search.rejectionSummary.map((g) => `${g.reason} (${g.count})`).join(", ");
-    lines.push(`Rejections by reason: ${grouped}.`);
+    lines.push(`Rejections by reason (post-confluence, quality/risk verdicts): ${grouped}.`);
   }
   if (typeof search.maxRiskDollars === "number") {
     lines.push(
@@ -438,14 +541,20 @@ export function buildRankedTradeSearchAnswer(search: RankedTradeSearch, goal?: T
 
   const keyPoints = [
     `Stored opportunities reviewed: ${search.reviewedCount}`,
+    ...(search.groupedCandidateCount !== undefined ? [`Post-confluence candidates: ${search.groupedCandidateCount}`] : []),
     `Qualified trade candidates: ${search.qualifiedCount}`,
+    ...(search.excludedCount !== undefined && search.excludedCount > 0 ? [`Excluded before qualification: ${search.excludedCount}`] : []),
     ...(search.watchCount > 0 ? [`Worth watching: ${search.watchCount}`] : []),
-    ...(search.rejectedCount > 0 ? [`Rejected: ${search.rejectedCount}`] : []),
+    ...(search.rejectedCount > 0 ? [`Rejected (post-confluence): ${search.rejectedCount}`] : []),
     ...(search.unavailableCount > 0 ? [`Unavailable: ${search.unavailableCount}`] : []),
-  ].slice(0, 5);
+  ].slice(0, 6);
 
   const confidence: RankedAnswer["confidence"] =
-    search.candidates.length > 0 ? "medium" : search.unavailableCount > 0 && search.candidates.length === 0 && search.watchCandidates.length === 0 ? "low" : "medium";
+    search.candidates.length > 0
+      ? "medium"
+      : (search.unavailableCount > 0 || (search.excludedCount ?? 0) > 0) && search.candidates.length === 0 && search.watchCandidates.length === 0
+        ? "low"
+        : "medium";
 
   return {
     headline: rankedTradeSearchHeadline(search, goal),
@@ -458,6 +567,17 @@ export function buildRankedTradeSearchAnswer(search: RankedTradeSearch, goal?: T
 
 /** Static, safe suggestions for the ranked-search response. */
 export function rankedTradeSearchSuggestions(search: RankedTradeSearch): Array<{ label: string; href: string }> {
+  // When all opportunities were excluded for missing triggers, direct the user
+  // to scanner/watchlist flows — never to the Trade Builder (no candidate exists).
+  const primaryExclusion = primaryExclusionReason(search);
+  if (allExcludedBeforeGrouping(search) && primaryExclusion === "NOT_ACTIONABLE_NO_TRIGGER") {
+    return [
+      { label: "Open Scanner", href: "/scanner" },
+      { label: "Review Watchlist", href: "/watchlist" },
+      { label: "Run a Fresh Scan", href: "/scanner?run=1" },
+      { label: "View Stored Setups", href: "/opportunities" },
+    ];
+  }
   const out: Array<{ label: string; href: string }> = [{ label: "Open Scanner", href: "/scanner" }];
   const first = search.candidates[0] ?? search.watchCandidates[0];
   if (first) out.unshift({ label: `Analyze ${first.symbol}`, href: `/ask?q=${encodeURIComponent(`Analyze ${first.symbol}`)}` });

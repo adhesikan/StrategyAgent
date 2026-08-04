@@ -9,11 +9,14 @@ import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  exclusionCtas,
   qualifiedCtas,
   rankedCountsLine,
   riskFitLine,
+  translateExclusionReason,
   unavailableCtas,
   watchCtas,
+  type RankedExclusionGroup,
   type RankedTradeCandidate,
   type RankedTradeSearch,
   type RankedWatchCandidate,
@@ -102,14 +105,41 @@ function WatchCard({ w }: { w: RankedWatchCandidate }) {
   );
 }
 
+function ExclusionSection({ groups, totalExcluded }: { groups: RankedExclusionGroup[]; totalExcluded: number }) {
+  return (
+    <details className="rounded-lg border border-muted/40 bg-muted/10 p-3" data-testid="section-ranked-exclusions">
+      <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
+        <ChevronDown className="h-3.5 w-3.5" />
+        Excluded Before Qualification ({totalExcluded})
+      </summary>
+      <div className="mt-2 space-y-1.5">
+        <div className="text-xs text-muted-foreground">
+          These opportunities were filtered out before confluence or quality assessment — they are not rejections.
+        </div>
+        {groups.length === 0 && (
+          <div className="text-xs text-muted-foreground">{totalExcluded} {totalExcluded === 1 ? "opportunity was" : "opportunities were"} excluded.</div>
+        )}
+        {groups.map((g) => (
+          <div key={g.reason} className="text-xs" data-testid={`row-ranked-exclusion-${g.reason}`}>
+            <span className="text-foreground/80">{translateExclusionReason(g.reason)}</span>
+            <span className="text-muted-foreground"> — {g.count}</span>
+          </div>
+        ))}
+        <CtaRow ctas={exclusionCtas()} testId="ctas-ranked-excluded" />
+      </div>
+    </details>
+  );
+}
+
 export function RankedTradeSearchCards({ search, question }: { search: RankedTradeSearch; question?: string }) {
   const limited = search.unavailableCount > 0;
+  const hasExclusions = (search.excludedCount ?? 0) > 0;
   return (
     <div className="space-y-4" data-testid="section-ranked-trade-search">
       <div className="text-xs text-muted-foreground" data-testid="text-ranked-counts">
         {rankedCountsLine(search)}
         <span className="block mt-0.5">
-          “Stored opportunities reviewed” counts raw scanner detections; the qualified/watch/rejected/unavailable buckets count post-confluence candidates, so they may not add up to it.
+          Stored opportunities are raw scanner records. Candidate buckets are formed after confluence and actionability checks.
         </span>
       </div>
 
@@ -131,11 +161,18 @@ export function RankedTradeSearchCards({ search, question }: { search: RankedTra
         </div>
       )}
 
+      {hasExclusions && (
+        <ExclusionSection
+          groups={search.exclusionSummary ?? []}
+          totalExcluded={search.excludedCount!}
+        />
+      )}
+
       {(search.rejectionSummary.length > 0 || search.rejectedCount > 0) && (
         <details className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3" data-testid="section-ranked-rejections">
           <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
             <ChevronDown className="h-3.5 w-3.5" />
-            Rejection summary ({search.rejectedCount})
+            Rejection Summary — Post-Confluence ({search.rejectedCount})
           </summary>
           <div className="mt-2 space-y-1.5">
             {search.rejectionSummary.length === 0 && (

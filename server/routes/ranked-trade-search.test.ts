@@ -173,7 +173,7 @@ describe("count semantics (spec §5 — buckets need not sum to reviewedCount)",
     expect(s.qualifiedCount + s.watchCount + s.rejectedCount + s.unavailableCount).not.toBe(s.reviewedCount);
     const a = buildRankedTradeSearchAnswer(s);
     expect(a.answer).toContain("Stored opportunities reviewed: 50");
-    expect(a.answer).toContain("may not sum to the reviewed total");
+    expect(a.answer).toContain("Candidate buckets are formed after confluence and actionability checks");
     expect(a.keyPoints[0]).toBe("Stored opportunities reviewed: 50");
   });
 });
@@ -204,14 +204,14 @@ describe("deterministic headlines (spec §6)", () => {
     expect(rankedTradeSearchHeadline(s)).toBe("No trade candidates currently qualify, but three setups are worth watching.");
   });
 
-  it("all rejected: setups reviewed but none qualify", () => {
+  it("all rejected: candidates evaluated but none qualify", () => {
     const s = base({ reviewedCount: 5, rejectedCount: 5 });
-    expect(rankedTradeSearchHeadline(s)).toBe("Setups were reviewed, but none currently qualify as trades.");
+    expect(rankedTradeSearchHeadline(s)).toBe("Candidates were evaluated, but none currently qualify as trades.");
   });
 
-  it("unavailable-dominated: temporarily limited by unavailable market data", () => {
+  it("unavailable-dominated: data unavailable headline", () => {
     const s = base({ reviewedCount: 0, unavailableCount: 4 });
-    expect(rankedTradeSearchHeadline(s)).toBe("Trade ranking is temporarily limited by unavailable market data.");
+    expect(rankedTradeSearchHeadline(s)).toBe("Candidates could not be qualified because required data was unavailable.");
   });
 
   it("risk-constrained no-result headline names the limit (spec §8)", () => {
@@ -265,7 +265,7 @@ describe("deterministic order + failure safety (spec §10, §1)", () => {
   it("all-zero buckets with a nonzero review count stays honest (live edge case)", () => {
     const s = validateRankedTradeSearch(payload());
     const a = buildRankedTradeSearchAnswer(s, { direction: "bullish" });
-    expect(a.headline).toBe("Setups were reviewed, but none currently qualify as trades.");
+    expect(a.headline).toBe("Candidates were evaluated, but none currently qualify as trades.");
     expect(a.answer).toContain("Stored opportunities reviewed: 50");
   });
 
@@ -326,5 +326,202 @@ describe("deterministic order + failure safety (spec §10, §1)", () => {
     const a = buildRankedTradeSearchAnswer(s);
     expect(a.riskNote).toContain("Nothing here places or prepares an order automatically");
     expect(JSON.stringify(a)).not.toMatch(/place\s+order|submit\s+order|execute\s+trade/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exclusion accounting — new MCP contract fields
+// ---------------------------------------------------------------------------
+
+import { rankedTradeSearchSuggestions, translateExclusionReason } from "./ranked-trade-search";
+
+describe("exclusion accounting (MCP exclusion-accounting contract)", () => {
+  // 1. All excluded due to missing trigger
+  it("1. all excluded NOT_ACTIONABLE_NO_TRIGGER — correct headline, exclusion count preserved, no bucket counts", () => {
+    const s = validateRankedTradeSearch(payload({
+      groupedCandidateCount: 0,
+      excludedCount: 50,
+      exclusionSummary: [{ reason: "NOT_ACTIONABLE_NO_TRIGGER", count: 50 }],
+    }));
+    expect(s.excludedCount).toBe(50);
+    expect(s.groupedCandidateCount).toBe(0);
+    expect(s.exclusionSummary).toEqual([{ reason: "NOT_ACTIONABLE_NO_TRIGGER", count: 50 }]);
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toBe("Stored setups were reviewed, but none had an actionable entry trigger.");
+    expect(h).not.toMatch(/qualify|criteria|rejected|nothing/i);
+  });
+
+  // 2. Mixed exclusions
+  it("2. mixed exclusions — primary reason drives headline, all groups preserved", () => {
+    const s = validateRankedTradeSearch(payload({
+      groupedCandidateCount: 0,
+      excludedCount: 30,
+      exclusionSummary: [
+        { reason: "NOT_ACTIONABLE_NO_TRIGGER", count: 20 },
+        { reason: "STALE", count: 10 },
+      ],
+    }));
+    expect(s.exclusionSummary).toHaveLength(2);
+    expect(s.excludedCount).toBe(30);
+    // Primary = NOT_ACTIONABLE_NO_TRIGGER (count 20 > 10)
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toContain("actionable entry trigger");
+  });
+
+  // 3. groupedCandidateCount zero, no exclusions in summary — fallback headline
+  it("3. groupedCandidateCount zero with no exclusionSummary — generic 'no actionable candidates' headline", () => {
+    const s = validateRankedTradeSearch(payload({
+      groupedCandidateCount: 0,
+      excludedCount: 5,
+      exclusionSummary: [], // empty — no reason given
+    }));
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toBe("Stored setups were reviewed, but none formed actionable candidates.");
+  });
+
+  // 4. Qualified buckets after grouping — normal headline, exclusions still surfaced
+  it("4. qualified buckets with some exclusions — qualification headline takes priority", () => {
+    const s = validateRankedTradeSearch(payload({
+      qualifiedCount: 1,
+      groupedCandidateCount: 3,
+      excludedCount: 47,
+      exclusionSummary: [{ reason: "STALE", count: 47 }],
+      candidates: [candidate()],
+    }));
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toContain("One");
+    // Exclusion info still present in the answer narrative
+    const a = buildRankedTradeSearchAnswer(s);
+    expect(a.answer).toContain("Excluded before qualification");
+    expect(a.answer).toContain("Stored setup was stale");
+    expect(a.answer).toContain("not rejections");
+  });
+
+  // 5. All unavailable — specific unavailable headline
+  it("5. all unavailable, no exclusions — 'data unavailable' headline", () => {
+    const s = validateRankedTradeSearch(payload({ unavailableCount: 10 }));
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toBe("Candidates could not be qualified because required data was unavailable.");
+  });
+
+  // 6. All rejected (qualification occurred) — evaluation headline
+  it("6. all rejected — 'candidates evaluated' headline, NOT exclusion headline", () => {
+    const s = validateRankedTradeSearch(payload({
+      rejectedCount: 50,
+      rejectionSummary: [{ reason: "LOW_SCORE", count: 50, symbols: [] }],
+    }));
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toBe("Candidates were evaluated, but none currently qualify as trades.");
+    expect(h).not.toContain("trigger");
+  });
+
+  // 7. reviewedCount > groupedCandidateCount — counts preserved correctly
+  it("7. reviewedCount > groupedCandidateCount — both counts independent in output", () => {
+    const s = validateRankedTradeSearch(payload({
+      reviewedCount: 100,
+      groupedCandidateCount: 5,
+      excludedCount: 95,
+      exclusionSummary: [{ reason: "DIRECTION_MISMATCH", count: 95 }],
+    }));
+    expect(s.reviewedCount).toBe(100);
+    expect(s.groupedCandidateCount).toBe(5);
+    expect(s.excludedCount).toBe(95);
+    const a = buildRankedTradeSearchAnswer(s);
+    expect(a.answer).toContain("Stored opportunities reviewed: 100");
+    expect(a.answer).toContain("Post-confluence candidates: 5");
+    expect(a.answer).toContain("Excluded before qualification: 95");
+  });
+
+  // 8. Unknown exclusion reason — humanized conservatively
+  it("8. unknown exclusion reason — humanized without inventing meaning", () => {
+    expect(translateExclusionReason("NOT_ACTIONABLE_NO_TRIGGER")).toBe("No actionable trigger was available");
+    expect(translateExclusionReason("STALE")).toBe("Stored setup was stale");
+    expect(translateExclusionReason("DIRECTION_MISMATCH")).toBe("Setup direction did not match the request");
+    expect(translateExclusionReason("INVALID_SETUP")).toBe("Stored setup was not structurally valid");
+    expect(translateExclusionReason("SIMULATED_DATA_NOT_ELIGIBLE")).toBe("Only simulated data was available");
+    const unknown = translateExclusionReason("FUTURE_UNKNOWN_CODE");
+    expect(unknown).toBe("Future Unknown Code");
+    expect(unknown).not.toMatch(/rejected|failed|poor|bad|invalid/i);
+  });
+
+  // 9. Malformed exclusion entries — dropped without crashing
+  it("9. malformed exclusionSummary entries — silently dropped, valid entries kept", () => {
+    const s = validateRankedTradeSearch(payload({
+      excludedCount: 10,
+      exclusionSummary: [
+        null,
+        { count: 5 },                          // missing reason
+        { reason: "", count: 5 },              // empty reason
+        { reason: "STALE", count: -1 },        // negative count → clamped to 0
+        { reason: "NOT_ACTIONABLE_NO_TRIGGER", count: 10 },  // valid
+      ],
+    }));
+    expect(s.exclusionSummary).toHaveLength(2); // STALE(0) + NOT_ACTIONABLE(10)
+    const stale = s.exclusionSummary!.find((e) => e.reason === "STALE")!;
+    expect(stale.count).toBe(0); // clamped
+  });
+
+  // 10. Headline semantics — three headlines semantically distinct
+  it("10. three empty-result headlines are semantically distinct", () => {
+    const excluded = validateRankedTradeSearch(payload({
+      groupedCandidateCount: 0,
+      excludedCount: 10,
+      exclusionSummary: [{ reason: "NOT_ACTIONABLE_NO_TRIGGER", count: 10 }],
+    }));
+    const unavailable = validateRankedTradeSearch(payload({ unavailableCount: 10 }));
+    const rejected = validateRankedTradeSearch(payload({ rejectedCount: 10 }));
+
+    const hExcluded = rankedTradeSearchHeadline(excluded);
+    const hUnavail = rankedTradeSearchHeadline(unavailable);
+    const hRejected = rankedTradeSearchHeadline(rejected);
+
+    expect(hExcluded).toContain("actionable entry trigger");
+    expect(hUnavail).toContain("unavailable");
+    expect(hRejected).toContain("evaluated");
+    // All three must differ
+    expect(new Set([hExcluded, hUnavail, hRejected]).size).toBe(3);
+    // None should use the forbidden phrase
+    for (const h of [hExcluded, hUnavail, hRejected]) {
+      expect(h).not.toMatch(/nothing meets the quality criteria/i);
+    }
+  });
+
+  // 11. No Trade Builder in suggestions for NOT_ACTIONABLE_NO_TRIGGER
+  it("11. NOT_ACTIONABLE_NO_TRIGGER suggestions exclude Trade Builder, include scanner/watchlist", () => {
+    const s = validateRankedTradeSearch(payload({
+      groupedCandidateCount: 0,
+      excludedCount: 50,
+      exclusionSummary: [{ reason: "NOT_ACTIONABLE_NO_TRIGGER", count: 50 }],
+    }));
+    const suggs = rankedTradeSearchSuggestions(s);
+    const labels = suggs.map((x) => x.label);
+    expect(labels).toContain("Open Scanner");
+    expect(labels).toContain("Review Watchlist");
+    expect(labels).toContain("Run a Fresh Scan");
+    expect(labels).toContain("View Stored Setups");
+    expect(labels.join(" ")).not.toMatch(/trade builder/i);
+  });
+
+  // 12. Backward compatibility — old payloads without new fields
+  it("12. backward compatibility — old payload without groupedCandidateCount/excludedCount/exclusionSummary still validates", () => {
+    const s = validateRankedTradeSearch(payload()); // plain old payload
+    expect(s.groupedCandidateCount).toBeUndefined();
+    expect(s.excludedCount).toBeUndefined();
+    expect(s.exclusionSummary).toBeUndefined();
+    expect(s.reviewedCount).toBe(50);
+    expect(s.qualifiedCount).toBe(0);
+    // Headline falls through to the post-rejection path (reviewedCount > 0)
+    const h = rankedTradeSearchHeadline(s);
+    expect(h).toBe("Candidates were evaluated, but none currently qualify as trades.");
+  });
+
+  // 13. OpenAI cannot call exclusions qualified rejections — system rule present
+  it("13. LLM system rule distinguishes exclusion from rejection (source-level guard)", async () => {
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("./ask.ts", import.meta.url), "utf8");
+    expect(src).toContain("exclusionSummary");
+    expect(src).toContain("pre-qualification filtering");
+    expect(src).toContain("NOT quality rejections");
+    expect(src).toContain("not a quality verdict");
   });
 });

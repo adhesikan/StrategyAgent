@@ -41,14 +41,27 @@ export interface RankedRejectionGroup {
   symbols: string[];
 }
 
+/** Pre-confluence exclusion — happens BEFORE bucket assignment.
+ *  Not a quality rejection; an excluded opportunity never reached qualification. */
+export interface RankedExclusionGroup {
+  reason: string;
+  count: number;
+}
+
 export interface RankedTradeSearch {
   request: Record<string, unknown>;
   /** RAW stored opportunities reviewed — NOT the post-confluence population. */
   reviewedCount: number;
+  /** Confluence groups formed from stored opportunities (0 = nothing passed pre-qualification). */
+  groupedCandidateCount?: number;
   qualifiedCount: number;
   watchCount: number;
   rejectedCount: number;
   unavailableCount: number;
+  /** Opportunities excluded BEFORE confluence/qualification — not the same as rejection. */
+  excludedCount?: number;
+  /** Breakdown of why opportunities were excluded before qualification. */
+  exclusionSummary?: RankedExclusionGroup[];
   candidates: RankedTradeCandidate[];
   watchCandidates: RankedWatchCandidate[];
   rejectionSummary: RankedRejectionGroup[];
@@ -113,12 +126,38 @@ export function unavailableCtas(question: string): RankedCta[] {
   ];
 }
 
+/** CTAs when all opportunities were excluded before qualification (no triggers, stale, etc.).
+ *  Never includes the Trade Builder — no candidate was produced. */
+export function exclusionCtas(): RankedCta[] {
+  return [
+    { label: "Open Scanner", href: "/scanner", primary: true },
+    { label: "Review Watchlist", href: "/watchlist" },
+    { label: "Run a Fresh Scan", href: "/scanner?run=1" },
+    { label: "View Stored Setups", href: "/opportunities" },
+  ];
+}
+
+/** Human-readable label for a known MCP exclusion reason code. */
+export function translateExclusionReason(reason: string): string {
+  switch (reason) {
+    case "NOT_ACTIONABLE_NO_TRIGGER":      return "No actionable trigger was available";
+    case "STALE":                          return "Stored setup was stale";
+    case "DIRECTION_MISMATCH":             return "Setup direction did not match the request";
+    case "INVALID_SETUP":                  return "Stored setup was not structurally valid";
+    case "SIMULATED_DATA_NOT_ELIGIBLE":    return "Only simulated data was available";
+    default:
+      return reason.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
 /** Honest counts line. reviewedCount is labeled as raw stored opportunities
  *  reviewed and is never implied to equal the bucket population. */
 export function rankedCountsLine(s: RankedTradeSearch): string {
   const parts = [
     `${s.reviewedCount} stored ${s.reviewedCount === 1 ? "opportunity" : "opportunities"} reviewed`,
+    ...(s.groupedCandidateCount !== undefined ? [`${s.groupedCandidateCount} post-confluence`] : []),
     `${s.qualifiedCount} qualified`,
+    ...(s.excludedCount !== undefined && s.excludedCount > 0 ? [`${s.excludedCount} excluded`] : []),
     ...(s.watchCount > 0 ? [`${s.watchCount} worth watching`] : []),
     ...(s.rejectedCount > 0 ? [`${s.rejectedCount} rejected`] : []),
     ...(s.unavailableCount > 0 ? [`${s.unavailableCount} unavailable`] : []),

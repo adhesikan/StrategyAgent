@@ -1,0 +1,201 @@
+Update VCP Trader ranked market-search handling for the deployed MCP exclusion-accounting contract.
+
+CURRENT LIVE MCP RESPONSE
+
+rank_market_trade_candidates returns additive fields:
+
+{
+  reviewedCount: 50,
+  groupedCandidateCount: 0,
+  qualifiedCount: 0,
+  watchCount: 0,
+  rejectedCount: 0,
+  unavailableCount: 0,
+  excludedCount: 50,
+  exclusionSummary: [
+    {
+      reason: "NOT_ACTIONABLE_NO_TRIGGER",
+      count: 50
+    }
+  ],
+  warnings: [
+    "50 stored opportunities were reviewed, but 0 confluence candidates were formed..."
+  ]
+}
+
+The current validator silently drops:
+
+- groupedCandidateCount
+- excludedCount
+- exclusionSummary
+
+Do not modify MCP logic.
+Do not modify ranking, scanners, candidate qualification or risk calculations.
+Do not add execution.
+Do not commit, push or deploy automatically.
+
+==================================================
+1. EXTEND THE RESPONSE TYPE
+==================================================
+
+Extend RankedTradeSearch additively with:
+
+groupedCandidateCount?: number
+excludedCount?: number
+exclusionSummary?: Array<{
+  reason: string;
+  count: number;
+}>
+warnings?: string[]
+
+Preserve unknown-field tolerance and backward compatibility.
+
+Validate:
+
+- counts are finite non-negative integers
+- reasons are safe bounded strings
+- malformed entries are dropped without crashing
+
+==================================================
+2. PRESENT COUNT SEMANTICS CLEARLY
+==================================================
+
+Show:
+
+Stored opportunities reviewed: 50
+Post-confluence candidates: 0
+Qualified: 0
+Worth watching: 0
+Rejected: 0
+Unavailable: 0
+Excluded before qualification: 50
+
+Do not imply that all counts refer to the same population.
+
+Include concise helper text:
+
+"Stored opportunities are raw scanner records. Candidate buckets are formed after confluence and actionability checks."
+
+==================================================
+3. EXCLUDED SECTION
+==================================================
+
+Add a collapsed section:
+
+Excluded Before Qualification
+
+Group and translate known safe reasons:
+
+NOT_ACTIONABLE_NO_TRIGGER
+→ "No actionable trigger was available"
+
+STALE
+→ "Stored setup was stale"
+
+DIRECTION_MISMATCH
+→ "Setup direction did not match the request"
+
+INVALID_SETUP
+→ "Stored setup was not structurally valid"
+
+SIMULATED_DATA_NOT_ELIGIBLE
+→ "Only simulated data was available"
+
+UNKNOWN or future reasons
+→ humanize conservatively without inventing meaning
+
+For the current response, display:
+
+"50 opportunities were excluded because no actionable trigger was available."
+
+==================================================
+4. HEADLINES
+==================================================
+
+When groupedCandidateCount is zero because all records were excluded:
+
+Use:
+
+"Stored setups were reviewed, but none had an actionable entry trigger."
+
+Do not use:
+
+"Nothing meets the quality criteria"
+
+because qualification did not occur.
+
+When all candidates are unavailable:
+
+"Candidates could not be qualified because required data was unavailable."
+
+When qualification occurred but none passed:
+
+"Candidates were evaluated, but none currently qualify as trades."
+
+Keep these semantically distinct.
+
+==================================================
+5. NARRATIVE RULES
+==================================================
+
+The deterministic summary should explain:
+
+- how many raw opportunities were reviewed
+- why none became candidates
+- whether the issue was trigger availability, staleness, data availability or actual rejection
+- that no trade was fabricated
+
+OpenAI may explain the result but cannot reinterpret an exclusion as a risk or quality rejection.
+
+==================================================
+6. NEXT STEPS
+==================================================
+
+For NOT_ACTIONABLE_NO_TRIGGER:
+
+- Open Scanner
+- Review Watchlist
+- Run a Fresh Scan
+- View Stored Setups
+
+Do not show Trade Builder.
+
+==================================================
+7. TESTS
+==================================================
+
+Add tests for:
+
+1. all excluded due to missing trigger
+2. mixed exclusions
+3. groupedCandidateCount zero
+4. qualified buckets after grouping
+5. all unavailable
+6. all rejected
+7. reviewedCount greater than groupedCandidateCount
+8. unknown exclusion reason
+9. malformed exclusion entries
+10. headline semantics
+11. no Trade Builder
+12. backward compatibility with old payloads
+13. OpenAI cannot call exclusions qualified rejections
+
+Run:
+
+npm test
+npm run build
+
+Do not commit or push.
+
+Report:
+
+1. Files changed
+2. Contract additions
+3. Count presentation
+4. Exclusion translation
+5. Headline changes
+6. Tests
+7. Build
+8. Manual UAT result for "Find three bullish trades"
+
+Wait for review.

@@ -9,3 +9,4 @@
 - [Options-context trust boundary](options-context-boundary.md) — MCP gets an opaque 5-min token, never broker OAuth; all MCP responses are deep-scrubbed before reaching client/LLM.
 - [Reference market data](reference-market-data.md) — non-broker surfaces must use the gated reference-snapshot module (stored bars / one realtime quote), never hash/hardcoded prices; scans must never hit /quote.
 - [Ticker extraction policy](ticker-extraction-policy.md) — one central extractor with denylist; explicit $SYM/"ticker X" syntax bypasses it, and every validator must honor that same exception.
+- [MCP exclusion accounting contract](mcp-exclusion-accounting.md) — excludedCount/exclusionSummary/groupedCandidateCount are pre-confluence, not quality rejections; headline and LLM rules must use distinct language for exclusion vs rejection vs unavailable.

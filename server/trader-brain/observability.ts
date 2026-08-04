@@ -172,3 +172,35 @@ export function logBrainFailure(
   };
   emit(event);
 }
+
+// ---------------------------------------------------------------------------
+// Fallback event — emitted when Brain fails and the request is handed off to
+// the legacy callOpenAi path.  No PII; reason is a safe error-code string.
+// ---------------------------------------------------------------------------
+
+interface BrainFallbackEvent {
+  event: "trader_brain_fallback";
+  requestId: string;
+  intent: string;      // may be "unknown" if classification failed
+  fallbackReason: string;
+  durationMs: number;
+  ts: string;
+}
+
+export function logBrainFallback(
+  requestId: string,
+  intent: string,
+  fallbackReason: string,
+  durationMs: number,
+): void {
+  const safeReason = fallbackReason.replace(/user|account|position|balance|key|token|secret/gi, "[redacted]").slice(0, 120);
+  const event: BrainFallbackEvent = {
+    event: "trader_brain_fallback",
+    requestId,
+    intent,
+    fallbackReason: safeReason,
+    durationMs,
+    ts: new Date().toISOString(),
+  };
+  emit(event);
+}

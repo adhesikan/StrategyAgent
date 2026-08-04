@@ -1,0 +1,246 @@
+Sprint 5.1 — TraderBrain Unified Recommendation Orchestration
+
+Goal
+
+Complete the migration from legacy callOpenAi recommendation flows to TraderBrain.
+
+TraderBrain should become the single orchestration engine for every recommendation request.
+
+Do NOT modify:
+
+• scanner algorithms
+• ranking engine
+• recommendation engine
+• portfolio engine
+• MCP tools
+• execution logic
+• broker integration
+
+Reuse all existing deterministic services exactly as they are.
+
+--------------------------------------------------
+1. ROUTING
+--------------------------------------------------
+
+Expand classifyBrainIntent().
+
+TraderBrain must own these intents:
+
+Find a trade
+
+Recommend a trade
+
+Find bullish trades
+
+Find bearish trades
+
+Recommend stock
+
+Recommend options
+
+Growth trade
+
+Income trade
+
+Conservative trade
+
+Aggressive trade
+
+High conviction trade
+
+Portfolio trade
+
+Market-wide trade search
+
+Trade under $X risk
+
+Trade with account size
+
+Trade for retirement
+
+Trade for income
+
+Trade with defined risk
+
+Do not duplicate planner logic.
+
+Every recommendation request should produce one deterministic Brain plan.
+
+--------------------------------------------------
+2. SINGLE EXECUTION PIPELINE
+--------------------------------------------------
+
+Every recommendation request should execute:
+
+Intent
+
+↓
+
+Planner
+
+↓
+
+MCP deterministic tools
+
+↓
+
+Recommendation engine
+
+↓
+
+Response builder
+
+↓
+
+GPT explanation
+
+↓
+
+UI
+
+No legacy branching.
+
+No duplicated orchestration.
+
+--------------------------------------------------
+3. GPT RESPONSIBILITIES
+--------------------------------------------------
+
+GPT may ONLY:
+
+Explain
+
+Summarize
+
+Educate
+
+Describe risk
+
+Provide plain-English reasoning
+
+GPT must NEVER:
+
+change rankings
+
+change scores
+
+change verdicts
+
+invent trades
+
+invent symbols
+
+invent prices
+
+invent options
+
+override deterministic outputs
+
+--------------------------------------------------
+4. RESPONSE CONTRACT
+--------------------------------------------------
+
+All recommendation requests return one unified response contract.
+
+Reuse existing response types whenever possible.
+
+Support:
+
+headline
+
+summary
+
+recommendation
+
+qualified candidates
+
+watch
+
+rejected
+
+unavailable
+
+portfolio fit
+
+risk
+
+confidence
+
+next steps
+
+AI explanation
+
+No separate legacy response shapes.
+
+--------------------------------------------------
+5. FALLBACKS
+--------------------------------------------------
+
+If TraderBrain fails:
+
+fallback to existing callOpenAi path
+
+Behavior must remain identical to today's production.
+
+No regression.
+
+--------------------------------------------------
+6. TELEMETRY
+--------------------------------------------------
+
+Log:
+
+intent
+
+planner
+
+plan duration
+
+MCP duration
+
+recommendation duration
+
+GPT duration
+
+total latency
+
+fallback reason
+
+No PII.
+
+--------------------------------------------------
+7. TESTS
+
+Add regression tests covering:
+
+Find a trade
+
+Recommend a trade
+
+Bullish search
+
+Bearish search
+
+Options recommendation
+
+Income strategy
+
+Growth strategy
+
+Risk-budget search
+
+Portfolio-aware recommendation
+
+Fallback path
+
+OpenAI explanation only
+
+Response contract consistency
+
+No algorithm changes.
+
+No scanner changes.
+
+No MCP behavior changes.
+
+No commits.

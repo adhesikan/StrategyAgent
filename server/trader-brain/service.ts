@@ -35,6 +35,19 @@ import {
 } from "./observability";
 
 // ---------------------------------------------------------------------------
+// Authoritative intents — Brain is the primary engine for these (Sprint 5.1).
+// Legacy callOpenAi becomes the fallback on any Brain failure.
+// ---------------------------------------------------------------------------
+
+export const BRAIN_AUTHORITATIVE_INTENTS = new Set<TraderBrainIntent>([
+  "RANK_MARKET_TRADES",
+  "PLAN_PORTFOLIO_TRADE",
+  "RECOMMEND_SYMBOL_TRADE",
+  "COMBINED_ANALYSIS_RECOMMENDATION",
+  "EDUCATION_PLUS_ACTION",
+]);
+
+// ---------------------------------------------------------------------------
 // Feature flag
 // ---------------------------------------------------------------------------
 

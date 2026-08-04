@@ -1289,6 +1289,298 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       const ctx = await buildContext(userId, question, intent, tickers);
 
       // ---------------------------------------------------------------
+      // Sprint 5.1 — TraderBrain Unified Recommendation Orchestration.
+      //
+      // Brain is the PRIMARY engine for all trade recommendation intents.
+      // Legacy callOpenAi is the FALLBACK on any Brain failure (§5).
+      //
+      // Pipeline: Intent → Planner → MCP tools → Response builder →
+      //           GPT explanation → HTTP response (§2).
+      //
+      // The existing ranked/portfolio/combined paths below remain intact
+      // as fallbacks — they execute only when Brain fails or when
+      // the intent is not in BRAIN_AUTHORITATIVE_INTENTS.
+      // ---------------------------------------------------------------
+      {
+        const s51Start = Date.now();
+        let s51Intent = "unknown";
+        let s51RequestId = `ask-s51-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        try {
+          const [{ classifyBrainIntent, intentWantsPortfolioContext }, { BRAIN_AUTHORITATIVE_INTENTS }] = await Promise.all([
+            import("../trader-brain/intent-classifier"),
+            import("../trader-brain/service"),
+          ]);
+          const brainInt = classifyBrainIntent(question, tickers);
+          s51Intent = brainInt;
+
+          if (BRAIN_AUTHORITATIVE_INTENTS.has(brainInt)) {
+            // ---- Set up portfolio + options context for Brain ----
+            let s51PfToken: string | undefined;
+            let s51OptToken: string | undefined;
+            let s51PfAwareness: import("./internal-portfolio").SafePortfolioAwareness | null = null;
+            try {
+              const [pfCtxMod, { getBrokerPositions, getBrokerAccounts }, intPortfolio] = await Promise.all([
+                import("../services/portfolio-context"),
+                import("../broker"),
+                import("./internal-portfolio"),
+              ]);
+              const [positions, accounts] = await Promise.all([
+                getBrokerPositions(userId).catch(() => [] as import("../broker/types").NormalizedPosition[]),
+                getBrokerAccounts(userId).catch(() => [] as import("../broker/types").NormalizedAccount[]),
+              ]);
+              if (accounts.length > 0 || positions.length > 0) {
+                s51PfToken = pfCtxMod.issuePortfolioContext(userId).token;
+                s51PfAwareness = intPortfolio.computePortfolioAwareness(
+                  tickers[0],
+                  positions,
+                  accounts,
+                );
+              }
+            } catch { /* no portfolio context — market-only */ }
+            try {
+              if (isMcpEnabled()) {
+                const { capabilityForUser } = await import("./internal-options");
+                const { issueOptionsContext } = await import("../services/options-context");
+                const liveOpts = await capabilityForUser(userId, {
+                  getBrokerConnection: async (uid: string) => {
+                    const conn = await storage.getBrokerConnection(uid);
+                    return conn ? { provider: conn.provider, isConnected: !!conn.isConnected } : null;
+                  },
+                });
+                if (liveOpts.liveOptionsAvailable) {
+                  s51OptToken = issueOptionsContext(userId).token;
+                }
+              }
+            } catch { /* no options context */ }
+
+            const brainCtx51: import("../trader-brain/types").TrustedContext = {
+              userId,
+              tickers,
+              brokerConnected: ctx.brokerConnected,
+              portfolioToken: s51PfToken,
+              optionsToken: s51OptToken,
+              portfolioAwareness: s51PfAwareness ?? undefined,
+            };
+
+            try {
+              const { TraderBrainService } = await import("../trader-brain/service");
+              const svc = new TraderBrainService();
+              const brainResult = await svc.execute(
+                { requestId: s51RequestId, question },
+                brainCtx51,
+              );
+
+              // Brain failed its required MCP step → fall back to legacy
+              if (brainResult.status === "unavailable" || brainResult.status === "error") {
+                throw Object.assign(
+                  new Error(`Brain status: ${brainResult.status}`),
+                  { code: "BRAIN_PIPELINE_UNAVAILABLE" },
+                );
+              }
+
+              const {
+                buildRankedBrainResponse,
+                buildPortfolioBrainResponse,
+                buildRecommendBrainAnswer,
+                buildEducationPlusBrainAnswer,
+                buildBrainExplanationPrompt,
+              } = await import("../trader-brain/unified-response-builder");
+
+              let s51Answer: AskAnswer | null = null;
+              let s51HttpExtras: Record<string, unknown> = {};
+
+              // ----  Per-intent response building  ----
+              if (brainInt === "RANK_MARKET_TRADES") {
+                // OpenAI prose: only if candidates exist (same rule as legacy)
+                const rs = brainResult.sections?.rankedSearch as import("./ranked-trade-search").RankedTradeSearch | null;
+                let openAiAns: AskAnswer | null = null;
+                if (rs && (rs.candidates.length + (rs.watchCandidates?.length ?? 0)) > 0) {
+                  openAiAns = await callOpenAi(question, ctx, { rankedTradeSearch: rs });
+                }
+                const built = await buildRankedBrainResponse(brainResult, openAiAns, s51PfAwareness);
+                const { intent: _i, tickers: _t, suggestions: _s, source: _src, portfolioAwareness: _pa, ...askPart } = built as Record<string, unknown>;
+                s51Answer = askPart as AskAnswer;
+                s51HttpExtras = {
+                  intent: built.intent,
+                  tickers: built.tickers,
+                  rankedTradeSearch: built.rankedTradeSearch,
+                  rankedSearchSource: built.rankedSearchSource,
+                  suggestions: built.suggestions,
+                  source: built.source,
+                  ...(s51PfAwareness ? { portfolioAwareness: s51PfAwareness } : {}),
+                };
+              } else if (brainInt === "PLAN_PORTFOLIO_TRADE") {
+                const openAiAns = await callOpenAi(question, ctx, {
+                  portfolioTradePlan: brainResult.sections?.portfolioTradePlan as import("./portfolio-trade-plan").PortfolioTradePlan,
+                });
+                const built = await buildPortfolioBrainResponse(brainResult, openAiAns, s51PfAwareness);
+                const { intent: _i, tickers: _t, suggestions: _s, source: _src, portfolioAwareness: _pa, ...askPart } = built as Record<string, unknown>;
+                s51Answer = askPart as AskAnswer;
+                s51HttpExtras = {
+                  intent: built.intent,
+                  tickers: built.tickers,
+                  portfolioTradePlan: built.portfolioTradePlan,
+                  suggestions: built.suggestions,
+                  source: built.source,
+                  ...(s51PfAwareness ? { portfolioAwareness: s51PfAwareness } : {}),
+                };
+              } else if (brainInt === "RECOMMEND_SYMBOL_TRADE") {
+                // Build focused OpenAI explanation using combined builder prompts
+                let openAiExpl: string | null = null;
+                if (isOpenAiConfigured()) {
+                  const prompts = await buildBrainExplanationPrompt(brainResult, question);
+                  if (prompts) {
+                    try {
+                      const { default: OpenAI } = await import("openai");
+                      const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                      const comp = await Promise.race([
+                        oai.chat.completions.create({
+                          model: "gpt-4o-mini",
+                          temperature: 0.3,
+                          max_tokens: 500,
+                          messages: [
+                            { role: "system" as const, content: prompts.system },
+                            { role: "user" as const, content: prompts.user },
+                          ],
+                        }),
+                        new Promise<never>((_, rej) =>
+                          setTimeout(() => rej(new Error("openai_recommend_timeout")), 15_000),
+                        ),
+                      ]);
+                      openAiExpl = (comp as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content?.trim() ?? null;
+                    } catch (err) {
+                      console.warn("[ask] Brain RECOMMEND openai explanation unavailable:", (err as Error).message);
+                    }
+                  }
+                }
+                s51Answer = await buildRecommendBrainAnswer(brainResult, openAiExpl) as AskAnswer;
+                s51HttpExtras = { intent: "recommendation", tickers };
+              } else if (brainInt === "COMBINED_ANALYSIS_RECOMMENDATION") {
+                // Identical to existing authoritative COMBINED path
+                let openAiExpl: string | null = null;
+                const hasAnySections = !!(brainResult.sections.analysis || brainResult.sections.recommendation);
+                if (isOpenAiConfigured() && hasAnySections) {
+                  const prompts = await buildBrainExplanationPrompt(brainResult, question);
+                  if (prompts) {
+                    try {
+                      const { default: OpenAI } = await import("openai");
+                      const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                      const comp = await Promise.race([
+                        oai.chat.completions.create({
+                          model: "gpt-4o-mini",
+                          temperature: 0.3,
+                          max_tokens: 600,
+                          messages: [
+                            { role: "system" as const, content: prompts.system },
+                            { role: "user" as const, content: prompts.user },
+                          ],
+                        }),
+                        new Promise<never>((_, rej) =>
+                          setTimeout(() => rej(new Error("openai_combined_s51_timeout")), 15_000),
+                        ),
+                      ]);
+                      openAiExpl = (comp as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content?.trim() ?? null;
+                    } catch (err) {
+                      console.warn("[ask] Brain COMBINED (s51) openai unavailable:", (err as Error).message);
+                    }
+                  }
+                }
+                const { buildCombinedAskAnswer } = await import("../trader-brain/combined-response-builder");
+                s51Answer = await buildCombinedAskAnswer(brainResult, openAiExpl) as AskAnswer;
+                s51HttpExtras = { intent: "combined", tickers };
+              } else if (brainInt === "EDUCATION_PLUS_ACTION") {
+                // Call OpenAI with prompts from unified builder
+                let openAiExpl: string | null = null;
+                if (isOpenAiConfigured()) {
+                  const prompts = await buildBrainExplanationPrompt(brainResult, question);
+                  if (prompts) {
+                    try {
+                      const { default: OpenAI } = await import("openai");
+                      const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                      const comp = await Promise.race([
+                        oai.chat.completions.create({
+                          model: "gpt-4o-mini",
+                          temperature: 0.4,
+                          max_tokens: 500,
+                          messages: [
+                            { role: "system" as const, content: prompts.system },
+                            { role: "user" as const, content: prompts.user },
+                          ],
+                        }),
+                        new Promise<never>((_, rej) =>
+                          setTimeout(() => rej(new Error("openai_edu_timeout")), 15_000),
+                        ),
+                      ]);
+                      openAiExpl = (comp as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content?.trim() ?? null;
+                    } catch (err) {
+                      console.warn("[ask] Brain EDUCATION_PLUS_ACTION openai unavailable:", (err as Error).message);
+                    }
+                  }
+                }
+                s51Answer = await buildEducationPlusBrainAnswer(brainResult, openAiExpl) as AskAnswer;
+                s51HttpExtras = { intent: "education-plus-action", tickers };
+              }
+
+              if (s51Answer) {
+                // Revoke tokens
+                if (s51PfToken) {
+                  try {
+                    const { revokePortfolioContext } = await import("../services/portfolio-context");
+                    revokePortfolioContext(s51PfToken);
+                  } catch { /* ignore */ }
+                }
+                if (s51OptToken) {
+                  try {
+                    const { revokeOptionsContext } = await import("../services/options-context");
+                    revokeOptionsContext(s51OptToken);
+                  } catch { /* ignore */ }
+                }
+
+                return res.json({
+                  question,
+                  brokerConnected: ctx.brokerConnected,
+                  ...s51Answer,
+                  ...s51HttpExtras,
+                  picks: [],
+                  tradeDetail: null,
+                  source: (s51HttpExtras.source as string | undefined) ?? "openai",
+                  disclaimer:
+                    "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+                });
+              }
+            } catch (brainErr) {
+              // Brain pipeline failed — log telemetry and fall through to legacy
+              const { logBrainFallback } = await import("../trader-brain/observability");
+              logBrainFallback(
+                s51RequestId,
+                s51Intent,
+                (brainErr as Error).message ?? "unknown",
+                Date.now() - s51Start,
+              );
+              console.warn(`[ask] Sprint5.1 Brain failed (${s51Intent}), falling back to legacy:`, (brainErr as Error).message);
+              // Token cleanup on failure
+              try {
+                if (s51PfToken) {
+                  const { revokePortfolioContext } = await import("../services/portfolio-context");
+                  revokePortfolioContext(s51PfToken);
+                }
+              } catch { /* ignore */ }
+              try {
+                if (s51OptToken) {
+                  const { revokeOptionsContext } = await import("../services/options-context");
+                  revokeOptionsContext(s51OptToken);
+                }
+              } catch { /* ignore */ }
+              // Fall through to legacy paths below
+            }
+          }
+        } catch (s51ClassifyErr) {
+          // Classification failure — fall through silently
+          console.warn("[ask] Sprint5.1 intent classification failed:", (s51ClassifyErr as Error).message);
+        }
+      }
+
+      // ---------------------------------------------------------------
       // Deterministic opportunity-search intents ("Find high-quality trade
       // opportunities", "Find income opportunities", ...). Routed BEFORE the
       // generic LLM path so these never fall back to educational prose.

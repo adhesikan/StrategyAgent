@@ -46,6 +46,16 @@ const MARKET_RESEARCH_RE =
   /\b(why\s+(is|are|did|was)|what('s|\s+is)\s+happening|what\s+caused|news|catalyst|sentiment|moving|fed|fomc|cpi|jobs|earnings\s+(report|date|season)|macro|interest\s+rates?|inflation|economy)\b/i;
 
 // ---------------------------------------------------------------------------
+// Supplemental rank pattern — objective-based trade phrasings not caught by
+// classifyTradeRequest / classifyRankedTradeSearch.  These map to
+// RANK_MARKET_TRADES so the request normalizer can extract the objective
+// (aggressive, conservative, income, growth, etc.) for downstream use.
+// ---------------------------------------------------------------------------
+
+const RANK_SUPPLEMENT_RE =
+  /\b(aggressive|conservative|high[- ]conviction|growth|momentum|breakout|defined[- ]risk|retirement|dividend|bullish|bearish|income)\s+(trades?|plays?|setups?|ideas?|opportunit(?:y|ies)|positions?)\b|\b(trade|setup|opportunit(?:y|ies)|play|idea)\s+(for|with)\s+(retirement|income|growth|defined[- ]risk)\b|\b(recommend|suggest|find|show|get)\s+(me\s+)?(a\s+|an?\s+)?(stock|options?)\s+(trade|idea|setup|play)\b/i;
+
+// ---------------------------------------------------------------------------
 // Main classifier
 // ---------------------------------------------------------------------------
 
@@ -117,6 +127,14 @@ export function classifyBrainIntent(
   } catch {
     // continue
   }
+
+  // ------------------------------------------------------------------
+  // 6.5 RANK_MARKET_TRADES — supplemental objective-based phrasings.
+  //     Catches "aggressive trade", "conservative trade", "growth trade",
+  //     "trade for retirement", "recommend a stock trade", etc. before
+  //     falling through to ANALYZE_SYMBOL.
+  // ------------------------------------------------------------------
+  if (RANK_SUPPLEMENT_RE.test(question)) return "RANK_MARKET_TRADES";
 
   // ------------------------------------------------------------------
   // 7. ANALYZE_SYMBOL — ticker present + analysis phrasing.

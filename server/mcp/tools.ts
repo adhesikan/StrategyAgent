@@ -55,6 +55,14 @@ export const MCP_ALLOWED_TOOLS = [
   // in MCP_AI_TOOLS: the model never chooses when to call it or what
   // arguments to pass, and may never reorder or promote its buckets.
   "rank_market_trade_candidates",
+  // Portfolio-constrained trade planning — backend orchestration only, invoked
+  // for asks that reference a portfolio constraint (dollar risk limit,
+  // %-of-portfolio, sector exclusion, own-holdings, income-from-holdings).
+  // Returns a 9-section structured plan (feasibility, constraints, candidates,
+  // why-selected, alternatives, impact, risk, next steps). NOT in
+  // MCP_AI_TOOLS: the model may only explain the output, never alter the
+  // feasibility verdict, candidate list, or constraint statuses.
+  "plan_portfolio_trade",
 ] as const;
 
 export type McpAllowedTool = (typeof MCP_ALLOWED_TOOLS)[number];
@@ -434,6 +442,55 @@ export async function rankMarketTradeCandidates(a: RankMarketTradeCandidatesArgs
   // would just double the wait.
   const cfg = getMcpConfig();
   return callAllowedTool("rank_market_trade_candidates", args, {
+    timeoutMs: cfg?.recommendationTimeoutMs ?? 30_000,
+    retryOnTimeout: false,
+  });
+}
+
+export interface PlanPortfolioTradeArgs {
+  direction?: "bullish" | "bearish" | "neutral" | "either";
+  instrumentPreference?: "stock" | "options" | "either";
+  objective?: "growth" | "income" | "capital_preservation" | "hedging" | "speculative";
+  requestedStrategy?: string;
+  maxRiskDollars?: number;
+  maxRiskPercent?: number;
+  excludeSectors?: string[];
+  requireExistingPosition?: boolean;
+  numberOfIdeas?: number;
+  /** Short-lived OPAQUE backend-minted portfolio context token — never a broker OAuth token. */
+  portfolioContextToken?: string;
+  /** Short-lived OPAQUE backend-minted options context token — never a broker OAuth token. */
+  optionsContextToken?: string;
+}
+
+/**
+ * Portfolio-constrained trade planning. Returns a 9-section structured plan
+ * (feasibility, constraints, candidates, why-selected, alternatives, impact,
+ * risk, next-steps). Backend-only: never exposed to the AI; args are
+ * model-safe only — no account ids, user ids, connection ids, or credentials
+ * are ever passed. Context tokens are backend-minted opaque references.
+ */
+export async function planPortfolioTrade(a: PlanPortfolioTradeArgs): Promise<unknown> {
+  const args: Record<string, unknown> = {};
+  if (a.direction) args.direction = a.direction;
+  if (a.instrumentPreference) args.instrumentPreference = a.instrumentPreference;
+  if (a.objective) args.objective = a.objective;
+  if (a.requestedStrategy) args.requestedStrategy = String(a.requestedStrategy);
+  if (typeof a.maxRiskDollars === "number" && a.maxRiskDollars > 0)
+    args.maxRiskDollars = Math.min(a.maxRiskDollars, 100_000);
+  if (typeof a.maxRiskPercent === "number" && a.maxRiskPercent > 0 && a.maxRiskPercent <= 100)
+    args.maxRiskPercent = a.maxRiskPercent;
+  if (Array.isArray(a.excludeSectors) && a.excludeSectors.length > 0)
+    args.excludeSectors = a.excludeSectors.slice(0, 10).map((s) => String(s).slice(0, 60));
+  if (a.requireExistingPosition) args.requireExistingPosition = true;
+  if (typeof a.numberOfIdeas === "number")
+    args.numberOfIdeas = Math.max(1, Math.min(10, Math.floor(a.numberOfIdeas)));
+  if (a.portfolioContextToken) args.portfolioContextToken = a.portfolioContextToken;
+  if (a.optionsContextToken) args.optionsContextToken = a.optionsContextToken;
+  // Slow tool: portfolio-constrained planning may enrich several candidates.
+  // Use the recommendation-class timeout and never retry on pure timeout.
+  const cfg = getMcpConfig();
+  return callAllowedTool("plan_portfolio_trade", args, {
     timeoutMs: cfg?.recommendationTimeoutMs ?? 30_000,
     retryOnTimeout: false,
   });

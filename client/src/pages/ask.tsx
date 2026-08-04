@@ -22,6 +22,8 @@ import { RankedTradeSearchCards } from "@/components/ranked-trade-search-cards";
 import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
 import type { VcpAnalysis } from "@/lib/vcp-analysis";
 import { PortfolioFitCard } from "@/components/portfolio-fit-card";
+import { PortfolioTradePlanCards } from "@/components/portfolio-trade-plan-cards";
+import type { PortfolioTradePlan } from "@/lib/portfolio-trade-plan";
 
 interface AskPick {
   id: string;
@@ -135,6 +137,9 @@ interface AskResponse {
   recommendationFailed?: boolean;
   // Sprint 4D: safe portfolio-awareness fields (no account IDs, no raw balances)
   portfolioAwareness?: import("@/lib/portfolio-awareness").SafePortfolioAwareness;
+  // Sprint 4E: deterministic portfolio-constrained trade plan
+  portfolioTradePlan?: PortfolioTradePlan;
+  portfolioTradePlanFailed?: boolean;
 }
 
 const CONFIDENCE_TONE: Record<string, string> = {
@@ -318,6 +323,11 @@ export default function AskPage() {
 
               {data.strategyRecommendation && <StrategyRecommendationCards recommendation={data.strategyRecommendation} />}
               {data.multiStrategyAnalysis && <MultiStrategyAnalysisCards analysis={data.multiStrategyAnalysis} />}
+
+              {/* Sprint 4E — Portfolio-constrained trade plan */}
+              {data.portfolioTradePlan && (
+                <PortfolioTradePlanCards plan={data.portfolioTradePlan} />
+              )}
 
               {/* Sprint 4D — Portfolio Fit: safe derived fields only, no account IDs */}
               {data.portfolioAwareness && (

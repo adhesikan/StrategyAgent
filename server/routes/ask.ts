@@ -793,6 +793,11 @@ async function callOpenAi(
      *  recommend_trade_strategy so MCP can call /api/internal/portfolio/context
      *  to retrieve safe portfolio-awareness fields. Never exposed to OpenAI. */
     portfolioContextToken?: string;
+    /** Deterministic portfolio-constrained trade plan (Sprint 4E). The model
+     *  may only EXPLAIN this result — it may NEVER alter feasibility.feasible,
+     *  qualifiedCandidates, portfolioConstraints statuses, or nextSteps.
+     *  Never exposed to OpenAI as-is (injected into userContent as JSON). */
+    portfolioTradePlan?: import("./portfolio-trade-plan").PortfolioTradePlan;
   } = {},
 ): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
@@ -881,7 +886,7 @@ async function callOpenAi(
     // to the opportunity-search flow upstream (opts.opportunitySearch) and
     // are deliberately retained there.
     // ------------------------------------------------------------------
-    if (isMcpEnabled() && !opts.opportunitySearch && !opts.rankedTradeSearch) {
+    if (isMcpEnabled() && !opts.opportunitySearch && !opts.rankedTradeSearch && !opts.portfolioTradePlan) {
       let recAttempted = false;
       try {
         const sr = await import("../mcp/strategy-recommendation");
@@ -917,7 +922,7 @@ async function callOpenAi(
     let unresolvedStrategyAsk: { raw: string; supported: string[] } | null = null;
     // Pure recommendation asks skip the multi-strategy analysis scan; a
     // "combined" ask ("Analyze NVDA and recommend a trade") runs both.
-    if (isMcpEnabled() && !opts.opportunitySearch && !opts.rankedTradeSearch && ctx.tickers.length > 0 && (tradeReqKind === null || tradeReqKind === "combined")) {
+    if (isMcpEnabled() && !opts.opportunitySearch && !opts.rankedTradeSearch && !opts.portfolioTradePlan && ctx.tickers.length > 0 && (tradeReqKind === null || tradeReqKind === "combined")) {
       try {
         const msa = await import("../mcp/multi-strategy-analysis");
         const registry = await msa.getCachedStrategyRegistry();
@@ -960,7 +965,7 @@ async function callOpenAi(
       };
     }
 
-    if (isMcpEnabled() && !multiStrategyAttempted) {
+    if (isMcpEnabled() && !multiStrategyAttempted && !opts.portfolioTradePlan) {
       try {
         const { fetchDeterministicVcpScan, isStockAnalysisAsk, summarizeVcpScan } = await import("../mcp/analysis-scan");
         vcpScanAttempted = isStockAnalysisAsk(question) && ctx.tickers.length > 0;
@@ -986,6 +991,7 @@ async function callOpenAi(
       context: compact,
       ...(opts.opportunitySearch ? { opportunitySearch: opts.opportunitySearch } : {}),
       ...(opts.rankedTradeSearch ? { rankedTradeSearch: opts.rankedTradeSearch } : {}),
+      ...(opts.portfolioTradePlan ? { portfolioTradePlan: opts.portfolioTradePlan } : {}),
       ...(strategyRec ? { strategyRecommendation: strategyRec } : {}),
       ...(multiStrategy ? { multiStrategyAnalysis: multiStrategy } : {}),
       ...(vcpScan
@@ -1064,6 +1070,13 @@ async function callOpenAi(
       // Explanation only.
       mcpTools = [];
       mcpSystemRules += `\n- The "rankedTradeSearch" field in the user content is the DETERMINISTIC output of the production market-ranking engine. Your job is ONLY to explain it. You may NOT reorder candidates, promote a watch or rejected result to a trade, invent candidates, invent triggers/targets/risk/quantity, call rejected or watch-only setups trades or trade ideas, change the requested count, or override risk failures. "reviewedCount" is the number of RAW STORED OPPORTUNITIES reviewed; the qualified/watch/rejected/unavailable buckets count post-confluence candidates and may NOT sum to reviewedCount — never present them as the same population. Only entries in "candidates" are trade candidates. State counts exactly as given. If a maximum-risk budget was requested and no candidate survived, say explicitly that no candidate met that risk limit. CRITICAL EXCLUSION RULE: "exclusionSummary" entries represent opportunities that were filtered out BEFORE confluence and qualification — they are NOT quality rejections or risk failures. Do not describe excluded opportunities as rejected, failed on quality grounds, low quality, or having poor risk/reward. The "excludedCount" reflects pre-qualification filtering (e.g., no active trigger), not post-qualification judgment. Explain an exclusion as a data or timing issue, not a quality verdict. Do not call any tools for this request.`;
+    }
+    if (opts.portfolioTradePlan) {
+      // Hard technical enforcement: the model ONLY explains the deterministic
+      // plan_portfolio_trade result — no tools, no symbol invention, no
+      // feasibility/candidate/constraint override.
+      mcpTools = [];
+      mcpSystemRules += `\n- The "portfolioTradePlan" field in the user content is the DETERMINISTIC result of the portfolio-constrained trade planner. Your job is ONLY to explain it. Strict rules: (1) You may NEVER alter, override, soften, or contradict feasibility.feasible, qualifiedCandidates list, portfolioConstraints statuses, or nextSteps content — they are authoritative. (2) A "feasible: false" verdict means the portfolio constraints could not be met — never reframe it as partially feasible or suggest the user try anyway. (3) Explain the constraints using only the provided "portfolioConstraints" status/detail fields; never invent constraint reasons. (4) Describe candidates using only the provided fields (symbol, strategy, maxRiskDollars, etc.) — never invent entry/stop/target prices, risk amounts, or R/R ratios. (5) Never tell the user to buy or sell — all output is educational research only. (6) Keep your explanation concise and structured (feasibility verdict → constraints → candidates → risk). (7) Do not call any tools.`;
     }
 
     const messages: any[] = [
@@ -1285,6 +1298,106 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // extractTickers heuristic false-positives on words like "high", so
       // it must NOT gate this branch.
       // ---------------------------------------------------------------
+      // ---------------------------------------------------------------
+      // Deterministic PORTFOLIO-CONSTRAINED trade plan (Sprint 4E).
+      // Routed BEFORE ranked-trade-search. Triggers: dollar-risk limit,
+      // %-of-portfolio, sector exclusion, own-holdings, income-from-holdings.
+      // On any failure, falls through to ranked-trade-search or other flows.
+      // ---------------------------------------------------------------
+      if (isMcpEnabled()) {
+        let ptpGoal: import("./portfolio-trade-plan").PortfolioTradePlanGoal | null = null;
+        try {
+          const ptp = await import("./portfolio-trade-plan");
+          ptpGoal = ptp.classifyPortfolioTradePlan(question, tickers);
+        } catch {
+          ptpGoal = null;
+        }
+        if (ptpGoal) {
+          // Mint portfolio context + options context tokens for connected users.
+          // Both are revoked in the finally block regardless of success/failure.
+          let ptpPfToken: string | undefined;
+          let ptpOptToken: string | undefined;
+          let ptpPfAwareness: import("./internal-portfolio").SafePortfolioAwareness | null = null;
+          try {
+            const pfCtxMod = await import("../services/portfolio-context");
+            const { getBrokerPositions, getBrokerAccounts } = await import("../broker");
+            const intPortfolio = await import("./internal-portfolio");
+            const [positions, accounts] = await Promise.all([
+              getBrokerPositions(userId).catch(() => [] as import("../broker/types").NormalizedPosition[]),
+              getBrokerAccounts(userId).catch(() => [] as import("../broker/types").NormalizedAccount[]),
+            ]);
+            if (accounts.length > 0 || positions.length > 0) {
+              ptpPfToken = pfCtxMod.issuePortfolioContext(userId).token;
+              ptpPfAwareness = intPortfolio.computePortfolioAwareness(undefined, positions, accounts);
+            }
+          } catch { /* no portfolio context — graceful */ }
+          try {
+            const { capabilityForUser } = await import("./internal-options");
+            const { issueOptionsContext } = await import("../services/options-context");
+            const liveOpts = await capabilityForUser(userId, {
+              getBrokerConnection: async (uid: string) => {
+                const conn = await storage.getBrokerConnection(uid);
+                return conn ? { provider: conn.provider, isConnected: !!conn.isConnected } : null;
+              },
+            });
+            if (liveOpts.liveOptionsAvailable) {
+              ptpOptToken = issueOptionsContext(userId).token;
+            }
+          } catch { /* no options context */ }
+          try {
+            const ptp = await import("./portfolio-trade-plan");
+            const tools = await import("../mcp/tools");
+            const plan = await ptp.runPortfolioTradePlan(ptpGoal, {
+              planPortfolioTrade: (args) =>
+                tools.planPortfolioTrade({
+                  ...args,
+                  ...(ptpPfToken ? { portfolioContextToken: ptpPfToken } : {}),
+                  ...(ptpOptToken ? { optionsContextToken: ptpOptToken } : {}),
+                }),
+            });
+            const deterministic = ptp.buildPortfolioTradePlanAnswer(plan, ptpGoal);
+            let answer: AskAnswer | null = null;
+            let source: "openai" | "rule_based" = "rule_based";
+            answer = await callOpenAi(question, ctx, { portfolioTradePlan: plan });
+            if (answer) source = "openai";
+            if (!answer) answer = { ...deterministic };
+            return res.json({
+              question,
+              intent: "portfolio-trade-plan",
+              tickers: [],
+              brokerConnected: ctx.brokerConnected,
+              ...answer,
+              // Headline + confidence are DETERMINISTIC — the LLM narrative may
+              // explain but never re-headline.
+              headline: deterministic.headline,
+              confidence: deterministic.confidence,
+              portfolioTradePlan: plan,
+              ...(ptpPfAwareness ? { portfolioAwareness: ptpPfAwareness } : {}),
+              suggestions: ptp.portfolioTradePlanSuggestions(plan),
+              source,
+              disclaimer:
+                "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+            });
+          } catch (err) {
+            console.warn("[ask] portfolio trade plan unavailable:", (err as Error).message);
+            // Fall through to ranked-trade-search
+          } finally {
+            if (ptpPfToken) {
+              try {
+                const { revokePortfolioContext } = await import("../services/portfolio-context");
+                revokePortfolioContext(ptpPfToken);
+              } catch { /* ignore */ }
+            }
+            if (ptpOptToken) {
+              try {
+                const { revokeOptionsContext } = await import("../services/options-context");
+                revokeOptionsContext(ptpOptToken);
+              } catch { /* ignore */ }
+            }
+          }
+        }
+      }
+
       // ---------------------------------------------------------------
       // Deterministic MARKET-WIDE ranked trade search ("Find three bullish
       // trades", "What should I trade today?", "Find a stock trade under

@@ -8,7 +8,7 @@
 //   All optional fields use undefined (not null or "") when absent.
 //   Source ("ranked" | "recommendation" | "analysis") controls CTA eligibility.
 
-import type { RankedTradeCandidate } from "@/lib/ranked-trade-search";
+import type { RankedTradeCandidate, RankedWatchCandidate } from "@/lib/ranked-trade-search";
 import type { RecIdea, RecommendationVerdict } from "@/lib/strategy-recommendation";
 
 // ---------------------------------------------------------------------------
@@ -47,11 +47,17 @@ export interface TradePlanViewModel {
   currentPrice?: number;
   trigger?: string;
   triggerState: TradePlanTriggerState;
-  distanceToTrigger?: string; // "$+5.50 (+2.9% to trigger)"
-  // Levels
+  distanceToTrigger?: string; // "+$5.50 (+2.9% to trigger)"
+  // Levels — both text (display) and extracted numeric (labels/formatting)
   invalidation?: string;
   objective?: string;
+  /** Numeric stop price extracted from invalidation text (for compact display). */
+  stopPrice?: number;
+  /** Numeric target price extracted from objective text (for compact display). */
+  targetPrice?: number;
   riskPerUnit?: number;
+  /** Expected hold duration (e.g. "1–3 weeks") when provided by source. */
+  expectedHold?: string;
   // Risk
   suggestedQuantity?: number;
   maxRisk?: number;
@@ -75,11 +81,27 @@ export interface TradePlanViewModel {
 // Trigger state computation (shared by both mappers)
 // ---------------------------------------------------------------------------
 
-/** Extracts the first numeric price from a trigger description string.
+/** Extracts the first numeric price from a text string (trigger, stop, target).
  *  Returns null when no parseable price is found (e.g. event triggers). */
 function extractTriggerPrice(trigger: string): number | null {
   const m = trigger.match(/\b(\d{1,6}(?:\.\d{1,4})?)\b/);
   return m ? parseFloat(m[1]) : null;
+}
+
+/**
+ * Exported alias — extracts the first numeric price from any level description
+ * (trigger, invalidation/stop, objective/target). Returns undefined when the
+ * text is absent or contains no parseable price.
+ *
+ * Examples:
+ *   extractLevelPrice("Break above $192.50") → 192.5
+ *   extractLevelPrice("Stop below $180")     → 180
+ *   extractLevelPrice(undefined)             → undefined
+ */
+export function extractLevelPrice(text: string | undefined): number | undefined {
+  if (!text) return undefined;
+  const result = extractTriggerPrice(text);
+  return result != null ? result : undefined;
 }
 
 export function computeTriggerState(opts: {
@@ -138,30 +160,35 @@ export function tradePlanCtas(vm: TradePlanViewModel): TradePlanCta[] {
     case "LIVE_OPTIONS": {
       const out: TradePlanCta[] = [
         { label: "Analyze", href: `/ask?q=${enc(`Analyze ${sym}`)}`, primary: true },
-        { label: "Review Risk", href: `/ask?q=${enc(`What is the risk on the ${sym} setup?`)}` },
+        { label: "View Chart", href: `/market-intel?symbol=${sym}` },
       ];
       if (isTradePlanBuilderEligible(vm)) out.push({ label: "Open Trade Builder", href: `/trade/${sym}` });
+      out.push({ label: "Open Scanner", href: "/scanner" });
       return out;
     }
     case "ESTIMATED_OPTIONS":
       // No real trade ticket — only view setup and connect a live provider.
       return [
-        { label: "View Setup", href: `/ask?q=${enc(`Analyze ${sym}`)}`, primary: true },
+        { label: "Analyze", href: `/ask?q=${enc(`Analyze ${sym}`)}`, primary: true },
+        { label: "View Chart", href: `/market-intel?symbol=${sym}` },
         { label: "Connect Provider", href: "/settings/broker" },
+        { label: "Open Scanner", href: "/scanner" },
       ];
     case "WATCH":
       // No Trade Builder — awaiting confirmation.
       return [
-        { label: "View Chart", href: `/market-intel?symbol=${sym}`, primary: true },
+        { label: "Analyze", href: `/ask?q=${enc(`Analyze ${sym}`)}`, primary: true },
+        { label: "View Chart", href: `/market-intel?symbol=${sym}` },
         { label: "Add to Watchlist", href: `/watchlist?add=${sym}` },
-        { label: "Show Trigger", href: `/ask?q=${enc(`What is the trigger for ${sym}?`)}` },
+        { label: "Open Scanner", href: "/scanner" },
       ];
     case "NO_TRADE":
     case "UNAVAILABLE":
       // No Trade Builder — nothing to act on.
       return [
-        { label: "Explain Rejection", href: `/ask?q=${enc(`Why no trade for ${sym}?`)}`, primary: true },
-        { label: "Find Similar", href: `/ask?q=${enc(`Find trades similar to ${sym}`)}` },
+        { label: "Analyze", href: `/ask?q=${enc(`Analyze ${sym}`)}`, primary: true },
+        { label: "View Chart", href: `/market-intel?symbol=${sym}` },
+        { label: "Open Scanner", href: "/scanner" },
       ];
     default:
       return [];
@@ -202,6 +229,8 @@ export function fromRankedCandidate(
     }),
     invalidation: c.invalidation ?? undefined,
     objective: c.objective ?? undefined,
+    stopPrice: extractLevelPrice(c.invalidation ?? undefined),
+    targetPrice: extractLevelPrice(c.objective ?? undefined),
     maxRisk: c.maxRisk,
     maxRiskIsExact: c.maxRiskIsExact,
     suggestedQuantity: c.quantity,
@@ -215,6 +244,30 @@ export function fromRankedCandidate(
   };
   vm.distanceToTrigger = computeDistanceToTrigger(vm) ?? undefined;
   return vm;
+}
+
+// ---------------------------------------------------------------------------
+// Mapper — RankedWatchCandidate → TradePlanViewModel
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps a ranked watch candidate to a WATCH-verdict view model.
+ * Watch candidates carry minimal data (no trigger price, no levels) — all
+ * numeric fields are absent. The `reasons` array is populated from
+ * watchConditions so the Decision/WHY section renders meaningfully.
+ */
+export function fromRankedWatchCandidate(w: RankedWatchCandidate): TradePlanViewModel {
+  return {
+    symbol: w.symbol,
+    verdict: "WATCH",
+    strategy: w.strategy ?? undefined,
+    triggerState: "NO_TRIGGER",
+    status: w.currentStage,
+    reasons: [],
+    warnings: w.missingConfirmation ? [w.missingConfirmation] : [],
+    watchConditions: w.watchConditions.length > 0 ? w.watchConditions : undefined,
+    source: "ranked",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +320,9 @@ export function fromRecIdea(
     idea.rejectionReasonCode === "EARNINGS_RISK" ||
     (idea.warnings ?? []).some((w) => /earnings/i.test(w));
 
+  const expectedHold =
+    safeStr(cand.expectedHold ?? cand.holdPeriod ?? cand.timeframe ?? cand.expectedHoldDuration) ?? undefined;
+
   const vm: TradePlanViewModel = {
     symbol: opts.symbol ?? "—",
     verdict: idea.overallVerdict as TradePlanVerdict,
@@ -278,6 +334,9 @@ export function fromRecIdea(
     triggerState: computeTriggerState({ trigger, currentPrice }),
     invalidation,
     objective,
+    stopPrice: extractLevelPrice(invalidation),
+    targetPrice: extractLevelPrice(objective),
+    expectedHold,
     maxRisk,
     suggestedQuantity: qty,
     rewardRisk: rr,

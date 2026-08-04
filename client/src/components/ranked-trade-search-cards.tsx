@@ -6,9 +6,12 @@
 //
 // Sprint 4.1A: distinct empty states (A/B/C/D), user-facing rejection
 // language, "what would make it actionable" explanation per rejection reason.
+// Sprint 4.1B: InstitutionalTradeCard replaces TradePlanCard for all
+// candidate slots (qualified + watch). Rejection groups retain the compact
+// RejectionRow layout (they are aggregate rows, not individual candidate cards).
 
 import { Link } from "wouter";
-import { AlertTriangle, ChevronDown, Clock, SearchX, WifiOff } from "lucide-react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,16 +22,13 @@ import {
   translateExclusionReason,
   translateRejectionReason,
   unavailableCtas,
-  watchCtas,
-  type RankedEmptyState,
   type RankedExclusionGroup,
   type RankedRejectionGroup,
-  type RankedTradeCandidate,
   type RankedTradeSearch,
-  type RankedWatchCandidate,
 } from "@/lib/ranked-trade-search";
-import { fromRankedCandidate } from "@/lib/trade-plan-view-model";
-import { TradePlanCard } from "@/components/trade-plan-card";
+import { fromRankedCandidate, fromRankedWatchCandidate } from "@/lib/trade-plan-view-model";
+import type { RankedTradeCandidate, RankedWatchCandidate } from "@/lib/ranked-trade-search";
+import { InstitutionalTradeCard } from "@/components/institutional-trade-card";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -50,20 +50,20 @@ function CtaRow({ ctas, testId }: { ctas: { label: string; href: string; primary
 // Empty state (Sprint 4.1A §2 — 4 distinct states)
 // ---------------------------------------------------------------------------
 
-const EMPTY_STATE_ICONS: Record<RankedEmptyState["icon"], React.ReactNode> = {
-  "no-results":       <SearchX className="h-8 w-8 text-muted-foreground/40" />,
-  "not-yet":          <Clock className="h-8 w-8 text-amber-400/60" />,
-  "market-unavailable": <WifiOff className="h-8 w-8 text-amber-400/60" />,
-  "fallback":         <AlertTriangle className="h-8 w-8 text-amber-400/60" />,
+const EMPTY_STATE_ICONS: Record<string, React.ReactNode> = {
+  "no-results":         <AlertTriangle className="h-8 w-8 text-muted-foreground/40" />,
+  "not-yet":            <AlertTriangle className="h-8 w-8 text-amber-400/60" />,
+  "market-unavailable": <AlertTriangle className="h-8 w-8 text-amber-400/60" />,
+  "fallback":           <AlertTriangle className="h-8 w-8 text-amber-400/60" />,
 };
 
-function EmptyStateCard({ state }: { state: RankedEmptyState }) {
+function EmptyStateCard({ state }: { state: ReturnType<typeof buildEmptyState> & object }) {
   return (
     <div
       className="rounded-lg border border-border/50 bg-muted/10 p-6 text-center space-y-3"
       data-testid="section-ranked-empty-state"
     >
-      <div className="flex justify-center">{EMPTY_STATE_ICONS[state.icon]}</div>
+      <div className="flex justify-center">{EMPTY_STATE_ICONS[state.icon] ?? EMPTY_STATE_ICONS["no-results"]}</div>
       <div>
         <div className="text-sm font-semibold" data-testid="text-ranked-empty-headline">
           {state.headline}
@@ -86,13 +86,10 @@ function EmptyStateCard({ state }: { state: RankedEmptyState }) {
 }
 
 // ---------------------------------------------------------------------------
-// Qualified candidate card
+// Candidate cards — Sprint 4.1B: InstitutionalTradeCard
 // ---------------------------------------------------------------------------
 
-/** QualifiedCard delegates to the shared TradePlanCard. The wrapper keeps
- *  the existing data-testid on the outer container for backward compat with
- *  any tests that still target `card-ranked-candidate-*`. */
-function QualifiedCard({ c, requestedMax: _requestedMax }: { c: RankedTradeCandidate; requestedMax?: number }) {
+function QualifiedCard({ c }: { c: RankedTradeCandidate }) {
   const vm = fromRankedCandidate(c);
   return (
     <div data-testid={`card-ranked-candidate-${c.symbol}`}>
@@ -101,33 +98,16 @@ function QualifiedCard({ c, requestedMax: _requestedMax }: { c: RankedTradeCandi
           Rank reflects qualification, trigger availability, risk fit, and data completeness — not scanner score alone.
         </div>
       )}
-      <TradePlanCard vm={vm} />
+      <InstitutionalTradeCard vm={vm} />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Watch candidate card
-// ---------------------------------------------------------------------------
-
 function WatchCard({ w }: { w: RankedWatchCandidate }) {
+  const vm = fromRankedWatchCandidate(w);
   return (
-    <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 space-y-1.5" data-testid={`card-ranked-watch-${w.symbol}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{w.symbol}</span>
-        <Badge variant="outline" className="border-amber-500/40 text-amber-300 bg-amber-500/10">WATCH — NOT ACTIONABLE</Badge>
-        {w.strategy && <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">{w.strategy}</Badge>}
-      </div>
-      <Field label="Current stage" value={w.currentStage} />
-      <Field label="Missing confirmation" value={w.missingConfirmation} />
-      {w.watchConditions.length > 0 && (
-        <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
-          {w.watchConditions.map((c, i) => (
-            <li key={i}>{c}</li>
-          ))}
-        </ul>
-      )}
-      <CtaRow ctas={watchCtas(w)} testId={`ctas-ranked-watch-${w.symbol}`} />
+    <div data-testid={`card-ranked-watch-${w.symbol}`}>
+      <InstitutionalTradeCard vm={vm} />
     </div>
   );
 }
@@ -206,20 +186,6 @@ function DataLimitationsSection({ search, question }: { search: RankedTradeSearc
 }
 
 // ---------------------------------------------------------------------------
-// Field helper
-// ---------------------------------------------------------------------------
-
-function Field({ label, value }: { label: string; value?: string }) {
-  if (!value) return null;
-  return (
-    <div className="text-xs">
-      <span className="text-muted-foreground">{label}: </span>
-      <span>{value}</span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -288,16 +254,16 @@ export function RankedTradeSearchCards({
       </div>
 
       {search.candidates.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground" data-testid="heading-ranked-top">Top trade candidates</div>
           {search.candidates.map((c) => (
-            <QualifiedCard key={`${c.rank}-${c.symbol}`} c={c} requestedMax={search.maxRiskDollars} />
+            <QualifiedCard key={`${c.rank}-${c.symbol}`} c={c} />
           ))}
         </div>
       )}
 
       {search.watchCandidates.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground" data-testid="heading-ranked-watch">Worth watching</div>
           {search.watchCandidates.map((w) => (
             <WatchCard key={w.symbol} w={w} />

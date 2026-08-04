@@ -144,12 +144,13 @@ describe("fromRankedCandidate — live options", () => {
     expect(vm.maxRiskIsExact).toBe(true);
   });
 
-  it("CTAs for LIVE_OPTIONS include Analyze and Review Risk; include Trade Builder when eligible", () => {
+  it("CTAs for LIVE_OPTIONS include Analyze, View Chart, and Open Scanner; include Trade Builder when eligible", () => {
     const vm = fromRankedCandidate(optionsCandidate(true));
     const ctas = tradePlanCtas(vm);
     const labels = ctas.map((c) => c.label);
     expect(labels).toContain("Analyze");
-    expect(labels).toContain("Review Risk");
+    expect(labels).toContain("View Chart");
+    expect(labels).toContain("Open Scanner");
     // Trade Builder requires trigger/invalidation/maxRisk/quantity — only if those pass
     expect(labels).not.toContain("Connect Provider");
   });
@@ -166,14 +167,15 @@ describe("fromRankedCandidate — estimated options", () => {
     expect(vm.maxRiskIsExact).toBe(false);
   });
 
-  it("CTAs for ESTIMATED_OPTIONS are View Setup + Connect Provider; no Trade Builder", () => {
+  it("CTAs for ESTIMATED_OPTIONS include Analyze, View Chart, Connect Provider, Open Scanner; no Trade Builder", () => {
     const vm = fromRankedCandidate(optionsCandidate(false));
     const ctas = tradePlanCtas(vm);
     const labels = ctas.map((c) => c.label);
-    expect(labels).toContain("View Setup");
+    expect(labels).toContain("Analyze");
+    expect(labels).toContain("View Chart");
     expect(labels).toContain("Connect Provider");
+    expect(labels).toContain("Open Scanner");
     expect(labels).not.toContain("Open Trade Builder");
-    expect(labels).not.toContain("Analyze");
   });
 });
 
@@ -206,15 +208,15 @@ describe("fromRecIdea — watch", () => {
     expect(vm.source).toBe("recommendation");
   });
 
-  it("CTAs for WATCH are View Chart, Add to Watchlist, Show Trigger; no Trade Builder", () => {
+  it("CTAs for WATCH include Analyze, View Chart, Add to Watchlist, Open Scanner; no Trade Builder", () => {
     const vm = fromRecIdea(recIdeaWatch(), { symbol: "MU" });
     const ctas = tradePlanCtas(vm);
     const labels = ctas.map((c) => c.label);
+    expect(labels).toContain("Analyze");
     expect(labels).toContain("View Chart");
     expect(labels).toContain("Add to Watchlist");
-    expect(labels).toContain("Show Trigger");
+    expect(labels).toContain("Open Scanner");
     expect(labels).not.toContain("Open Trade Builder");
-    expect(labels).not.toContain("Analyze");
   });
 });
 
@@ -230,14 +232,14 @@ describe("fromRecIdea — rejected / NO_TRADE", () => {
     expect(vm.rejectionReasonCode).toBe("EARNINGS_RISK");
   });
 
-  it("CTAs for NO_TRADE are Explain Rejection + Find Similar; no Trade Builder", () => {
+  it("CTAs for NO_TRADE include Analyze, View Chart, Open Scanner; no Trade Builder", () => {
     const vm = fromRecIdea(recIdeaNoTrade(), { symbol: "AAPL" });
     const ctas = tradePlanCtas(vm);
     const labels = ctas.map((c) => c.label);
-    expect(labels).toContain("Explain Rejection");
-    expect(labels).toContain("Find Similar");
+    expect(labels).toContain("Analyze");
+    expect(labels).toContain("View Chart");
+    expect(labels).toContain("Open Scanner");
     expect(labels).not.toContain("Open Trade Builder");
-    expect(labels).not.toContain("View Setup");
   });
 });
 
@@ -246,7 +248,7 @@ describe("fromRecIdea — rejected / NO_TRADE", () => {
 // ---------------------------------------------------------------------------
 
 describe("tradePlanCtas — unavailable", () => {
-  it("UNAVAILABLE CTAs are Explain Rejection + Find Similar; no Trade Builder", () => {
+  it("UNAVAILABLE CTAs include Analyze, View Chart, Open Scanner; no Trade Builder", () => {
     const vm: TradePlanViewModel = {
       symbol: "XYZ",
       verdict: "UNAVAILABLE",
@@ -257,7 +259,9 @@ describe("tradePlanCtas — unavailable", () => {
     };
     const ctas = tradePlanCtas(vm);
     const labels = ctas.map((c) => c.label);
-    expect(labels).toContain("Explain Rejection");
+    expect(labels).toContain("Analyze");
+    expect(labels).toContain("View Chart");
+    expect(labels).toContain("Open Scanner");
     expect(labels).not.toContain("Open Trade Builder");
   });
 });
@@ -568,12 +572,13 @@ describe("fromRecIdea — stock with trade candidate levels", () => {
     expect(vm.reasons).toEqual(["Strong accumulation", "VCP structure intact"]);
   });
 
-  it("CTAs for STOCK recommendation include Analyze and Review Risk", () => {
+  it("CTAs for STOCK recommendation include Analyze, View Chart, and Open Scanner", () => {
     const vm = fromRecIdea(recIdeaStock(), { symbol: "BA" });
     const ctas = tradePlanCtas(vm);
     const labels = ctas.map((c) => c.label);
     expect(labels).toContain("Analyze");
-    expect(labels).toContain("Review Risk");
+    expect(labels).toContain("View Chart");
+    expect(labels).toContain("Open Scanner");
   });
 });
 

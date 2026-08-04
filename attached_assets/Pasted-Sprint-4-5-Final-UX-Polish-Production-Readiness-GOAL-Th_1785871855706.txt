@@ -1,0 +1,410 @@
+Sprint 4.5 — Final UX Polish & Production Readiness
+
+GOAL
+
+This is the final Sprint 4 polish before Sprint 5 begins.
+
+Do NOT modify:
+
+- MCP server
+- ranking algorithms
+- scanner logic
+- recommendation engine
+- qualification rules
+- TraderBrain orchestration
+- portfolio policy
+- risk calculations
+- broker execution
+- database schema
+- API contracts
+
+This sprint is PRESENTATION ONLY.
+
+Do not commit or push automatically.
+
+====================================================
+1. REMOVE EMPTY-STATE CARD
+====================================================
+
+The current page renders an EmptyState-style card even though the deterministic engine successfully evaluated opportunities.
+
+Replace it with a Deterministic Engine Summary card.
+
+Example:
+
+----------------------------------------------------
+
+Deterministic Engine Result
+
+50 stored opportunities reviewed
+
+46 post-confluence candidates evaluated
+
+0 candidates satisfied every required qualification gate
+
+43 excluded before qualification
+
+3 unavailable due to missing market data
+
+The engine intentionally returned no trade rather than lowering its standards.
+
+----------------------------------------------------
+
+Do not use generic "No setups found" wording.
+
+====================================================
+2. SINGLE SOURCE OF TRUTH FOR COUNTS
+====================================================
+
+Every count displayed on the page must originate from the same backend response.
+
+Never derive or recompute totals in the UI.
+
+Verify:
+
+reviewedCount
+
+groupedCandidateCount
+
+qualifiedCount
+
+watchCount
+
+rejectedCount
+
+unavailableCount
+
+excludedCount
+
+Every visible number must match.
+
+Eliminate any stale cached totals.
+
+====================================================
+3. PRIMARY ACTIONS
+====================================================
+
+Reduce duplicated CTAs.
+
+When zero qualified:
+
+Primary
+
+Run Fresh Scan
+
+Secondary
+
+Review Watchlist
+
+Hide duplicate Open Scanner buttons appearing multiple times.
+
+Never render identical actions in adjacent sections.
+
+====================================================
+4. EXCLUSION BREAKDOWN
+====================================================
+
+Improve readability.
+
+Instead of long explanatory paragraphs, display grouped reasons.
+
+Example
+
+Excluded Before Qualification (43)
+
+18 Waiting for breakout trigger
+
+11 Outside freshness window
+
+7 Reward/risk below threshold
+
+5 Duplicate confluence
+
+2 Earnings risk
+
+Use backend reason codes only.
+
+Do not invent categories.
+
+====================================================
+5. WHY NOTHING QUALIFIED
+====================================================
+
+Replace:
+
+"No candidate completed every required qualification step."
+
+with
+
+"The deterministic engine evaluated 46 post-confluence candidates.
+
+None satisfied every required qualification gate, so no trade was produced."
+
+Then summarize
+
+43 excluded before qualification
+
+3 unavailable because required market data was missing
+
+The engine intentionally returned no trade rather than weakening qualification standards.
+
+====================================================
+6. PORTFOLIO IMPACT
+====================================================
+
+Clarify portfolio evaluation.
+
+Display independently:
+
+Buying Power
+
+Cash Verification
+
+Risk Budget
+
+Position Concentration
+
+Portfolio Policy
+
+Example
+
+Buying Power
+PASS
+
+Cash Verification
+NOT VERIFIED
+
+Risk Budget
+PASS
+
+Portfolio Policy
+PASS
+
+Position Concentration
+NOT EVALUATED
+
+Never imply affordability without verification.
+
+====================================================
+7. AI EXPLANATION
+====================================================
+
+The GPT explanation should explain the RESULT, not repeat numbers already shown.
+
+Avoid repeating:
+
+reviewedCount
+
+qualifiedCount
+
+excludedCount
+
+Instead explain:
+
+what happened
+
+why it happened
+
+what the user should do next
+
+Example:
+
+"The deterministic engine rejected most opportunities before qualification because they lacked sufficient evidence to become actionable trades. Three additional opportunities could not be evaluated because required market data was unavailable. Returning no trade is an intentional safety feature that prevents low-conviction ideas from being promoted."
+
+====================================================
+8. VISUAL HIERARCHY
+====================================================
+
+Use this order when no qualified trades exist:
+
+Search Goal
+
+Deterministic Engine Summary
+
+Why Nothing Qualified
+
+Excluded Before Qualification
+
+Unavailable Candidates
+
+Portfolio Impact
+
+Risk Constraints
+
+AI Explanation
+
+Next Steps
+
+Never render empty sections.
+
+====================================================
+9. TERMINOLOGY
+====================================================
+
+Standardize wording everywhere.
+
+Always use:
+
+Stored Opportunities
+
+Post-Confluence Candidates
+
+Qualified Candidates
+
+Watch Candidates
+
+Rejected Candidates
+
+Unavailable Candidates
+
+Excluded Before Qualification
+
+Do not mix:
+
+ideas
+
+setups
+
+records
+
+detections
+
+unless referring to distinct backend concepts.
+
+====================================================
+10. CONSISTENT STATUS COLORS
+====================================================
+
+Green
+
+Qualified
+
+Blue
+
+Watch
+
+Gray
+
+Excluded
+
+Amber
+
+Unavailable
+
+Red
+
+Rejected
+
+Apply consistently throughout the application.
+
+====================================================
+11. PERFORMANCE
+====================================================
+
+Avoid recomputing grouping logic during rendering.
+
+Memoize display transformations.
+
+No additional MCP calls.
+
+No additional API calls.
+
+No additional scans.
+
+====================================================
+12. ACCESSIBILITY
+====================================================
+
+Verify:
+
+keyboard navigation
+
+accordion focus
+
+screen-reader labels
+
+button descriptions
+
+color contrast
+
+====================================================
+13. TESTS
+====================================================
+
+Add regression tests for:
+
+single source of truth for counts
+
+no duplicate CTAs
+
+deterministic summary card
+
+correct section ordering
+
+standard terminology
+
+status color mapping
+
+AI explanation does not repeat counts
+
+zero qualified layout
+
+qualified layout unchanged
+
+watch layout unchanged
+
+unavailable layout unchanged
+
+Run
+
+npm test
+
+npm run build
+
+====================================================
+14. ACCEPTANCE CRITERIA
+====================================================
+
+The page should feel like a Bloomberg Terminal, TradingView institutional screener, or enterprise trading workstation—not a chatbot.
+
+A professional trader should immediately understand:
+
+How many opportunities were evaluated
+
+How many advanced
+
+Why candidates were excluded
+
+Why no trade qualified
+
+Whether market data was missing
+
+What to do next
+
+without reading long paragraphs.
+
+====================================================
+15. REPORT
+====================================================
+
+Return:
+
+Files changed
+
+Tests added
+
+Total tests
+
+Build result
+
+Performance impact
+
+Before / After screenshots
+
+Remaining technical debt
+
+Readiness assessment:
+
+READY FOR SPRINT 5
+
+Do not commit or push.

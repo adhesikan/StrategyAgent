@@ -1,16 +1,14 @@
 // Sprint 4.3 — Goal-Based Trade Planner display component.
+// Sprint 4.5 — Final UX polish:
+//   §1  DeterministicEngineSummaryCard replaces generic empty state
+//   §3  Single CTA group (Run Fresh Scan / Review Watchlist); no duplicates
+//   §6  PortfolioImpactSection redesigned as 5-item PASS/NOT VERIFIED status grid
+//   §8  Section ordering: Goal → DeterministicSummary → WhyNothing → Excluded
+//       → Unavailable → Portfolio → Risk → Next Steps
+//   §9  Terminology standardised (no "setups", "ideas")
+//   §10 Status colours applied to portfolio checks
 //
-// Wraps RankedTradeSearchCards with goal context sections:
-//   §A  GOAL — parsed intent, constraints, risk budget
-//   §B  QUALIFIED TRADES — delegates to RankedTradeSearchCards
-//   §C  PORTFOLIO IMPACT — portfolioFitRows (Sprint 4.2)
-//   §D  RISK SUMMARY — budget, allocation, mandatory disclaimer
-//   §E  WHY OTHERS FAILED — rejection + exclusion summary (collapsed)
-//
-// Why-Selected lives inside each InstitutionalTradeCard (§6 WHY) —
-// not duplicated here.
-//
-// Design rules:
+// Design rules (unchanged):
 //   • Never fabricate opportunities — only display what the server returned.
 //   • Never guarantee profits — TRADE_GOAL_DISCLAIMER always shown.
 //   • Show "Unknown" / "Not specified" honestly — no invented defaults.
@@ -18,8 +16,14 @@
 
 import { AlertTriangle, ChevronDown, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { RankedTradeSearchCards } from "@/components/ranked-trade-search-cards";
-import { portfolioFitRows, portfolioFitState } from "@/lib/portfolio-fit-display";
+import {
+  DeterministicEngineSummaryCard,
+  ExclusionSection,
+  RankedTradeSearchCards,
+  UnavailableCandidatesSection,
+  WhyNothingQualifiedSection,
+} from "@/components/ranked-trade-search-cards";
+import { portfolioFitState } from "@/lib/portfolio-fit-display";
 import {
   parseTradeGoalInput,
   STRATEGY_LABEL,
@@ -27,16 +31,19 @@ import {
   TRADE_GOAL_DISCLAIMER,
   type TradeGoalIntent,
 } from "@/lib/trade-goal-parser";
-import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
-import type { SafePortfolioAwareness } from "@/lib/portfolio-awareness";
-import { Badge as BadgeComponent } from "@/components/ui/badge";
 import {
   actionableHint,
   dataRejectionGroups,
   shortExclusionLabel,
-  trueRejectionGroups,
   translateRejectionReason,
+  trueRejectionGroups,
+  zeroQualifiedCtas,
+  type RankedTradeSearch,
 } from "@/lib/ranked-trade-search";
+import type { SafePortfolioAwareness } from "@/lib/portfolio-awareness";
+import { Badge as BadgeComponent } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -55,10 +62,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 function GoalSection({ intent }: { intent: TradeGoalIntent }) {
-  // Warnings minus the always-on disclaimer (shown separately in §D RISK)
-  const advisoryWarnings = intent.warnings.filter(
-    (w) => w !== TRADE_GOAL_DISCLAIMER,
-  );
+  const advisoryWarnings = intent.warnings.filter((w) => w !== TRADE_GOAL_DISCLAIMER);
 
   return (
     <div
@@ -67,7 +71,7 @@ function GoalSection({ intent }: { intent: TradeGoalIntent }) {
       aria-label="Trade goal"
     >
       <div className="flex items-start gap-2">
-        <Target className="h-4 w-4 text-sky-400 shrink-0 mt-0.5" />
+        <Target className="h-4 w-4 text-sky-400 shrink-0 mt-0.5" aria-hidden="true" />
         <div className="space-y-1 min-w-0">
           <div
             className="text-sm font-semibold text-sky-200 leading-snug"
@@ -97,7 +101,7 @@ function GoalSection({ intent }: { intent: TradeGoalIntent }) {
               key={phrase}
               variant="outline"
               className="text-[10px] border-sky-500/40 text-sky-300 bg-sky-500/8"
-              data-testid={`badge-goal-constraint`}
+              data-testid="badge-goal-constraint"
             >
               {phrase}
             </Badge>
@@ -113,7 +117,7 @@ function GoalSection({ intent }: { intent: TradeGoalIntent }) {
               className="flex items-start gap-1.5 text-[11px] text-amber-200/80"
               data-testid={`text-goal-warning-${i}`}
             >
-              <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5 text-amber-400/70" />
+              <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5 text-amber-400/70" aria-hidden="true" />
               <span>{w}</span>
             </div>
           ))}
@@ -124,8 +128,76 @@ function GoalSection({ intent }: { intent: TradeGoalIntent }) {
 }
 
 // ---------------------------------------------------------------------------
-// §C PORTFOLIO IMPACT section
+// §6 PORTFOLIO IMPACT — 5-item PASS / NOT VERIFIED / NOT EVALUATED status grid
 // ---------------------------------------------------------------------------
+
+type CheckStatus = "PASS" | "FAIL" | "NOT VERIFIED" | "NOT EVALUATED" | "ELEVATED" | "HIGH";
+
+interface PortfolioCheck {
+  label: string;
+  status: CheckStatus;
+  testId: string;
+}
+
+/**
+ * Derives the 5 independent portfolio check statuses from SafePortfolioAwareness.
+ * Every status is read from backend fields only — never invented (§2).
+ * Buying power and cash verification are kept separate — never combined
+ * into an "affordable" verdict (PORTFOLIO RULE).
+ */
+function portfolioChecks(awareness: SafePortfolioAwareness): PortfolioCheck[] {
+  return [
+    {
+      label: "Buying Power",
+      status:
+        awareness.buyingPowerSufficiency === "sufficient" ? "PASS" :
+        awareness.buyingPowerSufficiency === "insufficient" ? "FAIL" :
+        "NOT VERIFIED",
+      testId: "row-portfolio-buying-power",
+    },
+    {
+      label: "Cash Verification",
+      status:
+        awareness.cashSufficiency === "verified" ? "PASS" :
+        awareness.cashSufficiency === "insufficient" ? "FAIL" :
+        "NOT VERIFIED",
+      testId: "row-portfolio-cash",
+    },
+    {
+      label: "Risk Budget",
+      status: awareness.sizingAdjustment == null ? "PASS" : "NOT VERIFIED",
+      testId: "row-portfolio-risk-budget",
+    },
+    {
+      label: "Position Concentration",
+      status:
+        awareness.concentrationWarning == null ? "NOT EVALUATED" :
+        awareness.concentrationWarning.level === "normal" ? "PASS" :
+        awareness.concentrationWarning.level === "elevated" ? "ELEVATED" :
+        "HIGH",
+      testId: "row-portfolio-concentration",
+    },
+    {
+      label: "Portfolio Policy",
+      status:
+        awareness.duplicateExposure == null ? "NOT EVALUATED" :
+        awareness.duplicateExposure === false ? "PASS" :
+        "FAIL",
+      testId: "row-portfolio-policy",
+    },
+  ];
+}
+
+function statusBadgeClasses(status: CheckStatus): string {
+  switch (status) {
+    case "PASS":          return "border-emerald-500/40 text-emerald-400 bg-emerald-500/10";
+    case "FAIL":          return "border-rose-500/40 text-rose-400 bg-rose-500/10";
+    case "ELEVATED":      return "border-amber-500/40 text-amber-400 bg-amber-500/10";
+    case "HIGH":          return "border-rose-500/50 text-rose-300 bg-rose-500/15";
+    case "NOT VERIFIED":  return "border-border/40 text-muted-foreground bg-muted/20";
+    case "NOT EVALUATED": return "border-border/30 text-muted-foreground/60 bg-muted/10";
+  }
+}
 
 function PortfolioImpactSection({
   awareness,
@@ -150,43 +222,31 @@ function PortfolioImpactSection({
           className="text-xs text-muted-foreground/70"
           data-testid="text-goal-portfolio-disconnected"
         >
-          No brokerage connected — connect a broker to see concentration checks,
-          buying power, and position sizing for these trades.
+          No brokerage connected — connect a broker to see buying power, cash
+          verification, and concentration checks.
         </p>
       )}
 
-      {state === "no-position" && (
-        <p className="text-xs text-muted-foreground/70" data-testid="text-goal-portfolio-no-position">
-          Broker connected. No existing positions overlap with these candidates.
-        </p>
+      {(state === "no-position" || state === "show") && awareness && (
+        <div className="space-y-2" aria-label="Portfolio checks">
+          {portfolioChecks(awareness).map((check) => (
+            <div
+              key={check.label}
+              className="flex items-center justify-between text-xs"
+              data-testid={check.testId}
+            >
+              <span className="text-muted-foreground">{check.label}</span>
+              <BadgeComponent
+                variant="outline"
+                className={`text-[9px] font-semibold tracking-wide py-0 ${statusBadgeClasses(check.status)}`}
+                aria-label={`${check.label}: ${check.status}`}
+              >
+                {check.status}
+              </BadgeComponent>
+            </div>
+          ))}
+        </div>
       )}
-
-      {state === "show" && (() => {
-        const rows = portfolioFitRows(awareness!, suggestedQuantity);
-        return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-            {rows.map((row) => (
-              <div key={row.testId} data-testid={row.testId}>
-                <span className="text-muted-foreground">{row.label}: </span>
-                {row.badgeClass ? (
-                  <span>
-                    <span className={`font-medium ${row.valueClass}`}>{row.value}</span>
-                    {" "}
-                    <BadgeComponent
-                      variant="outline"
-                      className={`text-[9px] py-0 ${row.badgeClass}`}
-                    >
-                      {awareness?.concentrationWarning?.level}
-                    </BadgeComponent>
-                  </span>
-                ) : (
-                  <span className={`font-medium ${row.valueClass}`}>{row.value}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        );
-      })()}
 
       {awareness?.contextFreshness && (
         <div className="text-[9px] text-muted-foreground/40 border-t border-border/20 pt-1.5">
@@ -225,7 +285,6 @@ function RiskSummarySection({
       <SectionLabel>Risk</SectionLabel>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-        {/* Goal risk budget */}
         {intent.maxRiskDollars != null && (
           <div data-testid="row-goal-risk-dollars">
             <span className="text-muted-foreground">Goal risk limit: </span>
@@ -238,7 +297,6 @@ function RiskSummarySection({
             <span className="font-medium">{intent.maxRiskPercent}% per trade</span>
           </div>
         )}
-        {/* Server-confirmed risk ceiling from ranked search */}
         {serverMaxRisk != null && (
           <div data-testid="row-goal-risk-server">
             <span className="text-muted-foreground">Applied risk ceiling: </span>
@@ -252,14 +310,14 @@ function RiskSummarySection({
         )}
       </div>
 
-      {/* Mandatory no-profit disclaimer — never omit */}
+      {/* Mandatory no-profit disclaimer */}
       <div
         className="flex items-start gap-1.5 text-[10px] text-amber-200/60 border-t border-border/30 pt-2"
         data-testid="text-goal-disclaimer"
         role="note"
         aria-label="Risk disclaimer"
       >
-        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5 text-amber-400/50" />
+        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5 text-amber-400/50" aria-hidden="true" />
         <span>{TRADE_GOAL_DISCLAIMER}</span>
       </div>
     </div>
@@ -267,23 +325,18 @@ function RiskSummarySection({
 }
 
 // ---------------------------------------------------------------------------
-// §E WHY OTHERS FAILED section (collapsed)
+// §E WHY OTHERS FAILED — qualified-path only (collapsed)
 // ---------------------------------------------------------------------------
 
 function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
-  // §3 (Sprint 4.4): only true qualification failures appear under "Rejected".
-  // Data-unavailability groups (DATA_UNAVAILABLE, OPTIONS_DATA_UNAVAILABLE,
-  // MARKET_REGIME_UNAVAILABLE, etc.) are stripped — they are not quality failures.
   const trueRejections = trueRejectionGroups(search.rejectionSummary);
   const trueRejectedCount = trueRejections.reduce((s, g) => s + g.count, 0);
-  const hasRejections = trueRejections.length > 0 || trueRejectedCount > 0;
+  const hasRejections = trueRejectedCount > 0;
 
-  // §36 (Sprint 4.4 follow-up): Unavailable Candidates — separate from Rejected.
-  // Includes unavailableCount + any data-unavailability rejection groups.
   const unavailableExtraGroups = dataRejectionGroups(search.rejectionSummary);
   const totalUnavailable =
     search.unavailableCount + unavailableExtraGroups.reduce((s, g) => s + g.count, 0);
-  const hasUnavailable = totalUnavailable > 0 || unavailableExtraGroups.length > 0;
+  const hasUnavailable = totalUnavailable > 0;
 
   const hasExclusions = (search.excludedCount ?? 0) > 0;
 
@@ -293,32 +346,26 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
     <div
       className="space-y-2"
       data-testid="section-goal-why-failed"
-      aria-label="Why other setups were not selected"
+      aria-label="Why other candidates were not selected"
     >
-      {/* Post-confluence rejections — true qualification failures only */}
+      {/* Rejected Candidates — true qualification failures only */}
       {hasRejections && (
         <details
           className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3"
           data-testid="details-goal-rejections"
         >
           <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
-            <ChevronDown className="h-3.5 w-3.5" />
-            Why setups were rejected ({trueRejectedCount})
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            Rejected Candidates ({trueRejectedCount})
           </summary>
           <div className="mt-2 space-y-2.5">
             <p className="text-[11px] text-muted-foreground/80">
-              These setups reached the qualification stage but were rejected
+              These candidates reached the qualification stage but were rejected
               because they didn't meet all required conditions.
             </p>
-            {trueRejections.length === 0 && (
-              <div className="text-xs text-muted-foreground">
-                {trueRejectedCount}{" "}
-                {trueRejectedCount === 1 ? "setup was" : "setups were"} rejected.
-              </div>
-            )}
             {trueRejections.map((g) => {
               const label = translateRejectionReason(g.reason);
-              const hint  = actionableHint(g.reason);
+              const hint = actionableHint(g.reason);
               return (
                 <div
                   key={g.reason}
@@ -337,7 +384,7 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
                   {hint && (
                     <div className="text-muted-foreground/80 pl-0.5">
                       <span className="text-muted-foreground/50 uppercase text-[10px] tracking-wide mr-1">
-                        What would qualify:
+                        To qualify:
                       </span>
                       {hint}
                     </div>
@@ -349,51 +396,20 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
         </details>
       )}
 
-      {/* Pre-confluence exclusions — count-first format (Task #37) */}
+      {/* Excluded Before Qualification — count-first format */}
       {hasExclusions && (
-        <details
-          className="rounded-lg border border-muted/40 bg-muted/10 p-3"
-          data-testid="details-goal-exclusions"
-        >
-          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
-            <ChevronDown className="h-3.5 w-3.5" />
-            Filtered before qualification ({search.excludedCount})
-          </summary>
-          <div className="mt-2 space-y-1.5">
-            <p className="text-[11px] text-muted-foreground/80">
-              These opportunities were removed before the qualification stage —
-              not because of poor quality, but because they didn't match the
-              goal's basic filters (strategy type, direction, risk limit).
-            </p>
-            {(search.exclusionSummary ?? []).length === 0 ? (
-              <div className="text-xs text-muted-foreground">
-                {search.excludedCount}{" "}
-                {search.excludedCount === 1 ? "opportunity was" : "opportunities were"} filtered
-                before qualification.
-              </div>
-            ) : (
-              (search.exclusionSummary ?? []).map((g) => (
-                <div
-                  key={g.reason}
-                  className="text-xs flex items-center gap-2"
-                  data-testid={`row-goal-exclusion-${g.reason}`}
-                >
-                  <span className="tabular-nums font-semibold text-foreground/70 w-6 text-right shrink-0">
-                    {g.count}
-                  </span>
-                  <span className="text-muted-foreground">{shortExclusionLabel(g.reason)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </details>
+        <ExclusionSection
+          groups={search.exclusionSummary ?? []}
+          totalExcluded={search.excludedCount!}
+        />
       )}
 
-      {/* Unavailable Candidates — data could not be retrieved (Task #36) */}
+      {/* Unavailable Candidates */}
       {hasUnavailable && (
         <div
           className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs space-y-1.5"
           data-testid="section-goal-unavailable"
+          aria-label="Unavailable candidates"
         >
           <div className="font-medium uppercase tracking-wide text-muted-foreground text-[10px]">
             Unavailable Candidates
@@ -427,27 +443,70 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
 }
 
 // ---------------------------------------------------------------------------
+// §3 — Next Steps CTA section (single group, no duplicates)
+// ---------------------------------------------------------------------------
+
+function NextStepsSection({ question }: { question?: string }) {
+  const ctas = zeroQualifiedCtas(question);
+  return (
+    <div
+      className="rounded-lg border border-border/30 bg-background/30 p-3 space-y-2"
+      data-testid="section-goal-next-steps"
+      aria-label="Next steps"
+    >
+      <SectionLabel>Next Steps</SectionLabel>
+      <div className="flex flex-wrap gap-2">
+        {ctas.map((cta) => (
+          <Button
+            key={cta.label}
+            asChild
+            size="sm"
+            variant={cta.primary ? "default" : "outline"}
+            className="h-7 text-xs"
+            aria-label={cta.label}
+          >
+            <Link href={cta.href}>{cta.label}</Link>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main export — GoalTradePlanner
 // ---------------------------------------------------------------------------
 
 export interface GoalTradePlannerProps {
   search: RankedTradeSearch;
-  /** Original question text — parsed into TradeGoalIntent for display. */
   question: string;
-  /** SafePortfolioAwareness from the Ask AI response. */
   awareness?: SafePortfolioAwareness | null;
-  /** Source string from the server (drives the fallback banner in ranked cards). */
   source?: string;
 }
 
 /**
  * Goal-Based Trade Planner.
  *
- * Wraps RankedTradeSearchCards with goal context sections.
- * Sections: Goal → Qualified Trades → Portfolio Impact → Risk → Why Others Failed.
+ * Zero-qualified §8 order:
+ *   1 Search Goal
+ *   2 Deterministic Engine Summary
+ *   3 Why Nothing Qualified
+ *   4 Excluded Before Qualification
+ *   5 Unavailable Candidates
+ *   6 Portfolio Impact
+ *   7 Risk Constraints
+ *   8 Next Steps
  *
- * "Why Selected" is already rendered inside each InstitutionalTradeCard (§6 WHY).
- * This component only adds the overarching goal context layer.
+ * Qualified §B order:
+ *   1 Search Goal
+ *   2 Qualified Trades (→ RankedTradeSearchCards)
+ *   3 Portfolio Impact
+ *   4 Risk
+ *   5 Why Others Failed
+ *
+ * WhyOthersFailedSection is ONLY rendered in the qualified path — when
+ * zero candidates qualify, the detail sections (Exclusions, Unavailable,
+ * Rejected) are already shown above Portfolio / Risk to avoid duplication.
  */
 export function GoalTradePlanner({
   search,
@@ -456,51 +515,75 @@ export function GoalTradePlanner({
   source,
 }: GoalTradePlannerProps) {
   const intent = parseTradeGoalInput(question);
-  // When qualifiedCount = 0, RankedTradeSearchCards already renders all the
-  // detail sections (Why Nothing Qualified, Exclusions, Unavailable, Rejected).
-  // Do not also render WhyOthersFailedSection — that would duplicate them.
   const hasQualified = search.qualifiedCount > 0 || search.candidates.length > 0;
+
+  // ---------------------------------------------------------------------------
+  // Zero-qualified layout — spec §8 ordering
+  // ---------------------------------------------------------------------------
+
+  if (!hasQualified) {
+    return (
+      <div className="space-y-4" data-testid="section-goal-trade-planner">
+        {/* §8.1 Search Goal */}
+        <GoalSection intent={intent} />
+
+        <div className="space-y-3" data-testid="section-goal-zero-qualified">
+          {/* §8.2 Deterministic Engine Summary */}
+          <DeterministicEngineSummaryCard search={search} />
+
+          {/* §8.3 Why Nothing Qualified */}
+          <WhyNothingQualifiedSection search={search} />
+
+          {/* §8.4 Excluded Before Qualification */}
+          {(search.excludedCount ?? 0) > 0 && (
+            <ExclusionSection
+              groups={search.exclusionSummary ?? []}
+              totalExcluded={search.excludedCount!}
+              hideCtas
+            />
+          )}
+
+          {/* §8.5 Unavailable Candidates */}
+          <UnavailableCandidatesSection search={search} hideCtas />
+        </div>
+
+        {/* §8.6 Portfolio Impact */}
+        <PortfolioImpactSection awareness={awareness} />
+
+        {/* §8.7 Risk Constraints */}
+        <RiskSummarySection intent={intent} search={search} />
+
+        {/* §8.8 Next Steps — single CTA group (§3 no duplicates) */}
+        <NextStepsSection question={question} />
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Qualified layout
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="space-y-4" data-testid="section-goal-trade-planner">
-      {/* §A GOAL */}
+      {/* §A Search Goal */}
       <GoalSection intent={intent} />
 
-      {/* §B QUALIFIED TRADES — heading hidden when zero qualify */}
-      {hasQualified ? (
-        <div data-testid="section-goal-qualified-trades">
-          <SectionLabel>Qualified Trades</SectionLabel>
-          <div className="mt-2">
-            <RankedTradeSearchCards
-              search={search}
-              question={question}
-              source={source}
-            />
-          </div>
+      {/* §B Qualified Trades */}
+      <div data-testid="section-goal-qualified-trades">
+        <SectionLabel>Qualified Trades</SectionLabel>
+        <div className="mt-2">
+          <RankedTradeSearchCards search={search} question={question} source={source} />
         </div>
-      ) : (
-        // Zero-qualified: delegate entirely to RankedTradeSearchCards which
-        // renders the ordered detail sections per §3.
-        // No "Qualified Trades" heading — nothing qualifies.
-        <div data-testid="section-goal-zero-qualified">
-          <RankedTradeSearchCards
-            search={search}
-            question={question}
-            source={source}
-          />
-        </div>
-      )}
+      </div>
 
-      {/* §C PORTFOLIO IMPACT */}
+      {/* §C Portfolio Impact */}
       <PortfolioImpactSection awareness={awareness} />
 
-      {/* §D RISK SUMMARY */}
+      {/* §D Risk */}
       <RiskSummarySection intent={intent} search={search} />
 
-      {/* §E WHY OTHERS FAILED — only when qualified candidates exist.
-          When zero qualified, RankedTradeSearchCards already shows all
-          exclusion/unavailable/rejection detail. */}
-      {hasQualified && <WhyOthersFailedSection search={search} />}
+      {/* §E Why Others Failed */}
+      <WhyOthersFailedSection search={search} />
     </div>
   );
 }

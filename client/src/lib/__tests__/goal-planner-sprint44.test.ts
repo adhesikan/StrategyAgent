@@ -221,7 +221,8 @@ describe("G04: unavailable never under rejected", () => {
 
 describe("G05: count-first exclusion formatting", () => {
   it("shortExclusionLabel returns a concise label (not the full verbose translateExclusionReason)", () => {
-    expect(shortExclusionLabel("NOT_ACTIONABLE_NO_TRIGGER")).toBe("Not yet triggered");
+    // Sprint 4.5 §9 — spec-aligned label updated from "Not yet triggered"
+    expect(shortExclusionLabel("NOT_ACTIONABLE_NO_TRIGGER")).toBe("Waiting for breakout trigger");
     expect(shortExclusionLabel("STALE")).toBe("Outside freshness window");
     expect(shortExclusionLabel("DIRECTION_MISMATCH")).toBe("Direction mismatch");
     expect(shortExclusionLabel("INVALID_SETUP")).toBe("Invalid setup");
@@ -249,7 +250,8 @@ describe("G05: count-first exclusion formatting", () => {
     // Verify count is preserved as-is
     expect(group.count).toBe(18);
     const label = shortExclusionLabel(group.reason);
-    expect(label).toBe("Not yet triggered");
+    // Sprint 4.5 §9 label update
+    expect(label).toBe("Waiting for breakout trigger");
   });
 });
 

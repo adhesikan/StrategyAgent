@@ -122,7 +122,7 @@ export function qualifiedCtas(c: RankedTradeCandidate): RankedCta[] {
   const out: RankedCta[] = [
     { label: "Analyze", href: askRoute(`Analyze ${sym}`), primary: true },
     { label: "Review Trade", href: `/market-intel?symbol=${sym}` },
-    { label: "Risk Details", href: askRoute(`What is the risk on the ${sym} setup?`) },
+    { label: "Risk Details", href: askRoute(`What is the risk on the ${sym} candidate?`) },
   ];
   if (tradeBuilderEligible(c)) out.push({ label: "Open Trade Builder", href: `/trade/${sym}` });
   return out;
@@ -151,10 +151,20 @@ export function unavailableCtas(question: string): RankedCta[] {
  *  Never includes the Trade Builder — no candidate was produced. */
 export function exclusionCtas(): RankedCta[] {
   return [
-    { label: "Open Scanner", href: "/scanner", primary: true },
+    { label: "Run Fresh Scan", href: "/scanner?run=1", primary: true },
     { label: "Review Watchlist", href: "/watchlist" },
-    { label: "Run a Fresh Scan", href: "/scanner?run=1" },
-    { label: "View Stored Setups", href: "/opportunities" },
+    { label: "Open Scanner", href: "/scanner" },
+  ];
+}
+
+/**
+ * Primary CTAs for a zero-qualified result (§3 — single CTA group, no duplication).
+ * Shown once at the bottom of the zero-qualified layout.
+ */
+export function zeroQualifiedCtas(question?: string): RankedCta[] {
+  return [
+    { label: "Run Fresh Scan", href: "/scanner?run=1", primary: true },
+    { label: "Review Watchlist", href: "/watchlist" },
   ];
 }
 
@@ -334,11 +344,14 @@ export function dataRejectionGroups(summary: RankedRejectionGroup[]): RankedReje
  */
 export function shortExclusionLabel(reason: string): string {
   switch (reason) {
-    case "NOT_ACTIONABLE_NO_TRIGGER":   return "Not yet triggered";
-    case "STALE":                       return "Outside freshness window";
-    case "DIRECTION_MISMATCH":          return "Direction mismatch";
-    case "INVALID_SETUP":               return "Invalid setup";
-    case "SIMULATED_DATA_NOT_ELIGIBLE": return "Simulated data only";
+    case "NOT_ACTIONABLE_NO_TRIGGER":      return "Waiting for breakout trigger";
+    case "STALE":                          return "Outside freshness window";
+    case "DIRECTION_MISMATCH":             return "Direction mismatch";
+    case "REWARD_RISK_BELOW_THRESHOLD":    return "Reward/risk below threshold";
+    case "DUPLICATE_CONFLUENCE":           return "Duplicate confluence";
+    case "EARNINGS_RISK":                  return "Earnings risk";
+    case "INVALID_SETUP":                  return "Invalid setup";
+    case "SIMULATED_DATA_NOT_ELIGIBLE":    return "Simulated data only";
     default:
       // Humanize unknown codes without exposing raw implementation names.
       return reason.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -532,7 +545,7 @@ export function buildEmptyState(
   if (dataOnlyIssue) {
     return {
       headline: "Live market information could not be retrieved",
-      subtitle: `${search.unavailableCount} ${search.unavailableCount === 1 ? "setup" : "setups"} could not be evaluated because market data was unavailable. Nothing was fabricated to fill the gap.`,
+      subtitle: `${search.unavailableCount} ${search.unavailableCount === 1 ? "candidate" : "candidates"} could not be evaluated because market data was unavailable. Nothing was fabricated to fill the gap.`,
       icon: "market-unavailable",
       cta: [
         { label: "Retry", href: askRoute(question ?? "Find the best trades today"), primary: true },
@@ -541,7 +554,7 @@ export function buildEmptyState(
     };
   }
 
-  // Case B: setups were reviewed but none qualify (rejections, exclusions, or
+  // Case B: opportunities were reviewed but none qualify (rejections, exclusions, or
   // watches only — no actionable candidates).
   const reviewedSomething =
     search.reviewedCount > 0 ||
@@ -549,33 +562,31 @@ export function buildEmptyState(
     (search.excludedCount ?? 0) > 0 ||
     search.watchCandidates.length > 0;
   if (reviewedSomething) {
-    const total =
-      search.rejectedCount +
-      (search.excludedCount ?? 0) +
-      (search.groupedCandidateCount ?? 0);
-    const totalLabel = total > 0 ? `${total} ${total === 1 ? "setup was" : "setups were"} reviewed` : "Setups were reviewed";
+    const n = search.reviewedCount;
+    const reviewedLabel = n > 0
+      ? `${n} stored ${n === 1 ? "opportunity" : "opportunities"} reviewed`
+      : "Stored opportunities reviewed";
     return {
-      headline: `${totalLabel}, but none currently qualify`,
+      headline: `${reviewedLabel}, but none currently qualify`,
       subtitle:
-        "No setups met the required confirmation checks. Review the details below, or check back as market conditions change.",
+        "No candidates met the required qualification gates. Review the details below, or check back as market conditions change.",
       icon: "not-yet",
       cta: [
-        { label: "Open Scanner", href: "/scanner", primary: true },
+        { label: "Run Fresh Scan", href: "/scanner?run=1", primary: true },
         { label: "Review Watchlist", href: "/watchlist" },
-        { label: "Run a Fresh Scan", href: "/scanner?run=1" },
       ],
     };
   }
 
-  // Case A: true zero — no stored setups matched the criteria at all.
+  // Case A: true zero — no stored opportunities matched the criteria at all.
   return {
     headline: "No opportunities detected",
-    subtitle: "No stored setups matched the current criteria.",
+    subtitle: "No stored opportunities matched the current criteria.",
     icon: "no-results",
     cta: [
-      { label: "Open Scanner", href: "/scanner", primary: true },
-      { label: "Run a Fresh Scan", href: "/scanner?run=1" },
+      { label: "Run Fresh Scan", href: "/scanner?run=1", primary: true },
       { label: "Review Watchlist", href: "/watchlist" },
+      { label: "Open Scanner", href: "/scanner" },
     ],
   };
 }
@@ -696,6 +707,60 @@ export function buildZeroQualifiedSummary(search: RankedTradeSearch): string | n
   const last = parts[parts.length - 1];
   const rest = parts.slice(0, -1);
   return rest.join(", ") + ", and " + last + ".";
+}
+
+// ---------------------------------------------------------------------------
+// §det — Deterministic Engine Summary card data (§1)
+// ---------------------------------------------------------------------------
+
+export interface DeterministicSummaryRow {
+  label: string;
+  value: number;
+  /** Visual accent for the value number. */
+  color: "default" | "green" | "amber" | "muted";
+  /** Whether to render this row at all. */
+  show: boolean;
+}
+
+/**
+ * Returns the structured rows for the Deterministic Engine Summary card.
+ *
+ * Every value reads DIRECTLY from the backend `RankedTradeSearch` payload —
+ * no values are derived or recomputed. (§2 Single source of truth.)
+ */
+export function buildDeterministicSummary(search: RankedTradeSearch): DeterministicSummaryRow[] {
+  return [
+    {
+      label: "stored opportunities reviewed",
+      value: search.reviewedCount,
+      color: "default",
+      show: true,
+    },
+    {
+      label: "post-confluence candidates evaluated",
+      value: search.groupedCandidateCount ?? 0,
+      color: "default",
+      show: search.groupedCandidateCount !== undefined,
+    },
+    {
+      label: "candidates satisfied every required qualification gate",
+      value: search.qualifiedCount,
+      color: search.qualifiedCount > 0 ? "green" : "muted",
+      show: true,
+    },
+    {
+      label: "excluded before qualification",
+      value: search.excludedCount ?? 0,
+      color: "muted",
+      show: (search.excludedCount ?? 0) > 0,
+    },
+    {
+      label: "unavailable due to missing market data",
+      value: search.unavailableCount,
+      color: "amber",
+      show: search.unavailableCount > 0,
+    },
+  ];
 }
 
 /** Risk-fit line for a candidate under a requested budget (spec §8).

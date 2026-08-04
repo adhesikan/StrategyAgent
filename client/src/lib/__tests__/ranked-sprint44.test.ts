@@ -124,8 +124,8 @@ describe("T02: trueRejectionGroups / dataRejectionGroups", () => {
 // ---------------------------------------------------------------------------
 
 describe("T03: shortExclusionLabel", () => {
-  it("NOT_ACTIONABLE_NO_TRIGGER → 'Not yet triggered'", () => {
-    expect(shortExclusionLabel("NOT_ACTIONABLE_NO_TRIGGER")).toBe("Not yet triggered");
+  it("NOT_ACTIONABLE_NO_TRIGGER → 'Waiting for breakout trigger' (§9 spec label)", () => {
+    expect(shortExclusionLabel("NOT_ACTIONABLE_NO_TRIGGER")).toBe("Waiting for breakout trigger");
   });
   it("STALE → 'Outside freshness window'", () => {
     expect(shortExclusionLabel("STALE")).toBe("Outside freshness window");

@@ -58,8 +58,8 @@ describe("buildEmptyState", () => {
     expect(state).not.toBeNull();
     expect(state!.icon).toBe("not-yet");
     expect(state!.headline).toMatch(/reviewed.*none currently qualify/i);
-    expect(state!.subtitle).toMatch(/confirmation checks/i);
-    expect(state!.cta.some((c) => c.href === "/scanner")).toBe(true);
+    expect(state!.subtitle).toMatch(/qualification gates/i);
+    expect(state!.cta.some((c) => c.href.includes("/scanner"))).toBe(true);
   });
 
   it("returns not-yet state when only watch candidates are present (no qualified)", () => {

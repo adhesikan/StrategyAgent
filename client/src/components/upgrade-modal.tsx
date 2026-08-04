@@ -16,7 +16,7 @@ function proFeatures(instaTradeName: string): string[] {
     "Current stock and options market data through connected brokerages",
     `${instaTradeName} stock and options order review and submission`,
     "Built-in risk checks & exit protection",
-    "Smart alerts, scanner, and trade journal",
+    "Smart alerts, scanner, and trade history",
     "Cancel anytime",
   ];
 }

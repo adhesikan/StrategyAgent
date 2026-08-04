@@ -91,8 +91,8 @@ export const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "journal",
-    title: "Journal & Trade Setups",
-    keywords: ["journal", "history", "setups", "activity", "past trades", "outcomes"],
+    title: "My Activity & Trade Setups",
+    keywords: ["history", "setups", "activity", "past trades", "outcomes"],
     text: "My Activity (/history) keeps a history of every setup, scenario, and order with grade, instrument, and outcome filters. Users can record trade outcomes to track results over time.",
   },
   {
@@ -149,7 +149,7 @@ export const HELP_PAGES: { label: string; path: string; hint: string }[] = [
   { label: "Trade Finder", path: "/trade-finder", hint: "plain-English setup builder" },
   { label: "Markets", path: "/market-intel", hint: "news, sentiment, briefing" },
   { label: "Top Opportunities", path: "/opportunity-radar", hint: "AI-ranked scenarios" },
-  { label: "My Activity", path: "/history", hint: "journal, setup history" },
+  { label: "My Activity", path: "/history", hint: "setup and trade history" },
   { label: "My Limits", path: "/settings/risk-profile", hint: "risk guardrails" },
   { label: "Settings", path: "/settings", hint: "preferences, brokers, billing" },
   { label: "User Guide", path: "/guide", hint: "full plain-language guide" },

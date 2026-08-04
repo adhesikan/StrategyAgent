@@ -682,14 +682,14 @@ const SECTIONS: Section[] = [
   },
   {
     id: "journal",
-    title: "Journal & Trade Setups",
+    title: "My Activity & Trade Setups",
     icon: BookOpen,
     summary: "History of every setup, scenario, and order with grade, instrument, and outcome filters.",
     body: (
       <>
         <p>
-          <Link href="/journal" className="underline">Journal</Link> shows your positions, P&amp;L, and
-          insights. <Link href="/trade-setups" className="underline">Trade Setups</Link> lists every
+          <Link href="/history" className="underline">My Activity</Link> and{" "}
+          <Link href="/trade-setups" className="underline">Trade Setups</Link> list every
           generated setup with filters for grade, instrument, executed status, and minimum score.
         </p>
         <ul className="list-disc pl-5 space-y-1 mt-2">

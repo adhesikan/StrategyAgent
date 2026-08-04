@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, BookOpen, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check } from "lucide-react";
+import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -61,13 +61,6 @@ const NAV_ITEMS: TopNavItem[] = [
     icon: Landmark,
     testId: "topnav-congress",
     matches: (p) => p.startsWith("/markets/congress-activity"),
-  },
-  {
-    label: "Journal",
-    href: "/journal",
-    icon: BookOpen,
-    testId: "topnav-journal",
-    matches: (p) => p === "/journal" || p === "/history" || p === "/trade-setups",
   },
   {
     label: "Ask AI",

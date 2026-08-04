@@ -52,7 +52,6 @@ import { registerOpportunityRadarRoutes } from "./routes/opportunity-radar";
 import { registerNewsSentimentRoutes } from "./routes/news-sentiment";
 import { registerHomeSnapshotRoutes } from "./routes/home-snapshot";
 import { registerDailyIdeasRoutes } from "./routes/daily-ideas";
-import { registerJournalRoutes } from "./routes/journal";
 import { registerPositionProtectionRoutes } from "./routes/position-protection";
 import { registerAskRoutes } from "./routes/ask";
 import { registerPrepareTicketRoutes } from "./routes/prepare-ticket";
@@ -189,7 +188,6 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
   registerHomeSnapshotRoutes(app, isAuthenticated);
   registerDailyIdeasRoutes(app, isAuthenticated);
-  registerJournalRoutes(app, isAuthenticated);
   registerPositionProtectionRoutes(app, isAuthenticated, isAdmin);
   registerAskRoutes(app, isAuthenticated);
   registerPrepareTicketRoutes(app, isAuthenticated);
@@ -5624,7 +5622,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         onboardingStep: settings.onboardingStep ?? 0,
         positionSizingMethod: settings.positionSizingMethod || "fixed_dollar",
         positionSizingValue: settings.positionSizingValue ?? 1000,
-        defaultLandingPage: settings.defaultLandingPage || "/home",
+        defaultLandingPage: settings.defaultLandingPage === "/journal" ? "/history" : (settings.defaultLandingPage || "/home"),
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -5640,6 +5638,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return;
       }
       
+      // Legacy compat: the Journal page was removed; coerce stored/submitted
+      // "/journal" landing pages to "/history" so old clients can still save.
+      if (req.body && req.body.defaultLandingPage === "/journal") {
+        req.body.defaultLandingPage = "/history";
+      }
       const parsed = userSettingsUpdateSchema.parse(req.body);
 
       // Persona lives on the users table, not user_settings
@@ -5692,7 +5695,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         onboardingStep: settings.onboardingStep ?? 0,
         positionSizingMethod: settings.positionSizingMethod || "fixed_dollar",
         positionSizingValue: settings.positionSizingValue ?? 1000,
-        defaultLandingPage: settings.defaultLandingPage || "/home",
+        defaultLandingPage: settings.defaultLandingPage === "/journal" ? "/history" : (settings.defaultLandingPage || "/home"),
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

@@ -695,7 +695,6 @@ export const LANDING_PAGE_OPTIONS = [
   { value: "/trade-finder", label: "Trade" },
   { value: "/markets", label: "Markets" },
   { value: "/opportunity-radar", label: "Top Opportunities" },
-  { value: "/journal", label: "Journal" },
   { value: "/instatrade", label: "InstaTrade" },
   { value: "/charts", label: "Charts" },
 ] as const;

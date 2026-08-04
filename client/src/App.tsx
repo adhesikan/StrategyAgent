@@ -67,7 +67,6 @@ import CommandCenterPage from "@/pages/command-center";
 import StrategyScannerPage from "@/pages/strategy-scanner";
 import TradeDetailPage from "@/pages/trade-detail";
 import InstaTradePage from "@/pages/instatrade-page";
-import JournalV2 from "@/pages/journal-v2";
 import ResultsPage from "@/pages/results-page";
 import PricingPage from "@/pages/pricing";
 import BillingSuccessPage from "@/pages/billing-success";
@@ -118,7 +117,6 @@ function AppRouter() {
       <Route path="/scanner" component={StrategyScannerPage} />
       <Route path="/trade/:ticker" component={TradeDetailPage} />
       <Route path="/instatrade" component={InstaTradePage} />
-      <Route path="/journal" component={JournalV2} />
       <Route path="/results" component={ResultsPage} />
       <Route path="/goal-mode" component={GoalModePage} />
       <Route path="/opportunity-radar" component={OpportunityRadarPage} />
@@ -128,7 +126,10 @@ function AppRouter() {
       <Route path="/markets/congress-activity/politician/:slug" component={CongressActivityPage} />
       <Route path="/markets/congress-activity" component={CongressActivityPage} />
       <Route path="/markets" component={MarketIntelPage} />
-      <Route path="/history" component={JournalV2} />
+      <Route path="/journal">
+        <Redirect to="/history" />
+      </Route>
+      <Route path="/history" component={HistoryPage} />
       <Route path="/agent" component={AgentPage} />
       <Route path="/trade-setups" component={TradeSetupsPage} />
 

@@ -361,7 +361,7 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
  * PROBLEM
  * --------------------------------------------------------- */
 function ProblemSection() {
-  const tabs = ["Scanners", "Charts", "Broker", "Options Chain", "News", "Risk Math", "Journal"];
+  const tabs = ["Scanners", "Charts", "Broker", "Options Chain", "News", "Risk Math", "History"];
   return (
     <section className="py-16 md:py-24 bg-muted/30 border-y">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
@@ -742,7 +742,7 @@ function FeaturesSection() {
     },
     {
       testId: "feature-history",
-      eyebrow: "H · Journal / Learning",
+      eyebrow: "H · History / Learning",
       title: "Track What You Review and Trade",
       copy: "Review your past ideas, saved candidates, executed trades, and outcomes to understand what works for you.",
       bullets: [

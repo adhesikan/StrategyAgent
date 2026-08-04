@@ -17,7 +17,7 @@ interface PlanSelectorProps {
 const HIGHLIGHTS: Record<PlanId, string[]> = {
   free: ["5 AI analyses / day", "Educational market analysis", "Delayed market data", "No broker connection"],
   pro: ["50 AI analyses / day", "Live market data", "1 broker connection", "Smart alerts + scanner"],
-  edge: ["Unlimited analyses", "Up to 5 brokers", "Automation + options flow", "Multi-leg + journal"],
+  edge: ["Unlimited analyses", "Up to 5 brokers", "Automation + options flow", "Multi-leg + trade history"],
   team: ["Everything in Active Trader", "5 team seats", "Team sharing & partner signals", "Priority support"],
 };
 

@@ -247,6 +247,24 @@ function isValidSetup(s: unknown): s is McpSetup {
   return !!s && typeof s === "object" && typeof (s as any).symbol === "string" && !!(s as any).symbol && typeof (s as any).strategy === "string";
 }
 
+/**
+ * Classifies a failed scan_strategy call into its specific first-failing
+ * component (diagnostic logging only — never changes control flow).
+ */
+export function classifyScanFailure(code: unknown, message: string): string {
+  const m = message.toLowerCase();
+  if (/-32602|invalid arguments for tool|invalid option: expected/.test(m)) return "MCP_SCHEMA_VALIDATION";
+  if (/unknown strategy/.test(m)) return "STRATEGY_ALIAS_RESOLUTION";
+  if (/http 429|rate limit|too many requests/.test(m)) return "PROVIDER_RATE_LIMITED";
+  if (/history|candles|ohlc/.test(m)) return "MARKET_HISTORY";
+  if (/scanner\/setup/.test(m)) return "INTERNAL_SCANNER_SETUP";
+  if (/scanner\/opportunit/.test(m)) return "INTERNAL_SCANNER_OPPORTUNITIES";
+  if (/provider request failed|provider/.test(m)) return "PROVIDER_SELECTION";
+  if (code === "MCP_TIMEOUT") return "MCP_TIMEOUT";
+  if (code === "MCP_UNAVAILABLE") return "MCP_UNAVAILABLE";
+  return "UNCLASSIFIED_TOOL_ERROR";
+}
+
 /** Extracts a setup from a tolerant scan_strategy response shape. */
 function extractSetup(raw: unknown): McpSetup | null {
   const r: any = raw;
@@ -384,6 +402,23 @@ export async function runMultiStrategyAnalysis(
       }
       return { kind: "noMatch", meta };
     } catch (err: any) {
+      // Diagnostic instrumentation: log the SPECIFIC failure cause, not just
+      // MCP_TOOL_ERROR. Message is engine/provider error text (no secrets);
+      // truncated defensively. Behavior unchanged — outcome still "failed".
+      const message = String(err?.message ?? "").slice(0, 500);
+      console.warn(
+        JSON.stringify({
+          event: "scan_strategy_failed",
+          symbol: sym,
+          strategyRequested: meta.id,
+          resolvedStrategyId: meta.id, // client sends registry id as-is; alias mapping happens MCP-side
+          timeframe,
+          code: String(err?.code ?? "SCAN_FAILED"),
+          cause: classifyScanFailure(err?.code, message),
+          message,
+          stackTop: String(err?.stack ?? "").split("\n")[1]?.trim() ?? null,
+        }),
+      );
       return { kind: "failed", meta, safeErrorCode: String(err?.code ?? "SCAN_FAILED").slice(0, 40) };
     }
   });

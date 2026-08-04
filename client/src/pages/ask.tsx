@@ -20,6 +20,7 @@ import { OpportunitySearchCards } from "@/components/opportunity-search-cards";
 import type { OpportunitySearchResult } from "@/lib/opportunity-search";
 import { RankedTradeSearchCards } from "@/components/ranked-trade-search-cards";
 import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
+import { GoalTradePlanner } from "@/components/goal-trade-planner";
 import type { VcpAnalysis } from "@/lib/vcp-analysis";
 import { PortfolioFitCard } from "@/components/portfolio-fit-card";
 import { PortfolioTradePlanCards } from "@/components/portfolio-trade-plan-cards";
@@ -344,10 +345,14 @@ export default function AskPage() {
                 </div>
               )}
 
+              {/* Sprint 4.3 — Goal-Based Trade Planner wraps ranked results with
+                  goal context (Goal banner, Portfolio Impact, Risk, Why Others
+                  Failed). RankedTradeSearchCards is rendered inside it. */}
               {data.rankedTradeSearch && (
-                <RankedTradeSearchCards
+                <GoalTradePlanner
                   search={data.rankedTradeSearch}
                   question={data.question}
+                  awareness={data.portfolioAwareness}
                   source={data.rankedSearchSource}
                 />
               )}

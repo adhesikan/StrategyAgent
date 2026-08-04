@@ -349,10 +349,10 @@ describe("portfolioFitRows — Buying Power", () => {
 });
 
 // ---------------------------------------------------------------------------
-// portfolioFitRows — Cash Available row
+// portfolioFitRows — Cash Requirement row (spec §6: separate from Buying Power)
 // ---------------------------------------------------------------------------
 
-describe("portfolioFitRows — Cash Available", () => {
+describe("portfolioFitRows — Cash Requirement", () => {
   it("shows 'Verified' when cashSufficiency is 'verified'", () => {
     const rows = portfolioFitRows(makeAwareness({ cashSufficiency: "verified" }));
     expect(rowByTestId(rows, "row-pf-cash")!.value).toBe("Verified");
@@ -484,7 +484,7 @@ describe("portfolioFitRows — ordering", () => {
     expect(posIdx).toBeLessThan(concIdx);
   });
 
-  it("Buying Power appears before Cash Available", () => {
+  it("Buying Power appears before Cash Requirement", () => {
     const rows = portfolioFitRows(
       makeAwareness({
         buyingPowerSufficiency: "sufficient",

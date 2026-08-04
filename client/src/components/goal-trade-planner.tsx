@@ -30,7 +30,7 @@ import {
 import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
 import type { SafePortfolioAwareness } from "@/lib/portfolio-awareness";
 import { Badge as BadgeComponent } from "@/components/ui/badge";
-import { translateRejectionReason, translateExclusionReason, actionableHint } from "@/lib/ranked-trade-search";
+import { translateRejectionReason, translateExclusionReason, actionableHint, trueRejectionGroups } from "@/lib/ranked-trade-search";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -265,8 +265,12 @@ function RiskSummarySection({
 // ---------------------------------------------------------------------------
 
 function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
-  const hasRejections =
-    search.rejectionSummary.length > 0 || search.rejectedCount > 0;
+  // §3 (Sprint 4.4): only true qualification failures appear under "Rejected".
+  // Data-unavailability groups (DATA_UNAVAILABLE, OPTIONS_DATA_UNAVAILABLE,
+  // MARKET_REGIME_UNAVAILABLE, etc.) are stripped — they are not quality failures.
+  const trueRejections = trueRejectionGroups(search.rejectionSummary);
+  const trueRejectedCount = trueRejections.reduce((s, g) => s + g.count, 0);
+  const hasRejections = trueRejections.length > 0 || trueRejectedCount > 0;
   const hasExclusions = (search.excludedCount ?? 0) > 0;
 
   if (!hasRejections && !hasExclusions) return null;
@@ -277,7 +281,7 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
       data-testid="section-goal-why-failed"
       aria-label="Why other setups were not selected"
     >
-      {/* Post-confluence rejections */}
+      {/* Post-confluence rejections — true qualification failures only */}
       {hasRejections && (
         <details
           className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3"
@@ -285,20 +289,20 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
         >
           <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 list-none">
             <ChevronDown className="h-3.5 w-3.5" />
-            Why setups were rejected ({search.rejectedCount})
+            Why setups were rejected ({trueRejectedCount})
           </summary>
           <div className="mt-2 space-y-2.5">
             <p className="text-[11px] text-muted-foreground/80">
               These setups reached the qualification stage but were rejected
               because they didn't meet all required conditions.
             </p>
-            {search.rejectionSummary.length === 0 && (
+            {trueRejections.length === 0 && (
               <div className="text-xs text-muted-foreground">
-                {search.rejectedCount}{" "}
-                {search.rejectedCount === 1 ? "setup was" : "setups were"} rejected.
+                {trueRejectedCount}{" "}
+                {trueRejectedCount === 1 ? "setup was" : "setups were"} rejected.
               </div>
             )}
-            {search.rejectionSummary.map((g) => {
+            {trueRejections.map((g) => {
               const label = translateRejectionReason(g.reason);
               const hint  = actionableHint(g.reason);
               return (

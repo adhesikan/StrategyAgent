@@ -126,7 +126,7 @@ export function concentrationSummary(
  *
  * Ordering matches the spec:
  *   Existing Position → Current Shares → Portfolio Concentration →
- *   Buying Power → Cash Available → Existing Options →
+ *   Buying Power → Cash Requirement → Existing Options →
  *   Suggested Position Size → Adjustment Reason
  *
  * @param awareness  SafePortfolioAwareness object from the Ask AI response.

@@ -11,3 +11,4 @@
 - [Ticker extraction policy](ticker-extraction-policy.md) — one central extractor with denylist; explicit $SYM/"ticker X" syntax bypasses it, and every validator must honor that same exception.
 - [MCP exclusion accounting contract](mcp-exclusion-accounting.md) — excludedCount/exclusionSummary/groupedCandidateCount are pre-confluence, not quality rejections; headline and LLM rules must use distinct language for exclusion vs rejection vs unavailable.
 - [Scanner trigger contract fix](scanner-trigger-contract.md) — entryTriggerPrice was hardcoded null; fixed to sanitizeTriggerPrice(result.resistance); toInternalSetup uses resistancePrice as fallback; ORB5/ORB15/GAP_AND_GO expire after ET session ends.
+- [Portfolio context trust boundary](portfolio-context-boundary.md) — Sprint 4D: opaque token minted per-request, passed to MCP only; awareness computed server-side via computePortfolioAwareness; never account IDs or raw balances to client/LLM.

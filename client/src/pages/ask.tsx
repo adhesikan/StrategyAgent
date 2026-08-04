@@ -21,6 +21,7 @@ import type { OpportunitySearchResult } from "@/lib/opportunity-search";
 import { RankedTradeSearchCards } from "@/components/ranked-trade-search-cards";
 import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
 import type { VcpAnalysis } from "@/lib/vcp-analysis";
+import { PortfolioFitCard } from "@/components/portfolio-fit-card";
 
 interface AskPick {
   id: string;
@@ -132,6 +133,8 @@ interface AskResponse {
   // Optional deterministic trade-strategy recommendation (additive)
   strategyRecommendation?: StrategyRecommendation;
   recommendationFailed?: boolean;
+  // Sprint 4D: safe portfolio-awareness fields (no account IDs, no raw balances)
+  portfolioAwareness?: import("@/lib/portfolio-awareness").SafePortfolioAwareness;
 }
 
 const CONFIDENCE_TONE: Record<string, string> = {
@@ -315,6 +318,14 @@ export default function AskPage() {
 
               {data.strategyRecommendation && <StrategyRecommendationCards recommendation={data.strategyRecommendation} />}
               {data.multiStrategyAnalysis && <MultiStrategyAnalysisCards analysis={data.multiStrategyAnalysis} />}
+
+              {/* Sprint 4D — Portfolio Fit: safe derived fields only, no account IDs */}
+              {data.portfolioAwareness && (
+                <PortfolioFitCard
+                  awareness={data.portfolioAwareness}
+                  marketWide={data.intent === "ranked-trade-search"}
+                />
+              )}
 
               {data.rankedSearchSource === "RANKED_MCP_FAILED_WITH_FALLBACK" && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-ranked-search-failed">

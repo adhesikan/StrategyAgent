@@ -1,0 +1,142 @@
+Implement Sprint 4D — Trusted Portfolio Context Integration in StrategyAgent/VCP Trader.
+
+IMPORTANT
+
+The MCP trusted portfolio-context foundation is deployed.
+
+Do not pass broker account IDs, connection IDs, access tokens, user IDs, raw positions, cash, or buying power in model-controlled tool arguments.
+
+Do not expose brokerage credentials to OpenAI.
+
+Do not add execution behavior.
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. RESOLVE BROKER CONTEXT SERVER-SIDE
+==================================================
+
+Using the authenticated application session:
+
+- identify the authorized brokerage connection
+- identify the authorized account server-side
+- fetch positions, cash and buying power using existing broker services
+- normalize through existing provider-neutral structures
+
+The user or model must not select arbitrary account IDs.
+
+==================================================
+2. MINT OPAQUE CONTEXT
+==================================================
+
+Create a short-lived portfolio context token through the trusted MCP context mechanism.
+
+Recommended TTL:
+
+5 minutes
+
+Scope it to:
+
+- authenticated user/session
+- read-only portfolio awareness
+- provider/account resolved by backend
+- recommendation/ranking tool use
+
+==================================================
+3. CALL MCP
+==================================================
+
+Supply the opaque context token only through the backend-controlled trusted-context field accepted by MCP.
+
+Apply to:
+
+- recommend_trade_strategy
+- rank_market_trade_candidates
+
+Do not expose the token to the frontend.
+
+==================================================
+4. FALLBACK
+==================================================
+
+If no brokerage is connected:
+
+- continue using market-only recommendations
+- show "Portfolio context unavailable"
+- offer Connect Broker
+- do not block normal analysis
+
+If portfolio retrieval fails:
+
+- do not fabricate data
+- use market-only results
+- show a clear limitation
+
+==================================================
+5. STRUCTURED RESPONSE
+==================================================
+
+Pass through safe portfolio-awareness fields:
+
+- existing position
+- verified shares
+- duplicate exposure
+- concentration warning
+- cash sufficiency
+- buying-power sufficiency
+- existing option exposure
+- sizing adjustment
+- context freshness
+
+Do not include account identifiers.
+
+==================================================
+6. UI
+==================================================
+
+Add a compact section:
+
+Portfolio Fit
+
+Examples:
+
+Existing position:
+200 shares
+
+Portfolio concentration:
+14.2% — elevated
+
+Cash requirement:
+Verified / Not verified / Insufficient
+
+Buying power:
+Sufficient / Insufficient / Unknown
+
+Existing options exposure:
+Covered calls already open
+
+Never show private account numbers.
+
+==================================================
+7. TESTS
+==================================================
+
+Test:
+
+- connected broker
+- no broker
+- broker retrieval failure
+- expired token
+- sufficient shares
+- insufficient shares
+- sufficient cash
+- concentration warning
+- duplicate exposure
+- no token in frontend response
+- no account IDs in logs
+- recommendation still works without context
+- no execution
+
+Run tests and build.
+
+Report all changes and wait for review.

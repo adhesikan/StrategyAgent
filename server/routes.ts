@@ -59,6 +59,7 @@ import { registerMcpStatusRoutes } from "./routes/mcp-status";
 import { registerInternalMarketRoutes } from "./routes/internal-market";
 import { registerInternalScannerRoutes } from "./routes/internal-scanner";
 import { registerInternalOptionsRoutes } from "./routes/internal-options";
+import { registerInternalPortfolioRoutes } from "./routes/internal-portfolio";
 import { registerHelpRoutes } from "./routes/help";
 import { registerMarketDataAdminRoutes } from "./routes/market-data-admin";
 import { registerDailyAnalysisRoutes } from "./routes/daily-analysis";
@@ -196,6 +197,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerInternalMarketRoutes(app);
   registerInternalScannerRoutes(app);
   registerInternalOptionsRoutes(app);
+  registerInternalPortfolioRoutes(app);
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {

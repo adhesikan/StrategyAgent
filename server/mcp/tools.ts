@@ -401,6 +401,9 @@ export interface RankMarketTradeCandidatesArgs {
   numberOfIdeas?: number;
   strategies?: string[];
   timeframe?: string;
+  /** Short-lived OPAQUE backend-minted portfolio context token — never a
+   *  broker OAuth token. Absent for disconnected users (market-only mode). */
+  portfolioContextToken?: string;
 }
 
 /**
@@ -422,6 +425,9 @@ export async function rankMarketTradeCandidates(a: RankMarketTradeCandidatesArgs
   if (typeof a.numberOfIdeas === "number") args.numberOfIdeas = Math.max(1, Math.min(10, Math.floor(a.numberOfIdeas)));
   if (a.strategies?.length) args.strategies = a.strategies.slice(0, 20).map((s) => String(s));
   if (a.timeframe) args.timeframe = String(a.timeframe);
+  // Portfolio context token: backend-only field, never model-controlled.
+  // Absent for disconnected users — MCP degrades to market-only mode.
+  if (a.portfolioContextToken) args.portfolioContextToken = a.portfolioContextToken;
   // Slow tool: ranking may enrich several candidates (options selection,
   // risk sizing) in one call. Use the recommendation-class timeout and never
   // retry a pure timeout — the computation is deterministic, so a retry

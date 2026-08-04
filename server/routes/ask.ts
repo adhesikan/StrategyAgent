@@ -789,6 +789,10 @@ async function callOpenAi(
       | Record<string, unknown>; // MCP-backed search payload (cards + intent)
     /** Deterministic ranked market search — the model may only explain the buckets, never reorder/promote/invent. */
     rankedTradeSearch?: import("./ranked-trade-search").RankedTradeSearch;
+    /** Short-lived opaque portfolio context token (Sprint 4D). Passed to
+     *  recommend_trade_strategy so MCP can call /api/internal/portfolio/context
+     *  to retrieve safe portfolio-awareness fields. Never exposed to OpenAI. */
+    portfolioContextToken?: string;
   } = {},
 ): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
@@ -887,7 +891,13 @@ async function callOpenAi(
           recAttempted = true;
           const tools = await import("../mcp/tools");
           strategyRec = await sr.runStrategyRecommendation(reqIntent.goal, {
-            recommend: (args) => tools.recommendTradeStrategy(args as import("../mcp/tools").RecommendTradeStrategyArgs),
+            recommend: (args) => tools.recommendTradeStrategy({
+              ...(args as import("../mcp/tools").RecommendTradeStrategyArgs),
+              // Sprint 4D: pass opaque portfolio context so MCP can fetch
+              // safe portfolio-awareness fields via /api/internal/portfolio.
+              // Absent for disconnected users — market-only mode.
+              ...(opts.portfolioContextToken ? { portfolioContextToken: opts.portfolioContextToken } : {}),
+            }),
           });
         }
       } catch (err) {
@@ -1297,11 +1307,36 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           rankedGoal = null; // classification unavailable → existing flows
         }
         if (rankedGoal) {
+          // Sprint 4D: portfolio context for connected users (market-wide mode,
+          // no specific symbol). Minted here so the token is revoked regardless
+          // of ranked-search success or failure.
+          let rankedPfToken: string | undefined;
+          let rankedPfAwareness: import("./internal-portfolio").SafePortfolioAwareness | null = null;
+          try {
+            const pfCtx = await import("../services/portfolio-context");
+            const { getBrokerPositions, getBrokerAccounts } = await import("../broker");
+            const intPortfolio = await import("./internal-portfolio");
+            const [positions, accounts] = await Promise.all([
+              getBrokerPositions(userId).catch(() => [] as import("../broker/types").NormalizedPosition[]),
+              getBrokerAccounts(userId).catch(() => [] as import("../broker/types").NormalizedAccount[]),
+            ]);
+            if (accounts.length > 0 || positions.length > 0) {
+              rankedPfToken = pfCtx.issuePortfolioContext(userId).token;
+              // Market-wide search: no specific symbol to check existing position
+              rankedPfAwareness = intPortfolio.computePortfolioAwareness(undefined, positions, accounts);
+            }
+          } catch { /* no portfolio context — graceful degradation to market-only */ }
           try {
             const rts = await import("./ranked-trade-search");
             const tools = await import("../mcp/tools");
             const search = await rts.runRankedTradeSearch(rankedGoal, {
-              rank: (args) => tools.rankMarketTradeCandidates(args),
+              rank: (args) => tools.rankMarketTradeCandidates({
+                ...args,
+                // Portfolio context (spec §3): backend-only opaque token so MCP
+                // can call /api/internal/portfolio/context for awareness fields.
+                // Never included in MCP AI tool args or sent to browser.
+                ...(rankedPfToken ? { portfolioContextToken: rankedPfToken } : {}),
+              }),
             });
             const deterministic = rts.buildRankedTradeSearchAnswer(search, rankedGoal);
             let answer: AskAnswer | null = null;
@@ -1319,6 +1354,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               search.candidates.length === 0 && search.watchCandidates.length === 0
                 ? "RANKED_MCP_EMPTY"
                 : "RANKED_MCP_SUCCESS";
+            // Sprint 4D: portfolio awareness in ranked search response
             return res.json({
               question,
               intent: "ranked-trade-search",
@@ -1332,6 +1368,9 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               confidence: deterministic.confidence,
               rankedTradeSearch: search,
               rankedSearchSource,
+              // Sprint 4D safe portfolio-awareness (no account IDs, no raw
+              // balances — only derived labels). Absent when broker not connected.
+              ...(rankedPfAwareness ? { portfolioAwareness: rankedPfAwareness } : {}),
               suggestions: rts.rankedTradeSearchSuggestions(search),
               source,
               disclaimer:
@@ -1340,6 +1379,14 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           } catch (err) {
             console.warn("[ask] ranked trade search unavailable:", (err as Error).message);
             rankedTradeSearchFailed = true; // fall through to existing safe flows
+          } finally {
+            // Sprint 4D: revoke the portfolio context token regardless of outcome
+            if (rankedPfToken) {
+              try {
+                const { revokePortfolioContext } = await import("../services/portfolio-context");
+                revokePortfolioContext(rankedPfToken);
+              } catch { /* ignore */ }
+            }
           }
         }
       }
@@ -1687,7 +1734,37 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         }
       }
 
-      let answer = await callOpenAi(question, ctx);
+      // Sprint 4D: portfolio context for strategy recommendation (single-symbol
+      // asks handled by callOpenAi). Token never sent to browser or model.
+      let pfCtxToken: string | undefined;
+      let pfAwareness: import("./internal-portfolio").SafePortfolioAwareness | null = null;
+      try {
+        const pfCtxMod = await import("../services/portfolio-context");
+        const { getBrokerPositions, getBrokerAccounts } = await import("../broker");
+        const intPortfolio = await import("./internal-portfolio");
+        const [positions, accounts] = await Promise.all([
+          getBrokerPositions(userId).catch(() => [] as import("../broker/types").NormalizedPosition[]),
+          getBrokerAccounts(userId).catch(() => [] as import("../broker/types").NormalizedAccount[]),
+        ]);
+        if (accounts.length > 0 || positions.length > 0) {
+          pfCtxToken = pfCtxMod.issuePortfolioContext(userId).token;
+          pfAwareness = intPortfolio.computePortfolioAwareness(tickers[0], positions, accounts);
+        }
+      } catch { /* no portfolio context — graceful degradation to market-only */ }
+
+      let answer = await callOpenAi(question, ctx, {
+        portfolioContextToken: pfCtxToken,
+      });
+
+      // Revoke portfolio context token immediately after callOpenAi completes
+      if (pfCtxToken) {
+        try {
+          const { revokePortfolioContext } = await import("../services/portfolio-context");
+          revokePortfolioContext(pfCtxToken);
+        } catch { /* ignore */ }
+        pfCtxToken = undefined;
+      }
+
       // Defensive second layer of the mutual exclusion above: never present a
       // legacy ticket, legacy picks, or the legacy best-trade narrative
       // alongside (or after the failure of) a deterministic recommendation.
@@ -1895,6 +1972,9 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         tickers,
         brokerConnected: ctx.brokerConnected,
         ...answer,
+        // Sprint 4D: safe portfolio-awareness fields (no account IDs, no raw
+        // balances). Absent when broker not connected or fetch failed.
+        ...(pfAwareness ? { portfolioAwareness: pfAwareness } : {}),
         picks,
         tradeDetail,
         suggestions,

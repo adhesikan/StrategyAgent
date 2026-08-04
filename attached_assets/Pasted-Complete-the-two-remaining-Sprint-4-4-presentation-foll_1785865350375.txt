@@ -1,0 +1,75 @@
+Complete the two remaining Sprint 4.4 presentation follow-ups.
+
+Do not modify MCP, ranking, qualification, recommendation, portfolio, risk, database, or execution logic.
+
+Do not commit, push, or deploy automatically.
+
+TASK #36 — Goal Planner Unavailable Section
+
+In the goal-based trade planner, unavailableCount may be greater than zero but the UI currently does not explain it.
+
+Add an "Unavailable Candidates" or "Data Limitations" subsection when:
+
+unavailableCount > 0
+
+Requirements:
+
+- keep unavailable separate from rejected
+- show candidate-level details only when supplied by the backend
+- otherwise show a truthful grouped count
+- use backend-provided reason codes only
+- do not invent symbols, causes, or near-miss candidates
+- do not imply candidates failed qualification when they could not be evaluated
+
+Example:
+
+Unavailable Candidates — 3
+
+Three candidates could not be evaluated because required market data was unavailable.
+
+The engine did not estimate or fabricate the missing information.
+
+TASK #37 — Count-First Exclusion Format
+
+Update the goal planner exclusion presentation to match market-wide ranked search.
+
+Use count-first formatting:
+
+18 — Waiting for an actionable trigger
+11 — Outside the freshness window
+
+Preserve backend order unless the existing shared helper defines a deterministic ordering.
+
+Reuse the existing exclusion-label helper rather than creating duplicate mappings.
+
+CONSISTENCY
+
+Confirm both market-wide ranking and goal planning now use:
+
+- the same exclusion labels
+- the same unavailable versus rejected semantics
+- the same count formatting
+- the same unknown-reason fallback
+
+TESTS
+
+Add tests for:
+
+- unavailableCount > 0 with no candidate-level details
+- unavailable candidate details when supplied
+- unavailable section hidden when zero
+- unavailable never rendered under rejected
+- count-first exclusion formatting
+- shared exclusion-label mapping
+- unknown reason handling
+- deterministic count preservation
+- no fabricated symbols or explanations
+
+Run:
+
+npm test
+npm run build
+
+Report files changed, tests, build, and screenshots.
+
+Do not commit or push.

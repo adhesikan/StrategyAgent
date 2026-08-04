@@ -30,7 +30,13 @@ import {
 import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
 import type { SafePortfolioAwareness } from "@/lib/portfolio-awareness";
 import { Badge as BadgeComponent } from "@/components/ui/badge";
-import { translateRejectionReason, translateExclusionReason, actionableHint, trueRejectionGroups } from "@/lib/ranked-trade-search";
+import {
+  actionableHint,
+  dataRejectionGroups,
+  shortExclusionLabel,
+  trueRejectionGroups,
+  translateRejectionReason,
+} from "@/lib/ranked-trade-search";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -271,9 +277,17 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
   const trueRejections = trueRejectionGroups(search.rejectionSummary);
   const trueRejectedCount = trueRejections.reduce((s, g) => s + g.count, 0);
   const hasRejections = trueRejections.length > 0 || trueRejectedCount > 0;
+
+  // §36 (Sprint 4.4 follow-up): Unavailable Candidates — separate from Rejected.
+  // Includes unavailableCount + any data-unavailability rejection groups.
+  const unavailableExtraGroups = dataRejectionGroups(search.rejectionSummary);
+  const totalUnavailable =
+    search.unavailableCount + unavailableExtraGroups.reduce((s, g) => s + g.count, 0);
+  const hasUnavailable = totalUnavailable > 0 || unavailableExtraGroups.length > 0;
+
   const hasExclusions = (search.excludedCount ?? 0) > 0;
 
-  if (!hasRejections && !hasExclusions) return null;
+  if (!hasRejections && !hasExclusions && !hasUnavailable) return null;
 
   return (
     <div
@@ -335,7 +349,7 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
         </details>
       )}
 
-      {/* Pre-confluence exclusions */}
+      {/* Pre-confluence exclusions — count-first format (Task #37) */}
       {hasExclusions && (
         <details
           className="rounded-lg border border-muted/40 bg-muted/10 p-3"
@@ -345,24 +359,68 @@ function WhyOthersFailedSection({ search }: { search: RankedTradeSearch }) {
             <ChevronDown className="h-3.5 w-3.5" />
             Filtered before qualification ({search.excludedCount})
           </summary>
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 space-y-1.5">
             <p className="text-[11px] text-muted-foreground/80">
               These opportunities were removed before the qualification stage —
               not because of poor quality, but because they didn't match the
               goal's basic filters (strategy type, direction, risk limit).
             </p>
-            {(search.exclusionSummary ?? []).map((g) => (
-              <div
-                key={g.reason}
-                className="text-xs"
-                data-testid={`row-goal-exclusion-${g.reason}`}
-              >
-                <span className="text-foreground/80">{translateExclusionReason(g.reason)}</span>
-                <span className="text-muted-foreground"> — {g.count}</span>
+            {(search.exclusionSummary ?? []).length === 0 ? (
+              <div className="text-xs text-muted-foreground">
+                {search.excludedCount}{" "}
+                {search.excludedCount === 1 ? "opportunity was" : "opportunities were"} filtered
+                before qualification.
               </div>
-            ))}
+            ) : (
+              (search.exclusionSummary ?? []).map((g) => (
+                <div
+                  key={g.reason}
+                  className="text-xs flex items-center gap-2"
+                  data-testid={`row-goal-exclusion-${g.reason}`}
+                >
+                  <span className="tabular-nums font-semibold text-foreground/70 w-6 text-right shrink-0">
+                    {g.count}
+                  </span>
+                  <span className="text-muted-foreground">{shortExclusionLabel(g.reason)}</span>
+                </div>
+              ))
+            )}
           </div>
         </details>
+      )}
+
+      {/* Unavailable Candidates — data could not be retrieved (Task #36) */}
+      {hasUnavailable && (
+        <div
+          className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs space-y-1.5"
+          data-testid="section-goal-unavailable"
+        >
+          <div className="font-medium uppercase tracking-wide text-muted-foreground text-[10px]">
+            Unavailable Candidates
+          </div>
+          <div className="text-amber-100/90">
+            {totalUnavailable}{" "}
+            {totalUnavailable === 1 ? "candidate" : "candidates"} could not be evaluated because
+            required market data was unavailable from the provider. The engine did not estimate
+            or fabricate the missing information.
+          </div>
+          {unavailableExtraGroups.map((g) => (
+            <div
+              key={g.reason}
+              className="text-amber-100/70"
+              data-testid={`row-goal-unavailable-${g.reason}`}
+            >
+              {translateRejectionReason(g.reason)}
+              {g.symbols.length > 0 && (
+                <span className="text-amber-100/50 ml-1">
+                  ({g.symbols.slice(0, 3).join(", ")}
+                  {g.symbols.length > 3 ? "…" : ""})
+                </span>
+              )}
+              <span className="text-amber-100/50 ml-1">— {g.count}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

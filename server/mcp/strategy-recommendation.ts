@@ -17,6 +17,7 @@
 // replaced with a GPT-invented trade.
 
 import { scrubUntrusted } from "../routes/opportunity-search-mcp";
+import { isReservedTickerWord, hasExplicitSymbolContext } from "../lib/ticker-extraction";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -366,9 +367,12 @@ function parseRiskDollars(lower: string): number | undefined {
   // "under $500 max loss", "under $300 risk", "less than $500", "risking $250",
   // "$500 max loss", "max risk of $400", "with $300 of risk"
   const patterns = [
-    /(?:under|below|less\s+than|no\s+more\s+than|up\s+to|within)\s+\$?([\d,]+(?:\.\d+)?)\s*(?:max\s+loss|max\s+risk|risk|loss|dollars?\s+(?:of\s+)?risk)?/,
-    /\$?([\d,]+(?:\.\d+)?)\s*(?:max\s+loss|max\s+risk|of\s+risk|risk\s+budget)/,
-    /(?:risk(?:ing)?|lose)\s+(?:at\s+most\s+)?\$([\d,]+(?:\.\d+)?)/,
+    /(?:under|below|less\s+than|no\s+more\s+than|up\s+to|within)\s+(?:a\s+)?\$?([\d,]+(?:\.\d+)?)\s*(?:max\s+loss|max\s+risk|risk|loss|budget|dollars?\s+(?:of\s+)?risk)?/,
+    /\$?([\d,]+(?:\.\d+)?)\s*(?:max\s+loss|max\s+risk|of\s+risk|risk\s+budget|budget)/,
+    // "maximum loss of $1,000", "max risk of $400"
+    /max(?:imum)?\s+(?:loss|risk)\s+of\s+\$?([\d,]+(?:\.\d+)?)/,
+    // "risk no more than $250", "risking $250", "lose at most $250"
+    /(?:risk(?:ing)?|lose)\s+(?:no\s+more\s+than\s+|at\s+most\s+)?\$([\d,]+(?:\.\d+)?)/,
   ];
   for (const re of patterns) {
     const m = lower.match(re);
@@ -412,7 +416,19 @@ export function normalizeTradeGoal(question: string, tickers: string[] = []): Tr
   const lower = String(question ?? "").toLowerCase();
   const goal: TradeGoal = {};
 
-  if (tickers[0]) goal.symbol = tickers[0].toUpperCase();
+  // Defense in depth: even if a caller passes an unvalidated token, never let
+  // reserved request-grammar words (UNDER/MAX/LOSS/…) become a symbol — UNLESS
+  // the user used explicit ticker syntax ("$ALL", "ticker ON"), which mirrors
+  // extraction tier 1 so the two layers can never disagree. A market-wide
+  // request keeps symbol undefined — never "" or a placeholder.
+  const rawSym = tickers[0] ? String(tickers[0]).toUpperCase() : undefined;
+  if (
+    rawSym &&
+    /^[A-Z]{1,5}$/.test(rawSym) &&
+    (!isReservedTickerWord(rawSym) || hasExplicitSymbolContext(question, rawSym))
+  ) {
+    goal.symbol = rawSym;
+  }
 
   for (const [re, strat] of STRATEGY_ALIASES) {
     if (re.test(lower)) {

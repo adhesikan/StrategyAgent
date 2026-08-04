@@ -119,6 +119,46 @@ describe("normalizeTradeGoal — centralized alias parsing", () => {
 // MCP argument mapping (model-safe only)
 // ---------------------------------------------------------------------------
 
+describe("market-wide goals never carry false symbols (false-ticker spec)", () => {
+  it('1+13. "Find a trade under $500 max loss" → no symbol, maxRiskDollars 500', () => {
+    const g = normalizeTradeGoal("Find a trade under $500 max loss", []);
+    expect(g.symbol).toBeUndefined();
+    expect(g.maxRiskDollars).toBe(500);
+    const args = tradeGoalToMcpArgs(g);
+    expect(args.symbol).toBeUndefined();
+    expect("symbol" in args).toBe(false);
+    expect(args.maxRiskDollars).toBe(500);
+  });
+  it('2. "Find a stock trade under $300 risk" → no symbol, maxRiskDollars 300', () => {
+    const g = normalizeTradeGoal("Find a stock trade under $300 risk", []);
+    expect(g.symbol).toBeUndefined();
+    expect(g.maxRiskDollars).toBe(300);
+  });
+  it("constraint phrasings parse risk budget", () => {
+    expect(normalizeTradeGoal("maximum loss of $1,000").maxRiskDollars).toBe(1000);
+    expect(normalizeTradeGoal("risk no more than $250").maxRiskDollars).toBe(250);
+    expect(normalizeTradeGoal("within a $500 budget").maxRiskDollars).toBe(500);
+  });
+  it("defense in depth: reserved tokens passed as tickers are rejected, never empty-string", () => {
+    for (const bad of ["UNDER", "MAX", "LOSS", "TRADE"]) {
+      const g = normalizeTradeGoal(`Find a trade under $500 max loss`, [bad]);
+      expect(g.symbol).toBeUndefined();
+    }
+    expect(normalizeTradeGoal("Find a trade", [""]).symbol).toBeUndefined();
+    expect(normalizeTradeGoal("$META under $500 risk", ["META"])).toMatchObject({ symbol: "META", maxRiskDollars: 500 });
+  });
+  it("explicit ticker syntax keeps reserved-colliding symbols end-to-end", () => {
+    // extractor tier 1 accepts "ticker ON"/"$ALL"; normalization must agree.
+    const g1 = normalizeTradeGoal("Find a trade for ticker ON", ["ON"]);
+    expect(g1.symbol).toBe("ON");
+    expect(tradeGoalToMcpArgs(g1).symbol).toBe("ON");
+    const g2 = normalizeTradeGoal("recommend a trade on $ALL", ["ALL"]);
+    expect(g2.symbol).toBe("ALL");
+    // Same word WITHOUT explicit syntax stays rejected.
+    expect(normalizeTradeGoal("find a trade for all accounts", ["ALL"]).symbol).toBeUndefined();
+  });
+});
+
 describe("tradeGoalToMcpArgs", () => {
   it("resolves generic credit_spread by direction", () => {
     expect(tradeGoalToMcpArgs({ requestedStrategy: "credit_spread", direction: "bearish" }).requestedStrategy).toBe("bear_call_credit_spread");

@@ -540,54 +540,9 @@ const askSchema = z.object({
   question: z.string().trim().min(1).max(500),
 });
 
-const COMMON_WORDS = new Set([
-  "I", "A", "AN", "IS", "IT", "TO", "OF", "IN", "ON", "AT", "BY", "DO", "MY", "ME",
-  "WHY", "HOW", "WHAT", "WHEN", "WHERE", "WHO", "CAN", "SHOULD", "WILL", "WOULD",
-  "THE", "AND", "OR", "FOR", "WITH", "FROM", "THIS", "THAT", "BUY", "SELL", "PUT",
-  "CALL", "STOCK", "STOCKS", "TRADE", "TRADES", "PRICE", "MARKET", "OPTION", "OPTIONS",
-  "SHOW", "FIND", "GIVE", "TELL", "MAKE", "GET", "USE", "TODAY", "NOW", "BEST",
-  "GOOD", "BAD", "UP", "DOWN", "OUT", "RUN", "DAY", "ALL", "ANY", "BE", "ARE",
-  "MOVING", "GROW", "INCOME", "RISK", "PRO", "PLAN", "AI",
-]);
-
-const TICKER_PATTERN = /\b([A-Z]{1,5})\b/g;
-
-function extractTickers(text: string, max = 3): string[] {
-  const found = new Set<string>();
-
-  // 1) Explicit $ticker syntax in any case wins (most unambiguous).
-  const dollar = text.match(/\$([A-Za-z]{1,5})\b/g) ?? [];
-  for (const d of dollar) {
-    const sym = d.replace("$", "").toUpperCase();
-    if (!COMMON_WORDS.has(sym)) {
-      found.add(sym);
-      if (found.size >= max) return Array.from(found);
-    }
-  }
-
-  // 2) Uppercase tokens (NVDA, AAPL).
-  const upper = text.match(TICKER_PATTERN) ?? [];
-  for (const t of upper) {
-    if (!COMMON_WORDS.has(t) && t.length >= 1 && t.length <= 5) {
-      found.add(t);
-      if (found.size >= max) return Array.from(found);
-    }
-  }
-
-  // 3) Case-insensitive fallback: tokenize, uppercase short alpha words,
-  //    and treat them as candidate tickers (minus common words). Catches
-  //    "why is nvda moving".
-  const tokens = text.split(/[^A-Za-z$]+/).filter(Boolean);
-  for (const tok of tokens) {
-    if (tok.length < 2 || tok.length > 5) continue;
-    const sym = tok.toUpperCase();
-    if (COMMON_WORDS.has(sym)) continue;
-    if (found.has(sym)) continue;
-    found.add(sym);
-    if (found.size >= max) break;
-  }
-  return Array.from(found);
-}
+// Ticker extraction is centralized (reserved-word denylist, constraint-phrase
+// stripping, explicit-context precedence) — see server/lib/ticker-extraction.ts.
+import { extractTickers } from "../lib/ticker-extraction";
 
 function classifyIntent(q: string): "best-trade" | "income" | "growth" | "news" | "trade-idea" | "general" {
   const lower = q.toLowerCase();

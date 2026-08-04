@@ -1,0 +1,294 @@
+Fix false ticker extraction in VCP Trader Ask AI recommendation and analysis routing.
+
+OBSERVED PRODUCTION BUG
+
+The user asked:
+
+"Find a trade under $500 max loss"
+
+The application extracted these ticker symbols:
+
+- UNDER
+- MAX
+- LOSS
+
+The UI displayed those tokens as ticker chips, and the AI narrative analyzed "the ticker UNDER" and "the ticker MAX."
+
+This is incorrect.
+
+The request contains no ticker. It is a market-wide recommendation request with:
+
+- maxRiskDollars: 500
+- numberOfIdeas: 1
+- no symbol constraint
+
+Do not modify MCP.
+Do not change recommendation algorithms.
+Do not change scanner algorithms.
+Do not commit or push automatically.
+
+==================================================
+1. TRACE TICKER EXTRACTION
+==================================================
+
+Inspect all ticker extraction paths used by:
+
+- Ask AI
+- strategy recommendation routing
+- multi-strategy analysis
+- opportunity search
+- ticket-builder routing
+- OpenAI context construction
+- frontend ticker badges
+
+Identify why uppercase-normalized words such as:
+
+UNDER
+MAX
+LOSS
+
+are accepted as symbols.
+
+Report the current extraction order and every call site before changing it.
+
+==================================================
+2. CENTRALIZE SAFE SYMBOL EXTRACTION
+==================================================
+
+Create or strengthen one centralized symbol extractor.
+
+A token must not be treated as a ticker merely because it:
+
+- contains 1–5 letters
+- becomes uppercase
+- follows words such as "for" or "under"
+
+Use deterministic context and exclusion rules.
+
+Create a reserved-language denylist that includes at minimum:
+
+A
+AN
+AND
+ARE
+AT
+BE
+BEST
+BUY
+CALL
+CASH
+CREDIT
+DAY
+DAYS
+DEFINED
+DOLLAR
+DOLLARS
+ETF
+FIND
+FOR
+FROM
+GIVE
+GROWTH
+IN
+INCOME
+INVEST
+LOSS
+LONG
+MAX
+MAXIMUM
+ME
+MIN
+MINIMUM
+MONTH
+MONTHS
+OPTION
+OPTIONS
+OR
+PUT
+RECOMMEND
+RISK
+SELL
+SETUP
+SHORT
+SPREAD
+STOCK
+STOCKS
+STOP
+STRATEGY
+THE
+TRADE
+TRADES
+TRADING
+UNDER
+USD
+WEEK
+WEEKS
+WITH
+
+Preserve legitimate ticker symbols that may collide with English words only when explicit ticker context exists.
+
+Examples of explicit context:
+
+- ticker BA
+- symbol ON
+- analyze MU
+- trade NVDA
+- $META
+- NASDAQ:AMD
+
+Do not blindly deny a valid ticker in explicit symbol context.
+
+==================================================
+3. CONTEXT-AWARE EXTRACTION
+==================================================
+
+Prioritize symbol extraction from:
+
+1. prefixed ticker syntax such as $NVDA
+2. explicit "ticker" or "symbol" language
+3. known analysis/trade grammar:
+   - Analyze NVDA
+   - Find a trade for META
+   - How does BA look?
+4. validated existing symbol lookup, if available
+
+For broad requests such as:
+
+- Find a trade under $500 max loss
+- Find an options trade
+- What should I trade today?
+- Find three bullish trades
+- Find an income opportunity
+
+return no symbol.
+
+Do not ask for a symbol when the recommendation engine supports market-wide searches.
+
+==================================================
+4. PARSING ORDER
+==================================================
+
+Parse constraints before symbol extraction where useful.
+
+For:
+
+"Find a trade under $500 max loss"
+
+recognize:
+
+- "under $500"
+- "max loss"
+- maxRiskDollars = 500
+
+Then exclude those consumed words from symbol consideration.
+
+Similarly handle:
+
+- under $300 risk
+- maximum loss of $1,000
+- risk no more than $250
+- within a $500 budget
+
+==================================================
+5. RESPONSE AND UI SAFETY
+==================================================
+
+When no valid symbol exists:
+
+- do not render ticker badges
+- do not add symbol-specific market context
+- do not ask OpenAI to analyze uppercase tokens
+- invoke recommend_trade_strategy as a market-wide request
+- let MCP select candidate symbols
+
+The narrative must never discuss a token as a company unless it came from a validated symbol field.
+
+==================================================
+6. DEFENSE IN DEPTH
+==================================================
+
+Before calling symbol-specific tools, validate the extracted symbol again.
+
+Reject known reserved-language tokens locally.
+
+When the request is market-wide, ensure:
+
+{
+  symbol: undefined,
+  maxRiskDollars: 500
+}
+
+is sent to recommend_trade_strategy.
+
+Do not convert an absent symbol into an empty string or an arbitrary token.
+
+==================================================
+7. REGRESSION TESTS
+==================================================
+
+Add tests for:
+
+1. "Find a trade under $500 max loss"
+   - no symbol
+   - maxRiskDollars = 500
+
+2. "Find a stock trade under $300 risk"
+   - no symbol
+   - maxRiskDollars = 300
+
+3. "Find three bullish trades"
+   - no symbol
+   - count = 3
+
+4. "What should I trade today?"
+   - no symbol
+
+5. "Find an income option"
+   - no symbol
+
+6. "Find a trade for NVDA"
+   - symbol = NVDA
+
+7. "Analyze BA"
+   - symbol = BA
+
+8. "Analyze ticker ON"
+   - symbol = ON despite English-word collision
+
+9. "$META under $500 risk"
+   - symbol = META
+   - maxRiskDollars = 500
+
+10. UNDER/MAX/LOSS never become ticker chips
+
+11. OpenAI context never receives false symbols
+
+12. no symbol-specific MCP tools are called for market-wide requests
+
+13. recommendation engine receives the correct market-wide goal
+
+14. existing valid ticker extraction remains unchanged
+
+15. opportunity-search count parsing remains unchanged
+
+Run:
+
+npm test
+npm run build
+
+Do not commit or push.
+
+At completion report:
+
+1. Root cause
+2. Files changed
+3. New extraction precedence
+4. Reserved-word handling
+5. Constraint parsing
+6. Call-site protections
+7. Tests/results
+8. Build result
+9. Manual UAT results for:
+   - Find a trade under $500 max loss
+   - Find a trade for NVDA
+   - Analyze BA

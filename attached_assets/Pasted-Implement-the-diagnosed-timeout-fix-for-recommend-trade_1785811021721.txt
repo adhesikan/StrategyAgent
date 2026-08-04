@@ -1,0 +1,191 @@
+Implement the diagnosed timeout fix for recommend_trade_strategy in the StrategyAgent/VCP Trader application.
+
+DIAGNOSIS
+
+The recommendation request path is correct:
+
+Ask AI
+→ recommendation classifier
+→ recommend_trade_strategy
+→ MCP client
+
+The deployed MCP advertises the tool, accepts the payload, and returns a valid response.
+
+The failure occurs because:
+
+- MCP_TIMEOUT_MS defaults to 10,000 ms
+- server/mcp/client.ts applies that timeout to every tool call
+- a cold recommend_trade_strategy request can exceed 10 seconds
+- both retries are aborted at approximately 10 seconds
+- the higher 25-second timeout in runStrategyRecommendation is ineffective because the lower MCP-client timeout fires first
+
+Do not increase the global timeout for all MCP tools.
+
+GOAL
+
+Add a longer timeout specifically for recommend_trade_strategy while preserving the existing 10-second default for fast tools.
+
+Do not change the MCP server.
+Do not change recommendation logic.
+Do not change response schemas.
+Do not change retry count globally.
+Do not add execution behavior.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. ADD PER-CALL TIMEOUT SUPPORT
+==================================================
+
+Inspect the existing McpToolsClient.callTool API and request options.
+
+Add or use a per-call option such as:
+
+{
+  timeoutMs?: number
+}
+
+The timeout precedence should be:
+
+1. explicit per-call timeout
+2. tool-specific configured timeout, if one already exists
+3. global MCP_TIMEOUT_MS default
+
+Do not duplicate timeout logic outside the MCP client.
+
+==================================================
+2. RECOMMENDATION-SPECIFIC TIMEOUT
+==================================================
+
+For recommend_trade_strategy only, use a longer timeout.
+
+Recommended starting value:
+
+30,000 ms
+
+Use a named constant or environment-backed setting such as:
+
+MCP_RECOMMENDATION_TIMEOUT_MS=30000
+
+If no environment variable is provided, default to 30 seconds.
+
+Do not raise the global MCP_TIMEOUT_MS from 10 seconds.
+
+==================================================
+3. TOTAL RETRY BUDGET
+==================================================
+
+Review the existing retry behavior.
+
+Avoid an uncontrolled total wait such as:
+
+30 seconds × multiple retries
+
+Preferred behavior:
+
+- one initial recommendation attempt with the recommendation-specific timeout
+- at most one retry only for reconnect/session errors where retry is already safe
+- preserve a bounded total request duration
+
+Document the worst-case total duration.
+
+Do not retry deterministic provider/rate-limit errors unnecessarily.
+
+==================================================
+4. OUTER TIMEOUT ALIGNMENT
+==================================================
+
+Ensure the outer recommendation orchestration timeout is longer than the MCP per-call timeout.
+
+For example:
+
+MCP tool timeout: 30 seconds
+outer recommendation timeout: 35 seconds
+
+There must not be a lower outer timeout that aborts first.
+
+Use one clear hierarchy rather than nested competing timers.
+
+==================================================
+5. ERROR SEMANTICS
+==================================================
+
+Preserve current failure handling:
+
+- timeout → recommendationFailed=true
+- deterministic unavailable response
+- no GPT-generated replacement trade
+- no legacy recommendation fallback
+- no Trade Builder or Top Picks
+
+Use the existing stable MCP_TIMEOUT error code.
+
+Do not expose internal URLs or stack traces to the user.
+
+==================================================
+6. OBSERVABILITY
+==================================================
+
+Add safe structured fields to the MCP call log where useful:
+
+- tool
+- timeoutMs
+- attempt
+- durationMs
+- success
+- safe error code
+
+Do not log tokens, opaque context, credentials, or complete sensitive payloads.
+
+==================================================
+7. TESTS
+==================================================
+
+Add tests for:
+
+1. ordinary MCP tools retain the 10-second global default
+2. recommend_trade_strategy receives the 30-second per-call timeout
+3. explicit per-call timeout overrides the default
+4. outer recommendation timeout exceeds the MCP call timeout
+5. a simulated 12-second recommendation succeeds
+6. a simulated request exceeding the recommendation timeout returns MCP_TIMEOUT
+7. recommendation timeout still produces recommendationFailed=true
+8. no legacy/GPT recommendation appears after timeout
+9. retry behavior remains bounded
+10. reconnect/session retry still works
+11. provider 429 is not mislabeled as client timeout
+12. existing MCP client and Ask AI tests remain green
+
+Use fake timers or injected clocks. Do not make the test suite wait 30 real seconds.
+
+==================================================
+8. VALIDATION
+==================================================
+
+Run:
+
+npm test
+npm run build
+
+Also run focused suites for:
+
+- MCP client
+- recommendation wrapper
+- Ask AI recommendation routing
+- recommendation failure handling
+
+Do not commit or push.
+
+At completion report:
+
+1. Files changed
+2. Timeout precedence
+3. Recommendation-specific timeout
+4. Outer timeout
+5. Retry budget
+6. Logging changes
+7. Tests/results
+8. Build result
+9. Required environment variable, if any
+10. Manual UAT instructions
+
+Wait for my review.

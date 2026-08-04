@@ -6,7 +6,11 @@
 //                               (public Railway URL or private-network host)
 //   MCP_SERVICE_TOKEN=...       bearer token — NEVER exposed to the client,
 //                               NEVER logged, NEVER returned through an API
-//   MCP_TIMEOUT_MS=10000        per-request timeout
+//   MCP_TIMEOUT_MS=10000        per-request timeout (fast tools)
+//   MCP_RECOMMENDATION_TIMEOUT_MS=30000
+//                               per-call timeout for recommend_trade_strategy
+//                               only — a cold run evaluates ~12 strategies and
+//                               can exceed the 10s fast-tool default
 //
 // This module is imported only from server code. Do not import from client/.
 
@@ -17,6 +21,8 @@ export interface McpConfig {
   endpointUrl: string;
   token: string;
   timeoutMs: number;
+  /** Longer per-call timeout for recommend_trade_strategy only. */
+  recommendationTimeoutMs: number;
 }
 
 export class McpConfigError extends Error {
@@ -41,6 +47,7 @@ export function getMcpConfig(): McpConfig | null {
   const baseUrl = (process.env.MCP_BASE_URL ?? "").trim().replace(/\/+$/, "");
   const token = (process.env.MCP_SERVICE_TOKEN ?? "").trim();
   const timeoutMs = Number.parseInt(process.env.MCP_TIMEOUT_MS ?? "", 10);
+  const recommendationTimeoutMs = Number.parseInt(process.env.MCP_RECOMMENDATION_TIMEOUT_MS ?? "", 10);
 
   if (!baseUrl) {
     throw new McpConfigError("MCP_ENABLED is true but MCP_BASE_URL is not set.");
@@ -58,5 +65,9 @@ export function getMcpConfig(): McpConfig | null {
     endpointUrl: `${baseUrl}/mcp`,
     token,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10_000,
+    recommendationTimeoutMs:
+      Number.isFinite(recommendationTimeoutMs) && recommendationTimeoutMs > 0
+        ? recommendationTimeoutMs
+        : 30_000,
   };
 }

@@ -249,3 +249,154 @@ describe("client lifecycle (mocked SDK)", () => {
     expect(logs.join("\n")).not.toMatch(/authorization/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Per-call timeouts (recommend_trade_strategy timeout fix)
+// ---------------------------------------------------------------------------
+
+describe("per-call timeouts", () => {
+  function enableMcpEnv() {
+    process.env.MCP_ENABLED = "true";
+    process.env.MCP_BASE_URL = "https://mcp.example.com";
+    process.env.MCP_SERVICE_TOKEN = "test-token";
+  }
+
+  function mockSdkCapturingTimeout(behavior?: { callError?: Error; callErrors?: Error[] }) {
+    const seenTimeouts: (number | undefined)[] = [];
+    let i = 0;
+    const inst = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      listTools: vi.fn().mockResolvedValue({ tools: [] }),
+      callTool: vi.fn().mockImplementation((_req: any, _schema: any, opts: any) => {
+        seenTimeouts.push(opts?.timeout);
+        const err = behavior?.callErrors ? behavior.callErrors[i++] : behavior?.callError;
+        if (err) return Promise.reject(err);
+        return Promise.resolve({ content: [{ type: "text", text: "{}" }] });
+      }),
+      onclose: undefined,
+    };
+    vi.doMock("@modelcontextprotocol/sdk/client/index.js", () => ({
+      Client: function MockClient() { return inst; },
+    }));
+    vi.doMock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
+      StreamableHTTPClientTransport: function MockTransport() {},
+    }));
+    return { inst, seenTimeouts };
+  }
+
+  it("config: recommendation timeout defaults to 30s and is env-overridable; global stays 10s", async () => {
+    enableMcpEnv();
+    const { getMcpConfig } = await import("./config");
+    const cfg = getMcpConfig()!;
+    expect(cfg.timeoutMs).toBe(10_000);
+    expect(cfg.recommendationTimeoutMs).toBe(30_000);
+    process.env.MCP_RECOMMENDATION_TIMEOUT_MS = "45000";
+    vi.resetModules();
+    const { getMcpConfig: fresh } = await import("./config");
+    expect(fresh()!.recommendationTimeoutMs).toBe(45_000);
+    delete process.env.MCP_RECOMMENDATION_TIMEOUT_MS;
+  });
+
+  it("ordinary tools keep the 10s global default", async () => {
+    enableMcpEnv();
+    const { seenTimeouts } = mockSdkCapturingTimeout();
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    await c.callTool("get_quote", { symbol: "MU" });
+    expect(seenTimeouts).toEqual([10_000]);
+  });
+
+  it("explicit per-call timeout overrides the default", async () => {
+    enableMcpEnv();
+    const { seenTimeouts } = mockSdkCapturingTimeout();
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    await c.callTool("recommend_trade_strategy", { symbol: "META" }, { timeoutMs: 30_000 });
+    expect(seenTimeouts).toEqual([30_000]);
+  });
+
+  it("recommendTradeStrategy wrapper passes the 30s recommendation timeout and retryOnTimeout=false", async () => {
+    enableMcpEnv();
+    const callTool = vi.fn().mockResolvedValue({ recommendations: [] });
+    vi.doMock("./client", () => ({ mcpClient: { callTool } }));
+    const tools = await import("./tools");
+    await tools.recommendTradeStrategy({ symbol: "META" });
+    expect(callTool).toHaveBeenCalledWith(
+      "recommend_trade_strategy",
+      { symbol: "META" },
+      { timeoutMs: 30_000, retryOnTimeout: false },
+    );
+  });
+
+  it("timeout with retryOnTimeout=false is NOT retried — exactly one attempt, MCP_TIMEOUT surfaces", async () => {
+    enableMcpEnv();
+    const { inst } = mockSdkCapturingTimeout({ callError: new Error("Request timed out after 30000ms") });
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    await expect(
+      c.callTool("recommend_trade_strategy", { symbol: "META" }, { timeoutMs: 30_000, retryOnTimeout: false }),
+    ).rejects.toMatchObject({ code: "MCP_TIMEOUT" });
+    expect(inst.callTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("timeout on fast tools (default retryOnTimeout) still retries once, bounded at 2 attempts", async () => {
+    enableMcpEnv();
+    const { inst } = mockSdkCapturingTimeout({ callError: new Error("Request timed out after 10000ms") });
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    await expect(c.callTool("get_quote", { symbol: "MU" })).rejects.toMatchObject({ code: "MCP_TIMEOUT" });
+    expect(inst.callTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("session errors still get the bounded reconnect retry even with retryOnTimeout=false", async () => {
+    enableMcpEnv();
+    const { inst } = mockSdkCapturingTimeout({
+      callErrors: [new Error("fetch failed: socket hang up")],
+    });
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    const result = await c.callTool("recommend_trade_strategy", { symbol: "META" }, { timeoutMs: 30_000, retryOnTimeout: false });
+    expect(result).toEqual({});
+    expect(inst.callTool).toHaveBeenCalledTimes(2);
+    expect(c.getStats().reconnects).toBe(1);
+  });
+
+  it("provider 429 tool errors are MCP_TOOL_ERROR, never mislabeled as client timeout", async () => {
+    enableMcpEnv();
+    const inst429 = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      listTools: vi.fn().mockResolvedValue({ tools: [] }),
+      callTool: vi.fn().mockResolvedValue({
+        isError: true,
+        content: [{ type: "text", text: "Upstream provider request failed (vcp:history, HTTP 429)." }],
+      }),
+      onclose: undefined,
+    };
+    vi.doMock("@modelcontextprotocol/sdk/client/index.js", () => ({ Client: function () { return inst429; } }));
+    vi.doMock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({ StreamableHTTPClientTransport: function () {} }));
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    await expect(c.callTool("recommend_trade_strategy", { symbol: "META" }, { timeoutMs: 30_000, retryOnTimeout: false }))
+      .rejects.toMatchObject({ code: "MCP_TOOL_ERROR" });
+    expect(inst429.callTool).toHaveBeenCalledTimes(1); // deterministic error — no retry
+  });
+
+  it("call logs include tool, timeoutMs, attempt, durationMs, success, code — never the token", async () => {
+    enableMcpEnv();
+    const logs: string[] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...a) => logs.push(a.join(" ")));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...a) => logs.push(a.join(" ")));
+    mockSdkCapturingTimeout({ callError: new Error("Request timed out after 30000ms") });
+    const { McpToolsClient } = await import("./client");
+    const c = new McpToolsClient();
+    await c.callTool("recommend_trade_strategy", {}, { timeoutMs: 30_000, retryOnTimeout: false }).catch(() => {});
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    const line = logs.map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((o) => o?.event === "mcp_tool_call");
+    expect(line).toMatchObject({ tool: "recommend_trade_strategy", timeoutMs: 30_000, attempt: 1, success: false, code: "MCP_TIMEOUT" });
+    expect(typeof line.durationMs).toBe("number");
+    expect(logs.join("\n")).not.toContain("test-token");
+  });
+});

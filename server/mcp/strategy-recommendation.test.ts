@@ -4,7 +4,7 @@
 // CTA gating. Spec: routing must never turn analysis or education asks into
 // recommendations, and a failed engine must never yield an invented trade.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   classifyTradeRequest,
   normalizeTradeGoal,
@@ -439,6 +439,79 @@ describe("deriveRecommendationEvidence — deterministic transparency payload", 
     expect(rec.simulatedData).toBe(false);
     expect(rec.recommendationEvidence?.summary.ideasActionable).toBe(1);
     expect(rec.recommendationEvidence?.confidence.level).toBe("HIGH");
+  });
+});
+
+describe("outer recommendation timeout — hierarchy above connect (10s) + MCP call (30s)", () => {
+  it("a slow 12s recommendation succeeds under the 45s outer default (fake timers)", async () => {
+    vi.useFakeTimers();
+    try {
+      const p = runStrategyRecommendation(
+        { symbol: "META" } as any,
+        { recommend: () => new Promise((res) => setTimeout(() => res({ recommendations: [goodIdea] }), 12_000)) },
+      );
+      await vi.advanceTimersByTimeAsync(12_000);
+      const rec = await p;
+      expect(rec.recommendations[0].overallVerdict).toBe("STOCK");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("outer timeout (45s default) only fires ABOVE the cold worst case: 10s connect + 30s call", async () => {
+    vi.useFakeTimers();
+    try {
+      const p = runStrategyRecommendation(
+        { symbol: "META" } as any,
+        { recommend: () => new Promise(() => {}) }, // never resolves
+      );
+      const settled = p.catch((e) => e);
+      // At 40s (10s cold connect + 30s MCP call — the client's own worst case)
+      // the outer timer must NOT have fired: the client-level MCP_TIMEOUT owns
+      // every real timeout inside that window.
+      await vi.advanceTimersByTimeAsync(40_001);
+      let done = false;
+      void p.then(() => { done = true; }, () => { done = true; });
+      await Promise.resolve();
+      expect(done).toBe(false);
+      // At 45s the outer safety net fires with a TIMEOUT code.
+      await vi.advanceTimersByTimeAsync(5_000);
+      const err: any = await settled;
+      expect(err.code).toBe("TIMEOUT");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cold-start worst case: 8s connect + 25s call (33s total) still succeeds — client timeout wins over outer", async () => {
+    vi.useFakeTimers();
+    try {
+      // Simulates the client-side sequence runStrategyRecommendation actually
+      // awaits: connect delay THEN tool-call delay, all inside deps.recommend.
+      const p = runStrategyRecommendation(
+        { symbol: "META" } as any,
+        {
+          recommend: async () => {
+            await new Promise((res) => setTimeout(res, 8_000)); // cold connect
+            await new Promise((res) => setTimeout(res, 25_000)); // slow tool call
+            return { recommendations: [goodIdea] };
+          },
+        },
+      );
+      await vi.advanceTimersByTimeAsync(33_000);
+      const rec = await p;
+      expect(rec.recommendations[0].overallVerdict).toBe("STOCK");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an MCP_TIMEOUT from the client propagates unchanged (stable code for recommendationFailed handling)", async () => {
+    const err: any = new Error("Live market data timed out. Please try again shortly.");
+    err.code = "MCP_TIMEOUT";
+    await expect(
+      runStrategyRecommendation({ symbol: "META" } as any, { recommend: () => Promise.reject(err) }),
+    ).rejects.toMatchObject({ code: "MCP_TIMEOUT" });
   });
 });
 

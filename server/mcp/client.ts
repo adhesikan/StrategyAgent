@@ -128,9 +128,21 @@ export class McpToolsClient {
   /**
    * Call a tool by name. NOTE: allowlist enforcement lives in tools.ts —
    * always go through callAllowedTool / the typed wrappers from app code.
+   *
+   * Per-call timeout precedence: opts.timeoutMs → global MCP_TIMEOUT_MS
+   * default (10s). Slow tools (recommend_trade_strategy) pass a longer
+   * per-call timeout AND retryOnTimeout=false so the total wait stays
+   * bounded — a deterministic slow computation won't get faster by retrying.
    */
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    opts?: { timeoutMs?: number; retryOnTimeout?: boolean },
+  ): Promise<unknown> {
     const cfg = this.getConfigOrThrow();
+    const timeoutMs =
+      typeof opts?.timeoutMs === "number" && opts.timeoutMs > 0 ? opts.timeoutMs : cfg.timeoutMs;
+    const retryOnTimeout = opts?.retryOnTimeout !== false;
     let lastError: McpError | null = null;
 
     for (let attempt = 1; attempt <= MAX_CALL_ATTEMPTS; attempt++) {
@@ -138,10 +150,10 @@ export class McpToolsClient {
       try {
         const client = await this.ensureClient();
         const result = await client.callTool({ name, arguments: args }, undefined, {
-          timeout: cfg.timeoutMs,
+          timeout: timeoutMs,
         });
         this.stats.calls++;
-        console.log(JSON.stringify({ event: "mcp_tool_call", tool: name, durationMs: Date.now() - started, success: !result.isError }));
+        console.log(JSON.stringify({ event: "mcp_tool_call", tool: name, timeoutMs, attempt, durationMs: Date.now() - started, success: !result.isError }));
         if (result.isError) {
           const text = extractText(result.content);
           throw new McpError("MCP_TOOL_ERROR", text || "Market data is temporarily unavailable.", name);
@@ -161,9 +173,12 @@ export class McpToolsClient {
       } catch (err) {
         this.stats.failures++;
         lastError = normalizeMcpError(err, name);
-        console.warn(JSON.stringify({ event: "mcp_tool_call", tool: name, durationMs: Date.now() - started, success: false, code: lastError.code }));
+        console.warn(JSON.stringify({ event: "mcp_tool_call", tool: name, timeoutMs, attempt, durationMs: Date.now() - started, success: false, code: lastError.code }));
         // Config/disabled/auth/tool errors won't be fixed by reconnecting.
-        const retryable = lastError.code === "MCP_UNAVAILABLE" || lastError.code === "MCP_TIMEOUT";
+        // Timeout retries are opt-out (retryOnTimeout=false) for slow tools.
+        const retryable =
+          lastError.code === "MCP_UNAVAILABLE" ||
+          (lastError.code === "MCP_TIMEOUT" && retryOnTimeout);
         if (!retryable || attempt === MAX_CALL_ATTEMPTS) throw lastError;
         // Drop the (likely dead) session and retry once with a fresh one.
         await this.resetSession();

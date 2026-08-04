@@ -607,7 +607,12 @@ export async function runStrategyRecommendation(
   deps: StrategyRecommendationDeps,
 ): Promise<StrategyRecommendation> {
   const args = tradeGoalToMcpArgs(goal, deps.optionsContextToken);
-  const raw = scrubUntrusted(await withTimeout(deps.recommend(args), deps.timeoutMs ?? 25_000));
+  // Outer safety net only — MUST budget for the full client-side worst case
+  // so the MCP client timeout (stable MCP_TIMEOUT code) always fires first:
+  // up to ~10s cold connect (global MCP_TIMEOUT_MS) + 30s recommendation call
+  // (MCP_RECOMMENDATION_TIMEOUT_MS) + margin ⇒ 45s outer default.
+  // Hierarchy: connect ≤10s → MCP call ≤30s → outer 45s.
+  const raw = scrubUntrusted(await withTimeout(deps.recommend(args), deps.timeoutMs ?? 45_000));
   const validated = validateRecommendationPayload(raw);
   if (validated.recommendations.length === 0) {
     const err: any = new Error("Recommendation payload contained no recommendations");

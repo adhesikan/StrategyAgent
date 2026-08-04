@@ -12,6 +12,7 @@
 //     typed wrapper exists for backend use once account scoping is verified.
 
 import { mcpClient } from "./client";
+import { getMcpConfig } from "./config";
 import { McpError } from "./errors";
 
 /** Tools VCP Trader is allowed to call at all. */
@@ -71,11 +72,17 @@ export function isAiTool(name: string): name is McpAiTool {
 }
 
 /** Allowlist gate. Rejects any tool not explicitly approved. */
-export async function callAllowedTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+export async function callAllowedTool(
+  name: string,
+  args: Record<string, unknown>,
+  opts?: { timeoutMs?: number; retryOnTimeout?: boolean },
+): Promise<unknown> {
   if (!isAllowedTool(name)) {
     throw new McpError("MCP_TOOL_NOT_ALLOWED", `Tool "${name}" is not allowed.`, name);
   }
-  return mcpClient.callTool(name, args);
+  // Keep the 2-arg call shape for fast tools (no opts) so existing behavior
+  // and call sites are unchanged; only slow tools pass per-call options.
+  return opts ? mcpClient.callTool(name, args, opts) : mcpClient.callTool(name, args);
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +358,18 @@ export async function recommendTradeStrategy(a: RecommendTradeStrategyArgs): Pro
   if (typeof a.accountSize === "number" && a.accountSize > 0) args.accountSize = a.accountSize;
   if (typeof a.numberOfIdeas === "number") args.numberOfIdeas = Math.max(1, Math.min(10, Math.floor(a.numberOfIdeas)));
   if (a.optionsContextToken) args.optionsContextToken = a.optionsContextToken;
-  return callAllowedTool("recommend_trade_strategy", args);
+  // Slow tool: cold runs evaluate ~12 strategies and can exceed the 10s
+  // fast-tool default. Use the recommendation-specific timeout (default 30s,
+  // MCP_RECOMMENDATION_TIMEOUT_MS) and never retry a pure timeout — the
+  // computation is deterministic, so a retry would just double the wait.
+  // Worst-case total: one MCP_UNAVAILABLE (fails fast) + one full attempt
+  // ≈ recommendation timeout + connect overhead, always under the 35s outer
+  // orchestration timeout in runStrategyRecommendation.
+  const cfg = getMcpConfig();
+  return callAllowedTool("recommend_trade_strategy", args, {
+    timeoutMs: cfg?.recommendationTimeoutMs ?? 30_000,
+    retryOnTimeout: false,
+  });
 }
 
 export async function getMarketRegime(): Promise<unknown> {

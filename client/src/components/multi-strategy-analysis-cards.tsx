@@ -11,12 +11,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, Layers } from "lucide-react";
 import {
   isRenderableMultiStrategyAnalysis,
+  MSA_SUPPORT_GROUP_LABELS,
   MSA_VERDICT_LABELS,
+  msaCandidateCheckLabel,
   msaFmtPrice,
   msaFreshLabel,
+  msaIsIntraday,
   msaStatusLabel,
   msaStrategyName,
+  msaSupportGroup,
   type MsaSetupEntry,
+  type MsaSupportGroup,
   type MultiStrategyAnalysis,
 } from "@/lib/multi-strategy-analysis";
 
@@ -27,28 +32,36 @@ const VERDICT_TONE: Record<string, string> = {
   INSUFFICIENT_DATA: "border-muted text-muted-foreground bg-muted/20",
 };
 
-function candidateVerdictLabel(entry: MsaSetupEntry): string | null {
-  const v = entry.candidate?.verdict;
-  if (!v) return entry.candidate === null ? "Candidate check unavailable" : null;
-  const u = String(v).toUpperCase();
-  if (u === "NO_TRADE") return "No qualified trade";
-  if (u === "STOCK") return "Qualified: stock trade";
-  if (u === "LIVE_OPTIONS") return "Qualified: live options";
-  if (u === "ESTIMATED_OPTIONS") return "Qualified: options (estimated)";
-  return u;
-}
+const CANDIDATE_TONE: Record<string, string> = {
+  QUALIFIED: "text-emerald-300",
+  NO_TRADE: "text-amber-300",
+  WATCH: "text-sky-300",
+  UNAVAILABLE: "text-muted-foreground",
+};
+
+const SUPPORT_GROUP_ORDER: MsaSupportGroup[] = ["confirming", "forming", "rejected", "unavailable"];
 
 function SupportingRow({ entry }: { entry: MsaSetupEntry }) {
   const s = entry.setup;
-  const verdict = candidateVerdictLabel(entry);
-  const reason = (s.reasons ?? [])[0] ?? null;
+  const checkLabel = msaCandidateCheckLabel(entry);
+  const reason = entry.candidateCheck?.reason ?? (s.reasons ?? [])[0] ?? null;
+  const intraday = msaIsIntraday(s);
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-testid={`row-msa-supporting-${s.strategy}`}>
       <span className="font-medium">{msaStrategyName(s)}</span>
       <span className="text-muted-foreground">— {msaStatusLabel(s.status)}</span>
+      {intraday && (
+        <Badge variant="outline" className="text-[9px] px-1 py-0" data-testid={`badge-msa-timeframe-${s.strategy}`}>
+          {String(s.timeframe)} · intraday
+        </Badge>
+      )}
       {typeof s.score === "number" && <span className="text-muted-foreground">· score {Math.round(s.score)}</span>}
-      {verdict && <span className="text-muted-foreground">· {verdict}</span>}
-      {reason && <span className="text-muted-foreground/80 basis-full">{reason}</span>}
+      {checkLabel && (
+        <span className={CANDIDATE_TONE[entry.candidateCheck?.status ?? "UNAVAILABLE"] ?? "text-muted-foreground"}>
+          · {checkLabel}
+        </span>
+      )}
+      {!checkLabel && reason && <span className="text-muted-foreground/80 basis-full">{reason}</span>}
     </div>
   );
 }
@@ -114,11 +127,26 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                   <div><span className="text-muted-foreground">Objective:</span> {msaFmtPrice(ps.technicalObjective?.price)}</div>
                 )}
               </div>
-              {candidateVerdictLabel(p) && (
+              {msaCandidateCheckLabel(p) && (
                 <div className="text-xs" data-testid="text-msa-candidate-verdict">
-                  <span className="text-muted-foreground">Candidate check:</span> {candidateVerdictLabel(p)}
+                  <span className="text-muted-foreground">Candidate check:</span>{" "}
+                  <span className={CANDIDATE_TONE[p.candidateCheck?.status ?? "UNAVAILABLE"] ?? ""}>
+                    {msaCandidateCheckLabel(p)}
+                  </span>
                 </div>
               )}
+              {(a.overallVerdict === "WATCH" || a.overallVerdict === "NO_TRADE") &&
+                (p.candidateCheck?.reason || (p.candidateCheck?.warnings ?? []).length > 0) && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 space-y-1" data-testid="section-msa-not-actionable">
+                    <div className="text-xs font-medium text-amber-300">Why it's not actionable</div>
+                    <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+                      {p.candidateCheck?.reason && <li>{p.candidateCheck.reason}</li>}
+                      {(p.candidateCheck?.warnings ?? []).slice(0, 3).map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               {p.selectionReasons.length > 0 && (
                 <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5" data-testid="list-msa-selection-reasons">
                   {p.selectionReasons.slice(0, 5).map((r, i) => (
@@ -133,11 +161,22 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
           )}
 
           {a.supportingSetups.length > 0 && (
-            <div className="space-y-1.5" data-testid="list-msa-supporting">
+            <div className="space-y-2" data-testid="list-msa-supporting">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Supporting evidence</div>
-              {a.supportingSetups.map((e, i) => (
-                <SupportingRow key={`${e.setup.strategy}-${i}`} entry={e} />
-              ))}
+              {SUPPORT_GROUP_ORDER.map((group) => {
+                const items = a.supportingSetups.filter((e) => msaSupportGroup(e) === group);
+                if (items.length === 0) return null;
+                return (
+                  <div key={group} className="space-y-1" data-testid={`group-msa-supporting-${group}`}>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                      {MSA_SUPPORT_GROUP_LABELS[group]}
+                    </div>
+                    {items.map((e, i) => (
+                      <SupportingRow key={`${e.setup.strategy}-${i}`} entry={e} />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
 

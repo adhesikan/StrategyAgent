@@ -157,9 +157,24 @@ export function classifyAnalysisIntent(question: string, registry: StrategyMeta[
 
 export type OverallVerdict = "TRADE_CANDIDATE" | "WATCH" | "NO_TRADE" | "INSUFFICIENT_DATA";
 
+/**
+ * Structured candidate-qualification result derived server-side from the raw
+ * MCP build_trade_candidate response. Additive — the raw `candidate` is kept
+ * for backward compatibility. Absent entirely when the entry was never
+ * evaluated (beyond the bounded candidate-build cap).
+ */
+export interface CandidateCheck {
+  status: "QUALIFIED" | "WATCH" | "NO_TRADE" | "UNAVAILABLE";
+  verdict?: string | null;
+  reason?: string | null;
+  warnings?: string[];
+  riskSummary?: Record<string, unknown> | null;
+}
+
 export interface MultiStrategySetupEntry {
   setup: McpSetup;
   candidate?: McpCandidate | null;
+  candidateCheck?: CandidateCheck;
 }
 
 export interface MultiStrategyAnalysis {
@@ -288,6 +303,46 @@ function candidateVerdict(c: McpCandidate | null | undefined): string | null {
 
 function isQualifiedVerdict(v: string | null): v is QualifiedVerdict {
   return v === "STOCK" || v === "LIVE_OPTIONS" || v === "ESTIMATED_OPTIONS";
+}
+
+/**
+ * Derives the structured candidateCheck from a raw candidate result.
+ * - `undefined` (never evaluated — beyond the bounded cap) → undefined
+ * - `null` (build failed/timed out/unparseable) → UNAVAILABLE
+ * - qualified verdict → QUALIFIED; NO_TRADE → NO_TRADE with the MCP-supplied
+ *   rejection reason; any other verdict → WATCH.
+ * Never fabricates a reason — only relays MCP-supplied text.
+ */
+export function deriveCandidateCheck(c: McpCandidate | null | undefined): CandidateCheck | undefined {
+  if (c === undefined) return undefined;
+  if (c === null) {
+    return { status: "UNAVAILABLE", verdict: null, reason: "Candidate qualification unavailable" };
+  }
+  const v = candidateVerdict(c);
+  const raw = c as Record<string, unknown>;
+  const reasons = [
+    ...(Array.isArray(c.noTradeReasons) ? c.noTradeReasons : []),
+    ...(Array.isArray(raw.reasons) ? (raw.reasons as unknown[]) : []),
+  ]
+    .map((r) => String(r))
+    .filter(Boolean);
+  const warnings = (Array.isArray(raw.warnings) ? (raw.warnings as unknown[]) : [])
+    .map((w) => String(w))
+    .filter(Boolean)
+    .slice(0, 5);
+  const riskSummary =
+    raw.risk && typeof raw.risk === "object" ? (raw.risk as Record<string, unknown>) : null;
+  const base: CandidateCheck = {
+    status: "WATCH",
+    verdict: v,
+    reason: reasons[0] ?? null,
+    ...(warnings.length ? { warnings } : {}),
+    riskSummary,
+  };
+  if (isQualifiedVerdict(v)) return { ...base, status: "QUALIFIED" };
+  if (v === "NO_TRADE") return { ...base, status: "NO_TRADE" };
+  if (!v) return { ...base, status: "UNAVAILABLE", reason: base.reason ?? "Candidate qualification unavailable" };
+  return base;
 }
 
 function statusRank(status: string | null | undefined): number {
@@ -463,10 +518,11 @@ export async function runMultiStrategyAnalysis(
     }
   });
 
-  const entries: MultiStrategySetupEntry[] = ordered.map(({ setup }, i) => ({
-    setup,
-    candidate: i < built.length ? built[i] : undefined,
-  }));
+  const entries: MultiStrategySetupEntry[] = ordered.map(({ setup }, i) => {
+    const candidate = i < built.length ? built[i] : undefined;
+    const candidateCheck = deriveCandidateCheck(candidate);
+    return { setup, candidate, ...(candidateCheck ? { candidateCheck } : {}) };
+  });
 
   // Candidate qualification can promote a supporting setup to primary (§3.8f):
   // a qualified candidate outranks an unqualified one at equal deterministic rank.

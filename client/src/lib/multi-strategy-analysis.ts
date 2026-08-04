@@ -32,9 +32,18 @@ export interface MsaCandidate {
   marketRegime?: { regime?: string } | null;
 }
 
+export interface MsaCandidateCheck {
+  status: "QUALIFIED" | "WATCH" | "NO_TRADE" | "UNAVAILABLE";
+  verdict?: string | null;
+  reason?: string | null;
+  warnings?: string[];
+  riskSummary?: Record<string, unknown> | null;
+}
+
 export interface MsaSetupEntry {
   setup: MsaSetup;
   candidate?: MsaCandidate | null;
+  candidateCheck?: MsaCandidateCheck;
 }
 
 export type MsaVerdict = "TRADE_CANDIDATE" | "WATCH" | "NO_TRADE" | "INSUFFICIENT_DATA";
@@ -101,4 +110,61 @@ export function msaStatusLabel(status: string | null | undefined): string {
 
 export function msaFreshLabel(fresh: boolean | null): string {
   return fresh === true ? "Fresh" : fresh === false ? "Stale" : "Unknown";
+}
+
+/**
+ * Candidate-check label (spec §4). Derived ONLY from the server payload:
+ * - QUALIFIED → "Trade candidate qualified"
+ * - NO_TRADE  → "Candidate rejected: <MCP-supplied reason>"
+ * - WATCH     → "Setup detected, but not tradeable yet"
+ * - UNAVAILABLE (or legacy null candidate) → "Candidate qualification unavailable"
+ * Returns null when the entry was never evaluated (no candidate check ran).
+ */
+export function msaCandidateCheckLabel(entry: MsaSetupEntry): string | null {
+  const cc = entry.candidateCheck;
+  if (!cc) {
+    // Legacy payloads without candidateCheck: null candidate = failed check.
+    return entry.candidate === null ? "Candidate qualification unavailable" : null;
+  }
+  switch (cc.status) {
+    case "QUALIFIED":
+      return "Trade candidate qualified";
+    case "NO_TRADE":
+      return cc.reason ? `Candidate rejected: ${cc.reason}` : "Candidate rejected";
+    case "WATCH":
+      return "Setup detected, but not tradeable yet";
+    case "UNAVAILABLE":
+    default:
+      return "Candidate qualification unavailable";
+  }
+}
+
+export type MsaSupportGroup = "confirming" | "forming" | "rejected" | "unavailable";
+
+export const MSA_SUPPORT_GROUP_LABELS: Record<MsaSupportGroup, string> = {
+  confirming: "Confirming",
+  forming: "Forming",
+  rejected: "Rejected",
+  unavailable: "Unavailable / Unknown",
+};
+
+/**
+ * Groups a supporting setup (spec §5). Unknown status or an unavailable
+ * candidate check is NEVER presented as positive supporting evidence.
+ */
+export function msaSupportGroup(entry: MsaSetupEntry): MsaSupportGroup {
+  const status = String(entry.setup.status ?? "").toLowerCase();
+  const cc = entry.candidateCheck;
+  if (cc?.status === "NO_TRADE") return "rejected";
+  if (cc?.status === "UNAVAILABLE") return "unavailable";
+  if (!status || status === "unknown") return "unavailable";
+  if (status === "forming") return "forming";
+  if (status === "triggered" || status === "breakout" || status === "ready") return "confirming";
+  return "unavailable";
+}
+
+const MSA_INTRADAY_TIMEFRAMES = new Set(["5min", "5m", "15min", "15m", "1h"]);
+
+export function msaIsIntraday(s: MsaSetup): boolean {
+  return MSA_INTRADAY_TIMEFRAMES.has(String(s.timeframe ?? "").toLowerCase());
 }

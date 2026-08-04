@@ -3,6 +3,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import {
   classifyAnalysisIntent,
   runMultiStrategyAnalysis,
+  deriveCandidateCheck,
   multiStrategyConfidence,
   suggestionsForMultiStrategy,
   getCachedStrategyRegistry,
@@ -396,6 +397,96 @@ describe("suggestions", () => {
 
     const noTrade = await runMultiStrategyAnalysis("MU", deps({ scans: {} }));
     expect(suggestionsForMultiStrategy(noTrade).map((l) => l.label)).toContain("Open Scanner");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candidate qualification (candidateCheck sprint, spec §2-§3, tests 1-5, 7-10)
+// ---------------------------------------------------------------------------
+
+describe("candidateCheck qualification", () => {
+  const triggered = (strategy: string, score = 50) => ({
+    setup: {
+      symbol: "MU", strategy, status: "triggered", score, direction: "long",
+      trigger: { price: 100 }, invalidation: { price: 95 }, detectedAt: FRESH, source: "mcp_vcp_scanner",
+    },
+  });
+  const forming = (strategy: string) => ({
+    setup: { symbol: "MU", strategy, status: "forming", score: 30, detectedAt: FRESH, source: "mcp_vcp_scanner" },
+  });
+
+  test("1. triggered primary + qualified candidate → QUALIFIED check and TRADE_CANDIDATE overall", async () => {
+    const res = await runMultiStrategyAnalysis("MU", deps({
+      scans: { VCP: triggered("vcp") },
+      buildTradeCandidate: async () => ({ verdict: "STOCK", warnings: ["earnings in 12 days"], risk: { riskPerShare: 5 } }),
+    }));
+    expect(res.primarySetup?.candidateCheck).toMatchObject({
+      status: "QUALIFIED", verdict: "STOCK", warnings: ["earnings in 12 days"], riskSummary: { riskPerShare: 5 },
+    });
+    expect(res.overallVerdict).toBe("TRADE_CANDIDATE");
+  });
+
+  test("2. triggered primary + NO_TRADE candidate → rejection reason surfaced, overall stays WATCH", async () => {
+    const res = await runMultiStrategyAnalysis("MU", deps({
+      scans: { VCP: triggered("vcp") },
+      buildTradeCandidate: async () => ({ verdict: "NO_TRADE", reasons: ["no trigger level"] }),
+    }));
+    expect(res.primarySetup?.candidateCheck).toMatchObject({ status: "NO_TRADE", reason: "no trigger level" });
+    expect(["WATCH", "NO_TRADE"]).toContain(res.overallVerdict);
+    expect(res.overallVerdict).not.toBe("TRADE_CANDIDATE");
+  });
+
+  test("3. forming setup → WATCH", async () => {
+    const res = await runMultiStrategyAnalysis("MU", deps({
+      scans: { VCP: forming("vcp") },
+      buildTradeCandidate: async () => ({ verdict: "NO_TRADE", noTradeReasons: ["setup still forming"] }),
+    }));
+    expect(res.overallVerdict).toBe("WATCH");
+  });
+
+  test("4. candidate service unavailable → UNAVAILABLE check, never implies tradeable", async () => {
+    const res = await runMultiStrategyAnalysis("MU", deps({
+      scans: { VCP: triggered("vcp") },
+      buildTradeCandidate: async () => { throw new Error("MCP down"); },
+    }));
+    expect(res.primarySetup?.candidate).toBeNull();
+    expect(res.primarySetup?.candidateCheck).toMatchObject({
+      status: "UNAVAILABLE", reason: "Candidate qualification unavailable",
+    });
+    expect(res.overallVerdict).not.toBe("TRADE_CANDIDATE");
+  });
+
+  test("5. candidate builds are bounded — never all strategies", async () => {
+    const calls: string[] = [];
+    const res = await runMultiStrategyAnalysis("MU", deps({
+      scans: {
+        VCP: triggered("vcp", 90), HIGH_RVOL: triggered("volume_surge", 80),
+        VCP_MULTIDAY: triggered("power_breakout", 70), CLASSIC_PULLBACK: triggered("precision_pullback", 60),
+        VWAP_RECLAIM: triggered("institutional_reclaim", 50),
+      },
+      buildTradeCandidate: async (_s, st) => { calls.push(st); return { verdict: "NO_TRADE", reasons: ["r"] }; },
+    }));
+    expect(calls.length).toBeLessThanOrEqual(3);
+    // Entries beyond the cap have no candidateCheck at all (not "unavailable").
+    const unchecked = [res.primarySetup!, ...res.supportingSetups].filter((e) => e.candidate === undefined);
+    for (const e of unchecked) expect(e.candidateCheck).toBeUndefined();
+  });
+
+  test("7. scanner score does not override candidate verdict", async () => {
+    // Score 99 triggered setup, but candidate engine says NO_TRADE → not a trade candidate.
+    const res = await runMultiStrategyAnalysis("MU", deps({
+      scans: { VCP: triggered("vcp", 99) },
+      buildTradeCandidate: async () => ({ verdict: "NO_TRADE", reasons: ["risk/reward failed"] }),
+    }));
+    expect(res.overallVerdict).not.toBe("TRADE_CANDIDATE");
+    expect(res.primarySetup?.candidateCheck?.status).toBe("NO_TRADE");
+  });
+
+  test("candidate with unknown/missing verdict → UNAVAILABLE, not silently positive", () => {
+    expect(deriveCandidateCheck({} as any)?.status).toBe("UNAVAILABLE");
+    expect(deriveCandidateCheck({ verdict: "SOMETHING_NEW" } as any)?.status).toBe("WATCH");
+    expect(deriveCandidateCheck(undefined)).toBeUndefined();
+    expect(deriveCandidateCheck(null)).toMatchObject({ status: "UNAVAILABLE" });
   });
 });
 

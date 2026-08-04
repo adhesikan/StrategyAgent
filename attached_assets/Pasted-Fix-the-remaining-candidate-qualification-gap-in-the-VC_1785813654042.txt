@@ -1,0 +1,179 @@
+Fix the remaining candidate-qualification gap in the VCP Trader multi-strategy Analyze flow.
+
+CURRENT STATE
+
+The contract adapter fix is working.
+
+For "Analyze BA" the UI now shows:
+
+- 10 strategies checked
+- 10 matches
+- Data: Fresh
+- Primary setup: Power Breakout
+- Status: Triggered
+- Candidate check: unavailable
+- Overall verdict: WATCH
+
+The strategy-analysis layer is now healthy. The remaining issue is that the primary and supporting setups are not being qualified through the existing trade-candidate engine, so the UI cannot explain whether a triggered setup is actually tradeable.
+
+Do not change scanner algorithms.
+Do not change strategy scores.
+Do not change MCP contracts.
+Do not add execution.
+Do not commit or push automatically.
+
+==================================================
+1. TRACE CANDIDATE QUALIFICATION
+==================================================
+
+Inspect the current generic Analyze flow:
+
+runMultiStrategyAnalysis
+→ scan_strategy results
+→ primary setup selection
+→ candidate qualification, if any
+→ overall verdict
+→ UI
+
+Determine why the primary setup displays:
+
+"Candidate check unavailable"
+
+Identify whether:
+
+- build_trade_candidate is not called
+- the call is failing
+- the response is not parsed
+- the result is intentionally omitted
+- timeout or provider context is missing
+- only recommendation flows currently call candidate qualification
+
+Report the exact path before changing behavior.
+
+==================================================
+2. QUALIFY THE PRIMARY SETUP
+==================================================
+
+For generic multi-strategy analysis:
+
+- qualify only the primary setup through build_trade_candidate
+- optionally qualify at most one or two supporting setups when needed
+- keep calls bounded
+- do not qualify all 10 strategies by default
+- do not create a recommendation request
+- do not place orders
+
+Return:
+
+candidateCheck: {
+  status:
+    "QUALIFIED"
+    | "WATCH"
+    | "NO_TRADE"
+    | "UNAVAILABLE";
+
+  verdict?: string | null;
+  reason?: string | null;
+  warnings?: string[];
+  riskSummary?: object | null;
+}
+
+==================================================
+3. OVERALL VERDICT RULES
+==================================================
+
+If primary setup is Triggered/Ready and candidate qualification returns a valid trade candidate:
+
+- overall may become TRADE_CANDIDATE or ACTIONABLE_SETUP, depending on the existing analysis contract
+
+If scanner setup is Triggered/Ready but build_trade_candidate returns NO_TRADE:
+
+- overall remains WATCH or NO_TRADE
+- show the actual rejection reason
+
+If candidate qualification fails technically:
+
+- keep WATCH/PARTIAL_DATA as appropriate
+- show "Candidate qualification unavailable"
+- do not imply the setup is tradeable
+
+If setup is Forming:
+
+- WATCH
+
+Do not treat scanner status alone as a trade recommendation.
+
+==================================================
+4. UI PRESENTATION
+==================================================
+
+Replace the generic line:
+
+"Candidate check unavailable"
+
+with one of:
+
+"Trade candidate qualified"
+"Setup detected, but not tradeable yet"
+"Candidate rejected: <reason>"
+"Candidate qualification unavailable"
+
+For WATCH, prominently show:
+
+Why it is not actionable:
+- missing trigger
+- risk/reward failed
+- regime conflict
+- earnings risk
+- missing data
+- other MCP-supplied reason
+
+==================================================
+5. SUPPORTING STRATEGIES
+==================================================
+
+Group supporting evidence into:
+
+- Confirming
+- Forming
+- Rejected
+- Unavailable/Unknown
+
+Do not list Unknown strategies as positive supporting evidence.
+
+Intraday strategies such as Open Drive 5m/15m should display their timeframe and freshness clearly.
+
+==================================================
+6. TESTS
+==================================================
+
+Add tests for:
+
+1. triggered primary setup + qualified candidate
+2. triggered primary setup + NO_TRADE candidate
+3. forming setup → WATCH
+4. candidate service unavailable
+5. bounded candidate calls
+6. supporting Unknown grouped as unavailable
+7. scanner score does not override candidate verdict
+8. explicit VCP analysis unchanged
+9. recommendation flow unchanged
+10. no execution behavior
+
+Run:
+
+npm test
+npm run build
+
+Do not commit or push.
+
+Report:
+
+1. Why candidate check was unavailable
+2. Files changed
+3. Candidate-call path
+4. Verdict rules
+5. UI changes
+6. Tests
+7. Build
+8. Manual UAT result for Analyze BA

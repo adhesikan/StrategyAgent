@@ -1,0 +1,81 @@
+Diagnose why the deployed rank_market_trade_candidates integration is falling back to the standard opportunity search.
+
+Do not fix anything yet.
+Do not change MCP.
+Do not change UI behavior.
+Do not commit, push, or deploy.
+
+OBSERVED PRODUCTION RESULT
+
+Prompt:
+
+"Find three bullish trades"
+
+UI displays:
+
+"Market-wide trade ranking is temporarily unavailable — showing the standard search instead."
+
+The fallback then returns:
+
+"No high-quality setups currently meet the criteria."
+
+The deployed MCP ranking fix is already live.
+
+Trace the exact production request:
+
+Ask AI
+→ ranked-search classifier
+→ goal normalization
+→ MCP tool discovery
+→ rank_market_trade_candidates invocation
+→ response parsing/validation
+→ fallback decision
+→ legacy standard search
+
+Report:
+
+1. Was ranked-search mode entered?
+2. Was rank_market_trade_candidates discovered in the live MCP tool list?
+3. Was it invoked?
+4. Exact sanitized request payload.
+5. Tool-specific timeout used.
+6. Attempt count and duration.
+7. Exact safe MCP error code.
+8. Exact sanitized error message.
+9. Whether the failure was:
+   - timeout
+   - unavailable/session error
+   - tool input validation
+   - MCP tool error
+   - response-schema validation
+   - response parsing
+   - unsupported new response fields
+10. Exact raw MCP response when available.
+11. Why rankedTradeSearchFailed or fallback mode was activated.
+12. Whether the newly added MCP fields caused the StrategyAgent validator to reject an otherwise valid response:
+   - groupedCandidateCount
+   - excludedCount
+   - exclusionSummary
+   - warnings
+13. Whether the deployed MCP advertises exactly 20 tools.
+14. Whether rank_market_trade_candidates can be called directly from the same StrategyAgent runtime.
+15. Whether a direct call succeeds when given a larger timeout.
+
+Use this request:
+
+{
+  "direction": "bullish",
+  "numberOfIdeas": 3
+}
+
+Do not print tokens, credentials, internal keys, or session identifiers.
+
+Create a concise diagnostic report containing:
+
+- first failing component
+- exact root cause
+- evidence
+- smallest correct fix
+- whether the fix belongs in StrategyAgent or vcp-trader-mcp
+
+Do not implement the fix until I review it.

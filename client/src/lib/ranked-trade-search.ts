@@ -519,11 +519,16 @@ export function buildEmptyState(
   if (!search) return null;
 
   // Case C: market data could not be retrieved (all or nearly all setups had
-  // unavailable data, and nothing qualified).
+  // unavailable data, and nothing qualified). Only fires when there are NO
+  // exclusions — if exclusions also exist, Case B is more accurate.
   const hasUnavailable = search.unavailableCount > 0;
   const hasNoQualified = search.qualifiedCount === 0;
   const dataOnlyIssue =
-    hasUnavailable && hasNoQualified && search.rejectedCount === 0 && search.candidates.length === 0;
+    hasUnavailable &&
+    hasNoQualified &&
+    search.rejectedCount === 0 &&
+    search.candidates.length === 0 &&
+    (search.excludedCount ?? 0) === 0; // no exclusions — truly data-only
   if (dataOnlyIssue) {
     return {
       headline: "Live market information could not be retrieved",
@@ -573,6 +578,124 @@ export function buildEmptyState(
       { label: "Review Watchlist", href: "/watchlist" },
     ],
   };
+}
+
+// ---------------------------------------------------------------------------
+// §headline — Deterministic headline (A/B/C/D/E precedence)
+// ---------------------------------------------------------------------------
+
+/**
+ * Produces the correct deterministic headline for a ranked search result,
+ * derived only from backend counts and reason codes.
+ *
+ * Precedence:
+ *  A  Qualified candidates exist → celebrate the count
+ *  B  Risk was the primary terminal rejection reason (exclusions don't dominate)
+ *  C  Default: excluded/unavailable dominated, not a risk failure
+ *  D  All candidates unavailable, nothing else reviewed
+ *  E  No opportunities at all
+ *
+ * IMPORTANT: B only fires when the backend explicitly confirms risk rejections
+ * are the primary terminal reason. Excluded or unavailable candidates never
+ * imply risk failure — they may not have reached risk evaluation at all.
+ */
+export function buildRankedHeadline(
+  search: RankedTradeSearch,
+  maxRiskDollars?: number,
+): string {
+  const riskLabel =
+    maxRiskDollars != null ? `$${maxRiskDollars.toLocaleString("en-US")}` : null;
+
+  // A. Qualified candidates exist.
+  if (search.qualifiedCount > 0 || search.candidates.length > 0) {
+    const n = search.qualifiedCount;
+    if (riskLabel) {
+      return `${n} ${n === 1 ? "candidate qualifies" : "candidates qualify"} under the ${riskLabel} risk constraint.`;
+    }
+    return `${n} ${n === 1 ? "candidate qualifies" : "candidates qualify"}.`;
+  }
+
+  const excluded = search.excludedCount ?? 0;
+  const trueRej = trueRejectionGroups(search.rejectionSummary);
+  const trueRejCount = trueRej.reduce((s, g) => s + g.count, 0);
+
+  // D. All candidates unavailable (no exclusions, no true rejections).
+  if (search.unavailableCount > 0 && excluded === 0 && trueRejCount === 0) {
+    return "Candidates could not be qualified because required market data was unavailable.";
+  }
+
+  // E. No opportunities at all.
+  if (search.reviewedCount === 0 && excluded === 0) {
+    return "No opportunities were available for evaluation.";
+  }
+
+  // B. Risk was the primary terminal rejection reason AND exclusions do not
+  //    dominate (excluded < riskRejected means most candidates reached
+  //    qualification and failed specifically on risk).
+  const riskRejCount = trueRej
+    .filter((g) => g.reason.startsWith("RISK_LIMIT_EXCEEDED"))
+    .reduce((s, g) => s + g.count, 0);
+  const riskIsTerminal =
+    riskRejCount > 0 &&
+    riskRejCount >= trueRejCount * 0.5 &&
+    excluded < riskRejCount; // exclusions don't dominate
+
+  if (riskIsTerminal && riskLabel) {
+    return `No candidate met the ${riskLabel} maximum-risk limit.`;
+  }
+
+  // C. Default: exclusions or unavailability dominated; not a risk failure.
+  if (riskLabel) {
+    return `No candidate currently qualifies for the ${riskLabel} risk request.`;
+  }
+  return "No candidate currently qualifies.";
+}
+
+/**
+ * Produces a plain-prose summary of why nothing qualified, expressed as
+ * grouped counts (excluded / unavailable / rejected). Used in the
+ * WhyNothingQualifiedSection to replace a bullet list of gate names.
+ *
+ * Returns null when there is no evidence to summarise (e.g. reviewedCount = 0).
+ * Never invents reasons not present in the backend payload.
+ */
+export function buildZeroQualifiedSummary(search: RankedTradeSearch): string | null {
+  const excluded = search.excludedCount ?? 0;
+  const extraUnavailable = dataRejectionGroups(search.rejectionSummary).reduce(
+    (s, g) => s + g.count,
+    0,
+  );
+  const totalUnavailable = search.unavailableCount + extraUnavailable;
+  const trueRejCount = trueRejectionGroups(search.rejectionSummary).reduce(
+    (s, g) => s + g.count,
+    0,
+  );
+
+  const parts: string[] = [];
+  if (excluded > 0) {
+    parts.push(
+      `${excluded} ${excluded === 1 ? "opportunity was" : "opportunities were"} excluded before qualification`,
+    );
+  }
+  if (totalUnavailable > 0) {
+    parts.push(
+      `${totalUnavailable} ${totalUnavailable === 1 ? "could not be evaluated" : "could not be evaluated"} because required market data was unavailable`,
+    );
+  }
+  if (trueRejCount > 0) {
+    parts.push(
+      `${trueRejCount} ${trueRejCount === 1 ? "was rejected" : "were rejected"} after reaching qualification`,
+    );
+  }
+
+  if (parts.length === 0) return null;
+  if (parts.length === 1) {
+    const s = parts[0];
+    return s.charAt(0).toUpperCase() + s.slice(1) + ".";
+  }
+  const last = parts[parts.length - 1];
+  const rest = parts.slice(0, -1);
+  return rest.join(", ") + ", and " + last + ".";
 }
 
 /** Risk-fit line for a candidate under a requested budget (spec §8).

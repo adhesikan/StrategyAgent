@@ -1,0 +1,176 @@
+Perform the final Sprint 4.4 presentation cleanup in VCP Trader.
+
+This is presentation-only work.
+
+Do not modify MCP, TraderBrain planning, ranking, scanner logic, qualification rules, portfolio policies, risk calculations, API contracts, database schemas, or execution.
+
+Do not commit, push, or deploy automatically.
+
+OBSERVED UI
+
+For:
+
+"Find a trade under $500 max loss"
+
+The page currently shows:
+
+- 50 stored opportunities reviewed
+- 47 post-confluence
+- 0 qualified
+- 44 excluded
+- 3 unavailable
+- 0 rejected
+
+Remaining presentation issues:
+
+1. "Why Setups Were Rejected (0)" still renders.
+2. Unavailable information appears in two nearly identical full-size cards.
+3. The heading "Qualified Trades" appears even when qualifiedCount is zero.
+4. The headline says no candidate met the $500 risk limit, even though many candidates were excluded before qualification or unavailable and may never have reached risk evaluation.
+
+==================================================
+1. HIDE ZERO-COUNT SECTIONS
+==================================================
+
+Do not render section containers when their relevant count is zero.
+
+Hide:
+
+- Rejected when true rejected count is zero
+- Unavailable when unavailable count is zero
+- Excluded when excluded count is zero
+- Worth Watching when watch count is zero
+- Qualified Trades when qualified count is zero
+
+Do not render empty accordion shells.
+
+==================================================
+2. REMOVE DUPLICATE UNAVAILABLE PRESENTATION
+==================================================
+
+Show unavailable information once as a primary detailed section.
+
+Recommended behavior:
+
+- In the search-summary line, show:
+  "3 unavailable"
+
+- In the body, render one:
+  "Unavailable Candidates" or "Data Limitations" section
+
+Do not render both a large standalone unavailable card and a second duplicate unavailable card with the same explanation and CTAs.
+
+Reuse one component where practical.
+
+==================================================
+3. ZERO-QUALIFIED PAGE STRUCTURE
+==================================================
+
+When qualifiedCount is zero, use this order:
+
+1. Search Goal
+2. Search Summary
+3. Why Nothing Qualified
+4. Excluded Before Qualification
+5. Unavailable Candidates
+6. Rejected Candidates, only when nonzero
+7. Portfolio Impact
+8. Risk Constraints
+9. AI Explanation
+10. Next Steps
+
+Do not show a "Qualified Trades" heading when no qualified candidates exist.
+
+When qualified candidates exist, show Qualified Trades first.
+
+==================================================
+4. HEADLINE SEMANTICS
+==================================================
+
+Do not claim every candidate failed the risk limit unless the backend explicitly confirms that risk was the terminal rejection reason.
+
+Use deterministic headline precedence:
+
+A. Qualified candidates exist:
+"<N> candidates qualify under the $500 risk constraint."
+
+B. No qualified, but candidates reached qualification and were rejected primarily for risk:
+"No candidate met the $500 maximum-risk limit."
+
+C. Candidates were mostly excluded before qualification or unavailable:
+"No candidate currently qualifies for the $500 risk request."
+
+D. All candidates unavailable:
+"Candidates could not be qualified because required market data was unavailable."
+
+E. No opportunities:
+"No opportunities were available for evaluation."
+
+Derive this only from backend counts and reason codes.
+
+Do not infer that an excluded or unavailable candidate failed the risk test.
+
+==================================================
+5. WHY NOTHING QUALIFIED
+==================================================
+
+Only list gates supported by the backend response.
+
+Do not imply each gate was evaluated for every candidate.
+
+Prefer language such as:
+
+"No candidate completed every required qualification step."
+
+Then group:
+
+- Excluded before qualification
+- Unavailable for evaluation
+- Rejected after qualification
+
+For this observed result:
+
+"44 opportunities were excluded before qualification, and 3 could not be evaluated because required market data was unavailable."
+
+==================================================
+6. CTA DEDUPLICATION
+==================================================
+
+Do not repeat identical Retry and Open Scanner actions in multiple adjacent sections.
+
+Use one primary CTA group for the dominant failure condition.
+
+==================================================
+7. TESTS
+==================================================
+
+Add regression tests for:
+
+- zero rejected hides rejected section
+- zero qualified hides Qualified Trades heading
+- unavailable appears only once
+- no duplicate Retry/Open Scanner groups
+- risk-limit headline only when backend reasons support it
+- excluded-before-qualification does not become risk rejection
+- all unavailable headline
+- mixed excluded and unavailable headline
+- qualified results preserve current layout
+- backend counts remain unchanged
+- no algorithm or API behavior changes
+
+Run:
+
+npm test
+npm run build
+
+Report:
+
+1. files changed
+2. hidden-section rules
+3. unavailable deduplication
+4. headline decision rules
+5. tests and totals
+6. build result
+7. before/after screenshot
+
+Do not commit or push.

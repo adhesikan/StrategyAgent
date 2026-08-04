@@ -456,23 +456,40 @@ export function GoalTradePlanner({
   source,
 }: GoalTradePlannerProps) {
   const intent = parseTradeGoalInput(question);
+  // When qualifiedCount = 0, RankedTradeSearchCards already renders all the
+  // detail sections (Why Nothing Qualified, Exclusions, Unavailable, Rejected).
+  // Do not also render WhyOthersFailedSection — that would duplicate them.
+  const hasQualified = search.qualifiedCount > 0 || search.candidates.length > 0;
 
   return (
     <div className="space-y-4" data-testid="section-goal-trade-planner">
       {/* §A GOAL */}
       <GoalSection intent={intent} />
 
-      {/* §B QUALIFIED TRADES — delegates fully to RankedTradeSearchCards */}
-      <div data-testid="section-goal-qualified-trades">
-        <SectionLabel>Qualified Trades</SectionLabel>
-        <div className="mt-2">
+      {/* §B QUALIFIED TRADES — heading hidden when zero qualify */}
+      {hasQualified ? (
+        <div data-testid="section-goal-qualified-trades">
+          <SectionLabel>Qualified Trades</SectionLabel>
+          <div className="mt-2">
+            <RankedTradeSearchCards
+              search={search}
+              question={question}
+              source={source}
+            />
+          </div>
+        </div>
+      ) : (
+        // Zero-qualified: delegate entirely to RankedTradeSearchCards which
+        // renders the ordered detail sections per §3.
+        // No "Qualified Trades" heading — nothing qualifies.
+        <div data-testid="section-goal-zero-qualified">
           <RankedTradeSearchCards
             search={search}
             question={question}
             source={source}
           />
         </div>
-      </div>
+      )}
 
       {/* §C PORTFOLIO IMPACT */}
       <PortfolioImpactSection awareness={awareness} />
@@ -480,8 +497,10 @@ export function GoalTradePlanner({
       {/* §D RISK SUMMARY */}
       <RiskSummarySection intent={intent} search={search} />
 
-      {/* §E WHY OTHERS FAILED */}
-      <WhyOthersFailedSection search={search} />
+      {/* §E WHY OTHERS FAILED — only when qualified candidates exist.
+          When zero qualified, RankedTradeSearchCards already shows all
+          exclusion/unavailable/rejection detail. */}
+      {hasQualified && <WhyOthersFailedSection search={search} />}
     </div>
   );
 }

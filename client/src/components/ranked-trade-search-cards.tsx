@@ -17,9 +17,9 @@ import { Button } from "@/components/ui/button";
 import {
   actionableHint,
   buildEmptyState,
+  buildZeroQualifiedSummary,
   dataRejectionGroups,
   exclusionCtas,
-  qualificationGatesMissed,
   rankedCountsLine,
   shortExclusionLabel,
   trueRejectionGroups,
@@ -152,28 +152,28 @@ function ExclusionSection({ groups, totalExcluded }: { groups: RankedExclusionGr
 // §5 — Why Nothing Qualified (deterministic gate summary)
 // ---------------------------------------------------------------------------
 
-/** Shows the gates that weren't passed. Only rendered when qualifiedCount = 0
- *  and there is evidence of at least one specific gate failure. */
+/**
+ * §5 — Why Nothing Qualified.
+ * Shows a plain-prose summary of what happened (excluded / unavailable / rejected
+ * counts), not a list of gate names that may imply more than the data supports.
+ * Only rendered when qualifiedCount = 0 and there is evidence to summarise.
+ */
 function WhyNothingQualifiedSection({ search }: { search: RankedTradeSearch }) {
   if (search.qualifiedCount > 0) return null;
-  const gates = qualificationGatesMissed(search);
-  if (gates.length === 0) return null;
+  const summary = buildZeroQualifiedSummary(search);
+  if (!summary) return null;
   return (
     <div
-      className="rounded-lg border border-border/50 bg-muted/10 p-3 text-xs space-y-2"
+      className="rounded-lg border border-border/50 bg-muted/10 p-3 text-xs space-y-1.5"
       data-testid="section-ranked-why-nothing"
     >
       <div className="font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
         Why Nothing Qualified
       </div>
       <div className="text-muted-foreground">
-        No opportunity satisfied every required gate:
+        No candidate completed every required qualification step.
       </div>
-      <ul className="space-y-0.5 pl-4 list-disc text-muted-foreground/80">
-        {gates.map((g) => (
-          <li key={g}>{g}</li>
-        ))}
-      </ul>
+      <div className="text-muted-foreground/80">{summary}</div>
       <div className="text-muted-foreground/50 text-[10px]">
         The engine intentionally returned no trade rather than lowering its standards.
       </div>
@@ -193,9 +193,13 @@ function WhyNothingQualifiedSection({ search }: { search: RankedTradeSearch }) {
 function UnavailableCandidatesSection({
   search,
   question,
+  hideCtas = false,
 }: {
   search: RankedTradeSearch;
   question?: string;
+  /** When true, suppresses the Retry / Open Scanner CTA row.
+   *  Used in empty-state context where a primary CTA is already shown. */
+  hideCtas?: boolean;
 }) {
   const extraGroups = dataRejectionGroups(search.rejectionSummary);
   const extraCount = extraGroups.reduce((s, g) => s + g.count, 0);
@@ -230,10 +234,12 @@ function UnavailableCandidatesSection({
           <span className="text-amber-100/50 ml-1">— {g.count}</span>
         </div>
       ))}
-      <CtaRow
-        ctas={unavailableCtas(question ?? "Find the best trades today")}
-        testId="ctas-ranked-unavailable"
-      />
+      {!hideCtas && (
+        <CtaRow
+          ctas={unavailableCtas(question ?? "Find the best trades today")}
+          testId="ctas-ranked-unavailable"
+        />
+      )}
     </div>
   );
 }
@@ -285,9 +291,10 @@ export function RankedTradeSearchCards({
 
   // §3: Only true qualification failures appear in the Rejected section.
   // Data-unavailability groups move to UnavailableCandidatesSection (§2).
+  // Use count-only guard — groups with count=0 must not trigger rendering.
   const trueRejections = trueRejectionGroups(search.rejectionSummary);
   const trueRejectedCount = trueRejections.reduce((s, g) => s + g.count, 0);
-  const hasRejections = trueRejections.length > 0 || trueRejectedCount > 0;
+  const hasRejections = trueRejectedCount > 0; // count-only: never show (0)
 
   // Shared rejection section JSX used in both empty and normal states.
   const RejectionSection = () =>
@@ -301,11 +308,6 @@ export function RankedTradeSearchCards({
           <div className="text-[11px] text-muted-foreground/80">
             These setups reached qualification but were rejected because they didn't meet all required conditions.
           </div>
-          {trueRejections.length === 0 && (
-            <div className="text-xs text-muted-foreground">
-              {trueRejectedCount} {trueRejectedCount === 1 ? "setup was" : "setups were"} rejected during evaluation.
-            </div>
-          )}
           {trueRejections.map((g) => (
             <RejectionRow key={g.reason} g={g} />
           ))}
@@ -318,24 +320,33 @@ export function RankedTradeSearchCards({
   if (!hasResults) {
     const state = buildEmptyState(search, source, question);
     if (state) {
+      // Case C (icon="market-unavailable") already describes unavailability in
+      // the EmptyStateCard — suppress UnavailableCandidatesSection to avoid
+      // rendering the same information twice.
+      const isDataOnlyCase = state.icon === "market-unavailable";
+
       return (
         <div className="space-y-4" data-testid="section-ranked-trade-search">
           <div className="text-xs text-muted-foreground" data-testid="text-ranked-counts">
             {rankedCountsLine(search)}
           </div>
-          <EmptyStateCard state={state} />
-          {/* §5 — Why nothing qualified */}
+          {/* §5 — Why nothing qualified (before exclusion/unavailable details) */}
           <WhyNothingQualifiedSection search={search} />
-          {/* Still show exclusions/rejections/unavailable for context */}
+          {/* Exclusion details */}
           {hasExclusions && (
             <ExclusionSection
               groups={search.exclusionSummary ?? []}
               totalExcluded={search.excludedCount!}
             />
           )}
+          {/* §2 — Unavailable Candidates before Rejected; suppressed when EmptyStateCard already covers it */}
+          {!isDataOnlyCase && (
+            <UnavailableCandidatesSection search={search} question={question} hideCtas />
+          )}
+          {/* §3 — Rejected: true qualification failures only */}
           <RejectionSection />
-          {/* §2 — Unavailable Candidates (never mixed into Rejected) */}
-          <UnavailableCandidatesSection search={search} question={question} />
+          {/* Empty state card last — acts as the overall verdict / AI explanation */}
+          <EmptyStateCard state={state} />
         </div>
       );
     }
@@ -351,6 +362,7 @@ export function RankedTradeSearchCards({
         </span>
       </div>
 
+      {/* §B — Qualified candidates only; heading hidden when none qualify */}
       {search.candidates.length > 0 && (
         <div className="space-y-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground" data-testid="heading-ranked-top">Top trade candidates</div>
@@ -360,6 +372,7 @@ export function RankedTradeSearchCards({
         </div>
       )}
 
+      {/* Worth Watching — hidden when watchCount is zero */}
       {search.watchCandidates.length > 0 && (
         <div className="space-y-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground" data-testid="heading-ranked-watch">Worth watching</div>
@@ -376,11 +389,11 @@ export function RankedTradeSearchCards({
         />
       )}
 
+      {/* §2 — Unavailable Candidates before Rejected */}
+      <UnavailableCandidatesSection search={search} question={question} />
+
       {/* §3 — Rejected: true qualification failures only */}
       <RejectionSection />
-
-      {/* §2 — Unavailable Candidates: data issues never under Rejected */}
-      <UnavailableCandidatesSection search={search} question={question} />
     </div>
   );
 }

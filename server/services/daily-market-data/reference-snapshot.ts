@@ -1,0 +1,169 @@
+// Reference market snapshot — the ONLY sanctioned way for non-broker
+// surfaces (Advanced Trade Builder, Opportunity Radar / Best Picks) to pull
+// real market data instead of synthetic placeholders.
+//
+// Data sources, in order of preference:
+//   1. Twelve Data /quote (real-time, 1 credit, 30s cache) — single-symbol
+//      callers only; NEVER used for multi-symbol scans (7/min credit cap).
+//   2. Stored Twelve Data daily bars (already ingested — zero credits).
+//
+// Licensing: every call goes through canAccessTwelveDataBackedAnalysis
+// (env-first — prelaunch external users are denied). When the gate denies,
+// callers MUST fall back to their existing educational/mock behavior; this
+// module returns null and never leaks data past the gate.
+
+import { canAccessTwelveDataBackedAnalysis } from "./access-control";
+import { loadStoredBars } from "./ingestion";
+import { ema, rsi, atr } from "./indicators";
+import { getRealtimeQuoteForUser, type RealTimeQuote } from "./realtime-quote";
+import type { NormalizedDailyBar } from "./types";
+
+export interface ReferenceTechnicals {
+  ema9: number | null;
+  ema21: number | null;
+  ema50: number | null;
+  rsi14: number | null;
+  atr14: number | null;
+  high20: number | null;
+  low20: number | null;
+  avgVolume20: number | null;
+  /** last bar volume / 20-day average volume */
+  rvol: number | null;
+  changePct5d: number | null;
+}
+
+export interface ReferenceSnapshot {
+  symbol: string;
+  /** Live Twelve Data quote when requested and available (single-symbol paths only). */
+  realtime: RealTimeQuote | null;
+  /** Ascending real daily OHLCV bars (Twelve Data, stored — zero credits). */
+  bars: NormalizedDailyBar[];
+  technicals: ReferenceTechnicals | null;
+  /** Best-known last price: realtime last, else last stored close. */
+  lastPrice: number | null;
+  prevClose: number | null;
+}
+
+async function isAllowed(userId: string, feature: string): Promise<boolean> {
+  try {
+    const { authStorage } = await import("../../replit_integrations/auth/storage");
+    const user = await authStorage.getUser(userId);
+    return canAccessTwelveDataBackedAnalysis({
+      user: user ? { id: user.id, email: user.email, role: user.role } : null,
+      feature,
+    }).allowed;
+  } catch {
+    return false;
+  }
+}
+
+export function computeReferenceTechnicals(bars: NormalizedDailyBar[]): ReferenceTechnicals | null {
+  if (bars.length < 5) return null;
+  const closes = bars.map((b) => b.close);
+  const last = bars[bars.length - 1];
+  const last20 = bars.slice(-20);
+  const avgVolume20 =
+    bars.length >= 20 ? last20.reduce((a, b) => a + b.volume, 0) / last20.length : null;
+  const prev5 = closes.length >= 6 ? closes[closes.length - 6] : null;
+  return {
+    ema9: ema(closes, 9),
+    ema21: ema(closes, 21),
+    ema50: ema(closes, 50),
+    rsi14: rsi(closes, 14),
+    atr14: atr(bars, 14),
+    high20: bars.length >= 20 ? Math.max(...last20.map((b) => b.high)) : null,
+    low20: bars.length >= 20 ? Math.min(...last20.map((b) => b.low)) : null,
+    avgVolume20,
+    rvol: avgVolume20 && avgVolume20 > 0 ? last.volume / avgVolume20 : null,
+    changePct5d: prev5 && prev5 > 0 ? ((closes[closes.length - 1] - prev5) / prev5) * 100 : null,
+  };
+}
+
+/**
+ * Single-symbol snapshot for the Advanced Trade Builder fallback path.
+ * `realtime: true` spends at most 1 Twelve Data credit (cached 30s).
+ * Returns null when the license gate denies or no real data exists.
+ */
+export async function getReferenceSnapshot(
+  userId: string,
+  rawSymbol: string,
+  opts: { realtime?: boolean; feature?: string; barLimit?: number } = {},
+): Promise<ReferenceSnapshot | null> {
+  const symbol = rawSymbol.trim().toUpperCase();
+  const feature = opts.feature ?? "reference_snapshot";
+  if (!(await isAllowed(userId, feature))) return null;
+
+  let realtime: RealTimeQuote | null = null;
+  if (opts.realtime) {
+    // getRealtimeQuoteForUser re-checks the gate — harmless double check.
+    // Bounded wait: credit reservation can block up to 180s under minute-cap
+    // contention; a user-facing generate request must not stall on it. On
+    // timeout we proceed bars-only (the fetch continues and warms the cache).
+    const timeoutMs = 4000;
+    realtime = await Promise.race([
+      getRealtimeQuoteForUser(userId, symbol, feature),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+  }
+  let bars: NormalizedDailyBar[] = [];
+  try {
+    bars = await loadStoredBars(symbol, opts.barLimit ?? 60);
+  } catch (err: any) {
+    console.warn(`[ReferenceSnapshot] stored bars unavailable for ${symbol}:`, err?.message ?? err);
+  }
+  if (!realtime && bars.length === 0) return null;
+
+  const lastBar = bars.length > 0 ? bars[bars.length - 1] : null;
+  const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
+  return {
+    symbol,
+    realtime,
+    bars,
+    technicals: computeReferenceTechnicals(bars),
+    lastPrice: realtime?.last ?? lastBar?.close ?? null,
+    prevClose: realtime?.previousClose ?? (realtime ? lastBar?.close ?? null : prevBar?.close ?? null),
+  };
+}
+
+/**
+ * Bulk stored-bars snapshots for multi-symbol scans (Radar / Best Picks).
+ * NEVER touches the real-time /quote endpoint — zero provider credits.
+ * One license-gate check for the whole batch; empty map when denied.
+ */
+export async function getReferenceSnapshotsBulk(
+  userId: string,
+  symbols: string[],
+  opts: { feature?: string; barLimit?: number } = {},
+): Promise<Map<string, ReferenceSnapshot>> {
+  const out = new Map<string, ReferenceSnapshot>();
+  if (symbols.length === 0) return out;
+  if (!(await isAllowed(userId, opts.feature ?? "reference_snapshot_bulk"))) return out;
+
+  const limit = opts.barLimit ?? 60;
+  const CONCURRENCY = 8;
+  const queue = symbols.map((s) => s.trim().toUpperCase());
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const symbol = queue.shift()!;
+        try {
+          const bars = await loadStoredBars(symbol, limit);
+          if (bars.length === 0) continue;
+          const lastBar = bars[bars.length - 1];
+          const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
+          out.set(symbol, {
+            symbol,
+            realtime: null,
+            bars,
+            technicals: computeReferenceTechnicals(bars),
+            lastPrice: lastBar.close,
+            prevClose: prevBar?.close ?? null,
+          });
+        } catch (err: any) {
+          console.warn(`[ReferenceSnapshot] bulk bars failed for ${symbol}:`, err?.message ?? err);
+        }
+      }
+    }),
+  );
+  return out;
+}

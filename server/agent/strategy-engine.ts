@@ -137,6 +137,122 @@ export function generateSetupFromScanResult(
   };
 }
 
+/**
+ * Real-data reference anchor for the no-broker / no-intraday fallback path.
+ * All numbers here MUST come from real market data (Twelve Data realtime
+ * quote and/or stored daily bars) — never synthetic.
+ */
+export interface ReferenceAnchor {
+  lastPrice: number;
+  prevClose: number | null;
+  /** true when lastPrice came from a real-time quote (vs prior daily close). */
+  realtime: boolean;
+  ema9: number | null;
+  ema21: number | null;
+  rsi14: number | null;
+  atr14: number | null;
+  high20: number | null;
+  low20: number | null;
+  rvol: number | null;
+  changePct5d: number | null;
+}
+
+/**
+ * Generate a setup anchored to REAL market data (Twelve Data) when no
+ * broker connection / intraday candles are available. Levels are derived
+ * from real ATR and real 20-day structure; trend/RVOL are computed, never
+ * invented. Intraday-only fields (opening range, VWAP) are omitted because
+ * no intraday data exists on this path — the card must not fabricate them.
+ */
+export function generateReferenceSetup(request: ParsedRequest, anchor: ReferenceAnchor): TradeSetup {
+  const symbol = request.symbol || "SPY";
+  const strategyId = request.strategy || StrategyId.ORB15;
+  const price = anchor.lastPrice;
+  const atr = anchor.atr14 && anchor.atr14 > 0 ? anchor.atr14 : price * 0.015;
+
+  const bullish =
+    anchor.ema9 != null && anchor.ema21 != null ? anchor.ema9 >= anchor.ema21 : true;
+  const bias: TradeSetup["bias"] = bullish ? "bullish" : "bearish";
+  const dir = bullish ? 1 : -1;
+
+  // ATR-anchored levels off the real last price; clamp to real 20-day
+  // structure when available so stops sit at meaningful levels.
+  const entry = parseFloat(price.toFixed(2));
+  let stopRaw = price - dir * atr;
+  // When the real 20-day swing low/high sits inside the 1.5×ATR band, use it —
+  // structure-based stops beat pure volatility stops.
+  if (bullish && anchor.low20 != null && anchor.low20 < price && anchor.low20 > price - 1.5 * atr) {
+    stopRaw = anchor.low20 * 0.995;
+  } else if (!bullish && anchor.high20 != null && anchor.high20 > price && anchor.high20 < price + 1.5 * atr) {
+    stopRaw = anchor.high20 * 1.005;
+  }
+  const stop = parseFloat(stopRaw.toFixed(2));
+  const risk = Math.abs(entry - stop) || price * 0.01;
+  const target1 = parseFloat((entry + dir * risk * 1.5).toFixed(2));
+  const target2 = parseFloat((entry + dir * risk * 2.5).toFixed(2));
+
+  const reasoning: string[] = [
+    anchor.realtime
+      ? `Anchored to the live market price of $${price.toFixed(2)}`
+      : `Anchored to the latest daily closing price of $${price.toFixed(2)} (delayed reference data)`,
+    anchor.ema9 != null && anchor.ema21 != null
+      ? `Daily trend is ${bullish ? "bullish" : "bearish"} (EMA9 ${anchor.ema9.toFixed(2)} vs EMA21 ${anchor.ema21.toFixed(2)})`
+      : `Trend indicators unavailable — insufficient daily history`,
+    `Stop and targets derived from the real 14-day ATR ($${atr.toFixed(2)})`,
+  ];
+  if (anchor.rvol != null) {
+    reasoning.push(`Latest daily relative volume: ${anchor.rvol.toFixed(1)}x the 20-day average`);
+  }
+  if (anchor.rsi14 != null) {
+    reasoning.push(`Daily RSI(14): ${Math.round(anchor.rsi14)}`);
+  }
+  reasoning.push(
+    `Intraday ${STRATEGY_DISPLAY_NAMES[strategyId] || strategyId} confirmation requires a connected broker — this is a daily-data reference setup, not a triggered intraday signal`,
+  );
+
+  const invalidation: string[] = [
+    `Price ${bullish ? "closes below" : "closes above"} the stop level ($${stop.toFixed(2)})`,
+    anchor.ema9 != null && anchor.ema21 != null
+      ? `Daily EMA9/EMA21 trend flips ${bullish ? "bearish" : "bullish"}`
+      : `Trend structure breaks down`,
+  ];
+
+  const volumeDesc =
+    anchor.rvol == null ? "N/A" : anchor.rvol >= 2 ? "High" : anchor.rvol >= 1.2 ? "Above Average" : "Normal";
+
+  return {
+    id: generateId(),
+    symbol,
+    assetType: request.assetType,
+    strategyName: STRATEGY_DISPLAY_NAMES[strategyId] || strategyId,
+    timeframe: request.timeframe || "1D",
+    setupType: "REFERENCE",
+    bias,
+    entry,
+    stop,
+    targets: [target1, target2],
+    rewardRisk: parseFloat((Math.abs(target1 - entry) / risk).toFixed(2)),
+    modelScore: null, // no fabricated score without an intraday signal
+    reasoning,
+    invalidation,
+    metrics: {
+      trend:
+        anchor.ema9 != null && anchor.ema21 != null
+          ? bullish
+            ? "Bullish (EMA9 > EMA21)"
+            : "Bearish (EMA9 < EMA21)"
+          : undefined,
+      volume: volumeDesc,
+      currentPrice: parseFloat(price.toFixed(2)),
+      rvol: anchor.rvol != null ? parseFloat(anchor.rvol.toFixed(2)) : undefined,
+      ema9: anchor.ema9 != null ? parseFloat(anchor.ema9.toFixed(2)) : undefined,
+      ema21: anchor.ema21 != null ? parseFloat(anchor.ema21.toFixed(2)) : undefined,
+    },
+    dataSource: anchor.realtime ? "twelve data (real-time quote + daily bars)" : "delayed reference (real daily market data)",
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export function generateMockSetup(request: ParsedRequest): TradeSetup {
   const symbol = request.symbol || "TSLA";
   const strategyId = request.strategy || StrategyId.ORB15;

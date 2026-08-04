@@ -12,6 +12,10 @@
 import { storage } from "../../storage";
 import { fetchQuotesFromBroker, type QuoteData } from "../../broker-service";
 import { getCachedYahooQuote, getYahooQuote } from "../yahoo-finance-cache";
+import {
+  getReferenceSnapshotsBulk,
+  type ReferenceSnapshot,
+} from "../daily-market-data/reference-snapshot";
 import { getBrokerAccounts, getBrokerPositions } from "../../broker";
 import { resolveUniverseWithMeta, type RadarUniverseId, type UniverseSource } from "./universe-service";
 import { defaultMLAdapter, type MLAdapter } from "./ml-adapter";
@@ -125,6 +129,8 @@ export interface RadarResult {
   universeSource: UniverseSource;
   universeLabel: string;
   liveQuoteCount: number;
+  /** Symbols backed by REAL stored daily bars (delayed reference data) instead of live broker quotes. */
+  referenceQuoteCount: number;
   quoteFetchError: string | null;
   notes: string[];
 }
@@ -140,6 +146,7 @@ interface UserContext {
   avoidEarningsDays: number;
   minRewardRisk: number;
   liveQuoteCount: number;
+  referenceQuoteCount: number;
   requestedSymbolCount: number;
   quoteFetchError: string | null;
 }
@@ -261,7 +268,51 @@ interface EnrichedSymbol {
   hasOptions: boolean;
 }
 
-function deriveTechnicals(q: QuoteData): EnrichedSymbol {
+/** Build a QuoteData from real stored daily bars (Twelve Data — delayed reference). */
+function quoteFromReferenceSnapshot(snap: ReferenceSnapshot): QuoteData | null {
+  const last = snap.bars.length > 0 ? snap.bars[snap.bars.length - 1] : null;
+  if (!last || last.close <= 0) return null;
+  const prevClose = snap.prevClose ?? last.open;
+  const avgVol = snap.technicals?.avgVolume20;
+  return {
+    symbol: snap.symbol,
+    last: round2(last.close),
+    change: round2(last.close - prevClose),
+    changePercent: prevClose > 0 ? round2(((last.close - prevClose) / prevClose) * 100) : 0,
+    volume: last.volume,
+    avgVolume: avgVol != null ? Math.round(avgVol) : last.volume,
+    high: round2(last.high),
+    low: round2(last.low),
+    open: round2(last.open),
+    prevClose: round2(prevClose),
+  };
+}
+
+function deriveTechnicals(q: QuoteData, snap?: ReferenceSnapshot): EnrichedSymbol {
+  // Prefer REAL technicals computed from stored Twelve Data daily bars.
+  const t = snap?.technicals;
+  if (t && t.ema9 != null && t.ema21 != null) {
+    const rvol =
+      q.avgVolume && q.avgVolume > 0 ? q.volume / q.avgVolume : t.rvol ?? 1;
+    const gapPct = q.prevClose > 0 ? ((q.open - q.prevClose) / q.prevClose) * 100 : 0;
+    return {
+      quote: q,
+      ema9: round2(t.ema9),
+      ema21: round2(t.ema21),
+      ema50: round2(t.ema50 ?? t.ema21),
+      rsi: t.rsi14 != null ? Math.round(t.rsi14) : 50,
+      high20: round2(t.high20 ?? q.high),
+      low20: round2(t.low20 ?? q.low),
+      changePct1d: q.changePercent,
+      changePct5d: round2(t.changePct5d ?? 0),
+      rvol: round2(rvol),
+      gapPct: round2(gapPct),
+      // Honest unknown — never fabricate earnings proximity from a hash.
+      earningsInDays: null,
+      hasOptions: true,
+    };
+  }
+
   const h = symbolHash(q.symbol);
   // Deterministic but varied technical proxies derived from price/volume.
   const ema9 = q.last * (1 - ((h % 30) - 15) / 1000);
@@ -669,6 +720,7 @@ async function buildUserContext(userId: string, filters: RadarFilters): Promise<
     avoidEarningsDays: filters.avoidEarningsDays ?? 7,
     minRewardRisk: filters.minRewardRisk ?? 1.0,
     liveQuoteCount: 0,
+    referenceQuoteCount: 0,
     requestedSymbolCount: 0,
     quoteFetchError: null,
   };
@@ -704,20 +756,47 @@ async function enrichWithMarketData(symbols: string[], userId: string, ctx: User
   ctx.requestedSymbolCount = symbols.length;
   ctx.quoteFetchError = fetchError;
 
+  // For every symbol the broker did NOT cover, prefer REAL market data:
+  // stored Twelve Data daily bars (delayed reference, zero provider credits,
+  // license-gated). Hash-based mock quotes remain only as the last resort
+  // for symbols with no stored bars or users denied by the license gate.
+  // Fetch stored-bar snapshots for the WHOLE universe (single license-gate
+  // check, zero provider credits) so that even live broker quotes get REAL
+  // EMA/RSI/RVOL technicals computed from daily history instead of
+  // hash-derived proxies.
+  let refSnaps = new Map<string, ReferenceSnapshot>();
+  try {
+    refSnaps = await getReferenceSnapshotsBulk(userId, symbols, { feature: "opportunity_radar_reference" });
+  } catch (err: any) {
+    console.warn("[OpportunityRadar] reference snapshots unavailable:", err?.message ?? err);
+  }
+
+  const present = new Set(quotes.map((q) => q.symbol.toUpperCase()));
+  const missing = symbols.filter((s) => !present.has(s.toUpperCase()));
+  let referenceCount = 0;
+  for (const s of missing) {
+    const snap = refSnaps.get(s.toUpperCase());
+    const refQuote = snap ? quoteFromReferenceSnapshot(snap) : null;
+    if (snap && refQuote) {
+      quotes.push(refQuote);
+      referenceCount += 1;
+    } else {
+      quotes.push(buildMockQuote(s));
+    }
+  }
+  ctx.referenceQuoteCount = referenceCount;
+  if (referenceCount > 0) {
+    console.log(`[OpportunityRadar] ${referenceCount}/${missing.length} non-broker symbols using real stored daily bars`);
+  }
+
   if (liveCount === 0) {
     // Broker either not connected, returned nothing, or errored — be honest.
     ctx.dataMode = "simulated";
-    quotes = symbols.map(buildMockQuote);
   } else if (liveCount < symbols.length) {
-    // Partial coverage — backfill missing symbols with mocks but keep dataMode honest.
-    const present = new Set(quotes.map((q) => q.symbol.toUpperCase()));
-    for (const s of symbols) {
-      if (!present.has(s.toUpperCase())) quotes.push(buildMockQuote(s));
-    }
     ctx.dataMode = "mixed";
   }
 
-  return quotes.map(deriveTechnicals);
+  return quotes.map((q) => deriveTechnicals(q, refSnaps.get(q.symbol.toUpperCase())));
 }
 
 function applyGuardrails(
@@ -821,17 +900,20 @@ export async function generateCandidateScenarios(
     universeSource: resolved.source,
     universeLabel: resolved.label,
     liveQuoteCount: ctx.liveQuoteCount,
+    referenceQuoteCount: ctx.referenceQuoteCount,
     quoteFetchError: ctx.quoteFetchError,
     notes: [
       ctx.dataMode === "live"
         ? `Using live broker quotes (${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols).`
         : ctx.dataMode === "mixed"
-          ? `Partial live data — ${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols came from your broker; the rest used delayed reference quotes.`
+          ? `Partial live data — ${ctx.liveQuoteCount}/${ctx.requestedSymbolCount} symbols came from your broker; ${ctx.referenceQuoteCount > 0 ? `${ctx.referenceQuoteCount} used delayed reference data (real prior-session prices)` : "the rest used delayed reference quotes"}.`
           : ctx.quoteFetchError
             ? `Delayed reference data — ${ctx.quoteFetchError}`
             : ctx.brokerConnected
               ? "Delayed reference data — your broker returned no live quotes for this universe. Try a different universe or reconnect."
-              : "Analysis Mode — connect a broker for live quotes and account-aware risk checks.",
+              : ctx.referenceQuoteCount > 0
+                ? `Analysis Mode — using delayed reference data (real prior-session market prices) for ${ctx.referenceQuoteCount}/${ctx.requestedSymbolCount} symbols. Connect a broker for live quotes and account-aware risk checks.`
+                : "Analysis Mode — connect a broker for live quotes and account-aware risk checks.",
       sentimentNote,
       ...relaxedNotes,
     ],

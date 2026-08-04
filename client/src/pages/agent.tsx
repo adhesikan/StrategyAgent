@@ -121,6 +121,8 @@ interface BestPicksResponse {
   brokerConnected: boolean;
   dataMode: "live" | "simulated" | "mixed";
   liveQuoteCount: number | null;
+  /** Symbols priced from REAL stored daily bars (delayed reference data). */
+  referenceQuoteCount?: number | null;
   universeLabel: string;
   universeSize: number;
   asOf: string;
@@ -635,8 +637,10 @@ export default function AgentPage() {
                     : bestPicksQuery.data.dataMode === "mixed"
                       ? " from a mix of live broker quotes and delayed reference fallbacks, plus news + OpenAI sentiment."
                       : bestPicksQuery.data.brokerConnected
-                        ? " from delayed reference quotes (your broker returned no live data for this universe), plus news + OpenAI sentiment."
-                        : " from educational examples (Analysis Mode), plus news + OpenAI sentiment."
+                        ? " from delayed reference data (your broker returned no live data for this universe), plus news + OpenAI sentiment."
+                        : (bestPicksQuery.data.referenceQuoteCount ?? 0) > 0
+                          ? " from delayed reference data — real prior-session market prices (Analysis Mode), plus news + OpenAI sentiment."
+                          : " from educational examples (Analysis Mode), plus news + OpenAI sentiment."
                   : isConnected
                     ? " uses live broker quotes when your broker returns them, plus news + OpenAI sentiment."
                     : " uses educational examples until you connect a broker, plus news + OpenAI sentiment."}
@@ -682,12 +686,16 @@ export default function AgentPage() {
                     ? "Mixed (live + delayed reference)"
                     : bestPicksQuery.data.brokerConnected
                       ? "Broker connected · delayed reference fallback"
-                      : "Analysis Mode · Educational Examples"}
+                      : (bestPicksQuery.data.referenceQuoteCount ?? 0) > 0
+                        ? "Analysis Mode · Delayed Reference Data"
+                        : "Analysis Mode · Educational Examples"}
               </Badge>
               <span className="text-muted-foreground">
                 Universe: <span className="text-foreground">{bestPicksQuery.data.universeLabel}</span> ({bestPicksQuery.data.universeSize} symbols)
                 {typeof bestPicksQuery.data.liveQuoteCount === "number" && bestPicksQuery.data.liveQuoteCount > 0 &&
                   ` · ${bestPicksQuery.data.liveQuoteCount} live quotes`}
+                {typeof bestPicksQuery.data.referenceQuoteCount === "number" && bestPicksQuery.data.referenceQuoteCount > 0 &&
+                  ` · ${bestPicksQuery.data.referenceQuoteCount} delayed reference`}
               </span>
             </div>
           )}

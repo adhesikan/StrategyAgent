@@ -314,6 +314,8 @@ export interface ThreeIdeaPicks {
   brokerConnected: boolean;
   dataMode: "live" | "simulated" | "mixed";
   liveQuoteCount: number | null;
+  /** Symbols priced from REAL stored daily bars (delayed reference data). */
+  referenceQuoteCount: number | null;
   universeLabel: string;
   universeSize: number;
   asOf: string;
@@ -383,6 +385,11 @@ export async function findThreeIdeaPicks(
     (sum, r) => sum + (typeof r.liveQuoteCount === "number" ? r.liveQuoteCount : 0),
     0,
   );
+  const referenceQuoteCount = allResults.reduce(
+    (sum, r) => sum + (typeof r.referenceQuoteCount === "number" ? r.referenceQuoteCount : 0),
+    0,
+  );
+  const usingReferenceData = referenceQuoteCount > 0;
 
   const notes: string[] = [];
   if (brokerConnected) {
@@ -390,12 +397,18 @@ export async function findThreeIdeaPicks(
       dataMode === "live"
         ? "Using live broker quotes for price action, plus news headlines and OpenAI sentiment analysis."
         : dataMode === "mixed"
-          ? "Partial live broker data — some symbols fell back to simulated quotes. News/sentiment still applied."
-          : "Broker connected but it returned no live quotes for this universe — running on simulated quotes.",
+          ? usingReferenceData
+            ? "Partial live broker data — remaining symbols used delayed reference data (real prior-session prices). News/sentiment still applied."
+            : "Partial live broker data — remaining symbols used delayed reference quotes. News/sentiment still applied."
+          : usingReferenceData
+            ? "Broker returned no live quotes for this universe — running on delayed reference data (real prior-session prices)."
+            : "Broker returned no live quotes for this universe — running on delayed reference quotes.",
     );
   } else {
     notes.push(
-      "No broker connected — these are simulated examples for learning. Connect a broker for live quotes and account-aware sizing.",
+      usingReferenceData
+        ? "Analysis Mode — using delayed reference data (real prior-session market prices). Connect a broker for live quotes and account-aware sizing."
+        : "Analysis Mode — educational examples. Connect a broker for live quotes and account-aware sizing.",
     );
   }
   if (!stockBest) notes.push("No stock swing setup met the minimum quality floor right now.");
@@ -417,6 +430,7 @@ export async function findThreeIdeaPicks(
     brokerConnected,
     dataMode,
     liveQuoteCount,
+    referenceQuoteCount,
     universeLabel: stockResult.universeLabel,
     universeSize: stockResult.universeSize,
     asOf: stockResult.lastRefresh,

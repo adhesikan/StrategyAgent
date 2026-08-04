@@ -1,7 +1,9 @@
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { parsePrompt } from "../agent/prompt-interpreter";
-import { generateMockSetup, generateSetupFromScanResult, getBuiltInStrategies, type TradeSetup } from "../agent/strategy-engine";
+import { generateMockSetup, generateReferenceSetup, generateSetupFromScanResult, getBuiltInStrategies, type TradeSetup } from "../agent/strategy-engine";
+import { getReferenceSnapshot } from "../services/daily-market-data/reference-snapshot";
+import type { ParsedRequest } from "../agent/prompt-interpreter";
 import { getStrategyPlugin, getStrategy, StrategyId } from "../strategies";
 import { storage } from "../storage";
 import { fetchQuotesFromBroker, fetchHistoryFromBroker } from "../broker-service";
@@ -25,6 +27,46 @@ const generateSchema = z.object({
   timeframe: z.string().optional(),
   conditions: z.array(conditionSchema).optional(),
 });
+
+/**
+ * Real-data fallback for the Trade Builder when broker data is unavailable:
+ * Twelve Data realtime quote (gated, 1 credit, cached) + stored daily bars.
+ * Returns null when the license gate denies or no real data exists — only
+ * then may the caller fall back to the educational mock setup.
+ */
+async function tryReferenceSetup(
+  userId: string,
+  parsed: ParsedRequest,
+  reason: string,
+): Promise<TradeSetup | null> {
+  if (!parsed.symbol) return null;
+  try {
+    const snap = await getReferenceSnapshot(userId, parsed.symbol, {
+      realtime: true,
+      feature: "trade_builder_reference",
+    });
+    if (!snap || snap.lastPrice == null || snap.lastPrice <= 0) return null;
+    const t = snap.technicals;
+    const setup = generateReferenceSetup(parsed, {
+      lastPrice: snap.lastPrice,
+      prevClose: snap.prevClose,
+      realtime: !!snap.realtime,
+      ema9: t?.ema9 ?? null,
+      ema21: t?.ema21 ?? null,
+      rsi14: t?.rsi14 ?? null,
+      atr14: t?.atr14 ?? null,
+      high20: t?.high20 ?? null,
+      low20: t?.low20 ?? null,
+      rvol: t?.rvol ?? null,
+      changePct5d: t?.changePct5d ?? null,
+    });
+    setup.dataSource = `${setup.dataSource} — ${reason}`;
+    return setup;
+  } catch (err: any) {
+    console.warn("[agent/generate] reference setup unavailable:", err?.message ?? err);
+    return null;
+  }
+}
 
 export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandler) {
   app.post("/api/agent/generate", isAuthenticated, checkAnalysisQuota(), async (req, res) => {
@@ -107,24 +149,49 @@ export function registerAgentRoutes(app: Express, isAuthenticated: RequestHandle
               if (result) {
                 setup = generateSetupFromScanResult(result, parsed);
               } else {
-                setup = generateMockSetup(parsed);
-                setup.dataSource = "delayed reference (no valid setup from live data)";
+                setup =
+                  (await tryReferenceSetup(userId, parsed, "no valid intraday setup from live broker data")) ??
+                  ((): TradeSetup => {
+                    const s = generateMockSetup(parsed);
+                    s.dataSource = "delayed reference (no valid setup from live data)";
+                    return s;
+                  })();
               }
             } else {
-              setup = generateMockSetup(parsed);
-              setup.dataSource = "delayed reference (limited market data)";
+              setup =
+                (await tryReferenceSetup(userId, parsed, "broker returned limited market data")) ??
+                ((): TradeSetup => {
+                  const s = generateMockSetup(parsed);
+                  s.dataSource = "delayed reference (limited market data)";
+                  return s;
+                })();
             }
           } else {
-            setup = generateMockSetup(parsed);
-            setup.dataSource = "delayed reference";
+            setup =
+              (await tryReferenceSetup(userId, parsed, "strategy not supported by live scan")) ??
+              ((): TradeSetup => {
+                const s = generateMockSetup(parsed);
+                s.dataSource = "delayed reference";
+                return s;
+              })();
           }
         } else {
-          setup = generateMockSetup(parsed);
-          setup.dataSource = "delayed reference (no broker connected)";
+          setup =
+            (await tryReferenceSetup(userId, parsed, "no broker connected")) ??
+            ((): TradeSetup => {
+              const s = generateMockSetup(parsed);
+              s.dataSource = "delayed reference (no broker connected)";
+              return s;
+            })();
         }
       } catch (err) {
-        setup = generateMockSetup(parsed);
-        setup.dataSource = "delayed reference (data fetch error)";
+        setup =
+          (await tryReferenceSetup(userId, parsed, "live data fetch error")) ??
+          ((): TradeSetup => {
+            const s = generateMockSetup(parsed);
+            s.dataSource = "delayed reference (data fetch error)";
+            return s;
+          })();
       }
 
       if (body.conditions && body.conditions.length > 0) {

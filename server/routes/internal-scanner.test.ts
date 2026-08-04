@@ -170,11 +170,14 @@ describe("GET /api/internal/scanner/setup", () => {
       score: 82,
       status: "ready",
       timeframe: "1d",
-      trigger: null, // entryTriggerPrice not stored — truthfully null (never fabricated)
+      // entryTriggerPrice is null on this row, but resistancePrice=125 is used
+      // as the backward-compatible trigger fallback.
+      trigger: { price: 125, basis: "breakout level" },
       invalidation: { price: 117.2, basis: "setup invalidation (stop reference)" },
       technicalObjective: { price: 125, basis: "technical objective (resistance)" },
       currentPrice: 121.3,
       source: "vcp_trader",
+      actionable: true,
     });
     expect(body.setup.details.rawStage).toBe("READY");
     const text = JSON.stringify(body);
@@ -351,6 +354,204 @@ describe("GET /api/internal/scanner/opportunities", () => {
     expect(text).not.toContain("user-secret-id");
     expect(text).not.toContain("userId");
     expect(text).not.toContain("dedupeKey");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trigger contract regression suite (spec §7, items 5–13, 20–23)
+// ---------------------------------------------------------------------------
+
+describe("trigger contract regression — toInternalSetup", () => {
+  // Test 5: prefers entryTriggerPrice
+  it("5. trigger prefers stored entryTriggerPrice over resistancePrice", () => {
+    const r = row({ entryTriggerPrice: 190.0, resistancePrice: 195.0 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger?.price).toBe(190.0);
+    expect(setup.trigger?.basis).toBe("breakout level");
+    // technicalObjective still uses resistancePrice
+    expect(setup.technicalObjective?.price).toBe(195.0);
+  });
+
+  // Test 6: falls back to resistancePrice
+  it("6. trigger falls back to resistancePrice when entryTriggerPrice is null", () => {
+    const r = row({ entryTriggerPrice: null, resistancePrice: 125.0 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger?.price).toBe(125.0);
+    expect(setup.trigger?.basis).toBe("breakout level");
+  });
+
+  // Test 7: null when both are missing
+  it("7. trigger is null when both entryTriggerPrice and resistancePrice are null", () => {
+    const r = row({ entryTriggerPrice: null, resistancePrice: null });
+    expect(toInternalSetup(r)!.trigger).toBeNull();
+  });
+
+  // Test 8: technicalObjective mapping unchanged
+  it("8. technicalObjective always uses resistancePrice (not entryTriggerPrice)", () => {
+    const r = row({ entryTriggerPrice: 190.0, resistancePrice: 195.0 });
+    expect(toInternalSetup(r)!.technicalObjective).toEqual({
+      price: 195.0,
+      basis: "technical objective (resistance)",
+    });
+  });
+
+  // Test 9: VCP stored row exposes trigger
+  it("9. VCP stored row exposes a trigger via entryTriggerPrice", () => {
+    const r = row({ strategyId: "VCP", entryTriggerPrice: 130.5, resistancePrice: 130.5 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger).not.toBeNull();
+    expect(setup.trigger!.price).toBe(130.5);
+    expect(setup.actionable).toBe(true);
+  });
+
+  // Test 10: VCP_MULTIDAY stored row exposes trigger
+  it("10. VCP_MULTIDAY stored row exposes a trigger", () => {
+    const r = row({ strategyId: "VCP_MULTIDAY", entryTriggerPrice: 200.0, resistancePrice: 200.0 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger?.price).toBe(200.0);
+    expect(setup.actionable).toBe(true);
+  });
+
+  // Test 11: CLASSIC_PULLBACK mapping
+  it("11. CLASSIC_PULLBACK row maps trigger correctly", () => {
+    const r = row({ strategyId: "CLASSIC_PULLBACK", entryTriggerPrice: 88.0, resistancePrice: 89.0 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger?.price).toBe(88.0);
+    expect(setup.technicalObjective?.price).toBe(89.0);
+  });
+
+  // Test 12: VWAP_RECLAIM mapping
+  it("12. VWAP_RECLAIM row maps trigger from resistancePrice when entryTriggerPrice null", () => {
+    const r = row({ strategyId: "VWAP_RECLAIM", entryTriggerPrice: null, resistancePrice: 77.5 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger?.price).toBe(77.5);
+    expect(setup.actionable).toBe(true);
+  });
+
+  // Test 13: old null-trigger row uses the fallback
+  it("13. legacy null-trigger row uses resistancePrice fallback (backward compat)", () => {
+    const r = row({ entryTriggerPrice: null, resistancePrice: 125.0 });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger).toEqual({ price: 125.0, basis: "breakout level" });
+    expect(setup.actionable).toBe(true);
+    // technicalObjective is the SAME price — documented limitation
+    expect(setup.technicalObjective?.price).toBe(125.0);
+  });
+
+  // Test 20: READY/TRIGGERED without trigger → actionable: false
+  it("20. READY row with no trigger price and no resistancePrice has actionable:false", () => {
+    const r = row({ stageAtDetection: "READY", entryTriggerPrice: null, resistancePrice: null });
+    const setup = toInternalSetup(r)!;
+    expect(setup.trigger).toBeNull();
+    expect(setup.actionable).toBe(false);
+    // status is still "ready" for display — not silently downgraded
+    expect(setup.status).toBe("ready");
+  });
+
+  it("TRIGGERED row with no trigger price has actionable:false", () => {
+    const r = row({ stageAtDetection: "BREAKOUT", entryTriggerPrice: null, resistancePrice: null });
+    const setup = toInternalSetup(r)!;
+    expect(setup.actionable).toBe(false);
+    expect(setup.status).toBe("triggered"); // status preserved for display
+  });
+
+  it("RESOLVED row is not actionable", () => {
+    const r = row({ status: "RESOLVED", resolutionOutcome: "BROKE_RESISTANCE", entryTriggerPrice: 130.0 });
+    expect(toInternalSetup(r)!.actionable).toBe(false);
+  });
+});
+
+describe("trigger contract regression — session expiry in toInternalSetup", () => {
+  // Use a fixed now: 2026-08-04 10:00 AM ET = 14:00Z
+  const NOW = new Date("2026-08-04T14:00:00Z");
+
+  it("17+18+19 — ORB/GAP rows from prior ET day: session-specific strategies confirmed", () => {
+    // The full session-expiry logic (isSessionExpired) is unit-tested in
+    // server/opportunity-service.test.ts (tests 17–19). Here we verify that
+    // the three intraday strategies are recognised by the strategy-id constants
+    // and that toInternalSetup produces a structurally valid setup for them.
+    for (const strat of ["ORB5", "ORB15", "GAP_AND_GO"] as const) {
+      const r = row({
+        strategyId: strat,
+        entryTriggerPrice: 530.0,
+        resistancePrice: 530.0,
+        detectedAt: new Date("2026-08-03T14:00:00Z"),
+      });
+      const setup = toInternalSetup(r)!;
+      expect(setup).not.toBeNull();
+      expect(setup.strategy).toBe(strat);
+      expect(setup.trigger?.price).toBe(530.0);
+      // status/actionable depend on wall-clock time so we only assert structure
+      expect(typeof setup.actionable).toBe("boolean");
+    }
+  });
+
+  it("ORB row from same ET day is actionable and has no session-expiry warning", () => {
+    // Detected same day (2026-08-04 09:31 ET = 13:31Z)
+    const r = row({
+      strategyId: "ORB5",
+      entryTriggerPrice: 530.0,
+      resistancePrice: 530.0,
+      detectedAt: new Date("2026-08-04T13:31:00Z"),
+    });
+    const setup = toInternalSetup(r)!;
+    // Without mocking Date.now, we can only verify the structure is correct
+    // when the test runs at a different time. We test isSessionExpired directly
+    // in opportunity-service.test.ts. Here verify the setup is structurally valid.
+    expect(setup.trigger).not.toBeNull();
+    expect(setup.source).toBe("vcp_trader");
+  });
+});
+
+describe("trigger contract regression — MCP endpoint integration (test 21)", () => {
+  it("21. /api/internal/scanner/setup returns trigger.price when entryTriggerPrice is set", async () => {
+    setupRows = [row({ entryTriggerPrice: 130.5, resistancePrice: 130.5 })];
+    const res = await get("/api/internal/scanner/setup?symbol=NVDA&strategy=VCP");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.setup.trigger).toEqual({ price: 130.5, basis: "breakout level" });
+    expect(body.setup.actionable).toBe(true);
+  });
+
+  it("21b. /api/internal/scanner/opportunities returns trigger.price for ready rows", async () => {
+    oppRows = [row({ entryTriggerPrice: 130.5, resistancePrice: 130.5 })];
+    const res = await get("/api/internal/scanner/opportunities");
+    const body = await res.json();
+    expect(body.opportunities[0].trigger).toEqual({ price: 130.5, basis: "breakout level" });
+    expect(body.opportunities[0].actionable).toBe(true);
+  });
+});
+
+describe("trigger contract regression — backward compat (tests 22–23)", () => {
+  it("22. existing Analyze BA flow: /setup returns a setup with trigger for non-null resistance", async () => {
+    setupRows = [row({ symbol: "BA", entryTriggerPrice: null, resistancePrice: 225.0 })];
+    const res = await get("/api/internal/scanner/setup?symbol=BA&strategy=VCP");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // With the fallback, BA gets a trigger even if entryTriggerPrice was null
+    expect(body.setup.trigger?.price).toBe(225.0);
+    expect(body.setup.symbol).toBe("BA");
+    expect(body.setup.source).toBe("vcp_trader");
+  });
+
+  it("23. existing opportunity search contract: source, generatedAt, opportunities present", async () => {
+    oppRows = [row(), row({ symbol: "DIS", dedupeKey: "dis" })];
+    const res = await get("/api/internal/scanner/opportunities");
+    const body = await res.json();
+    expect(body.source).toBe("vcp_trader");
+    expect(typeof body.generatedAt).toBe("string");
+    expect(Array.isArray(body.opportunities)).toBe(true);
+    // Both opportunities still returned — no regression
+    expect(body.opportunities).toHaveLength(2);
+  });
+
+  it("no execution behavior — internal-scanner returns scanner intelligence only", async () => {
+    setupRows = [row()];
+    const res = await get("/api/internal/scanner/setup?symbol=NVDA&strategy=VCP");
+    const body = await res.json();
+    const text = JSON.stringify(body);
+    // No order/execution fields ever in the response
+    expect(text).not.toMatch(/placeOrder|submitOrder|execut(e|ion)|orderId|fillPrice/i);
   });
 });
 

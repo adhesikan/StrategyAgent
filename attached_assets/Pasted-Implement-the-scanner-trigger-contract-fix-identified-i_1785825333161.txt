@@ -1,0 +1,289 @@
+Implement the scanner trigger-contract fix identified in:
+
+docs/SCANNER_TRIGGER_CONTRACT_AUDIT.md
+
+IMPORTANT
+
+The audit confirmed:
+
+1. server/opportunity-service.ts currently hardcodes:
+
+entryTriggerPrice: null
+
+even though every ScanResult already exposes the breakout level as:
+
+result.resistance
+
+2. The webhook/automation ingestion path already persists the correct value using:
+
+entryTrigger: scanResult.resistance
+
+3. toInternalSetup maps resistancePrice to technicalObjective but does not use it as a trigger fallback.
+
+4. Status normalization may return READY or TRIGGERED even when trigger is null.
+
+5. The MCP ranker is correct and must not be weakened.
+
+Do not modify MCP.
+Do not change ranking algorithms.
+Do not fabricate trigger levels.
+Do not alter scanner detection algorithms.
+Do not add execution behavior.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. FIX SCHEDULED OPPORTUNITY INGESTION
+==================================================
+
+In server/opportunity-service.ts, replace the hardcoded null trigger assignment with the scanner-produced resistance level.
+
+Use the appropriate existing field names and types, equivalent to:
+
+entryTriggerPrice: result.resistance ?? null
+
+Requirements:
+
+- preserve null when resistance is absent or invalid
+- reject NaN, Infinity, zero, or negative values according to existing validation conventions
+- do not derive a trigger from current price, major high, technical objective, or arbitrary percentages
+- preserve the existing invalidation and objective mappings
+
+==================================================
+2. FIX INTERNAL API MAPPING
+==================================================
+
+Update toInternalSetup so trigger mapping uses the stored trigger first, then the resistance field as a backward-compatible fallback.
+
+Equivalent behavior:
+
+triggerPrice =
+  row.entryTriggerPrice
+  ?? row.resistancePrice
+  ?? null
+
+Return the existing trigger object shape:
+
+trigger: triggerPrice != null
+  ? {
+      price: triggerPrice,
+      basis: "breakout level"
+    }
+  : null
+
+Do not use resistancePrice as both trigger and objective without explicitly preserving the intended existing technicalObjective behavior.
+
+If the stored schema uses the same resistance field for both breakout entry and technical objective, document that limitation and avoid inventing a second level.
+
+==================================================
+3. BACKFILL EXISTING STORED OPPORTUNITIES
+==================================================
+
+The current production rows already contain resistancePrice but have entryTriggerPrice = null.
+
+Create a safe, idempotent backfill for eligible rows:
+
+- entryTriggerPrice is null
+- resistancePrice is finite and positive
+- lifecycle/status indicates the row is still relevant
+- strategy supports a price-based breakout trigger
+
+Do not backfill event-triggered or session-sensitive strategies blindly.
+
+At minimum, evaluate strategy-specific eligibility for:
+
+- VCP
+- VCP_MULTIDAY
+- CLASSIC_PULLBACK
+- TREND_CONTINUATION
+- VWAP_RECLAIM
+- VOLATILITY_SQUEEZE
+- HIGH_RVOL
+- GAP_AND_GO
+- ORB5
+- ORB15
+
+For each strategy, explicitly classify the trigger as:
+
+PRICE_TRIGGER_SAFE_TO_BACKFILL
+SESSION_OR_EVENT_TRIGGER_REQUIRES_REVIEW
+NO_PRICE_TRIGGER
+
+Do not run the backfill automatically during application startup.
+
+Provide either:
+
+- a one-time migration/script, or
+- an admin-only dry-run and apply workflow
+
+The dry run must report:
+
+- rows inspected
+- rows eligible
+- rows skipped
+- rows by strategy
+- sample sanitized changes
+- reasons for skipped rows
+
+==================================================
+4. ORB AND GAP SESSION EXPIRY
+==================================================
+
+Implement or verify session-expiry handling for:
+
+- ORB5
+- ORB15
+- GAP_AND_GO
+
+These strategies must not remain actionable as fresh daily opportunities after their valid trading session has expired.
+
+Rules should be deterministic and timezone-aware.
+
+Use the exchange/session timezone already used by the application.
+
+Expired session setups should become:
+
+- stale
+- expired
+- invalid
+
+according to the existing lifecycle contract.
+
+Do not preserve an old intraday trigger as a fresh actionable level on a later day.
+
+==================================================
+5. STATUS CONSISTENCY
+==================================================
+
+Audit normalizeStatus.
+
+Do not allow READY or TRIGGERED to imply an actionable trade when no trigger is available.
+
+Preferred behavior:
+
+- keep the raw scanner stage in details
+- normalize to forming/watch/unknown when an actionable price trigger is required but missing
+- or preserve READY/TRIGGERED but include:
+  triggerAvailable: false
+  actionable: false
+
+Choose the smallest backward-compatible option.
+
+Do not silently downgrade event-triggered strategies if their trigger semantics are not price-based; classify them explicitly.
+
+Document the final rule.
+
+==================================================
+6. PRESERVE TRIGGER SEMANTICS
+==================================================
+
+Do not assume every strategy uses the same trigger model.
+
+For this fix, support the existing price trigger where the scanner already supplies resistance.
+
+Document future typed-trigger support such as:
+
+trigger:
+  | {
+      type: "price";
+      price: number;
+      basis: string;
+    }
+  | {
+      type: "event";
+      event: string;
+      confirmation: string[];
+    }
+  | null
+
+Do not implement a broad typed-trigger redesign unless required for correctness in this task.
+
+==================================================
+7. TESTS
+==================================================
+
+Add regression tests for:
+
+1. scheduled ingestion persists result.resistance into entryTriggerPrice
+2. missing resistance remains null
+3. invalid numeric resistance is not persisted
+4. webhook and scheduled ingestion produce equivalent trigger values
+5. toInternalSetup prefers entryTriggerPrice
+6. toInternalSetup falls back to resistancePrice
+7. trigger remains null when both are missing
+8. existing technicalObjective mapping remains correct
+9. VCP stored row exposes a trigger
+10. VCP_MULTIDAY stored row exposes a trigger
+11. CLASSIC_PULLBACK mapping
+12. VWAP_RECLAIM mapping
+13. old null-trigger row works through the fallback
+14. backfill dry run is idempotent
+15. backfill skips invalid resistance
+16. backfill skips unsupported event/session strategies
+17. ORB5 setup expires after its valid session
+18. ORB15 setup expires after its valid session
+19. GAP_AND_GO session expiry
+20. READY/TRIGGERED with missing required trigger is not presented as actionable
+21. MCP internal scanner endpoint returns the trigger object
+22. existing Analyze BA flow remains compatible
+23. existing opportunity search remains compatible
+24. no execution behavior
+25. no secrets in logs or reports
+
+==================================================
+8. VALIDATION
+==================================================
+
+Run:
+
+npm test
+npm run build
+
+Also run focused suites for:
+
+- opportunity ingestion
+- internal scanner routes
+- lifecycle/status mapping
+- session expiry
+- backfill script
+- Ask AI integration contracts
+
+Do not commit or push.
+
+==================================================
+9. LIVE VERIFICATION
+==================================================
+
+After tests pass, use a bounded development verification:
+
+1. Create or identify a recent BA-style stored opportunity with resistance.
+2. Confirm database row contains entryTriggerPrice.
+3. Confirm /api/internal/scanner/setup returns trigger.price.
+4. Confirm /api/internal/scanner/opportunities returns trigger.price.
+5. Confirm MCP scan_strategy receives the trigger.
+6. Confirm rank_market_trade_candidates no longer excludes the row as NOT_ACTIONABLE_NO_TRIGGER.
+7. Confirm candidate qualification may still reject it for legitimate reasons such as risk, earnings, staleness, or regime conflict.
+
+Do not claim the setup is qualified merely because the trigger now exists.
+
+==================================================
+10. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. Exact files changed
+2. Scheduled-ingestion fix
+3. API fallback behavior
+4. Backfill design and dry-run counts
+5. Strategy eligibility classifications
+6. ORB/GAP expiry handling
+7. Status-consistency rule
+8. Tests and totals
+9. Build result
+10. Sanitized before/after BA-style row
+11. Before/after internal API payload
+12. Before/after market-ranking result
+13. Compatibility concerns
+14. Recommended deployment sequence
+
+Wait for my review before committing, running the backfill, or deploying.

@@ -13,6 +13,63 @@ const EXPIRATION_DAYS: Record<string, number> = {
 
 const BREAKOUT_BUFFER = 0.001;
 
+// ---------------------------------------------------------------------------
+// Trigger price validation
+// ---------------------------------------------------------------------------
+
+/** Strategies whose trigger is valid only for the ET trading session in which
+ *  the setup was detected. After that session ends the stored level is stale. */
+export const INTRADAY_SESSION_STRATEGIES = new Set(["ORB5", "ORB15", "GAP_AND_GO"]);
+
+/** Returns the America/New_York calendar-date key for a Date, e.g. "08/04/2026". */
+function etDayKey(d: Date): string {
+  return d.toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+/**
+ * Returns true when `opp` is an intraday strategy setup that was detected on
+ * a prior ET trading day — i.e. its session has ended and the stored trigger
+ * level is no longer actionable.
+ *
+ * Exported so both the internal-scanner route and tests can share the rule.
+ */
+export function isSessionExpired(
+  opp: Pick<Opportunity, "strategyId" | "status" | "detectedAt">,
+  now: Date = new Date(),
+): boolean {
+  if (!INTRADAY_SESSION_STRATEGIES.has(opp.strategyId)) return false;
+  if (opp.status !== "ACTIVE") return false;
+  const detected =
+    opp.detectedAt instanceof Date
+      ? opp.detectedAt
+      : opp.detectedAt
+        ? new Date(opp.detectedAt as any)
+        : null;
+  if (!detected || Number.isNaN(detected.getTime())) return false;
+  return etDayKey(detected) !== etDayKey(now);
+}
+
+/**
+ * Validates and returns a trigger price produced by the scanner.
+ * Rules (mirror the existing level helpers in internal-scanner.ts):
+ *   - must be a finite, positive number (> 0)
+ *   - NaN, Infinity, zero, and negative values are rejected
+ *   - null / undefined → null (preserve absence truthfully)
+ *
+ * Do NOT derive a trigger from current price, percentage offsets, or
+ * arbitrary calculations — use only scanner-supplied resistance values.
+ */
+export function sanitizeTriggerPrice(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return v;
+}
+
 function generateDedupeKey(userId: string, symbol: string, strategyId: string, timeframe: string, detectedAt: Date): string {
   // Use daily bucket to prevent same symbol+strategy from being captured multiple times per day
   const dayBucket = Math.floor(detectedAt.getTime() / (1000 * 60 * 60 * 24));
@@ -54,7 +111,11 @@ export async function ingestOpportunitiesFromScan(
       detectedPrice: result.price,
       resistancePrice: result.resistance || null,
       stopReferencePrice: result.stopLoss || null,
-      entryTriggerPrice: null,
+      // Use the scanner-produced resistance level as the entry trigger.
+      // This is consistent with the webhook/automation path (server/routes.ts
+      // line ~6021) which already maps scanResult.resistance → entryTrigger.
+      // sanitizeTriggerPrice rejects NaN, Infinity, zero, and negatives.
+      entryTriggerPrice: sanitizeTriggerPrice(result.resistance),
       rvol: result.rvol || null,
       score: result.patternScore || null,
       status: "ACTIVE",
@@ -166,6 +227,15 @@ export async function resolveOpportunities(): Promise<number> {
       }
       // If stop was hit but price recovered above entry, defer to expiration
       
+      // PRIORITY 2b: Session expiry for intraday strategies (ORB5, ORB15, GAP_AND_GO).
+      // These strategies detect an opening-range trigger that is only valid for the
+      // ET trading session in which the setup was found. If the current ET day differs
+      // from the detection day the trigger is stale — resolve as EXPIRED immediately.
+      if (!resolutionOutcome && isSessionExpired(opp, now)) {
+        resolutionOutcome = "EXPIRED";
+        resolutionReason = `Intraday setup (${opp.strategyId}) expired: the detected trading session has ended.`;
+      }
+
       // PRIORITY 3: Expiration - determine final outcome based on current/last price
       if (!resolutionOutcome && isExpired) {
         if (didHitStop && !isCurrentlyAboveEntry) {

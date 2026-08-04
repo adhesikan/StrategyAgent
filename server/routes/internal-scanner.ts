@@ -25,6 +25,7 @@ import { opportunities as opportunitiesTable, type Opportunity } from "@shared/s
 import { StrategyId, type StrategyIdType } from "../strategies/types";
 import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { internalApiKeyAuth } from "./internal-market";
+import { isSessionExpired, INTRADAY_SESSION_STRATEGIES } from "../opportunity-service";
 
 // ---------------------------------------------------------------------------
 // Strategy metadata (authoritative — derived from the production registry)
@@ -166,6 +167,23 @@ export interface InternalSetup {
   warnings: string[];
   detectedAt: string | null;
   source: "vcp_trader";
+  /**
+   * True when a trigger price is available AND the row is still ACTIVE.
+   * Consumers MUST check this flag before treating the setup as tradeable.
+   * READY or TRIGGERED status alone does NOT imply actionability — the
+   * status reflects pattern maturity; this flag reflects whether an entry
+   * price exists. False when trigger is null (no level was stored or the
+   * session has expired for intraday strategies).
+   *
+   * Future typed-trigger design (not yet implemented):
+   *   trigger:
+   *     | { type: "price"; price: number; basis: string }
+   *     | { type: "event"; event: string; confirmation: string[] }
+   *     | null
+   * When that design is adopted, actionable will be derived from whether
+   * a price-type trigger with a finite level is present.
+   */
+  actionable: boolean;
   details: {
     rawStage: string | null;
     lifecycleStatus: string | null;
@@ -201,6 +219,37 @@ export function toInternalSetup(row: Opportunity): InternalSetup | null {
   if (row.status === "ACTIVE" && detected && !isRowFresh(row)) {
     warnings.push("Setup is older than the 10-day freshness window and may be stale.");
   }
+
+  // Session-expiry warning for intraday strategies (ORB5, ORB15, GAP_AND_GO).
+  // The lifecycle resolver will eventually mark these EXPIRED; this warning
+  // lets consumers react without waiting for the next resolve cycle.
+  const now = new Date();
+  if (isSessionExpired(row, now)) {
+    warnings.push(
+      `Intraday setup (${row.strategyId}) is from a prior ET trading session — trigger level is no longer actionable.`,
+    );
+  }
+
+  // Trigger: prefer the explicitly stored entry trigger (populated by the
+  // fixed ingestion path). Fall back to resistancePrice for rows stored
+  // before the ingestion fix was deployed (backward compatibility).
+  //
+  // LIMITATION: resistancePrice then appears in both trigger and
+  // technicalObjective because the scanner stores only one resistance
+  // level and it serves both roles. This is truthful — for all current
+  // scanner strategies the breakout trigger IS the resistance level.
+  // When typed-trigger variants are introduced (see actionable comment),
+  // these fields will diverge.
+  const triggerPrice = num(row.entryTriggerPrice) ?? num(row.resistancePrice) ?? null;
+  const trigger: PriceLevel | null =
+    triggerPrice !== null ? { price: triggerPrice, basis: "breakout level" } : null;
+
+  // actionable = trigger exists AND row is still ACTIVE AND session has not expired.
+  // Preserves READY/TRIGGERED status for display purposes while being explicit
+  // about whether an entry price is available. Consumers must check this flag.
+  const sessionExpired = isSessionExpired(row, now);
+  const actionable = trigger !== null && row.status === "ACTIVE" && !sessionExpired;
+
   return {
     symbol: row.symbol.toUpperCase(),
     strategy: row.strategyId,
@@ -209,10 +258,11 @@ export function toInternalSetup(row: Opportunity): InternalSetup | null {
     score: num(row.score),
     status: normalizeStatus(row),
     timeframe: row.timeframe || "1d",
-    // Real stored levels only — never fabricated. entryTriggerPrice is null
-    // for most scheduled ingests; that null is truthful.
-    trigger: level(row.entryTriggerPrice, "breakout level"),
+    trigger,
     invalidation: level(row.stopReferencePrice, "setup invalidation (stop reference)"),
+    // technicalObjective uses resistancePrice (the resistance/target level).
+    // This may equal trigger.price when entryTriggerPrice was null (legacy rows);
+    // that duplication is truthful, not fabricated.
     technicalObjective: level(row.resistancePrice, "technical objective (resistance)"),
     currentPrice: num(row.lastPrice) ?? num(row.detectedPrice),
     // reasons/warnings prose is not persisted by the scheduled scanner; empty
@@ -221,6 +271,7 @@ export function toInternalSetup(row: Opportunity): InternalSetup | null {
     warnings,
     detectedAt: detected && !Number.isNaN(detected.getTime()) ? detected.toISOString() : null,
     source: "vcp_trader",
+    actionable,
     details: {
       rawStage: row.stageAtDetection ?? null,
       lifecycleStatus: row.status ?? null,

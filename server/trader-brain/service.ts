@@ -228,3 +228,26 @@ export async function runBrainShadow(
     return undefined;
   }
 }
+
+/**
+ * Runs the TraderBrain for a question and returns both the client-safe field
+ * AND the full internal result for shadow comparison.
+ *
+ * Used in the general ask.ts path when shadow validation is active.
+ * Never throws. Returns `{ field: undefined, result: undefined }` on any failure.
+ */
+export async function runBrainShadowFull(
+  requestId: string,
+  question: string,
+  ctx: TrustedContext,
+): Promise<{ field: TraderBrainResponseField | undefined; result: TraderBrainResult | undefined }> {
+  try {
+    const intent = classifyBrainIntent(question, ctx.tickers);
+    if (!isBrainEnabled(intent)) return { field: undefined, result: undefined };
+
+    const result = await traderBrainService.execute({ requestId, question }, ctx);
+    return { field: projectToResponseField(result), result };
+  } catch {
+    return { field: undefined, result: undefined };
+  }
+}

@@ -1883,15 +1883,32 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       };
       const brainRequestId = `ask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const brainShadowPromise = import("../trader-brain/service").then(
-        ({ runBrainShadow }) => runBrainShadow(brainRequestId, question, brainCtx),
-      ).catch(() => undefined);
+        ({ runBrainShadowFull }) => runBrainShadowFull(brainRequestId, question, brainCtx),
+      ).catch(() => ({ field: undefined, result: undefined }));
 
       let answer: AskAnswer | null = null;
       let traderBrainField: import("../trader-brain/types").TraderBrainResponseField | undefined;
-      [answer, traderBrainField] = await Promise.all([
+      let brainFullResult: import("../trader-brain/types").TraderBrainResult | undefined;
+      let brainShadowOut: { field: typeof traderBrainField; result: typeof brainFullResult };
+      [answer, brainShadowOut] = await Promise.all([
         callOpenAi(question, ctx, { portfolioContextToken: pfCtxToken }),
         brainShadowPromise,
       ]);
+      traderBrainField = brainShadowOut.field;
+      brainFullResult = brainShadowOut.result;
+
+      // Shadow validation: compare Brain output against legacy path.
+      // Fire-and-forget — never alters response, never throws.
+      if (brainFullResult) {
+        import("../trader-brain/shadow-validator").then(({ extractBrainSnapshot, extractLegacySnapshot, compareSnapshots, logShadowComparison }) => {
+          try {
+            const brainSnap = extractBrainSnapshot(brainFullResult!);
+            const legacySnap = extractLegacySnapshot(intent, tickers, answer);
+            const comparison = compareSnapshots(brainSnap, legacySnap, brainRequestId);
+            logShadowComparison(comparison);
+          } catch { /* never fail the request */ }
+        }).catch(() => { /* import failure — ignore */ });
+      }
 
       // Revoke portfolio context token immediately after callOpenAi completes
       if (pfCtxToken) {

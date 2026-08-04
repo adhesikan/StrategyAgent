@@ -47,6 +47,23 @@ Shadow mode added to the general path (the main non-early-return `res.json`).
 - Required step failure → remaining steps skipped; honest "unavailable" returned
 - OpenAI step always optional (required: false) — deterministic sections survive OpenAI failure
 
+## Shadow Validator (Phase 0 complete)
+
+`server/trader-brain/shadow-validator.ts` — 8-dimension comparison engine (pure, no I/O).
+`server/trader-brain/__tests__/shadow-validator.test.ts` — 88 tests, all passing.
+`docs/TRADER_BRAIN_SHADOW_REPORT.md` — fixture-suite analysis, migration roadmap.
+
+**Wiring:** `runBrainShadowFull()` added to service.ts; general path in ask.ts uses it;
+shadow comparison is fire-and-forget after Promise.all; never delays or alters response.
+
+**Wiring gap:** Ranked-trade-search and portfolio-trade-plan early-return branches do NOT
+emit live shadow comparisons yet (fixture suite only). Phase 1 work required.
+
+**Migration-ready intents:** RECOMMEND_SYMBOL_TRADE, COMBINED_ANALYSIS_RECOMMENDATION
+(all 8 dimensions MATCH in fixture suite; general path wired; no blocking mismatches).
+
+**Log event:** `BRAIN_SHADOW_COMPARISON` JSON — monitor for `overallVerdict:"MISMATCH"`.
+
 ## Phase 0 Limitation
 
 No dedicated portfolio/options tokens wired to Brain in Phase 0. Brain runs market-only (no portfolio context). Tokens wired in Phase 1 when Brain takes over the affected ask.ts paths.

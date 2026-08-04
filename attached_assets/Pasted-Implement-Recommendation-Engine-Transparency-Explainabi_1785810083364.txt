@@ -1,0 +1,475 @@
+Implement Recommendation Engine Transparency (Explainability) for VCP Trader.
+
+IMPORTANT
+
+Do NOT modify the recommendation algorithm.
+
+Do NOT modify scanner algorithms.
+
+Do NOT modify ranking.
+
+Do NOT change recommendation decisions.
+
+Do NOT change MCP.
+
+Only expose the deterministic evidence already produced by the recommendation engine.
+
+Everything must remain additive.
+
+No breaking API changes.
+
+Wait for review before committing.
+
+----------------------------------------------------
+GOAL
+----------------------------------------------------
+
+When a recommendation request returns:
+
+LIVE_OPTIONS
+ESTIMATED_OPTIONS
+STOCK
+WATCH
+NO_TRADE
+UNSUPPORTED
+
+the user should understand WHY.
+
+Instead of:
+
+"No Trade"
+
+the user should see:
+
+• how many strategies were evaluated
+• which strategies passed
+• which strategies failed
+• why they failed
+• what would need to happen to become actionable
+• how confident the engine is in its decision
+
+This is NOT chain-of-thought.
+
+It is deterministic recommendation evidence.
+
+----------------------------------------------------
+1. Recommendation Evidence Model
+----------------------------------------------------
+
+Extend the structured recommendation response with:
+
+recommendationEvidence
+
+Example:
+
+{
+  "summary": {
+      "strategiesEvaluated": 12,
+      "actionable": 0,
+      "watch": 2,
+      "rejected": 10,
+      "dataQuality":"LIVE"
+  },
+
+  "evaluations":[
+      {
+          "strategy":"Momentum Breakout",
+          "status":"REJECTED",
+          "reason":"Entry trigger not reached"
+      },
+      {
+          "strategy":"Trend Continuation",
+          "status":"WATCH",
+          "reason":"Needs another higher low"
+      }
+  ],
+
+  "watchConditions":[
+      {
+          "condition":"Close above $214.85"
+      },
+      {
+          "condition":"Volume > 1.5x average"
+      }
+  ],
+
+  "decisionFactors":[
+      "No strategy produced a qualifying reward/risk",
+      "Entry trigger missing",
+      "Upcoming earnings"
+  ]
+}
+
+Everything must come from deterministic engine data.
+
+Never fabricate.
+
+----------------------------------------------------
+2. Strategy Evaluation Summary
+----------------------------------------------------
+
+Replace:
+
+12 strategies checked
+
+with
+
+Evaluation Summary
+
+12 evaluated
+
+0 Actionable
+
+2 Watch
+
+10 Rejected
+
+If unavailable:
+
+show only truthful counts.
+
+----------------------------------------------------
+3. Expandable Strategy Table
+----------------------------------------------------
+
+Add
+
+▼ Strategy Evaluation
+
+Collapsed by default.
+
+Expanded:
+
+✓ Momentum Breakout
+READY
+
+✓ Trend Continuation
+WATCH
+
+✕ Precision Pullback
+Rejected
+
+Reason:
+Risk/Reward below threshold
+
+✕ VWAP Reclaim
+
+Reason:
+Already extended
+
+✕ Volume Surge
+
+Reason:
+Volume confirmation missing
+
+Only show deterministic reasons.
+
+----------------------------------------------------
+4. Watch Conditions
+----------------------------------------------------
+
+For WATCH and NO_TRADE
+
+show:
+
+What would make this actionable?
+
+Example:
+
+Need:
+
+✓ close above breakout
+
+✓ volume confirmation
+
+✓ earnings completed
+
+✓ volatility contraction
+
+Only conditions actually known.
+
+----------------------------------------------------
+5. Recommendation Confidence
+----------------------------------------------------
+
+Stop treating
+
+NO_TRADE
+
+as automatically
+
+Low Confidence.
+
+Instead compute:
+
+Recommendation Confidence
+
+based on:
+
+evaluation completeness
+
+strategy coverage
+
+data quality
+
+live vs simulated
+
+missing data
+
+provider health
+
+Examples
+
+HIGH
+
+12 strategies evaluated
+
+live market
+
+no missing data
+
+recommendation deterministic
+
+MEDIUM
+
+10 evaluated
+
+2 unavailable
+
+LOW
+
+mock
+
+partial provider failure
+
+missing market data
+
+Label this clearly as
+
+Recommendation Confidence
+
+not
+
+Bullish Confidence
+
+----------------------------------------------------
+6. Decision Factors
+----------------------------------------------------
+
+Add
+
+Decision Factors
+
+Examples
+
+✓ reward/risk failed
+
+✓ missing trigger
+
+✓ earnings in 2 days
+
+✓ regime conflict
+
+✓ volatility too high
+
+✓ insufficient liquidity
+
+✓ no options chain
+
+These come from the recommendation engine only.
+
+----------------------------------------------------
+7. Verdict-specific presentation
+----------------------------------------------------
+
+LIVE_OPTIONS
+
+show:
+
+qualified strategy
+
+chosen structure
+
+alternatives
+
+risk
+
+why chosen
+
+WATCH
+
+show
+
+watch conditions
+
+missing trigger
+
+next review level
+
+NO_TRADE
+
+show
+
+why every qualifying strategy failed
+
+what would need to improve
+
+UNSUPPORTED
+
+show
+
+supported alternatives
+
+ESTIMATED_OPTIONS
+
+show
+
+estimated limitations
+
+----------------------------------------------------
+8. Explain ranking
+----------------------------------------------------
+
+When a strategy wins
+
+show
+
+Selected because:
+
+highest overall score
+
+best reward/risk
+
+highest confidence
+
+better than:
+
+Momentum Breakout
+
+Precision Pullback
+
+Trend Continuation
+
+Do not expose ranking algorithm internals.
+
+Only deterministic explanation.
+
+----------------------------------------------------
+9. Confidence explanation
+----------------------------------------------------
+
+User clicks
+
+Recommendation Confidence
+
+Expand
+
+Example
+
+HIGH
+
+Reason
+
+✓ 12 strategies evaluated
+
+✓ live market
+
+✓ deterministic recommendation
+
+✓ no provider failures
+
+LOW
+
+Reason
+
+✕ market data unavailable
+
+✕ simulated options
+
+✕ 4 strategies unavailable
+
+----------------------------------------------------
+10. API
+----------------------------------------------------
+
+Everything additive.
+
+Never break:
+
+strategyRecommendation
+
+Only add:
+
+recommendationEvidence
+
+----------------------------------------------------
+11. UI
+----------------------------------------------------
+
+New cards
+
+Evaluation Summary
+
+Strategy Evaluation
+
+Decision Factors
+
+Watch Conditions
+
+Recommendation Confidence
+
+Collapsed by default.
+
+----------------------------------------------------
+12. Tests
+----------------------------------------------------
+
+Add tests for:
+
+NO_TRADE
+
+WATCH
+
+LIVE_OPTIONS
+
+UNSUPPORTED
+
+ESTIMATED_OPTIONS
+
+missing data
+
+provider failures
+
+confidence explanations
+
+watch conditions
+
+strategy counts
+
+collapsed UI
+
+API compatibility
+
+----------------------------------------------------
+13. Completion Report
+----------------------------------------------------
+
+Provide:
+
+1. API additions
+
+2. UI changes
+
+3. Strategy evidence exposed
+
+4. Confidence calculation
+
+5. Watch-condition logic
+
+6. Tests
+
+7. Build
+
+8. Screenshots
+
+Wait for review before committing.

@@ -104,6 +104,218 @@ export interface StrategyRecommendation {
   warnings?: string[];
   /** True when any idea's data quality indicates mock/synthetic/fixture/simulated data. */
   simulatedData: boolean;
+  /** Additive transparency payload derived ONLY from engine-supplied data. */
+  recommendationEvidence?: RecommendationEvidence;
+}
+
+// ---------------------------------------------------------------------------
+// Recommendation evidence (transparency) — additive, derived strictly from
+// deterministic engine output. Nothing here is fabricated: counts come from
+// the ideas themselves, the strategies-evaluated total is parsed from the
+// engine's own reason text, and every reason/condition string is passed
+// through verbatim from the MCP payload.
+// ---------------------------------------------------------------------------
+
+export type EvidenceEvaluationStatus = "READY" | "WATCH" | "REJECTED" | "SUPPORTING" | "ALTERNATIVE";
+
+export interface RecommendationEvidence {
+  summary: {
+    /** Total strategies the engine says it evaluated (parsed from its own
+     *  reason text, e.g. "across 12 evaluated strategies"); null if the
+     *  engine didn't state a count — never invented. */
+    strategiesEvaluated: number | null;
+    ideasActionable: number;
+    ideasWatch: number;
+    ideasRejected: number;
+    dataQuality: "LIVE" | "MIXED" | "PARTIAL" | "SIMULATED" | "UNAVAILABLE" | "UNKNOWN";
+  };
+  evaluations: { strategy: string; status: EvidenceEvaluationStatus; reason?: string }[];
+  watchConditions: string[];
+  decisionFactors: string[];
+  /** Present only when an actionable idea won — explains the selection using
+   *  engine reasons and the names of engine-supplied alternatives. */
+  selection: { strategy: string; reasons: string[]; consideredAlternatives: string[] } | null;
+  confidence: { level: "HIGH" | "MEDIUM" | "LOW"; reasons: string[] };
+}
+
+const ACTIONABLE_SET: ReadonlySet<string> = new Set(["LIVE_OPTIONS", "ESTIMATED_OPTIONS", "STOCK"]);
+
+/** Extract a display name from an engine-supplied strategy-ish value. */
+function strategyName(v: unknown): string | null {
+  if (typeof v === "string" && v.trim()) return v.trim().replace(/_/g, " ");
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const k of ["displayName", "name", "strategy", "strategyId", "id", "label"]) {
+      if (typeof o[k] === "string" && (o[k] as string).trim()) return (o[k] as string).trim().replace(/_/g, " ");
+    }
+  }
+  return null;
+}
+
+function altReason(v: unknown): string | undefined {
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const k of ["reason", "note", "summary", "description", "why"]) {
+      if (typeof o[k] === "string" && (o[k] as string).trim()) return (o[k] as string).trim();
+    }
+  }
+  return undefined;
+}
+
+function summarizeDataQuality(rec: StrategyRecommendation): RecommendationEvidence["summary"]["dataQuality"] {
+  if (rec.simulatedData) return "SIMULATED";
+  const values: string[] = [];
+  for (const idea of rec.recommendations) {
+    const dq = idea.dataQuality;
+    if (dq) for (const v of Object.values(dq)) if (typeof v === "string") values.push(v.toLowerCase());
+  }
+  if (values.length === 0) return "UNKNOWN";
+  const live = values.filter((v) => v === "live").length;
+  const unavailable = values.filter((v) => v === "unavailable" || v === "missing" || v === "none").length;
+  if (live === values.length) return "LIVE";
+  if (unavailable === values.length) return "UNAVAILABLE";
+  if (live > 0 && unavailable > 0) return "PARTIAL";
+  return "MIXED"; // e.g. live + delayed/estimated, no hard failures
+}
+
+const EVALUATED_COUNT_RE = /across\s+(\d{1,3})\s+evaluated\s+strateg(?:y|ies)/i;
+
+/**
+ * Derive the additive transparency payload from a validated recommendation.
+ * Deterministic and side-effect free; never mutates its input.
+ */
+export function deriveRecommendationEvidence(rec: StrategyRecommendation): RecommendationEvidence {
+  const ideas = rec.recommendations;
+
+  // Strategies-evaluated total: only what the engine itself stated.
+  let strategiesEvaluated: number | null = null;
+  for (const idea of ideas) {
+    for (const r of idea.reasons ?? []) {
+      const m = EVALUATED_COUNT_RE.exec(r);
+      if (m) { strategiesEvaluated = parseInt(m[1], 10); break; }
+    }
+    if (strategiesEvaluated !== null) break;
+  }
+
+  const ideasActionable = ideas.filter((i) => ACTIONABLE_SET.has(i.overallVerdict)).length;
+  const ideasWatch = ideas.filter((i) => i.overallVerdict === "WATCH").length;
+  const ideasRejected = ideas.length - ideasActionable - ideasWatch;
+
+  // Per-strategy evaluation rows — only entries the engine actually named.
+  const evaluations: RecommendationEvidence["evaluations"] = [];
+  for (const idea of ideas) {
+    const name = strategyName(idea.recommendedStrategy) ?? strategyName(idea.primaryStrategy);
+    const status: EvidenceEvaluationStatus = ACTIONABLE_SET.has(idea.overallVerdict)
+      ? "READY"
+      : idea.overallVerdict === "WATCH"
+        ? "WATCH"
+        : "REJECTED";
+    if (name) evaluations.push({ strategy: name, status, reason: idea.reasons?.[0] });
+    // Belt-and-braces: validation coerces these to arrays, but derive() may be
+    // called on hand-built payloads — never trust the shape.
+    const supporting = Array.isArray(idea.supportingStrategies) ? idea.supportingStrategies : [];
+    for (const s of supporting) {
+      const sn = strategyName(s);
+      if (sn) evaluations.push({ strategy: sn, status: "SUPPORTING", reason: altReason(s) });
+    }
+    const alts = Array.isArray(idea.alternatives) ? idea.alternatives : [];
+    for (const a of alts) {
+      const an = strategyName(a);
+      if (an) evaluations.push({ strategy: an, status: "ALTERNATIVE", reason: altReason(a) });
+    }
+  }
+
+  // Watch / improvement conditions — only engine-supplied strings.
+  const watchConditions: string[] = [];
+  for (const idea of ideas) {
+    const setup = idea.setup as Record<string, unknown> | null | undefined;
+    if (setup && typeof setup === "object") {
+      for (const key of ["watchConditions", "improvementConditions", "missingConditions", "conditions", "triggers"]) {
+        const arr = (setup as Record<string, unknown>)[key];
+        if (Array.isArray(arr)) {
+          for (const c of arr) {
+            if (typeof c === "string" && c.trim()) watchConditions.push(c.trim());
+            else {
+              const cs = altReason(c) ?? strategyName(c);
+              if (cs) watchConditions.push(cs);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const decisionFactors = Array.from(
+    new Set(
+      [
+        ...ideas.flatMap((i) => i.reasons ?? []),
+        ...ideas.flatMap((i) => i.warnings ?? []),
+        ...(rec.warnings ?? []),
+      ].filter((s) => typeof s === "string" && s.trim()),
+    ),
+  ).slice(0, 8);
+
+  // Selection explanation when an actionable idea won.
+  const winner = ideas.find((i) => ACTIONABLE_SET.has(i.overallVerdict));
+  let selection: RecommendationEvidence["selection"] = null;
+  if (winner) {
+    const wName = strategyName(winner.recommendedStrategy) ?? strategyName(winner.primaryStrategy);
+    if (wName) {
+      const considered = new Set<string>();
+      for (const a of Array.isArray(winner.alternatives) ? winner.alternatives : []) {
+        const an = strategyName(a);
+        if (an && an !== wName) considered.add(an);
+      }
+      for (const other of ideas) {
+        if (other === winner) continue;
+        const on = strategyName(other.recommendedStrategy) ?? strategyName(other.primaryStrategy);
+        if (on && on !== wName) considered.add(on);
+      }
+      selection = {
+        strategy: wName,
+        reasons: (winner.reasons ?? []).slice(0, 4),
+        consideredAlternatives: Array.from(considered).slice(0, 6),
+      };
+    }
+  }
+
+  // Recommendation Confidence — decision confidence (completeness/coverage/
+  // data quality), NOT verdict polarity. A NO_TRADE with complete live data
+  // is a high-confidence decision.
+  const dq = summarizeDataQuality(rec);
+  const confReasons: string[] = [];
+  let level: "HIGH" | "MEDIUM" | "LOW";
+  if (rec.simulatedData) {
+    level = "LOW";
+    confReasons.push("Simulated/mock data was used — not live market data.");
+  } else if (dq === "UNAVAILABLE") {
+    level = "LOW";
+    confReasons.push("Market data was unavailable to the recommendation engine.");
+  } else if (dq === "LIVE") {
+    level = "HIGH";
+    confReasons.push("Live market data was used for every evaluated domain.");
+  } else if (dq === "MIXED" || dq === "PARTIAL") {
+    level = "MEDIUM";
+    confReasons.push(
+      dq === "PARTIAL"
+        ? "Some data domains were unavailable to the engine."
+        : "A mix of live and delayed/estimated data was used.",
+    );
+  } else {
+    level = "MEDIUM";
+    confReasons.push("The engine did not report per-domain data quality.");
+  }
+  if (strategiesEvaluated !== null) confReasons.push(`${strategiesEvaluated} strategies were evaluated.`);
+  confReasons.push("The recommendation decision is deterministic engine output, not model-generated.");
+
+  return {
+    summary: { strategiesEvaluated, ideasActionable, ideasWatch, ideasRejected, dataQuality: dq },
+    evaluations: evaluations.slice(0, 20),
+    watchConditions: Array.from(new Set(watchConditions)).slice(0, 8),
+    decisionFactors,
+    selection,
+    confidence: { level, reasons: confReasons.slice(0, 6) },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +576,10 @@ export function validateRecommendationPayload(raw: unknown): StrategyRecommendat
       reasons: toStringArray(rec.reasons),
       warnings: toStringArray(rec.warnings),
       strategySummary: typeof rec.strategySummary === "string" ? rec.strategySummary : null,
+      // Evidence derivation iterates these — coerce to arrays so malformed
+      // engine values (object/string/null) can never crash the response path.
+      supportingStrategies: Array.isArray(rec.supportingStrategies) ? rec.supportingStrategies : [],
+      alternatives: Array.isArray(rec.alternatives) ? rec.alternatives : [],
       recommendedStrategy: typeof rec.recommendedStrategy === "string" ? rec.recommendedStrategy : null,
       confidence: typeof rec.confidence === "number" ? rec.confidence : null,
       dataQuality: rec.dataQuality && typeof rec.dataQuality === "object" ? (rec.dataQuality as Record<string, unknown>) : null,
@@ -398,6 +614,8 @@ export async function runStrategyRecommendation(
     err.code = "MALFORMED_RECOMMENDATION";
     throw err;
   }
+  // Additive transparency payload — derived, never fetched or fabricated.
+  validated.recommendationEvidence = deriveRecommendationEvidence(validated);
   return validated;
 }
 
@@ -431,16 +649,16 @@ export function recommendationHeadline(rec: StrategyRecommendation): string {
   }
 }
 
+/**
+ * Recommendation Confidence: how confident the ENGINE is in its decision
+ * (evaluation completeness, data quality, live vs simulated) — never verdict
+ * polarity. A NO_TRADE backed by complete live data is a confident decision;
+ * simulated or missing data is always low, whatever the verdict.
+ */
 export function recommendationConfidence(rec: StrategyRecommendation): "low" | "medium" | "high" {
-  if (rec.simulatedData) return "low";
-  const best = rec.recommendations[0];
-  if (!best) return "low";
-  if (best.overallVerdict === "NO_TRADE" || best.overallVerdict === "UNSUPPORTED") return "low";
-  const c = typeof best.confidence === "number" ? best.confidence : 0;
-  if (best.overallVerdict === "WATCH") return c >= 60 ? "medium" : "low";
-  if (c >= 70) return "high";
-  if (c >= 40) return "medium";
-  return "low";
+  if (rec.recommendations.length === 0) return "low";
+  const evidence = rec.recommendationEvidence ?? deriveRecommendationEvidence(rec);
+  return evidence.confidence.level === "HIGH" ? "high" : evidence.confidence.level === "MEDIUM" ? "medium" : "low";
 }
 
 function ideaSymbol(idea: RecommendationIdea): string | null {

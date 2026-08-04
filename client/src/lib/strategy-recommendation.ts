@@ -27,6 +27,22 @@ export interface RecIdea {
   dataQuality?: Record<string, unknown> | null;
 }
 
+/** Additive transparency payload derived server-side from engine data only. */
+export interface RecommendationEvidence {
+  summary: {
+    strategiesEvaluated: number | null;
+    ideasActionable: number;
+    ideasWatch: number;
+    ideasRejected: number;
+    dataQuality: "LIVE" | "MIXED" | "PARTIAL" | "SIMULATED" | "UNAVAILABLE" | "UNKNOWN";
+  };
+  evaluations: { strategy: string; status: "READY" | "WATCH" | "REJECTED" | "SUPPORTING" | "ALTERNATIVE"; reason?: string }[];
+  watchConditions: string[];
+  decisionFactors: string[];
+  selection: { strategy: string; reasons: string[]; consideredAlternatives: string[] } | null;
+  confidence: { level: "HIGH" | "MEDIUM" | "LOW"; reasons: string[] };
+}
+
 export interface StrategyRecommendation {
   source: "mcp";
   generatedAt: string;
@@ -34,6 +50,23 @@ export interface StrategyRecommendation {
   recommendations: RecIdea[];
   warnings?: string[];
   simulatedData: boolean;
+  recommendationEvidence?: RecommendationEvidence;
+}
+
+/** Defensive accessor — older answers won't carry evidence, and a partially
+ *  malformed payload must degrade to "no evidence section", never crash. */
+export function recEvidence(rec: StrategyRecommendation): RecommendationEvidence | null {
+  const ev = rec.recommendationEvidence;
+  if (!ev || typeof ev !== "object") return null;
+  const s = ev.summary as RecommendationEvidence["summary"] | undefined;
+  const c = ev.confidence as RecommendationEvidence["confidence"] | undefined;
+  const ok =
+    !!s && typeof s === "object" &&
+    typeof s.ideasActionable === "number" && typeof s.ideasWatch === "number" && typeof s.ideasRejected === "number" &&
+    typeof s.dataQuality === "string" &&
+    Array.isArray(ev.evaluations) && Array.isArray(ev.watchConditions) && Array.isArray(ev.decisionFactors) &&
+    !!c && typeof c === "object" && typeof c.level === "string" && Array.isArray(c.reasons);
+  return ok ? ev : null;
 }
 
 export function isRenderableStrategyRecommendation(a: unknown): a is StrategyRecommendation {

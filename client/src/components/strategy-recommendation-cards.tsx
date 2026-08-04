@@ -9,11 +9,13 @@
 //   STOCK             — entry/stop/target style candidate levels.
 //   WATCH / NO_TRADE / UNSUPPORTED — explanation only, no trade CTA.
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Compass } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Compass, Eye, X } from "lucide-react";
 import {
   isRenderableStrategyRecommendation,
+  recEvidence,
   REC_VERDICT_LABELS,
   recFmtPrice,
   recIdeaSymbol,
@@ -21,6 +23,7 @@ import {
   recVerdictTone,
   showsLiveOptionFields,
   type RecIdea,
+  type RecommendationEvidence,
   type StrategyRecommendation,
 } from "@/lib/strategy-recommendation";
 
@@ -154,6 +157,134 @@ function IdeaCard({ idea, simulatedData, rank, total }: { idea: RecIdea; simulat
   );
 }
 
+// ---------------------------------------------------------------------------
+// Recommendation evidence (transparency) — renders ONLY the server-derived
+// recommendationEvidence payload. Sections are collapsed by default.
+// ---------------------------------------------------------------------------
+
+function CollapsibleSection({ title, testId, defaultOpen = false, children }: { title: string; testId: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-md border border-border/60">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-left hover-elevate"
+        data-testid={`button-${testId}`}
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        {title}
+      </button>
+      {open && <div className="px-3 pb-3 space-y-1.5" data-testid={`section-${testId}`}>{children}</div>}
+    </div>
+  );
+}
+
+const EVAL_STATUS_STYLE: Record<string, { label: string; cls: string; icon: "check" | "x" | "eye" }> = {
+  READY: { label: "Ready", cls: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10", icon: "check" },
+  WATCH: { label: "Watch", cls: "text-amber-300 border-amber-500/40 bg-amber-500/10", icon: "eye" },
+  REJECTED: { label: "Rejected", cls: "text-red-300 border-red-500/40 bg-red-500/10", icon: "x" },
+  SUPPORTING: { label: "Supporting", cls: "text-sky-300 border-sky-500/40 bg-sky-500/10", icon: "check" },
+  ALTERNATIVE: { label: "Alternative", cls: "text-muted-foreground border-muted bg-muted/20", icon: "eye" },
+};
+
+const CONF_LEVEL_CLS: Record<string, string> = {
+  HIGH: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10",
+  MEDIUM: "text-amber-300 border-amber-500/40 bg-amber-500/10",
+  LOW: "text-red-300 border-red-500/40 bg-red-500/10",
+};
+
+function EvidenceSections({ evidence, verdicts }: { evidence: RecommendationEvidence; verdicts: string[] }) {
+  const s = evidence.summary;
+  const showWatch = evidence.watchConditions.length > 0 && verdicts.some((v) => v === "WATCH" || v === "NO_TRADE");
+  return (
+    <div className="space-y-2" data-testid="section-rec-evidence">
+      {/* Evaluation Summary — truthful counts only, always visible. */}
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" data-testid="row-rec-eval-summary">
+        <span className="text-muted-foreground font-medium">Evaluation Summary:</span>
+        {s.strategiesEvaluated != null && (
+          <Badge variant="outline" className="text-[10px]" data-testid="badge-rec-evaluated-count">{s.strategiesEvaluated} evaluated</Badge>
+        )}
+        <Badge variant="outline" className={`text-[10px] ${s.ideasActionable > 0 ? EVAL_STATUS_STYLE.READY.cls : ""}`}>{s.ideasActionable} actionable</Badge>
+        <Badge variant="outline" className={`text-[10px] ${s.ideasWatch > 0 ? EVAL_STATUS_STYLE.WATCH.cls : ""}`}>{s.ideasWatch} watch</Badge>
+        <Badge variant="outline" className="text-[10px]">{s.ideasRejected} rejected</Badge>
+        <Badge variant="outline" className="text-[10px]" data-testid="badge-rec-data-quality">Data: {s.dataQuality.toLowerCase()}</Badge>
+      </div>
+
+      {evidence.evaluations.length > 0 && (
+        <CollapsibleSection title="Strategy Evaluation" testId="rec-strategy-evaluation">
+          {evidence.evaluations.map((e, i) => {
+            const st = EVAL_STATUS_STYLE[e.status] ?? EVAL_STATUS_STYLE.ALTERNATIVE;
+            return (
+              <div key={i} className="text-xs flex items-start gap-2" data-testid={`row-rec-evaluation-${i}`}>
+                {st.icon === "x" ? <X className="h-3.5 w-3.5 mt-0.5 text-red-300 shrink-0" /> : st.icon === "eye" ? <Eye className="h-3.5 w-3.5 mt-0.5 text-amber-300 shrink-0" /> : <Check className="h-3.5 w-3.5 mt-0.5 text-emerald-300 shrink-0" />}
+                <div className="min-w-0">
+                  <span className="capitalize">{e.strategy}</span>{" "}
+                  <Badge variant="outline" className={`text-[9px] align-middle ${st.cls}`}>{st.label}</Badge>
+                  {e.reason && <div className="text-muted-foreground">{e.reason}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </CollapsibleSection>
+      )}
+
+      {evidence.selection && (
+        <CollapsibleSection title={`Why ${evidence.selection.strategy} was selected`} testId="rec-selection">
+          {evidence.selection.reasons.length > 0 && (
+            <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+              {evidence.selection.reasons.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          )}
+          {evidence.selection.consideredAlternatives.length > 0 && (
+            <div className="text-xs">
+              <span className="text-muted-foreground">Also considered:</span>{" "}
+              <span className="capitalize">{evidence.selection.consideredAlternatives.join(", ")}</span>
+            </div>
+          )}
+        </CollapsibleSection>
+      )}
+
+      {evidence.decisionFactors.length > 0 && (
+        <CollapsibleSection title="Decision Factors" testId="rec-decision-factors">
+          <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+            {evidence.decisionFactors.map((f, i) => <li key={i}>{f}</li>)}
+          </ul>
+        </CollapsibleSection>
+      )}
+
+      {showWatch && (
+        <CollapsibleSection title="What would make this actionable?" testId="rec-watch-conditions">
+          <ul className="text-xs space-y-1">
+            {evidence.watchConditions.map((c, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <Check className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                {c}
+              </li>
+            ))}
+          </ul>
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection
+        title={`Recommendation Confidence: ${evidence.confidence.level.toLowerCase()}`}
+        testId="rec-confidence"
+      >
+        <Badge variant="outline" className={`text-[10px] ${CONF_LEVEL_CLS[evidence.confidence.level] ?? ""}`} data-testid="badge-rec-confidence-level">
+          {evidence.confidence.level}
+        </Badge>
+        <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+          {evidence.confidence.reasons.map((r, i) => <li key={i}>{r}</li>)}
+        </ul>
+        <p className="text-[10px] text-muted-foreground">
+          Confidence in the engine's decision (data completeness and coverage) — not a directional/bullish score.
+        </p>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
 export function StrategyRecommendationCards({ recommendation }: { recommendation: StrategyRecommendation | null | undefined }) {
   if (!isRenderableStrategyRecommendation(recommendation)) return null;
   const rec = recommendation;
@@ -180,6 +311,10 @@ export function StrategyRecommendationCards({ recommendation }: { recommendation
               {(rec.warnings ?? []).slice(0, 3).join(" · ")}
             </div>
           )}
+          {(() => {
+            const ev = recEvidence(rec);
+            return ev ? <EvidenceSections evidence={ev} verdicts={rec.recommendations.map((i) => i.overallVerdict)} /> : null;
+          })()}
           <p className="text-[11px] text-muted-foreground">
             Deterministic recommendation engine output — AI-generated research, not investment advice.
           </p>

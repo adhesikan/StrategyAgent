@@ -20,6 +20,7 @@ import {
   recommendationKeyPoints,
   recommendationRiskNote,
   answerContradictsRecommendation,
+  deriveRecommendationEvidence,
   type StrategyRecommendation,
   type RecommendationIdea,
 } from "./strategy-recommendation";
@@ -230,16 +231,21 @@ describe("recommendationHeadline — verdict-driven, exact stance per verdict", 
   });
 });
 
-describe("recommendationConfidence — deterministic, never model-chosen", () => {
-  it("simulated data is always low", () => {
+describe("recommendationConfidence — decision confidence from data quality, never verdict polarity", () => {
+  it("simulated data is always low, whatever the verdict", () => {
     expect(recommendationConfidence(recWith("LIVE_OPTIONS", { confidence: 95 }, true))).toBe("low");
+    expect(recommendationConfidence(recWith("NO_TRADE", {}, true))).toBe("low");
   });
-  it("scales with verdict + engine confidence", () => {
-    expect(recommendationConfidence(recWith("STOCK", { confidence: 80 }))).toBe("high");
-    expect(recommendationConfidence(recWith("STOCK", { confidence: 50 }))).toBe("medium");
-    expect(recommendationConfidence(recWith("WATCH", { confidence: 80 }))).toBe("medium");
-    expect(recommendationConfidence(recWith("NO_TRADE", { confidence: 90 }))).toBe("low");
-    expect(recommendationConfidence(recWith("UNSUPPORTED", { confidence: 90 }))).toBe("low");
+  it("complete live data → high even for NO_TRADE (a confident no-trade decision)", () => {
+    expect(recommendationConfidence(recWith("STOCK"))).toBe("high");
+    expect(recommendationConfidence(recWith("NO_TRADE", { confidence: 0 }))).toBe("high");
+    expect(recommendationConfidence(recWith("WATCH"))).toBe("high");
+    expect(recommendationConfidence(recWith("UNSUPPORTED"))).toBe("high");
+  });
+  it("unavailable market data → low; partial → medium; unreported → medium", () => {
+    expect(recommendationConfidence(recWith("NO_TRADE", { dataQuality: { underlying: "unavailable", options: "unavailable" } }))).toBe("low");
+    expect(recommendationConfidence(recWith("STOCK", { dataQuality: { underlying: "live", options: "unavailable" } }))).toBe("medium");
+    expect(recommendationConfidence(recWith("STOCK", { dataQuality: null as any }))).toBe("medium");
   });
 });
 
@@ -325,6 +331,114 @@ describe("answerContradictsRecommendation — contradictory prose is detected", 
       "A credit spread is an options strategy where you sell one option and buy another to define your risk. The engine did not find a qualifying setup.";
     expect(answerContradictsRecommendation(education, recWith("UNSUPPORTED"))).toBe(false);
     expect(answerContradictsRecommendation("", recWith("NO_TRADE"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recommendation evidence (transparency) — derived, additive, never invented
+// ---------------------------------------------------------------------------
+
+describe("deriveRecommendationEvidence — deterministic transparency payload", () => {
+  it("parses strategies-evaluated count from the engine's own reason text", () => {
+    const rec = validateRecommendationPayload({
+      recommendations: [{ ...goodIdea, overallVerdict: "NO_TRADE", recommendedStrategy: null, reasons: ["No actionable strategy evidence found for NVDA across 12 evaluated strategies."] }],
+    });
+    const ev = deriveRecommendationEvidence(rec);
+    expect(ev.summary.strategiesEvaluated).toBe(12);
+    expect(ev.summary.ideasActionable).toBe(0);
+    expect(ev.summary.ideasRejected).toBe(1);
+    expect(ev.decisionFactors[0]).toMatch(/across 12 evaluated strategies/);
+  });
+
+  it("never invents a count when the engine didn't state one", () => {
+    const ev = deriveRecommendationEvidence(recWith("NO_TRADE", { reasons: ["No setup"] }));
+    expect(ev.summary.strategiesEvaluated).toBeNull();
+  });
+
+  it("idea counts split by verdict class (actionable / watch / rejected)", () => {
+    const rec = validateRecommendationPayload({
+      recommendations: [
+        { ...goodIdea, overallVerdict: "STOCK" },
+        { ...goodIdea, overallVerdict: "WATCH" },
+        { ...goodIdea, overallVerdict: "NO_TRADE" },
+        { ...goodIdea, overallVerdict: "UNSUPPORTED" },
+      ],
+    });
+    const ev = deriveRecommendationEvidence(rec);
+    expect(ev.summary).toMatchObject({ ideasActionable: 1, ideasWatch: 1, ideasRejected: 2 });
+  });
+
+  it("data quality summary: live → LIVE, unavailable → UNAVAILABLE, mixed → PARTIAL, simulated wins", () => {
+    expect(deriveRecommendationEvidence(recWith("STOCK")).summary.dataQuality).toBe("LIVE");
+    expect(deriveRecommendationEvidence(recWith("NO_TRADE", { dataQuality: { underlying: "unavailable" } })).summary.dataQuality).toBe("UNAVAILABLE");
+    expect(deriveRecommendationEvidence(recWith("STOCK", { dataQuality: { underlying: "live", options: "unavailable" } })).summary.dataQuality).toBe("PARTIAL");
+    expect(deriveRecommendationEvidence(recWith("LIVE_OPTIONS", {}, true)).summary.dataQuality).toBe("SIMULATED");
+  });
+
+  it("evaluations only include strategies the engine named (never fabricated rows)", () => {
+    const noName = deriveRecommendationEvidence(recWith("NO_TRADE", { recommendedStrategy: null, primaryStrategy: null }));
+    expect(noName.evaluations).toEqual([]);
+    const named = deriveRecommendationEvidence(
+      recWith("WATCH", {
+        recommendedStrategy: "trend_continuation",
+        reasons: ["Needs another higher low"],
+        supportingStrategies: [{ name: "volume_surge" }],
+        alternatives: [{ strategy: "covered_call", reason: "Safer defined-risk alternative" }],
+      }),
+    );
+    expect(named.evaluations).toEqual([
+      { strategy: "trend continuation", status: "WATCH", reason: "Needs another higher low" },
+      { strategy: "volume surge", status: "SUPPORTING", reason: undefined },
+      { strategy: "covered call", status: "ALTERNATIVE", reason: "Safer defined-risk alternative" },
+    ]);
+  });
+
+  it("watch conditions come only from engine setup fields", () => {
+    const ev = deriveRecommendationEvidence(
+      recWith("WATCH", { setup: { watchConditions: ["Close above $214.85", "Volume > 1.5x average"], improvementConditions: ["Volatility contraction"] } }),
+    );
+    expect(ev.watchConditions).toEqual(["Close above $214.85", "Volume > 1.5x average", "Volatility contraction"]);
+    expect(deriveRecommendationEvidence(recWith("NO_TRADE", { setup: null })).watchConditions).toEqual([]);
+  });
+
+  it("selection explains an actionable winner using engine data only", () => {
+    const rec = validateRecommendationPayload({
+      recommendations: [
+        { ...goodIdea, overallVerdict: "STOCK", recommendedStrategy: "momentum_breakout", reasons: ["Highest reward/risk"], alternatives: [{ name: "precision_pullback" }] },
+        { ...goodIdea, overallVerdict: "NO_TRADE", recommendedStrategy: "vwap_reclaim" },
+      ],
+    });
+    const sel = deriveRecommendationEvidence(rec).selection;
+    expect(sel?.strategy).toBe("momentum breakout");
+    expect(sel?.reasons).toEqual(["Highest reward/risk"]);
+    expect(sel?.consideredAlternatives).toEqual(["precision pullback", "vwap reclaim"]);
+    expect(deriveRecommendationEvidence(recWith("NO_TRADE")).selection).toBeNull();
+  });
+
+  it("confidence explanation reasons are truthful per data state", () => {
+    expect(deriveRecommendationEvidence(recWith("NO_TRADE")).confidence).toMatchObject({ level: "HIGH" });
+    expect(deriveRecommendationEvidence(recWith("STOCK", {}, true)).confidence.reasons.join(" ")).toMatch(/simulated\/mock/i);
+    expect(deriveRecommendationEvidence(recWith("NO_TRADE", { dataQuality: { underlying: "unavailable" } })).confidence.reasons.join(" ")).toMatch(/unavailable/i);
+  });
+
+  it("malformed supportingStrategies/alternatives (non-array) never crash derivation", () => {
+    const rec = validateRecommendationPayload({
+      recommendations: [{ ...goodIdea, supportingStrategies: "junk" as any, alternatives: { a: 1 } as any }],
+    });
+    expect(rec.recommendations[0].supportingStrategies).toEqual([]);
+    expect(rec.recommendations[0].alternatives).toEqual([]);
+    // Hand-built payload bypassing validation also degrades, never throws.
+    const handBuilt = { ...rec, recommendations: [{ ...rec.recommendations[0], supportingStrategies: 42 as any, alternatives: "x" as any }] };
+    expect(() => deriveRecommendationEvidence(handBuilt)).not.toThrow();
+    expect(deriveRecommendationEvidence(handBuilt).evaluations.every((e) => e.strategy.length > 1)).toBe(true);
+  });
+
+  it("API compatibility: evidence is additive — existing fields untouched, attached by runStrategyRecommendation", async () => {
+    const rec = await runStrategyRecommendation({}, { recommend: async () => ({ recommendations: [goodIdea] }) });
+    expect(rec.recommendations[0].overallVerdict).toBe("STOCK");
+    expect(rec.simulatedData).toBe(false);
+    expect(rec.recommendationEvidence?.summary.ideasActionable).toBe(1);
+    expect(rec.recommendationEvidence?.confidence.level).toBe("HIGH");
   });
 });
 

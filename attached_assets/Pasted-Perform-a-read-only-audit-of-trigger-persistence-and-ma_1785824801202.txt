@@ -1,0 +1,180 @@
+Perform a read-only audit of trigger persistence and mapping in the VCP Trader scanner opportunity pipeline.
+
+Do not change scanner algorithms.
+Do not fabricate trigger levels.
+Do not modify MCP.
+Do not commit, push or deploy.
+
+OBSERVED PRODUCTION CONDITION
+
+rank_market_trade_candidates reviewed 50 stored opportunities and excluded all 50 as:
+
+NOT_ACTIONABLE_NO_TRIGGER
+
+Earlier live screens showed many stored rows with statuses such as:
+
+READY
+TRIGGERED
+BREAKOUT
+
+but trigger was null, causing build_trade_candidate and market ranking to reject them.
+
+GOAL
+
+Determine exactly why stored opportunities do not contain actionable trigger levels.
+
+==================================================
+1. TRACE THE FULL DATA PATH
+==================================================
+
+Trace:
+
+scanner strategy result
+→ scanner detection creation
+→ database opportunity row
+→ stored fields
+→ internal /api/internal/scanner/setup
+→ internal /api/internal/scanner/opportunities
+→ MCP SetupCandidate adapter
+→ trigger field
+→ candidate/ranking actionability gate
+
+For every transformation, identify:
+
+- source field name
+- destination field name
+- nullable behavior
+- fallback behavior
+- strategy-specific differences
+
+==================================================
+2. AUDIT THE DATABASE MODEL
+==================================================
+
+Inspect the stored opportunity schema and representative rows.
+
+For each of the 10 production strategies report:
+
+- strategy ID
+- raw stage
+- lifecycle
+- outcome
+- stored trigger field
+- stored invalidation field
+- stored objective field
+- detectedAt
+- updatedAt
+- whether the source scanner produced an entry level
+- whether that level was persisted
+- whether the API returned it
+
+Use sanitized samples only.
+
+==================================================
+3. DISTINGUISH TRIGGER SEMANTICS
+==================================================
+
+Determine whether each strategy uses:
+
+A. explicit price trigger
+B. price-zone trigger
+C. event trigger
+D. time/session trigger
+E. no deterministic actionable trigger
+
+Examples:
+
+- Momentum Breakout may use resistance breakout
+- Open Drive may require an intraday opening-range event
+- Volume Surge may use a volume/price confirmation event
+- VWAP Reclaim may use a reclaim level
+- VCP requires actionablePivot
+
+Do not force all strategies into a single price-trigger model if their semantics differ.
+
+==================================================
+4. IDENTIFY THE FIRST LOSS POINT
+==================================================
+
+Classify each strategy into one of:
+
+SCANNER_NEVER_PRODUCED_TRIGGER
+INGESTION_DROPPED_TRIGGER
+DATABASE_FIELD_MISSING
+API_MAPPING_DROPPED_TRIGGER
+MCP_ADAPTER_DROPPED_TRIGGER
+TRIGGER_TYPE_NOT_SUPPORTED
+STATUS_SEMANTICS_INCONSISTENT
+EXPECTED_NO_TRIGGER
+
+Report exact files and functions.
+
+==================================================
+5. STATUS CONSISTENCY
+==================================================
+
+Audit whether READY/TRIGGERED/BREAKOUT can truthfully coexist with trigger:null.
+
+If yes, document what those statuses mean.
+
+If no, identify the faulty status mapping.
+
+Do not automatically change statuses during this audit.
+
+==================================================
+6. COMPARE REAL ROWS
+==================================================
+
+Use a bounded sample of recent stored opportunities, including:
+
+- BA
+- DIS
+- AMGN
+- at least one result from each available strategy family
+
+Report:
+
+- total sampled
+- trigger present
+- trigger missing
+- percentage missing by strategy
+- whether actionable rows exist at all
+
+==================================================
+7. REQUIRED FIX OPTIONS
+==================================================
+
+Recommend the smallest truthful fix for each root cause:
+
+- persist existing scanner trigger
+- correct API mapping
+- introduce typed trigger variants
+- classify event-based setups as WATCH until confirmation
+- correct misleading lifecycle/status labels
+- stop publishing non-actionable rows into actionable feeds
+- add separate watch/setup feed
+
+Do not implement yet.
+
+==================================================
+8. DELIVERABLE
+==================================================
+
+Create:
+
+docs/SCANNER_TRIGGER_CONTRACT_AUDIT.md
+
+Report:
+
+1. Exact root cause by strategy
+2. First field-loss point
+3. Database findings
+4. API findings
+5. Status inconsistencies
+6. Trigger semantic categories
+7. Recommended contract
+8. Smallest implementation sequence
+9. Tests needed
+10. Whether the current ranker is behaving correctly
+
+Wait for review.

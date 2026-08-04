@@ -1305,7 +1305,34 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
         const s51Start = Date.now();
         let s51Intent = "unknown";
         let s51RequestId = `ask-s51-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        // Sprint 5.2 — Conversation Memory: state set in outer scope so the
+        // result-writer (after Brain succeeds) can access it.
+        let s51ContextNote: string | null = null;
         try {
+          // ---- Sprint 5.2: Load memory, check reset, detect follow-up ----
+          const memMod = await import("../trader-brain/conversation-memory");
+          const fuMod = await import("../trader-brain/follow-up-resolver");
+          const { logBrainMemory } = await import("../trader-brain/observability");
+
+          // Explicit reset ("start over", "clear context", etc.)
+          if (fuMod.isExplicitReset(question)) {
+            memMod.clearMemory(userId);
+            logBrainMemory(s51RequestId, "context_reset");
+            // Let the question fall through naturally — it will classify as fresh.
+          }
+
+          const userMem = memMod.getMemory(userId);
+          const followUp = fuMod.resolveFollowUp(question, userMem);
+
+          if (followUp.contextHit) {
+            logBrainMemory(s51RequestId, "context_hit", { followUpKind: followUp.kind });
+            logBrainMemory(s51RequestId, "follow_up_resolved", { followUpKind: followUp.kind });
+            s51ContextNote = followUp.contextNote;
+          } else if (followUp.kind !== "none") {
+            logBrainMemory(s51RequestId, "context_miss", { followUpKind: followUp.kind });
+          }
+          // ---- End Sprint 5.2 memory read ----
+
           const [{ classifyBrainIntent, intentWantsPortfolioContext }, { BRAIN_AUTHORITATIVE_INTENTS }] = await Promise.all([
             import("../trader-brain/intent-classifier"),
             import("../trader-brain/service"),
@@ -1522,6 +1549,14 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               }
 
               if (s51Answer) {
+                // Sprint 5.2: Store result into conversation memory
+                try {
+                  const { storeResult } = await import("../trader-brain/conversation-memory");
+                  const { logBrainMemory } = await import("../trader-brain/observability");
+                  storeResult(userId, brainResult);
+                  logBrainMemory(s51RequestId, "fresh_search", { intent: brainInt });
+                } catch { /* never break the response */ }
+
                 // Revoke tokens
                 if (s51PfToken) {
                   try {
@@ -1546,6 +1581,8 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   source: (s51HttpExtras.source as string | undefined) ?? "openai",
                   disclaimer:
                     "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+                  // Sprint 5.2: Surface context note when follow-up context was used (§5)
+                  ...(s51ContextNote ? { contextNote: s51ContextNote } : {}),
                 });
               }
             } catch (brainErr) {

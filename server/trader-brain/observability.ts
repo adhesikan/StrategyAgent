@@ -174,6 +174,35 @@ export function logBrainFailure(
 }
 
 // ---------------------------------------------------------------------------
+// Memory / follow-up telemetry (Sprint 5.2)
+// ---------------------------------------------------------------------------
+
+interface BrainMemoryEvent {
+  event: "trader_brain_memory";
+  requestId: string;
+  eventType: "context_hit" | "context_miss" | "follow_up_resolved" | "fresh_search" | "context_reset";
+  followUpKind?: string;
+  intent?: string;
+  ts: string;
+}
+
+export function logBrainMemory(
+  requestId: string,
+  eventType: BrainMemoryEvent["eventType"],
+  extras?: { followUpKind?: string; intent?: string },
+): void {
+  const event: BrainMemoryEvent = {
+    event: "trader_brain_memory",
+    requestId,
+    eventType,
+    ...(extras?.followUpKind ? { followUpKind: extras.followUpKind } : {}),
+    ...(extras?.intent ? { intent: extras.intent } : {}),
+    ts: new Date().toISOString(),
+  };
+  emit(event);
+}
+
+// ---------------------------------------------------------------------------
 // Fallback event — emitted when Brain fails and the request is handed off to
 // the legacy callOpenAi path.  No PII; reason is a safe error-code string.
 // ---------------------------------------------------------------------------

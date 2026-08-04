@@ -1,0 +1,161 @@
+Sprint 5.2 — TraderBrain Conversation Memory
+
+Goal
+
+Build persistent conversation context for TraderBrain.
+
+This is NOT long-term user memory.
+
+It is deterministic per-chat execution memory.
+
+Do not modify:
+
+• scanners
+• recommendation logic
+• ranking
+• MCP tools
+• execution
+• broker integration
+
+Only improve conversation continuity.
+
+--------------------------------------------------
+1. CONVERSATION CONTEXT
+--------------------------------------------------
+
+Store:
+
+last search
+
+last recommendation
+
+last analyzed symbol
+
+last trade goal
+
+last portfolio filters
+
+last risk budget
+
+last account size
+
+last strategy preference
+
+last market direction
+
+last watchlist reference
+
+last rejected reasons
+
+last unavailable reasons
+
+last ranked candidates
+
+--------------------------------------------------
+2. FOLLOW-UP RESOLUTION
+--------------------------------------------------
+
+Resolve prompts like:
+
+"show me the second one"
+
+"what about options"
+
+"make it lower risk"
+
+"show only income ideas"
+
+"remove earnings risk"
+
+"use my account"
+
+"show conservative ideas"
+
+"show aggressive ones"
+
+"why wasn't NVDA included"
+
+without asking the user to repeat context.
+
+--------------------------------------------------
+3. MEMORY LIFETIME
+--------------------------------------------------
+
+Memory exists only for the active chat.
+
+No cross-chat persistence.
+
+No user profiling.
+
+--------------------------------------------------
+4. EXPLICIT RESET
+--------------------------------------------------
+
+Support:
+
+start over
+
+new search
+
+ignore previous search
+
+clear context
+
+These begin a fresh deterministic session.
+
+--------------------------------------------------
+5. RESPONSE BUILDER
+--------------------------------------------------
+
+When previous context is used, briefly indicate it.
+
+Example:
+
+"Using your previous bullish search with a $500 risk limit..."
+
+Never expose raw memory objects.
+
+--------------------------------------------------
+6. TELEMETRY
+--------------------------------------------------
+
+Track:
+
+context hits
+
+context misses
+
+resolved follow-ups
+
+fresh searches
+
+context resets
+
+--------------------------------------------------
+7. TESTS
+
+Add regression tests for:
+
+follow-up questions
+
+context reuse
+
+context clearing
+
+symbol references
+
+recommendation references
+
+risk references
+
+portfolio references
+
+multi-turn conversations
+
+No algorithm changes.
+
+No scanner changes.
+
+No MCP changes.
+
+No commits.

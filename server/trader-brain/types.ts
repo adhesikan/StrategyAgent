@@ -19,6 +19,7 @@ import type {
   PortfolioTradePlanGoal,
 } from "../routes/portfolio-trade-plan";
 import type { SafePortfolioAwareness } from "../routes/internal-portfolio";
+import type { PortfolioIntelligence } from "./portfolio-intelligence-engine";
 
 // ---------------------------------------------------------------------------
 // Intent — closed union
@@ -230,6 +231,12 @@ export interface TraderBrainSections {
   education?: EducationSection | null;
   /** Prose only. Never used as a data source. Present only when OpenAI succeeded. */
   openAiExplanation?: string;
+  /**
+   * Portfolio Intelligence section (Sprint 5.3B).
+   * Computed from portfolioFit + other sections — no extra MCP calls.
+   * Undefined when portfolio context was not available.
+   */
+  portfolioIntelligence?: PortfolioIntelligence | null;
 }
 
 // ---------------------------------------------------------------------------

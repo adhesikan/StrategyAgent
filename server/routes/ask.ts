@@ -1413,6 +1413,52 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                 buildBrainExplanationPrompt,
               } = await import("../trader-brain/unified-response-builder");
 
+              // ---- Sprint 5.3B: Portfolio Intelligence section ----
+              // Computed deterministically from existing Brain sections + pfAwareness.
+              // OpenAI explanation is added afterward (separately gated, non-blocking).
+              let s53bPortfolioIntelligence: import("../trader-brain/portfolio-intelligence-engine").PortfolioIntelligence | null = null;
+              try {
+                const { computePortfolioIntelligence, buildPortfolioIntelligencePrompt } =
+                  await import("../trader-brain/portfolio-intelligence-engine");
+                s53bPortfolioIntelligence = computePortfolioIntelligence(brainResult, s51PfAwareness);
+
+                // GPT explanation for portfolio trade-offs (non-blocking; spec §4)
+                if (s53bPortfolioIntelligence.hasPortfolioContext && isOpenAiConfigured()) {
+                  const piPrompts = buildPortfolioIntelligencePrompt(s53bPortfolioIntelligence, question);
+                  if (piPrompts) {
+                    try {
+                      const { default: OpenAI } = await import("openai");
+                      const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                      const piComp = await Promise.race([
+                        oai.chat.completions.create({
+                          model: "gpt-4o-mini",
+                          temperature: 0.3,
+                          max_tokens: 400,
+                          messages: [
+                            { role: "system" as const, content: piPrompts.system },
+                            { role: "user" as const, content: piPrompts.user },
+                          ],
+                        }),
+                        new Promise<never>((_, rej) =>
+                          setTimeout(() => rej(new Error("openai_pi_timeout")), 12_000),
+                        ),
+                      ]);
+                      const piExpl = (piComp as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content?.trim() ?? null;
+                      if (piExpl) {
+                        s53bPortfolioIntelligence = { ...s53bPortfolioIntelligence, openAiExplanation: piExpl };
+                      }
+                    } catch (piOaiErr) {
+                      // Non-blocking: PI section is still surfaced without explanation
+                      console.warn("[ask] Sprint5.3B portfolio intelligence GPT explanation unavailable:", (piOaiErr as Error).message);
+                    }
+                  }
+                }
+              } catch (s53bErr) {
+                // Never break the response for a non-critical enrichment section
+                console.warn("[ask] Sprint5.3B portfolio intelligence computation failed:", (s53bErr as Error).message);
+              }
+              // ---- End Sprint 5.3B ----
+
               let s51Answer: AskAnswer | null = null;
               let s51HttpExtras: Record<string, unknown> = {};
 
@@ -1435,6 +1481,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   suggestions: built.suggestions,
                   source: built.source,
                   ...(s51PfAwareness ? { portfolioAwareness: s51PfAwareness } : {}),
+                  ...(s53bPortfolioIntelligence ? { portfolioIntelligence: s53bPortfolioIntelligence } : {}),
                 };
               } else if (brainInt === "PLAN_PORTFOLIO_TRADE") {
                 const openAiAns = await callOpenAi(question, ctx, {
@@ -1450,6 +1497,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   suggestions: built.suggestions,
                   source: built.source,
                   ...(s51PfAwareness ? { portfolioAwareness: s51PfAwareness } : {}),
+                  ...(s53bPortfolioIntelligence ? { portfolioIntelligence: s53bPortfolioIntelligence } : {}),
                 };
               } else if (brainInt === "RECOMMEND_SYMBOL_TRADE") {
                 // Build focused OpenAI explanation using combined builder prompts
@@ -1481,7 +1529,11 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   }
                 }
                 s51Answer = await buildRecommendBrainAnswer(brainResult, openAiExpl) as AskAnswer;
-                s51HttpExtras = { intent: "recommendation", tickers };
+                s51HttpExtras = {
+                  intent: "recommendation",
+                  tickers,
+                  ...(s53bPortfolioIntelligence ? { portfolioIntelligence: s53bPortfolioIntelligence } : {}),
+                };
               } else if (brainInt === "COMBINED_ANALYSIS_RECOMMENDATION") {
                 // Identical to existing authoritative COMBINED path
                 let openAiExpl: string | null = null;
@@ -1514,7 +1566,11 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                 }
                 const { buildCombinedAskAnswer } = await import("../trader-brain/combined-response-builder");
                 s51Answer = await buildCombinedAskAnswer(brainResult, openAiExpl) as AskAnswer;
-                s51HttpExtras = { intent: "combined", tickers };
+                s51HttpExtras = {
+                  intent: "combined",
+                  tickers,
+                  ...(s53bPortfolioIntelligence ? { portfolioIntelligence: s53bPortfolioIntelligence } : {}),
+                };
               } else if (brainInt === "EDUCATION_PLUS_ACTION") {
                 // Call OpenAI with prompts from unified builder
                 let openAiExpl: string | null = null;
@@ -1545,7 +1601,11 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   }
                 }
                 s51Answer = await buildEducationPlusBrainAnswer(brainResult, openAiExpl) as AskAnswer;
-                s51HttpExtras = { intent: "education-plus-action", tickers };
+                s51HttpExtras = {
+                  intent: "education-plus-action",
+                  tickers,
+                  ...(s53bPortfolioIntelligence ? { portfolioIntelligence: s53bPortfolioIntelligence } : {}),
+                };
               }
 
               if (s51Answer) {

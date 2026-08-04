@@ -1,0 +1,151 @@
+Integrate the deployed MCP rank_market_trade_candidates tool into VCP Trader Ask AI and the Command Center.
+
+Do not duplicate ranking or risk logic in VCP Trader.
+Do not modify scanner algorithms.
+Do not add execution.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. ROUTING
+==================================================
+
+Route:
+
+- Find three bullish trades
+- Find the best stock trade
+- Find an options trade under $500 max loss
+- Find a stock trade under $300 risk
+- Find income opportunities
+- What should I trade today?
+
+to rank_market_trade_candidates.
+
+Keep:
+
+- Analyze BA
+- Analyze MU
+- What is a credit spread?
+
+on their existing flows.
+
+==================================================
+2. GOAL NORMALIZATION
+==================================================
+
+Pass:
+
+- direction
+- instrumentPreference
+- objective
+- requestedStrategy
+- maxRiskDollars
+- maxRiskPercent
+- accountSize when trusted
+- numberOfIdeas
+- timeframe
+
+No false ticker extraction.
+
+==================================================
+3. RESPONSE CONTRACT
+==================================================
+
+Add:
+
+rankedTradeSearch?: {
+  reviewedCount,
+  qualifiedCount,
+  watchCount,
+  rejectedCount,
+  unavailableCount,
+  candidates,
+  watchCandidates,
+  rejectionSummary,
+  generatedAt
+}
+
+==================================================
+4. UI
+==================================================
+
+Create separate sections:
+
+Top Trade Candidates
+Worth Watching
+Rejected Summary
+Data Limitations
+
+Candidate card:
+
+- rank
+- symbol
+- strategy
+- instrument
+- verdict
+- trigger
+- invalidation
+- objective
+- reward/risk
+- max risk
+- quantity
+- confidence
+- warnings
+- why selected
+
+Do not show a rejected setup under "Top Trade Candidates."
+
+==================================================
+5. HEADLINES
+==================================================
+
+Examples:
+
+"Three bullish trade candidates identified."
+
+"Five setups were reviewed; one qualified and two are worth watching."
+
+"No trade candidates met the $300 risk limit."
+
+==================================================
+6. CTA RULES
+==================================================
+
+Qualified:
+- Analyze
+- Review Trade
+- Trade Builder only when complete and actionable
+
+Watch:
+- Analyze
+- Add Watchlist
+- View Setup
+
+Rejected:
+- no Trade Builder
+
+==================================================
+7. TESTS
+==================================================
+
+Add tests for:
+
+- exact requested count
+- all actionable
+- mixed results
+- no results
+- risk-constrained search
+- watch candidates
+- rejected candidates excluded from top list
+- accurate counts
+- headline/card agreement
+- no false ticker extraction
+- existing Analyze flow unchanged
+- recommendation flow unchanged
+- no execution
+
+Run:
+
+npm test
+npm run build
+
+Report all changes and wait for review.

@@ -787,6 +787,8 @@ async function callOpenAi(
     opportunitySearch?:
       | import("./opportunity-search").OpportunitySearchResult
       | Record<string, unknown>; // MCP-backed search payload (cards + intent)
+    /** Deterministic ranked market search — the model may only explain the buckets, never reorder/promote/invent. */
+    rankedTradeSearch?: import("./ranked-trade-search").RankedTradeSearch;
   } = {},
 ): Promise<AskAnswer | null> {
   if (!isOpenAiConfigured()) return null;
@@ -875,7 +877,7 @@ async function callOpenAi(
     // to the opportunity-search flow upstream (opts.opportunitySearch) and
     // are deliberately retained there.
     // ------------------------------------------------------------------
-    if (isMcpEnabled() && !opts.opportunitySearch) {
+    if (isMcpEnabled() && !opts.opportunitySearch && !opts.rankedTradeSearch) {
       let recAttempted = false;
       try {
         const sr = await import("../mcp/strategy-recommendation");
@@ -905,7 +907,7 @@ async function callOpenAi(
     let unresolvedStrategyAsk: { raw: string; supported: string[] } | null = null;
     // Pure recommendation asks skip the multi-strategy analysis scan; a
     // "combined" ask ("Analyze NVDA and recommend a trade") runs both.
-    if (isMcpEnabled() && !opts.opportunitySearch && ctx.tickers.length > 0 && (tradeReqKind === null || tradeReqKind === "combined")) {
+    if (isMcpEnabled() && !opts.opportunitySearch && !opts.rankedTradeSearch && ctx.tickers.length > 0 && (tradeReqKind === null || tradeReqKind === "combined")) {
       try {
         const msa = await import("../mcp/multi-strategy-analysis");
         const registry = await msa.getCachedStrategyRegistry();
@@ -973,6 +975,7 @@ async function callOpenAi(
       question,
       context: compact,
       ...(opts.opportunitySearch ? { opportunitySearch: opts.opportunitySearch } : {}),
+      ...(opts.rankedTradeSearch ? { rankedTradeSearch: opts.rankedTradeSearch } : {}),
       ...(strategyRec ? { strategyRecommendation: strategyRec } : {}),
       ...(multiStrategy ? { multiStrategyAnalysis: multiStrategy } : {}),
       ...(vcpScan
@@ -1043,6 +1046,14 @@ async function callOpenAi(
       // it cannot fetch out-of-band symbols or re-scan. Explanation only.
       mcpTools = [];
       mcpSystemRules += `\n- The "opportunitySearch" field in the user content is the DETERMINISTIC result of a production opportunity search. Your job is ONLY to summarize and explain those specific candidates, ranked in the given order. NEVER invent, add, remove, or re-rank candidates. NEVER answer with generic education ("consider dividend stocks", "look for companies with...", "research stocks that..."). NEVER fabricate premiums, exact option contracts, IV, delta, open interest, volume, or bid/ask. If the opportunities array is empty, say plainly that no high-quality setups currently meet the criteria and suggest the Scanner, the watchlist, or asking about a specific symbol. Use the "counts" field and each card's "resultCategory" verbatim: only ACTIONABLE_TRADE cards may be called trade candidates or trade ideas; REJECTED (NO TRADE), WATCH, and UNAVAILABLE cards must never be described as trade ideas, and your stated counts must match the counts field exactly. Do not call any tools for this request.`;
+    }
+    if (opts.rankedTradeSearch) {
+      // Hard technical enforcement, not just a prompt rule: with a
+      // deterministic ranked payload the model gets NO tools at all — it
+      // cannot fetch out-of-band symbols, re-scan, or enrich candidates.
+      // Explanation only.
+      mcpTools = [];
+      mcpSystemRules += `\n- The "rankedTradeSearch" field in the user content is the DETERMINISTIC output of the production market-ranking engine. Your job is ONLY to explain it. You may NOT reorder candidates, promote a watch or rejected result to a trade, invent candidates, invent triggers/targets/risk/quantity, call rejected or watch-only setups trades or trade ideas, change the requested count, or override risk failures. "reviewedCount" is the number of RAW STORED OPPORTUNITIES reviewed; the qualified/watch/rejected/unavailable buckets count post-confluence candidates and may NOT sum to reviewedCount — never present them as the same population. Only entries in "candidates" are trade candidates. State counts exactly as given. If a maximum-risk budget was requested and no candidate survived, say explicitly that no candidate met that risk limit. Do not call any tools for this request.`;
     }
 
     const messages: any[] = [
@@ -1264,6 +1275,66 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       // extractTickers heuristic false-positives on words like "high", so
       // it must NOT gate this branch.
       // ---------------------------------------------------------------
+      // ---------------------------------------------------------------
+      // Deterministic MARKET-WIDE ranked trade search ("Find three bullish
+      // trades", "What should I trade today?", "Find a stock trade under
+      // $300 risk"). Routed BEFORE opportunity-search and the LLM: one
+      // rank_market_trade_candidates call, buckets validated defensively,
+      // headline + counts deterministic. Symbol-specific asks ("Find a
+      // trade for NVDA") never land here — the central goal normalization
+      // keeps them on recommend_trade_strategy, and false-ticker words
+      // (UNDER/MAX/LOSS/STOCK/RISK…) never become symbols.
+      // On any failure we preserve the pre-existing safe flows below and
+      // surface rankedTradeSearchFailed — never fabricated candidates.
+      // ---------------------------------------------------------------
+      let rankedTradeSearchFailed = false;
+      if (isMcpEnabled()) {
+        let rankedGoal: import("../mcp/strategy-recommendation").TradeGoal | null = null;
+        try {
+          const rts = await import("./ranked-trade-search");
+          rankedGoal = rts.classifyRankedTradeSearch(question, tickers);
+        } catch {
+          rankedGoal = null; // classification unavailable → existing flows
+        }
+        if (rankedGoal) {
+          try {
+            const rts = await import("./ranked-trade-search");
+            const tools = await import("../mcp/tools");
+            const search = await rts.runRankedTradeSearch(rankedGoal, {
+              rank: (args) => tools.rankMarketTradeCandidates(args),
+            });
+            const deterministic = rts.buildRankedTradeSearchAnswer(search, rankedGoal);
+            let answer: AskAnswer | null = null;
+            let source: "openai" | "rule_based" = "rule_based";
+            if (search.candidates.length + search.watchCandidates.length > 0) {
+              answer = await callOpenAi(question, ctx, { rankedTradeSearch: search });
+              if (answer) source = "openai";
+            }
+            if (!answer) answer = { ...deterministic };
+            return res.json({
+              question,
+              intent: "ranked-trade-search",
+              // Market-wide searches carry no specific ticker badge.
+              tickers: [],
+              brokerConnected: ctx.brokerConnected,
+              ...answer,
+              // The headline and confidence are DETERMINISTIC (spec §6/§10):
+              // the LLM narrative may explain, never re-headline.
+              headline: deterministic.headline,
+              confidence: deterministic.confidence,
+              rankedTradeSearch: search,
+              suggestions: rts.rankedTradeSearchSuggestions(search),
+              source,
+              disclaimer:
+                "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+            });
+          } catch (err) {
+            console.warn("[ask] ranked trade search unavailable:", (err as Error).message);
+            rankedTradeSearchFailed = true; // fall through to existing safe flows
+          }
+        }
+      }
+
       const oppSearchType = shouldRouteOpportunitySearch(question);
       if (oppSearchType) {
         // -------------------------------------------------------------
@@ -1363,6 +1434,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
               brokerConnected: ctx.brokerConnected,
               ...answer,
               confidence,
+              ...(rankedTradeSearchFailed ? { rankedTradeSearchFailed: true } : {}),
               opportunitySearch: searchPayload,
               suggestions: suggestionsForOpportunitySearch(
                 cards.length > 0
@@ -1415,6 +1487,7 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
           brokerConnected: ctx.brokerConnected,
           ...answer,
           confidence, // deterministic: freshness/count/completeness, never direction
+          ...(rankedTradeSearchFailed ? { rankedTradeSearchFailed: true } : {}),
           opportunitySearch: search ?? undefined,
           opportunitySearchFailed: failed || undefined,
           suggestions: suggestionsForOpportunitySearch(search, failed),

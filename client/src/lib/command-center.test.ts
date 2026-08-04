@@ -25,19 +25,21 @@ describe("askRoute — AI command routes into the existing Ask AI page", () => {
 });
 
 describe("QUICK_ACTIONS", () => {
-  it("Find Trades and Generate Income route into Ask AI with the spec intents", () => {
+  it("core actions route into Ask AI / Scanner with the spec intents", () => {
     const byId = Object.fromEntries(QUICK_ACTIONS.map((a) => [a.id, a]));
-    expect(byId["find-trades"].href).toBe("/ask?q=Find%20high-quality%20trade%20opportunities");
     expect(byId["income"].href).toBe("/ask?q=Find%20income%20opportunities");
     expect(byId["scan"].href).toBe("/scanner");
     // Analyze a Stock prefills the command bar — no hardcoded ticker anywhere
     expect(byId["analyze"].href).toBe("");
     for (const a of QUICK_ACTIONS) expect(a.event.startsWith("home_")).toBe(true);
   });
-  it("trade-seeking actions route into Ask AI with recommendation intents (no hardcoded tickers)", () => {
+  it("market-wide actions route into Ask AI with ranking intents (no hardcoded tickers)", () => {
     const byId = Object.fromEntries(QUICK_ACTIONS.map((a) => [a.id, a]));
-    expect(byId["find-trade"].href).toBe("/ask?q=Find%20a%20trade");
-    expect(byId["find-bullish"].href).toBe("/ask?q=Find%20a%20bullish%20trade");
+    // These questions are market-wide (no symbol) so the server routes them
+    // to the deterministic rank_market_trade_candidates flow.
+    expect(byId["find-best"].href).toBe("/ask?q=Find%20the%20best%20trades%20today");
+    expect(byId["find-bullish"].href).toBe("/ask?q=Find%20bullish%20trades");
+    expect(byId["find-stock"].href).toBe("/ask?q=Find%20a%20stock%20trade");
     expect(byId["find-options"].href).toBe("/ask?q=Find%20an%20options%20trade");
     expect(byId["find-credit-spread"].href).toBe("/ask?q=Find%20a%20credit%20spread");
     expect(byId["find-small-risk"].href).toBe("/ask?q=Find%20a%20trade%20under%20%24500%20max%20loss");

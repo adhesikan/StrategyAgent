@@ -18,6 +18,8 @@ import { StrategyRecommendationCards } from "@/components/strategy-recommendatio
 import type { StrategyRecommendation } from "@/lib/strategy-recommendation";
 import { OpportunitySearchCards } from "@/components/opportunity-search-cards";
 import type { OpportunitySearchResult } from "@/lib/opportunity-search";
+import { RankedTradeSearchCards } from "@/components/ranked-trade-search-cards";
+import type { RankedTradeSearch } from "@/lib/ranked-trade-search";
 import type { VcpAnalysis } from "@/lib/vcp-analysis";
 
 interface AskPick {
@@ -118,6 +120,9 @@ interface AskResponse {
   // Optional deterministic opportunity-search payload (additive)
   opportunitySearch?: OpportunitySearchResult;
   opportunitySearchFailed?: boolean;
+  // Optional deterministic ranked market trade search (additive)
+  rankedTradeSearch?: RankedTradeSearch;
+  rankedTradeSearchFailed?: boolean;
   // Optional deterministic trade-strategy recommendation (additive)
   strategyRecommendation?: StrategyRecommendation;
   recommendationFailed?: boolean;
@@ -304,6 +309,15 @@ export default function AskPage() {
 
               {data.strategyRecommendation && <StrategyRecommendationCards recommendation={data.strategyRecommendation} />}
               {data.multiStrategyAnalysis && <MultiStrategyAnalysisCards analysis={data.multiStrategyAnalysis} />}
+
+              {data.rankedTradeSearchFailed && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-ranked-search-failed">
+                  <Info className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                  <div className="text-amber-100/90">Market-wide trade ranking is temporarily unavailable — showing the standard search instead.</div>
+                </div>
+              )}
+
+              {data.rankedTradeSearch && <RankedTradeSearchCards search={data.rankedTradeSearch} question={data.question} />}
 
               {data.opportunitySearchFailed && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs flex items-start gap-2" data-testid="text-opp-search-failed">

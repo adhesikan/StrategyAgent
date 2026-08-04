@@ -49,6 +49,12 @@ export const MCP_ALLOWED_TOOLS = [
   // spread"). Research output only; never executes. NOT in MCP_AI_TOOLS: the
   // model never chooses when to call it or what arguments to pass.
   "recommend_trade_strategy",
+  // Deterministic market-wide ranking engine — backend orchestration only,
+  // invoked for broad trade searches ("find three bullish trades", "what
+  // should I trade today"). Read-only research output; never executes. NOT
+  // in MCP_AI_TOOLS: the model never chooses when to call it or what
+  // arguments to pass, and may never reorder or promote its buckets.
+  "rank_market_trade_candidates",
 ] as const;
 
 export type McpAllowedTool = (typeof MCP_ALLOWED_TOOLS)[number];
@@ -379,6 +385,49 @@ export async function recommendTradeStrategy(a: RecommendTradeStrategyArgs): Pro
   // orchestration timeout in runStrategyRecommendation.
   const cfg = getMcpConfig();
   return callAllowedTool("recommend_trade_strategy", args, {
+    timeoutMs: cfg?.recommendationTimeoutMs ?? 30_000,
+    retryOnTimeout: false,
+  });
+}
+
+export interface RankMarketTradeCandidatesArgs {
+  direction?: "bullish" | "bearish" | "neutral" | "either";
+  instrumentPreference?: "stock" | "options" | "either";
+  objective?: McpTradeObjective;
+  requestedStrategy?: McpRequestedStrategy;
+  maxRiskDollars?: number;
+  maxRiskPercent?: number;
+  accountSize?: number;
+  numberOfIdeas?: number;
+  strategies?: string[];
+  timeframe?: string;
+}
+
+/**
+ * Deterministic market-wide ranked trade search. Returns bucketed results
+ * (qualified candidates / watch candidates / rejection summary) plus honest
+ * counts. Backend-only: never exposed to the AI; args are model-safe only —
+ * no account ids, user ids, connection ids, tokens, or credentials are ever
+ * passed.
+ */
+export async function rankMarketTradeCandidates(a: RankMarketTradeCandidatesArgs): Promise<unknown> {
+  const args: Record<string, unknown> = {};
+  if (a.direction) args.direction = a.direction;
+  if (a.instrumentPreference) args.instrumentPreference = a.instrumentPreference;
+  if (a.objective) args.objective = a.objective;
+  if (a.requestedStrategy) args.requestedStrategy = a.requestedStrategy;
+  if (typeof a.maxRiskDollars === "number" && a.maxRiskDollars > 0) args.maxRiskDollars = a.maxRiskDollars;
+  if (typeof a.maxRiskPercent === "number" && a.maxRiskPercent > 0 && a.maxRiskPercent <= 100) args.maxRiskPercent = a.maxRiskPercent;
+  if (typeof a.accountSize === "number" && a.accountSize > 0) args.accountSize = a.accountSize;
+  if (typeof a.numberOfIdeas === "number") args.numberOfIdeas = Math.max(1, Math.min(10, Math.floor(a.numberOfIdeas)));
+  if (a.strategies?.length) args.strategies = a.strategies.slice(0, 20).map((s) => String(s));
+  if (a.timeframe) args.timeframe = String(a.timeframe);
+  // Slow tool: ranking may enrich several candidates (options selection,
+  // risk sizing) in one call. Use the recommendation-class timeout and never
+  // retry a pure timeout — the computation is deterministic, so a retry
+  // would just double the wait.
+  const cfg = getMcpConfig();
+  return callAllowedTool("rank_market_trade_candidates", args, {
     timeoutMs: cfg?.recommendationTimeoutMs ?? 30_000,
     retryOnTimeout: false,
   });

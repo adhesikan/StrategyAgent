@@ -1,0 +1,430 @@
+Integrate the deployed MCP rank_market_trade_candidates tool into VCP Trader Ask AI and the AI Command Center.
+
+CURRENT STATE
+
+The MCP server now exposes 20 read-only tools, including:
+
+rank_market_trade_candidates
+
+The tool returns:
+
+{
+  request,
+  reviewedCount,
+  qualifiedCount,
+  watchCount,
+  rejectedCount,
+  unavailableCount,
+  candidates,
+  watchCandidates,
+  rejectionSummary,
+  generatedAt
+}
+
+VCP Trader currently uses the older opportunity-search path for broad prompts such as:
+
+- Find three bullish trades
+- Find a stock trade under $300 risk
+- Find a trade under $500 max loss
+- What should I trade today?
+
+GOAL
+
+Use the deterministic ranked market-search engine for market-wide trade requests.
+
+Do not duplicate MCP ranking, risk, confluence, qualification, or options-selection logic.
+Do not modify scanner algorithms.
+Do not change MCP transport/authentication.
+Do not add execution.
+Do not auto-open Trade Builder.
+Do not allow OpenAI to override MCP buckets or verdicts.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. VERIFY TOOL AVAILABILITY
+==================================================
+
+Confirm rank_market_trade_candidates is advertised by the deployed MCP service.
+
+If unavailable:
+
+- preserve the existing safe flow
+- show a temporary-unavailable state
+- never fabricate ranked candidates
+
+Update MCP tool-count assertions from 19 to 20 where applicable.
+
+==================================================
+2. ROUTING
+==================================================
+
+Route market-wide requests to rank_market_trade_candidates:
+
+- Find three bullish trades
+- Find the best bullish trades
+- Find a stock trade under $300 risk
+- Find an options trade under $500 max loss
+- Find a trade under $500 max loss
+- Find income opportunities
+- Find the best trades today
+- What should I trade today?
+- Show trades worth watching
+
+Keep these flows separate:
+
+Analyze BA
+→ multi-strategy symbol analysis
+
+Find a trade for NVDA
+→ recommend_trade_strategy
+
+Find three bullish trades
+→ rank_market_trade_candidates
+
+What is a credit spread?
+→ education
+
+Do not route a request containing a validated symbol to the market-wide tool unless the user explicitly asks for broader comparisons.
+
+==================================================
+3. NORMALIZE SEARCH GOAL
+==================================================
+
+Create or reuse centralized parsing for:
+
+- direction
+- instrumentPreference
+- objective
+- requestedStrategy
+- maxRiskDollars
+- maxRiskPercent
+- accountSize only when safely available
+- numberOfIdeas
+- strategies
+- timeframe
+
+Examples:
+
+"Find three bullish trades"
+→ direction: bullish
+→ numberOfIdeas: 3
+
+"Find a stock trade under $300 risk"
+→ instrumentPreference: stock
+→ maxRiskDollars: 300
+→ numberOfIdeas: 1
+→ no symbol
+
+"Find an options trade under $500 max loss"
+→ instrumentPreference: options
+→ maxRiskDollars: 500
+→ numberOfIdeas: 1
+→ no symbol
+
+Do not regress the false-ticker protections. UNDER, MAX, LOSS, STOCK, RISK and similar words must never become symbols.
+
+==================================================
+4. MCP INVOCATION
+==================================================
+
+Call rank_market_trade_candidates once per request.
+
+Use a suitable tool-specific timeout because ranking may enrich several candidates.
+
+Do not ask OpenAI to select symbols before the MCP call.
+
+Pass no:
+
+- user ID
+- account ID
+- connection ID
+- broker token
+- API key
+- credentials
+
+==================================================
+5. STRUCTURED RESPONSE
+==================================================
+
+Add an optional response field:
+
+rankedTradeSearch: {
+  request,
+  reviewedCount,
+  qualifiedCount,
+  watchCount,
+  rejectedCount,
+  unavailableCount,
+  candidates,
+  watchCandidates,
+  rejectionSummary,
+  generatedAt
+}
+
+Add:
+
+rankedTradeSearchFailed?: boolean
+
+Validate defensively.
+
+Important count semantics:
+
+- reviewedCount is the number of raw stored opportunities reviewed
+- qualified/watch/rejected/unavailable count post-confluence candidates
+- therefore bucket counts may not sum to reviewedCount
+
+Label reviewedCount as:
+
+"Stored opportunities reviewed"
+
+Do not imply it is the same population as the post-confluence buckets.
+
+==================================================
+6. PAGE HEADLINES
+==================================================
+
+Use deterministic rules:
+
+Qualified candidates returned:
+"Three bullish trade candidates identified."
+
+Mixed:
+"Eight opportunities were reviewed; two qualified and three are worth watching."
+
+Watch only:
+"No trade candidates currently qualify, but three setups are worth watching."
+
+All rejected:
+"Setups were reviewed, but none currently qualify as trades."
+
+Unavailable:
+"Trade ranking is temporarily limited by unavailable market data."
+
+Never call rejected or watch-only setups "trade ideas."
+
+==================================================
+7. UI SECTIONS
+==================================================
+
+Render separate sections:
+
+TOP TRADE CANDIDATES
+
+Only candidates in the qualified bucket.
+
+Each card may show, when supplied:
+
+- rank
+- symbol
+- strategy
+- setup status
+- recommended instrument/structure
+- trigger
+- invalidation
+- objective
+- reward/risk
+- max risk
+- quantity
+- confidence
+- data quality
+- why selected
+- warnings
+
+WORTH WATCHING
+
+Only watchCandidates.
+
+Show:
+
+- symbol
+- strategy
+- current stage
+- missing confirmation
+- watch conditions
+- no Trade Builder
+
+REJECTION SUMMARY
+
+Collapsed by default.
+
+Group by reason:
+
+- missing trigger
+- risk limit exceeded
+- earnings risk
+- stale
+- regime conflict
+- insufficient data
+- unsupported structure
+
+DATA LIMITATIONS
+
+Show unavailableCount and safe provider/data explanations.
+
+Do not show every rejected item as a full card by default.
+
+==================================================
+8. RISK-CONSTRAINED PRESENTATION
+==================================================
+
+For:
+
+"Find a stock trade under $300 risk"
+
+show:
+
+- requested max risk: $300
+- calculated candidate risk
+- suggested quantity
+- whether it fits
+
+For options:
+
+- show exact max loss only for live, real contract candidates
+- estimated candidates must not claim exact premium-derived risk
+
+If no candidate survives:
+
+"No candidate met the $300 maximum-risk limit."
+
+Do not merely say "No setup" when risk filtering was the deciding factor.
+
+==================================================
+9. CTA GATING
+==================================================
+
+Qualified, complete candidate:
+
+- Analyze
+- Review Trade
+- Risk Details
+- Trade Builder only when actionable, fresh, real-data and complete
+
+Watch:
+
+- Analyze
+- Add to Watchlist
+- View Setup
+- Open Scanner
+- no Trade Builder
+
+Rejected:
+
+- no Trade Builder
+
+Unavailable:
+
+- Retry
+- Open Scanner
+
+Never open Trade Builder automatically.
+
+==================================================
+10. OPENAI ROLE
+==================================================
+
+OpenAI explains the structured ranked result.
+
+It may not:
+
+- reorder candidates
+- promote a watch/rejected result
+- invent candidates
+- invent trigger, target, risk or quantity
+- call rejected setups trades
+- change the requested count
+- override risk failures
+
+If OpenAI fails:
+
+- preserve the deterministic cards
+- use a server-generated summary
+
+==================================================
+11. COMMAND CENTER
+==================================================
+
+Route these quick actions to the ranking flow:
+
+- Find Best Trades
+- Find Bullish Trades
+- Find Stock Trade
+- Find Options Trade
+- Find Trade Under $500 Risk
+- Find Income Opportunities
+
+Keep:
+
+Analyze a Stock
+→ analysis flow
+
+Do not hardcode tickers.
+
+==================================================
+12. TESTS
+==================================================
+
+Add tests for:
+
+1. Find three bullish trades calls rank_market_trade_candidates.
+2. Exact count is passed.
+3. Find a stock trade under $300 parses no symbol.
+4. Find an option trade under $500 parses no false ticker.
+5. Find a trade for NVDA remains on recommend_trade_strategy.
+6. Analyze BA remains on analysis.
+7. Education remains educational.
+8. Qualified candidates appear only in Top Trade Candidates.
+9. Watch candidates appear only in Worth Watching.
+10. Rejected results never appear as trade candidates.
+11. Accurate bucket counts.
+12. reviewedCount is labeled as raw stored opportunities reviewed.
+13. Bucket counts are not incorrectly required to sum to reviewedCount.
+14. Mixed-result headline.
+15. All-watch headline.
+16. All-rejected headline.
+17. Risk-constrained no-result headline.
+18. Stock risk/quantity display.
+19. No fabricated options risk.
+20. CTA gating.
+21. OpenAI cannot reorder or promote candidates.
+22. OpenAI failure preserves cards.
+23. MCP failure is safe.
+24. Existing single-symbol recommendation remains unchanged.
+25. Existing multi-strategy Analyze remains unchanged.
+26. No execution behavior.
+27. No secret leakage.
+
+Run:
+
+npm test
+npm run build
+
+Also run focused suites for:
+
+- Ask AI intent routing
+- search-goal normalization
+- MCP wrapper
+- ranked-result validation
+- ranked search UI
+- Command Center
+- CTA gating
+
+Do not commit or push.
+
+At completion report:
+
+1. Previous routing
+2. New routing
+3. Goal normalization
+4. MCP call
+5. Response contract
+6. Count semantics
+7. UI sections
+8. Risk presentation
+9. CTA rules
+10. Tests
+11. Build
+12. Manual UAT prompts
+13. Compatibility concerns
+
+Wait for review before committing or pushing.

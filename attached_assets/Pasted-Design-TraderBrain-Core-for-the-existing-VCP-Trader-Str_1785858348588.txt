@@ -1,0 +1,327 @@
+Design TraderBrain Core for the existing VCP Trader/StrategyAgent application.
+
+This is an architecture and contract-design task only.
+
+Do not implement code yet.
+Do not modify MCP.
+Do not modify scanner, ranking, recommendation, risk, portfolio, broker, Trade Builder, or execution behavior.
+Do not commit, push, or deploy.
+
+CURRENT CAPABILITIES
+
+The application already contains distinct deterministic flows for:
+
+- generic Ask AI
+- symbol multi-strategy analysis
+- single-symbol trade recommendation
+- market-wide ranked trade search
+- opportunity search
+- risk-constrained trade search
+- goal-based trade planning
+- portfolio-aware recommendations
+- education requests
+- market/news requests
+- Trade Builder preparation
+- trusted MCP context injection
+- OpenAI explanation
+- safe deterministic fallbacks
+
+The separate vcp-trader-mcp service owns:
+
+- strategy scanning
+- setup normalization
+- candidate qualification
+- recommendation policy
+- ranking
+- risk calculations
+- options selection
+- portfolio-aware policy gates
+
+GOAL
+
+Design a thin TraderBrain Core that becomes the central orchestration layer without reimplementing any domain logic.
+
+The Brain should own only:
+
+1. intent classification
+2. normalized request planning
+3. deterministic tool-plan construction
+4. trusted-context requirements
+5. MCP execution sequencing
+6. evidence collection
+7. response composition
+8. failure isolation
+9. observability
+
+==================================================
+1. AUDIT CURRENT ORCHESTRATION
+==================================================
+
+Trace the current /api/ask request path.
+
+Identify exact files and functions responsible for:
+
+- intent classification
+- symbol extraction
+- trade-goal normalization
+- ranked-search normalization
+- portfolio-goal normalization
+- education routing
+- tool allowlisting
+- MCP calls
+- trusted context minting
+- OpenAI prompting
+- structured response construction
+- deterministic fallback generation
+- CTA generation
+- analytics
+- error handling
+
+Produce a diagram of the current flow.
+
+Identify duplicated or conflicting routing logic.
+
+Do not recommend moving deterministic domain rules out of MCP.
+
+==================================================
+2. DEFINE TRADERBRAIN RESPONSIBILITY
+==================================================
+
+Design:
+
+TraderBrainService.execute(request, trustedContext)
+
+It should return a structured TraderBrainResult.
+
+Define clear boundaries:
+
+TraderBrain owns:
+- orchestration
+- sequencing
+- aggregation
+- response contracts
+
+MCP owns:
+- trading decisions
+- candidate qualification
+- ranking
+- risk
+- strategy semantics
+- portfolio policy
+
+OpenAI owns:
+- explanation only
+- education prose
+- natural-language summarization
+
+Frontend owns:
+- rendering
+- CTA gating based on validated structured fields
+
+==================================================
+3. DEFINE INTENT TYPES
+==================================================
+
+Propose a closed intent union such as:
+
+ANALYZE_SYMBOL
+RECOMMEND_SYMBOL_TRADE
+RANK_MARKET_TRADES
+PLAN_PORTFOLIO_TRADE
+ANALYZE_PORTFOLIO
+EXPLAIN_CONCEPT
+EDUCATION_PLUS_ACTION
+MARKET_RESEARCH
+COMBINED_ANALYSIS_RECOMMENDATION
+UNKNOWN
+
+For each intent define:
+
+- required fields
+- optional fields
+- primary MCP tool
+- optional supporting tools
+- trusted-context requirement
+- output sections
+- failure behavior
+- whether OpenAI is used
+
+==================================================
+4. DEFINE TOOL PLAN CONTRACT
+==================================================
+
+Design a deterministic ToolPlan:
+
+{
+  intent,
+  normalizedRequest,
+  steps: [
+    {
+      id,
+      tool,
+      arguments,
+      dependsOn,
+      required,
+      timeoutClass,
+      trustedContextScopes,
+      failurePolicy
+    }
+  ],
+  responsePolicy
+}
+
+Tool plans must be produced by deterministic code.
+
+The model must not freely select MCP tools.
+
+==================================================
+5. DEFINE EVIDENCE CONTRACT
+==================================================
+
+Design a normalized evidence envelope:
+
+{
+  source,
+  tool,
+  status,
+  data,
+  warnings,
+  dataQuality,
+  generatedAt,
+  durationMs
+}
+
+Do not flatten away the original validated tool payload.
+
+The evidence collector should preserve:
+
+- verdicts
+- reasons
+- warnings
+- counts
+- confidence
+- data quality
+- portfolio awareness
+- limitations
+
+==================================================
+6. DEFINE RESPONSE CONTRACT
+==================================================
+
+Design TraderBrainResult:
+
+{
+  requestId,
+  intent,
+  normalizedRequest,
+  status,
+  headline,
+  confidence,
+  sections,
+  evidence,
+  warnings,
+  limitations,
+  nextActions,
+  generatedAt
+}
+
+Sections may include:
+
+- analysis
+- recommendation
+- rankedSearch
+- portfolioFit
+- risk
+- education
+- marketContext
+
+Do not create one giant generic payload that loses domain-specific fields.
+
+Preserve existing additive response contracts where possible.
+
+==================================================
+7. FAILURE POLICIES
+==================================================
+
+Define deterministic behavior for:
+
+- primary tool timeout
+- optional supporting tool failure
+- MCP unavailable
+- trusted context unavailable
+- malformed tool response
+- OpenAI unavailable
+- partial success
+- no qualifying result
+
+Examples:
+
+Primary recommendation failure:
+- no invented fallback trade
+
+Portfolio context failure:
+- continue market-only when policy allows
+- disclose limitation
+
+OpenAI failure:
+- preserve structured deterministic result
+
+==================================================
+8. MIGRATION PLAN
+==================================================
+
+Design an incremental migration that does not replace every flow at once.
+
+Recommended order:
+
+1. combined analysis + recommendation
+2. symbol recommendation
+3. ranked market search
+4. goal-based planner
+5. symbol analysis
+6. education and generic research
+
+Include feature flags or shadow-mode validation.
+
+==================================================
+9. TEST STRATEGY
+==================================================
+
+Define tests for:
+
+- intent classification
+- deterministic tool planning
+- dependency order
+- optional versus required steps
+- failure isolation
+- trusted-context scoping
+- OpenAI non-authority
+- response compatibility
+- no tool duplication
+- no execution
+- deterministic repeatability
+
+==================================================
+10. DELIVERABLE
+==================================================
+
+Create:
+
+docs/TRADER_BRAIN_CORE_ARCHITECTURE.md
+
+Report:
+
+1. current orchestration map
+2. duplication found
+3. proposed module structure
+4. intent matrix
+5. tool-plan contract
+6. evidence contract
+7. response contract
+8. failure policies
+9. migration sequence
+10. test strategy
+11. risks and compatibility concerns
+
+Do not implement.
+Wait for review.

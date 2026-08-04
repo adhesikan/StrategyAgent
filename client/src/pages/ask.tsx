@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, Link } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useSearch, Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -141,16 +141,27 @@ export default function AskPage() {
     },
   });
 
+  // React to ?q= changes even while already on /ask (e.g. clicking an
+  // "Analyze BA" CTA inside a result card). Without this, in-page links that
+  // only change the query string appeared to do nothing.
+  const search = useSearch();
+  const lastSubmittedRef = useRef<string>("");
   useEffect(() => {
-    if (initialQ) {
-      askMutation.mutate(initialQ);
+    const q = (new URLSearchParams(search).get("q") ?? "").trim();
+    if (q && q !== lastSubmittedRef.current) {
+      lastSubmittedRef.current = q;
+      setInput(q);
+      setActiveQuestion(q);
+      askMutation.mutate(q);
+      window.scrollTo({ top: 0 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQ]);
+  }, [search]);
 
   const submit = (q: string) => {
     const trimmed = q.trim();
     if (!trimmed) return;
+    lastSubmittedRef.current = trimmed;
     setActiveQuestion(trimmed);
     const url = new URL(window.location.href);
     url.searchParams.set("q", trimmed);

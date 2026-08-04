@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Mini } from "@/components/radar-scenario-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TrendingUp, AlertTriangle, Info, Loader2, ClipboardList } from "lucide-react";
@@ -174,41 +176,51 @@ export function OpportunitySearchCards({ search }: { search: OpportunitySearchRe
         const zone = o.estimatedOptions ? strikeZoneDisplay(o.estimatedOptions.shortStrikeZone) : null;
         const longZone = o.estimatedOptions ? strikeZoneDisplay(o.estimatedOptions.longStrikeZone) : null;
         return (
-          <div key={`${o.symbol}-${i}`} className="rounded-lg border p-3 space-y-2 min-w-0" data-testid={`card-opp-search-${o.symbol}`}>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground tabular-nums">{o.rank ?? i + 1}.</span>
-              <span className="font-mono font-medium">{o.symbol}</span>
-              {o.strategy && <span className="text-xs text-muted-foreground">{o.strategy}</span>}
-              {o.stage && (
-                <Badge variant="outline" className={cn("text-[10px] capitalize", STAGE_TONE[o.stage.toLowerCase()] ?? "")} data-testid={`badge-opp-search-stage-${o.symbol}`}>
-                  {o.stage.replace(/-/g, " ")}
-                </Badge>
-              )}
-              {typeof o.score === "number" && (
-                <Badge variant="outline" className="text-[10px] tabular-nums">{o.score}/100</Badge>
-              )}
-              {stateLabel && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px]",
-                    o.candidateState === "no_trade"
-                      ? "border-rose-500/40 text-rose-300 bg-rose-500/10"
-                      : "border-violet-500/40 text-violet-300 bg-violet-500/10",
+          <Card key={`${o.symbol}-${i}`} className="hover-elevate" data-testid={`card-opp-search-${o.symbol}`}>
+            <CardContent className="p-4 space-y-3 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground tabular-nums">#{o.rank ?? i + 1}</span>
+                  <span className="font-bold text-lg" data-testid={`text-opp-search-symbol-${o.symbol}`}>{o.symbol}</span>
+                  {o.stage && (
+                    <Badge variant="outline" className={cn("text-[10px] capitalize", STAGE_TONE[o.stage.toLowerCase()] ?? "")} data-testid={`badge-opp-search-stage-${o.symbol}`}>
+                      {o.stage.replace(/-/g, " ")}
+                    </Badge>
                   )}
-                  data-testid={`badge-opp-search-state-${o.symbol}`}
-                >
-                  {stateLabel}
-                </Badge>
+                  {stateLabel && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px]",
+                        o.candidateState === "no_trade"
+                          ? "border-rose-500/40 text-rose-300 bg-rose-500/10"
+                          : "border-violet-500/40 text-violet-300 bg-violet-500/10",
+                      )}
+                      data-testid={`badge-opp-search-state-${o.symbol}`}
+                    >
+                      {stateLabel}
+                    </Badge>
+                  )}
+                </div>
+                {o.strategy && (
+                  <p className="text-xs mt-1 text-muted-foreground" data-testid={`text-opp-search-strategy-${o.symbol}`}>{o.strategy}</p>
+                )}
+              </div>
+              {typeof o.score === "number" && (
+                <div className="text-right shrink-0">
+                  <div className="text-xs text-muted-foreground">Score</div>
+                  <div className="text-2xl font-bold tabular-nums" data-testid={`text-opp-search-score-${o.symbol}`}>{o.score}</div>
+                </div>
               )}
             </div>
 
             {(o.trigger != null || o.invalidation || o.technicalObjective || o.freshness) && (
-              <div className="text-xs text-muted-foreground flex gap-3 flex-wrap" data-testid={`row-opp-search-levels-${o.symbol}`}>
-                {o.trigger != null && <span className="tabular-nums">Entry trigger: ${o.trigger.toFixed(2)}</span>}
-                {o.invalidation && <span className="tabular-nums">Invalidation: ${o.invalidation.price.toFixed(2)}</span>}
-                {o.technicalObjective && <span className="tabular-nums">Objective: ${o.technicalObjective.price.toFixed(2)}</span>}
-                {o.freshness && <span>{o.freshness}</span>}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs" data-testid={`row-opp-search-levels-${o.symbol}`}>
+                {o.trigger != null && <Mini label="Entry trigger" value={`$${o.trigger.toFixed(2)}`} testId={`mini-opp-trigger-${o.symbol}`} />}
+                {o.invalidation && <Mini label="Invalidation" value={`$${o.invalidation.price.toFixed(2)}`} className="text-rose-300" testId={`mini-opp-invalidation-${o.symbol}`} />}
+                {o.technicalObjective && <Mini label="Objective" value={`$${o.technicalObjective.price.toFixed(2)}`} className="text-emerald-300" testId={`mini-opp-objective-${o.symbol}`} />}
+                {o.freshness && <Mini label="Freshness" value={o.freshness} testId={`mini-opp-freshness-${o.symbol}`} />}
               </div>
             )}
 
@@ -283,7 +295,8 @@ export function OpportunitySearchCards({ search }: { search: OpportunitySearchRe
                 </Link>
               ))}
             </div>
-          </div>
+            </CardContent>
+          </Card>
         );
       })}
     </div>

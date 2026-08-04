@@ -28,8 +28,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  computeTradeStatus,
   isTradePlanBuilderEligible,
   tradePlanCtas,
+  tradeStatusBadgeClass,
+  tradeStatusLabel,
+  type TradeCardStatus,
   type TradePlanViewModel,
 } from "@/lib/trade-plan-view-model";
 
@@ -37,6 +41,7 @@ import {
 // Verdict display maps
 // ---------------------------------------------------------------------------
 
+/** Card border color — still driven by the original verdict bucket. */
 const CARD_BORDER: Record<string, string> = {
   STOCK:             "border-emerald-500/30 bg-emerald-500/4",
   LIVE_OPTIONS:      "border-emerald-500/30 bg-emerald-500/4",
@@ -47,24 +52,20 @@ const CARD_BORDER: Record<string, string> = {
   UNAVAILABLE:       "border-border bg-muted/5",
 };
 
-const VERDICT_BADGE: Record<string, string> = {
-  STOCK:             "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
-  LIVE_OPTIONS:      "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
-  ESTIMATED_OPTIONS: "border-amber-500/40 text-amber-300 bg-amber-500/10",
-  WATCH:             "border-amber-500/40 text-amber-300 bg-amber-500/10",
-  NO_TRADE:          "border-muted text-muted-foreground bg-muted/20",
-  UNSUPPORTED:       "border-sky-500/40 text-sky-300 bg-sky-500/10",
-  UNAVAILABLE:       "border-muted text-muted-foreground bg-muted/20",
-};
-
-const VERDICT_LABELS: Record<string, string> = {
-  STOCK:             "Trade Candidate",
+/**
+ * Secondary instrument-type label badge.
+ * Shows the underlying asset type when it adds meaningful context beyond the
+ * primary TradeCardStatus badge (e.g. "Live Options" vs "Options Estimate").
+ * Only rendered when this label differs from the primary status label.
+ */
+const INSTRUMENT_LABELS: Record<string, string> = {
+  STOCK:             "Equity",
   LIVE_OPTIONS:      "Live Options",
-  ESTIMATED_OPTIONS: "Options Estimate",
-  WATCH:             "Watch — Not Actionable",
-  NO_TRADE:          "Not Trading",
+  ESTIMATED_OPTIONS: "Options — No Live Chain",
+  WATCH:             "",
+  NO_TRADE:          "",
   UNSUPPORTED:       "Unsupported Structure",
-  UNAVAILABLE:       "Data Unavailable",
+  UNAVAILABLE:       "",
 };
 
 // Trigger state
@@ -84,52 +85,51 @@ const TRIGGER_STATE_CLASS: Record<string, string> = {
   UNKNOWN:            "text-muted-foreground",
 };
 
-// Decision state
-type DecisionState = "qualified" | "watch" | "rejected" | "unavailable";
+// ---------------------------------------------------------------------------
+// Status-driven Decision section config (Sprint 4.1C)
+// ---------------------------------------------------------------------------
 
-function verdictToDecision(verdict: string): DecisionState {
-  if (verdict === "STOCK" || verdict === "LIVE_OPTIONS" || verdict === "ESTIMATED_OPTIONS") return "qualified";
-  if (verdict === "WATCH") return "watch";
-  if (verdict === "UNAVAILABLE") return "unavailable";
-  return "rejected";
-}
-
-const DECISION_CONFIG: Record<DecisionState, {
+interface DecisionConfig {
   label: string;
   icon: React.ReactNode;
   border: string;
   bg: string;
   text: string;
-}> = {
-  qualified: {
-    label:  "Qualified — Trade Candidate",
-    icon:   <CheckCircle2 className="h-4 w-4 shrink-0" />,
-    border: "border-emerald-500/40",
-    bg:     "bg-emerald-500/8",
-    text:   "text-emerald-300",
-  },
-  watch: {
-    label:  "Watch — Not Yet Actionable",
-    icon:   <Eye className="h-4 w-4 shrink-0" />,
-    border: "border-amber-500/40",
-    bg:     "bg-amber-500/8",
-    text:   "text-amber-300",
-  },
-  rejected: {
-    label:  "Rejected — Not Trading",
-    icon:   <XCircle className="h-4 w-4 shrink-0" />,
-    border: "border-muted",
-    bg:     "bg-muted/10",
-    text:   "text-muted-foreground",
-  },
-  unavailable: {
-    label:  "Unavailable — Insufficient Data",
-    icon:   <MinusCircle className="h-4 w-4 shrink-0" />,
-    border: "border-muted",
-    bg:     "bg-muted/10",
-    text:   "text-muted-foreground",
-  },
-};
+}
+
+/**
+ * Returns Decision-section config driven by the TradeCardStatus.
+ * Never produces a generic "No Trade" label — all statuses map to a specific
+ * trader-facing description via tradeStatusLabel().
+ */
+function statusDecisionConfig(status: TradeCardStatus, vm: TradePlanViewModel): DecisionConfig {
+  const label = tradeStatusLabel(vm);
+  // Qualified family (TRADE_READY / TRIGGERED / AWAITING_BREAKOUT for equity verdicts)
+  const isQualified =
+    vm.verdict === "STOCK" || vm.verdict === "LIVE_OPTIONS" || vm.verdict === "ESTIMATED_OPTIONS";
+
+  switch (status) {
+    case "TRADE_READY":
+      return { label, icon: <CheckCircle2 className="h-4 w-4 shrink-0" />, border: "border-emerald-500/40", bg: "bg-emerald-500/8", text: "text-emerald-300" };
+    case "TRIGGERED":
+      return { label, icon: <CheckCircle2 className="h-4 w-4 shrink-0" />, border: "border-emerald-400/60", bg: "bg-emerald-500/12", text: "text-emerald-200" };
+    case "AWAITING_BREAKOUT":
+      return isQualified
+        ? { label, icon: <Clock className="h-4 w-4 shrink-0" />, border: "border-sky-500/40", bg: "bg-sky-500/8", text: "text-sky-300" }
+        : { label, icon: <Clock className="h-4 w-4 shrink-0" />, border: "border-amber-500/40", bg: "bg-amber-500/8", text: "text-amber-300" };
+    case "WATCH":
+      return { label, icon: <Eye className="h-4 w-4 shrink-0" />, border: "border-amber-500/40", bg: "bg-amber-500/8", text: "text-amber-300" };
+    case "EARNINGS_HOLD":
+      return { label, icon: <AlertTriangle className="h-4 w-4 shrink-0" />, border: "border-orange-500/40", bg: "bg-orange-500/8", text: "text-orange-300" };
+    case "DATA_LIMITED":
+      return { label, icon: <BarChart2 className="h-4 w-4 shrink-0" />, border: "border-purple-500/40", bg: "bg-purple-500/8", text: "text-purple-300" };
+    case "MARKET_UNAVAILABLE":
+      return { label, icon: <MinusCircle className="h-4 w-4 shrink-0" />, border: "border-muted", bg: "bg-muted/10", text: "text-muted-foreground" };
+    case "REJECTED":
+    default:
+      return { label, icon: <XCircle className="h-4 w-4 shrink-0" />, border: "border-muted", bg: "bg-muted/10", text: "text-muted-foreground" };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Warning categorization
@@ -198,17 +198,21 @@ interface InstitutionalTradeCardProps {
 }
 
 export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
-  const borderClass   = CARD_BORDER[vm.verdict] ?? "border-border";
-  const verdictLabel  = VERDICT_LABELS[vm.verdict] ?? vm.verdict;
-  const verdictBadge  = VERDICT_BADGE[vm.verdict] ?? "";
-  const decision      = verdictToDecision(vm.verdict);
-  const decisionCfg   = DECISION_CONFIG[decision];
-  const triggerLabel  = TRIGGER_STATE_LABEL[vm.triggerState] ?? vm.triggerState;
-  const triggerClass  = TRIGGER_STATE_CLASS[vm.triggerState] ?? "";
-  const hasTrigger    = vm.triggerState !== "NO_TRIGGER";
-  const isPositive    = decision === "qualified";
-  const isWatchOrNo   = decision === "watch" || decision === "rejected";
-  const ctas          = tradePlanCtas(vm);
+  const borderClass    = CARD_BORDER[vm.verdict] ?? "border-border";
+  // Sprint 4.1C — unified status: never generic "No Trade"
+  const activeStatus   = vm.tradeStatus ?? computeTradeStatus(vm);
+  const statusBadge    = tradeStatusBadgeClass(activeStatus);
+  const statusLbl      = tradeStatusLabel(vm);
+  const instrumentLbl  = INSTRUMENT_LABELS[vm.verdict] ?? "";
+  const decisionCfg    = statusDecisionConfig(activeStatus, vm);
+  const triggerLabel   = TRIGGER_STATE_LABEL[vm.triggerState] ?? vm.triggerState;
+  const triggerClass   = TRIGGER_STATE_CLASS[vm.triggerState] ?? "";
+  const hasTrigger     = vm.triggerState !== "NO_TRIGGER";
+  // A setup is "positive" (green Why-selected bullets) when it's fully or partially qualified.
+  const isPositive     = activeStatus === "TRADE_READY" || activeStatus === "TRIGGERED" ||
+    (activeStatus === "AWAITING_BREAKOUT" && (vm.verdict === "STOCK" || vm.verdict === "LIVE_OPTIONS" || vm.verdict === "ESTIMATED_OPTIONS"));
+  const isWatchOrNo    = !isPositive;
+  const ctas           = tradePlanCtas(vm);
 
   // Distance-to-trigger display: distinguish "Already triggered" vs "+$X.XX (Y%)"
   let distanceLabel: string | undefined;
@@ -229,7 +233,7 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
     <article
       className={`rounded-xl border p-4 space-y-4 ${borderClass}`}
       data-testid={`card-institutional-${vm.symbol}`}
-      aria-label={`Trade plan for ${vm.symbol}: ${verdictLabel}`}
+      aria-label={`Trade plan for ${vm.symbol}: ${statusLbl}`}
       role="article"
     >
       {/* ── §1 HEADER ─────────────────────────────────────────── */}
@@ -259,13 +263,25 @@ export function InstitutionalTradeCard({ vm }: InstitutionalTradeCardProps) {
             {vm.direction}
           </Badge>
         )}
+        {/* Primary status badge — unified TradeCardStatus, never generic "No Trade" */}
         <Badge
           variant="outline"
-          className={verdictBadge}
-          data-testid={`badge-inst-verdict-${vm.symbol}`}
+          className={statusBadge}
+          data-testid={`badge-inst-status-${vm.symbol}`}
+          aria-label={`Status: ${statusLbl}`}
         >
-          {verdictLabel}
+          {statusLbl}
         </Badge>
+        {/* Secondary instrument-type badge for options variants or unsupported */}
+        {instrumentLbl && (
+          <Badge
+            variant="outline"
+            className="border-muted-foreground/30 text-muted-foreground/80 bg-muted/10 text-[10px]"
+            data-testid={`badge-inst-verdict-${vm.symbol}`}
+          >
+            {instrumentLbl}
+          </Badge>
+        )}
         {vm.confidence && (
           <Badge
             variant="outline"

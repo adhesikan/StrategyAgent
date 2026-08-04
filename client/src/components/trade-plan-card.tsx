@@ -16,8 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   computeDistanceToTrigger,
+  computeTradeStatus,
   isTradePlanBuilderEligible,
   tradePlanCtas,
+  tradeStatusBadgeClass,
+  tradeStatusLabel,
   type TradePlanViewModel,
 } from "@/lib/trade-plan-view-model";
 
@@ -136,8 +139,10 @@ interface TradePlanCardProps {
 
 export function TradePlanCard({ vm, headerExtra, showDecision = true }: TradePlanCardProps) {
   const borderClass = CARD_BORDER[vm.verdict] ?? "border-border";
-  const verdictBadgeClass = VERDICT_BADGE[vm.verdict] ?? "";
-  const verdictLabel = VERDICT_LABELS[vm.verdict] ?? vm.verdict;
+  // Sprint 4.1C — unified status: never generic "No Trade"
+  const activeStatus = vm.tradeStatus ?? computeTradeStatus(vm);
+  const statusBadge  = tradeStatusBadgeClass(activeStatus);
+  const statusLbl    = tradeStatusLabel(vm);
   const triggerStateLabel = TRIGGER_STATE_LABEL[vm.triggerState];
   const triggerStateClass = TRIGGER_STATE_CLASS[vm.triggerState] ?? "";
   const hasTrigger = vm.triggerState !== "NO_TRIGGER";
@@ -149,7 +154,7 @@ export function TradePlanCard({ vm, headerExtra, showDecision = true }: TradePla
     <article
       className={`rounded-lg border p-3 space-y-3 ${borderClass}`}
       data-testid={`card-trade-plan-${vm.symbol}`}
-      aria-label={`Trade plan for ${vm.symbol}: ${verdictLabel}`}
+      aria-label={`Trade plan for ${vm.symbol}: ${statusLbl}`}
     >
       {/* ── Top row ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
@@ -166,12 +171,13 @@ export function TradePlanCard({ vm, headerExtra, showDecision = true }: TradePla
         <span className="font-semibold text-base" data-testid={`text-trade-plan-symbol-${vm.symbol}`}>
           {vm.symbol}
         </span>
+        {/* Primary status badge — never generic "No Trade" */}
         <Badge
           variant="outline"
-          className={verdictBadgeClass}
+          className={statusBadge}
           data-testid={`badge-trade-plan-verdict-${vm.symbol}`}
         >
-          {verdictLabel}
+          {statusLbl}
         </Badge>
         {vm.direction && (
           <Badge

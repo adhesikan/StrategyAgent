@@ -1,17 +1,22 @@
 // Sprint 4.1B — Institutional Trade Card logic tests.
-// Covers: extractLevelPrice, fromRankedCandidate (new fields), fromRankedWatchCandidate,
-// fromRecIdea (new fields), tradePlanCtas (new CTAs), and warning categorization.
+// Sprint 4.1C — Unified Trade Status System tests (computeTradeStatus, tradeStatusLabel,
+//               tradeStatusBadgeClass, computeTradeStatusDirect).
 // Pure-function tests — no React, no DOM, no server calls.
 
 import { describe, it, expect } from "vitest";
 import {
   computeDistanceToTrigger,
+  computeTradeStatus,
+  computeTradeStatusDirect,
   extractLevelPrice,
   fromRankedCandidate,
   fromRankedWatchCandidate,
   fromRecIdea,
   isTradePlanBuilderEligible,
   tradePlanCtas,
+  tradeStatusBadgeClass,
+  tradeStatusLabel,
+  type TradeCardStatus,
   type TradePlanViewModel,
 } from "./trade-plan-view-model";
 import type { RankedTradeCandidate, RankedWatchCandidate } from "./ranked-trade-search";
@@ -394,17 +399,15 @@ describe("isTradePlanBuilderEligible", () => {
 describe("verdict → decision state mapping (logic only)", () => {
   const QUALIFIED_VERDICTS = ["STOCK", "LIVE_OPTIONS", "ESTIMATED_OPTIONS"];
   const WATCH_VERDICTS = ["WATCH"];
-  const REJECTED_VERDICTS = ["NO_TRADE", "UNSUPPORTED"];
   const UNAVAILABLE_VERDICTS = ["UNAVAILABLE"];
 
   it.each(QUALIFIED_VERDICTS)("verdict %s maps to qualified decision state", (v) => {
     const vm = fromRankedCandidate(makeCandidate({ instrument: v.includes("OPTIONS") ? "option" : "equity" }));
-    // Verify that the view model would yield a qualified state
     const isQualified = vm.verdict === "STOCK" || vm.verdict === "LIVE_OPTIONS" || vm.verdict === "ESTIMATED_OPTIONS";
     expect(isQualified).toBe(true);
   });
 
-  it.each(WATCH_VERDICTS)("verdict %s maps to watch decision state", (v) => {
+  it.each(WATCH_VERDICTS)("verdict %s maps to watch decision state", () => {
     const vm = fromRankedWatchCandidate(makeWatchCandidate());
     expect(vm.verdict).toBe("WATCH");
   });
@@ -412,5 +415,331 @@ describe("verdict → decision state mapping (logic only)", () => {
   it.each(UNAVAILABLE_VERDICTS)("verdict %s maps to unavailable decision state", (v) => {
     const vm = fromRecIdea(makeRecIdea({ overallVerdict: v as any }));
     expect(vm.verdict).toBe(v);
+  });
+});
+
+// ===========================================================================
+// Sprint 4.1C — Unified Trade Status System
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// computeTradeStatusDirect — 8 status derivation paths
+// ---------------------------------------------------------------------------
+
+describe("computeTradeStatusDirect", () => {
+  // Qualified verdicts — trigger-state driven
+  it("STOCK + NO_TRIGGER → TRADE_READY", () => {
+    expect(computeTradeStatusDirect({ verdict: "STOCK", triggerState: "NO_TRIGGER" })).toBe("TRADE_READY");
+  });
+
+  it("STOCK + TRIGGERED → TRIGGERED", () => {
+    expect(computeTradeStatusDirect({ verdict: "STOCK", triggerState: "TRIGGERED" })).toBe("TRIGGERED");
+  });
+
+  it("STOCK + AWAITING_TRIGGER → AWAITING_BREAKOUT", () => {
+    expect(computeTradeStatusDirect({ verdict: "STOCK", triggerState: "AWAITING_TRIGGER" })).toBe("AWAITING_BREAKOUT");
+  });
+
+  it("STOCK + EVENT_CONFIRMATION → AWAITING_BREAKOUT", () => {
+    expect(computeTradeStatusDirect({ verdict: "STOCK", triggerState: "EVENT_CONFIRMATION" })).toBe("AWAITING_BREAKOUT");
+  });
+
+  it("LIVE_OPTIONS + TRIGGERED → TRIGGERED", () => {
+    expect(computeTradeStatusDirect({ verdict: "LIVE_OPTIONS", triggerState: "TRIGGERED" })).toBe("TRIGGERED");
+  });
+
+  it("ESTIMATED_OPTIONS + AWAITING_TRIGGER → AWAITING_BREAKOUT", () => {
+    expect(computeTradeStatusDirect({ verdict: "ESTIMATED_OPTIONS", triggerState: "AWAITING_TRIGGER" })).toBe("AWAITING_BREAKOUT");
+  });
+
+  // WATCH verdict
+  it("WATCH + no code → WATCH", () => {
+    expect(computeTradeStatusDirect({ verdict: "WATCH" })).toBe("WATCH");
+  });
+
+  it("WATCH + WAITING_FOR_TRIGGER → AWAITING_BREAKOUT", () => {
+    expect(computeTradeStatusDirect({ verdict: "WATCH", rejectionReasonCode: "WAITING_FOR_TRIGGER" })).toBe("AWAITING_BREAKOUT");
+  });
+
+  // NO_TRADE — earnings hold
+  it("NO_TRADE + EARNINGS_RISK code → EARNINGS_HOLD", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "EARNINGS_RISK" })).toBe("EARNINGS_HOLD");
+  });
+
+  it("NO_TRADE + earningsRisk flag → EARNINGS_HOLD (flag takes priority)", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", earningsRisk: true })).toBe("EARNINGS_HOLD");
+  });
+
+  // NO_TRADE — data limited
+  it("NO_TRADE + DATA_UNAVAILABLE → DATA_LIMITED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "DATA_UNAVAILABLE" })).toBe("DATA_LIMITED");
+  });
+
+  it("NO_TRADE + UNDERLYING_MARKET_DATA_UNAVAILABLE → DATA_LIMITED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "UNDERLYING_MARKET_DATA_UNAVAILABLE" })).toBe("DATA_LIMITED");
+  });
+
+  it("NO_TRADE + OPTIONS_DATA_UNAVAILABLE → DATA_LIMITED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "OPTIONS_DATA_UNAVAILABLE" })).toBe("DATA_LIMITED");
+  });
+
+  it("NO_TRADE + DATA_FRESHNESS_INSUFFICIENT → DATA_LIMITED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "DATA_FRESHNESS_INSUFFICIENT" })).toBe("DATA_LIMITED");
+  });
+
+  it("NO_TRADE + CANDIDATE_CONFIRMATION_UNAVAILABLE → DATA_LIMITED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "CANDIDATE_CONFIRMATION_UNAVAILABLE" })).toBe("DATA_LIMITED");
+  });
+
+  // NO_TRADE — market unavailable
+  it("NO_TRADE + MARKET_REGIME_UNAVAILABLE → MARKET_UNAVAILABLE", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "MARKET_REGIME_UNAVAILABLE" })).toBe("MARKET_UNAVAILABLE");
+  });
+
+  // NO_TRADE — awaiting breakout (price not yet at trigger)
+  it("NO_TRADE + WAITING_FOR_TRIGGER → AWAITING_BREAKOUT", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "WAITING_FOR_TRIGGER" })).toBe("AWAITING_BREAKOUT");
+  });
+
+  // NO_TRADE — generic rejection
+  it("NO_TRADE + RISK_LIMIT_EXCEEDED → REJECTED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "RISK_LIMIT_EXCEEDED" })).toBe("REJECTED");
+  });
+
+  it("NO_TRADE + DIRECTION_CONFLICT → REJECTED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "DIRECTION_CONFLICT" })).toBe("REJECTED");
+  });
+
+  it("NO_TRADE + no code → REJECTED", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE" })).toBe("REJECTED");
+  });
+
+  // UNAVAILABLE
+  it("UNAVAILABLE → MARKET_UNAVAILABLE", () => {
+    expect(computeTradeStatusDirect({ verdict: "UNAVAILABLE" })).toBe("MARKET_UNAVAILABLE");
+  });
+
+  // UNSUPPORTED
+  it("UNSUPPORTED + no code → REJECTED", () => {
+    expect(computeTradeStatusDirect({ verdict: "UNSUPPORTED" })).toBe("REJECTED");
+  });
+
+  // Suffix rejection codes (e.g. "EARNINGS_RISK:NVDA")
+  it("rejection code with symbol suffix is correctly matched", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "EARNINGS_RISK:NVDA" })).toBe("EARNINGS_HOLD");
+  });
+
+  it("WAITING_FOR_TRIGGER:NVDA suffix correctly matched for AWAITING_BREAKOUT", () => {
+    expect(computeTradeStatusDirect({ verdict: "NO_TRADE", rejectionReasonCode: "WAITING_FOR_TRIGGER:NVDA" })).toBe("AWAITING_BREAKOUT");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeTradeStatus — VM-based wrapper
+// ---------------------------------------------------------------------------
+
+describe("computeTradeStatus (VM-based)", () => {
+  it("populates tradeStatus in fromRankedCandidate result", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      trigger: "Break above $192.50",
+      currentPrice: 185,
+    }));
+    expect(vm.tradeStatus).toBe("AWAITING_BREAKOUT");
+  });
+
+  it("populates tradeStatus in fromRankedWatchCandidate result", () => {
+    const vm = fromRankedWatchCandidate(makeWatchCandidate());
+    expect(vm.tradeStatus).toBe("WATCH");
+  });
+
+  it("populates tradeStatus in fromRecIdea (NO_TRADE, EARNINGS_RISK)", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "NO_TRADE", rejectionReasonCode: "EARNINGS_RISK" }));
+    expect(vm.tradeStatus).toBe("EARNINGS_HOLD");
+  });
+
+  it("populates tradeStatus in fromRecIdea (STOCK, no trigger)", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "STOCK" }));
+    expect(vm.tradeStatus).toBe("TRADE_READY");
+  });
+
+  it("STOCK with triggered candidate → TRIGGERED", () => {
+    const vm = fromRankedCandidate(makeCandidate({
+      trigger: "Break above $150",
+      currentPrice: 155, // above trigger → TRIGGERED
+    }));
+    expect(vm.tradeStatus).toBe("TRIGGERED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tradeStatusLabel — all 8 statuses and REJECTED sub-reasons
+// ---------------------------------------------------------------------------
+
+describe("tradeStatusLabel", () => {
+  function vmWith(status: TradeCardStatus, rejectionReasonCode?: string): Pick<TradePlanViewModel, "tradeStatus" | "rejectionReasonCode"> {
+    return { tradeStatus: status, rejectionReasonCode };
+  }
+
+  it("TRADE_READY → 'Trade Ready'", () => {
+    expect(tradeStatusLabel(vmWith("TRADE_READY"))).toBe("Trade Ready");
+  });
+
+  it("TRIGGERED → 'Triggered'", () => {
+    expect(tradeStatusLabel(vmWith("TRIGGERED"))).toBe("Triggered");
+  });
+
+  it("AWAITING_BREAKOUT → 'Awaiting Breakout'", () => {
+    expect(tradeStatusLabel(vmWith("AWAITING_BREAKOUT"))).toBe("Awaiting Breakout");
+  });
+
+  it("WATCH → 'Waiting for Confirmation'", () => {
+    expect(tradeStatusLabel(vmWith("WATCH"))).toBe("Waiting for Confirmation");
+  });
+
+  it("EARNINGS_HOLD → 'Earnings Hold'", () => {
+    expect(tradeStatusLabel(vmWith("EARNINGS_HOLD"))).toBe("Earnings Hold");
+  });
+
+  it("DATA_LIMITED → 'Data Limited'", () => {
+    expect(tradeStatusLabel(vmWith("DATA_LIMITED"))).toBe("Data Limited");
+  });
+
+  it("MARKET_UNAVAILABLE → 'Market Unavailable'", () => {
+    expect(tradeStatusLabel(vmWith("MARKET_UNAVAILABLE"))).toBe("Market Unavailable");
+  });
+
+  // REJECTED sub-reasons
+  it("REJECTED + RISK_LIMIT_EXCEEDED → 'Rejected — Risk'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "RISK_LIMIT_EXCEEDED"))).toBe("Rejected — Risk");
+  });
+
+  it("REJECTED + EARNINGS_RISK → 'Rejected — Earnings'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "EARNINGS_RISK"))).toBe("Rejected — Earnings");
+  });
+
+  it("REJECTED + DIRECTION_CONFLICT → 'Rejected — Direction'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "DIRECTION_CONFLICT"))).toBe("Rejected — Direction");
+  });
+
+  it("REJECTED + STALE_SETUP → 'Rejected — Stale Setup'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "STALE_SETUP"))).toBe("Rejected — Stale Setup");
+  });
+
+  it("REJECTED + NO_VALID_SETUP → 'Rejected — No Valid Setup'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "NO_VALID_SETUP"))).toBe("Rejected — No Valid Setup");
+  });
+
+  it("REJECTED + UNSUPPORTED_STRUCTURE → 'Rejected — Unsupported'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "UNSUPPORTED_STRUCTURE"))).toBe("Rejected — Unsupported");
+  });
+
+  it("REJECTED + LIQUIDITY_RISK → 'Rejected — Liquidity'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "LIQUIDITY_RISK"))).toBe("Rejected — Liquidity");
+  });
+
+  it("REJECTED + POSITION_LIMIT_EXCEEDED → 'Rejected — Position Limit'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "POSITION_LIMIT_EXCEEDED"))).toBe("Rejected — Position Limit");
+  });
+
+  it("REJECTED + no code → generic 'Rejected'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED"))).toBe("Rejected");
+  });
+
+  it("REJECTED + unknown code → generic 'Rejected'", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "SOME_UNKNOWN_CODE"))).toBe("Rejected");
+  });
+
+  it("REJECTED + code with suffix → base code used for sub-reason", () => {
+    expect(tradeStatusLabel(vmWith("REJECTED", "RISK_LIMIT_EXCEEDED:NVDA"))).toBe("Rejected — Risk");
+  });
+
+  it("no tradeStatus (undefined) → falls back to 'Rejected'", () => {
+    expect(tradeStatusLabel({ tradeStatus: undefined, rejectionReasonCode: undefined })).toBe("Rejected");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tradeStatusBadgeClass — returns a non-empty Tailwind string for all statuses
+// ---------------------------------------------------------------------------
+
+describe("tradeStatusBadgeClass", () => {
+  const ALL_STATUSES: TradeCardStatus[] = [
+    "TRADE_READY",
+    "TRIGGERED",
+    "AWAITING_BREAKOUT",
+    "WATCH",
+    "REJECTED",
+    "DATA_LIMITED",
+    "MARKET_UNAVAILABLE",
+    "EARNINGS_HOLD",
+  ];
+
+  it.each(ALL_STATUSES)("returns a non-empty class string for %s", (status) => {
+    const cls = tradeStatusBadgeClass(status);
+    expect(cls).toBeTruthy();
+    expect(cls.length).toBeGreaterThan(0);
+  });
+
+  it("qualified statuses use emerald tones", () => {
+    expect(tradeStatusBadgeClass("TRADE_READY")).toContain("emerald");
+    expect(tradeStatusBadgeClass("TRIGGERED")).toContain("emerald");
+  });
+
+  it("AWAITING_BREAKOUT uses sky tone", () => {
+    expect(tradeStatusBadgeClass("AWAITING_BREAKOUT")).toContain("sky");
+  });
+
+  it("WATCH uses amber tone", () => {
+    expect(tradeStatusBadgeClass("WATCH")).toContain("amber");
+  });
+
+  it("EARNINGS_HOLD uses orange tone", () => {
+    expect(tradeStatusBadgeClass("EARNINGS_HOLD")).toContain("orange");
+  });
+
+  it("DATA_LIMITED uses purple tone", () => {
+    expect(tradeStatusBadgeClass("DATA_LIMITED")).toContain("purple");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: end-to-end status through VM mappers
+// ---------------------------------------------------------------------------
+
+describe("tradeStatus end-to-end through mappers", () => {
+  it("fromRankedCandidate STOCK (no trigger) sets TRADE_READY and label", () => {
+    const vm = fromRankedCandidate(makeCandidate());
+    expect(vm.tradeStatus).toBe("TRADE_READY");
+    expect(tradeStatusLabel(vm)).toBe("Trade Ready");
+  });
+
+  it("fromRankedWatchCandidate sets WATCH and label 'Waiting for Confirmation'", () => {
+    const vm = fromRankedWatchCandidate(makeWatchCandidate());
+    expect(tradeStatusLabel(vm)).toBe("Waiting for Confirmation");
+  });
+
+  it("fromRecIdea NO_TRADE + RISK_LIMIT_EXCEEDED → 'Rejected — Risk'", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "NO_TRADE", rejectionReasonCode: "RISK_LIMIT_EXCEEDED" }));
+    expect(tradeStatusLabel(vm)).toBe("Rejected — Risk");
+  });
+
+  it("fromRecIdea NO_TRADE + EARNINGS_RISK → 'Earnings Hold'", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "NO_TRADE", rejectionReasonCode: "EARNINGS_RISK" }));
+    expect(tradeStatusLabel(vm)).toBe("Earnings Hold");
+  });
+
+  it("fromRecIdea NO_TRADE + DATA_UNAVAILABLE → 'Data Limited'", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "NO_TRADE", rejectionReasonCode: "DATA_UNAVAILABLE" }));
+    expect(tradeStatusLabel(vm)).toBe("Data Limited");
+  });
+
+  it("fromRecIdea UNAVAILABLE → 'Market Unavailable'", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "UNAVAILABLE" as any }));
+    expect(tradeStatusLabel(vm)).toBe("Market Unavailable");
+  });
+
+  it("fromRecIdea WATCH + no code → 'Waiting for Confirmation'", () => {
+    const vm = fromRecIdea(makeRecIdea({ overallVerdict: "WATCH" }));
+    expect(tradeStatusLabel(vm)).toBe("Waiting for Confirmation");
   });
 });

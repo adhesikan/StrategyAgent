@@ -92,12 +92,12 @@ export function isRenderableStrategyRecommendation(a: unknown): a is StrategyRec
 }
 
 export const REC_VERDICT_LABELS: Record<RecommendationVerdict, string> = {
-  LIVE_OPTIONS: "Live options",
-  ESTIMATED_OPTIONS: "Estimated options",
-  STOCK: "Stock trade",
-  WATCH: "Watch",
-  NO_TRADE: "No trade",
-  UNSUPPORTED: "Not yet supported",
+  LIVE_OPTIONS: "Live Options",
+  ESTIMATED_OPTIONS: "Options Estimate",
+  STOCK: "Trade Candidate",
+  WATCH: "Waiting for Confirmation",
+  NO_TRADE: "Rejected",        // Sprint 4.1C: never show bare "No trade" — components use tradeStatusLabel for specific reason
+  UNSUPPORTED: "Unsupported",
 };
 
 /** Badge tone per verdict (maps onto shadcn Badge variants + classes). */
@@ -136,20 +136,28 @@ export function recFmtPrice(n: unknown): string | null {
 // is computed, ranked, or invented client-side.
 // ---------------------------------------------------------------------------
 
-/** Setup status shown on the hero card, derived from the verdict only. */
+/**
+ * Setup status label shown on the hero card.
+ * Sprint 4.1C: use tradeStatusLabel() from trade-plan-view-model for
+ * rejection-code-aware labels. This function provides a verdict-only fallback
+ * used where no rejection code is available.
+ *
+ * @deprecated prefer tradeStatusLabel() from trade-plan-view-model when a
+ * TradePlanViewModel or rejectionReasonCode is available.
+ */
 export function recStatusLabel(v: RecommendationVerdict): string {
   switch (v) {
     case "LIVE_OPTIONS":
     case "STOCK":
-      return "READY";
+      return "Trade Ready";
     case "ESTIMATED_OPTIONS":
-      return "READY (ESTIMATES)";
+      return "Trade Ready — Estimates";
     case "WATCH":
-      return "FORMING";
+      return "Waiting for Confirmation";
     case "NO_TRADE":
-      return "NO SETUP";
+      return "Rejected";
     default:
-      return "UNSUPPORTED";
+      return "Unsupported";
   }
 }
 

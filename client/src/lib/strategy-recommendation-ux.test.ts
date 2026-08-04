@@ -42,13 +42,13 @@ const evidence: RecommendationEvidence = {
 };
 
 describe("hero card fields per verdict", () => {
-  it("status labels are verdict-derived, never invented", () => {
-    expect(recStatusLabel("LIVE_OPTIONS")).toBe("READY");
-    expect(recStatusLabel("STOCK")).toBe("READY");
-    expect(recStatusLabel("ESTIMATED_OPTIONS")).toBe("READY (ESTIMATES)");
-    expect(recStatusLabel("WATCH")).toBe("FORMING");
-    expect(recStatusLabel("NO_TRADE")).toBe("NO SETUP");
-    expect(recStatusLabel("UNSUPPORTED")).toBe("UNSUPPORTED");
+  it("status labels are verdict-derived, never invented (Sprint 4.1C labels)", () => {
+    expect(recStatusLabel("LIVE_OPTIONS")).toBe("Trade Ready");
+    expect(recStatusLabel("STOCK")).toBe("Trade Ready");
+    expect(recStatusLabel("ESTIMATED_OPTIONS")).toBe("Trade Ready — Estimates");
+    expect(recStatusLabel("WATCH")).toBe("Waiting for Confirmation");
+    expect(recStatusLabel("NO_TRADE")).toBe("Rejected");
+    expect(recStatusLabel("UNSUPPORTED")).toBe("Unsupported");
   });
 
   it("structure comes only from engine fields (Long Put, Shares fallback for STOCK)", () => {

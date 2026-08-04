@@ -30,7 +30,6 @@ import {
   recFmtPrice,
   recIdeaSymbol,
   recNextSteps,
-  recStatusLabel,
   recStrategyLabel,
   recStructureLabel,
   recSummaryLines,
@@ -41,8 +40,12 @@ import {
   type RecommendationEvidence,
   type StrategyRecommendation,
 } from "@/lib/strategy-recommendation";
-import { translateNoTradeReason } from "@/lib/ranked-trade-search";
-import { fromRecIdea } from "@/lib/trade-plan-view-model";
+import {
+  computeTradeStatusDirect,
+  fromRecIdea,
+  tradeStatusBadgeClass,
+  tradeStatusLabel,
+} from "@/lib/trade-plan-view-model";
 import { TradePlanCard } from "@/components/trade-plan-card";
 
 // Color system (spec §10): WATCH amber · LIVE green · NO_TRADE gray ·
@@ -110,10 +113,30 @@ function HeroCard({ idea, rec, evidence }: { idea: RecIdea; rec: StrategyRecomme
   const sym = recIdeaSymbol(idea);
   const strat = recStrategyLabel(idea);
   const structure = recStructureLabel(idea);
+
+  // Sprint 4.1C — derive unified status for the hero badge.
+  // triggerState defaults to NO_TRIGGER (hero card has no live price/trigger
+  // computation); the TradePlanCard rendered below has the full trigger state.
+  const earningsRisk =
+    idea.rejectionReasonCode === "EARNINGS_RISK" ||
+    (idea.warnings ?? []).some((w) => /earnings/i.test(w));
+  const heroStatus = computeTradeStatusDirect({
+    verdict: v,
+    triggerState: "NO_TRIGGER",
+    rejectionReasonCode: idea.rejectionReasonCode,
+    earningsRisk,
+  });
+  const heroStatusLabel = tradeStatusLabel({
+    tradeStatus: heroStatus,
+    rejectionReasonCode: idea.rejectionReasonCode,
+  });
+  const heroStatusBadge = tradeStatusBadgeClass(heroStatus);
+
   const fields: Array<[string, React.ReactNode]> = [];
   if (strat) fields.push(["Strategy", strat]);
   if (structure) fields.push(["Structure", structure]);
-  fields.push(["Status", recStatusLabel(v)]);
+  // Status field: use specific status label — never "NO SETUP" or "No trade"
+  fields.push(["Status", heroStatusLabel]);
   if (evidence) {
     fields.push([
       "Recommendation Confidence",
@@ -125,8 +148,9 @@ function HeroCard({ idea, rec, evidence }: { idea: RecIdea; rec: StrategyRecomme
   return (
     <div className={`rounded-lg border-2 p-4 space-y-3 ${VERDICT_HERO_BORDER[v] ?? "border-border"}`} data-testid="card-rec-hero">
       <div className="flex items-center gap-3 flex-wrap">
-        <Badge variant="outline" className={`text-sm px-3 py-1 font-semibold ${TONE_CLASS[recVerdictTone(v)]}`} data-testid="badge-rec-hero-verdict">
-          {REC_VERDICT_LABELS[v] ?? v}
+        {/* Primary status badge — unified TradeCardStatus, never generic "No trade" */}
+        <Badge variant="outline" className={`text-sm px-3 py-1 font-semibold ${heroStatusBadge}`} data-testid="badge-rec-hero-verdict">
+          {heroStatusLabel}
         </Badge>
         {sym && <span className="text-xl font-bold tracking-tight" data-testid="text-rec-hero-symbol">{sym}</span>}
         {v === "ESTIMATED_OPTIONS" && (
@@ -137,23 +161,6 @@ function HeroCard({ idea, rec, evidence }: { idea: RecIdea; rec: StrategyRecomme
             Simulated Development Data
           </Badge>
         )}
-        {/* §6 — Specific NO_TRADE / WATCH reason chip. Shows the primary
-            rejection reason alongside the verdict instead of only the generic
-            "No trade" label. Only rendered when a structured reason code is
-            present (idea.rejectionReasonCode) — older responses omit it
-            gracefully. */}
-        {(v === "NO_TRADE" || v === "WATCH") && (() => {
-          const label = translateNoTradeReason(idea.rejectionReasonCode);
-          return label ? (
-            <Badge
-              variant="outline"
-              className="text-[10px] border-amber-500/40 text-amber-300 bg-amber-500/10"
-              data-testid="badge-rec-no-trade-reason"
-            >
-              {label}
-            </Badge>
-          ) : null;
-        })()}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm" data-testid="grid-rec-hero-fields">
         {fields.map(([k, val]) => (
@@ -517,13 +524,29 @@ function SecondaryIdeaRow({ idea, rank }: { idea: RecIdea; rank: number }) {
   const sym = recIdeaSymbol(idea);
   const strat = recStrategyLabel(idea);
   const v = idea.overallVerdict;
+  // Sprint 4.1C — derive unified status for the row badge (no trigger info available)
+  const earningsRisk =
+    idea.rejectionReasonCode === "EARNINGS_RISK" ||
+    (idea.warnings ?? []).some((w) => /earnings/i.test(w));
+  const rowStatus = computeTradeStatusDirect({
+    verdict: v,
+    triggerState: "NO_TRIGGER",
+    rejectionReasonCode: idea.rejectionReasonCode,
+    earningsRisk,
+  });
+  const rowStatusLabel = tradeStatusLabel({
+    tradeStatus: rowStatus,
+    rejectionReasonCode: idea.rejectionReasonCode,
+  });
+  const rowStatusBadge = tradeStatusBadgeClass(rowStatus);
   return (
     <div className="rounded-md border border-border/60 p-2.5 flex items-center gap-2 flex-wrap text-xs" data-testid={`card-rec-idea-${rank}`}>
       <span className="text-muted-foreground">#{rank}</span>
       {sym && <span className="font-semibold">{sym}</span>}
       {strat && <Badge variant="secondary" className="text-[10px]">{strat}</Badge>}
-      <Badge variant="outline" className={`text-[10px] ${TONE_CLASS[recVerdictTone(v)]}`} data-testid={`badge-rec-verdict-${rank}`}>
-        {REC_VERDICT_LABELS[v] ?? v}
+      {/* Sprint 4.1C — specific status label, never generic "No trade" */}
+      <Badge variant="outline" className={`text-[10px] ${rowStatusBadge}`} data-testid={`badge-rec-verdict-${rank}`}>
+        {rowStatusLabel}
       </Badge>
       {(idea.reasons ?? []).length > 0 && <span className="text-muted-foreground basis-full md:basis-auto md:flex-1 min-w-0 truncate">{idea.reasons![0]}</span>}
     </div>

@@ -26,6 +26,156 @@ export type TradePlanTriggerState =
 /** Unified verdict — superset of RecommendationVerdict. */
 export type TradePlanVerdict = RecommendationVerdict | "UNAVAILABLE";
 
+// ---------------------------------------------------------------------------
+// Sprint 4.1C — Unified Trade Status System
+// ---------------------------------------------------------------------------
+
+/**
+ * 8 canonical trade statuses — deterministic, derived from verdict + trigger
+ * state + rejection reason code. Replaces generic "No Trade" labels everywhere.
+ *
+ * TRADE_READY       — qualified; no specific trigger price (broad entry or market order)
+ * TRIGGERED         — price has crossed the entry trigger level; enter now
+ * AWAITING_BREAKOUT — qualified but price hasn't reached the trigger yet
+ * WATCH             — conditions partially met; waiting for confirmation
+ * REJECTED          — disqualified (sub-reason via rejectionReasonCode)
+ * DATA_LIMITED      — disqualified: incomplete or stale market data
+ * MARKET_UNAVAILABLE — disqualified: data feed or market regime unavailable
+ * EARNINGS_HOLD     — disqualified: pending earnings event blocks the setup
+ */
+export type TradeCardStatus =
+  | "TRADE_READY"
+  | "TRIGGERED"
+  | "AWAITING_BREAKOUT"
+  | "WATCH"
+  | "REJECTED"
+  | "DATA_LIMITED"
+  | "MARKET_UNAVAILABLE"
+  | "EARNINGS_HOLD";
+
+// ---------------------------------------------------------------------------
+// TradeCardStatus derivation (low-level — accepts raw fields)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derives the canonical TradeCardStatus from raw fields — usable in any context
+ * that doesn't have a full VM (e.g. recommendation hero cards).
+ */
+export function computeTradeStatusDirect(opts: {
+  verdict: TradePlanVerdict | string;
+  triggerState?: TradePlanTriggerState;
+  rejectionReasonCode?: string | null;
+  earningsRisk?: boolean;
+}): TradeCardStatus {
+  const { verdict, triggerState = "NO_TRIGGER", rejectionReasonCode, earningsRisk } = opts;
+  const code = rejectionReasonCode ?? "";
+  const base = code.split(":")[0].trim();
+
+  if (verdict === "STOCK" || verdict === "LIVE_OPTIONS" || verdict === "ESTIMATED_OPTIONS") {
+    if (triggerState === "TRIGGERED") return "TRIGGERED";
+    if (triggerState === "AWAITING_TRIGGER" || triggerState === "UNKNOWN" || triggerState === "EVENT_CONFIRMATION") {
+      return "AWAITING_BREAKOUT";
+    }
+    return "TRADE_READY"; // NO_TRIGGER — qualified, no specific price trigger
+  }
+
+  if (verdict === "WATCH") {
+    if (base === "WAITING_FOR_TRIGGER") return "AWAITING_BREAKOUT";
+    return "WATCH";
+  }
+
+  if (verdict === "NO_TRADE" || verdict === "UNSUPPORTED") {
+    if (earningsRisk || base === "EARNINGS_RISK") return "EARNINGS_HOLD";
+    const dataLimitedCodes = [
+      "DATA_UNAVAILABLE",
+      "UNDERLYING_MARKET_DATA_UNAVAILABLE",
+      "OPTIONS_DATA_UNAVAILABLE",
+      "DATA_FRESHNESS_INSUFFICIENT",
+      "CANDIDATE_CONFIRMATION_UNAVAILABLE",
+    ];
+    if (dataLimitedCodes.includes(base)) return "DATA_LIMITED";
+    if (base === "MARKET_REGIME_UNAVAILABLE") return "MARKET_UNAVAILABLE";
+    if (base === "WAITING_FOR_TRIGGER") return "AWAITING_BREAKOUT";
+    return "REJECTED";
+  }
+
+  if (verdict === "UNAVAILABLE") return "MARKET_UNAVAILABLE";
+  return "REJECTED";
+}
+
+/**
+ * Derives the canonical TradeCardStatus from a TradePlanViewModel.
+ * Always returns one of the 8 defined statuses — never null.
+ */
+export function computeTradeStatus(
+  vm: Pick<TradePlanViewModel, "verdict" | "triggerState" | "rejectionReasonCode" | "earningsRisk">,
+): TradeCardStatus {
+  return computeTradeStatusDirect({
+    verdict: vm.verdict,
+    triggerState: vm.triggerState,
+    rejectionReasonCode: vm.rejectionReasonCode,
+    earningsRisk: vm.earningsRisk,
+  });
+}
+
+/**
+ * Returns the trader-facing label for a TradeCardStatus.
+ *
+ * For REJECTED, appends a sub-reason when derivable from rejectionReasonCode:
+ *   RISK_LIMIT_EXCEEDED      → "Rejected — Risk"
+ *   EARNINGS_RISK            → "Rejected — Earnings"
+ *   DIRECTION_CONFLICT       → "Rejected — Direction"
+ *   STALE_SETUP              → "Rejected — Stale Setup"
+ *   NO_VALID_SETUP           → "Rejected — No Valid Setup"
+ *   UNSUPPORTED_STRUCTURE    → "Rejected — Unsupported"
+ *   LIQUIDITY_RISK           → "Rejected — Liquidity"
+ *   POSITION_LIMIT_EXCEEDED  → "Rejected — Position Limit"
+ *   (other / absent)         → "Rejected"
+ */
+export function tradeStatusLabel(vm: Pick<TradePlanViewModel, "tradeStatus" | "rejectionReasonCode">): string {
+  const status = vm.tradeStatus ?? "REJECTED";
+  switch (status) {
+    case "TRADE_READY":        return "Trade Ready";
+    case "TRIGGERED":          return "Triggered";
+    case "AWAITING_BREAKOUT":  return "Awaiting Breakout";
+    case "WATCH":              return "Waiting for Confirmation";
+    case "EARNINGS_HOLD":      return "Earnings Hold";
+    case "DATA_LIMITED":       return "Data Limited";
+    case "MARKET_UNAVAILABLE": return "Market Unavailable";
+    case "REJECTED": {
+      const code = vm.rejectionReasonCode ?? "";
+      const base = code.split(":")[0].trim();
+      switch (base) {
+        case "EARNINGS_RISK":           return "Rejected — Earnings";
+        case "RISK_LIMIT_EXCEEDED":     return "Rejected — Risk";
+        case "DIRECTION_CONFLICT":      return "Rejected — Direction";
+        case "STALE_SETUP":             return "Rejected — Stale Setup";
+        case "NO_VALID_SETUP":          return "Rejected — No Valid Setup";
+        case "UNSUPPORTED_STRUCTURE":   return "Rejected — Unsupported";
+        case "LIQUIDITY_RISK":          return "Rejected — Liquidity";
+        case "POSITION_LIMIT_EXCEEDED": return "Rejected — Position Limit";
+        default:                        return "Rejected";
+      }
+    }
+    default: return "Rejected";
+  }
+}
+
+/** Tailwind badge classes for a TradeCardStatus. */
+export function tradeStatusBadgeClass(status: TradeCardStatus): string {
+  switch (status) {
+    case "TRADE_READY":        return "border-emerald-500/40 text-emerald-300 bg-emerald-500/10";
+    case "TRIGGERED":          return "border-emerald-400/60 text-emerald-200 bg-emerald-500/20";
+    case "AWAITING_BREAKOUT":  return "border-sky-500/40 text-sky-300 bg-sky-500/10";
+    case "WATCH":              return "border-amber-500/40 text-amber-300 bg-amber-500/10";
+    case "EARNINGS_HOLD":      return "border-orange-500/40 text-orange-300 bg-orange-500/10";
+    case "DATA_LIMITED":       return "border-purple-500/40 text-purple-300 bg-purple-500/10";
+    case "MARKET_UNAVAILABLE": return "border-muted text-muted-foreground bg-muted/20";
+    case "REJECTED":           return "border-muted text-muted-foreground bg-muted/20";
+    default:                   return "border-muted text-muted-foreground bg-muted/20";
+  }
+}
+
 export interface TradePlanCta {
   label: string;
   href: string;
@@ -73,6 +223,8 @@ export interface TradePlanViewModel {
   warnings: string[];
   watchConditions?: string[]; // "What would change the verdict"
   rejectionReasonCode?: string | null;
+  /** Sprint 4.1C: unified deterministic status — replaces generic "No Trade" label. */
+  tradeStatus?: TradeCardStatus;
   // Source tag — controls CTA set and Trade Builder eligibility.
   source: "ranked" | "recommendation" | "analysis";
 }
@@ -243,6 +395,7 @@ export function fromRankedCandidate(
     source: "ranked",
   };
   vm.distanceToTrigger = computeDistanceToTrigger(vm) ?? undefined;
+  vm.tradeStatus = computeTradeStatus(vm);
   return vm;
 }
 
@@ -257,7 +410,7 @@ export function fromRankedCandidate(
  * watchConditions so the Decision/WHY section renders meaningfully.
  */
 export function fromRankedWatchCandidate(w: RankedWatchCandidate): TradePlanViewModel {
-  return {
+  const vm: TradePlanViewModel = {
     symbol: w.symbol,
     verdict: "WATCH",
     strategy: w.strategy ?? undefined,
@@ -268,6 +421,8 @@ export function fromRankedWatchCandidate(w: RankedWatchCandidate): TradePlanView
     watchConditions: w.watchConditions.length > 0 ? w.watchConditions : undefined,
     source: "ranked",
   };
+  vm.tradeStatus = computeTradeStatus(vm);
+  return vm;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,5 +506,6 @@ export function fromRecIdea(
     source: "recommendation",
   };
   vm.distanceToTrigger = computeDistanceToTrigger(vm) ?? undefined;
+  vm.tradeStatus = computeTradeStatus(vm);
   return vm;
 }

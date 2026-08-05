@@ -14,7 +14,17 @@ export type MarketingEvent =
   | "congressflow_politician_selected"
   | "congressflow_source_opened"
   | "congressflow_refresh_requested"
-  | "congressflow_retry_clicked";
+  | "congressflow_retry_clicked"
+  // Sprint 5.5 — Dashboard events
+  // Props allowed: { section, action, symbol, grade } — never account values, positions, or prompts
+  | "dashboard_viewed"
+  | "dashboard_quick_action_clicked"
+  | "dashboard_opportunity_opened"
+  | "dashboard_research_opened"
+  | "dashboard_section_retry"
+  | "dashboard_connect_broker_clicked"
+  // Homepage — Choose Your Goal tracking (Task #49)
+  | "choose_goal_clicked";
 
 export function track(event: MarketingEvent, props: Record<string, unknown> = {}): void {
   try {

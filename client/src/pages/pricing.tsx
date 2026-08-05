@@ -83,7 +83,7 @@ export default function PricingPage() {
   return (
     <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full space-y-8">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/home")} data-testid="button-back-home">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} data-testid="button-back-home">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to Home
         </Button>
         {isCurrent && (
@@ -199,7 +199,7 @@ export default function PricingPage() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => navigate("/home")}
+                onClick={() => navigate("/dashboard")}
                 data-testid="button-explore-analysis"
               >
                 Explore Daily Ideas

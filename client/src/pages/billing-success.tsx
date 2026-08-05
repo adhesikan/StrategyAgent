@@ -34,7 +34,7 @@ export default function BillingSuccessPage() {
         </div>
 
         <div className="grid gap-2 pt-2">
-          <Button onClick={() => navigate("/home")} data-testid="button-go-home">
+          <Button onClick={() => navigate("/dashboard")} data-testid="button-go-home">
             Go to Home <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
           <Button variant="outline" onClick={() => navigate("/settings?tab=billing")} data-testid="button-manage-plan">

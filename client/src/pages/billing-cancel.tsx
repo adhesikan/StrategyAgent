@@ -30,7 +30,7 @@ export default function BillingCancelPage() {
           <Button onClick={() => navigate("/pricing")} data-testid="button-back-to-pricing">
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to pricing
           </Button>
-          <Button variant="outline" onClick={() => navigate("/home")} data-testid="button-go-home">
+          <Button variant="outline" onClick={() => navigate("/dashboard")} data-testid="button-go-home">
             Continue on free plan
           </Button>
         </div>

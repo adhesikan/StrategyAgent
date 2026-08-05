@@ -205,7 +205,7 @@ export default function AskPage() {
   return (
     <div className="flex-1 p-4 md:p-6 max-w-4xl mx-auto w-full space-y-5">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/home")} data-testid="button-ask-back">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} data-testid="button-ask-back">
           <ArrowLeft className="h-4 w-4 mr-1" /> Back
         </Button>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

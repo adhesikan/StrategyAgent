@@ -683,12 +683,18 @@ export const userSettings = pgTable("user_settings", {
   onboardingStep: integer("onboarding_step").default(0),
   positionSizingMethod: text("position_sizing_method").default("fixed_dollar"),
   positionSizingValue: integer("position_sizing_value").default(1000),
-  defaultLandingPage: text("default_landing_page").default("/home"),
+  // Sprint 5.5: changed DB default from "/home" to "/dashboard".
+  // "/home" is treated as a legacy value — DefaultLanding coerces it to "/dashboard".
+  defaultLandingPage: text("default_landing_page").default("/dashboard"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Sprint 5.5: "/home" removed as a pinnable landing page — it is now the
+// AI Command Center accessible via direct URL / deep link only.
+// Legacy users with "/home" stored are migrated to "/dashboard" by both
+// the server-side GET /api/user/settings coercion and resolveLandingPage().
 export const LANDING_PAGE_OPTIONS = [
-  { value: "/home", label: "Home" },
+  { value: "/dashboard", label: "Dashboard" },
   { value: "/scanner", label: "Scanner" },
   { value: "/goal-mode", label: "Grow" },
   { value: "/income-mode", label: "Income" },

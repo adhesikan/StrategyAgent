@@ -75,6 +75,8 @@ import AskPage from "@/pages/ask";
 import CongressActivityPage from "@/pages/congress-activity";
 import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
+import DashboardPage from "@/pages/dashboard";
+import { resolveLandingPage } from "@/lib/landing-page";
 import { Redirect } from "wouter";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
@@ -103,16 +105,19 @@ function DefaultLanding() {
       </div>
     );
   }
-  const target = settings?.defaultLandingPage && settings.defaultLandingPage.startsWith("/")
-    ? settings.defaultLandingPage
-    : "/home";
+  // resolveLandingPage handles all coercions: null/undefined → /dashboard,
+  // legacy "/home" → /dashboard, explicit pins → preserved.
+  // See client/src/lib/landing-page.ts for the full rule set and tests.
+  const target = resolveLandingPage(settings?.defaultLandingPage);
   return <Redirect to={target} />;
 }
 
 function AppRouter() {
   return (
     <Switch>
-      {/* /home is the AI Command Center; the full ideas dashboard remains at /ideas */}
+      {/* /dashboard is the authenticated landing page (Sprint 5.5) */}
+      <Route path="/dashboard" component={DashboardPage} />
+      {/* /home is the AI Command Center; kept for pinned preferences and deep links */}
       <Route path="/home" component={CommandCenterPage} />
       <Route path="/ideas" component={HomeV2} />
       <Route path="/ask" component={AskPage} />

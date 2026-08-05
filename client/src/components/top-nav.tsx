@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check, BookOpen } from "lucide-react";
+import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check, BookOpen, LayoutDashboard, Wallet, GraduationCap, Settings as SettingsIcon } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -28,39 +28,16 @@ interface TopNavItem {
   matches: (path: string) => boolean;
 }
 
+// Sprint 5.5: Authenticated nav prioritizes the dashboard and core workflows.
+// Public marketing nav (unauthenticated users) is unchanged — it never renders
+// TopNav directly; unauthenticated visitors see PublicRoutes with HomePage.
 const NAV_ITEMS: TopNavItem[] = [
   {
-    label: "Ideas",
-    href: "/ideas",
-    icon: Lightbulb,
-    testId: "topnav-ideas",
-    matches: (p) =>
-      p === "/ideas" ||
-      p === "/goal-mode" ||
-      p === "/income-mode" ||
-      p === "/trade-finder" ||
-      p === "/agent",
-  },
-  {
-    label: "Scanner",
-    href: "/scanner",
-    icon: SearchIcon,
-    testId: "topnav-scanner",
-    matches: (p) => p === "/scanner" || p === "/discover" || p === "/opportunity-radar",
-  },
-  {
-    label: "Markets",
-    href: "/markets",
-    icon: Newspaper,
-    testId: "topnav-markets",
-    matches: (p) => p === "/markets" || p === "/market-intel" || p === "/news",
-  },
-  {
-    label: "Congress",
-    href: "/markets/congress-activity",
-    icon: Landmark,
-    testId: "topnav-congress",
-    matches: (p) => p.startsWith("/markets/congress-activity"),
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    testId: "topnav-dashboard",
+    matches: (p) => p === "/dashboard",
   },
   {
     label: "Ask AI",
@@ -75,6 +52,27 @@ const NAV_ITEMS: TopNavItem[] = [
     icon: BookOpen,
     testId: "topnav-research",
     matches: (p) => p === "/research" || p.startsWith("/research/"),
+  },
+  {
+    label: "Portfolio",
+    href: "/settings?tab=broker",
+    icon: Wallet,
+    testId: "topnav-portfolio",
+    matches: (p) => false, // settings tab — never shows as "active page"
+  },
+  {
+    label: "Education",
+    href: "/guide",
+    icon: GraduationCap,
+    testId: "topnav-education",
+    matches: (p) => p === "/guide" || p.startsWith("/guide/") || p === "/help",
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: SettingsIcon,
+    testId: "topnav-settings",
+    matches: (p) => p === "/settings" || p.startsWith("/settings/"),
   },
 ];
 
@@ -99,7 +97,7 @@ function BrandWithStatus() {
 
   return (
     <div className="flex items-center gap-3 min-w-0">
-      <Link href="/home" aria-label="Go to Ideas" data-testid="link-brand">
+      <Link href="/dashboard" aria-label="Go to Dashboard" data-testid="link-brand">
         <div className="flex items-center gap-2 min-w-0">
           <div className="h-8 w-8 shrink-0 rounded-lg bg-primary/15 border border-primary/20 flex items-center justify-center">
             <Bot className="h-4 w-4 text-primary" />

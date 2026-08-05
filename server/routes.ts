@@ -49,6 +49,7 @@ import { registerPlatformRoutes } from "./routes/platform";
 import { registerFuturesRoutes } from "./routes/futures";
 import { registerAgentRoutes } from "./routes/agent";
 import { registerOpportunityRadarRoutes } from "./routes/opportunity-radar";
+import { registerDashboardRoutes } from "./routes/dashboard";
 import { registerNewsSentimentRoutes } from "./routes/news-sentiment";
 import { registerHomeSnapshotRoutes } from "./routes/home-snapshot";
 import { registerDailyIdeasRoutes } from "./routes/daily-ideas";
@@ -187,6 +188,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerFuturesRoutes(app);
   registerAgentRoutes(app, isAuthenticated);
   registerOpportunityRadarRoutes(app, isAuthenticated);
+  registerDashboardRoutes(app, isAuthenticated);
   registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
   registerHomeSnapshotRoutes(app, isAuthenticated);
   registerDailyIdeasRoutes(app, isAuthenticated);
@@ -5588,7 +5590,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           onboardingStep: 0,
           positionSizingMethod: "fixed_dollar",
           positionSizingValue: 1000,
-          defaultLandingPage: "/home",
+          defaultLandingPage: "/dashboard",
         });
       }
       
@@ -5626,7 +5628,14 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         onboardingStep: settings.onboardingStep ?? 0,
         positionSizingMethod: settings.positionSizingMethod || "fixed_dollar",
         positionSizingValue: settings.positionSizingValue ?? 1000,
-        defaultLandingPage: settings.defaultLandingPage === "/journal" ? "/history" : (settings.defaultLandingPage || "/home"),
+        // Legacy coercions: "/journal" → "/history" (removed page); "/home" → "/dashboard" (Sprint 5.5 default).
+        // The client's DefaultLanding applies the same rule, so the two stay in sync.
+        defaultLandingPage: (() => {
+          const lp = settings.defaultLandingPage;
+          if (!lp || lp === "/journal") return "/dashboard";
+          if (lp === "/home") return "/dashboard";
+          return lp;
+        })(),
       });
     } catch (error) {
       console.error("Failed to get user settings:", error);
@@ -5642,10 +5651,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         return;
       }
       
-      // Legacy compat: the Journal page was removed; coerce stored/submitted
-      // "/journal" landing pages to "/history" so old clients can still save.
-      if (req.body && req.body.defaultLandingPage === "/journal") {
-        req.body.defaultLandingPage = "/history";
+      // Legacy compat coercions (applied before Zod validation):
+      //   "/journal" → "/dashboard"  (page removed)
+      //   "/home"    → "/dashboard"  (Sprint 5.5: /home is no longer a pinnable landing page;
+      //                               legacy stored value and any old-client submits are redirected)
+      if (req.body?.defaultLandingPage === "/journal" || req.body?.defaultLandingPage === "/home") {
+        req.body.defaultLandingPage = "/dashboard";
       }
       const parsed = userSettingsUpdateSchema.parse(req.body);
 
@@ -5699,7 +5710,13 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         onboardingStep: settings.onboardingStep ?? 0,
         positionSizingMethod: settings.positionSizingMethod || "fixed_dollar",
         positionSizingValue: settings.positionSizingValue ?? 1000,
-        defaultLandingPage: settings.defaultLandingPage === "/journal" ? "/history" : (settings.defaultLandingPage || "/home"),
+        // Same coercions as the GET handler above.
+        defaultLandingPage: (() => {
+          const lp = settings.defaultLandingPage;
+          if (!lp || lp === "/journal") return "/dashboard";
+          if (lp === "/home") return "/dashboard";
+          return lp;
+        })(),
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

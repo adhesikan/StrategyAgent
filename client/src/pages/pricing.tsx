@@ -12,12 +12,12 @@ import { usePricing } from "@/hooks/use-pricing";
 
 function planFeatures(instaTradeName: string): string[] {
   return [
-    "Daily AI-ranked stock and options candidates",
+    "Daily AI-ranked stock and options opportunities",
     "Historical daily stock analysis during trial",
     "Options strategy insights for calls, puts, debit spreads, credit spreads, covered calls, and cash-secured puts",
-    "Risk, reward, breakeven, and capital-requirement analysis",
-    "Grow, Income, Trade, and Markets modes",
-    "Opportunity Radar and Analysis Conditions",
+    "Risk, reward, breakeven, and capital-requirement review",
+    "Growth and income opportunity discovery",
+    "Opportunity Radar and market condition monitoring",
     "News sentiment and market context",
     "Watchlist intelligence",
     "Tradier and TradeStation connections",
@@ -26,7 +26,7 @@ function planFeatures(instaTradeName: string): string[] {
     `${instaTradeName} stock and options order review and submission`,
     "Defined-risk options controls",
     "Position and results tracking",
-    "Analysis-to-live workflow",
+    "Opportunity-to-order workflow",
     "Bonus: Congress trade activity from public disclosures, organized with search, sort, and AI integration",
   ];
 }
@@ -105,7 +105,7 @@ export default function PricingPage() {
           Simple Pricing. Bring Your Broker.
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Start with a 14-day trial featuring historical daily stock analysis, AI-ranked stock and options candidates, market intelligence, and options strategy research. Connect a supported brokerage account to unlock current quotes, options chains, Greeks, account context, and self-directed {instaTradeName} stock and options order review and submission.
+          Start with a 14-day trial featuring historical daily stock analysis, AI-ranked stock and options opportunities, market intelligence, and options strategy insights. Connect a supported brokerage account to unlock current quotes, options chains, Greeks, account context, and self-directed {instaTradeName} order review and submission.
         </p>
       </div>
 
@@ -146,7 +146,7 @@ export default function PricingPage() {
               </>
             )}
             <p className="text-sm text-muted-foreground mt-3">
-              One complete plan for AI-powered stock and options research, strategy analysis, broker-connected market data, and self-directed order review and submission.
+              One complete plan for discovering, evaluating, and reviewing stock and options opportunities, with broker-connected data and self-directed order preparation.
             </p>
           </div>
 
@@ -194,7 +194,7 @@ export default function PricingPage() {
                 No broker connection required to explore analysis.
               </p>
               <p className="text-xs text-muted-foreground text-center" data-testid="text-supporting-copy">
-                Explore stock and options research without connecting a broker. Connect when you are ready to review current market data and self-directed orders.
+                Explore stock and options opportunities without connecting a broker. Connect when you are ready to review current market data and self-directed orders.
               </p>
               <Button
                 size="lg"
@@ -202,7 +202,7 @@ export default function PricingPage() {
                 onClick={() => navigate("/home")}
                 data-testid="button-explore-analysis"
               >
-                Explore Market Analysis
+                Explore Daily Ideas
               </Button>
             </div>
           )}

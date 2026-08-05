@@ -1,0 +1,716 @@
+Production Root Cause Diagnostic — MU Price Integrity Investigation (Architecture Correct)
+
+PRIMARY REPOSITORY
+
+Run this diagnostic in the VCP Trader / StrategyAgent repository.
+
+This repository owns:
+
+• Ask AI
+• TraderBrain
+• Twelve Data integration
+• Tradier integration
+• TradeStation integration
+• OpenAI integration
+• Internal Market APIs
+• Price Integrity validation
+• Research Save
+• GPT prompt construction
+• React rendering
+
+Trace every VCP Trader-owned stage directly.
+
+For MCP-owned stages, use:
+
+• existing production logs
+• request instrumentation
+• returned MCP payloads
+• HTTP traces
+
+where available.
+
+Do NOT claim to have inspected MCP source code from this repository.
+
+If any fact cannot be proven from StrategyAgent alone, clearly identify it and produce a small follow-up MCP verification prompt instead of guessing.
+
+Do NOT implement fixes.
+
+Do NOT modify code.
+
+Do NOT commit.
+
+Do NOT push.
+
+Do NOT deploy.
+
+This is a production architecture trace only.
+
+=========================================================
+ARCHITECTURE (ASSUME THIS IS CORRECT)
+=========================================================
+
+VCP Trader owns ALL external integrations:
+
+• Twelve Data
+• Tradier
+• TradeStation
+• OpenAI
+• Portfolio Context
+• Broker Context
+• User Session
+• Internal Market APIs
+
+The MCP service owns ONLY deterministic engines:
+
+• strategy scanners
+• candidate qualification
+• recommendation engine
+• market ranking
+• portfolio policies
+• risk engine
+
+The MCP service DOES NOT contain:
+
+OPENAI_API_KEY
+
+TWELVE_DATA_API_KEY
+
+TRADIER_TOKEN
+
+TRADESTATION_CLIENT_ID
+
+TRADESTATION_CLIENT_SECRET
+
+Therefore:
+
+MCP MUST obtain market data through authenticated VCP Trader internal APIs.
+
+Never assume MCP is calling Twelve Data directly.
+
+=========================================================
+1. TRACE THE COMPLETE REQUEST
+=========================================================
+
+Trace this request end-to-end:
+
+Analyze MU
+
+Show every processing boundary.
+
+Expected chain:
+
+Browser
+
+↓
+
+/api/ask
+
+↓
+
+TraderBrain
+
+↓
+
+Internal Market API
+
+↓
+
+Provider Layer
+
+↓
+
+MCP HTTP Adapter
+
+↓
+
+Deterministic Scanner
+
+↓
+
+TraderBrain Result
+
+↓
+
+Price Integrity
+
+↓
+
+GPT Payload Builder
+
+↓
+
+OpenAI
+
+↓
+
+Combined Response
+
+↓
+
+Browser
+
+Identify the FIRST point where incorrect prices appear.
+
+=========================================================
+2. VERIFY DEPLOYED SERVICES
+=========================================================
+
+Report:
+
+Current Railway deployment
+
+Current commit SHA
+
+Current build SHA
+
+Current StrategyAgent deployment SHA
+
+Current MCP deployment SHA
+
+Current VCP_API_BASE_URL
+
+Current MCP endpoint
+
+Confirm MCP is calling the CURRENT production VCP Trader deployment.
+
+Verify no legacy Railway URL exists.
+
+=========================================================
+3. TRACE INTERNAL MARKET API
+=========================================================
+
+Trace the exact internal API used by MCP.
+
+Report:
+
+endpoint
+
+query
+
+symbol
+
+interval
+
+outputSize
+
+authorization
+
+response status
+
+response timestamp
+
+cache headers
+
+Capture the ACTUAL sanitized response returned by the deployed endpoint.
+
+Do NOT summarize.
+
+Do NOT infer.
+
+=========================================================
+4. VERIFY PROVIDER LAYER
+=========================================================
+
+Inside StrategyAgent:
+
+Provider
+
+↓
+
+Market Service
+
+↓
+
+Internal Endpoint
+
+Capture:
+
+latest close
+
+latest date
+
+latest open
+
+latest high
+
+latest low
+
+Confirm whether the provider already contains:
+
+89.xx
+
+or
+
+893.xx
+
+Do not infer.
+
+=========================================================
+5. TRACE CROSS-SERVICE HTTP BOUNDARY
+=========================================================
+
+Because MCP has no direct provider integrations,
+
+trace the actual boundary:
+
+StrategyAgent Internal Endpoint
+
+↓
+
+HTTP Response
+
+↓
+
+MCP HTTP Adapter
+
+↓
+
+Parsed Candles
+
+↓
+
+Scanner Input
+
+↓
+
+Setup Output
+
+Capture:
+
+1. StrategyAgent provider values
+
+2. Actual HTTP response body received by MCP
+
+3. Parsed candle values
+
+4. Setup values returned by MCP
+
+Compare each stage.
+
+If values change,
+
+identify the exact boundary.
+
+=========================================================
+6. TRACE MCP PARSING
+=========================================================
+
+Using available instrumentation and returned payloads,
+
+trace:
+
+HTTP JSON
+
+↓
+
+Parsed Candles
+
+↓
+
+Market Structure
+
+↓
+
+Scanner
+
+↓
+
+Setup
+
+↓
+
+Candidate
+
+↓
+
+Serialized Analysis
+
+At every stage capture:
+
+currentPrice
+
+trigger
+
+invalidation
+
+objective
+
+majorHigh
+
+If values change,
+
+identify the exact transformation.
+
+If this cannot be proven from StrategyAgent,
+
+state so explicitly.
+
+=========================================================
+7. TRACE PRICE INTEGRITY
+=========================================================
+
+Capture:
+
+reference source
+
+reference price
+
+reference timestamp
+
+freshness
+
+setup price
+
+ratio
+
+classification
+
+valid
+
+error code
+
+Report whether
+
+priceIntegrity.valid
+
+is
+
+true
+
+or
+
+false.
+
+If true,
+
+explain exactly why.
+
+=========================================================
+8. TRACE ATTACHMENT
+=========================================================
+
+Locate where
+
+priceIntegrity
+
+is attached.
+
+Confirm whether later code:
+
+replaces analysis
+
+clones analysis
+
+drops priceIntegrity
+
+serializes only partial objects
+
+builds another response
+
+Identify every object boundary.
+
+=========================================================
+9. TRACE GPT PAYLOAD
+=========================================================
+
+Capture the sanitized payload sent to OpenAI.
+
+Determine whether it still contains:
+
+893.5
+
+737.88
+
+1255
+
+trigger
+
+objective
+
+majorHigh
+
+If
+
+priceIntegrity.valid == false
+
+NONE of those values should exist.
+
+Identify:
+
+prompt builder
+
+input object
+
+whether it uses the post-integrity analysis or a stale copy.
+
+=========================================================
+10. TRACE CLIENT
+=========================================================
+
+Capture the JSON returned to React.
+
+Determine whether React receives:
+
+priceIntegrity
+
+currentPrice
+
+trigger
+
+invalidation
+
+objective
+
+Confirm whether rendering checks
+
+priceIntegrity.valid
+
+before displaying levels.
+
+If not,
+
+identify the component.
+
+=========================================================
+11. VERIFY RESEARCH SAVE
+=========================================================
+
+Determine whether
+
+researchSave
+
+exists.
+
+If integrity failed,
+
+researchSave must be absent.
+
+Confirm:
+
+handle minted
+
+true/false
+
+Do not expose handle IDs.
+
+=========================================================
+12. VERIFY CONFIDENCE
+=========================================================
+
+Capture:
+
+strategiesEvaluated
+
+strategiesMatched
+
+confirmingCount
+
+formingCount
+
+rejectedCount
+
+unavailableCount
+
+priceIntegrity.valid
+
+Explain why confidence became Medium.
+
+=========================================================
+13. VERIFY DIRECTION
+=========================================================
+
+Verify
+
+requested direction
+
+↓
+
+candidate builder
+
+↓
+
+direction compatibility
+
+↓
+
+recommendation
+
+Confirm:
+
+"either"
+
+means
+
+"no restriction"
+
+and is no longer treated as a restrictive direction.
+
+=========================================================
+14. VERIFY FINAL RESPONSE
+=========================================================
+
+Capture the final response immediately before serialization.
+
+Include:
+
+headline
+
+confidence
+
+multiStrategyAnalysis
+
+priceIntegrity
+
+answer
+
+keyPoints
+
+warnings
+
+researchSave
+
+Do NOT include:
+
+authentication
+
+session
+
+cookies
+
+provider credentials
+
+=========================================================
+15. IDENTIFY FIRST FAILURE
+=========================================================
+
+Choose EXACTLY ONE.
+
+A
+
+Provider returns incorrect prices
+
+B
+
+Internal StrategyAgent endpoint returns incorrect prices
+
+C
+
+Cross-service HTTP response differs from provider
+
+D
+
+MCP HTTP adapter changes values
+
+E
+
+Scanner changes values
+
+F
+
+Price Integrity never executes
+
+G
+
+Integrity result is lost
+
+H
+
+GPT uses pre-integrity payload
+
+I
+
+React ignores integrity
+
+J
+
+Wrong deployment
+
+K
+
+Multiple failures
+
+Identify ONLY the FIRST failure.
+
+=========================================================
+16. MCP FOLLOW-UP
+=========================================================
+
+If any remaining uncertainty exists because the MCP source cannot be inspected from this repository,
+
+generate a concise Claude Code prompt that verifies ONLY:
+
+• HTTP response received from StrategyAgent
+
+• Parsed candles
+
+• Scanner inputs
+
+• Setup serialization
+
+Do NOT repeat the entire diagnostic.
+
+=========================================================
+17. SMALLEST FIX
+=========================================================
+
+Recommend ONLY the minimum code change.
+
+Do NOT recommend refactoring.
+
+Do NOT redesign architecture.
+
+=========================================================
+18. REQUIRED REGRESSION TESTS
+=========================================================
+
+List every regression test required before production.
+
+=========================================================
+19. OUTPUT
+=========================================================
+
+Create:
+
+docs/MU_PRICE_INTEGRITY_ROOT_CAUSE.md
+
+Include:
+
+1. Deployment verification
+
+2. Provider trace
+
+3. Internal endpoint trace
+
+4. Cross-service HTTP trace
+
+5. MCP boundary trace
+
+6. Price Integrity trace
+
+7. GPT payload trace
+
+8. React rendering trace
+
+9. ResearchSave verification
+
+10. First failure
+
+11. Smallest fix
+
+12. Regression tests
+
+Return ONE verdict only:
+
+GO
+
+CONDITIONAL_GO
+
+NO_GO
+
+Do NOT implement fixes.
+
+Do NOT commit.
+
+Do NOT push.
+
+Do NOT deploy.

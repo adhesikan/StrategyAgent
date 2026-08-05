@@ -17,6 +17,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getMarketSessionInfo } from "@shared/market-session";
 import { track } from "@/lib/analytics";
@@ -582,16 +583,33 @@ function MarketSnapshotSection({
 // 4. Today's Opportunities
 // ---------------------------------------------------------------------------
 
+/**
+ * Sprint 5.5B — CTA label for an opportunity card.
+ * "Open Analysis"     → an existing full result is cached for this symbol
+ * "Run Full Analysis" → no cached result; fresh run needed
+ * "Open Example"      → demonstration card (no live analysis available)
+ */
+function opportunityCta(isDemonstration: boolean, hasCachedResult: boolean): string {
+  if (isDemonstration) return "Open Example";
+  if (hasCachedResult) return "Open Analysis";
+  return "Run Full Analysis";
+}
+
 function OpportunityCard({
   candidate,
   sectionDataMode,
+  hasCachedResult,
 }: {
   candidate: RadarCandidate;
   /** The parent section's overall dataMode. When "simulated", suppress per-card badge. */
   sectionDataMode?: string;
+  /** Sprint 5.5B: true when a cached full-analysis result exists for this symbol. */
+  hasCachedResult?: boolean;
 }) {
   const [, navigate] = useLocation();
   const grade = candidate.finalGrade;
+  const isDemonstration = sectionDataMode === "simulated" || candidate.dataMode === "simulated";
+  const ctaText = opportunityCta(isDemonstration, !!hasCachedResult);
 
   return (
     <div
@@ -645,19 +663,35 @@ function OpportunityCard({
         </p>
       )}
       <div className="flex items-center gap-2 pt-0.5">
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs gap-1"
-          onClick={() => {
-            track("dashboard_opportunity_opened", { symbol: candidate.symbol, grade } as any);
-            navigate(askRoute(`Analyze ${candidate.symbol}`));
-          }}
-          data-testid={`btn-open-analysis-${candidate.symbol}`}
-          aria-label={`Open analysis for ${candidate.symbol}`}
-        >
-          Open Analysis <ExternalLink className="h-3 w-3" aria-hidden="true" />
-        </Button>
+        {isDemonstration ? (
+          /* Demo cards show an example of what real setups look like — no live analysis is available.
+             A disabled button labeled "Open Example" is misleading; show a clear static note instead. */
+          <span
+            className="text-[11px] text-muted-foreground italic"
+            data-testid={`label-demo-only-${candidate.symbol}`}
+          >
+            Example — connect a broker to see live setups
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs gap-1"
+            onClick={() => {
+              if (hasCachedResult) {
+                track("dashboard_existing_result_opened", { symbol: candidate.symbol } as any);
+              } else {
+                track("dashboard_full_analysis_requested", { symbol: candidate.symbol, grade } as any);
+              }
+              track("dashboard_opportunity_opened", { symbol: candidate.symbol, grade } as any);
+              navigate(askRoute(`Analyze ${candidate.symbol}`));
+            }}
+            data-testid={`btn-open-analysis-${candidate.symbol}`}
+            aria-label={`${ctaText} for ${candidate.symbol}`}
+          >
+            {ctaText} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -675,6 +709,27 @@ function OpportunitiesSection({
   onRetry: () => void;
 }) {
   const [, navigate] = useLocation();
+
+  // Sprint 5.5B: batch-check which opportunity symbols have a cached full analysis.
+  // Only runs for non-demo sections (simulated candidates have no cached results).
+  const symbolsKey = (candidates ?? []).map((c) => c.symbol).join(",");
+  const { data: cacheData } = useQuery<{ hits: string[] }>({
+    queryKey: ["analysis-cache-batch", symbolsKey],
+    queryFn: async () => {
+      if (!symbolsKey || dataMode === "simulated") return { hits: [] };
+      try {
+        const res = await apiRequest("GET", `/api/analysis/cached?symbols=${encodeURIComponent(symbolsKey)}`);
+        if (!res.ok) return { hits: [] };
+        return res.json() as Promise<{ hits: string[] }>;
+      } catch {
+        return { hits: [] };
+      }
+    },
+    enabled: !!symbolsKey && dataMode !== "simulated",
+    staleTime: 30 * 1000, // re-check every 30 seconds
+    refetchOnWindowFocus: false,
+  });
+  const cachedSymbols = new Set<string>((cacheData?.hits ?? []).map((s) => s.toUpperCase()));
 
   return (
     <section aria-labelledby="opportunities-heading" data-testid="section-opportunities">
@@ -752,6 +807,8 @@ function OpportunitiesSection({
                   candidate={c}
                   // When the whole section is simulated, suppress per-card badge (section banner covers it)
                   sectionDataMode={dataMode}
+                  // Sprint 5.5B: drive CTA label from server cache
+                  hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
                 />
               ))}
             </div>

@@ -23,6 +23,14 @@ export type MarketingEvent =
   | "dashboard_research_opened"
   | "dashboard_section_retry"
   | "dashboard_connect_broker_clicked"
+  // Sprint 5.5B — Analysis result reuse
+  // Props allowed: { symbol } — never prompts, result content, account values, or evidence payloads
+  | "dashboard_existing_result_opened"
+  | "dashboard_full_analysis_requested"
+  | "analysis_refresh_requested"
+  | "analysis_result_cache_hit"
+  | "analysis_result_cache_miss"
+  | "duplicate_analysis_request_suppressed"
   // Homepage — Choose Your Goal tracking (Task #49)
   | "choose_goal_clicked";
 

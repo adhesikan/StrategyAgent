@@ -251,7 +251,94 @@ A secondary sentiment badge appears per item:
 
 Section subtitle: "Recent news attention and sentiment context. This does not indicate that a setup qualifies."
 
-## 16. Deferred Work
+## 16. Result Reuse — Sprint 5.5B
+
+### Problem
+
+Every dashboard card CTA navigated to `/ask?q=Analyze SYMBOL`, which re-fired the full MCP + GPT-4o-mini pipeline on every click — including double-clicks, back-navigation remounts, and React StrictMode double-renders.
+
+### Solution: Server-Side Per-Symbol Cache
+
+**`server/services/analysis-result-cache.ts`** — in-memory Map keyed by `(userId, symbol)`:
+| Parameter | Value |
+|-----------|-------|
+| TTL (absolute) | 30 minutes |
+| Stale threshold | 10 minutes (triggers "older data" banner) |
+| Max entries per user | 5 (LRU eviction) |
+| Global cap | 500 entries |
+
+Only results containing meaningful analysis sections are cached (`multiStrategyAnalysis`, `vcpAnalysis`, `strategyRecommendation`, or `rankedTradeSearch`). `researchSave` handles and portfolio-aware fields are **never** stored.
+
+**`server/routes/analysis-cache.ts`** — three endpoints:
+- `GET /api/analysis/cached?symbol=NVDA` → `{ found, symbol, generatedAt, ageSec, isStale, freshnessLabel, canRefresh, result }` or `{ found: false }`
+- `GET /api/analysis/cached?symbols=A,B,C` → `{ hits: string[] }` for dashboard batch check
+- `DELETE /api/analysis/cached?symbol=NVDA` → explicit eviction on Refresh
+
+**`server/routes/ask.ts`** — after the TraderBrain path builds its `safeResult`, `storeAnalysisResult(userId, primarySymbol, safeResult)` is called before `res.json()`.
+
+### Client Changes
+
+**`client/src/pages/ask.tsx`** — the `?q=` search `useEffect`:
+1. Extracts the primary symbol via `extractSymbolFromAnalysisQuery` (matches `"Analyze NVDA"`, `"Analyze AAPL for …"`)
+2. Fires `GET /api/analysis/cached?symbol=` before calling `/api/ask`
+3. On cache **hit**: sets `cachedResult` state, tracks `analysis_result_cache_hit`, skips the mutation
+4. On cache **miss**: tracks `analysis_result_cache_miss`, calls `askMutation.mutate(q)` as before
+5. `inFlightRef` prevents duplicate in-flight cache checks (double-click / StrictMode dedup)
+6. `displayData = askMutation.data ?? cachedResult?.result` — fresh result always takes priority
+
+A **freshness bar** appears above the result when displaying a cached entry:
+- Shows `freshnessLabel` (e.g. "Analyzed 4 minutes ago")
+- Shows an amber "older data" warning when `isStale === true`
+- Provides a **Refresh Analysis** button that evicts the cache entry and re-fires the pipeline
+
+**`client/src/pages/dashboard.tsx`** — `OpportunitiesSection`:
+- Batch-checks `GET /api/analysis/cached?symbols=...` once on mount (React Query, 30s stale time)
+- Passes `hasCachedResult: boolean` to each `OpportunityCard`
+- CTA label: **"Open Analysis"** (cache hit) · **"Run Full Analysis"** (miss) · **"Open Example"** (demo/simulated)
+
+### Freshness Policy
+
+**`client/src/lib/freshness-policy.ts`** — typed `FreshnessCategory` with per-category stale thresholds:
+
+| Category | Stale after | Notes |
+|----------|-------------|-------|
+| `intraday_setup` | 10 min | Scanner picks, full analysis |
+| `news_sentiment` | 30 min | Context-only Growth Watch / Income Idea |
+| `daily_swing` | 24 h | Daily bar context |
+| `market_snapshot` | 2 h | Macro overview |
+| `saved_research` | never | Immutable user artifact |
+| `demonstration` | never | Simulated data — no live analysis |
+
+### Action Labels (spec §11)
+
+| Situation | CTA label |
+|-----------|-----------|
+| Cache hit (full analysis) | **Open Analysis** |
+| Cache miss (any) | **Run Full Analysis** |
+| Explicit refresh click | **Refresh Analysis** |
+| Demo / simulated card | **Open Example** |
+| Saved research record | **Open Saved Research** |
+| Context-only card (Growth Watch, Income Idea) | **Run Full Analysis** |
+
+### Analytics (no symbols, prompts, or account values in event properties)
+
+| Event | When fired |
+|-------|-----------|
+| `dashboard_existing_result_opened` | CTA click when `hasCachedResult=true` |
+| `dashboard_full_analysis_requested` | CTA click when `hasCachedResult=false` |
+| `analysis_result_cache_hit` | ask.tsx: cache check returned a result |
+| `analysis_result_cache_miss` | ask.tsx: cache check returned 404 |
+| `analysis_refresh_requested` | Refresh Analysis button clicked |
+| `duplicate_analysis_request_suppressed` | `inFlightRef` blocked a double-fire |
+
+### Security
+
+- Cache is **user-scoped**: `lookupAnalysisResult(userId, symbol)` returns 404 for any other userId.
+- `researchSave` handles are stripped before storage.
+- Portfolio-aware fields (`portfolioAwareness`, `portfolioTradePlan`) are excluded from the cached payload.
+- The DELETE eviction endpoint requires authentication (same `isAuthenticated` middleware as all other `/api/analysis/cached` routes).
+
+## 17. Deferred Work
 
 - **Watchlists — change-state tracking**: Requires a `previousState` snapshot stored server-side to derive "newly qualified" / "no longer qualifying" status.
 - **Daily Intelligence brief**: A cached AI-generated morning brief needs a dedicated `/api/home/ai-brief` endpoint built from stored scan results.

@@ -1764,6 +1764,32 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   } catch { /* ignore */ }
                 }
 
+                // ---- Sprint 5.5B: Cache the analysis result for result reuse ----
+                // Store a safe copy of the result so the dashboard can open it
+                // without re-running the full MCP+GPT pipeline.
+                // Non-blocking: cache failure never breaks the response.
+                try {
+                  const primarySymbol: string | undefined = tickers[0];
+                  if (primarySymbol) {
+                    const { storeAnalysisResult } = await import("../services/analysis-result-cache");
+                    storeAnalysisResult(userId, primarySymbol, {
+                      question,
+                      intent: (s51HttpExtras.intent as string) ?? "unknown",
+                      tickers,
+                      brokerConnected: ctx.brokerConnected,
+                      ...(s51Answer as Record<string, unknown>),
+                      picks: [],
+                      tradeDetail: null,
+                      source: (s51HttpExtras.source as string) ?? "openai",
+                      disclaimer:
+                        "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
+                      // researchSave intentionally excluded (single-use handle)
+                      // portfolioAwareness/portfolioTradePlan intentionally excluded
+                    } as any);
+                  }
+                } catch { /* never break the response */ }
+                // ---- End Sprint 5.5B ----
+
                 // ---- Sprint 5.4C: Research Save Handle ----
                 // Mint a short-lived save handle when deterministic evidence is available.
                 // The handle lets the user explicitly Save Research from the UI.

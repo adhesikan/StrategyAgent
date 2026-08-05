@@ -1,0 +1,637 @@
+Sprint 5.5 — Personalized Morning Dashboard
+
+PRIMARY REPOSITORY
+
+Implement this sprint in the VCP Trader / StrategyAgent repository using Replit.
+
+This sprint does not require changes to vcp-trader-mcp.
+
+Do not modify MCP tools, scanner algorithms, ranking, recommendation policies, portfolio calculations, risk formulas, options selection or execution.
+
+Do not add Twelve Data, OpenAI, Tradier or TradeStation credentials anywhere new.
+
+Do not commit, push or deploy automatically.
+
+==================================================
+PRODUCT DIRECTION
+==================================================
+
+VCP Trader AI is an AI-powered stock and options opportunity and decision-support platform for self-directed traders and long-term investors.
+
+The authenticated dashboard should help users quickly answer:
+
+- What is happening in the market?
+- Which opportunities deserve attention?
+- What changed in my watchlists?
+- What portfolio items require review?
+- What research should I continue?
+- What can I ask VCP Trader AI next?
+
+It must not:
+
+- provide personalized financial advice
+- instruct users to buy or sell
+- promise outcomes
+- automatically place orders
+- automatically alter portfolios
+- present illustrative data as live data
+
+Use terms such as:
+
+- opportunities
+- setups
+- candidates
+- market context
+- portfolio observations
+- saved research
+- watch conditions
+- decision support
+
+Avoid:
+
+- recommended for you
+- best investment
+- winning trade
+- guaranteed signal
+- you should buy
+- you should sell
+
+==================================================
+1. AUDIT EXISTING AUTHENTICATED LANDING FLOW
+==================================================
+
+Before implementing, inspect:
+
+- current post-login redirect
+- authenticated home route
+- Command Center
+- Ask AI landing page
+- existing market snapshot endpoints
+- market regime data
+- ranked opportunity responses
+- portfolio intelligence responses
+- saved research endpoints
+- decision-journal endpoints
+- watchlist endpoints, if any
+- broker connection status
+- current user-profile fields
+- top navigation
+- mobile navigation
+
+Document the reusable APIs and components before adding new code.
+
+Do not create duplicate APIs when existing ones are sufficient.
+
+==================================================
+2. CREATE DASHBOARD ROUTE
+==================================================
+
+Create:
+
+/dashboard
+
+Behavior:
+
+- unauthenticated visitor → existing public marketing homepage
+- authenticated user → /dashboard after login
+- existing deep links remain unchanged
+- Ask AI remains available at its current route
+- do not break onboarding or subscription redirects
+
+Use the existing authenticated layout and visual system.
+
+==================================================
+3. DASHBOARD INFORMATION HIERARCHY
+==================================================
+
+Use this preferred section order:
+
+1. Morning Header and Market Status
+2. Quick Actions
+3. Market Snapshot
+4. Today’s Opportunities
+5. Portfolio Intelligence
+6. Watchlist Activity
+7. Growth and Income Opportunities
+8. Saved Research and Decision Journal
+9. Market Calendar and Events
+10. Ask VCP Trader AI
+
+Sections should render only when applicable.
+
+Do not display empty card shells.
+
+==================================================
+4. MORNING HEADER
+==================================================
+
+Display:
+
+- Good morning / afternoon / evening
+- authenticated user’s first name when available
+- full date
+- market status:
+  - pre-market
+  - open
+  - after-hours
+  - closed
+- next relevant market event, when existing data supports it
+
+Examples:
+
+Good morning, Dhesikan
+
+Wednesday, August 5
+
+Market opens in 42 minutes
+
+or:
+
+Market is open
+
+Do not hardcode market status.
+
+Use an existing market-hours service if available.
+
+If unavailable, show only the date and a neutral market-status placeholder.
+
+==================================================
+5. QUICK ACTIONS
+==================================================
+
+Show compact goal-oriented actions:
+
+- Find Growth Opportunities
+- Find Income Opportunities
+- Find Trade Setups
+- Analyze a Stock
+- Review My Portfolio
+- Continue Saved Research
+- Understand Markets
+
+Actions should:
+
+- route into existing product modes
+- prefill a safe Ask AI prompt where supported
+- never submit a trade automatically
+- never create an order
+- never imply a recommendation
+
+Reuse the existing Grow, Income, Trade and Markets entry points where available.
+
+==================================================
+6. MARKET SNAPSHOT
+==================================================
+
+Use existing APIs only.
+
+Display available values such as:
+
+- market regime
+- SPY
+- QQQ
+- IWM
+- volatility indicator
+- sector strength
+- market breadth
+- key event status
+
+Every card must display:
+
+- value
+- change where supported
+- data timestamp
+- data quality or delayed/live status where applicable
+
+Do not fabricate missing values.
+
+Do not add new external provider calls in this sprint.
+
+When data is unavailable, show:
+
+Data currently unavailable
+
+rather than mock values.
+
+==================================================
+7. TODAY’S OPPORTUNITIES
+==================================================
+
+Use the existing deterministic market-ranking or opportunity response.
+
+Display a bounded list, such as three to five candidates.
+
+For each candidate show only supported fields:
+
+- symbol
+- opportunity type or strategy
+- qualification status
+- direction
+- confidence or grade
+- concise deterministic reason
+- data quality
+- timestamp
+- Open Analysis action
+- Add to Watchlist when supported
+- Save Research only through the existing trusted save-handle flow
+
+Preserve backend ranking order.
+
+Do not let GPT reorder candidates.
+
+Do not create demonstration cards inside the authenticated dashboard unless they are explicitly marked Preview.
+
+If no candidate qualifies, show the existing deterministic empty-state explanation rather than manufacturing opportunities.
+
+==================================================
+8. PORTFOLIO INTELLIGENCE
+==================================================
+
+When trusted broker and portfolio context are available, reuse the existing portfolio-intelligence result.
+
+Show neutral observations such as:
+
+- buying-power status
+- cash-verification status
+- largest concentration
+- sector exposure
+- earnings overlap
+- positions requiring review
+- candidate-impact observations
+- data quality
+
+Do not display account numbers or broker identifiers.
+
+Do not tell users to rebalance, buy or sell.
+
+When no broker is connected, show a compact state:
+
+Connect a supported broker to view portfolio context, concentration and buying-power observations.
+
+Include an appropriate Connect Broker action.
+
+Do not block the rest of the dashboard.
+
+==================================================
+9. WATCHLIST ACTIVITY
+==================================================
+
+First audit whether functional watchlists already exist.
+
+If they exist, show bounded changes such as:
+
+- newly qualified
+- developing
+- no longer qualifying
+- earnings approaching
+- data unavailable
+
+Every change must be derived from stored or current deterministic data.
+
+Do not claim “since yesterday” unless previous-state history actually exists.
+
+If watchlists are not yet implemented, render a polished empty state with:
+
+Create Watchlist
+
+Do not build the full watchlist system in this sprint.
+
+==================================================
+10. GROWTH AND INCOME SECTIONS
+==================================================
+
+Use existing opportunity data and goal tags where available.
+
+Growth examples:
+
+- long-term growth candidates
+- bullish setups
+- improving technical conditions
+- AI infrastructure themes
+
+Income examples:
+
+- covered-call scenarios
+- cash-secured-put scenarios
+- defined-risk income structures
+- dividend-related context when already supported
+
+Do not invent unsupported income candidates.
+
+Clearly distinguish:
+
+- live options data
+- estimated options structure
+- unavailable options data
+
+Do not present estimated contracts as executable.
+
+==================================================
+11. SAVED RESEARCH
+==================================================
+
+Use the existing research-record APIs.
+
+Show:
+
+- recently saved records
+- title
+- symbol
+- domain
+- verdict display label
+- generated date
+- user decision state when available
+- Continue Research action
+- Open Decision Journal action
+
+Do not expose raw internal enums.
+
+Show an empty state when no saved research exists:
+
+Run an analysis and choose Save Research to preserve an immutable evidence snapshot.
+
+==================================================
+12. MARKET EVENTS
+==================================================
+
+Use existing event and earnings data only.
+
+Show available items such as:
+
+- earnings today
+- earnings this week
+- economic events
+- Fed events
+- major portfolio events
+
+Every item must indicate its date and source/data quality where supported.
+
+Do not build a new news-ingestion service in this sprint.
+
+Do not populate placeholders with invented events.
+
+==================================================
+13. ASK AI PANEL
+==================================================
+
+Include a compact panel:
+
+What would you like to explore today?
+
+Suggested prompts:
+
+- Find long-term AI infrastructure opportunities
+- Show bullish swing setups
+- Find income ideas under $500 risk
+- Analyze my portfolio exposure
+- Compare growth and income opportunities
+- Explain the current market regime
+
+Route into the existing Ask AI experience.
+
+Do not add a second chat implementation.
+
+==================================================
+14. DATA FETCHING AND PERFORMANCE
+==================================================
+
+Create one dashboard orchestration layer on the VCP Trader backend or client query layer using existing APIs.
+
+Avoid a waterfall of redundant requests.
+
+Requirements:
+
+- no duplicate MCP calls
+- no duplicate portfolio-context resolution
+- no repeated market-history fetches for the same card
+- bounded parallel requests
+- independent section failure
+- dashboard remains usable when one section fails
+- loading skeletons
+- section-level retry
+- reasonable query caching using existing conventions
+
+Do not introduce a new persistent cache or database table.
+
+==================================================
+15. FAILURE ISOLATION
+==================================================
+
+A failure in one widget must not blank the dashboard.
+
+Examples:
+
+- market snapshot unavailable → opportunities still render
+- portfolio unavailable → saved research still renders
+- ranking unavailable → market context still renders
+- saved research failure → Ask AI still works
+
+Use truthful section-level messages.
+
+Do not replace deterministic failures with GPT-generated guesses.
+
+==================================================
+16. NAVIGATION
+==================================================
+
+Update authenticated navigation to prioritize:
+
+- Dashboard
+- Ask AI
+- My Research
+- Portfolio
+- Education
+- Settings
+
+Add Watchlists only when a real route exists.
+
+Keep public marketing navigation unchanged for unauthenticated visitors.
+
+Ensure mobile navigation does not become crowded.
+
+==================================================
+17. PERSONALIZATION BOUNDARY
+==================================================
+
+Personalize only presentation and user-owned data:
+
+- name
+- broker connection state
+- saved research
+- portfolio observations
+- existing watchlists
+- recent actions
+
+Do not create a hidden risk profile.
+
+Do not infer age, income, investment horizon or suitability.
+
+Do not let GPT create a permanent user profile in this sprint.
+
+==================================================
+18. DESIGN
+==================================================
+
+Use the current visual language.
+
+Aim for:
+
+- premium trading workstation
+- readable information hierarchy
+- compact but not crowded cards
+- consistent badges
+- desktop, tablet and mobile support
+- dark and light themes
+- clear timestamps
+- clear data quality
+- accessible contrast
+
+Do not redesign the entire authenticated application.
+
+==================================================
+19. ANALYTICS
+==================================================
+
+Use existing analytics conventions.
+
+Safe events may include:
+
+- dashboard_viewed
+- dashboard_quick_action_clicked
+- dashboard_opportunity_opened
+- dashboard_research_opened
+- dashboard_section_retry
+- dashboard_connect_broker_clicked
+
+Do not include:
+
+- account values
+- position details
+- symbols from private portfolios
+- research contents
+- prompts
+- MCP payloads
+- tokens
+- account identifiers
+
+==================================================
+20. TESTS
+==================================================
+
+Add tests for:
+
+A. Routing
+- authenticated user lands on /dashboard
+- anonymous visitor sees marketing homepage
+- deep links preserved
+- login and onboarding flows preserved
+
+B. Dashboard states
+- fully populated
+- broker disconnected
+- no qualified opportunities
+- no saved research
+- no watchlists
+- partial service failures
+- total data unavailability
+
+C. Market snapshot
+- timestamp shown
+- delayed/live status
+- missing data
+- no fabricated values
+
+D. Opportunities
+- backend ranking preserved
+- qualified cards
+- watch-only state
+- empty state
+- no GPT reordering
+- no unsupported CTA
+
+E. Portfolio
+- context available
+- context unavailable
+- no account identifiers
+- neutral language
+- no buy/sell directions
+
+F. Research
+- recent records
+- empty state
+- correct links
+- no raw enums
+
+G. Responsive and accessibility
+- keyboard navigation
+- card headings
+- screen-reader labels
+- mobile stacking
+- loading skeletons
+- no color-only meaning
+
+H. Regression
+- Ask AI unchanged
+- Research Library unchanged
+- broker flows unchanged
+- public homepage unchanged
+- no execution behavior
+- no new MCP calls beyond existing supported orchestration
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+21. DOCUMENTATION
+==================================================
+
+Create:
+
+docs/SPRINT_5_5_PERSONALIZED_DASHBOARD.md
+
+Document:
+
+1. route behavior
+2. dashboard architecture
+3. reused APIs
+4. section contracts
+5. failure isolation
+6. personalization boundary
+7. broker-connected and disconnected behavior
+8. analytics
+9. accessibility
+10. known limitations
+11. deferred work for Watchlists and Daily Intelligence
+
+==================================================
+22. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. existing APIs reused
+2. files created
+3. files modified
+4. route and redirect changes
+5. dashboard section layout
+6. market snapshot
+7. opportunity section
+8. portfolio section
+9. watchlist state
+10. saved research section
+11. Ask AI integration
+12. failure isolation
+13. responsive behavior
+14. accessibility
+15. analytics
+16. tests and totals
+17. build result
+18. screenshots
+19. compatibility concerns
+20. recommended deployment sequence
+
+Do not commit, push or deploy automatically.
+
+Wait for review.

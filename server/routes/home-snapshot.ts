@@ -1,7 +1,19 @@
+// Home Snapshot — server module providing real market data.
+//
+// Data sources (in priority order):
+//   1. Connected broker (live quotes when user has a broker connection)
+//   2. Twelve Data /quote (latest-day close; NOT streaming real-time)
+//   3. Error state — no fabricated or hardcoded fallback values
+//
+// All simulated/demo/fallback constants have been removed. When data is
+// unavailable, sections return explicit null/empty values with dataMode "error".
+
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { fetchQuotesFromBroker } from "../broker-service";
 import { getRealtimeQuoteForUser } from "../services/daily-market-data/realtime-quote";
+import { getReferenceSnapshotsBulk } from "../services/daily-market-data/reference-snapshot";
+import { classifyMarketRegime } from "../engine/regime";
 
 interface SnapshotItem {
   symbol: string;
@@ -13,6 +25,17 @@ interface IndexQuote {
   symbol: string;
   name: string;
   last: number;
+  changePercent: number;
+}
+
+interface VixQuote {
+  last: number;
+  changePercent: number;
+}
+
+interface SectorQuote {
+  symbol: string;
+  name: string;
   changePercent: number;
 }
 
@@ -36,31 +59,42 @@ interface WatchlistAlert {
   message: string;
 }
 
+interface MarketRegimeSummary {
+  regime: "TRENDING" | "CHOPPY" | "RISK_OFF";
+  strength: number;
+  description: string;
+}
+
 export interface HomeSnapshotResponse {
-  marketTone: "bullish" | "mixed" | "defensive";
+  marketTone: "bullish" | "mixed" | "defensive" | null;
   marketToneReason: string;
   indices: IndexQuote[];
+  /** VIX quote — null when unavailable; never fabricated */
+  vix: VixQuote | null;
+  /** Top-3 sector ETFs by daily % change (leaders) + bottom-3 (laggards) */
+  sectorLeadership: SectorQuote[];
+  /** Market regime from EMA/price analysis — null when insufficient bar history */
+  marketRegime: MarketRegimeSummary | null;
   topMovers: MoverQuote[];
   topNews: NewsItem[];
-  bestIncome: SnapshotItem;
-  topGrowth: SnapshotItem;
+  /** Highest-buzz bullish story from news sentiment — null when no data */
+  topGrowth: SnapshotItem | null;
   watchlistAlert: WatchlistAlert | null;
-  /** "live" | "simulated" — kept for back-compat; use dataSource for precise UI labeling. */
-  dataMode: "live" | "simulated";
   /**
-   * Sprint 5.5A — precise provenance of the index / mover price data:
-   *   "broker"      — quotes fetched from the connected broker (may be real-time or delayed per broker plan)
-   *   "twelve_data" — Twelve Data quote API (typically latest-day close / end-of-day; NOT streaming real-time)
-   *   "fallback"    — hardcoded reference data; no live prices available
-   *
-   * Market-session status and data freshness are separate concepts.
-   * A market-open session does NOT imply live data.
+   * "live"    — real-time or broker quotes
+   * "partial" — some symbols had data, others did not
+   * "error"   — no usable market data available
    */
-  dataSource: "broker" | "twelve_data" | "fallback";
-  /** Source of topGrowth: "sentiment" = news-buzz leader; "fallback" = hardcoded reference item. */
-  growthSource: "sentiment" | "fallback";
-  /** Source of bestIncome: always "fallback" (hardcoded reference item — no deterministic options qualification). */
-  incomeSource: "fallback";
+  dataMode: "live" | "partial" | "error";
+  /**
+   * Precise provenance of index / mover price data:
+   *   "broker"      — connected broker (may be real-time or delayed per plan)
+   *   "twelve_data" — Twelve Data latest-day close (NOT streaming real-time)
+   *   "unavailable" — no live data source available
+   */
+  dataSource: "broker" | "twelve_data" | "unavailable";
+  /** Source of topGrowth: "sentiment" = news-buzz leader; null = not available */
+  growthSource: "sentiment" | null;
   asOf: string;
   disclaimer: string;
 }
@@ -68,50 +102,41 @@ export interface HomeSnapshotResponse {
 const DISCLAIMER =
   "Snapshot is AI-generated informational context — not investment advice.";
 
-const FALLBACK_INDICES: IndexQuote[] = [
-  { symbol: "SPY", name: "S&P 500", last: 0, changePercent: 0 },
-  { symbol: "QQQ", name: "Nasdaq 100", last: 0, changePercent: 0 },
-  { symbol: "IWM", name: "Russell 2000", last: 0, changePercent: 0 },
+const INDEX_SYMBOLS = [
+  { symbol: "SPY", name: "S&P 500" },
+  { symbol: "QQQ", name: "Nasdaq 100" },
+  { symbol: "IWM", name: "Russell 2000" },
 ];
 
-const FALLBACK_GROWTH: SnapshotItem[] = [
-  { symbol: "NVDA", name: "NVIDIA", headline: "AI infrastructure spend remains a multi-quarter tailwind." },
-  { symbol: "MSFT", name: "Microsoft", headline: "Cloud + Copilot expansion supports continued earnings growth." },
-  { symbol: "AAPL", name: "Apple", headline: "Services revenue mix continues to widen margins." },
-  { symbol: "AMZN", name: "Amazon", headline: "AWS reacceleration plus retail efficiency gains in focus." },
-];
-
-const FALLBACK_INCOME: SnapshotItem[] = [
-  { symbol: "SPY", name: "S&P 500 ETF", headline: "Index covered calls — high IV rank, defined risk." },
-  { symbol: "QQQ", name: "Nasdaq 100 ETF", headline: "Cash-secured puts at support — collect premium." },
-  { symbol: "T", name: "AT&T", headline: "Dividend + monthly call write candidate." },
-  { symbol: "XLE", name: "Energy Select Sector", headline: "Energy IV elevated — premium-selling environment." },
-];
+const SECTOR_ETFS: Record<string, string> = {
+  XLK: "Technology",
+  XLE: "Energy",
+  XLF: "Financials",
+  XLV: "Health Care",
+  XLC: "Comm Services",
+  XLI: "Industrials",
+  XLB: "Materials",
+  XLU: "Utilities",
+  XLRE: "Real Estate",
+  XLP: "Consumer Staples",
+  XLY: "Consumer Discret.",
+};
 
 const DEFAULT_MOVER_UNIVERSE = [
   "NVDA", "META", "AMD", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "PLTR", "CRWD",
   "AVGO", "NFLX", "SHOP", "SMCI", "COIN", "UBER", "ARM", "ORCL", "QCOM", "MU",
 ];
 
-function pickByDay<T>(arr: T[]): T {
-  const dayIdx = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
-  return arr[dayIdx % arr.length];
-}
-
-function deriveToneFromIndices(indices: IndexQuote[]): { tone: "bullish" | "mixed" | "defensive"; reason: string } {
+function deriveToneFromIndices(
+  indices: IndexQuote[],
+): { tone: "bullish" | "mixed" | "defensive" | null; reason: string } {
   const live = indices.filter((i) => i.last > 0);
-  if (live.length === 0) {
-    const dayIdx = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
-    const tones: Array<{ tone: "bullish" | "mixed" | "defensive"; reason: string }> = [
-      { tone: "bullish", reason: "Breadth firm, leaders extending — risk-on bias." },
-      { tone: "mixed", reason: "Index strength but rotation under the surface." },
-      { tone: "defensive", reason: "Defensives leading — stay selective on entries." },
-    ];
-    return tones[dayIdx % tones.length];
-  }
+  if (live.length === 0) return { tone: null, reason: "Market data unavailable." };
   const up = live.filter((i) => i.changePercent > 0).length;
   const avg = live.reduce((s, i) => s + i.changePercent, 0) / live.length;
-  const parts = live.map((i) => `${i.symbol} ${i.changePercent >= 0 ? "+" : ""}${i.changePercent.toFixed(2)}%`).join(" · ");
+  const parts = live
+    .map((i) => `${i.symbol} ${i.changePercent >= 0 ? "+" : ""}${i.changePercent.toFixed(2)}%`)
+    .join(" · ");
   if (up === live.length && avg > 0.4) {
     return { tone: "bullish", reason: `${parts}. Indices broadly higher — risk-on bias.` };
   }
@@ -123,67 +148,75 @@ function deriveToneFromIndices(indices: IndexQuote[]): { tone: "bullish" | "mixe
 
 /**
  * Build the home snapshot payload for a given userId.
- * Extracted so the dashboard orchestration endpoint can call it directly
- * without an HTTP round-trip.
+ * Real data only — no hardcoded fallback values.
+ * Missing sections are explicitly marked as null / empty / error.
  */
 export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotResponse> {
-  let dataMode: "live" | "simulated" = "simulated";
-  // Sprint 5.5A: track which source actually provided the price data
-  let dataSource: "broker" | "twelve_data" | "fallback" = "fallback";
+  let dataMode: "live" | "partial" | "error" = "error";
+  let dataSource: "broker" | "twelve_data" | "unavailable" = "unavailable";
 
-  // 1) Indices + movers via broker quotes when connected
-  let indices: IndexQuote[] = FALLBACK_INDICES;
+  let indices: IndexQuote[] = [];
+  let vix: VixQuote | null = null;
+  let sectorLeadership: SectorQuote[] = [];
+  let marketRegime: MarketRegimeSummary | null = null;
   let topMovers: MoverQuote[] = [];
   let watchlistSymbols: string[] = [];
 
+  // Gather watchlist symbols for movers / alerts
   try {
     const lists = await storage.getWatchlists(userId);
     watchlistSymbols = Array.from(
       new Set(
-        lists.flatMap((l: any) => (Array.isArray(l.symbols) ? l.symbols : [])).map((s: string) => String(s).toUpperCase()),
+        lists
+          .flatMap((l: any) => (Array.isArray(l.symbols) ? l.symbols : []))
+          .map((s: string) => String(s).toUpperCase()),
       ),
     ).slice(0, 25);
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 
+  // ── 1. Broker path (live quotes) ───────────────────────────────────────
   const connection = await storage.getBrokerConnectionWithToken(userId).catch(() => null);
   if (connection?.accessToken) {
-    const indexSymbols = ["SPY", "QQQ", "IWM"];
-    const moverSymbols = (watchlistSymbols.length > 0 ? watchlistSymbols : DEFAULT_MOVER_UNIVERSE).slice(0, 20);
+    const indexSyms = INDEX_SYMBOLS.map((i) => i.symbol);
+    const moverSyms = (watchlistSymbols.length > 0 ? watchlistSymbols : DEFAULT_MOVER_UNIVERSE).slice(0, 20);
     try {
-      const allSymbols = Array.from(new Set([...indexSymbols, ...moverSymbols]));
-      const quotes = await fetchQuotesFromBroker(connection as any, allSymbols);
+      const allSyms = Array.from(new Set([...indexSyms, ...moverSyms]));
+      const quotes = await fetchQuotesFromBroker(connection as any, allSyms);
       const byUpper = new Map<string, any>();
       for (const q of quotes) {
         if (q?.symbol) byUpper.set(String(q.symbol).toUpperCase(), q);
       }
-      indices = indexSymbols.map((sym) => {
-        const q = byUpper.get(sym);
-        const name = sym === "SPY" ? "S&P 500" : sym === "QQQ" ? "Nasdaq 100" : "Russell 2000";
-        if (!q || !q.last) return { symbol: sym, name, last: 0, changePercent: 0 };
-        const changePct = typeof q.changePercent === "number"
-          ? q.changePercent
-          : q.change && q.last
-          ? (q.change / (q.last - q.change)) * 100
-          : 0;
-        return { symbol: sym, name, last: q.last, changePercent: Number(changePct.toFixed(2)) };
-      });
-      topMovers = moverSymbols
-        .map((sym) => {
-          const q = byUpper.get(sym);
-          if (!q || !q.last) return null;
-          const changePct = typeof q.changePercent === "number"
+
+      const built: IndexQuote[] = INDEX_SYMBOLS.map(({ symbol, name }) => {
+        const q = byUpper.get(symbol);
+        if (!q || !q.last) return { symbol, name, last: 0, changePercent: 0 };
+        const changePct =
+          typeof q.changePercent === "number"
             ? q.changePercent
             : q.change && q.last
             ? (q.change / (q.last - q.change)) * 100
             : 0;
+        return { symbol, name, last: q.last, changePercent: Number(changePct.toFixed(2)) };
+      });
+
+      topMovers = moverSyms
+        .map((sym) => {
+          const q = byUpper.get(sym);
+          if (!q || !q.last) return null;
+          const changePct =
+            typeof q.changePercent === "number"
+              ? q.changePercent
+              : q.change && q.last
+              ? (q.change / (q.last - q.change)) * 100
+              : 0;
           return { symbol: sym, last: q.last, changePercent: Number(changePct.toFixed(2)) };
         })
         .filter((m): m is MoverQuote => m !== null)
         .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
         .slice(0, 5);
-      if (topMovers.length > 0 || indices.some((i) => i.last > 0)) {
+
+      if (built.some((i) => i.last > 0) || topMovers.length > 0) {
+        indices = built;
         dataMode = "live";
         dataSource = "broker";
       }
@@ -192,36 +225,123 @@ export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotRes
     }
   }
 
-  // Twelve Data real-time fallback
-  if (!indices.some((i) => i.last > 0)) {
-    const indexSymbols: Array<{ symbol: string; name: string }> = [
-      { symbol: "SPY", name: "S&P 500" },
-      { symbol: "QQQ", name: "Nasdaq 100" },
-      { symbol: "IWM", name: "Russell 2000" },
-    ];
-    const results = await Promise.all(
-      indexSymbols.map(async ({ symbol, name }) => {
-        const q = await Promise.race([
-          getRealtimeQuoteForUser(userId, symbol, "home-snapshot"),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
-        ]).catch(() => null);
-        if (!q || !(q.last > 0)) return { symbol, name, last: 0, changePercent: 0 };
-        return { symbol, name, last: q.last, changePercent: Number(q.changePercent.toFixed(2)) };
-      }),
-    );
-    if (results.some((r) => r.last > 0)) {
-      indices = results;
+  // ── 2. Twelve Data path (latest-day close) ─────────────────────────────
+  // Fetch: SPY, QQQ, IWM, VIX, and all 11 sector ETFs in parallel.
+  // Each call is cached 30s; in-flight de-duplicated; rate-limited by credit manager.
+  const needsTwelveData = !indices.some((i) => i.last > 0);
+
+  const sectorSymbols = Object.keys(SECTOR_ETFS);
+  const twelveDataBatch: string[] = needsTwelveData
+    ? ["SPY", "QQQ", "IWM", "VIX", ...sectorSymbols]
+    : ["VIX", ...sectorSymbols];
+
+  // 6-second timeout for the entire Twelve Data batch
+  const twelveResults = await Promise.race([
+    Promise.allSettled(
+      twelveDataBatch.map((sym) =>
+        getRealtimeQuoteForUser(userId, sym, "home-snapshot").then((q) => ({ sym, q })),
+      ),
+    ),
+    new Promise<PromiseSettledResult<{ sym: string; q: any }>[]>((resolve) =>
+      setTimeout(
+        () => resolve(twelveDataBatch.map((sym) => ({ status: "rejected" as const, reason: "timeout", sym }))),
+        6000,
+      ),
+    ),
+  ]);
+
+  const twelveBySymbol = new Map<string, any>();
+  for (const r of twelveResults) {
+    if (r.status === "fulfilled") {
+      const { sym, q } = r.value;
+      if (q && q.last > 0) twelveBySymbol.set(sym, q);
+    }
+  }
+
+  // Indices from Twelve Data (if broker didn't supply them)
+  if (needsTwelveData && twelveBySymbol.size > 0) {
+    const built: IndexQuote[] = INDEX_SYMBOLS.map(({ symbol, name }) => {
+      const q = twelveBySymbol.get(symbol);
+      if (!q) return { symbol, name, last: 0, changePercent: 0 };
+      return {
+        symbol,
+        name,
+        last: q.last,
+        changePercent: Number(q.changePercent.toFixed(2)),
+      };
+    });
+    if (built.some((i) => i.last > 0)) {
+      indices = built;
       dataMode = "live";
-      // Twelve Data returns latest-day close / end-of-day prices, NOT streaming real-time.
-      // The UI must never label this as "Live" — use "Latest daily close" instead.
       dataSource = "twelve_data";
     }
   }
 
-  // 2) News-derived growth/income/alerts
+  // VIX
+  const vixQ = twelveBySymbol.get("VIX");
+  if (vixQ) {
+    vix = {
+      last: Math.round(vixQ.last * 100) / 100,
+      changePercent: Math.round(vixQ.changePercent * 100) / 100,
+    };
+  }
+
+  // Sector leadership — sort by changePercent, return top 3 gainers + top 3 losers
+  const sectorQuotes: SectorQuote[] = [];
+  for (const sym of sectorSymbols) {
+    const q = twelveBySymbol.get(sym);
+    if (q && q.last > 0) {
+      sectorQuotes.push({
+        symbol: sym,
+        name: SECTOR_ETFS[sym] ?? sym,
+        changePercent: Math.round(q.changePercent * 100) / 100,
+      });
+    }
+  }
+  if (sectorQuotes.length > 0) {
+    const sorted = [...sectorQuotes].sort((a, b) => b.changePercent - a.changePercent);
+    const leaders = sorted.slice(0, 3);
+    const laggards = sorted.slice(-3).reverse();
+    // Deduplicate (possible when fewer than 6 sectors have data)
+    const seen = new Set<string>();
+    sectorLeadership = [...leaders, ...laggards].filter((s) => {
+      if (seen.has(s.symbol)) return false;
+      seen.add(s.symbol);
+      return true;
+    });
+  }
+
+  // ── 3. Market Regime from stored SPY bars (zero credits) ──────────────
+  try {
+    const snapMap = await Promise.race([
+      getReferenceSnapshotsBulk(userId, ["SPY"], { feature: "market-regime", barLimit: 60 }),
+      new Promise<Map<string, any>>((resolve) =>
+        setTimeout(() => resolve(new Map()), 3000),
+      ),
+    ]);
+    const spySnap = snapMap.get("SPY");
+    if (spySnap && spySnap.bars.length >= 30) {
+      const regime = classifyMarketRegime(
+        spySnap.bars.map((b: any) => ({
+          open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+        })),
+      );
+      marketRegime = {
+        regime: regime.regime as "TRENDING" | "CHOPPY" | "RISK_OFF",
+        strength: regime.strength,
+        description: regime.description,
+      };
+    }
+  } catch { /* regime is optional */ }
+
+  // If we have partial data (some indices loaded, some didn't), mark as partial
+  if (dataMode === "live" && indices.length > 0 && indices.some((i) => i.last === 0)) {
+    dataMode = "partial";
+  }
+
+  // ── 4. News-derived growth / alerts ───────────────────────────────────
   let topGrowth: SnapshotItem | null = null;
-  let growthSource: "sentiment" | "fallback" = "fallback";
-  let bestIncome: SnapshotItem | null = null;
+  let growthSource: "sentiment" | null = null;
   let watchlistAlert: WatchlistAlert | null = null;
   let topNews: NewsItem[] = [];
 
@@ -243,44 +363,48 @@ export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotRes
 
       const positives = trending.filter((s: any) => s.sentimentLabel === "bullish");
       const negatives = trending.filter((s: any) => s.sentimentLabel === "bearish");
+
       if (positives[0]) {
         topGrowth = {
           symbol: positives[0].symbol,
-          headline: positives[0].whyItMatters ?? `${positives[0].symbol} — bullish news flow this session.`,
+          headline:
+            positives[0].whyItMatters ??
+            `${positives[0].symbol} — bullish news flow this session.`,
         };
         growthSource = "sentiment";
       }
+
       if (watchlistSymbols.length > 0) {
-        const onList = negatives.find((s: any) => watchlistSymbols.includes(String(s.symbol).toUpperCase()));
+        const onList = negatives.find((s: any) =>
+          watchlistSymbols.includes(String(s.symbol).toUpperCase()),
+        );
         if (onList) {
           watchlistAlert = {
             symbol: onList.symbol,
-            message: onList.whyItMatters ?? `${onList.symbol} — bearish news flow worth reviewing.`,
+            message:
+              onList.whyItMatters ?? `${onList.symbol} — bearish news flow worth reviewing.`,
           };
         }
       }
     }
-  } catch {
-    // fall through to fallback
-  }
+  } catch { /* fall through — topGrowth stays null */ }
 
-  const tone = deriveToneFromIndices(indices);
-  const fallbackGrowth = pickByDay(FALLBACK_GROWTH);
-  const fallbackIncome = pickByDay(FALLBACK_INCOME);
+  const { tone, reason: marketToneReason } = deriveToneFromIndices(indices);
 
   return {
-    marketTone: tone.tone,
-    marketToneReason: tone.reason,
+    marketTone: tone,
+    marketToneReason,
     indices,
+    vix,
+    sectorLeadership,
+    marketRegime,
     topMovers,
     topNews,
-    bestIncome: bestIncome ?? fallbackIncome,
-    topGrowth: topGrowth ?? (growthSource = "fallback", fallbackGrowth),
+    topGrowth,
     watchlistAlert,
     dataMode,
     dataSource,
     growthSource,
-    incomeSource: "fallback", // bestIncome is always reference data — no deterministic options qualification
     asOf: new Date().toISOString(),
     disclaimer: DISCLAIMER,
   };

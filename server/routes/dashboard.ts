@@ -1,4 +1,4 @@
-// Dashboard Orchestration API — Sprint 5.5
+// Dashboard Orchestration API — Sprint 5.5 / Task #58 (real market data)
 //
 // GET /api/dashboard
 //
@@ -9,8 +9,8 @@
 // Trust rules:
 //   - userId from req.session only; never from query/body.
 //   - No account numbers or broker identifiers returned to client.
-//   - No raw internal enums in savedResearch (verdicts come from the stored record).
 //   - No fabricated data — missing fields return status "unavailable".
+//   - dataMode "simulated" has been removed; all candidates are real or missing.
 
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
@@ -19,6 +19,13 @@ import { ResearchRecordService } from "../services/research-record-service";
 import { generateCandidateScenarios } from "../services/opportunity-radar/radar-service";
 import { getTrialFeatureRestriction } from "../services/daily-market-data/trial-entitlement";
 import { buildHomeSnapshot } from "./home-snapshot";
+import { buildAiInfraWatch } from "../services/ai-infra-watch";
+
+/** Strategy types that map to "growth" opportunities (stock or bullish-options). */
+const GROWTH_STRATEGIES = new Set(["stock_swing", "long_call", "debit_spread"]);
+
+/** Strategy types that map to "income" opportunities. */
+const INCOME_STRATEGIES = new Set(["covered_call", "cash_secured_put"]);
 
 export function registerDashboardRoutes(
   app: Express,
@@ -34,7 +41,8 @@ export function registerDashboardRoutes(
       ? await getTrialFeatureRestriction(userRecord).catch(() => null)
       : null;
 
-    // Build radar filters — trial users get restricted universe
+    // Build radar filters — broader universe to allow strategy-based splitting.
+    // Trial users get a restricted symbol set.
     const radarFilters: Parameters<typeof generateCandidateScenarios>[1] = {
       timeHorizon: "1_4w",
       universe: "watchlist",
@@ -49,12 +57,14 @@ export function registerDashboardRoutes(
     const [
       snapshotResult,
       radarResult,
+      aiInfraResult,
       brokerConnectionResult,
       researchResult,
       watchlistsResult,
     ] = await Promise.allSettled([
       buildHomeSnapshot(userId),
       generateCandidateScenarios(userId, radarFilters),
+      buildAiInfraWatch(userId),
       storage.getBrokerConnection(userId),
       ResearchRecordService.listForUser(userId, { limit: 5, archived: false }),
       storage.getWatchlists(userId),
@@ -66,7 +76,7 @@ export function registerDashboardRoutes(
         : null;
     const brokerConnected = !!(brokerConnection?.isConnected);
 
-    // Fetch positions only when broker is connected — avoids an unnecessary call
+    // Fetch positions only when broker is connected
     let positionsResult: PromiseSettledResult<any[]> = {
       status: "rejected",
       reason: "not_connected",
@@ -81,14 +91,14 @@ export function registerDashboardRoutes(
       }
     }
 
-    // Clamp radar candidates for trial users
-    let radarCandidates: any[] = [];
+    // Clamp and split radar candidates by strategy type
+    let allCandidates: any[] = [];
     if (radarResult.status === "fulfilled") {
-      radarCandidates = Array.isArray((radarResult.value as any)?.candidates)
+      allCandidates = Array.isArray((radarResult.value as any)?.candidates)
         ? (radarResult.value as any).candidates
         : [];
       if (restriction?.restricted) {
-        radarCandidates = radarCandidates
+        allCandidates = allCandidates
           .filter((c) =>
             restriction.allowedSymbols.includes(
               String(c.symbol ?? "").toUpperCase(),
@@ -97,6 +107,39 @@ export function registerDashboardRoutes(
           .slice(0, restriction.radarResultLimit ?? 5);
       }
     }
+
+    // Real-data eligibility gate: exclude candidates built on mock/hash-derived quotes.
+    //   "live"      — broker real-time quotes  ✓ real
+    //   "mixed"     — broker + Twelve Data stored bars  ✓ real
+    //   "simulated" — no broker, no stored bars, hash-derived mock only  ✗ excluded
+    //
+    // This enforces Task #58: only real market data surfaces to traders.
+    // Candidates that pass the gate have their internal dataMode stripped before
+    // reaching the client; provenance is communicated via section-level status only.
+    const realCandidates = allCandidates.filter(
+      (c: any) => c.dataMode !== "simulated",
+    );
+
+    function stripProvenance(c: any) {
+      const { dataMode: _dropped, ...rest } = c;
+      return rest;
+    }
+
+    // Split real candidates into strategy buckets
+    const growthCandidates = realCandidates
+      .filter((c: any) => GROWTH_STRATEGIES.has(c.strategyType) && c.bias !== "bearish")
+      .slice(0, 5)
+      .map(stripProvenance);
+    const incomeCandidates = realCandidates
+      .filter((c: any) => INCOME_STRATEGIES.has(c.strategyType))
+      .slice(0, 5)
+      .map(stripProvenance);
+    // Watchlist movers: any real-data strategy, sorted by score descending
+    const watchlistCandidates = realCandidates
+      .slice()
+      .sort((a: any, b: any) => (b.finalScore ?? 0) - (a.finalScore ?? 0))
+      .slice(0, 5)
+      .map(stripProvenance);
 
     // Sanitize positions — never return account IDs or raw balances
     const sanitizedPositions =
@@ -116,13 +159,29 @@ export function registerDashboardRoutes(
           ? { status: "ok", data: snapshotResult.value }
           : { status: "unavailable" },
 
-      opportunities:
+      // Growth opportunities: stock_swing + long_call (bullish bias)
+      // dataMode intentionally omitted — radar's internal "simulated" flag must never surface.
+      growthOpportunities:
         radarResult.status === "fulfilled"
-          ? {
-              status: "ok",
-              candidates: radarCandidates.slice(0, 5),
-              dataMode: (radarResult.value as any)?.dataMode ?? "simulated",
-            }
+          ? { status: "ok", candidates: growthCandidates }
+          : { status: "unavailable" },
+
+      // Income opportunities: covered_call + cash_secured_put
+      incomeOpportunities:
+        radarResult.status === "fulfilled"
+          ? { status: "ok", candidates: incomeCandidates }
+          : { status: "unavailable" },
+
+      // Top-ranked candidates across all strategies (watchlist movers)
+      watchlistOpportunities:
+        radarResult.status === "fulfilled"
+          ? { status: "ok", candidates: watchlistCandidates }
+          : { status: "unavailable" },
+
+      // AI Infrastructure Watch (NVDA, AMD, MU, AVGO, MRVL, CRDO, ANET, TSM)
+      aiInfraWatch:
+        aiInfraResult.status === "fulfilled"
+          ? aiInfraResult.value
           : { status: "unavailable" },
 
       portfolio: {

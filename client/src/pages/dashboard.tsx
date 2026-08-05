@@ -1,4 +1,5 @@
 // Sprint 5.5 — Personalized Morning Dashboard (/dashboard)
+// Task #58: Real market data — all demo/simulated/fallback values removed.
 //
 // Authenticated landing page. Calls GET /api/dashboard — a single backend
 // orchestration endpoint that fans out in parallel to all data sources and
@@ -10,7 +11,7 @@
 // Compliance rules:
 //   - No "buy", "sell", "recommended for you", "best investment" copy.
 //   - No account numbers or broker identifiers.
-//   - No fabricated data — missing fields show "Data currently unavailable".
+//   - No fabricated data — missing fields show explicit error states.
 //   - GPT may not reorder opportunity candidates.
 //   - No raw internal enums exposed (verdicts come from stored record labels).
 
@@ -48,6 +49,10 @@ import {
   Clock,
   ExternalLink,
   DollarSign,
+  Cpu,
+  Minus,
+  Activity,
+  Database,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +64,23 @@ interface IndexQuote {
   name: string;
   last: number;
   changePercent: number;
+}
+
+interface VixQuote {
+  last: number;
+  changePercent: number;
+}
+
+interface SectorQuote {
+  symbol: string;
+  name: string;
+  changePercent: number;
+}
+
+interface MarketRegimeSummary {
+  regime: "TRENDING" | "CHOPPY" | "RISK_OFF";
+  strength: number;
+  description: string;
 }
 
 interface MoverQuote {
@@ -83,21 +105,21 @@ interface SnapshotItem {
 }
 
 interface MarketSnapshot {
-  marketTone: "bullish" | "mixed" | "defensive";
+  marketTone: "bullish" | "mixed" | "defensive" | null;
   marketToneReason: string;
   indices: IndexQuote[];
+  vix: VixQuote | null;
+  sectorLeadership: SectorQuote[];
+  marketRegime: MarketRegimeSummary | null;
   topMovers: MoverQuote[];
   topNews: NewsItem[];
-  bestIncome: SnapshotItem;
-  topGrowth: SnapshotItem;
-  /** "live" | "simulated" — legacy field; use dataSource for UI labels. */
-  dataMode: "live" | "simulated";
+  topGrowth: SnapshotItem | null;
+  /** "live" | "partial" | "error" */
+  dataMode: "live" | "partial" | "error";
   /** Precise provenance of index/mover prices. */
-  dataSource?: "broker" | "twelve_data" | "fallback";
-  /** Source of topGrowth: sentiment-based or hardcoded reference. */
-  growthSource?: "sentiment" | "fallback";
-  /** Source of bestIncome: always "fallback" (hardcoded reference). */
-  incomeSource?: "fallback";
+  dataSource?: "broker" | "twelve_data" | "unavailable";
+  /** Source of topGrowth: sentiment-based, or null when unavailable. */
+  growthSource?: "sentiment" | null;
   asOf: string;
 }
 
@@ -115,6 +137,17 @@ interface RadarCandidate {
   mainRisk?: string;
   entry?: number;
   dataMode?: string;
+}
+
+interface AiInfraTicker {
+  symbol: string;
+  companyName: string;
+  trend: "up" | "down" | "flat";
+  trendLabel: string;
+  sentiment: "bullish" | "bearish" | "neutral";
+  technicalScore: number;
+  last: number | null;
+  changePercent: number | null;
 }
 
 interface Position {
@@ -143,9 +176,20 @@ interface Watchlist {
   symbols: string[];
 }
 
+interface OpportunitiesBlock {
+  status: "ok" | "unavailable";
+  candidates?: RadarCandidate[];
+  dataMode?: string;
+}
+
 interface DashboardResponse {
   marketSnapshot: { status: "ok"; data: MarketSnapshot } | { status: "unavailable" };
-  opportunities: { status: "ok"; candidates: RadarCandidate[]; dataMode?: string } | { status: "unavailable" };
+  growthOpportunities: OpportunitiesBlock;
+  incomeOpportunities: OpportunitiesBlock;
+  watchlistOpportunities: OpportunitiesBlock;
+  aiInfraWatch:
+    | { status: "ok"; tickers: AiInfraTicker[] }
+    | { status: "unavailable" };
   portfolio: {
     brokerConnected: boolean;
     status: "ok" | "unavailable" | "not_connected";
@@ -160,9 +204,8 @@ interface DashboardResponse {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Unified data-quality label system (Sprint 5.5A)
+// Unified data-quality label system (Sprint 5.5A / Task #58)
 // Use DATA_QUALITY[key] for user-facing text; DATA_QUALITY_CLASS[key] for styling.
-// Never expose raw enum values in the UI.
 // ---------------------------------------------------------------------------
 
 const DATA_QUALITY = {
@@ -171,7 +214,7 @@ const DATA_QUALITY = {
   DAILY_CLOSE:      "Latest daily close",
   DELAYED:          "Delayed",
   SNAPSHOT:         "Market snapshot",
-  SIMULATED:        "Demonstration data",
+  REAL_DATA:        "Real market data",
   ESTIMATED:        "Estimated structure",
   UNAVAILABLE:      "Data unavailable",
   UNKNOWN:          "Source not verified",
@@ -185,17 +228,21 @@ const DATA_QUALITY_CLASS: Record<DataQualityKey, string> = {
   DAILY_CLOSE:      "text-amber-300 border-amber-500/30 bg-amber-500/5",
   DELAYED:          "text-amber-300 border-amber-500/30 bg-amber-500/5",
   SNAPSHOT:         "text-muted-foreground border-border bg-muted/20",
-  SIMULATED:        "text-violet-300 border-violet-500/30 bg-violet-500/5",
+  REAL_DATA:        "text-emerald-300 border-emerald-500/30 bg-emerald-500/5",
   ESTIMATED:        "text-amber-300 border-amber-500/30 bg-amber-500/5",
   UNAVAILABLE:      "text-rose-300 border-rose-500/30 bg-rose-500/5",
   UNKNOWN:          "text-muted-foreground border-border bg-muted/10",
 };
 
 /** Map the snapshot's dataSource field to a DATA_QUALITY key. */
-function snapshotDataQualityKey(dataSource?: "broker" | "twelve_data" | "fallback"): DataQualityKey {
+function snapshotDataQualityKey(
+  dataSource?: "broker" | "twelve_data" | "unavailable",
+  dataMode?: "live" | "partial" | "error",
+): DataQualityKey {
+  if (dataMode === "error") return "UNAVAILABLE";
   if (dataSource === "broker") return "BROKER_CONNECTED";
   if (dataSource === "twelve_data") return "DAILY_CLOSE";
-  return "SIMULATED";
+  return "UNAVAILABLE";
 }
 
 const TONE_CLASS: Record<string, string> = {
@@ -204,7 +251,19 @@ const TONE_CLASS: Record<string, string> = {
   defensive: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
-// Sprint 5.5A: impact badges now have explicit meaning labels (not just "high", "medium", "low")
+const REGIME_CLASS: Record<string, string> = {
+  TRENDING:  "text-emerald-300 border-emerald-500/30 bg-emerald-500/5",
+  CHOPPY:    "text-amber-300 border-amber-500/30 bg-amber-500/5",
+  RISK_OFF:  "text-rose-300 border-rose-500/30 bg-rose-500/5",
+};
+
+const REGIME_LABEL: Record<string, string> = {
+  TRENDING: "Trending",
+  CHOPPY:   "Choppy",
+  RISK_OFF: "Risk-Off",
+};
+
+// Sprint 5.5A: impact badges now have explicit meaning labels
 const IMPACT_LABEL: Record<string, string> = {
   high: "High attention",
   medium: "Elevated activity",
@@ -216,7 +275,6 @@ const IMPACT_CLASS: Record<string, string> = {
   low: "bg-muted text-muted-foreground border-border",
 };
 
-// Sentiment label (separate from impact — appears alongside the symbol line)
 const SENTIMENT_LABEL: Record<string, string> = {
   bullish: "Positive sentiment",
   bearish: "Mixed / bearish sentiment",
@@ -266,7 +324,7 @@ function askRoute(prompt: string): string {
 function SectionError({ label, onRetry }: { label: string; onRetry: () => void }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-      <span data-testid={`error-${label}`}>{label} data is temporarily unavailable.</span>
+      <span data-testid={`error-${label}`}>Market data is temporarily unavailable.</span>
       <Button
         variant="ghost"
         size="sm"
@@ -348,7 +406,6 @@ const QUICK_ACTIONS = [
     label: "Find Growth Opportunities",
     icon: TrendingUp,
     color: "text-emerald-400",
-    prompt: "Find long-term growth opportunities",
     href: askRoute("Find long-term AI infrastructure growth opportunities"),
   },
   {
@@ -434,7 +491,7 @@ function QuickActionsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Market Snapshot
+// 3. Market Snapshot — real data only
 // ---------------------------------------------------------------------------
 
 function MarketSnapshotSection({
@@ -446,7 +503,7 @@ function MarketSnapshotSection({
   status: string;
   onRetry: () => void;
 }) {
-  if (status === "unavailable" || !data) {
+  if (status === "unavailable" || !data || data.dataMode === "error") {
     return (
       <section aria-labelledby="snapshot-heading" data-testid="section-market-snapshot">
         <h2 id="snapshot-heading" className="sr-only">Market Snapshot</h2>
@@ -461,6 +518,9 @@ function MarketSnapshotSection({
     timeZoneName: "short",
   });
 
+  const qKey = snapshotDataQualityKey(data.dataSource, data.dataMode);
+  const isBroker = data.dataSource === "broker";
+
   return (
     <section aria-labelledby="snapshot-heading" data-testid="section-market-snapshot">
       <Card>
@@ -470,85 +530,184 @@ function MarketSnapshotSection({
               <BarChart2 className="h-4 w-4 text-primary" aria-hidden="true" />
               <span id="snapshot-heading">Market Snapshot</span>
             </CardTitle>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {/* Sprint 5.5A: use dataSource for accurate label — never call daily-close data "Live" */}
-              {(() => {
-                const qKey = snapshotDataQualityKey(data.dataSource);
-                return (
-                  <Badge
-                    variant="outline"
-                    className={cn("text-[10px]", DATA_QUALITY_CLASS[qKey])}
-                    data-testid="badge-data-mode"
-                    aria-label={`Data quality: ${DATA_QUALITY[qKey]}`}
-                  >
-                    {DATA_QUALITY[qKey]}
-                  </Badge>
-                );
-              })()}
-              <span className="flex items-center gap-1" data-testid="text-snapshot-time">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Data provenance badges */}
+              <Badge
+                variant="outline"
+                className={cn("text-[10px]", DATA_QUALITY_CLASS[qKey])}
+                data-testid="badge-data-mode"
+                aria-label={`Data quality: ${DATA_QUALITY[qKey]}`}
+              >
+                {DATA_QUALITY[qKey]}
+              </Badge>
+              {/* "Powered by Twelve Data" badge when using Twelve Data */}
+              {data.dataSource === "twelve_data" && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-muted-foreground border-border bg-muted/10"
+                  data-testid="badge-twelve-data"
+                >
+                  Powered by Twelve Data
+                </Badge>
+              )}
+              {/* "Latest Daily Close" explainer when not broker real-time */}
+              {data.dataSource === "twelve_data" && (
+                <Badge
+                  variant="outline"
+                  className={cn("text-[10px]", DATA_QUALITY_CLASS.DAILY_CLOSE)}
+                  data-testid="badge-latest-close"
+                >
+                  Latest Daily Close
+                </Badge>
+              )}
+              <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="text-snapshot-time">
                 <Clock className="h-3 w-3" aria-hidden="true" />
                 {asOf}
               </span>
             </div>
           </div>
+
+          {/* Market Tone + Regime */}
           <div className="flex items-center gap-2 flex-wrap pt-1">
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Tone</span>
-            <Badge
-              variant="outline"
-              className={cn("capitalize text-[10px]", TONE_CLASS[data.marketTone])}
-              data-testid="badge-market-tone"
-            >
-              {data.marketTone}
-            </Badge>
-            <span className="text-xs text-muted-foreground line-clamp-1" data-testid="text-tone-reason">
-              {data.marketToneReason}
-            </span>
+            {data.marketTone ? (
+              <Badge
+                variant="outline"
+                className={cn("capitalize text-[10px]", TONE_CLASS[data.marketTone])}
+                data-testid="badge-market-tone"
+              >
+                {data.marketTone}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                Unavailable
+              </Badge>
+            )}
+            {data.marketRegime && (
+              <>
+                <span className="text-muted-foreground text-[10px]">·</span>
+                <Badge
+                  variant="outline"
+                  className={cn("text-[10px]", REGIME_CLASS[data.marketRegime.regime] ?? "border-border")}
+                  data-testid="badge-market-regime"
+                  title={data.marketRegime.description}
+                  aria-label={`Market regime: ${REGIME_LABEL[data.marketRegime.regime]}, strength ${data.marketRegime.strength}`}
+                >
+                  {REGIME_LABEL[data.marketRegime.regime]} Regime
+                </Badge>
+              </>
+            )}
+            {data.marketToneReason && (
+              <span className="text-xs text-muted-foreground line-clamp-1" data-testid="text-tone-reason">
+                {data.marketToneReason}
+              </span>
+            )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Index tiles */}
-          <div className="grid grid-cols-3 gap-2" role="list" aria-label="Index quotes">
-            {data.indices.slice(0, 3).map((idx) => {
-              const up = idx.changePercent >= 0;
-              const hasData = idx.last > 0;
-              return (
+
+        <CardContent className="space-y-4">
+          {/* Index tiles: SPY, QQQ, IWM + VIX */}
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Indices</div>
+            <div
+              className="grid grid-cols-2 sm:grid-cols-4 gap-2"
+              role="list"
+              aria-label="Index quotes"
+            >
+              {data.indices.slice(0, 3).map((idx) => {
+                const up = idx.changePercent >= 0;
+                const hasData = idx.last > 0;
+                return (
+                  <div
+                    key={idx.symbol}
+                    className="rounded-lg border bg-card/50 p-2.5"
+                    role="listitem"
+                    data-testid={`tile-index-${idx.symbol}`}
+                    aria-label={`${idx.name}: ${hasData ? idx.last.toFixed(2) : "unavailable"}`}
+                  >
+                    <div className="text-[10px] uppercase text-muted-foreground">{idx.name}</div>
+                    <div className="flex items-baseline justify-between gap-1 mt-0.5">
+                      <span className="text-sm font-medium tabular-nums">
+                        {hasData ? idx.last.toFixed(2) : <span className="text-muted-foreground text-xs">—</span>}
+                      </span>
+                      {hasData && (
+                        <span
+                          className={cn(
+                            "text-xs tabular-nums flex items-center gap-0.5",
+                            up ? "text-emerald-400" : "text-rose-400",
+                          )}
+                        >
+                          {up ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />}
+                          {up ? "+" : ""}{idx.changePercent.toFixed(2)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* VIX tile */}
+              {data.vix ? (
                 <div
-                  key={idx.symbol}
                   className="rounded-lg border bg-card/50 p-2.5"
                   role="listitem"
-                  data-testid={`tile-index-${idx.symbol}`}
-                  aria-label={`${idx.name}: ${hasData ? idx.last.toFixed(2) : "unavailable"}`}
+                  data-testid="tile-index-VIX"
+                  aria-label={`VIX: ${data.vix.last.toFixed(2)}`}
                 >
-                  <div className="text-[10px] uppercase text-muted-foreground">{idx.name}</div>
+                  <div className="text-[10px] uppercase text-muted-foreground">VIX</div>
                   <div className="flex items-baseline justify-between gap-1 mt-0.5">
-                    <span className="text-sm font-medium tabular-nums">
-                      {hasData ? idx.last.toFixed(2) : <span className="text-muted-foreground text-xs">—</span>}
+                    <span className="text-sm font-medium tabular-nums">{data.vix.last.toFixed(2)}</span>
+                    <span
+                      className={cn(
+                        "text-xs tabular-nums flex items-center gap-0.5",
+                        // VIX up = market fear = bearish (red), VIX down = calmer (green)
+                        data.vix.changePercent <= 0 ? "text-emerald-400" : "text-rose-400",
+                      )}
+                    >
+                      {data.vix.changePercent >= 0 ? "+" : ""}{data.vix.changePercent.toFixed(2)}%
                     </span>
-                    {hasData && (
-                      <span
-                        className={cn(
-                          "text-xs tabular-nums flex items-center gap-0.5",
-                          up ? "text-emerald-400" : "text-rose-400",
-                        )}
-                        aria-label={`${up ? "up" : "down"} ${Math.abs(idx.changePercent).toFixed(2)} percent`}
-                      >
-                        {up ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />}
-                        {up ? "+" : ""}{idx.changePercent.toFixed(2)}%
-                      </span>
-                    )}
-                    {!hasData && (
-                      <span className="text-[10px] text-muted-foreground">—</span>
-                    )}
                   </div>
                 </div>
-              );
-            })}
+              ) : (
+                <div className="rounded-lg border bg-card/30 p-2.5 opacity-50">
+                  <div className="text-[10px] uppercase text-muted-foreground">VIX</div>
+                  <div className="text-xs text-muted-foreground mt-1">—</div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Top movers (if any) */}
+          {/* Sector Leadership */}
+          {data.sectorLeadership.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Sector Leadership</div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.sectorLeadership.map((s) => {
+                  const up = s.changePercent >= 0;
+                  return (
+                    <span
+                      key={s.symbol}
+                      className={cn(
+                        "text-[10px] font-mono rounded-md border px-2 py-0.5 inline-flex items-center gap-1",
+                        up
+                          ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
+                          : "text-rose-400 border-rose-500/30 bg-rose-500/5",
+                      )}
+                      data-testid={`sector-${s.symbol}`}
+                      title={s.name}
+                    >
+                      {up ? "▲" : "▼"} {s.symbol} {up ? "+" : ""}{s.changePercent.toFixed(1)}%
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Top movers */}
           {data.topMovers.length > 0 && (
-            <div className="space-y-1" aria-label="Top movers">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Movers</div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Movers</div>
               <div className="flex flex-wrap gap-2">
                 {data.topMovers.slice(0, 5).map((m) => (
                   <span
@@ -567,12 +726,6 @@ function MarketSnapshotSection({
               </div>
             </div>
           )}
-
-          {data.indices.every((i) => i.last === 0) && data.topMovers.length === 0 && (
-            <p className="text-xs text-muted-foreground" data-testid="text-snapshot-unavailable">
-              Data currently unavailable — market may be closed or data source unreachable.
-            </p>
-          )}
         </CardContent>
       </Card>
     </section>
@@ -580,36 +733,19 @@ function MarketSnapshotSection({
 }
 
 // ---------------------------------------------------------------------------
-// 4. Today's Opportunities
+// 4. Today's Market Opportunities — Growth / Income / Watchlist Movers
 // ---------------------------------------------------------------------------
-
-/**
- * Sprint 5.5B — CTA label for an opportunity card.
- * "Open Analysis"     → an existing full result is cached for this symbol
- * "Run Full Analysis" → no cached result; fresh run needed
- * "Open Example"      → demonstration card (no live analysis available)
- */
-function opportunityCta(isDemonstration: boolean, hasCachedResult: boolean): string {
-  if (isDemonstration) return "Open Example";
-  if (hasCachedResult) return "Open Analysis";
-  return "Run Full Analysis";
-}
 
 function OpportunityCard({
   candidate,
-  sectionDataMode,
   hasCachedResult,
 }: {
   candidate: RadarCandidate;
-  /** The parent section's overall dataMode. When "simulated", suppress per-card badge. */
-  sectionDataMode?: string;
-  /** Sprint 5.5B: true when a cached full-analysis result exists for this symbol. */
   hasCachedResult?: boolean;
 }) {
   const [, navigate] = useLocation();
   const grade = candidate.finalGrade;
-  const isDemonstration = sectionDataMode === "simulated" || candidate.dataMode === "simulated";
-  const ctaText = opportunityCta(isDemonstration, !!hasCachedResult);
+  const ctaText = hasCachedResult ? "Open Analysis" : "Analyze";
 
   return (
     <div
@@ -618,38 +754,25 @@ function OpportunityCard({
       role="article"
       aria-label={`${candidate.symbol} opportunity`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="font-mono font-semibold text-sm" data-testid={`symbol-${candidate.symbol}`}>
-            {candidate.symbol}
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <span className="font-mono font-semibold text-sm" data-testid={`symbol-${candidate.symbol}`}>
+          {candidate.symbol}
+        </span>
+        {candidate.companyName && (
+          <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+            {candidate.companyName}
           </span>
-          {candidate.companyName && (
-            <span className="text-xs text-muted-foreground truncate max-w-[120px]">
-              {candidate.companyName}
-            </span>
-          )}
-          {grade && (
-            <Badge
-              variant="outline"
-              className={cn("text-[10px]", GRADE_CLASS[grade] ?? "border-border")}
-              data-testid={`grade-${candidate.symbol}`}
-              aria-label={`Grade: ${grade}`}
-            >
-              Grade {grade}
-            </Badge>
-          )}
-          {/* Show per-card badge only when the card is simulated AND the section is NOT already fully simulated.
-              When the whole section is simulated, the section-level banner already covers it. */}
-          {candidate.dataMode === "simulated" && sectionDataMode !== "simulated" && (
-            <Badge
-              variant="outline"
-              className={cn("text-[10px]", DATA_QUALITY_CLASS.SIMULATED)}
-              data-testid={`badge-card-simulated-${candidate.symbol}`}
-            >
-              {DATA_QUALITY.SIMULATED}
-            </Badge>
-          )}
-        </div>
+        )}
+        {grade && (
+          <Badge
+            variant="outline"
+            className={cn("text-[10px]", GRADE_CLASS[grade] ?? "border-border")}
+            data-testid={`grade-${candidate.symbol}`}
+            aria-label={`Grade: ${grade}`}
+          >
+            Grade {grade}
+          </Badge>
+        )}
       </div>
       {candidate.strategyType && (
         <div className="text-xs text-muted-foreground capitalize">
@@ -662,61 +785,53 @@ function OpportunityCard({
           {candidate.mainReason}
         </p>
       )}
-      <div className="flex items-center gap-2 pt-0.5">
-        {isDemonstration ? (
-          /* Demo cards show an example of what real setups look like — no live analysis is available.
-             A disabled button labeled "Open Example" is misleading; show a clear static note instead. */
-          <span
-            className="text-[11px] text-muted-foreground italic"
-            data-testid={`label-demo-only-${candidate.symbol}`}
-          >
-            Example — connect a broker to see live setups
-          </span>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs gap-1"
-            onClick={() => {
-              if (hasCachedResult) {
-                track("dashboard_existing_result_opened", { symbol: candidate.symbol } as any);
-              } else {
-                track("dashboard_full_analysis_requested", { symbol: candidate.symbol, grade } as any);
-              }
-              track("dashboard_opportunity_opened", { symbol: candidate.symbol, grade } as any);
-              navigate(askRoute(`Analyze ${candidate.symbol}`));
-            }}
-            data-testid={`btn-open-analysis-${candidate.symbol}`}
-            aria-label={`${ctaText} for ${candidate.symbol}`}
-          >
-            {ctaText} <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </Button>
-        )}
+      <div className="pt-0.5">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          onClick={() => {
+            if (hasCachedResult) {
+              track("dashboard_existing_result_opened", { symbol: candidate.symbol } as any);
+            } else {
+              track("dashboard_full_analysis_requested", { symbol: candidate.symbol, grade } as any);
+            }
+            track("dashboard_opportunity_opened", { symbol: candidate.symbol, grade } as any);
+            navigate(askRoute(`Analyze ${candidate.symbol}`));
+          }}
+          data-testid={`btn-open-analysis-${candidate.symbol}`}
+          aria-label={`${ctaText} for ${candidate.symbol}`}
+        >
+          {ctaText} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </Button>
       </div>
     </div>
   );
 }
 
-function OpportunitiesSection({
+function OpportunitySubSection({
+  title,
+  icon: Icon,
   status,
   candidates,
-  dataMode,
+  emptyMessage,
   onRetry,
 }: {
-  status: string;
+  title: string;
+  icon: React.ElementType;
+  status: "ok" | "unavailable";
   candidates?: RadarCandidate[];
-  dataMode?: string;
+  emptyMessage: string;
   onRetry: () => void;
 }) {
   const [, navigate] = useLocation();
 
-  // Sprint 5.5B: batch-check which opportunity symbols have a cached full analysis.
-  // Only runs for non-demo sections (simulated candidates have no cached results).
+  // Batch cache check for this sub-section's symbols
   const symbolsKey = (candidates ?? []).map((c) => c.symbol).join(",");
   const { data: cacheData } = useQuery<{ hits: string[] }>({
     queryKey: ["analysis-cache-batch", symbolsKey],
     queryFn: async () => {
-      if (!symbolsKey || dataMode === "simulated") return { hits: [] };
+      if (!symbolsKey) return { hits: [] };
       try {
         const res = await apiRequest("GET", `/api/analysis/cached?symbols=${encodeURIComponent(symbolsKey)}`);
         if (!res.ok) return { hits: [] };
@@ -725,11 +840,65 @@ function OpportunitiesSection({
         return { hits: [] };
       }
     },
-    enabled: !!symbolsKey && dataMode !== "simulated",
-    staleTime: 30 * 1000, // re-check every 30 seconds
+    enabled: !!symbolsKey,
+    staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   });
   const cachedSymbols = new Set<string>((cacheData?.hits ?? []).map((s) => s.toUpperCase()));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground uppercase tracking-wide">
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          {title}
+        </h3>
+      </div>
+      {status === "unavailable" ? (
+        <SectionError label={title} onRetry={onRetry} />
+      ) : (candidates?.length ?? 0) === 0 ? (
+        <div className="rounded-lg border bg-card/30 px-3 py-4 text-center">
+          <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2 text-xs"
+            onClick={() => navigate("/scanner")}
+          >
+            Open Scanner
+          </Button>
+        </div>
+      ) : (
+        <div
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          role="list"
+          aria-label={`${title} candidates`}
+        >
+          {(candidates ?? []).slice(0, 5).map((c) => (
+            <OpportunityCard
+              key={c.id ?? `${c.symbol}-${c.rank}`}
+              candidate={c}
+              hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TodaysOpportunitiesSection({
+  growth,
+  income,
+  watchlist,
+  onRetry,
+}: {
+  growth: OpportunitiesBlock;
+  income: OpportunitiesBlock;
+  watchlist: OpportunitiesBlock;
+  onRetry: () => void;
+}) {
+  const [, navigate] = useLocation();
 
   return (
     <section aria-labelledby="opportunities-heading" data-testid="section-opportunities">
@@ -738,79 +907,243 @@ function OpportunitiesSection({
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm font-medium flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-              {/* Sprint 5.5A: rename section when all candidates are demonstration data */}
               <span id="opportunities-heading" data-testid="text-opportunities-heading">
-                {dataMode === "simulated" ? "Sample Opportunities" : "Today\u2019s Opportunities"}
+                Today&rsquo;s Market Opportunities
               </span>
             </CardTitle>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => navigate("/scanner")}
-              className="text-xs gap-1"
-              data-testid="btn-open-radar"
-              aria-label="Open scanner for more opportunities"
-            >
-              View All <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          </div>
-          {dataMode === "simulated" ? (
-            <>
-              {/* Clear demonstration-data banner — never describe simulated cards as "current" opportunities */}
-              <div
-                className="flex items-center gap-2 rounded-md border border-violet-500/30 bg-violet-500/5 px-3 py-2 mt-1"
-                role="note"
-                data-testid="banner-demo-opportunities"
-                aria-label="Demonstration data — these are example candidates only"
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn("text-[10px]", DATA_QUALITY_CLASS.REAL_DATA)}
+                data-testid="badge-opportunities-real-data"
               >
-                <Info className="h-3.5 w-3.5 text-violet-400 shrink-0" aria-hidden="true" />
-                <span className="text-xs text-violet-300">{DATA_QUALITY.SIMULATED}</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Demonstration candidates showing how ranked stock and options opportunities appear in VCP Trader AI. Connect a broker to see results based on current market data.
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Candidates from current market data, ranked by score. Not a recommendation to buy or sell.
-              {dataMode === "mixed" && " Some prices are estimated."}
-            </p>
-          )}
+                {DATA_QUALITY.REAL_DATA}
+              </Badge>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => navigate("/scanner")}
+                className="text-xs gap-1"
+                data-testid="btn-open-radar"
+                aria-label="Open scanner for more opportunities"
+              >
+                View All <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Candidates from current market data, ranked by score. Not a recommendation to buy or sell.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <OpportunitySubSection
+            title="Today's Growth Opportunities"
+            icon={TrendingUp}
+            status={growth.status}
+            candidates={growth.candidates}
+            emptyMessage="No growth candidates meet qualification criteria right now."
+            onRetry={onRetry}
+          />
+          <div className="border-t border-border/40 pt-5">
+            <OpportunitySubSection
+              title="Today's Income Opportunities"
+              icon={DollarSign}
+              status={income.status}
+              candidates={income.candidates}
+              emptyMessage="No income candidates meet qualification criteria right now."
+              onRetry={onRetry}
+            />
+          </div>
+          <div className="border-t border-border/40 pt-5">
+            <OpportunitySubSection
+              title="Today's Watchlist Movers"
+              icon={Star}
+              status={watchlist.status}
+              candidates={watchlist.candidates}
+              emptyMessage="No watchlist candidates qualify right now. Add symbols to a watchlist to see movers."
+              onRetry={onRetry}
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 5. AI Infrastructure Watch
+// ---------------------------------------------------------------------------
+
+const TREND_ICON: Record<string, React.ElementType> = {
+  up:   TrendingUp,
+  down: TrendingDown,
+  flat: Minus,
+};
+
+const TREND_CLASS: Record<string, string> = {
+  up:   "text-emerald-400",
+  down: "text-rose-400",
+  flat: "text-muted-foreground",
+};
+
+const SENTIMENT_CHIP_CLASS: Record<string, string> = {
+  bullish: "text-emerald-300 border-emerald-500/30 bg-emerald-500/5",
+  bearish: "text-rose-300 border-rose-500/30 bg-rose-500/5",
+  neutral: "text-muted-foreground border-border bg-muted/10",
+};
+
+const SENTIMENT_SHORT: Record<string, string> = {
+  bullish: "Positive",
+  bearish: "Bearish",
+  neutral: "Neutral",
+};
+
+function TechScoreBar({ score }: { score: number }) {
+  const color =
+    score >= 70 ? "bg-emerald-500" : score >= 50 ? "bg-amber-500" : "bg-rose-500";
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="h-1.5 w-14 rounded-full bg-muted/50 overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", color)}
+          style={{ width: `${score}%` }}
+        />
+      </div>
+      <span className="text-[10px] tabular-nums text-muted-foreground">{score}</span>
+    </div>
+  );
+}
+
+function AiInfraWatchSection({
+  status,
+  tickers,
+  onRetry,
+}: {
+  status: string;
+  tickers?: AiInfraTicker[];
+  onRetry: () => void;
+}) {
+  const [, navigate] = useLocation();
+
+  return (
+    <section aria-labelledby="ai-infra-heading" data-testid="section-ai-infra-watch">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+              <Cpu className="h-4 w-4 text-violet-400" aria-hidden="true" />
+              <span id="ai-infra-heading">AI Infrastructure Watch</span>
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn("text-[10px]", DATA_QUALITY_CLASS.DAILY_CLOSE)}
+                data-testid="badge-ai-infra-data"
+              >
+                {DATA_QUALITY.DAILY_CLOSE}
+              </Badge>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Core AI semiconductor and networking stocks — trend vs EMA21, news sentiment, technical score.
+            Not investment advice.
+          </p>
         </CardHeader>
         <CardContent>
           {status === "unavailable" ? (
-            <SectionError label="Opportunities" onRetry={onRetry} />
-          ) : (candidates?.length ?? 0) === 0 ? (
-            <div className="py-3 space-y-2" data-testid="text-no-opportunities">
-              <p className="text-sm text-muted-foreground">
-                No candidates meet qualification criteria right now.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => navigate("/scanner")}
-                data-testid="btn-open-scanner"
-              >
-                Open Scanner
-              </Button>
-            </div>
+            <SectionError label="AI infrastructure" onRetry={onRetry} />
           ) : (
-            <div
-              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-              role="list"
-              aria-label="Opportunity candidates"
-              data-testid="grid-opportunities"
-            >
-              {(candidates ?? []).slice(0, 5).map((c) => (
-                <OpportunityCard
-                  key={c.id ?? `${c.symbol}-${c.rank}`}
-                  candidate={c}
-                  // When the whole section is simulated, suppress per-card badge (section banner covers it)
-                  sectionDataMode={dataMode}
-                  // Sprint 5.5B: drive CTA label from server cache
-                  hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
-                />
-              ))}
+            <div className="space-y-1" role="list" aria-label="AI infrastructure tickers" data-testid="list-ai-infra">
+              {/* Header row */}
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-2 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span>Ticker</span>
+                <span className="w-16 text-right">Price</span>
+                <span className="w-14 text-center">Trend</span>
+                <span className="w-16 text-center">Sentiment</span>
+                <span className="w-20 text-center">Tech Score</span>
+              </div>
+
+              {(tickers ?? []).map((t) => {
+                const TrendIcon = TREND_ICON[t.trend] ?? Minus;
+                return (
+                  <div
+                    key={t.symbol}
+                    className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-lg border bg-card/50 px-2 py-2"
+                    role="listitem"
+                    data-testid={`ai-infra-${t.symbol}`}
+                    aria-label={`${t.symbol}: trend ${t.trend}, sentiment ${t.sentiment}, score ${t.technicalScore}`}
+                  >
+                    {/* Ticker + company */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-xs">{t.symbol}</span>
+                        <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">
+                          {t.companyName}
+                        </span>
+                      </div>
+                      {t.changePercent !== null && (
+                        <span
+                          className={cn(
+                            "text-[10px] tabular-nums",
+                            t.changePercent >= 0 ? "text-emerald-400" : "text-rose-400",
+                          )}
+                        >
+                          {t.changePercent >= 0 ? "+" : ""}{t.changePercent.toFixed(2)}%
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Price */}
+                    <div className="w-16 text-right">
+                      {t.last !== null ? (
+                        <span className="text-xs tabular-nums font-medium">
+                          ${t.last.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
+                    </div>
+
+                    {/* Trend */}
+                    <div className="w-14 flex justify-center">
+                      <span
+                        className={cn("flex items-center gap-0.5 text-xs", TREND_CLASS[t.trend])}
+                        title={t.trendLabel}
+                        aria-label={`Trend: ${t.trend} — ${t.trendLabel}`}
+                      >
+                        <TrendIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      </span>
+                    </div>
+
+                    {/* Sentiment */}
+                    <div className="w-16 flex justify-center">
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[10px] px-1.5", SENTIMENT_CHIP_CLASS[t.sentiment])}
+                        data-testid={`sentiment-${t.symbol}`}
+                        aria-label={`Sentiment: ${t.sentiment}`}
+                      >
+                        {SENTIMENT_SHORT[t.sentiment]}
+                      </Badge>
+                    </div>
+
+                    {/* Technical Score + Ask AI */}
+                    <div className="w-20 flex items-center justify-between gap-1">
+                      <TechScoreBar score={t.technicalScore} />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px] px-1.5 shrink-0"
+                        onClick={() => navigate(askRoute(`Analyze ${t.symbol}`))}
+                        aria-label={`Ask AI about ${t.symbol}`}
+                        data-testid={`btn-ask-ai-${t.symbol}`}
+                      >
+                        Ask <Sparkles className="h-2.5 w-2.5 ml-0.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -820,7 +1153,7 @@ function OpportunitiesSection({
 }
 
 // ---------------------------------------------------------------------------
-// 5. Portfolio Intelligence
+// 6. Portfolio Intelligence (Connect Broker gate — intentional)
 // ---------------------------------------------------------------------------
 
 function PortfolioSection({
@@ -876,9 +1209,7 @@ function PortfolioSection({
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg border bg-card/50 p-2.5" data-testid="tile-position-count">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Open positions</div>
-                  <div className="text-lg font-semibold tabular-nums mt-0.5" aria-label={`${positionCount} open positions`}>
-                    {positionCount}
-                  </div>
+                  <div className="text-lg font-semibold tabular-nums mt-0.5">{positionCount}</div>
                 </div>
                 <div className="rounded-lg border bg-card/50 p-2.5" data-testid="tile-unrealized-pnl">
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Unrealized P/L</div>
@@ -887,20 +1218,17 @@ function PortfolioSection({
                       "text-lg font-semibold tabular-nums mt-0.5",
                       totalPnl >= 0 ? "text-emerald-400" : "text-rose-400",
                     )}
-                    aria-label={`Unrealized P/L: ${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
                   >
                     {totalPnl >= 0 ? "+" : ""}${Math.abs(totalPnl).toLocaleString("en-US", { maximumFractionDigits: 0 })}
                   </div>
                 </div>
               </div>
-
               {largestConcentration && (
                 <div className="text-xs text-muted-foreground" data-testid="text-largest-concentration">
                   <span className="font-medium text-foreground/80">Largest position:</span>{" "}
                   <span className="font-mono">{largestConcentration.symbol}</span> — review concentration before adding exposure.
                 </div>
               )}
-
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   size="sm"
@@ -908,7 +1236,6 @@ function PortfolioSection({
                   className="text-xs gap-1"
                   onClick={() => navigate(askRoute("Analyze my portfolio exposure and concentration"))}
                   data-testid="btn-ask-portfolio"
-                  aria-label="Ask AI about portfolio"
                 >
                   <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Ask AI about Portfolio
                 </Button>
@@ -922,7 +1249,6 @@ function PortfolioSection({
                   Broker Settings <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
               </div>
-
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Portfolio context is informational only. VCP Trader AI does not advise on rebalancing, buying, or selling.
               </p>
@@ -935,7 +1261,7 @@ function PortfolioSection({
 }
 
 // ---------------------------------------------------------------------------
-// 6. Watchlist Activity
+// 7. Watchlist Activity
 // ---------------------------------------------------------------------------
 
 function WatchlistSection({
@@ -983,20 +1309,18 @@ function WatchlistSection({
                 className="gap-1.5"
                 onClick={() => navigate("/scanner")}
                 data-testid="btn-create-watchlist"
-                aria-label="Create a watchlist"
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Create Watchlist
               </Button>
             </div>
           ) : (
-            <div className="space-y-2" data-testid="list-watchlists" role="list" aria-label="Your watchlists">
+            <div className="space-y-2" role="list" aria-label="Your watchlists">
               {items!.slice(0, 5).map((wl) => (
                 <div
                   key={wl.id}
                   className="flex items-center justify-between rounded-lg border bg-card/50 px-3 py-2"
                   role="listitem"
                   data-testid={`watchlist-${wl.id}`}
-                  aria-label={`Watchlist: ${wl.name}, ${wl.symbols.length} symbols`}
                 >
                   <div>
                     <div className="text-sm font-medium">{wl.name}</div>
@@ -1014,7 +1338,6 @@ function WatchlistSection({
                     variant="ghost"
                     className="h-7 text-xs gap-1"
                     onClick={() => navigate(`/scanner?watchlist=${wl.id}`)}
-                    aria-label={`Scan ${wl.name} watchlist`}
                   >
                     Scan <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
@@ -1029,10 +1352,10 @@ function WatchlistSection({
 }
 
 // ---------------------------------------------------------------------------
-// 7. Growth & Income Opportunities
+// 8. Growth Watch — sentiment-driven, no hardcoded fallback
 // ---------------------------------------------------------------------------
 
-function GrowthIncomeSection({
+function GrowthWatchSection({
   snapshot,
   status,
   onRetry,
@@ -1043,108 +1366,59 @@ function GrowthIncomeSection({
 }) {
   const [, navigate] = useLocation();
 
+  // Only show when we have real sentiment-driven topGrowth
   if (status === "unavailable" || !snapshot) {
     return (
-      <section aria-labelledby="growth-income-heading" data-testid="section-growth-income">
-        <h2 id="growth-income-heading" className="sr-only">Growth and Income Opportunities</h2>
-        <SectionError label="Growth and income" onRetry={onRetry} />
+      <section aria-labelledby="growth-watch-heading" data-testid="section-growth-watch">
+        <h2 id="growth-watch-heading" className="sr-only">Growth Watch</h2>
+        <SectionError label="Growth watch" onRetry={onRetry} />
       </section>
     );
   }
 
-  const { topGrowth, bestIncome, dataMode } = snapshot;
+  const { topGrowth, growthSource } = snapshot;
+
+  // Only render when real sentiment data is available
+  if (!topGrowth || growthSource !== "sentiment") return null;
 
   return (
-    <section aria-labelledby="growth-income-heading" data-testid="section-growth-income">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {/* Growth */}
-        <Card>
-          {/* Sprint 5.5A: renamed to "Growth Watch" — topGrowth is news-sentiment or hardcoded reference,
-            NOT a deterministically qualified trade setup. Never call it an "opportunity." */}
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-emerald-400" aria-hidden="true" />
-              <span id="growth-income-heading">Growth Watch</span>
-            </CardTitle>
-            <div className="flex items-center gap-1.5">
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[10px] w-fit",
-                  snapshot.growthSource === "sentiment"
-                    ? DATA_QUALITY_CLASS.SNAPSHOT
-                    : DATA_QUALITY_CLASS.ESTIMATED,
-                )}
-                data-testid="badge-growth-source"
-                aria-label={snapshot.growthSource === "sentiment" ? "News-sentiment context" : "Reference context"}
-              >
-                {snapshot.growthSource === "sentiment" ? "News-sentiment context" : "Reference context"}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2" data-testid="card-growth">
-            <div className="font-mono font-semibold text-base">{topGrowth.symbol}</div>
-            {/* Context-appropriate framing: sentiment news ≠ a qualified setup */}
-            <p className="text-xs text-muted-foreground leading-snug" data-testid="text-growth-headline">
-              {snapshot.growthSource === "sentiment"
-                ? `${topGrowth.symbol} is receiving elevated positive news attention. Run a full analysis to evaluate technical and long-term conditions.`
-                : topGrowth.headline}
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs gap-1 h-7"
-              onClick={() => navigate(askRoute(`Analyze ${topGrowth.symbol} for long-term growth potential`))}
-              data-testid={`btn-analyze-growth-${topGrowth.symbol}`}
-              aria-label={`Run full analysis for ${topGrowth.symbol}`}
-            >
-              Run Full Analysis <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Income — renamed to "Income Idea to Explore": bestIncome is always hardcoded reference data.
-            No deterministic options qualification (ownership, chain, liquidity) has been performed. */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-              <DollarSign className="h-4 w-4 text-amber-400" aria-hidden="true" />
-              Income Idea to Explore
-            </CardTitle>
-            <Badge
-              variant="outline"
-              className={cn("text-[10px] w-fit", DATA_QUALITY_CLASS.ESTIMATED)}
-              data-testid="badge-income-estimated"
-              title="Income scenarios are illustrative reference examples. Actual contract details require a broker connection and full analysis."
-            >
-              {DATA_QUALITY.ESTIMATED}
-            </Badge>
-          </CardHeader>
-          <CardContent className="space-y-2" data-testid="card-income">
-            <div className="font-mono font-semibold text-base">{bestIncome.symbol}</div>
-            {/* Always use exploratory framing — no ownership/chain/liquidity check performed */}
-            <p className="text-xs text-muted-foreground leading-snug" data-testid="text-income-headline">
-              {`${bestIncome.symbol} may support dividend and covered-call analysis. Connect a broker or open the income workflow to evaluate share ownership, options liquidity, risk, and current contracts.`}
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs gap-1 h-7"
-              onClick={() => navigate(askRoute(`Find income opportunities with ${bestIncome.symbol}`))}
-              data-testid={`btn-analyze-income-${bestIncome.symbol}`}
-              aria-label={`Explore income ideas with ${bestIncome.symbol}`}
-            >
-              Explore Income Ideas <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+    <section aria-labelledby="growth-watch-heading" data-testid="section-growth-watch">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+            <TrendingUp className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+            <span id="growth-watch-heading">Growth Watch</span>
+          </CardTitle>
+          <Badge
+            variant="outline"
+            className={cn("text-[10px] w-fit", DATA_QUALITY_CLASS.SNAPSHOT)}
+            data-testid="badge-growth-source"
+          >
+            News-sentiment context
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-2" data-testid="card-growth">
+          <div className="font-mono font-semibold text-base">{topGrowth.symbol}</div>
+          <p className="text-xs text-muted-foreground leading-snug" data-testid="text-growth-headline">
+            {topGrowth.symbol} is receiving elevated positive news attention. Run a full analysis to evaluate technical and long-term conditions.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs gap-1 h-7"
+            onClick={() => navigate(askRoute(`Analyze ${topGrowth.symbol} for long-term growth potential`))}
+            data-testid={`btn-analyze-growth-${topGrowth.symbol}`}
+          >
+            Run Full Analysis <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </CardContent>
+      </Card>
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// 8. Saved Research
+// 9. Saved Research
 // ---------------------------------------------------------------------------
 
 function SavedResearchSection({
@@ -1173,7 +1447,6 @@ function SavedResearchSection({
               onClick={() => navigate("/research")}
               className="text-xs gap-1"
               data-testid="btn-open-research-library"
-              aria-label="Open Research Library"
             >
               Library <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
@@ -1187,69 +1460,43 @@ function SavedResearchSection({
               <p className="text-sm text-muted-foreground">
                 Run an analysis and choose <strong>Save Research</strong> to preserve an immutable evidence snapshot.
               </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => navigate("/ask")}
-                data-testid="btn-start-research"
-              >
+              <Button size="sm" variant="outline" onClick={() => navigate("/ask")} data-testid="btn-start-research">
                 Start Research
               </Button>
             </div>
           ) : (
-            <div className="space-y-2" role="list" aria-label="Saved research records" data-testid="list-research-records">
+            <div className="space-y-2" role="list" aria-label="Saved research records">
               {(records ?? []).map((r) => (
                 <div
                   key={r.id}
                   className="flex items-start justify-between gap-3 rounded-lg border bg-card/50 px-3 py-2.5"
                   role="listitem"
                   data-testid={`research-record-${r.id}`}
-                  aria-label={`Research: ${r.title}`}
                 >
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {r.symbol && (
-                        <span
-                          className="font-mono text-xs font-semibold"
-                          data-testid={`research-symbol-${r.id}`}
-                        >
-                          {r.symbol}
-                        </span>
+                        <span className="font-mono text-xs font-semibold">{r.symbol}</span>
                       )}
-                      <span
-                        className="text-sm font-medium truncate max-w-[200px]"
-                        data-testid={`research-title-${r.id}`}
-                      >
-                        {r.title}
-                      </span>
+                      <span className="text-sm font-medium truncate max-w-[200px]">{r.title}</span>
                     </div>
                     {r.verdict && (
-                      <p
-                        className="text-xs text-muted-foreground truncate"
-                        data-testid={`research-verdict-${r.id}`}
-                      >
-                        {r.verdict}
-                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{r.verdict}</p>
                     )}
-                    <p className="text-[10px] text-muted-foreground" data-testid={`research-date-${r.id}`}>
-                      {formatRelativeTime(r.generatedAt)}
-                    </p>
+                    <p className="text-[10px] text-muted-foreground">{formatRelativeTime(r.generatedAt)}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => {
-                        track("dashboard_research_opened" as any);
-                        navigate(`/research/${r.id}`);
-                      }}
-                      data-testid={`btn-open-research-${r.id}`}
-                      aria-label={`Open research record: ${r.title}`}
-                    >
-                      Open <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs gap-1 shrink-0"
+                    onClick={() => {
+                      track("dashboard_research_opened" as any);
+                      navigate(`/research/${r.id}`);
+                    }}
+                    data-testid={`btn-open-research-${r.id}`}
+                  >
+                    Open <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -1261,7 +1508,7 @@ function SavedResearchSection({
 }
 
 // ---------------------------------------------------------------------------
-// 9. Market Events (topNews)
+// 10. Market Events (topNews)
 // ---------------------------------------------------------------------------
 
 function MarketEventsSection({
@@ -1276,7 +1523,6 @@ function MarketEventsSection({
   const [, navigate] = useLocation();
 
   if (status === "unavailable" || !news || news.length === 0) {
-    // Only show error if status is explicitly unavailable; silently hide if empty
     if (status === "unavailable") {
       return (
         <section aria-labelledby="events-heading" data-testid="section-market-events">
@@ -1299,26 +1545,17 @@ function MarketEventsSection({
           <p className="text-xs text-muted-foreground">Recent news attention and sentiment context. This does not indicate that a setup qualifies.</p>
         </CardHeader>
         <CardContent>
-          <div
-            className="space-y-2"
-            role="list"
-            aria-label="Market news context"
-            data-testid="list-market-events"
-          >
+          <div className="space-y-2" role="list" aria-label="Market news context" data-testid="list-market-events">
             {news.slice(0, 5).map((item, i) => (
               <div
                 key={`${item.symbol}-${i}`}
                 className="flex items-start gap-3 rounded-lg border bg-card/50 px-3 py-2.5"
                 role="listitem"
                 data-testid={`event-${item.symbol}-${i}`}
-                aria-label={`${item.symbol}: ${item.whyItMatters}`}
               >
-                {/* Sprint 5.5A: never show raw "high/medium/low" — use explicit labels */}
                 <Badge
                   variant="outline"
                   className={cn("text-[10px] shrink-0 whitespace-nowrap", IMPACT_CLASS[item.impact])}
-                  data-testid={`badge-impact-${item.symbol}-${i}`}
-                  aria-label={`News attention: ${IMPACT_LABEL[item.impact] ?? item.impact}`}
                 >
                   {IMPACT_LABEL[item.impact] ?? item.impact}
                 </Badge>
@@ -1335,7 +1572,6 @@ function MarketEventsSection({
                           ? "text-rose-400 border-rose-500/30 bg-rose-500/5"
                           : "text-muted-foreground border-border",
                       )}
-                      aria-label={SENTIMENT_LABEL[item.label] ?? item.label}
                     >
                       {SENTIMENT_LABEL[item.label] ?? item.label}
                     </Badge>
@@ -1347,7 +1583,6 @@ function MarketEventsSection({
                   variant="ghost"
                   className="h-6 text-xs shrink-0 px-1.5"
                   onClick={() => navigate(askRoute(`What's happening with ${item.symbol}?`))}
-                  aria-label={`Ask AI about ${item.symbol}`}
                 >
                   Ask <Sparkles className="h-3 w-3 ml-0.5" aria-hidden="true" />
                 </Button>
@@ -1361,7 +1596,7 @@ function MarketEventsSection({
 }
 
 // ---------------------------------------------------------------------------
-// 10. Ask AI Panel
+// 11. Ask AI Panel
 // ---------------------------------------------------------------------------
 
 const SUGGESTED_PROMPTS = [
@@ -1389,11 +1624,7 @@ function AskAISection() {
           </p>
         </CardHeader>
         <CardContent>
-          <div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4"
-            role="list"
-            aria-label="Suggested prompts"
-          >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4" role="list">
             {SUGGESTED_PROMPTS.map((prompt) => (
               <button
                 key={prompt}
@@ -1402,18 +1633,12 @@ function AskAISection() {
                 className="text-left rounded-lg border bg-card/50 px-3 py-2.5 text-xs font-medium transition-colors hover:bg-accent/40 hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => navigate(askRoute(prompt))}
                 data-testid={`btn-prompt-${prompt.slice(0, 20).replace(/\s/g, "-").toLowerCase()}`}
-                aria-label={`Ask: ${prompt}`}
               >
                 {prompt}
               </button>
             ))}
           </div>
-          <Button
-            onClick={() => navigate("/ask")}
-            className="gap-2"
-            data-testid="btn-open-ask"
-            aria-label="Open Ask AI"
-          >
+          <Button onClick={() => navigate("/ask")} className="gap-2" data-testid="btn-open-ask">
             <Sparkles className="h-4 w-4" aria-hidden="true" /> Open Ask AI
           </Button>
         </CardContent>
@@ -1431,12 +1656,14 @@ function DashboardSkeleton() {
     <div className="space-y-5" aria-label="Loading dashboard…" aria-busy="true" data-testid="dashboard-skeleton">
       <Skeleton className="h-14 w-full" />
       <Skeleton className="h-20 w-full" />
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
+        <Skeleton className="h-24" />
         <Skeleton className="h-24" />
         <Skeleton className="h-24" />
         <Skeleton className="h-24" />
       </div>
       <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-64 w-full" />
       <div className="grid gap-4 lg:grid-cols-2">
         <Skeleton className="h-32" />
         <Skeleton className="h-32" />
@@ -1456,11 +1683,10 @@ export default function DashboardPage() {
 
   const dashboardQuery = useQuery<DashboardResponse>({
     queryKey: ["/api/dashboard"],
-    refetchInterval: 5 * 60_000, // refresh every 5 minutes
+    refetchInterval: 5 * 60_000,
     staleTime: 60_000,
   });
 
-  // Fire analytics on mount
   useEffect(() => {
     track("dashboard_viewed" as any);
   }, []);
@@ -1495,7 +1721,6 @@ export default function DashboardPage() {
                   className="mt-3 gap-1.5"
                   onClick={() => dashboardQuery.refetch()}
                   data-testid="btn-dashboard-retry"
-                  aria-label="Retry loading dashboard"
                 >
                   <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Retry
                 </Button>
@@ -1509,10 +1734,9 @@ export default function DashboardPage() {
 
   const data = dashboardQuery.data!;
   const snapshot = data.marketSnapshot.status === "ok" ? data.marketSnapshot.data : undefined;
-  const opportunities = data.opportunities.status === "ok" ? data.opportunities.candidates : undefined;
-  const opportunitiesDataMode = data.opportunities.status === "ok" ? data.opportunities.dataMode : undefined;
   const records = data.savedResearch.status === "ok" ? data.savedResearch.records : undefined;
   const watchlists = data.watchlists.status === "ok" ? data.watchlists.items : undefined;
+  const aiInfra = data.aiInfraWatch;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -1528,7 +1752,7 @@ export default function DashboardPage() {
         {/* 2. Quick Actions */}
         <QuickActionsSection />
 
-        {/* 3. Market Snapshot */}
+        {/* 3. Market Snapshot — real data, VIX, regime, sectors */}
         <MarketSnapshotSection
           data={snapshot}
           status={data.marketSnapshot.status}
@@ -1538,18 +1762,28 @@ export default function DashboardPage() {
           }}
         />
 
-        {/* 4. Today's Opportunities */}
-        <OpportunitiesSection
-          status={data.opportunities.status}
-          candidates={opportunities}
-          dataMode={opportunitiesDataMode}
+        {/* 4. Today's Market Opportunities — Growth / Income / Watchlist */}
+        <TodaysOpportunitiesSection
+          growth={data.growthOpportunities}
+          income={data.incomeOpportunities}
+          watchlist={data.watchlistOpportunities}
           onRetry={() => {
             track("dashboard_section_retry", { section: "opportunities" } as any);
             dashboardQuery.refetch();
           }}
         />
 
-        {/* 5 + 6: Portfolio & Watchlist — two-column on large screens */}
+        {/* 5. AI Infrastructure Watch */}
+        <AiInfraWatchSection
+          status={aiInfra.status}
+          tickers={aiInfra.status === "ok" ? aiInfra.tickers : undefined}
+          onRetry={() => {
+            track("dashboard_section_retry", { section: "ai_infra" } as any);
+            dashboardQuery.refetch();
+          }}
+        />
+
+        {/* 6 + 7: Portfolio & Watchlist — two-column on large screens */}
         <div className="grid gap-4 lg:grid-cols-2">
           <PortfolioSection
             brokerConnected={data.portfolio.brokerConnected}
@@ -1570,14 +1804,14 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* 7. Growth & Income */}
-        <GrowthIncomeSection
+        {/* 8. Growth Watch — sentiment-driven only, no hardcoded fallback */}
+        <GrowthWatchSection
           snapshot={snapshot}
           status={data.marketSnapshot.status}
           onRetry={() => dashboardQuery.refetch()}
         />
 
-        {/* 8. Saved Research */}
+        {/* 9. Saved Research */}
         <SavedResearchSection
           status={data.savedResearch.status}
           records={records}
@@ -1587,21 +1821,21 @@ export default function DashboardPage() {
           }}
         />
 
-        {/* 9. Market Events */}
+        {/* 10. Market Events */}
         <MarketEventsSection
           status={data.marketSnapshot.status}
           news={snapshot?.topNews}
           onRetry={() => dashboardQuery.refetch()}
         />
 
-        {/* 10. Ask AI Panel */}
+        {/* 11. Ask AI Panel */}
         <AskAISection />
 
         {/* Compliance footer */}
         <p className="text-xs text-muted-foreground pt-4 border-t leading-relaxed" data-testid="text-dashboard-disclaimer">
-          VCP Trader AI provides market analysis, opportunity discovery, and educational information for self-directed
-          investors and traders. It does not provide personalized investment advice or manage customer assets.
-          Nothing shown here is a recommendation to buy or sell. You are solely responsible for every trading decision.
+          VCP Trader AI surfaces market data and AI-generated analysis for educational purposes only.
+          Nothing on this dashboard constitutes investment advice or a recommendation to buy, sell, or hold any security.
+          Market data is provided by Twelve Data (latest daily close). Always confirm information with your own broker before acting.
         </p>
       </div>
     </div>

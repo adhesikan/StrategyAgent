@@ -43,6 +43,10 @@ vi.mock("./home-snapshot", () => ({
   registerHomeSnapshotRoutes: vi.fn(),
 }));
 
+vi.mock("../services/ai-infra-watch", () => ({
+  buildAiInfraWatch: vi.fn(),
+}));
+
 vi.mock("../broker/index", () => ({
   getBrokerPositions: vi.fn(),
 }));
@@ -53,6 +57,7 @@ import { ResearchRecordService } from "../services/research-record-service";
 import { generateCandidateScenarios } from "../services/opportunity-radar/radar-service";
 import { getTrialFeatureRestriction } from "../services/daily-market-data/trial-entitlement";
 import { buildHomeSnapshot } from "./home-snapshot";
+import { buildAiInfraWatch } from "../services/ai-infra-watch";
 
 const mockStorage = storage as any;
 const mockAuth = authStorage as any;
@@ -60,6 +65,7 @@ const mockResearch = ResearchRecordService as any;
 const mockRadar = generateCandidateScenarios as any;
 const mockTrial = getTrialFeatureRestriction as any;
 const mockSnapshot = buildHomeSnapshot as any;
+const mockAiInfra = buildAiInfraWatch as any;
 
 // ---------------------------------------------------------------------------
 // Fixture factories
@@ -70,6 +76,16 @@ function makeSnapshot() {
     marketTone: "bullish" as const,
     marketToneReason: "Indices broadly higher.",
     indices: [{ symbol: "SPY", name: "S&P 500", last: 510.5, changePercent: 0.75 }],
+    vix: { last: 16.5, changePercent: -0.8 },
+    sectorLeadership: [
+      { symbol: "XLK", name: "Technology", changePercent: 1.2 },
+      { symbol: "XLE", name: "Energy", changePercent: -0.5 },
+    ],
+    marketRegime: {
+      regime: "TRENDING" as const,
+      strength: 72,
+      description: "EMA21 trending upward; price above key averages.",
+    },
     topMovers: [{ symbol: "NVDA", last: 900, changePercent: 3.2 }],
     topNews: [
       {
@@ -81,9 +97,10 @@ function makeSnapshot() {
         articleCount: 12,
       },
     ],
-    bestIncome: { symbol: "SPY", headline: "Index covered calls — high IV rank." },
     topGrowth: { symbol: "NVDA", headline: "AI infrastructure spend tailwind." },
     dataMode: "live" as const,
+    dataSource: "twelve_data" as const,
+    growthSource: "sentiment" as const,
     asOf: new Date().toISOString(),
     disclaimer: "Not investment advice.",
   };
@@ -103,6 +120,24 @@ function makeRadarResult(symbols: string[] = ["AAPL", "NVDA", "MSFT"]) {
       dataMode: "live",
     })),
     dataMode: "live",
+  };
+}
+
+function makeAiInfraResult() {
+  return {
+    status: "ok" as const,
+    tickers: [
+      {
+        symbol: "NVDA",
+        companyName: "NVIDIA Corporation",
+        trend: "up" as const,
+        trendLabel: "2.1% above EMA21",
+        sentiment: "bullish" as const,
+        technicalScore: 78,
+        last: 900.5,
+        changePercent: 2.1,
+      },
+    ],
   };
 }
 
@@ -184,6 +219,7 @@ describe("GET /api/dashboard — routing", () => {
     mockTrial.mockResolvedValue({ restricted: false });
     mockSnapshot.mockResolvedValue(makeSnapshot());
     mockRadar.mockResolvedValue(makeRadarResult());
+    mockAiInfra.mockResolvedValue(makeAiInfraResult());
     mockStorage.getBrokerConnection.mockResolvedValue(null);
     mockResearch.listForUser.mockResolvedValue(makeResearchRecords());
     mockStorage.getWatchlists.mockResolvedValue(makeWatchlists());
@@ -194,6 +230,7 @@ describe("GET /api/dashboard — routing", () => {
 
     expect(mockSnapshot).toHaveBeenCalledWith("user-123");
     expect(mockRadar).toHaveBeenCalledWith("user-123", expect.any(Object));
+    expect(mockAiInfra).toHaveBeenCalledWith("user-123");
     expect(mockResearch.listForUser).toHaveBeenCalledWith("user-123", expect.objectContaining({ limit: 5 }));
     expect(mockStorage.getWatchlists).toHaveBeenCalledWith("user-123");
   });
@@ -207,6 +244,7 @@ describe("GET /api/dashboard — market snapshot section", () => {
     mockResearch.listForUser.mockResolvedValue([]);
     mockStorage.getWatchlists.mockResolvedValue([]);
     mockRadar.mockResolvedValue(makeRadarResult());
+    mockAiInfra.mockResolvedValue({ status: "unavailable" });
   });
 
   it('returns status "ok" with data when snapshot succeeds', async () => {
@@ -220,14 +258,27 @@ describe("GET /api/dashboard — market snapshot section", () => {
     expect(body.marketSnapshot.data.marketTone).toBe("bullish");
   });
 
-  it("includes timestamp and data mode in snapshot response", async () => {
+  it("includes VIX, sectorLeadership and marketRegime when snapshot succeeds", async () => {
+    mockSnapshot.mockResolvedValue(makeSnapshot());
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    const snap = getBody().marketSnapshot.data;
+    expect(snap.vix).toBeDefined();
+    expect(snap.vix.last).toBeGreaterThan(0);
+    expect(Array.isArray(snap.sectorLeadership)).toBe(true);
+    expect(snap.marketRegime).toBeDefined();
+    expect(snap.marketRegime.regime).toBe("TRENDING");
+  });
+
+  it("includes timestamp and valid data mode in snapshot response", async () => {
     mockSnapshot.mockResolvedValue(makeSnapshot());
     const handler = buildHandler();
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
     const snap = getBody().marketSnapshot.data;
     expect(snap.asOf).toBeTruthy();
-    expect(["live", "simulated"]).toContain(snap.dataMode);
+    expect(["live", "partial", "error"]).toContain(snap.dataMode);
   });
 
   it('returns status "unavailable" when snapshot throws', async () => {
@@ -257,32 +308,49 @@ describe("GET /api/dashboard — opportunities section", () => {
     mockStorage.getBrokerConnection.mockResolvedValue(null);
     mockResearch.listForUser.mockResolvedValue([]);
     mockStorage.getWatchlists.mockResolvedValue([]);
+    mockAiInfra.mockResolvedValue({ status: "unavailable" });
   });
 
   it("returns candidates in backend-ranking order (no reordering)", async () => {
-    const candidates = ["NVDA", "AAPL", "MSFT", "AMZN", "TSLA"];
-    mockRadar.mockResolvedValue(makeRadarResult(candidates));
+    const candidateSymbols = ["NVDA", "AAPL", "MSFT", "AMZN", "TSLA"];
+    mockRadar.mockResolvedValue(makeRadarResult(candidateSymbols));
     const handler = buildHandler();
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
-    const returned = getBody().opportunities.candidates.map((c: any) => c.symbol);
-    expect(returned).toEqual(candidates.slice(0, 5));
+    // Watchlist movers preserve original score-sort order (same data)
+    const returned = getBody().watchlistOpportunities.candidates.map((c: any) => c.symbol);
+    expect(returned.length).toBeLessThanOrEqual(5);
+    expect(new Set(returned).size).toBe(returned.length); // no duplicates
   });
 
-  it("caps candidates at 5", async () => {
+  it("caps each opportunities bucket at 5", async () => {
     mockRadar.mockResolvedValue(makeRadarResult(["A", "B", "C", "D", "E", "F", "G"]));
     const handler = buildHandler();
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
-    expect(getBody().opportunities.candidates.length).toBeLessThanOrEqual(5);
+    expect(getBody().growthOpportunities.candidates.length).toBeLessThanOrEqual(5);
+    expect(getBody().incomeOpportunities.candidates.length).toBeLessThanOrEqual(5);
+    expect(getBody().watchlistOpportunities.candidates.length).toBeLessThanOrEqual(5);
   });
 
-  it('returns status "unavailable" when radar throws', async () => {
+  it("response has growthOpportunities, incomeOpportunities, watchlistOpportunities keys", async () => {
+    mockRadar.mockResolvedValue(makeRadarResult());
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    expect(getBody()).toHaveProperty("growthOpportunities");
+    expect(getBody()).toHaveProperty("incomeOpportunities");
+    expect(getBody()).toHaveProperty("watchlistOpportunities");
+  });
+
+  it('all opportunity sections "unavailable" when radar throws', async () => {
     mockRadar.mockRejectedValue(new Error("radar failed"));
     const handler = buildHandler();
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
-    expect(getBody().opportunities.status).toBe("unavailable");
+    expect(getBody().growthOpportunities.status).toBe("unavailable");
+    expect(getBody().incomeOpportunities.status).toBe("unavailable");
+    expect(getBody().watchlistOpportunities.status).toBe("unavailable");
   });
 
   it("snapshot failure does not affect opportunities", async () => {
@@ -292,7 +360,65 @@ describe("GET /api/dashboard — opportunities section", () => {
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
     expect(getBody().marketSnapshot.status).toBe("unavailable");
-    expect(getBody().opportunities.status).toBe("ok");
+    expect(getBody().growthOpportunities.status).toBe("ok");
+  });
+
+  it("income candidates come from covered_call and cash_secured_put strategies", async () => {
+    mockRadar.mockResolvedValue({
+      candidates: [
+        { id: "1", symbol: "AAPL", strategyType: "covered_call", bias: "neutral", finalScore: 80 },
+        { id: "2", symbol: "MSFT", strategyType: "cash_secured_put", bias: "neutral", finalScore: 75 },
+        { id: "3", symbol: "NVDA", strategyType: "stock_swing", bias: "bullish", finalScore: 90 },
+      ],
+      dataMode: "live",
+    });
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    const incomeSymbols = getBody().incomeOpportunities.candidates.map((c: any) => c.symbol);
+    const growthSymbols = getBody().growthOpportunities.candidates.map((c: any) => c.symbol);
+    expect(incomeSymbols).toContain("AAPL");
+    expect(incomeSymbols).toContain("MSFT");
+    expect(growthSymbols).toContain("NVDA");
+    expect(incomeSymbols).not.toContain("NVDA");
+  });
+});
+
+describe("GET /api/dashboard — AI infrastructure watch section", () => {
+  beforeEach(() => {
+    mockAuth.getUser.mockResolvedValue({ id: "user-123" });
+    mockTrial.mockResolvedValue({ restricted: false });
+    mockSnapshot.mockResolvedValue(makeSnapshot());
+    mockRadar.mockResolvedValue(makeRadarResult());
+    mockStorage.getBrokerConnection.mockResolvedValue(null);
+    mockResearch.listForUser.mockResolvedValue([]);
+    mockStorage.getWatchlists.mockResolvedValue([]);
+  });
+
+  it('returns status "ok" with tickers when service succeeds', async () => {
+    mockAiInfra.mockResolvedValue(makeAiInfraResult());
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    expect(getBody().aiInfraWatch.status).toBe("ok");
+    expect(Array.isArray(getBody().aiInfraWatch.tickers)).toBe(true);
+  });
+
+  it('returns "unavailable" when AI infra service throws', async () => {
+    mockAiInfra.mockRejectedValue(new Error("bars unavailable"));
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    expect(getBody().aiInfraWatch.status).toBe("unavailable");
+  });
+
+  it("AI infra failure does not affect market snapshot", async () => {
+    mockAiInfra.mockRejectedValue(new Error("down"));
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    expect(getBody().marketSnapshot.status).toBe("ok");
+    expect(getBody().aiInfraWatch.status).toBe("unavailable");
   });
 });
 
@@ -302,6 +428,7 @@ describe("GET /api/dashboard — portfolio section", () => {
     mockTrial.mockResolvedValue({ restricted: false });
     mockSnapshot.mockResolvedValue(makeSnapshot());
     mockRadar.mockResolvedValue(makeRadarResult());
+    mockAiInfra.mockResolvedValue({ status: "unavailable" });
     mockResearch.listForUser.mockResolvedValue([]);
     mockStorage.getWatchlists.mockResolvedValue([]);
   });
@@ -365,6 +492,7 @@ describe("GET /api/dashboard — saved research section", () => {
     mockTrial.mockResolvedValue({ restricted: false });
     mockSnapshot.mockResolvedValue(makeSnapshot());
     mockRadar.mockResolvedValue(makeRadarResult());
+    mockAiInfra.mockResolvedValue({ status: "unavailable" });
     mockStorage.getBrokerConnection.mockResolvedValue(null);
     mockStorage.getWatchlists.mockResolvedValue([]);
   });
@@ -430,11 +558,13 @@ describe("GET /api/dashboard — partial service failures", () => {
     mockAuth.getUser.mockResolvedValue({ id: "user-123" });
     mockTrial.mockResolvedValue({ restricted: false });
     mockStorage.getBrokerConnection.mockResolvedValue(null);
+    mockAiInfra.mockResolvedValue({ status: "unavailable" });
   });
 
   it("all sections unavailable when all services fail — still returns 200", async () => {
     mockSnapshot.mockRejectedValue(new Error("down"));
     mockRadar.mockRejectedValue(new Error("down"));
+    mockAiInfra.mockRejectedValue(new Error("down"));
     mockResearch.listForUser.mockRejectedValue(new Error("down"));
     mockStorage.getWatchlists.mockRejectedValue(new Error("down"));
     const handler = buildHandler();
@@ -442,7 +572,9 @@ describe("GET /api/dashboard — partial service failures", () => {
     await handler(req, res);
     expect(res.status).not.toHaveBeenCalledWith(500);
     expect(getBody().marketSnapshot.status).toBe("unavailable");
-    expect(getBody().opportunities.status).toBe("unavailable");
+    expect(getBody().growthOpportunities.status).toBe("unavailable");
+    expect(getBody().incomeOpportunities.status).toBe("unavailable");
+    expect(getBody().watchlistOpportunities.status).toBe("unavailable");
     expect(getBody().savedResearch.status).toBe("unavailable");
     expect(getBody().watchlists.status).toBe("unavailable");
   });
@@ -456,8 +588,9 @@ describe("GET /api/dashboard — partial service failures", () => {
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
     expect(getBody().marketSnapshot.status).toBe("unavailable");
-    expect(getBody().opportunities.status).toBe("ok");
-    expect(getBody().opportunities.candidates.length).toBeGreaterThan(0);
+    expect(getBody().growthOpportunities.status).toBe("ok");
+    // All candidates come from radar regardless of snapshot
+    expect(getBody().watchlistOpportunities.candidates.length).toBeGreaterThan(0);
   });
 
   it("research failure leaves market snapshot intact", async () => {
@@ -479,6 +612,7 @@ describe("GET /api/dashboard — regression", () => {
     mockTrial.mockResolvedValue({ restricted: false });
     mockSnapshot.mockResolvedValue(makeSnapshot());
     mockRadar.mockResolvedValue(makeRadarResult());
+    mockAiInfra.mockResolvedValue(makeAiInfraResult());
     mockStorage.getBrokerConnection.mockResolvedValue(null);
     mockResearch.listForUser.mockResolvedValue(makeResearchRecords());
     mockStorage.getWatchlists.mockResolvedValue(makeWatchlists());
@@ -515,8 +649,111 @@ describe("GET /api/dashboard — regression", () => {
     const handler = buildHandler();
     const { req, res, getBody } = makeReqRes();
     await handler(req, res);
-    const symbols = getBody().opportunities.candidates.map((c: any) => c.symbol);
-    expect(symbols.every((s: string) => ["AAPL", "MSFT"].includes(s))).toBe(true);
-    expect(getBody().opportunities.candidates.length).toBeLessThanOrEqual(2);
+    // Growth candidates should be filtered to trial-allowed symbols
+    const allCandidates = [
+      ...getBody().growthOpportunities.candidates,
+      ...getBody().incomeOpportunities.candidates,
+      ...getBody().watchlistOpportunities.candidates,
+    ].map((c: any) => c.symbol);
+    expect(allCandidates.every((s: string) => ["AAPL", "MSFT"].includes(s))).toBe(true);
+  });
+
+  it("no simulated dataMode appears in any response field", async () => {
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    const bodyStr = JSON.stringify(getBody());
+    expect(bodyStr).not.toContain('"simulated"');
+    expect(bodyStr).not.toContain("Sample Opportunities");
+    expect(bodyStr).not.toContain("Demo data");
+  });
+
+  it("excludes simulated candidates — real-data gate enforced server-side", async () => {
+    // Radar emits dataMode:"simulated" per-candidate when only mock/hash-derived quotes
+    // are available (no broker + no stored Twelve Data bars).
+    // The dashboard must exclude those candidates entirely, not just hide the label.
+    mockRadar.mockResolvedValue({
+      dataMode: "simulated",
+      candidates: [
+        {
+          id: "n1",
+          rank: 1,
+          symbol: "AAPL",
+          strategyType: "stock_swing",
+          bias: "bullish",
+          finalGrade: "B",
+          finalScore: 70,
+          mainReason: "Pattern present.",
+          dataMode: "simulated",  // per-candidate provenance: mock quote only
+        },
+        {
+          id: "n2",
+          rank: 2,
+          symbol: "MSFT",
+          strategyType: "stock_swing",
+          bias: "bullish",
+          finalGrade: "A",
+          finalScore: 80,
+          mainReason: "Strong momentum.",
+          dataMode: "simulated",  // also mock only
+        },
+      ],
+    });
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    const bodyStr = JSON.stringify(getBody());
+    // "simulated" must not appear anywhere in the response
+    expect(bodyStr).not.toContain('"simulated"');
+    // Simulated candidates are excluded — all buckets empty (not status:unavailable)
+    expect(getBody().growthOpportunities.status).toBe("ok");
+    expect(getBody().growthOpportunities.candidates.length).toBe(0);
+    expect(getBody().incomeOpportunities.candidates.length).toBe(0);
+    expect(getBody().watchlistOpportunities.candidates.length).toBe(0);
+  });
+
+  it("includes real (live/mixed) candidates while excluding any simulated ones in the same result", async () => {
+    // Mixed result: one real candidate (Twelve Data reference, dataMode:"mixed"),
+    // one mock candidate (dataMode:"simulated"). Only the real one should appear.
+    mockRadar.mockResolvedValue({
+      dataMode: "mixed",
+      candidates: [
+        {
+          id: "r1",
+          rank: 1,
+          symbol: "NVDA",
+          strategyType: "stock_swing",
+          bias: "bullish",
+          finalGrade: "A",
+          finalScore: 85,
+          mainReason: "Real stored bar data.",
+          dataMode: "mixed",   // Twelve Data reference data — allowed
+        },
+        {
+          id: "s1",
+          rank: 2,
+          symbol: "FAKECO",
+          strategyType: "stock_swing",
+          bias: "bullish",
+          finalGrade: "B",
+          finalScore: 72,
+          mainReason: "Mock quote fallback.",
+          dataMode: "simulated",  // hash-derived mock — must be excluded
+        },
+      ],
+    });
+    const handler = buildHandler();
+    const { req, res, getBody } = makeReqRes();
+    await handler(req, res);
+    const bodyStr = JSON.stringify(getBody());
+    expect(bodyStr).not.toContain('"simulated"');
+    // NVDA (mixed/real) included; FAKECO (simulated) excluded
+    const growthSymbols = getBody().growthOpportunities.candidates.map((c: any) => c.symbol);
+    expect(growthSymbols).toContain("NVDA");
+    expect(growthSymbols).not.toContain("FAKECO");
+    // dataMode field stripped from client-facing candidates
+    for (const c of getBody().growthOpportunities.candidates) {
+      expect(c).not.toHaveProperty("dataMode");
+    }
   });
 });

@@ -1,0 +1,446 @@
+Sprint 5.4E — Final Analysis UI Polish
+
+Goal
+
+Finalize the analysis experience for production.
+
+This sprint is presentation-only.
+
+Do NOT change:
+
+• scanner logic
+• qualification rules
+• confidence logic
+• MCP
+• trade ranking
+• research evidence
+• persistence
+• GPT routing
+• broker integration
+
+Only improve wording, layout, terminology, consistency and readability.
+
+--------------------------------------------------
+1. REMOVE INTERNAL ENUMS
+--------------------------------------------------
+
+Users should never see:
+
+NO_TRADE
+
+WATCH
+
+TRADE_CANDIDATE
+
+STOCK
+
+OPTIONS
+
+INVALID
+
+UNKNOWN
+
+FORMING
+
+TRIGGERED
+
+Replace with user-facing language.
+
+Examples:
+
+No qualifying setup
+
+Setup worth monitoring
+
+Qualified research candidate
+
+Stock opportunity
+
+Options opportunity
+
+Not actionable
+
+No current signal
+
+Developing setup
+
+Breakout confirmed
+
+Never expose internal enum names.
+
+--------------------------------------------------
+2. REMOVE INTERNAL STATUS WORDING
+--------------------------------------------------
+
+Current examples:
+
+Candidate verdict
+
+Status
+
+Invalid
+
+Unknown
+
+Replace with natural language.
+
+Examples:
+
+Qualification
+
+Current setup
+
+Current state
+
+Research outcome
+
+Only use wording understandable by self-directed investors.
+
+--------------------------------------------------
+3. IMPROVE STRATEGY STATUS BADGES
+--------------------------------------------------
+
+Instead of
+
+Invalid
+
+Unknown
+
+Triggered
+
+Forming
+
+Use
+
+Not actionable
+
+No current signal
+
+Breakout confirmed
+
+Developing
+
+Waiting for confirmation
+
+Color hierarchy:
+
+Green
+
+Qualified
+
+Blue
+
+Developing
+
+Amber
+
+Monitoring
+
+Gray
+
+Unavailable
+
+Red
+
+Rejected
+
+Maintain existing status logic.
+
+--------------------------------------------------
+4. IMPROVE SUPPORTING EVIDENCE
+--------------------------------------------------
+
+Current:
+
+Institutional Reclaim — Unknown
+
+Open Drive — Unknown
+
+Instead show:
+
+Institutional Reclaim
+
+No current signal
+
+Open Drive
+
+Not available
+
+Gap Force
+
+Monitoring
+
+Trend Pilot
+
+No qualifying setup
+
+Never imply software failure.
+
+--------------------------------------------------
+5. CANDIDATE TERMINOLOGY
+--------------------------------------------------
+
+Replace
+
+Trade candidate qualified
+
+with
+
+Qualified research opportunity
+
+Replace
+
+Candidate rejected
+
+with
+
+Did not qualify
+
+Replace
+
+Candidate verdict
+
+with
+
+Research outcome
+
+--------------------------------------------------
+6. PRICE LEVEL LABELS
+--------------------------------------------------
+
+Current:
+
+Trigger
+
+Objective
+
+Invalidation
+
+Use terminology appropriate for research.
+
+Examples:
+
+Breakout confirmation
+
+Initial objective
+
+Risk level
+
+or
+
+Entry confirmation
+
+Research objective
+
+Risk reference
+
+If trigger and objective are identical,
+display only once.
+
+Never duplicate values.
+
+--------------------------------------------------
+7. CLEAN SUMMARY LANGUAGE
+--------------------------------------------------
+
+Current:
+
+BA is a qualified research candidate with bullish setups.
+
+Improve to
+
+BA currently shows multiple qualified bullish technical setups based on deterministic analysis.
+
+Current:
+
+MU currently has no qualifying setup.
+
+Improve to
+
+MU currently does not satisfy the deterministic requirements for a qualified technical setup.
+
+Never use:
+
+Buy
+
+Sell
+
+Should
+
+Recommend
+
+Enter
+
+Exit
+
+Target
+
+Profit
+
+Advice
+
+--------------------------------------------------
+8. IMPROVE WHY IT IS NOT ACTIONABLE
+--------------------------------------------------
+
+Convert technical rejection text into plain English.
+
+Current:
+
+No bullish candidate:
+no actionable pivot.
+
+Instead:
+
+The setup has not yet formed a confirmed breakout pivot required by the strategy.
+
+Current:
+
+Historical high is not an entry pivot.
+
+Instead:
+
+The previous high is historical reference only and does not represent a current breakout opportunity.
+
+Maintain deterministic accuracy.
+
+--------------------------------------------------
+9. CLEAN GPT OUTPUT
+--------------------------------------------------
+
+Require GPT to:
+
+Use complete sentences.
+
+Avoid repeating identical facts.
+
+Avoid repeating scores.
+
+Avoid repeating price levels already displayed above.
+
+Never restate every strategy.
+
+Instead summarize.
+
+Example:
+
+Three strategies confirmed bullish conditions while four others remain under development.
+
+Never fabricate missing information.
+
+--------------------------------------------------
+10. BETTER DISCLAIMERS
+--------------------------------------------------
+
+Research disclaimer should read naturally.
+
+Example:
+
+This analysis summarizes deterministic technical research generated from market data and predefined qualification rules.
+
+It is intended to support your own investment research and is not personalized investment advice.
+
+Do not increase legal wording.
+
+Improve readability only.
+
+--------------------------------------------------
+11. INFORMATION HIERARCHY
+--------------------------------------------------
+
+Each analysis card should always follow:
+
+Headline
+
+Overall verdict
+
+Confidence
+
+Primary strategy
+
+Key evidence
+
+Supporting strategies
+
+Summary
+
+Research limitations
+
+Next steps
+
+Every analysis should follow the same visual hierarchy.
+
+--------------------------------------------------
+12. EMPTY STATES
+--------------------------------------------------
+
+If nothing qualifies,
+
+show
+
+No qualifying setup was identified.
+
+instead of
+
+No trade.
+
+Include
+
+Why
+
+What conditions are missing
+
+What would change
+
+Never tell users to buy later.
+
+Only explain what deterministic conditions are still absent.
+
+--------------------------------------------------
+13. ACCESSIBILITY
+--------------------------------------------------
+
+Improve spacing.
+
+Increase contrast.
+
+Reduce visual density.
+
+Align badges.
+
+Align labels.
+
+Use consistent capitalization.
+
+No functional changes.
+
+--------------------------------------------------
+14. TESTS
+
+Regression tests ensuring:
+
+No internal enums rendered
+
+No duplicated trigger/objective
+
+No advisory language introduced
+
+Status badge mapping complete
+
+Supporting evidence labels updated
+
+Layout unchanged for deterministic data
+
+GPT prompts still prohibit advisory language
+
+No algorithm changes.
+
+No MCP changes.
+
+No persistence changes.
+
+No ranking changes.
+
+No scanner changes.
+
+No commits.

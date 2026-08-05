@@ -1,0 +1,520 @@
+Sprint 5.5A — Dashboard Data-Truthfulness and Final Polish
+
+PRIMARY REPOSITORY
+
+Implement this task in the VCP Trader / StrategyAgent repository using Replit.
+
+This is a small refinement sprint for the completed authenticated dashboard.
+
+Do not change:
+
+- MCP tools
+- scanner algorithms
+- opportunity ranking
+- qualification rules
+- recommendation logic
+- portfolio calculations
+- risk formulas
+- options selection
+- broker integrations
+- execution
+- database schema
+- TraderBrain routing
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+GOAL
+==================================================
+
+Ensure every dashboard section accurately communicates:
+
+- whether data is live
+- broker-connected
+- daily-close
+- delayed
+- snapshot
+- simulated
+- estimated
+- unavailable
+
+The dashboard must never visually imply that simulated or daily-close data is live real-time market data.
+
+Also complete a small visual and wording polish pass without redesigning the dashboard.
+
+==================================================
+1. AUDIT DASHBOARD DATA PROVENANCE
+==================================================
+
+Audit every dashboard section and document its actual source:
+
+- Market Snapshot
+- Today’s Opportunities
+- Portfolio Intelligence
+- Watchlist Activity
+- Growth Opportunity
+- Income Opportunity
+- Saved Research
+- Market Events & News Context
+
+For each section identify:
+
+- backend endpoint
+- provider/source
+- timestamp
+- whether data is:
+  - live
+  - daily-close
+  - delayed
+  - snapshot
+  - simulated
+  - estimated
+  - unavailable
+- whether a broker connection changes the source
+
+Do not infer source quality from UI labels.
+
+Use actual response metadata.
+
+==================================================
+2. CREATE A CONSISTENT DATA-QUALITY LABEL SYSTEM
+==================================================
+
+Reuse existing data-quality fields where possible.
+
+Create one presentation mapping for:
+
+LIVE
+BROKER_CONNECTED
+DAILY_CLOSE
+DELAYED
+SNAPSHOT
+SIMULATED
+ESTIMATED
+UNAVAILABLE
+UNKNOWN
+
+Recommended user-facing labels:
+
+LIVE
+→ Live
+
+BROKER_CONNECTED
+→ Broker data
+
+DAILY_CLOSE
+→ Latest daily close
+
+DELAYED
+→ Delayed
+
+SNAPSHOT
+→ Market snapshot
+
+SIMULATED
+→ Demonstration data
+
+ESTIMATED
+→ Estimated structure
+
+UNAVAILABLE
+→ Data unavailable
+
+UNKNOWN
+→ Source not verified
+
+Do not expose raw enum values.
+
+Use the same mapping across all dashboard cards.
+
+==================================================
+3. MARKET SNAPSHOT LABEL
+==================================================
+
+The current dashboard displays:
+
+- a global banner saying data is daily data/latest close
+- a Market Snapshot badge saying “Live”
+
+This is contradictory unless the Market Snapshot endpoint is genuinely real-time.
+
+If the source is daily-close or delayed:
+
+replace “Live” with:
+
+Latest daily close
+
+or:
+
+Delayed market snapshot
+
+Include the data timestamp.
+
+If it is genuinely current live data from a supported source, preserve “Live.”
+
+Do not infer live status merely because the market is open.
+
+Market status and data freshness are separate concepts.
+
+==================================================
+4. TODAY’S OPPORTUNITIES
+==================================================
+
+The current description says:
+
+“Candidates from current market data, ranked by score.”
+
+But the cards are labeled:
+
+“Simulated data”
+
+Correct this contradiction.
+
+Case A — actual simulated/demo candidates:
+
+Rename section description to:
+
+“Demonstration candidates showing how ranked stock and options opportunities appear in VCP Trader AI.”
+
+Add a clear top-level banner:
+
+Demonstration data
+
+Do not describe them as today’s current opportunities.
+
+Consider renaming the section:
+
+Opportunity Preview
+
+or:
+
+Sample Opportunities
+
+Case B — real deterministic candidates:
+
+Remove simulated data labels only if the candidates truly came from current deterministic production results.
+
+Do not mix simulated and real candidates in one undifferentiated section.
+
+If both must be shown, separate them clearly:
+
+Current Opportunities
+
+and:
+
+Example Opportunities
+
+==================================================
+5. OPEN ANALYSIS ACTIONS
+==================================================
+
+For simulated/demo cards:
+
+- Open Analysis may open a clearly labeled example experience
+- it must not imply a current qualified setup
+- it must not generate an executable broker-ready order
+- Trade Builder and InstaTrade must remain unavailable
+
+For real candidates:
+
+- preserve existing deterministic route
+- preserve eligibility gates
+- preserve correct data-quality labels
+
+==================================================
+6. GROWTH OPPORTUNITY CARD
+==================================================
+
+The current Growth Opportunity card appears to be derived from short-term news sentiment.
+
+Do not present positive article attention alone as a qualified growth opportunity.
+
+Use one of these approaches:
+
+A. If supported by deterministic qualification:
+
+Show:
+
+Growth Opportunity
+
+with the actual qualification status and evidence.
+
+B. If based only on context/sentiment:
+
+Rename to:
+
+Growth Watch
+
+or:
+
+Growth Context
+
+Suggested wording:
+
+“AMZN is receiving elevated positive news attention. Run a full analysis to evaluate technical and long-term conditions.”
+
+Replace “Analyze AMZN” only if the existing route is correct.
+
+Do not imply that positive sentiment alone makes it an investment opportunity.
+
+==================================================
+7. INCOME OPPORTUNITY CARD
+==================================================
+
+The current card says:
+
+“T — Dividend + monthly call write candidate.”
+
+Verify whether:
+
+- the user owns 100 shares
+- a live options chain was available
+- liquidity was checked
+- assignment and earnings risks were evaluated
+- the card is only a general educational scenario
+
+If these requirements are not verified, rename the card to:
+
+Income Idea to Explore
+
+Suggested wording:
+
+“T may support dividend and covered-call analysis. Connect a broker or open the income workflow to evaluate share ownership, options liquidity, risk, and current contracts.”
+
+Do not call it a current covered-call candidate unless deterministic qualification supports that conclusion.
+
+==================================================
+8. MARKET EVENTS & NEWS CONTEXT
+==================================================
+
+The current list shows labels such as:
+
+high
+
+Clarify what “high” means.
+
+Possible labels:
+
+High attention
+Positive sentiment
+Mixed sentiment
+Elevated news activity
+
+Do not display a generic “high” badge without a label.
+
+Ensure this section remains context, not a list of trade signals.
+
+Recommended subtitle:
+
+“Recent news attention and sentiment context. This does not indicate that a setup qualifies.”
+
+==================================================
+9. MARKET STATUS
+==================================================
+
+Keep the Market Open / Pre-market / After-hours / Closed indicator.
+
+Confirm that it reflects actual exchange hours and timezone.
+
+Do not use market-open status as evidence that displayed data is live.
+
+Show the market status separately from the data-quality status.
+
+==================================================
+10. PORTFOLIO EMPTY STATE
+==================================================
+
+The current broker-disconnected portfolio state is good.
+
+Retain:
+
+- Connect Broker CTA
+- neutral wording
+- no blocked dashboard sections
+
+Ensure it does not imply that buying power or portfolio fit has been evaluated while disconnected.
+
+==================================================
+11. SAVED RESEARCH EMPTY STATE
+==================================================
+
+Retain the current empty-state wording:
+
+“Run an analysis and choose Save Research to preserve an immutable evidence snapshot.”
+
+Verify:
+
+- Start Research routes to Ask AI
+- Library routes to My Research
+- no broken route
+- no save capability implied before an analysis creates a valid handle
+
+==================================================
+12. WATCHLIST CARD
+==================================================
+
+The Starter Watchlist card is useful.
+
+Clarify whether:
+
+- it is a real persisted user watchlist
+- it is a default sample list
+- it is an onboarding example
+
+If sample/default:
+
+label it:
+
+Starter Watchlist
+
+and explain that users may edit or replace it.
+
+Do not claim change detection until historical watchlist state exists.
+
+==================================================
+13. QUICK ACTIONS
+==================================================
+
+Verify every quick action:
+
+- Find Growth Opportunities
+- Find Income Opportunities
+- Find Trade Setups
+- Analyze a Stock
+- Review My Portfolio
+- Continue Saved Research
+- Understand Markets
+
+Each should:
+
+- navigate correctly
+- prefill the intended Ask AI prompt or route
+- not automatically submit the prompt unless that is already the approved UX
+- never create orders
+- gracefully handle disconnected broker state
+
+==================================================
+14. VISUAL POLISH
+==================================================
+
+Make small presentation improvements only:
+
+- align card heights where practical
+- use consistent badge spacing
+- ensure data-quality badges are visually distinct from qualification badges
+- reduce unnecessary empty vertical space
+- maintain readable desktop density
+- preserve tablet/mobile stacking
+- preserve dark/light themes
+- ensure section headings use consistent capitalization
+- ensure all timestamps use the user’s local timezone
+
+Do not redesign the dashboard.
+
+==================================================
+15. ACCESSIBILITY
+==================================================
+
+Verify:
+
+- data quality is not communicated by color alone
+- qualification status is not communicated by color alone
+- badges have accessible text
+- interactive cards have keyboard focus
+- icon-only actions have aria-labels
+- market-open status is announced clearly
+- skeletons do not create repetitive screen-reader noise
+
+==================================================
+16. TESTS
+==================================================
+
+Add regression tests for:
+
+A. Data labeling
+- daily-close never labeled live
+- simulated cards clearly labeled demonstration data
+- broker-connected data labeled correctly
+- unavailable data never receives a freshness label
+- market status does not determine data freshness
+
+B. Opportunities
+- simulated and real opportunities cannot be mixed silently
+- demo opportunity cannot open Trade Builder
+- real qualified opportunity preserves correct CTA
+- empty deterministic result remains honest
+
+C. Growth and income cards
+- sentiment-only growth context is not called qualified
+- covered-call candidate requires supported evidence
+- disconnected broker state uses exploratory wording
+- estimated options data is clearly labeled
+
+D. News context
+- “high” is replaced with a meaningful label
+- sentiment does not become a qualification verdict
+
+E. Routing
+- all quick actions
+- saved research links
+- watchlist action
+- portfolio connect action
+- Ask AI suggestions
+
+F. Regression
+- public homepage unchanged
+- Ask AI unchanged
+- My Research unchanged
+- portfolio logic unchanged
+- no MCP changes
+- no execution changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+17. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/SPRINT_5_5_PERSONALIZED_DASHBOARD.md
+
+Add:
+
+- data-source matrix
+- data-quality label policy
+- market-status versus data-freshness distinction
+- simulated/demo data policy
+- growth-context qualification boundary
+- income-scenario qualification boundary
+- known limitations
+
+==================================================
+18. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. data-source audit
+2. contradictory labels found
+3. files changed
+4. data-quality mapping
+5. Market Snapshot changes
+6. opportunity-card changes
+7. growth-card changes
+8. income-card changes
+9. news-context changes
+10. watchlist clarification
+11. quick-action validation
+12. accessibility
+13. tests and totals
+14. build result
+15. screenshots
+16. compatibility concerns
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

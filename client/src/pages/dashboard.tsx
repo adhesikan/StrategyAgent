@@ -89,7 +89,14 @@ interface MarketSnapshot {
   topNews: NewsItem[];
   bestIncome: SnapshotItem;
   topGrowth: SnapshotItem;
+  /** "live" | "simulated" — legacy field; use dataSource for UI labels. */
   dataMode: "live" | "simulated";
+  /** Precise provenance of index/mover prices. */
+  dataSource?: "broker" | "twelve_data" | "fallback";
+  /** Source of topGrowth: sentiment-based or hardcoded reference. */
+  growthSource?: "sentiment" | "fallback";
+  /** Source of bestIncome: always "fallback" (hardcoded reference). */
+  incomeSource?: "fallback";
   asOf: string;
 }
 
@@ -151,16 +158,68 @@ interface DashboardResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Unified data-quality label system (Sprint 5.5A)
+// Use DATA_QUALITY[key] for user-facing text; DATA_QUALITY_CLASS[key] for styling.
+// Never expose raw enum values in the UI.
+// ---------------------------------------------------------------------------
+
+const DATA_QUALITY = {
+  LIVE:             "Live",
+  BROKER_CONNECTED: "Broker data",
+  DAILY_CLOSE:      "Latest daily close",
+  DELAYED:          "Delayed",
+  SNAPSHOT:         "Market snapshot",
+  SIMULATED:        "Demonstration data",
+  ESTIMATED:        "Estimated structure",
+  UNAVAILABLE:      "Data unavailable",
+  UNKNOWN:          "Source not verified",
+} as const;
+
+type DataQualityKey = keyof typeof DATA_QUALITY;
+
+const DATA_QUALITY_CLASS: Record<DataQualityKey, string> = {
+  LIVE:             "text-emerald-300 border-emerald-500/30 bg-emerald-500/5",
+  BROKER_CONNECTED: "text-sky-300 border-sky-500/30 bg-sky-500/5",
+  DAILY_CLOSE:      "text-amber-300 border-amber-500/30 bg-amber-500/5",
+  DELAYED:          "text-amber-300 border-amber-500/30 bg-amber-500/5",
+  SNAPSHOT:         "text-muted-foreground border-border bg-muted/20",
+  SIMULATED:        "text-violet-300 border-violet-500/30 bg-violet-500/5",
+  ESTIMATED:        "text-amber-300 border-amber-500/30 bg-amber-500/5",
+  UNAVAILABLE:      "text-rose-300 border-rose-500/30 bg-rose-500/5",
+  UNKNOWN:          "text-muted-foreground border-border bg-muted/10",
+};
+
+/** Map the snapshot's dataSource field to a DATA_QUALITY key. */
+function snapshotDataQualityKey(dataSource?: "broker" | "twelve_data" | "fallback"): DataQualityKey {
+  if (dataSource === "broker") return "BROKER_CONNECTED";
+  if (dataSource === "twelve_data") return "DAILY_CLOSE";
+  return "SIMULATED";
+}
+
 const TONE_CLASS: Record<string, string> = {
   bullish: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   mixed: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   defensive: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
+// Sprint 5.5A: impact badges now have explicit meaning labels (not just "high", "medium", "low")
+const IMPACT_LABEL: Record<string, string> = {
+  high: "High attention",
+  medium: "Elevated activity",
+  low: "Low activity",
+};
 const IMPACT_CLASS: Record<string, string> = {
   high: "bg-rose-500/10 text-rose-300 border-rose-500/30",
   medium: "bg-amber-500/10 text-amber-300 border-amber-500/30",
   low: "bg-muted text-muted-foreground border-border",
+};
+
+// Sentiment label (separate from impact — appears alongside the symbol line)
+const SENTIMENT_LABEL: Record<string, string> = {
+  bullish: "Positive sentiment",
+  bearish: "Mixed / bearish sentiment",
+  neutral: "Neutral context",
 };
 
 const GRADE_CLASS: Record<string, string> = {
@@ -411,18 +470,20 @@ function MarketSnapshotSection({
               <span id="snapshot-heading">Market Snapshot</span>
             </CardTitle>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge
-                variant="outline"
-                className={
-                  data.dataMode === "live"
-                    ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/5 text-[10px]"
-                    : "text-[10px]"
-                }
-                data-testid="badge-data-mode"
-                aria-label={`Data mode: ${data.dataMode}`}
-              >
-                {data.dataMode === "live" ? "Live" : "Delayed"}
-              </Badge>
+              {/* Sprint 5.5A: use dataSource for accurate label — never call daily-close data "Live" */}
+              {(() => {
+                const qKey = snapshotDataQualityKey(data.dataSource);
+                return (
+                  <Badge
+                    variant="outline"
+                    className={cn("text-[10px]", DATA_QUALITY_CLASS[qKey])}
+                    data-testid="badge-data-mode"
+                    aria-label={`Data quality: ${DATA_QUALITY[qKey]}`}
+                  >
+                    {DATA_QUALITY[qKey]}
+                  </Badge>
+                );
+              })()}
               <span className="flex items-center gap-1" data-testid="text-snapshot-time">
                 <Clock className="h-3 w-3" aria-hidden="true" />
                 {asOf}
@@ -521,7 +582,14 @@ function MarketSnapshotSection({
 // 4. Today's Opportunities
 // ---------------------------------------------------------------------------
 
-function OpportunityCard({ candidate, dataMode }: { candidate: RadarCandidate; dataMode?: string }) {
+function OpportunityCard({
+  candidate,
+  sectionDataMode,
+}: {
+  candidate: RadarCandidate;
+  /** The parent section's overall dataMode. When "simulated", suppress per-card badge. */
+  sectionDataMode?: string;
+}) {
   const [, navigate] = useLocation();
   const grade = candidate.finalGrade;
 
@@ -552,9 +620,15 @@ function OpportunityCard({ candidate, dataMode }: { candidate: RadarCandidate; d
               Grade {grade}
             </Badge>
           )}
-          {dataMode === "simulated" && (
-            <Badge variant="outline" className="text-[10px] text-muted-foreground">
-              Simulated data
+          {/* Show per-card badge only when the card is simulated AND the section is NOT already fully simulated.
+              When the whole section is simulated, the section-level banner already covers it. */}
+          {candidate.dataMode === "simulated" && sectionDataMode !== "simulated" && (
+            <Badge
+              variant="outline"
+              className={cn("text-[10px]", DATA_QUALITY_CLASS.SIMULATED)}
+              data-testid={`badge-card-simulated-${candidate.symbol}`}
+            >
+              {DATA_QUALITY.SIMULATED}
             </Badge>
           )}
         </div>
@@ -609,7 +683,10 @@ function OpportunitiesSection({
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm font-medium flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-              <span id="opportunities-heading">Today&rsquo;s Opportunities</span>
+              {/* Sprint 5.5A: rename section when all candidates are demonstration data */}
+              <span id="opportunities-heading" data-testid="text-opportunities-heading">
+                {dataMode === "simulated" ? "Sample Opportunities" : "Today\u2019s Opportunities"}
+              </span>
             </CardTitle>
             <Button
               size="sm"
@@ -622,9 +699,28 @@ function OpportunitiesSection({
               View All <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Candidates from current market data, ranked by score. Not a recommendation to buy or sell.
-          </p>
+          {dataMode === "simulated" ? (
+            <>
+              {/* Clear demonstration-data banner — never describe simulated cards as "current" opportunities */}
+              <div
+                className="flex items-center gap-2 rounded-md border border-violet-500/30 bg-violet-500/5 px-3 py-2 mt-1"
+                role="note"
+                data-testid="banner-demo-opportunities"
+                aria-label="Demonstration data — these are example candidates only"
+              >
+                <Info className="h-3.5 w-3.5 text-violet-400 shrink-0" aria-hidden="true" />
+                <span className="text-xs text-violet-300">{DATA_QUALITY.SIMULATED}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Demonstration candidates showing how ranked stock and options opportunities appear in VCP Trader AI. Connect a broker to see results based on current market data.
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Candidates from current market data, ranked by score. Not a recommendation to buy or sell.
+              {dataMode === "mixed" && " Some prices are estimated."}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {status === "unavailable" ? (
@@ -651,7 +747,12 @@ function OpportunitiesSection({
               data-testid="grid-opportunities"
             >
               {(candidates ?? []).slice(0, 5).map((c) => (
-                <OpportunityCard key={c.id ?? `${c.symbol}-${c.rank}`} candidate={c} dataMode={dataMode} />
+                <OpportunityCard
+                  key={c.id ?? `${c.symbol}-${c.rank}`}
+                  candidate={c}
+                  // When the whole section is simulated, suppress per-card badge (section banner covers it)
+                  sectionDataMode={dataMode}
+                />
               ))}
             </div>
           )}
@@ -901,69 +1002,82 @@ function GrowthIncomeSection({
       <div className="grid gap-3 sm:grid-cols-2">
         {/* Growth */}
         <Card>
+          {/* Sprint 5.5A: renamed to "Growth Watch" — topGrowth is news-sentiment or hardcoded reference,
+            NOT a deterministically qualified trade setup. Never call it an "opportunity." */}
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-1.5">
               <TrendingUp className="h-4 w-4 text-emerald-400" aria-hidden="true" />
-              <span id="growth-income-heading">Growth Opportunity</span>
+              <span id="growth-income-heading">Growth Watch</span>
             </CardTitle>
             <div className="flex items-center gap-1.5">
               <Badge
                 variant="outline"
-                className={
-                  dataMode === "live"
-                    ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/5 text-[10px]"
-                    : "text-[10px]"
-                }
-                data-testid="badge-growth-mode"
+                className={cn(
+                  "text-[10px] w-fit",
+                  snapshot.growthSource === "sentiment"
+                    ? DATA_QUALITY_CLASS.SNAPSHOT
+                    : DATA_QUALITY_CLASS.ESTIMATED,
+                )}
+                data-testid="badge-growth-source"
+                aria-label={snapshot.growthSource === "sentiment" ? "News-sentiment context" : "Reference context"}
               >
-                {dataMode === "live" ? "Live context" : "Reference context"}
+                {snapshot.growthSource === "sentiment" ? "News-sentiment context" : "Reference context"}
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-2" data-testid="card-growth">
             <div className="font-mono font-semibold text-base">{topGrowth.symbol}</div>
-            <p className="text-xs text-muted-foreground leading-snug">{topGrowth.headline}</p>
+            {/* Context-appropriate framing: sentiment news ≠ a qualified setup */}
+            <p className="text-xs text-muted-foreground leading-snug" data-testid="text-growth-headline">
+              {snapshot.growthSource === "sentiment"
+                ? `${topGrowth.symbol} is receiving elevated positive news attention. Run a full analysis to evaluate technical and long-term conditions.`
+                : topGrowth.headline}
+            </p>
             <Button
               size="sm"
               variant="outline"
               className="text-xs gap-1 h-7"
-              onClick={() => navigate(askRoute(`Analyze ${topGrowth.symbol} for long-term growth`))}
+              onClick={() => navigate(askRoute(`Analyze ${topGrowth.symbol} for long-term growth potential`))}
               data-testid={`btn-analyze-growth-${topGrowth.symbol}`}
-              aria-label={`Analyze ${topGrowth.symbol} for growth`}
+              aria-label={`Run full analysis for ${topGrowth.symbol}`}
             >
-              Analyze {topGrowth.symbol} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              Run Full Analysis <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
 
-        {/* Income */}
+        {/* Income — renamed to "Income Idea to Explore": bestIncome is always hardcoded reference data.
+            No deterministic options qualification (ownership, chain, liquidity) has been performed. */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-1.5">
               <DollarSign className="h-4 w-4 text-amber-400" aria-hidden="true" />
-              Income Opportunity
+              Income Idea to Explore
             </CardTitle>
             <Badge
               variant="outline"
-              className="text-amber-300 border-amber-500/30 bg-amber-500/5 text-[10px] w-fit"
+              className={cn("text-[10px] w-fit", DATA_QUALITY_CLASS.ESTIMATED)}
               data-testid="badge-income-estimated"
-              title="Income scenarios are illustrative. Actual contract details require a broker connection."
+              title="Income scenarios are illustrative reference examples. Actual contract details require a broker connection and full analysis."
             >
-              {dataMode === "live" ? "Live context" : "Estimated structure"}
+              {DATA_QUALITY.ESTIMATED}
             </Badge>
           </CardHeader>
           <CardContent className="space-y-2" data-testid="card-income">
             <div className="font-mono font-semibold text-base">{bestIncome.symbol}</div>
-            <p className="text-xs text-muted-foreground leading-snug">{bestIncome.headline}</p>
+            {/* Always use exploratory framing — no ownership/chain/liquidity check performed */}
+            <p className="text-xs text-muted-foreground leading-snug" data-testid="text-income-headline">
+              {`${bestIncome.symbol} may support dividend and covered-call analysis. Connect a broker or open the income workflow to evaluate share ownership, options liquidity, risk, and current contracts.`}
+            </p>
             <Button
               size="sm"
               variant="outline"
               className="text-xs gap-1 h-7"
               onClick={() => navigate(askRoute(`Find income opportunities with ${bestIncome.symbol}`))}
               data-testid={`btn-analyze-income-${bestIncome.symbol}`}
-              aria-label={`Find income opportunities with ${bestIncome.symbol}`}
+              aria-label={`Explore income ideas with ${bestIncome.symbol}`}
             >
-              Explore Income <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              Explore Income Ideas <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
@@ -1125,7 +1239,7 @@ function MarketEventsSection({
             <Newspaper className="h-4 w-4 text-primary" aria-hidden="true" />
             <span id="events-heading">Market Events &amp; News Context</span>
           </CardTitle>
-          <p className="text-xs text-muted-foreground">News sentiment context — not trade signals or advice.</p>
+          <p className="text-xs text-muted-foreground">Recent news attention and sentiment context. This does not indicate that a setup qualifies.</p>
         </CardHeader>
         <CardContent>
           <div
@@ -1142,17 +1256,34 @@ function MarketEventsSection({
                 data-testid={`event-${item.symbol}-${i}`}
                 aria-label={`${item.symbol}: ${item.whyItMatters}`}
               >
+                {/* Sprint 5.5A: never show raw "high/medium/low" — use explicit labels */}
                 <Badge
                   variant="outline"
-                  className={cn("text-[10px] shrink-0", IMPACT_CLASS[item.impact])}
-                  aria-label={`Impact: ${item.impact}`}
+                  className={cn("text-[10px] shrink-0 whitespace-nowrap", IMPACT_CLASS[item.impact])}
+                  data-testid={`badge-impact-${item.symbol}-${i}`}
+                  aria-label={`News attention: ${IMPACT_LABEL[item.impact] ?? item.impact}`}
                 >
-                  {item.impact}
+                  {IMPACT_LABEL[item.impact] ?? item.impact}
                 </Badge>
                 <div className="min-w-0 flex-1">
-                  <span className="font-mono font-semibold text-xs">{item.symbol}</span>
-                  <span className="text-muted-foreground mx-1">—</span>
-                  <span className="text-xs text-muted-foreground leading-snug">{item.whyItMatters}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono font-semibold text-xs">{item.symbol}</span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px]",
+                        item.label === "bullish"
+                          ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
+                          : item.label === "bearish"
+                          ? "text-rose-400 border-rose-500/30 bg-rose-500/5"
+                          : "text-muted-foreground border-border",
+                      )}
+                      aria-label={SENTIMENT_LABEL[item.label] ?? item.label}
+                    >
+                      {SENTIMENT_LABEL[item.label] ?? item.label}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-snug mt-0.5">{item.whyItMatters}</p>
                 </div>
                 <Button
                   size="sm"

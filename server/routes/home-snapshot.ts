@@ -45,7 +45,22 @@ export interface HomeSnapshotResponse {
   bestIncome: SnapshotItem;
   topGrowth: SnapshotItem;
   watchlistAlert: WatchlistAlert | null;
+  /** "live" | "simulated" — kept for back-compat; use dataSource for precise UI labeling. */
   dataMode: "live" | "simulated";
+  /**
+   * Sprint 5.5A — precise provenance of the index / mover price data:
+   *   "broker"      — quotes fetched from the connected broker (may be real-time or delayed per broker plan)
+   *   "twelve_data" — Twelve Data quote API (typically latest-day close / end-of-day; NOT streaming real-time)
+   *   "fallback"    — hardcoded reference data; no live prices available
+   *
+   * Market-session status and data freshness are separate concepts.
+   * A market-open session does NOT imply live data.
+   */
+  dataSource: "broker" | "twelve_data" | "fallback";
+  /** Source of topGrowth: "sentiment" = news-buzz leader; "fallback" = hardcoded reference item. */
+  growthSource: "sentiment" | "fallback";
+  /** Source of bestIncome: always "fallback" (hardcoded reference item — no deterministic options qualification). */
+  incomeSource: "fallback";
   asOf: string;
   disclaimer: string;
 }
@@ -113,6 +128,8 @@ function deriveToneFromIndices(indices: IndexQuote[]): { tone: "bullish" | "mixe
  */
 export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotResponse> {
   let dataMode: "live" | "simulated" = "simulated";
+  // Sprint 5.5A: track which source actually provided the price data
+  let dataSource: "broker" | "twelve_data" | "fallback" = "fallback";
 
   // 1) Indices + movers via broker quotes when connected
   let indices: IndexQuote[] = FALLBACK_INDICES;
@@ -168,6 +185,7 @@ export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotRes
         .slice(0, 5);
       if (topMovers.length > 0 || indices.some((i) => i.last > 0)) {
         dataMode = "live";
+        dataSource = "broker";
       }
     } catch (e: any) {
       console.warn("[home-snapshot] broker quote fetch failed:", e?.message);
@@ -194,11 +212,15 @@ export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotRes
     if (results.some((r) => r.last > 0)) {
       indices = results;
       dataMode = "live";
+      // Twelve Data returns latest-day close / end-of-day prices, NOT streaming real-time.
+      // The UI must never label this as "Live" — use "Latest daily close" instead.
+      dataSource = "twelve_data";
     }
   }
 
   // 2) News-derived growth/income/alerts
   let topGrowth: SnapshotItem | null = null;
+  let growthSource: "sentiment" | "fallback" = "fallback";
   let bestIncome: SnapshotItem | null = null;
   let watchlistAlert: WatchlistAlert | null = null;
   let topNews: NewsItem[] = [];
@@ -226,6 +248,7 @@ export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotRes
           symbol: positives[0].symbol,
           headline: positives[0].whyItMatters ?? `${positives[0].symbol} — bullish news flow this session.`,
         };
+        growthSource = "sentiment";
       }
       if (watchlistSymbols.length > 0) {
         const onList = negatives.find((s: any) => watchlistSymbols.includes(String(s.symbol).toUpperCase()));
@@ -252,9 +275,12 @@ export async function buildHomeSnapshot(userId: string): Promise<HomeSnapshotRes
     topMovers,
     topNews,
     bestIncome: bestIncome ?? fallbackIncome,
-    topGrowth: topGrowth ?? fallbackGrowth,
+    topGrowth: topGrowth ?? (growthSource = "fallback", fallbackGrowth),
     watchlistAlert,
     dataMode,
+    dataSource,
+    growthSource,
+    incomeSource: "fallback", // bestIncome is always reference data — no deterministic options qualification
     asOf: new Date().toISOString(),
     disclaimer: DISCLAIMER,
   };

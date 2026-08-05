@@ -171,7 +171,87 @@ Events are fired via `track()` from `client/src/lib/analytics.ts`. No symbols, a
 - **Sector strength and breadth** are not in the snapshot payload. The spec mentions them as examples but no existing endpoint provides them.
 - **Concierge summary** ("AI Market Summary" from command-center.tsx) is not included — it requires a dedicated backend summary endpoint that does not exist per the existing code boundary comment.
 
-## 11. Deferred Work
+## 10. Data-Source Matrix (Sprint 5.5A)
+
+| Section | Backend Source | dataSource / mode | User-facing label |
+|---------|---------------|-------------------|-------------------|
+| Market Snapshot — indices | Broker API (when connected) | `"broker"` | Broker data |
+| Market Snapshot — indices | Twelve Data quote API (fallback) | `"twelve_data"` | Latest daily close |
+| Market Snapshot — indices | Hardcoded FALLBACK_INDICES | `"fallback"` | Demonstration data |
+| Market Snapshot — news | `storage.getTrendingNewsSentiment` | snapshot | (shown via news items) |
+| Today's Opportunities | `generateCandidateScenarios` (live) | `"live"` or `"mixed"` | (no simulated badge) |
+| Today's Opportunities | `generateCandidateScenarios` (hash-based) | `"simulated"` | Demonstration data (section banner) |
+| Portfolio Intelligence | Broker positions API | n/a | Broker data (connected) |
+| Growth Watch | `getTrendingNewsSentiment` top bullish | `growthSource: "sentiment"` | News-sentiment context |
+| Growth Watch | `FALLBACK_GROWTH[day % n]` | `growthSource: "fallback"` | Reference context |
+| Income Idea to Explore | `FALLBACK_INCOME[day % n]` (always) | `incomeSource: "fallback"` | Estimated structure |
+| Saved Research | `ResearchRecordService.listForUser` | user data | (no freshness badge) |
+| Market Events | `storage.getTrendingNewsSentiment` | news sentiment | "High attention" / "Elevated activity" / "Low activity" |
+
+**Key rules:**
+- Market-session status (Regular / Pre-market / After-hours / Closed) and data freshness are separate concepts. A market-open session does NOT imply live data.
+- Twelve Data's quote endpoint returns latest-day close / end-of-day cached prices — not streaming real-time. It must never be labeled "Live."
+- Broker-connected data may be real-time or delayed depending on the broker plan — we label it "Broker data" and let the broker's own disclosure apply.
+
+## 11. Data-Quality Label Policy (Sprint 5.5A)
+
+All user-facing freshness / provenance badges use the unified mapping in `client/src/lib/data-quality.ts` (mirrored inline in `dashboard.tsx`):
+
+| Key | User-facing label | When used |
+|-----|------------------|-----------|
+| `LIVE` | Live | Reserved — currently unused on the dashboard (no streaming feed) |
+| `BROKER_CONNECTED` | Broker data | Index prices from connected broker |
+| `DAILY_CLOSE` | Latest daily close | Index prices from Twelve Data |
+| `SNAPSHOT` | Market snapshot | Generic snapshot context |
+| `SIMULATED` | Demonstration data | Hash-derived prices; no real data available |
+| `ESTIMATED` | Estimated structure | Income ideas (no chain/ownership validation) |
+| `UNAVAILABLE` | Data unavailable | Section error states |
+| `UNKNOWN` | Source not verified | Fallback when provenance is unclear |
+| `DELAYED` | Delayed | Available for broker-delayed feeds |
+
+Raw enum keys are never exposed in the UI.
+
+## 12. Simulated / Demo Data Policy (Sprint 5.5A)
+
+- When `opportunities.dataMode === "simulated"`: section is renamed **"Sample Opportunities"**, a violet "Demonstration data" banner appears at the top, description reads "Demonstration candidates showing how ranked stock and options opportunities appear in VCP Trader AI."
+- When `opportunities.dataMode === "live"` or `"mixed"`: section is "Today's Opportunities" with the standard description.
+- Per-card "Demonstration data" badges appear only when the section is NOT already fully simulated (i.e., mixed mode — real and estimated candidates together).
+- The two states are never mixed without differentiation.
+
+## 13. Growth Watch vs. Opportunity (Sprint 5.5A)
+
+`topGrowth` is derived from news-sentiment rankings or a hardcoded reference list — not from a deterministic technical or fundamental qualification.
+
+- Section renamed from **"Growth Opportunity"** → **"Growth Watch"**
+- When `growthSource === "sentiment"`: headline reads "SYMBOL is receiving elevated positive news attention. Run a full analysis to evaluate technical and long-term conditions."
+- When `growthSource === "fallback"`: original reference headline is shown (e.g., "AI infrastructure spend remains a multi-quarter tailwind.")
+- CTA changed from "Analyze SYMBOL" → "Run Full Analysis" — routes to Ask AI with a growth-analysis prompt
+- Badge shows "News-sentiment context" or "Reference context" — never a freshness label
+
+## 14. Income Idea to Explore (Sprint 5.5A)
+
+`bestIncome` is always a hardcoded reference item from `FALLBACK_INCOME[day % n]`. No share ownership, options chain, liquidity, assignment risk, or earnings risk has been evaluated.
+
+- Section renamed from **"Income Opportunity"** → **"Income Idea to Explore"**
+- Headline always reads: "SYMBOL may support dividend and covered-call analysis. Connect a broker or open the income workflow to evaluate share ownership, options liquidity, risk, and current contracts."
+- Badge shows "Estimated structure" in all cases
+- This copy applies even when a broker is connected (no deterministic qualification has run)
+
+## 15. Market Events Labels (Sprint 5.5A)
+
+Impact badges in Market Events & News Context now use explicit labels:
+- `"high"` → **"High attention"**
+- `"medium"` → **"Elevated activity"**
+- `"low"` → **"Low activity"**
+
+A secondary sentiment badge appears per item:
+- `"bullish"` → **"Positive sentiment"**
+- `"bearish"` → **"Mixed / bearish sentiment"**
+- `"neutral"` → **"Neutral context"**
+
+Section subtitle: "Recent news attention and sentiment context. This does not indicate that a setup qualifies."
+
+## 16. Deferred Work
 
 - **Watchlists — change-state tracking**: Requires a `previousState` snapshot stored server-side to derive "newly qualified" / "no longer qualifying" status.
 - **Daily Intelligence brief**: A cached AI-generated morning brief needs a dedicated `/api/home/ai-brief` endpoint built from stored scan results.

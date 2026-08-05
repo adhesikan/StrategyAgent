@@ -494,6 +494,201 @@ describe("candidateCheck qualification", () => {
 // scan_strategy_failed diagnostic logging (contract-adapter sprint)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// C. Setup-status count semantics (spec §5)
+// ---------------------------------------------------------------------------
+
+describe("C: setup-status counts", () => {
+  test("C01: null/empty status setups count as unavailable, not matches", async () => {
+    // 3 strategies return setups with no status field
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: {
+          VCP: { setup: { symbol: "MU", strategy: "VCP", source: "production" } },         // no status
+          HIGH_RVOL: { setup: { symbol: "MU", strategy: "HIGH_RVOL", source: "production" } },
+          CLASSIC_PULLBACK: { setup: { symbol: "MU", strategy: "CLASSIC_PULLBACK", source: "production" } },
+        },
+      }),
+    );
+    expect(a.strategiesMatched).toBe(3);     // responses received
+    expect(a.confirmingCount).toBe(0);
+    expect(a.formingCount).toBe(0);
+    expect(a.unavailableCount).toBe(3);      // all null-status → unavailable
+  });
+
+  test("C02: forming setups counted correctly", async () => {
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: {
+          VCP: { setup: setup("VCP", { status: "forming" }) },
+          HIGH_RVOL: { setup: setup("HIGH_RVOL", { status: "forming" }) },
+        },
+      }),
+    );
+    expect(a.formingCount).toBe(2);
+    expect(a.confirmingCount).toBe(0);
+    expect(a.unavailableCount).toBe(0);
+  });
+
+  test("C03: confirming setups (triggered/ready) counted correctly", async () => {
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: {
+          VCP: { setup: setup("VCP", { status: "triggered", trigger: { price: 100, basis: "x" } }) },
+          HIGH_RVOL: { setup: setup("HIGH_RVOL", { status: "ready", trigger: { price: 50, basis: "y" } }) },
+        },
+      }),
+    );
+    expect(a.confirmingCount).toBe(2);
+    expect(a.formingCount).toBe(0);
+    expect(a.unavailableCount).toBe(0);
+  });
+
+  test("C04: NO_TRADE candidate check counted in rejectedCount", async () => {
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: { VCP: { setup: setup("VCP", { status: "forming" }) } },
+        buildTradeCandidate: async () => ({ verdict: "NO_TRADE", noTradeReasons: ["direction mismatch"] }),
+      }),
+    );
+    expect(a.rejectedCount).toBe(1);
+    expect(a.formingCount).toBe(1);
+  });
+
+  test("C05: counts are zero when no strategies matched", async () => {
+    const a = await runMultiStrategyAnalysis("MU", deps({ scans: {} }));
+    expect(a.confirmingCount).toBe(0);
+    expect(a.formingCount).toBe(0);
+    expect(a.rejectedCount).toBe(0);
+    expect(a.unavailableCount).toBe(0);
+  });
+
+  test("C06: mixed status distribution", async () => {
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: {
+          VCP: { setup: setup("VCP", { status: "triggered", trigger: { price: 10, basis: "x" } }) },
+          HIGH_RVOL: { setup: setup("HIGH_RVOL", { status: "forming" }) },
+          CLASSIC_PULLBACK: { setup: { symbol: "MU", strategy: "CLASSIC_PULLBACK", source: "production" } },  // no status
+          VWAP_RECLAIM: { setup: setup("VWAP_RECLAIM", { status: "forming" }) },
+        },
+      }),
+    );
+    expect(a.confirmingCount).toBe(1);
+    expect(a.formingCount).toBe(2);
+    expect(a.unavailableCount).toBe(1);
+    expect(a.strategiesMatched).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D. Confidence policy (spec §6) — updated rules
+// ---------------------------------------------------------------------------
+
+describe("D: confidence policy — all-unknown-status guard", () => {
+  test("D01: all-unknown-status setups cap confidence at medium even with fresh data", async () => {
+    // Mirrors the MU incident: 10 setups with no status field
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: Object.fromEntries(
+          ["VCP", "HIGH_RVOL", "VCP_MULTIDAY", "CLASSIC_PULLBACK", "VWAP_RECLAIM"].map((s) => [
+            s,
+            { setup: { symbol: "MU", strategy: s, source: "production", detectedAt: FRESH } },
+          ]),
+        ),
+        buildTradeCandidate: async () => ({ verdict: "NO_TRADE", noTradeReasons: ["no status"] }),
+      }),
+    );
+    expect(a.confirmingCount).toBe(0);
+    expect(a.formingCount).toBe(0);
+    expect(a.unavailableCount).toBe(5);
+    expect(multiStrategyConfidence(a)).toBe("medium"); // not "high"
+  });
+
+  test("D02: majority-unavailable caps confidence at medium", async () => {
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: {
+          VCP: { setup: setup("VCP", { status: "forming", detectedAt: FRESH }) },
+          // 4 unknown-status setups → unavailableCount=4, formingCount=1, total=5
+          HIGH_RVOL: { setup: { symbol: "MU", strategy: "HIGH_RVOL", source: "production", detectedAt: FRESH } },
+          VCP_MULTIDAY: { setup: { symbol: "MU", strategy: "VCP_MULTIDAY", source: "production", detectedAt: FRESH } },
+          CLASSIC_PULLBACK: { setup: { symbol: "MU", strategy: "CLASSIC_PULLBACK", source: "production", detectedAt: FRESH } },
+          VWAP_RECLAIM: { setup: { symbol: "MU", strategy: "VWAP_RECLAIM", source: "production", detectedAt: FRESH } },
+        },
+        buildTradeCandidate: async () => ({ verdict: "NO_TRADE", noTradeReasons: ["r"] }),
+      }),
+    );
+    // unavailableCount=4 > strategiesMatched(5)/2 → medium
+    expect(a.unavailableCount).toBe(4);
+    expect(a.formingCount).toBe(1);
+    expect(multiStrategyConfidence(a)).toBe("medium");
+  });
+
+  test("D03: price integrity failure forces low confidence", () => {
+    // Craft a result that would otherwise be high, then attach failed integrity
+    const baseAnalysis: MultiStrategyAnalysis = {
+      symbol: "MU",
+      strategiesChecked: 5,
+      strategiesMatched: 5,
+      strategiesFailed: 0,
+      overallVerdict: "WATCH",
+      supportingSetups: [],
+      confirmingCount: 0,
+      formingCount: 5,
+      rejectedCount: 0,
+      unavailableCount: 0,
+      dataQuality: { source: "scanner", realMarketData: true, fresh: true, complete: true },
+      priceIntegrity: { valid: false, code: "PRICE_REFERENCE_MISMATCH", ratioCategory: "10x" },
+    };
+    expect(multiStrategyConfidence(baseAnalysis)).toBe("low");
+  });
+
+  test("D04: valid price integrity allows high confidence when other conditions met", () => {
+    const baseAnalysis: MultiStrategyAnalysis = {
+      symbol: "MU",
+      strategiesChecked: 5,
+      strategiesMatched: 5,
+      strategiesFailed: 0,
+      overallVerdict: "WATCH",
+      supportingSetups: [],
+      confirmingCount: 0,
+      formingCount: 5,
+      rejectedCount: 5,
+      unavailableCount: 0,
+      dataQuality: { source: "scanner", realMarketData: true, fresh: true, complete: true },
+      priceIntegrity: { valid: true, ratioCategory: "ok" },
+    };
+    expect(multiStrategyConfidence(baseAnalysis)).toBe("high");
+  });
+
+  test("D05: forming setups with valid data remain high (existing test preserved)", async () => {
+    const a = await runMultiStrategyAnalysis(
+      "MU",
+      deps({
+        scans: Object.fromEntries(
+          ["VCP", "HIGH_RVOL", "VCP_MULTIDAY", "CLASSIC_PULLBACK", "VWAP_RECLAIM"].map((s) => [
+            s,
+            { setup: setup(s, { status: "forming" }) },
+          ]),
+        ),
+        buildTradeCandidate: async () => ({ verdict: "NO_TRADE", noTradeReasons: ["rejected"] }),
+      }),
+    );
+    expect(a.overallVerdict).toBe("WATCH");
+    expect(a.formingCount).toBe(5);
+    expect(a.unavailableCount).toBe(0);
+    expect(multiStrategyConfidence(a)).toBe("high"); // forming is usable evidence
+  });
+});
+
 describe("scan_strategy_failed logging", () => {
   test("logs include original registry ID and mapped MCP slug with a specific cause", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

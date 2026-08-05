@@ -189,6 +189,11 @@ export interface MultiStrategyAnalysis {
   supportingSetups: MultiStrategySetupEntry[];
   noMatchStrategies?: string[];
   failedStrategies?: Array<{ strategy: string; safeErrorCode: string }>;
+  /** Setup-status breakdown across all matched strategies (spec §5). */
+  confirmingCount: number;  // status = triggered / breakout / ready
+  formingCount: number;     // status = forming
+  rejectedCount: number;    // candidateCheck.status === "NO_TRADE"
+  unavailableCount: number; // status = null / empty / unknown
   marketContext?: {
     price?: number | null;
     trend?: string | null;
@@ -201,6 +206,12 @@ export interface MultiStrategyAnalysis {
     fresh: boolean | null;
     complete: boolean;
   };
+  /**
+   * Independent VCP-Trader price cross-check result. Attached externally after
+   * the analysis runs (in ask.ts). Absent when no reference price is available.
+   * Raw price fields (setupPrice, referencePrice) are stripped before client send.
+   */
+  priceIntegrity?: import("../services/price-integrity-checker").PriceIntegrityResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -435,6 +446,10 @@ export async function runMultiStrategyAnalysis(
     overallVerdict: "INSUFFICIENT_DATA",
     primarySetup: null,
     supportingSetups: [],
+    confirmingCount: 0,
+    formingCount: 0,
+    rejectedCount: 0,
+    unavailableCount: 0,
     dataQuality: { source: "unknown", realMarketData: false, fresh: null, complete: false },
   };
   if (eligible.length === 0) return base;
@@ -545,6 +560,14 @@ export async function runMultiStrategyAnalysis(
   }
   base.supportingSetups = supporting;
 
+  // --- Setup-status counts (spec §5 — breakdown across ALL matched setups) ---
+  // These are independent counters; a setup can appear in multiple buckets
+  // (e.g., "triggered" with a NO_TRADE candidate = confirming + rejected).
+  base.confirmingCount = entries.filter((e) => statusRank(e.setup.status) >= 2).length;
+  base.formingCount    = entries.filter((e) => statusRank(e.setup.status) === 1).length;
+  base.rejectedCount   = entries.filter((e) => e.candidateCheck?.status === "NO_TRADE").length;
+  base.unavailableCount = entries.filter((e) => statusRank(e.setup.status) === 0).length;
+
   // --- Overall verdict (§5 — deterministic; the LLM may never override) ---
   const verdicts = entries.map((e) => candidateVerdict(e.candidate ?? null));
   const anyQualified = verdicts.some((v) => isQualifiedVerdict(v));
@@ -597,15 +620,40 @@ export async function runMultiStrategyAnalysis(
 // Confidence (§11 — data completeness/agreement only, never direction)
 // ---------------------------------------------------------------------------
 
+/**
+ * Deterministic confidence for the multi-strategy analysis.
+ * Reflects DATA COMPLETENESS AND ANALYTICAL AGREEMENT only — never directional
+ * bias. A NO_TRADE verdict with complete, fresh data from real strategies is
+ * still high confidence that there is no qualifying setup.
+ *
+ * Policy (spec §6):
+ *
+ * LOW  — insufficient data, mock source, most strategies failed, integrity invalid
+ * HIGH — succeeded ≥ 3, fresh, complete, AND at least one setup has a real
+ *        status (forming/confirming), AND most matched setups are not Unknown
+ * MEDIUM — everything else
+ */
 export function multiStrategyConfidence(a: MultiStrategyAnalysis): "low" | "medium" | "high" {
   const succeeded = a.strategiesChecked - a.strategiesFailed;
   if (a.strategiesChecked === 0 || succeeded === 0) return "low";
   if (a.overallVerdict === "INSUFFICIENT_DATA") return "low";
-  if (!a.dataQuality.realMarketData) return "low"; // mock/synthetic anywhere
-  if (a.strategiesFailed > succeeded) return "low"; // most strategies failed
+  if (!a.dataQuality.realMarketData) return "low";      // mock/synthetic anywhere
+  if (a.strategiesFailed > succeeded) return "low";     // most strategies failed
+  if (a.priceIntegrity?.valid === false) return "low";  // independent price check failed
+
   if (a.dataQuality.fresh !== true) return "medium"; // unknown/stale freshness caps at medium
+
+  // HIGH requires at least one setup with a real status (forming or better).
+  // All-Unknown-status setups (status: null/empty) mean the scanner returned
+  // setup objects with no actionable state — not meaningful usable evidence.
+  const usableSetups = (a.confirmingCount ?? 0) + (a.formingCount ?? 0);
+  if (usableSetups === 0) return "medium";
+
+  // Majority-unavailable caps at medium (most setups have no known status).
+  const unavailable = a.unavailableCount ?? 0;
+  if (a.strategiesMatched > 0 && unavailable > a.strategiesMatched / 2) return "medium";
+
   // High requires broad successful coverage AND complete primary evidence.
-  // Bearish/NO_TRADE with complete data is still high confidence.
   if (succeeded >= 3 && a.dataQuality.complete) return "high";
   return "medium";
 }

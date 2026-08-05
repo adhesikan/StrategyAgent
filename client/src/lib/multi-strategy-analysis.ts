@@ -48,6 +48,14 @@ export interface MsaSetupEntry {
 
 export type MsaVerdict = "TRADE_CANDIDATE" | "WATCH" | "NO_TRADE" | "INSUFFICIENT_DATA";
 
+export interface MsaPriceIntegrity {
+  valid: boolean;
+  code?: string;
+  ratioCategory?: string;
+  affectedFields?: string[];
+  referenceSource?: string;
+}
+
 export interface MultiStrategyAnalysis {
   symbol: string;
   generatedAt?: string;
@@ -60,6 +68,13 @@ export interface MultiStrategyAnalysis {
   supportingSetups: MsaSetupEntry[];
   noMatchStrategies?: string[];
   failedStrategies?: Array<{ strategy: string; safeErrorCode: string }>;
+  /** Setup-status breakdown across all matched strategies (spec §5). */
+  confirmingCount?: number;
+  formingCount?: number;
+  rejectedCount?: number;
+  unavailableCount?: number;
+  /** Independent VCP Trader price cross-check result. */
+  priceIntegrity?: MsaPriceIntegrity;
   marketContext?: {
     price?: number | null;
     trend?: string | null;
@@ -86,10 +101,10 @@ export function isRenderableMultiStrategyAnalysis(a: unknown): a is MultiStrateg
 }
 
 export const MSA_VERDICT_LABELS: Record<MsaVerdict, string> = {
-  TRADE_CANDIDATE: "Trade candidate",
-  WATCH: "Watch",
-  NO_TRADE: "No trade",
-  INSUFFICIENT_DATA: "Insufficient data",
+  TRADE_CANDIDATE: "Qualified research candidate",
+  WATCH: "Setup worth monitoring",
+  NO_TRADE: "No qualifying setup",
+  INSUFFICIENT_DATA: "Insufficient verified data",
 };
 
 export function msaStrategyName(s: MsaSetup): string {

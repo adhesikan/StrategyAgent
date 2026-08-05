@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, Layers } from "lucide-react";
+import { ChevronDown, Layers, AlertTriangle } from "lucide-react";
 import {
   isRenderableMultiStrategyAnalysis,
   MSA_SUPPORT_GROUP_LABELS,
@@ -42,6 +42,86 @@ const CANDIDATE_TONE: Record<string, string> = {
 
 const SUPPORT_GROUP_ORDER: MsaSupportGroup[] = ["confirming", "forming", "rejected", "unavailable"];
 
+// ---------------------------------------------------------------------------
+// Price integrity warning banner
+// ---------------------------------------------------------------------------
+
+function IntegrityWarning({ symbol }: { symbol: string }) {
+  return (
+    <div
+      className="flex flex-col gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/8 px-3 py-2.5"
+      data-testid="banner-price-integrity-failed"
+    >
+      <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        Price levels could not be validated
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Trigger, risk and objective levels have been withheld for {symbol}. This analysis cannot be saved until price data is restored.
+      </p>
+      <div className="flex gap-2 text-[10px]">
+        <a href={`/ask?q=analyze+${symbol}`} className="text-amber-300/80 hover:text-amber-300 underline underline-offset-2">
+          Retry Analysis
+        </a>
+        <span className="text-muted-foreground">·</span>
+        <a href={`/charts/${symbol}`} className="text-muted-foreground hover:text-foreground underline underline-offset-2">
+          Open Chart
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Strategy count breakdown (spec §5)
+// ---------------------------------------------------------------------------
+
+function CountBreakdown({ a }: { a: MultiStrategyAnalysis }) {
+  const confirming = a.confirmingCount ?? 0;
+  const forming = a.formingCount ?? 0;
+  const rejected = a.rejectedCount ?? 0;
+  const unavailable = a.unavailableCount ?? 0;
+  const evaluated = a.strategiesChecked;
+  const failed = a.strategiesFailed;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="section-msa-counts">
+      <Badge variant="outline" className="text-[10px]" data-testid="badge-msa-evaluated">
+        {evaluated} strategies evaluated
+      </Badge>
+      {failed > 0 && (
+        <Badge variant="outline" className="text-[10px] text-muted-foreground" data-testid="badge-msa-failed">
+          {failed} unavailable
+        </Badge>
+      )}
+      {confirming > 0 && (
+        <Badge variant="outline" className="text-[10px] text-emerald-300 border-emerald-500/40 bg-emerald-500/10" data-testid="badge-msa-confirming">
+          {confirming} confirming
+        </Badge>
+      )}
+      {forming > 0 && (
+        <Badge variant="outline" className="text-[10px] text-sky-300 border-sky-500/40 bg-sky-500/10" data-testid="badge-msa-forming">
+          {forming} forming
+        </Badge>
+      )}
+      {rejected > 0 && (
+        <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/40" data-testid="badge-msa-rejected">
+          {rejected} rejected
+        </Badge>
+      )}
+      {unavailable > 0 && (
+        <Badge variant="outline" className="text-[10px] text-muted-foreground" data-testid="badge-msa-unavailable">
+          {unavailable} unavailable
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Supporting strategy row
+// ---------------------------------------------------------------------------
+
 function SupportingRow({ entry }: { entry: MsaSetupEntry }) {
   const s = entry.setup;
   const checkLabel = msaCandidateCheckLabel(entry);
@@ -67,6 +147,10 @@ function SupportingRow({ entry }: { entry: MsaSetupEntry }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main card
+// ---------------------------------------------------------------------------
+
 export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrategyAnalysis | null | undefined }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   if (!isRenderableMultiStrategyAnalysis(analysis)) return null;
@@ -76,9 +160,12 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
   const noMatch = a.noMatchStrategies ?? [];
   const failed = a.failedStrategies ?? [];
   const hasAdvanced = noMatch.length > 0 || failed.length > 0;
+  const integrityFailed = a.priceIntegrity?.valid === false;
 
   return (
     <div className="space-y-3" data-testid="cards-multi-strategy-analysis">
+      {integrityFailed && <IntegrityWarning symbol={a.symbol} />}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -87,15 +174,10 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Verdict + freshness */}
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className={`text-[10px] ${VERDICT_TONE[a.overallVerdict] ?? ""}`} data-testid="badge-msa-verdict">
-              Overall: {MSA_VERDICT_LABELS[a.overallVerdict] ?? a.overallVerdict}
-            </Badge>
-            <Badge variant="outline" className="text-[10px]" data-testid="badge-msa-checked">
-              {a.strategiesChecked} strategies checked
-            </Badge>
-            <Badge variant="outline" className="text-[10px]" data-testid="badge-msa-matched">
-              {a.strategiesMatched} match{a.strategiesMatched === 1 ? "" : "es"}
+              {MSA_VERDICT_LABELS[a.overallVerdict] ?? a.overallVerdict}
             </Badge>
             <Badge variant="outline" className="text-[10px]" data-testid="badge-msa-freshness">
               Data: {msaFreshLabel(a.dataQuality.fresh)}
@@ -107,6 +189,10 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
             )}
           </div>
 
+          {/* Count breakdown (spec §5 — replaces misleading "X matches" badge) */}
+          <CountBreakdown a={a} />
+
+          {/* Primary setup */}
           {p && ps && (
             <div className="rounded-lg border p-3 space-y-2" data-testid="card-msa-primary">
               <div className="flex flex-wrap items-center gap-2">
@@ -117,27 +203,35 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                   <Badge variant="outline" className="text-[10px]">Score {Math.round(ps.score)}</Badge>
                 )}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs">
-                {msaFmtPrice(ps.trigger?.price) && (
-                  <div><span className="text-muted-foreground">Trigger:</span> {msaFmtPrice(ps.trigger?.price)}</div>
-                )}
-                {msaFmtPrice(ps.invalidation?.price) && (
-                  <div><span className="text-muted-foreground">Invalidation:</span> {msaFmtPrice(ps.invalidation?.price)}</div>
-                )}
-                {msaFmtPrice(ps.technicalObjective?.price) && (
-                  <div><span className="text-muted-foreground">Objective:</span> {msaFmtPrice(ps.technicalObjective?.price)}</div>
-                )}
-              </div>
+
+              {/* Price-derived levels — suppressed when integrity failed */}
+              {integrityFailed ? (
+                <div
+                  className="rounded-sm bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground"
+                  data-testid="section-msa-price-suppressed"
+                >
+                  Price-level analysis unavailable
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+                  {msaFmtPrice(ps.trigger?.price) && (
+                    <div><span className="text-muted-foreground">Trigger:</span> {msaFmtPrice(ps.trigger?.price)}</div>
+                  )}
+                  {msaFmtPrice(ps.invalidation?.price) && (
+                    <div><span className="text-muted-foreground">Invalidation:</span> {msaFmtPrice(ps.invalidation?.price)}</div>
+                  )}
+                  {msaFmtPrice(ps.technicalObjective?.price) && (
+                    <div><span className="text-muted-foreground">Objective:</span> {msaFmtPrice(ps.technicalObjective?.price)}</div>
+                  )}
+                </div>
+              )}
+
               {msaCandidateCheckLabel(p) && (
                 <div className="text-xs" data-testid="text-msa-candidate-verdict">
                   <span className="text-muted-foreground">Candidate check:</span>{" "}
                   <span className={CANDIDATE_TONE[p.candidateCheck?.status ?? "UNAVAILABLE"] ?? ""}>
                     {msaCandidateCheckLabel(p)}
                   </span>
-                  {/* §6 — Specific rejection reason chip. Maps the candidateCheck.reason
-                      code (e.g. "WAITING_FOR_TRIGGER") to a trader-facing label. Only
-                      shown when the reason matches a known code — prose reasons are
-                      already shown in the "Why it's not actionable" section below. */}
                   {(a.overallVerdict === "NO_TRADE" || a.overallVerdict === "WATCH") &&
                     (() => {
                       const label = translateNoTradeReason(p.candidateCheck?.reason);
@@ -178,6 +272,7 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
             </div>
           )}
 
+          {/* Supporting setups */}
           {a.supportingSetups.length > 0 && (
             <div className="space-y-2" data-testid="list-msa-supporting">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Supporting evidence</div>
@@ -198,6 +293,7 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
             </div>
           )}
 
+          {/* Advanced section */}
           {hasAdvanced && (
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger

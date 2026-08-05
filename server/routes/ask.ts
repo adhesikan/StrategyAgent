@@ -953,6 +953,40 @@ async function callOpenAi(
       }
     }
 
+    // --- Independent price integrity cross-check (Production Safety Fix) ---
+    // Compares the MCP-reported setup price against VCP Trader's own live
+    // quote for the symbol. Detects decimal-order mismatches (10×, 100×, etc.)
+    // before the analysis is trusted for display or research-save gating.
+    // Non-blocking: a check failure never breaks the response.
+    if (multiStrategy && ctx.tickers.length > 0) {
+      try {
+        const { checkPriceIntegrity, safeIntegrityResult } = await import("../services/price-integrity-checker");
+        const referencePrice = ctx.tickers[0].last;
+        const setupPrice =
+          multiStrategy.marketContext?.price ??
+          multiStrategy.primarySetup?.setup.currentPrice ??
+          null;
+        const rawResult = checkPriceIntegrity(setupPrice, referencePrice, "live_quote");
+        if (!rawResult.valid) {
+          // Log detail server-side only — raw prices never reach the client.
+          console.warn(
+            JSON.stringify({
+              event: "multi_strategy_price_integrity_failed",
+              symbol: multiStrategy.symbol,
+              code: rawResult.code,
+              ratioCategory: rawResult.ratioCategory,
+              setupPrice: rawResult.setupPrice,
+              referencePrice: rawResult.referencePrice,
+            }),
+          );
+        }
+        // Attach safe result (no raw prices) to the payload.
+        multiStrategy = { ...multiStrategy, priceIntegrity: safeIntegrityResult(rawResult) };
+      } catch {
+        /* non-blocking — integrity unavailable is handled gracefully downstream */
+      }
+    }
+
     // Unknown strategy named explicitly → answer safely with supported names,
     // no scans, no LLM guessing.
     if (unresolvedStrategyAsk) {
@@ -1046,6 +1080,11 @@ async function callOpenAi(
       // multi-strategy result only — no tools, no extra scans, no invention.
       mcpTools = [];
       mcpSystemRules += `\n- The "multiStrategyAnalysis" field in the user content is the DETERMINISTIC result of scanning ${multiStrategy.symbol} across every eligible scanner strategy, plus trade-candidate qualification. Your job is ONLY to explain it. Rules: (1) Name the primary strategy (primarySetup) and clearly distinguish it from supporting evidence (supportingSetups). (2) State the deterministic overallVerdict (${multiStrategy.overallVerdict}) — you may NEVER override, soften, or contradict it, and never contradict a candidate's NO_TRADE verdict. (3) Explain why the trade qualifies or fails using ONLY the provided selectionReasons, reasons, warnings, and noTradeReasons. (4) Mention earnings/market-regime/risk warnings when present in marketContext or candidate data. (5) Scanner detections are AI-generated analysis, not recommendations — never tell the user to buy/sell. (6) NEVER invent triggers, stops, targets, scores, or strategy matches that are not in the payload; if a level is missing, say it is not available. (7) NEVER compare raw scores across different strategies as if they were equivalent. (8) Do not call any tools.`;
+      // GPT price-level safety: when the independent integrity check failed,
+      // instruct GPT to suppress ALL price levels and state the limitation.
+      if (multiStrategy.priceIntegrity?.valid === false) {
+        mcpSystemRules += ` PRICE INTEGRITY OVERRIDE (code: ${multiStrategy.priceIntegrity.code ?? "UNKNOWN"}, category: ${multiStrategy.priceIntegrity.ratioCategory ?? "unknown"}): The price-level evidence for ${multiStrategy.symbol} was withheld because the setup price could not be independently validated against VCP Trader's own market data. YOU MUST NOT mention, repeat, reconstruct, approximate, or infer any trigger, invalidation, objective, resistance, major-high, or price-level value from the payload. Do not use the word "approximately" with any price. Do not suggest that any level can be inferred. Instead state exactly: "Price-level evidence could not be independently validated, so the platform withheld trigger, invalidation and objective levels. The remaining non-price evidence did not support a qualifying setup." Do not override or soften the overallVerdict.`;
+      }
     }
 
     if (strategyRec) {
@@ -1636,7 +1675,11 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                 // The handle lets the user explicitly Save Research from the UI.
                 // Non-blocking: a handle failure never breaks the response.
                 let s54cResearchSave: Record<string, unknown> | undefined;
-                if (brainInt !== "EDUCATION_PLUS_ACTION" && brainInt !== "EXPLAIN_CONCEPT" && brainInt !== "MARKET_RESEARCH") {
+                // Gate: if the independent price integrity check failed for a
+                // multi-strategy analysis, do not mint a handle — price-derived
+                // levels must not become immutable saved research until verified.
+                const _priceIntegrityBlocked = multiStrategy?.priceIntegrity?.valid === false;
+                if (!_priceIntegrityBlocked && brainInt !== "EDUCATION_PLUS_ACTION" && brainInt !== "EXPLAIN_CONCEPT" && brainInt !== "MARKET_RESEARCH") {
                   try {
                     const { extractResearchEvidence } = await import("../trader-brain/research-evidence-extractor");
                     const { validateResearchEvidence } = await import("../services/research-evidence-validator");

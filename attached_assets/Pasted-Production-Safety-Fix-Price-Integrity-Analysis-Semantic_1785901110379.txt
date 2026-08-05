@@ -1,0 +1,408 @@
+Production Safety Fix — Price Integrity, Analysis Semantics and Research-Save Gating
+
+CURRENT STATE
+
+The vcp-trader-mcp service now:
+
+- normalizes market data at one canonical boundary
+- attaches priceIntegrity metadata to setup candidates
+- invalidates internally inconsistent setups
+- removes trigger/invalidation/objective when integrity fails
+- fixes requested direction "either" to mean no restriction
+- prevents invalid setups from qualifying downstream
+
+However, the original MU incident showed that all setup values may potentially arrive on the same incorrect scale.
+
+VCP Trader owns:
+
+- the authoritative internal market-history endpoint
+- TraderBrain orchestration
+- multi-strategy analysis response assembly
+- confidence presentation
+- GPT explanation
+- ResearchSave handle minting
+
+GOAL
+
+Add independent price validation and correct multi-strategy presentation semantics before allowing deterministic evidence to become immutable saved research.
+
+Do not modify:
+
+- MCP scanner algorithms
+- recommendation policies
+- ranking algorithms
+- portfolio policies
+- options selection
+- risk calculations
+- execution
+- brokerage behavior
+
+Do not commit, push or deploy automatically.
+
+==================================================
+1. TRACE THE LIVE PRICE REFERENCES
+==================================================
+
+Identify every price source available during an Ask AI analysis request:
+
+- internal market-history latest close
+- broker quote when connected
+- public/provider quote when available
+- multi-strategy analysis current price
+- MCP setup current price
+- trigger
+- invalidation
+- objective
+- resistance
+- major high
+
+Document which source is authoritative for:
+
+A. historical analysis
+B. current display price
+C. setup-level validation
+
+Do not assume the MCP setup price is independently authoritative when it originated from VCP Trader data.
+
+==================================================
+2. INDEPENDENT PRICE CONSISTENCY GATE
+==================================================
+
+Create a deterministic validation step before:
+
+- displaying price-derived levels as trusted
+- generating GPT price commentary
+- minting a ResearchSave handle
+
+Compare the MCP setup current price against the latest trusted VCP Trader history close or quote.
+
+Use a ratio-based policy.
+
+Detect suspicious decimal-order mismatches such as approximately:
+
+- 10×
+- 100×
+- 0.1×
+- 0.01×
+
+Also detect material unexplained divergence beyond an approved tolerance.
+
+Do not automatically correct values.
+
+Return a result such as:
+
+{
+  valid: false,
+  code: "PRICE_REFERENCE_MISMATCH",
+  affectedFields: [...],
+  referenceSource: "...",
+  setupPrice: ...,
+  referencePrice: ...,
+  ratioCategory: "10x"
+}
+
+Do not expose sensitive provider internals to the client.
+
+==================================================
+3. RESEARCH-SAVE GATING
+==================================================
+
+Do not mint a ResearchSave handle when:
+
+- MCP priceIntegrity.valid === false
+- the independent VCP Trader reference check fails
+- price-derived levels cannot be verified
+- the deterministic evidence validator reports a scale mismatch
+
+Instead return safe metadata:
+
+researchSave: {
+  available: false,
+  reasonCode: "PRICE_INTEGRITY_FAILED"
+}
+
+Or omit researchSave if that matches the existing contract better.
+
+The frontend should display:
+
+"This analysis cannot be saved because its price levels could not be independently validated. Refresh the analysis after market data is restored."
+
+Do not allow client override.
+
+Do not save a partial snapshot containing the invalid levels.
+
+==================================================
+4. PRICE DISPLAY SAFETY
+==================================================
+
+When price integrity fails:
+
+- suppress current price from the MCP setup when unverified
+- suppress trigger
+- suppress invalidation
+- suppress objective
+- suppress major-high commentary
+- suppress exact ATR-derived levels tied to the inconsistent series
+
+Display:
+
+"Price-level analysis unavailable"
+
+Preserve non-price evidence only when it remains truthful.
+
+Do not transform the setup into an actionable or watch candidate.
+
+==================================================
+5. MATCH-COUNT SEMANTICS
+==================================================
+
+Fix the misleading "10 matches" label.
+
+Trace the current counters and expose distinct values:
+
+- strategiesEvaluated
+- responsesReceived
+- confirmingCount
+- formingCount
+- rejectedCount
+- unavailableCount
+- qualifiedCount when applicable
+
+Do not label a non-null setup object as a strategy match.
+
+Recommended visible summary:
+
+10 strategies evaluated
+0 confirming
+0 forming
+2 rejected
+8 unavailable
+
+Use the actual counts.
+
+Preserve backward-compatible fields where required, but stop presenting strategiesMatched as true matches if it currently means responses received.
+
+==================================================
+6. CONFIDENCE POLICY
+==================================================
+
+Update multiStrategyConfidence so HIGH cannot be returned merely because:
+
+- several tool calls succeeded
+- the primary candidate returned NO_TRADE
+- data was fresh at the transport level
+
+HIGH must require meaningful usable evidence.
+
+At minimum, prohibit HIGH when:
+
+- price integrity failed
+- confirmingCount === 0 and formingCount === 0
+- most strategies are unavailable
+- primary setup is invalid
+- data quality is mixed, partial, unknown or invalid
+- all candidate verdicts are NO_TRADE or unavailable
+
+Define deterministic thresholds for:
+
+HIGH
+MEDIUM
+LOW
+
+Do not ask GPT to assign confidence.
+
+Document the exact policy.
+
+==================================================
+7. VERDICT TERMINOLOGY
+==================================================
+
+Keep internal enum values unchanged.
+
+Presentation mapping:
+
+NO_TRADE
+→ No qualifying setup
+
+INVALID
+→ Invalid setup
+
+INSUFFICIENT_DATA
+→ Insufficient verified data
+
+WATCH
+→ Setup worth monitoring
+
+TRADE_CANDIDATE
+→ Qualified research candidate
+
+Do not expose raw enum labels in headlines or prose.
+
+==================================================
+8. GPT EXPLANATION SAFETY
+==================================================
+
+Build the GPT prompt from validated fields only.
+
+When price integrity fails:
+
+- do not send suspicious numeric price levels to GPT
+- explicitly tell GPT that price-level analysis was withheld
+- prohibit reconstructed or inferred prices
+- prohibit language suggesting the setup was evaluated using valid levels
+
+Example explanation:
+
+"Price-level evidence could not be independently validated, so the platform withheld trigger, invalidation and objective levels. The remaining non-price evidence did not support a qualifying setup."
+
+GPT must not override:
+
+- verdict
+- data quality
+- confidence
+- integrity result
+- category counts
+
+==================================================
+9. RESEARCH EVIDENCE VALIDATOR
+==================================================
+
+Extend the StrategyAgent evidence validator with an optional trusted reference-price check.
+
+The validator should reject evidence when:
+
+- domain snapshots contain a setup price inconsistent with the trusted reference
+- trigger/invalidation/objective remain present after a failed integrity check
+- dataQuality claims fresh/complete while integrity is invalid
+- verdict claims actionable while price integrity is invalid
+
+Do not embed the trusted quote or full market history into the saved ResearchEvidenceRecord.
+
+Persist only a safe limitation such as:
+
+"Price-derived levels were not independently validated."
+
+If the complete record is rejected, no save handle should be minted.
+
+==================================================
+10. USER EXPERIENCE
+==================================================
+
+For an integrity failure, show a compact warning near the analysis:
+
+"Price levels could not be validated"
+
+"Trigger, risk and objective levels have been withheld."
+
+Actions:
+
+- Retry Analysis
+- Open Chart
+- View Data Status
+
+Do not show:
+
+- Save Research
+- Trade Builder
+- actionable status
+- high confidence
+
+==================================================
+11. TESTS
+==================================================
+
+Add regression tests for:
+
+A. Independent reference validation
+- matching setup and history close
+- approximately 10× mismatch
+- approximately 100× mismatch
+- legitimate small quote/history variance
+- stale quote with fresh history
+- missing reference price
+- non-finite setup price
+- all setup fields consistently wrong by 10×
+
+B. Research-save safety
+- valid analysis mints handle
+- MCP priceIntegrity false blocks handle
+- independent reference mismatch blocks handle
+- no invalid evidence enters the save-handle store
+- frontend cannot override gating
+- retry with valid data allows a new handle
+
+C. Counts
+- response object is not automatically a match
+- confirming/forming/rejected/unavailable counts
+- no "10 matches" for ten unknown responses
+- existing qualified analysis count remains correct
+
+D. Confidence
+- invalid primary setup cannot be HIGH
+- zero confirming and zero forming cannot be HIGH
+- majority unavailable forces LOW
+- valid multi-strategy confirmation may be HIGH
+- GPT cannot change confidence
+
+E. Presentation
+- NO_TRADE displays "No qualifying setup"
+- invalid data suppresses price fields
+- integrity warning renders
+- Save Research hidden
+- Trade Builder hidden
+- no suspicious values sent to GPT
+
+F. Regression
+- valid BA/NVDA analysis remains unchanged
+- single-symbol recommendation remains unchanged
+- market ranking remains unchanged
+- no execution behavior
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+12. DOCUMENTATION
+==================================================
+
+Create:
+
+docs/PRICE_INTEGRITY_AND_RESEARCH_SAVE_SAFETY.md
+
+Document:
+
+1. source authority
+2. independent reference policy
+3. ratio thresholds
+4. save-handle gating
+5. field suppression
+6. confidence policy
+7. strategy-count semantics
+8. GPT safety
+9. known limitations
+10. production monitoring
+
+==================================================
+13. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. exact VCP Trader price sources
+2. independent validation design
+3. files changed
+4. research-save gating
+5. field suppression
+6. match-count changes
+7. confidence policy
+8. terminology changes
+9. GPT protections
+10. tests and totals
+11. build result
+12. MU before/after output
+13. compatibility concerns
+
+Do not commit or push.
+Wait for review.

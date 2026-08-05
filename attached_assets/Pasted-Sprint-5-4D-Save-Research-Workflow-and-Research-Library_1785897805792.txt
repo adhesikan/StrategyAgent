@@ -1,0 +1,485 @@
+Sprint 5.4D — Save Research Workflow and Research Library
+
+CURRENT STATE
+
+The backend now provides:
+
+researchSave?: {
+  available: true;
+  handleId;
+  domain;
+  titleSuggestion;
+  tagSuggestions;
+  expiresAt;
+}
+
+The backend also exposes authenticated research-record endpoints under:
+
+/api/research-records
+
+Research evidence is deterministic, immutable and stored only after explicit user action.
+
+GOAL
+
+Allow users to:
+
+- explicitly save a deterministic research result
+- see whether it was saved
+- browse their saved research records
+- filter and search saved research
+- edit only user-owned metadata
+- archive or delete saved research
+- open a saved record summary
+
+This is a research and decision-support workflow.
+
+Do not:
+
+- modify MCP
+- modify TraderBrain decisions
+- modify scanner, ranking, recommendation, risk, portfolio or options logic
+- accept arbitrary evidence from the browser
+- expose evidence save handles outside the authenticated session flow
+- add automatic saving
+- add execution
+- commit, push or deploy automatically
+
+==================================================
+1. AUDIT THE NEW API CONTRACT
+==================================================
+
+Inspect the implemented research-record routes and confirm the exact request and response contracts for:
+
+- POST /api/research-records
+- GET /api/research-records
+- GET /api/research-records/:id
+- PATCH /api/research-records/:id/metadata
+- POST /api/research-records/:id/archive
+- DELETE /api/research-records/:id
+- journal endpoints
+
+Use the actual implementation.
+
+Do not invent request fields.
+
+==================================================
+2. SAVE RESEARCH ACTION
+==================================================
+
+When an Ask AI response contains researchSave.available === true, render:
+
+Save Research
+
+The button must submit only the backend-issued save handle and approved user metadata.
+
+Do not submit:
+
+- ResearchEvidenceRecord
+- tool payloads
+- MCP results
+- account IDs
+- context tokens
+- raw portfolio data
+
+Suggested interaction:
+
+1. User clicks Save Research.
+2. Open a small dialog.
+3. Prefill:
+   - titleSuggestion
+   - tagSuggestions
+4. Allow editing:
+   - title
+   - tags
+   - optional user label
+5. Submit the opaque handle.
+6. Show a clear saved state.
+
+==================================================
+3. HANDLE EXPIRY AND IDEMPOTENCY
+==================================================
+
+Support:
+
+- valid save
+- handle expired
+- already consumed / idempotent retry
+- session mismatch
+- unauthorized
+- server error
+
+For an expired handle, show:
+
+"This research snapshot has expired. Run the analysis again to create a fresh snapshot."
+
+Do not silently recreate evidence from client data.
+
+Do not automatically rerun the analysis without user action.
+
+==================================================
+4. SAVE BUTTON STATES
+==================================================
+
+Support:
+
+- Save Research
+- Saving…
+- Saved
+- Expired
+- Unavailable
+
+Disable duplicate submissions while saving.
+
+After successful save, store the returned research-record ID in component state so the user can open it.
+
+Do not store the save handle in localStorage.
+
+==================================================
+5. RESEARCH LIBRARY ROUTE
+==================================================
+
+Add a route such as:
+
+/research
+
+or:
+
+/research/library
+
+Use the application’s existing navigation and visual system.
+
+The page should show:
+
+- title
+- domain
+- symbol or symbols
+- verdict/qualification status
+- strategy
+- confidence
+- data quality
+- tags
+- generated date
+- archived state
+
+Use research-oriented wording.
+
+Do not label records as personalized investment advice.
+
+==================================================
+6. FILTERS AND SEARCH
+==================================================
+
+Support server-backed or existing-query-pattern filters for:
+
+- symbol
+- domain
+- verdict
+- strategy
+- tag
+- archived
+- date range when already supported by the endpoint
+
+Add text search only over approved metadata such as:
+
+- title
+- user label
+- symbol
+- tags
+
+Do not search raw hidden evidence fields in the browser.
+
+Use pagination.
+
+==================================================
+7. RECORD DETAIL SUMMARY
+==================================================
+
+Add a basic route such as:
+
+/research/:id
+
+For this sprint, render a structured summary only:
+
+- title
+- domain
+- generated date
+- symbol(s)
+- verdict
+- qualification status
+- strategy
+- confidence
+- data quality
+- reasons
+- warnings
+- watch conditions
+- limitations
+- source tools
+- domain-specific summary
+
+Do not build the full AI Research Workspace yet.
+
+Do not reconstruct the record from GPT prose.
+
+==================================================
+8. DOMAIN-SPECIFIC SUMMARY COMPONENTS
+==================================================
+
+Create bounded summary components for:
+
+- SYMBOL_ANALYSIS
+- TRADE_RESEARCH
+- MARKET_OPPORTUNITY_SEARCH
+- PORTFOLIO_GOAL_RESEARCH
+- PORTFOLIO_IMPACT
+- OPTIONS_RESEARCH
+
+Only render fields present in the stored record.
+
+For estimated options:
+
+- clearly label Estimated Research
+- do not show live-only fields
+
+For live options:
+
+- show only persisted truthful contract fields
+
+==================================================
+9. METADATA EDITING
+==================================================
+
+Allow the owner to edit only:
+
+- title
+- userLabel
+- tags
+- archived
+
+Do not expose controls for editing:
+
+- verdict
+- confidence
+- reasons
+- warnings
+- levels
+- source timestamps
+- domainSnapshot
+- generatedAt
+
+Use the metadata endpoint only.
+
+==================================================
+10. ARCHIVE AND DELETE
+==================================================
+
+Support:
+
+- Archive
+- Restore, if supported by the API
+- Delete
+
+Delete must require confirmation.
+
+Explain that deleting a research record also deletes its linked journal entry when that is the implemented cascade behavior.
+
+Do not imply that deleting research affects brokerage positions or trade history.
+
+==================================================
+11. NAVIGATION
+==================================================
+
+Add a clear top-navigation or Research menu entry:
+
+Research Library
+
+Do not overload the existing Education & Research label if that currently means editorial content.
+
+Differentiate:
+
+- Education & Research content
+- My Research Library
+
+Use labels that avoid user confusion.
+
+==================================================
+12. DECISION JOURNAL ENTRY POINT
+==================================================
+
+On a saved record detail page, show:
+
+Add Decision Journal
+
+or:
+
+Open Decision Journal
+
+For this sprint, the action may open a basic form using the existing journal endpoint.
+
+Do not yet build advanced outcome analytics.
+
+==================================================
+13. EMPTY STATES
+==================================================
+
+Research Library empty state:
+
+"No saved research yet."
+
+Explain:
+
+"Run an analysis or research workflow, then choose Save Research to keep an immutable evidence snapshot."
+
+Provide actions:
+
+- Analyze a Stock
+- Explore Market Opportunities
+
+Do not show fabricated example records.
+
+==================================================
+14. SECURITY AND PRIVACY
+==================================================
+
+Confirm:
+
+- no userId is sent from the frontend
+- no evidence payload is submitted from the frontend
+- no context token is exposed
+- no account identifier is rendered
+- no raw positions are rendered
+- cross-user records return the existing safe not-found behavior
+- save handles never enter URLs
+- save handles are not stored in localStorage, analytics or logs
+
+Analytics may record:
+
+- research_save_clicked
+- research_save_succeeded
+- research_save_failed
+- research_record_opened
+- research_record_archived
+- research_record_deleted
+
+Do not include handle IDs, record contents or sensitive metadata in analytics.
+
+==================================================
+15. ACCESSIBILITY AND RESPONSIVENESS
+==================================================
+
+Verify:
+
+- keyboard-accessible save dialog
+- focus management
+- confirmation dialog labels
+- screen-reader descriptions
+- mobile library layout
+- long titles and tags wrap correctly
+- domain summary tables do not overflow
+
+==================================================
+16. TESTS
+==================================================
+
+Add tests for:
+
+A. Save flow
+- researchSave available
+- save dialog
+- edited title/tags
+- handle-only submission
+- successful save
+- expired handle
+- consumed handle
+- unauthorized
+- duplicate-click protection
+- no localStorage handle
+
+B. Library
+- empty state
+- list records
+- pagination
+- filters
+- symbol search
+- tags
+- archived records
+- server error
+
+C. Detail
+- each of six domains
+- estimated options limitations
+- live options fields
+- reasons/warnings
+- missing optional fields
+- unknown schema version handled safely
+
+D. Metadata
+- title edit
+- tag edit
+- archive
+- delete confirmation
+- immutable fields have no edit controls
+
+E. Ownership/security
+- no userId submitted
+- no evidence payload submitted
+- no handle in URL
+- no handle in analytics
+- no sensitive fields rendered
+
+F. Regression
+- Ask AI works without researchSave
+- education-only responses show no Save Research button
+- failed deterministic response shows no Save Research
+- existing recommendation/analysis UI unchanged
+- no execution behavior
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+17. DOCUMENTATION
+==================================================
+
+Create:
+
+docs/SPRINT_5_4_SAVE_RESEARCH_UI.md
+
+Document:
+
+1. Save workflow
+2. Handle behavior
+3. Library routes
+4. Filtering
+5. Metadata permissions
+6. Domain renderers
+7. Security controls
+8. Analytics
+9. Known limitations
+10. Next Research Workspace step
+
+==================================================
+18. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. API contracts used
+2. Files created
+3. Files modified
+4. Save Research flow
+5. Handle expiry behavior
+6. Research Library
+7. Detail summaries
+8. Metadata controls
+9. Archive/delete behavior
+10. Journal entry point
+11. Security protections
+12. Tests and totals
+13. Build result
+14. Screenshots
+15. Compatibility concerns
+16. Recommended deployment sequence
+
+Wait for review before committing, pushing or deploying.

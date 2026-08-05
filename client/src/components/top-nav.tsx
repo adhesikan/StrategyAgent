@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check } from "lucide-react";
+import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check, BookOpen } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -68,6 +68,13 @@ const NAV_ITEMS: TopNavItem[] = [
     icon: Sparkles,
     testId: "topnav-ask",
     matches: (p) => p === "/ask",
+  },
+  {
+    label: "My Research",
+    href: "/research",
+    icon: BookOpen,
+    testId: "topnav-research",
+    matches: (p) => p === "/research" || p.startsWith("/research/"),
   },
 ];
 

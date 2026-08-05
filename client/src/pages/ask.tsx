@@ -25,6 +25,8 @@ import type { VcpAnalysis } from "@/lib/vcp-analysis";
 import { PortfolioFitCard } from "@/components/portfolio-fit-card";
 import { PortfolioTradePlanCards } from "@/components/portfolio-trade-plan-cards";
 import type { PortfolioTradePlan } from "@/lib/portfolio-trade-plan";
+import { SaveResearchButton } from "@/components/save-research-button";
+import type { ResearchSaveMeta } from "@/lib/research-records";
 
 interface AskPick {
   id: string;
@@ -141,6 +143,8 @@ interface AskResponse {
   // Sprint 4E: deterministic portfolio-constrained trade plan
   portfolioTradePlan?: PortfolioTradePlan;
   portfolioTradePlanFailed?: boolean;
+  // Sprint 5.4C/D: research save handle — safe metadata only, never evidence
+  researchSave?: ResearchSaveMeta;
 }
 
 const CONFIDENCE_TONE: Record<string, string> = {
@@ -395,6 +399,13 @@ export default function AskPage() {
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex items-start gap-2" data-testid="text-ask-risk">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
                   <div className="text-amber-100/90">{data.riskNote}</div>
+                </div>
+              )}
+
+              {/* Sprint 5.4D — Save Research button: shown only when backend minted a handle */}
+              {data.researchSave?.available && (
+                <div className="pt-1" data-testid="container-save-research">
+                  <SaveResearchButton researchSave={data.researchSave} />
                 </div>
               )}
 

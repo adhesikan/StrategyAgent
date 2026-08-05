@@ -42,3 +42,9 @@ SYMBOL_ANALYSIS←ANALYZE_SYMBOL, TRADE_RESEARCH←RECOMMEND_SYMBOL_TRADE, MARKE
 
 ## Migration
 Idempotent SQL blocks added to `scripts/migrate.js`. Both tables created with `IF NOT EXISTS`. Indexes: user_id, user_id+domain, user_id+symbol, user_id+archived, research_record_id, unique(research_record_id) for journal.
+
+## Frontend testing pattern (5.4D)
+`@testing-library/react` is NOT installed — client tests must be pure TS unit tests in `client/src/__tests__/*.ts` (not `.tsx`). vitest root flag `--root .` is required to find client tests. Component rendering tests deferred until testing-library is installed.
+
+## formatGeneratedAt safety
+Must guard with `isNaN(d.getTime())` before calling `toLocaleDateString` — `new Date("not-a-date")` is valid JS but returns "Invalid Date" string from toLocaleDateString; the guard returns the original string instead.

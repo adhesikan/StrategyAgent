@@ -73,6 +73,8 @@ import BillingSuccessPage from "@/pages/billing-success";
 import BillingCancelPage from "@/pages/billing-cancel";
 import AskPage from "@/pages/ask";
 import CongressActivityPage from "@/pages/congress-activity";
+import ResearchLibraryPage from "@/pages/research-library";
+import ResearchDetailPage from "@/pages/research-detail";
 import { Redirect } from "wouter";
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
@@ -114,6 +116,8 @@ function AppRouter() {
       <Route path="/home" component={CommandCenterPage} />
       <Route path="/ideas" component={HomeV2} />
       <Route path="/ask" component={AskPage} />
+      <Route path="/research/:id" component={ResearchDetailPage} />
+      <Route path="/research" component={ResearchLibraryPage} />
       <Route path="/scanner" component={StrategyScannerPage} />
       <Route path="/trade/:ticker" component={TradeDetailPage} />
       <Route path="/instatrade" component={InstaTradePage} />

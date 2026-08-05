@@ -1,0 +1,347 @@
+Sprint 5.5B — Reuse Recent Analysis Results and Eliminate Unnecessary Re-runs
+
+PRIMARY REPOSITORY
+
+Implement this in the VCP Trader / StrategyAgent repository using Replit.
+
+GOAL
+
+Dashboard actions must open the existing result that produced the dashboard card whenever a reusable result exists.
+
+Do not run the full Ask AI/MCP analysis again merely because the user clicked Open Analysis.
+
+A fresh analysis should run only when:
+
+- no reusable result exists
+- the user explicitly selects Refresh Analysis
+- the result is outside the approved freshness policy and the user confirms refresh
+
+Do not modify scanner algorithms, MCP tools, qualification, ranking, recommendation logic, risk calculations, broker integrations, execution, or ResearchEvidenceRecord semantics.
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. AUDIT CURRENT CARD ACTIONS
+==================================================
+
+Audit:
+
+- Today’s Opportunities → Open Analysis
+- Growth Opportunity / Growth Watch → Analyze Symbol
+- Income Opportunity → Explore Income
+- Watchlist Activity → Scan
+- dashboard quick actions
+- saved research links
+
+For each action document:
+
+- current route
+- whether it sends a new /api/ask request
+- whether an existing result already exists
+- whether the card is based on full analysis, ranking output, sentiment context, or demonstration data
+- available IDs and timestamps
+
+==================================================
+2. RESULT PROVENANCE CONTRACT
+==================================================
+
+Each real dashboard card must carry enough provenance to open its source result:
+
+- sourceType
+- sourceId where available
+- symbol
+- intent or domain
+- generatedAt
+- sourceTimestamp
+- dataQuality
+- freshnessStatus
+- canRefresh
+- isDemonstration
+
+Do not expose secrets, provider payloads, account identifiers, or MCP internals.
+
+If no persistent ID exists, use the safest existing server-side result reference or bounded session cache according to current architecture.
+
+Do not place full sensitive result payloads into URLs.
+
+==================================================
+3. OPEN EXISTING RESULT
+==================================================
+
+When a reusable analysis exists:
+
+- Open Analysis must render that existing deterministic result immediately.
+- Do not call /api/ask again on initial open.
+- Preserve the exact verdict, ranking, evidence, warnings, and timestamp shown by the originating result.
+- Display:
+  - Analyzed X minutes ago
+  - data timestamp
+  - data-quality label
+  - freshness label
+
+Provide a separate:
+
+Refresh Analysis
+
+button.
+
+==================================================
+4. CONTEXT-ONLY CARDS
+==================================================
+
+A sentiment, news, theme, or lightweight context card is not a full analysis.
+
+For these cards, use:
+
+Run Full Analysis
+
+rather than:
+
+Open Analysis
+
+or:
+
+Analyze AMZN
+
+Explain briefly:
+
+“This dashboard item is context only. Run the full deterministic analysis to evaluate qualification, technical conditions, and risks.”
+
+Clicking Run Full Analysis may route to Ask AI with a prefilled prompt and execute only after normal user confirmation, according to the existing Ask AI UX.
+
+==================================================
+5. DEMONSTRATION CARDS
+==================================================
+
+For demonstration/sample opportunities:
+
+- label them clearly
+- do not re-run them as though they were current production candidates
+- Open Example may show a static example page
+- Trade Builder and InstaTrade must remain unavailable
+- never mix demo results into user analysis history
+
+==================================================
+6. FRESHNESS POLICY
+==================================================
+
+Create one centralized freshness policy using existing timestamps.
+
+Suggested defaults, subject to existing product conventions:
+
+- intraday setup: 10 minutes while market is open
+- market-wide ranking: 10 minutes
+- news/sentiment context: 30 minutes
+- daily/swing analysis: valid until a newer completed daily bar exists
+- long-term analysis: reusable for the current trading day, while price/event context may be labeled separately
+- saved research: immutable and never automatically refreshed
+
+Do not hardcode market-status assumptions in UI components.
+
+Use an existing market-hours service.
+
+==================================================
+7. STALE-WHILE-REFRESH UX
+==================================================
+
+If a result is stale:
+
+- still open the existing result immediately
+- show:
+  “This analysis is based on older market data.”
+- offer:
+  Refresh Analysis
+
+Do not silently replace the result.
+
+When refreshed successfully:
+
+- show the new result separately
+- preserve the previous result when it is saved research
+- where supported, offer Compare Changes
+
+==================================================
+8. REQUEST DEDUPLICATION
+==================================================
+
+Prevent duplicate analysis requests caused by:
+
+- double click
+- repeated navigation
+- React remount
+- browser back/forward
+- two dashboard widgets referencing the same result
+- multiple components requesting the same symbol and intent
+
+Use existing query/cache conventions.
+
+Add in-flight request deduplication where appropriate.
+
+Do not add a new external cache service in this sprint.
+
+==================================================
+9. RESULT STORAGE BOUNDARY
+==================================================
+
+Choose the minimum compatible approach after auditing current architecture:
+
+Preferred order:
+
+1. Existing persisted research/result record
+2. Existing server-side analysis result storage
+3. Existing conversation result
+4. Short-lived authenticated server-side result cache
+5. Re-run only when none exists
+
+Any short-lived cache must:
+
+- be user-bound
+- have a clear TTL
+- be bounded in size
+- contain no credentials
+- not replace saved research
+- not be treated as permanent evidence
+
+Document the chosen approach.
+
+==================================================
+10. ROUTES
+==================================================
+
+Create or reuse a route such as:
+
+/analysis/:resultId
+
+or the existing equivalent.
+
+Requirements:
+
+- authenticated ownership checks
+- 404 for unknown or other-user results
+- result IDs only, never full payload in query parameters
+- refresh is an explicit action
+- browser refresh should reopen the same result without recomputing it
+
+Do not break existing Ask AI routes.
+
+==================================================
+11. LABELS
+==================================================
+
+Use action labels consistently:
+
+Open Analysis
+→ existing full result
+
+Run Full Analysis
+→ no full result exists
+
+Refresh Analysis
+→ user requests current recomputation
+
+Open Saved Research
+→ immutable saved record
+
+Open Example
+→ demonstration content
+
+Do not use “Analyze” ambiguously.
+
+==================================================
+12. COST AND OBSERVABILITY
+==================================================
+
+Add safe metrics:
+
+- dashboard_existing_result_opened
+- dashboard_full_analysis_requested
+- analysis_refresh_requested
+- analysis_result_cache_hit
+- analysis_result_cache_miss
+- duplicate_analysis_request_suppressed
+
+Do not log prompts, result contents, symbols from private portfolios, account values, tokens, or evidence payloads.
+
+Report before/after expected reductions in:
+
+- MCP calls
+- OpenAI calls
+- market-data calls
+- average click-to-result time
+
+==================================================
+13. TESTS
+==================================================
+
+Add tests for:
+
+- recent result opens without /api/ask
+- explicit refresh calls /api/ask once
+- stale result opens before refresh
+- double-click does not duplicate requests
+- context-only card says Run Full Analysis
+- demonstration card cannot trigger live analysis or execution
+- saved research remains immutable
+- cross-user result access returns 404
+- browser refresh does not recompute
+- back/forward navigation does not recompute
+- data-quality and timestamps preserved
+- no unsupported Trade Builder CTA
+- broker-connected and disconnected behavior
+- Ask AI regression
+- dashboard regression
+- no MCP changes
+- no execution changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+14. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/SPRINT_5_5_PERSONALIZED_DASHBOARD.md
+
+Document:
+
+- source-result reuse
+- freshness policy
+- explicit refresh behavior
+- result ownership
+- cache/storage choice
+- immutable saved-research boundary
+- context-only card behavior
+- demonstration-data behavior
+- cost reduction
+
+==================================================
+15. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. current unnecessary reruns found
+2. existing result sources reused
+3. files changed
+4. result provenance contract
+5. routing changes
+6. freshness policy
+7. explicit refresh UX
+8. context-only card behavior
+9. deduplication
+10. storage/cache approach
+11. ownership/security
+12. analytics
+13. tests and totals
+14. build result
+15. before/after request counts
+16. screenshots
+17. compatibility concerns
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

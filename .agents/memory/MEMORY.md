@@ -14,3 +14,4 @@
 - [Portfolio context trust boundary](portfolio-context-boundary.md) — Sprint 4D: opaque token minted per-request, passed to MCP only; awareness computed server-side via computePortfolioAwareness; never account IDs or raw balances to client/LLM.
 - [TraderBrain Core implementation](trader-brain-implementation.md) — Phase 0 complete: 9 modules, 174 tests, shadow field wired into ask.ts; TRADER_BRAIN_ENABLED off by default; MARKET_RESEARCH checked before EXPLAIN_CONCEPT in classifier.
 - [Portfolio Intelligence engine](portfolio-intelligence-engine.md) — Sprint 5.3B: pure computation from SafePortfolioAwareness + Brain sections; never buy/sell advice; safeResult defensive wrapper required for malformed inputs.
+- [Research persistence foundation](research-persistence.md) — Sprint 5.4C: save handle (10-min, single-use, user-bound Map) gates all persistence; forbidden-key scanner rejects secrets recursively; tag normalizer uses - not _.

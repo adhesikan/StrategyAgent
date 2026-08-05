@@ -1631,6 +1631,38 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                   } catch { /* ignore */ }
                 }
 
+                // ---- Sprint 5.4C: Research Save Handle ----
+                // Mint a short-lived save handle when deterministic evidence is available.
+                // The handle lets the user explicitly Save Research from the UI.
+                // Non-blocking: a handle failure never breaks the response.
+                let s54cResearchSave: Record<string, unknown> | undefined;
+                if (brainInt !== "EDUCATION_PLUS_ACTION" && brainInt !== "EXPLAIN_CONCEPT" && brainInt !== "MARKET_RESEARCH") {
+                  try {
+                    const { extractResearchEvidence } = await import("../trader-brain/research-evidence-extractor");
+                    const { validateResearchEvidence } = await import("../services/research-evidence-validator");
+                    const { issueResearchSaveHandle } = await import("../services/research-save-handle");
+                    const { generateTitleSuggestion, generateTagSuggestions } = await import("../services/research-title-generator");
+
+                    const extraction = extractResearchEvidence(
+                      brainResult,
+                      s53bPortfolioIntelligence ?? undefined,
+                    );
+                    if (extraction) {
+                      const validation = validateResearchEvidence(extraction.evidence);
+                      if (validation.ok) {
+                        const title = generateTitleSuggestion(validation.record);
+                        const tags = generateTagSuggestions(validation.record);
+                        const { metadata } = issueResearchSaveHandle(userId, validation.record, title, tags);
+                        s54cResearchSave = metadata;
+                      }
+                    }
+                  } catch (s54cErr) {
+                    // Non-blocking: save handle failure never breaks the response
+                    console.warn("[ask] Sprint5.4C save handle error:", (s54cErr as Error).message);
+                  }
+                }
+                // ---- End Sprint 5.4C ----
+
                 return res.json({
                   question,
                   brokerConnected: ctx.brokerConnected,
@@ -1643,6 +1675,8 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
                     "AI-generated educational analysis — not investment advice. Confirm everything in your own broker before acting.",
                   // Sprint 5.2: Surface context note when follow-up context was used (§5)
                   ...(s51ContextNote ? { contextNote: s51ContextNote } : {}),
+                  // Sprint 5.4C: Research save handle metadata (safe — no evidence content)
+                  ...(s54cResearchSave ? { researchSave: s54cResearchSave } : {}),
                 });
               }
             } catch (brainErr) {

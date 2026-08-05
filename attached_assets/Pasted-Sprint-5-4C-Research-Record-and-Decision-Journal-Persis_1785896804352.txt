@@ -1,0 +1,601 @@
+Sprint 5.4C — Research Record and Decision Journal Persistence Foundation
+
+CURRENT STATE
+
+The vcp-trader-mcp repository now contains deterministic pure research-evidence extractors for:
+
+- SYMBOL_ANALYSIS
+- TRADE_RESEARCH
+- MARKET_OPPORTUNITY_SEARCH
+- PORTFOLIO_GOAL_RESEARCH
+- PORTFOLIO_IMPACT
+- OPTIONS_RESEARCH
+
+The approved architecture uses Option A:
+
+MCP result
+→ validated by StrategyAgent
+→ matching pure research-evidence extractor
+→ immutable ResearchEvidenceRecord
+→ VCP Trader persistence layer
+
+No new MCP tool was added.
+
+GOAL
+
+Create a secure, user-owned persistence foundation for immutable deterministic ResearchEvidenceRecords and user-authored Decision Journal entries.
+
+This is a research and decision-support feature.
+
+Do not:
+
+- modify MCP algorithms
+- modify scanner, ranking, recommendation, portfolio, options, or risk logic
+- add autonomous recommendations
+- add automatic execution
+- store private chain-of-thought
+- store account IDs, broker identifiers, credentials, context tokens, or raw portfolio payloads
+- commit, push, or deploy automatically
+
+==================================================
+1. AUDIT EXISTING STORAGE AND OWNERSHIP
+==================================================
+
+Before implementation, inspect:
+
+- database technology and ORM/query layer
+- authenticated user model
+- tenant/user ownership conventions
+- existing conversation/chat persistence
+- watchlist ownership
+- saved-item/bookmark patterns
+- audit timestamp conventions
+- migration conventions
+- deletion behavior
+- pagination conventions
+- API authorization middleware
+
+Report the exact reusable patterns before adding tables.
+
+Do not trust userId supplied by the browser.
+
+All ownership must come from the authenticated server session.
+
+==================================================
+2. CREATE RESEARCH RECORD MODEL
+==================================================
+
+Create a table/model such as:
+
+research_records
+
+Fields:
+
+- id
+- userId
+- requestId
+- conversationId nullable
+- parentRecordId nullable
+- domain
+- schemaVersion
+- symbol nullable
+- symbols nullable
+- normalizedRequestSummary
+- verdict
+- status nullable
+- strategy nullable
+- strategyDisplayName nullable
+- direction nullable
+- instrument nullable
+- qualificationStatus nullable
+- confidence
+- dataQuality
+- reasons
+- warnings
+- watchConditions nullable
+- sourceTools
+- sourceTimestamps
+- limitations
+- domainSnapshot
+- title
+- userLabel nullable
+- tags
+- archived
+- generatedAt
+- createdAt
+- updatedAt
+
+Requirements:
+
+- userId derived server-side
+- ResearchEvidenceRecord stored without changing its deterministic content
+- domainSnapshot stored as validated structured JSON
+- schemaVersion required
+- immutable deterministic evidence fields after creation
+- only user-owned metadata may be edited:
+  - title
+  - userLabel
+  - tags
+  - archived
+
+Do not allow edits to:
+
+- verdict
+- reasons
+- warnings
+- confidence
+- sourceTools
+- source timestamps
+- domainSnapshot
+- generatedAt
+
+==================================================
+3. CREATE DECISION JOURNAL MODEL
+==================================================
+
+Create a separate table/model:
+
+decision_journal_entries
+
+Fields:
+
+- id
+- userId
+- researchRecordId
+- thesis nullable
+- entryPlan nullable
+- riskPlan nullable
+- exitPlan nullable
+- notes nullable
+- expectedConditions nullable
+- invalidationConditions nullable
+- userDecision:
+  - researching
+  - watching
+  - passed
+  - prepared_trade
+  - entered_manually
+  - closed_manually
+- outcomeReview nullable
+- lessonsLearned nullable
+- userRecordedEntryPrice nullable
+- userRecordedExitPrice nullable
+- userRecordedQuantity nullable
+- openedAt nullable
+- closedAt nullable
+- createdAt
+- updatedAt
+
+Important:
+
+- journal content is user-authored
+- do not infer that a trade was executed
+- entered_manually and closed_manually require explicit user action
+- never derive execution from Trade Builder clicks alone
+- no automatic brokerage reconciliation in this sprint
+
+==================================================
+4. OWNERSHIP AND AUTHORIZATION
+==================================================
+
+Enforce server-side ownership for every operation.
+
+Required protections:
+
+- create record only for authenticated user
+- list records only for authenticated user
+- fetch by id only when owned
+- update metadata only when owned
+- archive only when owned
+- delete only when owned
+- journal record must belong to the same user as its research record
+- no cross-user parentRecordId
+- no cross-user conversation linking
+- no client-supplied userId accepted
+
+Return 404 rather than revealing existence of another user’s record when consistent with existing conventions.
+
+==================================================
+5. RESEARCH EVIDENCE VALIDATION
+==================================================
+
+Port or safely mirror the ResearchEvidenceRecord runtime schema into StrategyAgent.
+
+Preferred approach:
+
+- use a shared package only if the repositories already support one cleanly
+- otherwise create a strict local schema matching schemaVersion 1.0
+- document synchronization ownership
+
+Validate every record before persistence.
+
+Reject:
+
+- unknown schema version
+- unknown domain
+- mismatched domainSnapshot
+- malformed dates
+- non-finite numbers
+- unknown top-level or nested fields
+- oversized arrays/strings
+- forbidden sensitive keys
+
+Do not persist partially valid evidence.
+
+==================================================
+6. SAFE-FIELD DEFENSE IN DEPTH
+==================================================
+
+Before persistence, scan the final serialized record for forbidden fields or values:
+
+- accountId
+- accountNumber
+- brokerAccount
+- brokerId
+- connectionId
+- userId inside evidence payload
+- accessToken
+- refreshToken
+- serviceToken
+- apiKey
+- authorization
+- optionsContextToken
+- portfolioContextToken
+- rawPositions
+- rawPortfolio
+- providerPayload
+- stack
+- systemPrompt
+- developerPrompt
+- chainOfThought
+
+The outer database userId is allowed.
+
+The evidence JSON itself must never contain these fields.
+
+On violation:
+
+- reject persistence
+- emit a safe structured error
+- do not log the offending value
+
+==================================================
+7. CREATE PERSISTENCE SERVICE
+==================================================
+
+Create a service such as:
+
+ResearchRecordService
+
+Methods:
+
+- createFromEvidence(authenticatedUserId, evidence, metadata?)
+- listForUser(authenticatedUserId, filters, pagination)
+- getForUser(authenticatedUserId, recordId)
+- updateUserMetadata(authenticatedUserId, recordId, patch)
+- archiveForUser(authenticatedUserId, recordId)
+- deleteForUser(authenticatedUserId, recordId)
+- createLinkedRefresh(authenticatedUserId, parentRecordId, evidence)
+
+Create:
+
+DecisionJournalService
+
+Methods:
+
+- createOrGetForResearchRecord()
+- getForUser()
+- updateUserAuthoredFields()
+- recordExplicitManualDecision()
+- deleteForUser()
+
+No service method should accept a userId from an untrusted request body.
+
+==================================================
+8. API ENDPOINTS
+==================================================
+
+Add authenticated endpoints such as:
+
+POST /api/research-records
+GET /api/research-records
+GET /api/research-records/:id
+PATCH /api/research-records/:id/metadata
+POST /api/research-records/:id/archive
+DELETE /api/research-records/:id
+
+POST /api/research-records/:id/journal
+GET /api/research-records/:id/journal
+PATCH /api/research-records/:id/journal
+DELETE /api/research-records/:id/journal
+
+For POST /api/research-records:
+
+Prefer creation from trusted server-held evidence generated during the current request.
+
+Do not allow the browser to submit an arbitrary ResearchEvidenceRecord and claim it came from MCP unless the architecture already includes a signed or server-cached evidence reference.
+
+Preferred safe pattern:
+
+1. TraderBrain creates validated evidence server-side.
+2. Server stores it temporarily under a short-lived evidence ID.
+3. Frontend sends only the evidence ID when the user clicks Save Research.
+4. Server resolves evidence ID, verifies user/session binding and expiry, then persists it.
+
+Alternative:
+
+Persist automatically after explicit server-side save intent.
+
+Do not accept arbitrary client-authored deterministic evidence.
+
+==================================================
+9. SHORT-LIVED SAVE HANDLE
+==================================================
+
+Implement a short-lived server-controlled save handle:
+
+ResearchSaveHandle {
+  id;
+  userId;
+  requestId;
+  evidence;
+  expiresAt;
+  consumed;
+}
+
+Requirements:
+
+- opaque random ID
+- bound to authenticated user/session
+- short TTL, recommended 10 minutes
+- single-use or safely idempotent
+- never exposed to OpenAI
+- contains no credentials
+- not stored in browser localStorage
+- expired handles rejected
+- cross-user use rejected
+
+Use existing cache/storage infrastructure where practical.
+
+If an existing trusted-context token mechanism is reusable, use the same principles but do not mix scopes.
+
+==================================================
+10. INTEGRATE WITH TRADERBRAIN OUTPUT
+==================================================
+
+After TraderBrain produces deterministic evidence for supported domains:
+
+- invoke the matching research-evidence extractor
+- validate the evidence
+- mint a researchSaveHandle
+- return only safe metadata to the frontend:
+
+researchSave?: {
+  available: true;
+  handleId;
+  domain;
+  titleSuggestion;
+  expiresAt;
+}
+
+Do not automatically persist on every Ask AI response.
+
+The user must explicitly choose Save Research.
+
+Do not create save handles for:
+
+- education-only responses
+- failed requests with no deterministic evidence
+- generic conversation
+- malformed or unsafe evidence
+- pure OpenAI prose
+
+==================================================
+11. TITLE AND TAG SUGGESTIONS
+==================================================
+
+Generate deterministic title suggestions such as:
+
+- "BA Symbol Analysis — 2026-08-04"
+- "NVDA Trade Research — 2026-08-04"
+- "Bullish Market Opportunity Search — 2026-08-04"
+- "Portfolio Goal Research — Defined Risk — 2026-08-04"
+
+Tags may be suggested from structured fields:
+
+- symbol
+- domain
+- strategy
+- direction
+- instrument
+
+Do not let OpenAI-generated text become authoritative metadata by default.
+
+Users may edit title and tags after saving.
+
+==================================================
+12. RETENTION AND DELETION
+==================================================
+
+Implement:
+
+- user deletion of research records
+- cascade or explicit handling of linked journal entries
+- parent/refresh record behavior
+- archived versus deleted distinction
+
+Document:
+
+- what happens when a conversation is deleted
+- whether saved research survives conversation deletion
+- how the user can delete saved research independently
+- how refresh chains are handled when a parent is deleted
+
+Preferred behavior:
+
+Saved research is independent of chat history once explicitly saved.
+
+==================================================
+13. NO ADVISORY LANGUAGE
+==================================================
+
+Use product language such as:
+
+- Save Research
+- Research Record
+- Evidence Snapshot
+- Decision Journal
+- User Decision
+- Watch Conditions
+- Risk Observations
+- Proposed Structure
+- Position Sizing Summary
+
+Avoid:
+
+- advisor recommendation
+- suitable investment
+- prescribed action
+- required allocation
+- you should buy
+- you should sell
+
+==================================================
+14. TESTS
+==================================================
+
+Add comprehensive tests for:
+
+A. Ownership
+- create as authenticated user
+- unauthenticated rejected
+- cross-user list isolation
+- cross-user fetch rejected
+- cross-user update rejected
+- cross-user delete rejected
+- cross-user journal link rejected
+- cross-user parent link rejected
+
+B. Evidence validation
+- all six domains
+- malformed schema
+- unknown keys
+- wrong version
+- oversized data
+- non-finite numbers
+- malformed dates
+
+C. Sensitive data
+- account ID in nested snapshot rejected
+- token rejected
+- raw positions rejected
+- provider payload rejected
+- prompt/chain-of-thought rejected
+- values never logged
+
+D. Save handles
+- valid handle
+- expired handle
+- consumed handle
+- idempotent retry
+- cross-user handle
+- wrong session
+- no local-storage requirement
+- no arbitrary client evidence
+
+E. Immutability
+- evidence fields cannot be edited
+- user metadata can be edited
+- journal fields can be edited by owner
+- manual execution state requires explicit action
+
+F. Deletion
+- research deletion
+- journal cascade
+- archive
+- refresh chain behavior
+- conversation deletion independence
+
+G. TraderBrain integration
+- symbol analysis produces handle
+- trade research produces handle
+- market search produces handle
+- portfolio goal produces handle
+- portfolio impact produces handle
+- options research produces handle
+- education-only produces no handle
+- failed deterministic flow produces no handle
+
+H. No execution
+- no broker calls
+- no order creation
+- no inferred executed state
+
+==================================================
+15. MIGRATIONS AND VALIDATION
+==================================================
+
+Create database migrations using existing project conventions.
+
+Run:
+
+npm test
+npm run build
+
+Also run:
+
+- database migration validation
+- ownership-focused tests
+- Ask AI / TraderBrain focused tests
+- security and leakage tests
+
+Do not commit or push.
+
+==================================================
+16. DOCUMENTATION
+==================================================
+
+Create:
+
+docs/SPRINT_5_4_RESEARCH_PERSISTENCE_IMPLEMENTATION.md
+
+Document:
+
+1. Data model
+2. Ownership model
+3. Save-handle architecture
+4. Evidence-validation synchronization
+5. Immutable versus user-editable fields
+6. Journal boundary
+7. Retention and deletion
+8. Security controls
+9. API contracts
+10. TraderBrain integration
+11. Known limitations
+12. Next UI implementation steps
+
+==================================================
+17. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. Existing storage conventions reused
+2. Files created
+3. Files modified
+4. Database migrations
+5. Research-record model
+6. Journal model
+7. Ownership enforcement
+8. Save-handle design
+9. Evidence validation
+10. Security filtering
+11. TraderBrain integration
+12. API endpoints
+13. Tests and totals
+14. Build result
+15. Migration result
+16. Compatibility concerns
+17. Recommended deployment sequence
+
+Wait for review before committing, pushing, migrating production, or deploying.

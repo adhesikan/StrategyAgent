@@ -2689,3 +2689,102 @@ export const emailSettings = pgTable("email_settings", {
 });
 export type EmailSettings = typeof emailSettings.$inferSelect;
 export const updateEmailSettingsSchema = createInsertSchema(emailSettings).omit({ id: true, updatedAt: true }).partial();
+
+// ---------------------------------------------------------------------------
+// Sprint 5.4C — Research Record & Decision Journal
+// ---------------------------------------------------------------------------
+
+/** Immutable deterministic research evidence + user-owned metadata. */
+export const researchRecords = pgTable("research_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Server-side authenticated user — NEVER from request body. */
+  userId: varchar("user_id").notNull(),
+  /** Brain requestId that produced this evidence. */
+  requestId: varchar("request_id").notNull(),
+  /** Conversation the evidence came from (nullable — survives conversation deletion). */
+  conversationId: varchar("conversation_id"),
+  /** Parent record when this is a refresh/re-analysis of an earlier record. */
+  parentRecordId: varchar("parent_record_id"),
+  /** Evidence domain. One of 6 validated values. */
+  domain: text("domain").notNull(),
+  /** Schema version string. Must be "1.0". */
+  schemaVersion: text("schema_version").notNull(),
+  /** Primary symbol (nullable for multi-symbol or portfolio searches). */
+  symbol: text("symbol"),
+  /** Multiple symbols for ranked-search / portfolio research. */
+  symbols: text("symbols").array().notNull().default(sql`'{}'::text[]`),
+  normalizedRequestSummary: text("normalized_request_summary").notNull(),
+  /** Deterministic verdict — IMMUTABLE after creation. */
+  verdict: text("verdict").notNull(),
+  status: text("status"),
+  strategy: text("strategy"),
+  strategyDisplayName: text("strategy_display_name"),
+  direction: text("direction"),
+  instrument: text("instrument"),
+  qualificationStatus: text("qualification_status"),
+  /** Confidence level — IMMUTABLE. */
+  confidence: text("confidence").notNull(),
+  /** Data quality flags — IMMUTABLE. */
+  dataQuality: jsonb("data_quality").notNull(),
+  /** Deterministic reasons — IMMUTABLE. */
+  reasons: text("reasons").array().notNull().default(sql`'{}'::text[]`),
+  /** Deterministic warnings — IMMUTABLE. */
+  warnings: text("warnings").array().notNull().default(sql`'{}'::text[]`),
+  watchConditions: text("watch_conditions").array().notNull().default(sql`'{}'::text[]`),
+  /** Source tool names — IMMUTABLE. */
+  sourceTools: text("source_tools").array().notNull().default(sql`'{}'::text[]`),
+  /** Source timestamps — IMMUTABLE. */
+  sourceTimestamps: text("source_timestamps").array().notNull().default(sql`'{}'::text[]`),
+  limitations: text("limitations").array().notNull().default(sql`'{}'::text[]`),
+  /** Full domain-specific structured snapshot — IMMUTABLE. */
+  domainSnapshot: jsonb("domain_snapshot").notNull(),
+  /** User-editable display title. */
+  title: text("title").notNull(),
+  /** User-editable free-form label. */
+  userLabel: text("user_label"),
+  /** User-editable tags. */
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  /** Soft-archive flag (user can archive without deleting). */
+  archived: boolean("archived").notNull().default(false),
+  /** When the Brain evidence was generated — IMMUTABLE. */
+  generatedAt: timestamp("generated_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type ResearchRecord = typeof researchRecords.$inferSelect;
+export type InsertResearchRecord = typeof researchRecords.$inferInsert;
+
+/** User-authored Decision Journal entry — one per research record. */
+export const decisionJournalEntries = pgTable("decision_journal_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  /** Linked research record — same user ownership required. */
+  researchRecordId: varchar("research_record_id").notNull(),
+  // --- User-authored free-text fields ---
+  thesis: text("thesis"),
+  entryPlan: text("entry_plan"),
+  riskPlan: text("risk_plan"),
+  exitPlan: text("exit_plan"),
+  notes: text("notes"),
+  expectedConditions: text("expected_conditions"),
+  invalidationConditions: text("invalidation_conditions"),
+  /**
+   * Current user decision state.
+   * entered_manually / closed_manually require explicit user action — never inferred.
+   */
+  userDecision: text("user_decision").notNull().default("researching"),
+  outcomeReview: text("outcome_review"),
+  lessonsLearned: text("lessons_learned"),
+  // --- User-recorded execution fields (no brokerage reconciliation) ---
+  userRecordedEntryPrice: real("user_recorded_entry_price"),
+  userRecordedExitPrice: real("user_recorded_exit_price"),
+  userRecordedQuantity: real("user_recorded_quantity"),
+  openedAt: timestamp("opened_at"),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type DecisionJournalEntry = typeof decisionJournalEntries.$inferSelect;
+export type InsertDecisionJournalEntry = typeof decisionJournalEntries.$inferInsert;

@@ -781,6 +781,94 @@ async function migrate() {
     `);
     console.log(`Fixed ${fixInvalidated.rowCount} INVALIDATED opportunities missing P&L`);
 
+    // Sprint 5.4C — Research Record & Decision Journal tables
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = 'research_records'
+        ) THEN
+          CREATE TABLE research_records (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id VARCHAR NOT NULL,
+            request_id VARCHAR NOT NULL,
+            conversation_id VARCHAR,
+            parent_record_id VARCHAR,
+            domain TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            symbol TEXT,
+            symbols TEXT[] NOT NULL DEFAULT '{}',
+            normalized_request_summary TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            status TEXT,
+            strategy TEXT,
+            strategy_display_name TEXT,
+            direction TEXT,
+            instrument TEXT,
+            qualification_status TEXT,
+            confidence TEXT NOT NULL,
+            data_quality JSONB NOT NULL,
+            reasons TEXT[] NOT NULL DEFAULT '{}',
+            warnings TEXT[] NOT NULL DEFAULT '{}',
+            watch_conditions TEXT[] NOT NULL DEFAULT '{}',
+            source_tools TEXT[] NOT NULL DEFAULT '{}',
+            source_timestamps TEXT[] NOT NULL DEFAULT '{}',
+            limitations TEXT[] NOT NULL DEFAULT '{}',
+            domain_snapshot JSONB NOT NULL,
+            title TEXT NOT NULL,
+            user_label TEXT,
+            tags TEXT[] NOT NULL DEFAULT '{}',
+            archived BOOLEAN NOT NULL DEFAULT FALSE,
+            generated_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX idx_research_records_user_id ON research_records(user_id);
+          CREATE INDEX idx_research_records_user_domain ON research_records(user_id, domain);
+          CREATE INDEX idx_research_records_user_symbol ON research_records(user_id, symbol);
+          CREATE INDEX idx_research_records_user_archived ON research_records(user_id, archived);
+          RAISE NOTICE 'Created research_records table';
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = 'decision_journal_entries'
+        ) THEN
+          CREATE TABLE decision_journal_entries (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id VARCHAR NOT NULL,
+            research_record_id VARCHAR NOT NULL,
+            thesis TEXT,
+            entry_plan TEXT,
+            risk_plan TEXT,
+            exit_plan TEXT,
+            notes TEXT,
+            expected_conditions TEXT,
+            invalidation_conditions TEXT,
+            user_decision TEXT NOT NULL DEFAULT 'researching',
+            outcome_review TEXT,
+            lessons_learned TEXT,
+            user_recorded_entry_price REAL,
+            user_recorded_exit_price REAL,
+            user_recorded_quantity REAL,
+            opened_at TIMESTAMP,
+            closed_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT fk_journal_research_record
+              FOREIGN KEY (research_record_id)
+              REFERENCES research_records(id)
+              ON DELETE CASCADE
+          );
+          CREATE INDEX idx_decision_journal_user_id ON decision_journal_entries(user_id);
+          CREATE INDEX idx_decision_journal_research_record ON decision_journal_entries(research_record_id);
+          CREATE UNIQUE INDEX idx_decision_journal_unique_record ON decision_journal_entries(research_record_id);
+          RAISE NOTICE 'Created decision_journal_entries table';
+        END IF;
+      END $$;
+    `);
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

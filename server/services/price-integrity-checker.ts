@@ -24,7 +24,16 @@ export interface PriceIntegrityResult {
      * disagreed by more than the conflict tolerance (±40%). Prefer neither
      * silently — block ResearchSave and suppress price levels.
      */
-    | "PRICE_REFERENCE_CONFLICT";
+    | "PRICE_REFERENCE_CONFLICT"
+    /**
+     * The selected reference is older than the approved freshness window
+     * (>5 calendar days). A ratio comparison against a stale reference would
+     * risk misclassifying legitimate long-term price moves as decimal-order
+     * errors. Price levels are NOT suppressed — they cannot be validated by
+     * this check, not refuted. ResearchSave is blocked until a fresh reference
+     * is available.
+     */
+    | "PRICE_REFERENCE_STALE";
   /** Category of the detected ratio mismatch. */
   ratioCategory?: PriceRatioCategory;
   /** Price-derived fields that should be suppressed when valid:false. */
@@ -177,4 +186,67 @@ export function safeIntegrityResult(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { setupPrice: _s, referencePrice: _r, ...safe } = r;
   return safe;
+}
+
+// ---------------------------------------------------------------------------
+// Resolved-reference entry-point (freshness-aware)
+// ---------------------------------------------------------------------------
+
+/**
+ * Structural minimum expected from a ResolvedReference without creating a
+ * circular import (price-reference-resolver → price-integrity-checker).
+ */
+interface IntegrityableReference {
+  /** True when both sources disagreed beyond the conflict tolerance. */
+  conflict: boolean;
+  /** Null when no usable reference price was found. */
+  referencePrice: number | null;
+  /** Human-readable label for the reference source. */
+  source: string;
+  /**
+   * True when the reference is fresh or acceptable enough to run a ratio
+   * comparison. False when freshness is "stale" or "unknown" — a ratio
+   * comparison against a stale reference risks misclassifying legitimate
+   * long-term price moves as decimal-order errors.
+   */
+  canCompareRatio: boolean;
+}
+
+/**
+ * Freshness-aware entry-point for callers that already hold a
+ * `ResolvedReference` from `resolveReferencePrice()`.
+ *
+ * Decision order:
+ * 1. Conflict detected → PRICE_REFERENCE_CONFLICT (suppresses prices)
+ * 2. No reference price → PRICE_REFERENCE_UNAVAILABLE
+ * 3. Reference too stale for ratio comparison → PRICE_REFERENCE_STALE
+ *    (does NOT suppress prices — the reference cannot validate, not refute)
+ * 4. All clear → delegate to `checkPriceIntegrity` for ratio logic
+ */
+export function checkPriceIntegrityFromResolved(
+  setupPrice: number | null | undefined,
+  resolved: IntegrityableReference,
+): PriceIntegrityResult {
+  if (resolved.conflict) {
+    return {
+      valid: false,
+      code: "PRICE_REFERENCE_CONFLICT",
+      referenceSource: "unavailable",
+    };
+  }
+  if (resolved.referencePrice == null) {
+    return {
+      valid: false,
+      code: "PRICE_REFERENCE_UNAVAILABLE",
+      referenceSource: resolved.source,
+    };
+  }
+  if (!resolved.canCompareRatio) {
+    return {
+      valid: false,
+      code: "PRICE_REFERENCE_STALE",
+      referenceSource: resolved.source,
+    };
+  }
+  return checkPriceIntegrity(setupPrice, resolved.referencePrice, resolved.source);
 }

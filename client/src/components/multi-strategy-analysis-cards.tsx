@@ -160,7 +160,13 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
   const noMatch = a.noMatchStrategies ?? [];
   const failed = a.failedStrategies ?? [];
   const hasAdvanced = noMatch.length > 0 || failed.length > 0;
-  const integrityFailed = a.priceIntegrity?.valid === false;
+  // Genuine price-scale failure: suppress levels and show warning banner.
+  // STALE / UNAVAILABLE codes mean "unverified", not "wrong" — do not suppress.
+  const integrityCode = a.priceIntegrity?.code;
+  const integrityFailed =
+    a.priceIntegrity?.valid === false &&
+    integrityCode !== "PRICE_REFERENCE_STALE" &&
+    integrityCode !== "PRICE_REFERENCE_UNAVAILABLE";
 
   return (
     <div className="space-y-3" data-testid="cards-multi-strategy-analysis">

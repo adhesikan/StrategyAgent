@@ -969,7 +969,7 @@ async function callOpenAi(
     if (multiStrategy) {
       try {
         const { resolveReferencePrice } = await import("../services/price-reference-resolver");
-        const { checkPriceIntegrity, safeIntegrityResult } = await import("../services/price-integrity-checker");
+        const { checkPriceIntegrityFromResolved, safeIntegrityResult } = await import("../services/price-integrity-checker");
         const { TwelveDataDailyProvider } = await import("../services/daily-market-data/twelve-data-client");
         type IntegrityResult = import("../services/price-integrity-checker").PriceIntegrityResult;
 
@@ -990,27 +990,25 @@ async function callOpenAi(
         });
         const durationMs = Date.now() - start;
 
-        let rawResult: IntegrityResult;
-        if (resolved.conflict) {
-          rawResult = {
-            valid: false,
-            code: "PRICE_REFERENCE_CONFLICT",
-            referenceSource: "unavailable",
-          };
-          // Log safe diagnostics — raw prices server-side only.
-          console.warn(
-            JSON.stringify({
-              event: "multi_strategy_price_integrity_failed",
-              symbol: sym,
-              code: "PRICE_REFERENCE_CONFLICT",
-              brokerPrice: resolved._brokerPrice,
-              historyClose: resolved._historyClose,
-              historyTimestamp: resolved._historyTimestamp,
-            }),
-          );
-        } else {
-          rawResult = checkPriceIntegrity(setupPrice, resolved.referencePrice, resolved.source);
-          if (!rawResult.valid) {
+        // Freshness-aware: checkPriceIntegrityFromResolved handles conflict,
+        // stale reference, and unavailable reference before running ratio logic.
+        const rawResult: IntegrityResult = checkPriceIntegrityFromResolved(setupPrice, resolved);
+
+        if (!rawResult.valid) {
+          if (rawResult.code === "PRICE_REFERENCE_CONFLICT") {
+            // Log raw prices server-side only — never forwarded to client.
+            console.warn(
+              JSON.stringify({
+                event: "multi_strategy_price_integrity_failed",
+                symbol: sym,
+                code: "PRICE_REFERENCE_CONFLICT",
+                brokerPrice: resolved._brokerPrice,
+                historyClose: resolved._historyClose,
+                historyTimestamp: resolved._historyTimestamp,
+              }),
+            );
+          } else if (rawResult.code === "PRICE_REFERENCE_MISMATCH" || rawResult.code === "PRICE_NON_FINITE") {
+            // Genuine ratio mismatch — log raw prices server-side only.
             console.warn(
               JSON.stringify({
                 event: "multi_strategy_price_integrity_failed",
@@ -1019,6 +1017,18 @@ async function callOpenAi(
                 ratioCategory: rawResult.ratioCategory,
                 setupPrice: rawResult.setupPrice,
                 referencePrice: rawResult.referencePrice,
+              }),
+            );
+          } else {
+            // PRICE_REFERENCE_STALE or PRICE_REFERENCE_UNAVAILABLE —
+            // informational only: prices are NOT claimed to be wrong.
+            console.info(
+              JSON.stringify({
+                event: "multi_strategy_price_reference_limited",
+                symbol: sym,
+                code: rawResult.code,
+                freshness: resolved.freshness,
+                source: resolved.source,
               }),
             );
           }
@@ -1136,11 +1146,38 @@ async function callOpenAi(
       // Hard technical enforcement: the model explains the deterministic
       // multi-strategy result only — no tools, no extra scans, no invention.
       mcpTools = [];
-      mcpSystemRules += `\n- The "multiStrategyAnalysis" field in the user content is the DETERMINISTIC result of scanning ${multiStrategy.symbol} across every eligible scanner strategy, plus trade-candidate qualification. Your job is ONLY to explain it. Rules: (1) Name the primary strategy (primarySetup) and clearly distinguish it from supporting evidence (supportingSetups). (2) State the deterministic overallVerdict (${multiStrategy.overallVerdict}) — you may NEVER override, soften, or contradict it, and never contradict a candidate's NO_TRADE verdict. (3) Explain why the trade qualifies or fails using ONLY the provided selectionReasons, reasons, warnings, and noTradeReasons. (4) Mention earnings/market-regime/risk warnings when present in marketContext or candidate data. (5) Scanner detections are AI-generated analysis, not recommendations — never tell the user to buy/sell. (6) NEVER invent triggers, stops, targets, scores, or strategy matches that are not in the payload; if a level is missing, say it is not available. (7) NEVER compare raw scores across different strategies as if they were equivalent. (8) Do not call any tools.`;
-      // GPT price-level safety: when the independent integrity check failed,
-      // instruct GPT to suppress ALL price levels and state the limitation.
-      if (multiStrategy.priceIntegrity?.valid === false) {
-        mcpSystemRules += ` PRICE INTEGRITY OVERRIDE (code: ${multiStrategy.priceIntegrity.code ?? "UNKNOWN"}, category: ${multiStrategy.priceIntegrity.ratioCategory ?? "unknown"}): The price-level evidence for ${multiStrategy.symbol} was withheld because the setup price could not be independently validated against VCP Trader's own market data. YOU MUST NOT mention, repeat, reconstruct, approximate, or infer any trigger, invalidation, objective, resistance, major-high, or price-level value from the payload. Do not use the word "approximately" with any price. Do not suggest that any level can be inferred. Instead state exactly: "Price-level evidence could not be independently validated, so the platform withheld trigger, invalidation and objective levels. The remaining non-price evidence did not support a qualifying setup." Do not override or soften the overallVerdict.`;
+      // Map internal enum to user-facing display label — GPT must never see or
+      // repeat raw enum values such as NO_TRADE, TRADE_CANDIDATE, etc.
+      const _MSA_VERDICT_DISPLAY: Record<string, string> = {
+        TRADE_CANDIDATE: "Qualified research candidate",
+        WATCH: "Setup worth monitoring",
+        NO_TRADE: "No qualifying setup",
+        INSUFFICIENT_DATA: "Insufficient verified data",
+      };
+      const _msaVerdictLabel = _MSA_VERDICT_DISPLAY[multiStrategy.overallVerdict] ?? multiStrategy.overallVerdict;
+      // Preferred headline template per overallVerdict
+      const _msaHeadlineGuidance =
+        multiStrategy.overallVerdict === "NO_TRADE"
+          ? ` Your headline must be: "${multiStrategy.symbol} currently has no qualifying setup under this analysis."`
+          : multiStrategy.overallVerdict === "WATCH"
+            ? ` Your headline must communicate that ${multiStrategy.symbol} has a setup worth monitoring but is not yet actionable.`
+            : ` Your headline must communicate the "${_msaVerdictLabel}" verdict for ${multiStrategy.symbol} in one sentence.`;
+      mcpSystemRules += `\n- The "multiStrategyAnalysis" field in the user content is the DETERMINISTIC result of scanning ${multiStrategy.symbol} across every eligible scanner strategy, plus trade-candidate qualification. Your job is ONLY to explain it. Rules: (1) Name the primary strategy (primarySetup) and clearly distinguish it from supporting evidence (supportingSetups). (2) State the overall verdict: "${_msaVerdictLabel}" — you may NEVER override, soften, or contradict it, and never contradict a candidate's "not actionable" determination. NEVER output the raw internal verdict codes NO_TRADE, TRADE_CANDIDATE, INSUFFICIENT_DATA, or UNAVAILABLE in your answer or key points — always use the display label. (3) Explain why the trade qualifies or fails using ONLY the provided selectionReasons, reasons, warnings, and noTradeReasons. (4) Mention earnings/market-regime/risk warnings when present in marketContext or candidate data. (5) Scanner detections are AI-generated analysis, not recommendations — never tell the user to buy/sell. (6) NEVER invent triggers, stops, targets, scores, or strategy matches that are not in the payload; if a level is missing, say it is not available. (7) NEVER compare raw scores across different strategies as if they were equivalent. (8) Do not call any tools.${_msaHeadlineGuidance}`;
+      // GPT price-level safety: when the integrity check detected a genuine
+      // price-scale problem (mismatch or conflict) instruct GPT to suppress ALL
+      // price levels. STALE / UNAVAILABLE codes must NOT trigger this override —
+      // prices are unverified, not refuted, and should be shown with caution.
+      const _integrityCode = multiStrategy.priceIntegrity?.code;
+      const _isGenuinePriceFailure =
+        multiStrategy.priceIntegrity?.valid === false &&
+        _integrityCode !== "PRICE_REFERENCE_STALE" &&
+        _integrityCode !== "PRICE_REFERENCE_UNAVAILABLE";
+      if (_isGenuinePriceFailure) {
+        mcpSystemRules += ` PRICE INTEGRITY OVERRIDE (code: ${_integrityCode ?? "UNKNOWN"}, category: ${multiStrategy.priceIntegrity!.ratioCategory ?? "unknown"}): The price-level evidence for ${multiStrategy.symbol} was withheld because the setup price could not be independently validated against VCP Trader's own market data. YOU MUST NOT mention, repeat, reconstruct, approximate, or infer any trigger, invalidation, objective, resistance, major-high, or price-level value from the payload. Do not use the word "approximately" with any price. Do not suggest that any level can be inferred. Instead state exactly: "Price-level evidence could not be independently validated, so the platform withheld trigger, invalidation and objective levels. The remaining non-price evidence did not support a qualifying setup." Do not override or soften the overallVerdict.`;
+      } else if (multiStrategy.priceIntegrity?.valid === false) {
+        // Stale or unavailable reference — prices may be present but were not
+        // independently validated. Show levels with appropriate qualification.
+        mcpSystemRules += ` NOTE: A current independent price reference was not available for ${multiStrategy.symbol} (${_integrityCode ?? "reference unavailable"}). Present price levels from the payload factually, but note they could not be cross-checked against VCP Trader's market data for this request. Do not claim they are incorrect.`;
       }
     }
 

@@ -16,3 +16,5 @@
 - [Portfolio Intelligence engine](portfolio-intelligence-engine.md) — Sprint 5.3B: pure computation from SafePortfolioAwareness + Brain sections; never buy/sell advice; safeResult defensive wrapper required for malformed inputs.
 - [Research persistence foundation](research-persistence.md) — Sprint 5.4C: save handle (10-min, single-use, user-bound Map) gates all persistence; forbidden-key scanner rejects secrets recursively; tag normalizer uses - not _.
 - [Price integrity checker](price-integrity-checker.md) — ratio-based cross-check (±15% ok; 8–12× = 10x; 80–120× = 100x); raw prices server-log only; safeIntegrityResult() strips before client; gates researchSave + GPT prompt.
+- [Price integrity false-positive policy](price-integrity-false-positive.md) — stale reference (>5 days) → PRICE_REFERENCE_STALE, never ratio-classify; canCompareRatio gates all ratio logic; long-term appreciation ≠ decimal error.
+- [GPT enum leak prevention](gpt-enum-leak.md) — raw enums (NO_TRADE, TRADE_CANDIDATE, etc.) must never appear in GPT system rules; always substitute display labels; PRICE INTEGRITY OVERRIDE must not fire for STALE/UNAVAILABLE codes.

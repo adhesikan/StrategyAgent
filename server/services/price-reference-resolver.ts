@@ -44,6 +44,24 @@ export interface ResolvedReference {
    * disagree (ratio outside the conflict tolerance). Block saves when true.
    */
   conflict: boolean;
+  /**
+   * True when the reference is fresh or acceptable enough to run a ratio
+   * comparison against the MCP setup price.
+   *
+   * False when:
+   * - freshness is "stale" (>5 calendar days) — a ratio comparison would
+   *   risk misclassifying legitimate long-term price appreciation as a
+   *   decimal-order error (e.g. a stock that moved from $89 to $893 over
+   *   a year would falsely appear as a 10× scaling bug)
+   * - freshness is "unknown" (malformed candle date)
+   * - source is "unavailable" (no reference resolved)
+   * - conflict is true (neither source trusted)
+   *
+   * Callers must gate ratio classification on this flag, not freshness alone.
+   * A stale higher-priority source must never defeat a fresh lower-priority
+   * source for ratio purposes.
+   */
+  canCompareRatio: boolean;
   /** Server diagnostics only — NEVER forward to client. */
   _brokerPrice?: number;
   _historyClose?: number;
@@ -185,12 +203,15 @@ export async function resolveReferencePrice(
     const ratio = (quotePrice as number) / historyBar!.close;
     if (ratio <= CONFLICT_RATIO_LOW || ratio >= CONFLICT_RATIO_HIGH) {
       // Material disagreement between broker quote and history close.
-      // Prefer neither silently — flag conflict.
+      // Prefer neither silently — flag conflict. A stale higher-priority
+      // source (broker) must not defeat a fresh lower-priority source
+      // (history); conflict detection applies regardless of direction.
       return {
         source: "unavailable",
         referencePrice: null,
         freshness: "unknown",
         conflict: true,
+        canCompareRatio: false,
         _brokerPrice: quotePrice as number,
         _historyClose: historyBar!.close,
         _historyTimestamp: historyBar!.tradeDate,
@@ -203,6 +224,7 @@ export async function resolveReferencePrice(
       referenceTimestamp: now.toISOString(),
       freshness: "fresh", // live quote is always "fresh"
       conflict: false,
+      canCompareRatio: true,
       _brokerPrice: quotePrice as number,
       _historyClose: historyBar!.close,
       _historyTimestamp: historyBar!.tradeDate,
@@ -217,6 +239,7 @@ export async function resolveReferencePrice(
       referenceTimestamp: now.toISOString(),
       freshness: "fresh",
       conflict: false,
+      canCompareRatio: true, // live broker quotes are always request-time fresh
       _brokerPrice: quotePrice as number,
     };
   }
@@ -224,12 +247,16 @@ export async function resolveReferencePrice(
   // ── Case C: History only (disconnected user) ─────────────────────────────
   if (!quoteValid && historyValid) {
     const freshness = freshnessFromTradeDate(historyBar!.tradeDate, now);
+    // A stale reference must not be used for ratio classification — a
+    // legitimate long-term price move would appear as a decimal-order error.
+    const canCompareRatio = freshness === "fresh" || freshness === "acceptable";
     return {
       source: "internal_history_close",
       referencePrice: historyBar!.close,
       referenceTimestamp: historyBar!.tradeDate,
       freshness,
       conflict: false,
+      canCompareRatio,
       _historyClose: historyBar!.close,
       _historyTimestamp: historyBar!.tradeDate,
     };
@@ -241,5 +268,6 @@ export async function resolveReferencePrice(
     referencePrice: null,
     freshness: "unknown",
     conflict: false,
+    canCompareRatio: false,
   };
 }

@@ -1,6 +1,6 @@
 # Price Integrity and Research-Save Safety
 
-**Status:** Implemented (Task #40 — Broker-Independent Reference)  
+**Status:** Implemented (Task #40 — Broker-Independent Reference; False-Positive Resolution — 2026-08-05)  
 **Scope:** Multi-strategy analysis only (VCP explicit path unchanged)
 
 ---
@@ -268,3 +268,79 @@ No long-lived price cache is introduced.
 | No broker, setup 10× inflated | Blocked | **Still blocked** — history detects 10× mismatch |
 | Broker connected | No change | Broker quote used (same as before) |
 | Broker + history conflict | Not checked | **New** — `PRICE_REFERENCE_CONFLICT` detected |
+
+---
+
+## 14. Incident Resolution — MU False-Positive (2026-08-05)
+
+### Summary
+
+An investigation was opened after the integrity checker reported `PRICE_REFERENCE_MISMATCH / ratioCategory: "10x"` for MU analysis requests. The check appeared to flag MU's ~$893 setup price as 10× inflated relative to a ~$89 reference. This was a **false positive**.
+
+### Root Cause
+
+**The stale-expectation problem — not a data bug.**
+
+A prior diagnostic expected MU to trade near ~$89. This expectation was derived from a test fixture written when MU's market price was in that range. By 2026-08-05, live Twelve Data data showed:
+
+| Date | Open | High | Low | Close |
+|---|---|---|---|---|
+| 2026-07-29 | 833 | 841.80 | 737.88 | 739.00 |
+| 2026-07-30 | 793.14 | 882.50 | 789.00 | 874.66 |
+| 2026-07-31 | 919.65 | 930.88 | 818.00 | 823.03 |
+| 2026-08-03 | 786.36 | 836.62 | 770.10 | 829.50 |
+| 2026-08-04 | 865.39 | 902.43 | 858.50 | 892.67 |
+
+A production trace confirmed that **every stage of the VCP Trader pipeline returned the correct current-market values** — no transformation, no scaling error:
+
+```
+Twelve Data raw payload    → close: "892.66998" (string, as returned by API)
+TwelveDataDailyProvider    → close: 892.66998   (parseNum — no scale factor)
+/api/internal/market/history → close: 892.66998 (direct field copy — no transform)
+Resolver reference price   → 892.66998
+Integrity check result     → valid: true (ratio ≈ 1.00)
+```
+
+No inflation occurred anywhere in VCP Trader or the MCP adapter. MU had genuinely appreciated from ~$89 to ~$893 between the time the test fixture was written and the production observation.
+
+### Why the False Positive Occurred
+
+The integrity checker was comparing a **stale historical reference** (~$89, from an old candle or test fixture) against a **current setup price** (~$893). The ~10× ratio triggered `PRICE_REFERENCE_MISMATCH`. This was not a decimal-order bug in either service — it was legitimate long-term price appreciation being misread as a scaling error.
+
+### Fixes Applied
+
+1. **Freshness gate before ratio comparison** (`price-reference-resolver.ts`, `price-integrity-checker.ts`):
+   - `ResolvedReference` now includes `canCompareRatio: boolean`
+   - `canCompareRatio: false` when `freshness === "stale"` (>5 calendar days) or `"unknown"`
+   - New `checkPriceIntegrityFromResolved()` function — the authoritative entry point for callers with a resolved reference. It gates ratio classification on `canCompareRatio` and returns `PRICE_REFERENCE_STALE` instead of misclassifying a stale-reference comparison as a decimal-order error.
+
+2. **`PRICE_REFERENCE_STALE` code** added to the `PriceIntegrityResult` code union:
+   - Means: "reference is too old to validate, not that the price is wrong"
+   - Does NOT suppress price levels in the UI (stale ≠ corrupt)
+   - Does block ResearchSave (cannot confirm correctness without fresh data)
+   - Does NOT trigger GPT PRICE INTEGRITY OVERRIDE (does not claim 10× corruption)
+
+3. **GPT system rule hardened** (`ask.ts`):
+   - `PRICE INTEGRITY OVERRIDE` only fires for genuine failures (`PRICE_REFERENCE_MISMATCH`, `PRICE_REFERENCE_CONFLICT`, `PRICE_NON_FINITE`)
+   - `PRICE_REFERENCE_STALE` / `PRICE_REFERENCE_UNAVAILABLE` get a softer NOTE instead — prices are shown with appropriate caution, not suppressed
+   - Raw internal enum values (`NO_TRADE`, `TRADE_CANDIDATE`, `INSUFFICIENT_DATA`) are replaced with display labels in the GPT system rule; GPT is explicitly prohibited from outputting raw enums
+   - `NO_TRADE` headline now guided: "MU currently has no qualifying setup under this analysis."
+
+4. **React component refined** (`multi-strategy-analysis-cards.tsx`):
+   - `integrityFailed` (the condition that shows the warning banner and suppresses price levels) now excludes `PRICE_REFERENCE_STALE` and `PRICE_REFERENCE_UNAVAILABLE`
+   - Only genuine mismatch/conflict codes suppress price display
+
+5. **Test fixtures cleaned** (`price-reference-resolver.test.ts`, `price-integrity-checker.test.ts`):
+   - All references to "MU price ~89" or "893.5 is 10×" relabeled as explicitly synthetic
+   - Named fixture: `syntheticDecimalOrderMismatchFixture` (values: 1000 setup / 100 reference)
+   - Symbol `"MU"` replaced with `"SYN"` in all tests that use invented prices
+   - New regression tests (E04–E08) cover: current-scale pass, stale-reference gate, no symbol-specific limits, genuine failure still blocked
+
+### Lesson: Why Absolute Historical Expectations Must Never Be Used for Scale Validation
+
+A price integrity check must compare two **request-time** values — not a request-time value against a historically-expected value. Any symbol can legitimately appreciate (or depreciate) by an order of magnitude over years. Using a remembered or fixture-embedded price as a "sanity floor" or "expected scale" turns the check into a temporal anchor, not a consistency check.
+
+**The only safe comparison is: MCP setup price vs a fresh reference from the same approximate time.**
+
+If the reference is stale (>5 calendar days), the check must return `PRICE_REFERENCE_STALE` and let the user know validation was skipped — not classify the gap as an error.
+

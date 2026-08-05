@@ -1,0 +1,244 @@
+Production Follow-Up — Close MU Price False Positive and Harden Reference Freshness
+
+CONCLUSION
+
+The MU price-scale investigation is resolved.
+
+Live production tracing proved that Twelve Data returned:
+
+- approximately $739 on 2026-07-29
+- approximately $892.67 on 2026-08-04
+
+The values passed unchanged through:
+
+- Twelve Data raw payload
+- provider parsing
+- normalized daily bars
+- internal market-history endpoint
+- MCP adapter
+- MCP scanner
+- VCP Trader response
+
+Independent current market sources also confirm MU trading around $892–$895.
+
+Therefore:
+
+- there is no 10x price-scaling bug
+- $893 is a valid current MU price
+- the earlier $89 expectation was stale
+- price-derived MU levels must not be suppressed solely because they differ from historical expectations
+
+GOAL
+
+Close the false-positive investigation, harden reference freshness, and clean up remaining presentation issues.
+
+Do not modify:
+
+- scanner algorithms
+- recommendation logic
+- ranking
+- options selection
+- portfolio policies
+- risk calculations
+- execution
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. DOCUMENT THE RESOLUTION
+==================================================
+
+Update:
+
+docs/PRICE_INTEGRITY_AND_RESEARCH_SAVE_SAFETY.md
+
+Add an incident-resolution section documenting:
+
+- the original stale $89 expectation
+- the live Twelve Data values
+- confirmation that approximately $893 was correct
+- no transformation occurred in VCP Trader or MCP
+- why absolute historical expectations must never be used for scale validation
+- why only fresh, request-time references may be compared
+
+Do not describe the provider output as corrupted.
+
+==================================================
+2. FRESHNESS BEFORE RATIO CHECK
+==================================================
+
+Audit price-reference-resolver.ts and price-integrity-checker.ts.
+
+A ratio comparison may run only when the selected reference:
+
+- has a valid timestamp
+- satisfies the approved freshness policy
+- is for the same symbol
+- is from the intended request context
+- is not an old cached historical value
+
+If the reference is stale:
+
+- return PRICE_REFERENCE_STALE
+- do not classify the relationship as 10x, 100x, 0.1x, or 0.01x
+- do not claim price scaling is invalid
+- do not compare against the stale number
+
+Prefer a fresh internal-history close over a stale broker/snapshot quote.
+
+Document the exact source-precedence behavior.
+
+==================================================
+3. REFERENCE SOURCE PRECEDENCE
+==================================================
+
+Use:
+
+1. fresh trusted broker or market-snapshot quote
+2. fresh/acceptable latest completed internal-history close
+3. unavailable
+
+A stale higher-priority source must not defeat a fresh lower-priority source.
+
+If both fresh sources exist but materially conflict:
+
+- preserve PRICE_REFERENCE_CONFLICT
+- block saving until validated
+- do not guess which price is correct
+
+==================================================
+4. REMOVE FALSE-POSITIVE ASSUMPTIONS
+==================================================
+
+Search the codebase and tests for assumptions such as:
+
+- MU should be near 89
+- 893 is necessarily a 10x error
+- symbol-specific expected price ranges
+- hardcoded MU reference values used as current truth
+
+Production-fixture tests may use synthetic 89 versus 893 data to verify ratio behavior, but they must be clearly labeled as synthetic examples—not current MU market truth.
+
+Rename fixtures where needed:
+
+mu10xFixture
+
+→
+
+syntheticDecimalOrderMismatchFixture
+
+Do not use a real symbol when the values are invented.
+
+==================================================
+5. HEADLINE TERMINOLOGY
+==================================================
+
+The current UI headline still exposes:
+
+NO_TRADE
+
+Change presentation only.
+
+Internal enum:
+
+NO_TRADE
+
+must remain unchanged.
+
+User-facing label:
+
+No qualifying setup
+
+Preferred headline:
+
+“MU currently has no qualifying setup under the VCP analysis.”
+
+Also ensure AI explanations and key points do not expose raw enum values such as:
+
+- NO_TRADE
+- TRADE_CANDIDATE
+- INSUFFICIENT_DATA
+
+Use the existing display-label mapping.
+
+==================================================
+6. RESEARCH-SAVE BEHAVIOR
+==================================================
+
+For a current valid MU result:
+
+- integrity should pass when compared with a current reference near the same scale
+- ResearchSave may be available when all other save conditions pass
+- valid levels must remain visible
+- valid levels may be included in GPT explanations
+- no integrity warning should render
+
+For a genuinely stale or conflicting reference:
+
+- do not classify a decimal-order mismatch using the stale reference
+- block saving only according to the approved stale/unavailable/conflict policy
+- explain the actual limitation accurately
+
+==================================================
+7. GPT PAYLOAD SANITIZER
+==================================================
+
+Retain the payload sanitizer for genuine integrity failures.
+
+Do not sanitize validated MU prices.
+
+Behavior:
+
+integrity valid
+→ preserve validated price fields
+
+integrity invalid/conflict
+→ remove affected price fields
+
+reference stale/unavailable
+→ follow documented policy without claiming a 10x corruption
+
+==================================================
+8. TESTS
+==================================================
+
+Add or update tests for:
+
+- current MU-like setup price and reference both near 893 → valid
+- fresh setup and stale historical reference near 89 → stale reference not used for ratio classification
+- stale broker quote falls back to fresh internal-history close
+- both sources fresh and consistent → valid
+- both sources fresh and materially conflicting → conflict
+- synthetic 10x mismatch with both references fresh → invalid
+- no symbol-specific expected-price limits
+- valid MU levels displayed
+- valid MU explanation may contain validated prices
+- raw NO_TRADE absent from headline
+- raw enum absent from answer and key points
+- ResearchSave allowed for valid current MU evidence
+- genuine integrity failure still suppresses prices and saving
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+9. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. documentation updated
+2. freshness policy
+3. source precedence
+4. stale-reference behavior
+5. false assumptions removed
+6. headline mapping
+7. GPT behavior
+8. ResearchSave behavior
+9. tests and totals
+10. build result
+11. compatibility concerns
+
+Do not commit or push.

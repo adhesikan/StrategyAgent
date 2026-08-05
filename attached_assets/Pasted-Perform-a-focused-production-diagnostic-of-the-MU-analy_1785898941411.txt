@@ -1,0 +1,192 @@
+Perform a focused production diagnostic of the MU analysis shown in Ask AI.
+
+Do not add features.
+Do not modify the Research Workspace.
+Do not commit, push, or deploy automatically.
+
+OBSERVED RESULT
+
+Prompt:
+
+Analyze MU
+
+The UI displays:
+
+- current price approximately 893.5
+- major high 1255.00
+- invalidation 737.88
+- Overall: No trade
+- 10 strategies checked
+- 10 matches
+- most supporting strategies are Unknown
+- page confidence: high
+- strategy rejections claiming requested direction "either" conflicts with setup direction "neutral"
+
+GOAL
+
+Identify the exact first component producing these inconsistent fields.
+
+==================================================
+1. TRACE PRICE DATA
+==================================================
+
+Trace the displayed values from:
+
+Ask AI response
+→ TraderBrain evidence
+→ multi-strategy analysis
+→ MCP scan_strategy result
+→ VCP internal market-history endpoint
+→ market-data provider
+
+For MU, capture safely:
+
+- raw latest close
+- adjusted close if present
+- chart interval
+- provider
+- split-adjustment mode
+- normalization transformations
+- currentPrice passed into each strategy
+- resistance/major-high source
+- invalidation calculation input
+
+Determine whether values are:
+
+- multiplied by 10
+- multiplied by 100
+- using cents instead of dollars
+- double-adjusted for a split
+- using an incorrect historical series
+- coming from a stale/mock fixture
+- mapped from the wrong field
+
+Do not guess.
+
+==================================================
+2. MATCH-COUNT SEMANTICS
+==================================================
+
+Trace how:
+
+10 strategies checked
+10 matches
+
+is calculated.
+
+A strategy must not count as a match merely because the MCP tool returned a response.
+
+Differentiate:
+
+- evaluated
+- qualified
+- confirming
+- forming
+- rejected
+- unavailable/unknown
+
+Rename the visible count if it currently means responses received rather than actual matches.
+
+==================================================
+3. CONFIDENCE SEMANTICS
+==================================================
+
+Trace why page confidence is high.
+
+High confidence must not be shown when:
+
+- primary setup is invalid
+- most strategies are unavailable
+- price data is suspect
+- data quality is partial or unknown
+
+Do not change confidence policy until the root cause is documented.
+
+==================================================
+4. DIRECTION FILTER
+==================================================
+
+Trace the rejection:
+
+Requested direction "either" conflicts with setup direction "neutral".
+
+Confirm the intended semantics of "either".
+
+Expected behavior:
+
+- bullish request rejects bearish-only setup
+- bearish request rejects bullish-only setup
+- either means no directional restriction
+- neutral may remain contextual or unavailable, but should not be rejected merely because request direction is either
+
+Determine whether the bug is in VCP Trader argument mapping or MCP qualification logic.
+
+==================================================
+5. RESEARCH-SAVE SAFETY
+==================================================
+
+Until price validation passes:
+
+- do not mint a researchSave handle for a record containing implausible or inconsistent price scaling
+- return a safe data-quality limitation
+- do not allow incorrect values to become immutable saved research
+
+Use existing validation architecture; do not add arbitrary symbol-specific price limits.
+
+Prefer cross-field consistency checks such as:
+
+- current price versus latest history close
+- trigger/invalidation/objective scale consistency
+- provider adjustment metadata
+
+==================================================
+6. UI TERMINOLOGY
+==================================================
+
+Do not expose raw enum text such as:
+
+NO_TRADE
+
+Render:
+
+No qualifying setup
+
+or:
+
+No actionable setup
+
+Keep the underlying deterministic enum unchanged.
+
+==================================================
+7. AI EXPLANATION
+==================================================
+
+GPT must not repeat price levels if the deterministic response marks price data as inconsistent or unavailable.
+
+In that case, explain:
+
+"Price-level analysis could not be validated, so no research conclusion was generated from those levels."
+
+==================================================
+8. DELIVERABLE
+==================================================
+
+Create:
+
+docs/MU_PRICE_AND_ANALYSIS_CONSISTENCY_DIAGNOSTIC.md
+
+Report:
+
+1. exact raw values at every layer
+2. first component where values become incorrect
+3. price-adjustment or scaling root cause
+4. match-count root cause
+5. confidence root cause
+6. direction-filter root cause
+7. research-save exposure
+8. smallest correct fixes
+9. tests required
+
+Do not implement fixes yet.
+Do not commit or push.
+Return GO / CONDITIONAL_GO / NO_GO for saving MU research records.

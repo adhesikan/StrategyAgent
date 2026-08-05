@@ -1,0 +1,799 @@
+Homepage Conversion Update — Outcome-First Messaging for Active Traders
+
+CONTEXT
+
+VCP Trader AI is already built and deployed on Replit/Railway.
+
+The current homepage has:
+
+- strong dark-theme design
+- polished cards and layouts
+- hero section
+- stock and options sections
+- AI scenario grades
+- risk controls
+- InstaTrade™
+- pricing
+- FAQ
+- responsive React components
+
+The visual design is already good.
+
+This task is NOT a redesign.
+
+The goal is to improve visitor-to-trial conversion by changing the messaging hierarchy from:
+
+feature-first
+
+to:
+
+outcome-first
+
+The homepage should appeal to active traders who currently look for:
+
+- stock signals
+- options ideas
+- swing setups
+- income trades
+- watchlist opportunities
+- market alerts
+- newsletter trade ideas
+- scanner results
+
+The product must still be presented as a self-directed decision-support platform, not as personalized investment advice.
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. PRIMARY GOAL
+==================================================
+
+A new visitor should understand within 10 seconds that VCP Trader AI helps them:
+
+- discover stock and options opportunities
+- find growth and income ideas
+- understand why a setup qualifies
+- review risk before acting
+- prepare an order through a connected broker
+
+Do not lead with the word “research.”
+
+Research may remain in legal, disclosure, saved-record, and technical contexts, but it should not be the primary marketing message.
+
+Prefer:
+
+- opportunities
+- trade ideas
+- setups
+- candidates
+- market intelligence
+- opportunity discovery
+- trade review
+- watchlist intelligence
+
+==================================================
+2. PRESERVE THE CURRENT VISUAL SYSTEM
+==================================================
+
+Keep:
+
+- current dark theme
+- typography
+- navigation structure
+- card styles
+- spacing system
+- animations
+- responsiveness
+- brand colors
+- CTA styling
+- existing React architecture
+- existing accessibility behavior
+
+Reuse existing components wherever possible.
+
+Do not create a completely new visual design.
+
+==================================================
+3. HERO SECTION
+==================================================
+
+Keep the existing two-column hero layout.
+
+Replace the current hero copy with:
+
+Eyebrow:
+
+AI Trade Intelligence for Self-Directed Traders
+
+Headline:
+
+Find Better Stock & Options Opportunities in Seconds
+
+Alternative acceptable headline if it fits the current layout better:
+
+Trade Stocks & Options Smarter With AI
+
+Use only one final headline.
+
+Recommended subheadline:
+
+VCP Trader AI scans market conditions, ranks stock and options opportunities, explains why setups qualify, and helps you review risk before preparing an order through your connected broker.
+
+Primary CTA:
+
+Start Free Trial
+
+Secondary CTA:
+
+See How It Works
+
+Below the CTAs, show compact benefit badges:
+
+- Daily AI Ideas
+- Growth & Income Opportunities
+- Plain-English Explanations
+- Stock & Options Setups
+- Broker-Connected Data
+- 14-Day Free Trial
+
+Keep the current compliance disclosure below the badges.
+
+Do not use:
+
+- winning trades
+- guaranteed setups
+- best trades
+- high-probability profits
+- beat the market
+
+==================================================
+4. REPLACE THE “7 TABS” SECTION
+==================================================
+
+Replace the current “Trading Shouldn’t Require 7 Tabs and Guesswork” section with:
+
+Headline:
+
+What You Get Every Day
+
+Subheadline:
+
+A focused view of the opportunities, market conditions, and risks that deserve your attention.
+
+Create or reuse six cards:
+
+A. Today’s Opportunities
+
+Description:
+
+See AI-ranked stock and options setups based on current market conditions and deterministic qualification rules.
+
+B. Growth Ideas
+
+Description:
+
+Find bullish pullbacks, breakouts, momentum setups, and developing growth opportunities.
+
+C. Income Ideas
+
+Description:
+
+Explore covered calls, cash-secured puts, credit spreads, and other defined-risk income scenarios.
+
+D. Watchlist Intelligence
+
+Description:
+
+See which symbols are qualifying, developing, rejected, or worth monitoring.
+
+E. Market Context
+
+Description:
+
+Understand the technical, sentiment, earnings, and market conditions behind each setup.
+
+F. Risk Review
+
+Description:
+
+Review invalidation levels, reward/risk, liquidity, capital requirements, and portfolio fit before acting.
+
+Use trader-friendly icons already available in the project.
+
+==================================================
+5. MOVE “TODAY’S OPPORTUNITIES” HIGHER
+==================================================
+
+Move the current daily ideas/opportunity preview near the top of the homepage, immediately after the “What You Get Every Day” section.
+
+Rename:
+
+Daily AI Ideas for Stocks & Options
+
+to:
+
+Today’s Opportunities
+
+Subheadline:
+
+A preview of the types of stock and options setups VCP Trader AI can surface and explain.
+
+Use clearly marked preview examples.
+
+Suggested examples:
+
+AMD
+Bullish Pullback
+Grade A
+
+NVDA
+Institutional Reclaim
+Grade A
+
+SPY
+Cash-Secured Put
+Income Idea
+
+AAPL
+Covered Call
+Income Idea
+
+BA
+Momentum Breakout
+Grade B
+
+MU
+Watchlist Candidate
+
+These are marketing preview examples only.
+
+Label the card:
+
+Preview
+
+or:
+
+Example
+
+Do not imply they are current live recommendations unless they are actually connected to live data.
+
+==================================================
+6. ADD “HOW IT FINDS OPPORTUNITIES”
+==================================================
+
+After the opportunity preview, add or reorganize a section:
+
+Headline:
+
+How VCP Trader AI Finds Opportunities
+
+Use concise cards or a simple workflow:
+
+1. Scan
+
+Monitors technical setups, watchlists, market conditions, and options structures.
+
+2. Qualify
+
+Applies deterministic rules to separate qualified, developing, rejected, and unavailable setups.
+
+3. Rank
+
+Surfaces higher-quality candidates using strategy strength, freshness, market context, risk, and confluence.
+
+4. Explain
+
+Summarizes why a setup qualifies or does not qualify in plain English.
+
+5. Review Risk
+
+Shows invalidation, reward/risk, capital requirements, liquidity, and portfolio impact.
+
+6. Prepare
+
+Lets the user review a broker-ready order through InstaTrade™ with explicit confirmation.
+
+Keep this section concise.
+
+Do not expose internal architecture terms such as:
+
+- MCP
+- schemas
+- deterministic engine internals
+- candidate namespace
+- provider adapters
+
+==================================================
+7. PLAIN-ENGLISH SECTION
+==================================================
+
+Rename:
+
+Ask in Plain English
+
+to:
+
+Ask for Opportunities in Plain English
+
+Use outcome-focused example prompts:
+
+- Show bullish setups on NVDA
+- Find income ideas under $200 risk
+- Show covered call opportunities
+- Find stocks near breakout confirmation
+- Show developing swing setups
+- Find defensive stock or options ideas
+- Analyze BA and explain whether the setup qualifies
+
+Keep:
+
+- No complex setup required
+- Beginner-friendly prompts
+- Advanced controls when needed
+
+==================================================
+8. OPPORTUNITY GRADES
+==================================================
+
+Rename:
+
+AI Scenario Grades
+
+to:
+
+Opportunity Grades
+
+Use this description:
+
+Each opportunity receives a clear A+ through C grade with plain-English reasons, supporting evidence, and risk warnings.
+
+Update supporting bullets to:
+
+- One clear grade per scenario
+- Plain-English qualification reasons
+- Risks and limitations shown alongside the setup
+- Higher-quality candidates surface first
+
+Do not imply that grades predict profits.
+
+==================================================
+9. STOCKS AND OPTIONS SECTION
+==================================================
+
+Rename:
+
+Built for Stock and Options Traders
+
+to:
+
+Trade Stocks or Options — Your Choice
+
+Recommended description:
+
+Review stock setups, long calls and puts, spreads, covered calls, and cash-secured puts in one consistent workflow.
+
+Keep the existing stocks/options bullet lists.
+
+Emphasize:
+
+- growth
+- income
+- defined risk
+- liquidity
+- breakeven
+- max loss
+- trade-offs
+
+==================================================
+10. OPTIONS SECTION
+==================================================
+
+Rename:
+
+Options Made Easier
+
+to:
+
+Find the Right Options Structure
+
+Recommended description:
+
+Compare possible options structures, review liquidity and risk, and understand the trade-offs before preparing an order.
+
+Keep clear separation between:
+
+- live broker-connected options data
+- estimated options structures
+
+Do not imply estimated contracts are executable.
+
+==================================================
+11. RISK CONTROLS SECTION
+==================================================
+
+Move Risk Controls lower on the page, after opportunity discovery, explanation, and stock/options flexibility.
+
+Keep the concept because it builds trust.
+
+Recommended headline:
+
+Built-In Risk Checks
+
+Recommended description:
+
+Your rules are checked before an order can be prepared.
+
+Keep current items:
+
+- Minimum grade
+- Maximum risk per idea
+- Allowed instruments
+- Defined-risk preferences
+- Liquidity filters
+- Concentration rules where applicable
+
+Replace aggressive wording such as:
+
+Blocks low-grade setups
+
+with:
+
+Filters setups below your minimum grade
+
+Replace:
+
+Blocks oversized positions
+
+with:
+
+Prevents orders that exceed your risk limits
+
+Use “blocks” only when referring to an actual deterministic order-preparation control.
+
+==================================================
+12. INSTTRADE SECTION
+==================================================
+
+Keep InstaTrade™ after Risk Controls.
+
+Recommended headline:
+
+Review and Prepare Orders With InstaTrade™
+
+Recommended copy:
+
+Prepare a reviewed stock or options order through your connected broker. You approve every order before submission.
+
+Keep:
+
+- explicit confirmation required
+- broker connection required
+- nothing is submitted automatically
+- live data depends on broker entitlements
+
+Do not use:
+
+- automatic execution
+- AI places the trade
+- hands-free trading
+
+==================================================
+13. HISTORY / LEARNING SECTION
+==================================================
+
+Rename:
+
+Track What You Review and Trade
+
+to:
+
+Improve Your Process Over Time
+
+Recommended description:
+
+Review saved opportunities, user-recorded decisions, and outcomes to understand which setups and strategies fit your process.
+
+Use bullets:
+
+- Review saved ideas and decisions
+- Compare outcomes by strategy and instrument
+- Track your own process over time
+- Learn from qualified and rejected setups
+
+Do not claim the system learns to make personalized recommendations.
+
+==================================================
+14. HOMEPAGE SECTION ORDER
+==================================================
+
+Use this preferred order:
+
+1. Hero
+2. What You Get Every Day
+3. Today’s Opportunities
+4. How VCP Trader AI Finds Opportunities
+5. Ask for Opportunities in Plain English
+6. Opportunity Grades
+7. Trade Stocks or Options — Your Choice
+8. Find the Right Options Structure
+9. Built-In Risk Checks
+10. InstaTrade™
+11. Improve Your Process Over Time
+12. Pricing CTA
+13. FAQ
+14. Footer/disclosures
+
+Preserve any required legal or compliance content.
+
+==================================================
+15. NAVIGATION
+==================================================
+
+Keep the current navigation unless a small update improves conversion.
+
+Preferred labels:
+
+- Features
+- Stocks
+- Options
+- Daily Ideas
+- InstaTrade™
+- Pricing
+- FAQ
+
+If adding Daily Ideas would create crowding or broken mobile behavior, keep the existing navigation and do not force it.
+
+==================================================
+16. PRICING PAGE COPY
+==================================================
+
+Update only marketing copy, not pricing logic.
+
+Current language relies too heavily on:
+
+- research
+- strategy research
+- analysis
+
+Replace where appropriate with:
+
+- opportunity discovery
+- daily ideas
+- candidate analysis
+- market intelligence
+- trade review
+- stock and options setups
+
+Recommended pricing intro:
+
+Start with a 14-day trial featuring historical daily stock analysis, AI-ranked stock and options opportunities, market intelligence, and options strategy insights. Connect a supported brokerage account to unlock current quotes, options chains, Greeks, account context, and self-directed InstaTrade™ order review and submission.
+
+Update the plan summary to:
+
+One complete plan for discovering, evaluating, and reviewing stock and options opportunities, with broker-connected data and self-directed order preparation.
+
+Keep accurate trial and broker-data limitations.
+
+==================================================
+17. FREE-TRIAL POSITIONING
+==================================================
+
+Make the trial limitations easy to understand.
+
+Clearly separate:
+
+Trial without broker:
+
+- historical/daily-close stock analysis
+- delayed or snapshot market context
+- opportunity previews
+- estimated options strategy insights
+
+Broker connected:
+
+- current stock quotes
+- live or entitled options data
+- options chains and Greeks
+- account and position context
+- buying power
+- InstaTrade™ order review and submission
+
+Do not imply real-time data is included without broker connectivity.
+
+==================================================
+18. COPY STYLE
+==================================================
+
+Prefer:
+
+- opportunities
+- ideas
+- setups
+- candidates
+- qualifying
+- developing
+- monitoring
+- growth
+- income
+- market context
+- risk review
+- trade preparation
+- self-directed
+
+Avoid overusing:
+
+- research
+- analysis
+- platform
+- engine
+- intelligence system
+- recommendations
+
+The word “research” may remain where legally or functionally accurate, including:
+
+- Saved Research
+- Research Library
+- historical research record
+- educational/research disclaimer
+
+==================================================
+19. COMPLIANCE GUARDRAILS
+==================================================
+
+Do not introduce language that suggests:
+
+- personalized financial advice
+- fiduciary suitability
+- guaranteed outcomes
+- expected profits
+- winning signals
+- specific performance promises
+- autonomous order execution
+
+Avoid:
+
+- You should buy
+- You should sell
+- Best trade
+- Winning trade
+- Guaranteed setup
+- Safe trade
+- Risk-free income
+- High-probability profit
+
+Use:
+
+- qualified opportunity
+- AI-ranked candidate
+- setup
+- scenario
+- market opportunity
+- review
+- risk reference
+- self-directed decision
+
+Preserve the existing disclaimers.
+
+==================================================
+20. DEMO DATA SAFETY
+==================================================
+
+All homepage examples must be clearly marked as:
+
+- Preview
+- Example
+- Sample scenario
+
+Do not display a real-time timestamp unless the example is actually live.
+
+Do not claim preview grades, prices, premiums, or returns are current.
+
+Do not use historical win-rate percentages unless they are supported by verified production data and properly disclosed.
+
+The current “Performance by Grade” preview appears to show win percentages.
+
+Audit this section carefully.
+
+If the numbers are illustrative or unverified:
+
+- replace them with a non-performance educational example
+- or label them explicitly as illustrative sample data
+
+Do not market unverified performance claims.
+
+==================================================
+21. TECHNICAL REQUIREMENTS
+==================================================
+
+- Preserve React architecture.
+- Reuse current components.
+- Maintain current routes and anchors.
+- Preserve dark/light mode.
+- Preserve responsive layouts.
+- Preserve CTA tracking.
+- Preserve SEO metadata unless intentionally updated.
+- Update title and description metadata to match opportunity-first positioning.
+- Maintain accessibility.
+- Avoid layout shifts.
+- Do not add heavy dependencies.
+- Do not modify authentication, billing, broker, scanner, MCP, execution, or database code.
+
+==================================================
+22. SEO METADATA
+==================================================
+
+Update homepage metadata to reflect trader search intent without making misleading claims.
+
+Suggested title:
+
+VCP Trader AI — AI Stock & Options Opportunity Finder
+
+Suggested description:
+
+Discover AI-ranked stock and options opportunities, understand why setups qualify, review risk, and prepare self-directed trades through your connected broker.
+
+Use natural keywords such as:
+
+- AI stock ideas
+- options trade ideas
+- stock scanner
+- swing trade setups
+- covered call ideas
+- cash-secured put ideas
+- stock and options analysis
+
+Do not keyword-stuff.
+
+==================================================
+23. TESTS AND VALIDATION
+==================================================
+
+Verify:
+
+- homepage builds successfully
+- pricing page builds successfully
+- all links and anchor navigation work
+- Start Free Trial works
+- Login works
+- See How It Works scrolls correctly
+- dark and light modes work
+- desktop layout works
+- tablet layout works
+- mobile layout works
+- no browser console errors
+- no raw internal enums appear
+- no unsupported performance claims appear
+- compliance disclaimer remains present
+- no core application behavior changed
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+24. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. files changed
+2. section order before and after
+3. hero copy
+4. daily-value cards
+5. opportunity preview changes
+6. feature-section changes
+7. pricing copy changes
+8. navigation changes
+9. SEO changes
+10. performance-claim audit
+11. compliance review
+12. responsive behavior
+13. tests
+14. build result
+15. screenshots
+16. compatibility concerns
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

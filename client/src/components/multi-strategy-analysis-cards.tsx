@@ -17,7 +17,7 @@ import {
   msaFmtPrice,
   msaFreshLabel,
   msaIsIntraday,
-  msaStatusLabel,
+  msaStatusBadge,
   msaStrategyName,
   msaSupportGroup,
   type MsaSetupEntry,
@@ -57,7 +57,7 @@ function IntegrityWarning({ symbol }: { symbol: string }) {
         Price levels could not be validated
       </div>
       <p className="text-xs text-muted-foreground">
-        Trigger, risk and objective levels have been withheld for {symbol}. This analysis cannot be saved until price data is restored.
+        Entry confirmation, risk reference, and research objective levels have been withheld for {symbol}. This analysis cannot be saved until price data is restored.
       </p>
       <div className="flex gap-2 text-[10px]">
         <a href={`/ask?q=analyze+${symbol}`} className="text-amber-300/80 hover:text-amber-300 underline underline-offset-2">
@@ -87,11 +87,11 @@ function CountBreakdown({ a }: { a: MultiStrategyAnalysis }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="section-msa-counts">
       <Badge variant="outline" className="text-[10px]" data-testid="badge-msa-evaluated">
-        {evaluated} strategies evaluated
+        {evaluated} {evaluated === 1 ? "strategy" : "strategies"} evaluated
       </Badge>
       {failed > 0 && (
         <Badge variant="outline" className="text-[10px] text-muted-foreground" data-testid="badge-msa-failed">
-          {failed} unavailable
+          {failed} not available
         </Badge>
       )}
       {confirming > 0 && (
@@ -101,17 +101,17 @@ function CountBreakdown({ a }: { a: MultiStrategyAnalysis }) {
       )}
       {forming > 0 && (
         <Badge variant="outline" className="text-[10px] text-sky-300 border-sky-500/40 bg-sky-500/10" data-testid="badge-msa-forming">
-          {forming} forming
+          {forming} developing
         </Badge>
       )}
       {rejected > 0 && (
         <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/40" data-testid="badge-msa-rejected">
-          {rejected} rejected
+          {rejected} did not qualify
         </Badge>
       )}
       {unavailable > 0 && (
         <Badge variant="outline" className="text-[10px] text-muted-foreground" data-testid="badge-msa-unavailable">
-          {unavailable} unavailable
+          {unavailable} no signal
         </Badge>
       )}
     </div>
@@ -127,10 +127,11 @@ function SupportingRow({ entry }: { entry: MsaSetupEntry }) {
   const checkLabel = msaCandidateCheckLabel(entry);
   const reason = entry.candidateCheck?.reason ?? (s.reasons ?? [])[0] ?? null;
   const intraday = msaIsIntraday(s);
+  const statusBadge = msaStatusBadge(s.status);
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-testid={`row-msa-supporting-${s.strategy}`}>
       <span className="font-medium">{msaStrategyName(s)}</span>
-      <span className="text-muted-foreground">— {msaStatusLabel(s.status)}</span>
+      <span className={statusBadge.className || "text-muted-foreground"}>— {statusBadge.label}</span>
       {intraday && (
         <Badge variant="outline" className="text-[9px] px-1 py-0" data-testid={`badge-msa-timeframe-${s.strategy}`}>
           {String(s.timeframe)} · intraday
@@ -143,6 +144,46 @@ function SupportingRow({ entry }: { entry: MsaSetupEntry }) {
         </span>
       )}
       {!checkLabel && reason && <span className="text-muted-foreground/80 basis-full">{reason}</span>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// No-qualifying-setup empty state
+// ---------------------------------------------------------------------------
+
+function NoSetupEmptyState({ a }: { a: MultiStrategyAnalysis }) {
+  const noMatch = a.noMatchStrategies ?? [];
+  const hasContext = noMatch.length > 0 || (a.marketContext?.earningsRisk && a.marketContext.earningsRisk !== "NONE");
+  return (
+    <div
+      className="rounded-md border border-muted/50 bg-muted/10 p-3 space-y-2 text-xs text-muted-foreground"
+      data-testid="section-msa-no-setup"
+    >
+      <div className="font-medium text-foreground/80">No qualifying setup was identified.</div>
+      <p>
+        The deterministic analysis did not find the conditions required for a qualified technical setup
+        for {a.symbol} at this time.
+      </p>
+      {hasContext && (
+        <div className="space-y-1 pt-1">
+          {noMatch.length > 0 && (
+            <div>
+              <span className="font-medium text-foreground/70">Strategies with no current setup:</span>{" "}
+              {noMatch.join(", ")}
+            </div>
+          )}
+          {a.marketContext?.earningsRisk && a.marketContext.earningsRisk !== "NONE" && (
+            <div>
+              <span className="font-medium text-foreground/70">Context:</span>{" "}
+              Earnings risk is present ({a.marketContext.earningsRisk.toLowerCase()}), which may affect setup eligibility.
+            </div>
+          )}
+        </div>
+      )}
+      <p className="text-[10px]">
+        A qualified setup requires specific breakout structure, volume confirmation, and risk levels to be simultaneously present. When any of these conditions are absent, the setup does not qualify.
+      </p>
     </div>
   );
 }
@@ -168,6 +209,14 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
     integrityCode !== "PRICE_REFERENCE_STALE" &&
     integrityCode !== "PRICE_REFERENCE_UNAVAILABLE";
 
+  // Deduplication: if trigger price equals objective price, show only once.
+  const triggerPrice = ps?.trigger?.price ?? null;
+  const objectivePrice = ps?.technicalObjective?.price ?? null;
+  const showObjectiveSeparately =
+    msaFmtPrice(objectivePrice) !== null && objectivePrice !== triggerPrice;
+
+  const primaryStatusBadge = msaStatusBadge(ps?.status);
+
   return (
     <div className="space-y-3" data-testid="cards-multi-strategy-analysis">
       {integrityFailed && <IntegrityWarning symbol={a.symbol} />}
@@ -179,7 +228,7 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
             {a.symbol} — Multi-Strategy Analysis
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {/* Verdict + freshness */}
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className={`text-[10px] ${VERDICT_TONE[a.overallVerdict] ?? ""}`} data-testid="badge-msa-verdict">
@@ -199,11 +248,13 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
           <CountBreakdown a={a} />
 
           {/* Primary setup */}
-          {p && ps && (
-            <div className="rounded-lg border p-3 space-y-2" data-testid="card-msa-primary">
+          {p && ps ? (
+            <div className="rounded-lg border p-3 space-y-3" data-testid="card-msa-primary">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">{msaStrategyName(ps)}</span>
-                <Badge variant="secondary" className="text-[10px]">{msaStatusLabel(ps.status)}</Badge>
+                <Badge variant="outline" className={`text-[10px] ${primaryStatusBadge.className}`}>
+                  {primaryStatusBadge.label}
+                </Badge>
                 {ps.direction && <Badge variant="outline" className="text-[10px] capitalize">{ps.direction}</Badge>}
                 {typeof ps.score === "number" && (
                   <Badge variant="outline" className="text-[10px]">Score {Math.round(ps.score)}</Badge>
@@ -219,22 +270,32 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                   Price-level analysis unavailable
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs">
-                  {msaFmtPrice(ps.trigger?.price) && (
-                    <div><span className="text-muted-foreground">Trigger:</span> {msaFmtPrice(ps.trigger?.price)}</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-xs" data-testid="section-msa-price-levels">
+                  {msaFmtPrice(triggerPrice) && (
+                    <div>
+                      <span className="text-muted-foreground">Entry confirmation:</span>{" "}
+                      <span className="tabular-nums">{msaFmtPrice(triggerPrice)}</span>
+                    </div>
                   )}
                   {msaFmtPrice(ps.invalidation?.price) && (
-                    <div><span className="text-muted-foreground">Invalidation:</span> {msaFmtPrice(ps.invalidation?.price)}</div>
+                    <div>
+                      <span className="text-muted-foreground">Risk reference:</span>{" "}
+                      <span className="tabular-nums">{msaFmtPrice(ps.invalidation?.price)}</span>
+                    </div>
                   )}
-                  {msaFmtPrice(ps.technicalObjective?.price) && (
-                    <div><span className="text-muted-foreground">Objective:</span> {msaFmtPrice(ps.technicalObjective?.price)}</div>
+                  {showObjectiveSeparately && (
+                    <div>
+                      <span className="text-muted-foreground">Research objective:</span>{" "}
+                      <span className="tabular-nums">{msaFmtPrice(objectivePrice)}</span>
+                    </div>
                   )}
                 </div>
               )}
 
+              {/* Research outcome (candidate check) */}
               {msaCandidateCheckLabel(p) && (
                 <div className="text-xs" data-testid="text-msa-candidate-verdict">
-                  <span className="text-muted-foreground">Candidate check:</span>{" "}
+                  <span className="text-muted-foreground">Research outcome:</span>{" "}
                   <span className={CANDIDATE_TONE[p.candidateCheck?.status ?? "UNAVAILABLE"] ?? ""}>
                     {msaCandidateCheckLabel(p)}
                   </span>
@@ -253,11 +314,13 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                     })()}
                 </div>
               )}
+
+              {/* Why it's not actionable */}
               {(a.overallVerdict === "WATCH" || a.overallVerdict === "NO_TRADE") &&
                 (p.candidateCheck?.reason || (p.candidateCheck?.warnings ?? []).length > 0) && (
-                  <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 space-y-1" data-testid="section-msa-not-actionable">
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-1.5" data-testid="section-msa-not-actionable">
                     <div className="text-xs font-medium text-amber-300">Why it's not actionable</div>
-                    <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+                    <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
                       {p.candidateCheck?.reason && <li>{p.candidateCheck.reason}</li>}
                       {(p.candidateCheck?.warnings ?? []).slice(0, 3).map((w, i) => (
                         <li key={i}>{w}</li>
@@ -265,6 +328,7 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                     </ul>
                   </div>
                 )}
+
               {p.selectionReasons.length > 0 && (
                 <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5" data-testid="list-msa-selection-reasons">
                   {p.selectionReasons.slice(0, 5).map((r, i) => (
@@ -276,18 +340,23 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                 <div className="text-xs text-amber-300/90">{(ps.warnings ?? []).slice(0, 3).join(" · ")}</div>
               )}
             </div>
+          ) : (
+            /* Empty state — no qualifying setup */
+            (a.overallVerdict === "NO_TRADE" || a.overallVerdict === "INSUFFICIENT_DATA") && (
+              <NoSetupEmptyState a={a} />
+            )
           )}
 
           {/* Supporting setups */}
           {a.supportingSetups.length > 0 && (
-            <div className="space-y-2" data-testid="list-msa-supporting">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Supporting evidence</div>
+            <div className="space-y-2.5" data-testid="list-msa-supporting">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Key evidence</div>
               {SUPPORT_GROUP_ORDER.map((group) => {
                 const items = a.supportingSetups.filter((e) => msaSupportGroup(e) === group);
                 if (items.length === 0) return null;
                 return (
-                  <div key={group} className="space-y-1" data-testid={`group-msa-supporting-${group}`}>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                  <div key={group} className="space-y-1.5" data-testid={`group-msa-supporting-${group}`}>
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
                       {MSA_SUPPORT_GROUP_LABELS[group]}
                     </div>
                     {items.map((e, i) => (
@@ -307,12 +376,14 @@ export function MultiStrategyAnalysisCards({ analysis }: { analysis: MultiStrate
                 data-testid="button-msa-advanced-toggle"
               >
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
-                Advanced: strategies with no setup{failed.length > 0 ? " / unavailable" : ""}
+                Strategies with no active setup{failed.length > 0 ? " or data" : ""}
               </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2 space-y-1 text-xs text-muted-foreground" data-testid="section-msa-advanced">
-                {noMatch.length > 0 && <div>No current setup: {noMatch.join(", ")}</div>}
+              <CollapsibleContent className="pt-2 space-y-1.5 text-xs text-muted-foreground" data-testid="section-msa-advanced">
+                {noMatch.length > 0 && (
+                  <div>No active setup detected: {noMatch.join(", ")}</div>
+                )}
                 {failed.length > 0 && (
-                  <div>Temporarily unavailable: {failed.map((f) => f.strategy).join(", ")}</div>
+                  <div>Analysis not available: {failed.map((f) => f.strategy).join(", ")}</div>
                 )}
               </CollapsibleContent>
             </Collapsible>

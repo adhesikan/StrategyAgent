@@ -107,6 +107,66 @@ export const MSA_VERDICT_LABELS: Record<MsaVerdict, string> = {
   INSUFFICIENT_DATA: "Insufficient verified data",
 };
 
+// ---------------------------------------------------------------------------
+// Status badge — user-facing label + Tailwind color class
+// ---------------------------------------------------------------------------
+
+export interface MsaStatusBadge {
+  label: string;
+  /** Tailwind text/border/bg classes to apply to the Badge component. */
+  className: string;
+}
+
+/**
+ * Maps known server status values to user-facing labels with colour hierarchy:
+ *   Green  — confirmed / qualifying
+ *   Blue   — developing / forming
+ *   Amber  — monitoring / watch
+ *   Gray   — no signal / unavailable
+ *   Red    — not actionable / rejected
+ *
+ * Unknown or absent status → "No current signal" (gray).
+ * No raw enum values (FORMING, TRIGGERED, UNKNOWN, INVALID, etc.) appear here.
+ */
+const MSA_STATUS_MAP: Record<string, MsaStatusBadge> = {
+  // Confirming / qualified (green)
+  triggered:   { label: "Breakout confirmed",          className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" },
+  breakout:    { label: "Breakout confirmed",          className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" },
+  ready:       { label: "Breakout confirmed",          className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" },
+  qualified:   { label: "Breakout confirmed",          className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" },
+  // Developing (blue)
+  forming:     { label: "Developing",                  className: "text-sky-300 border-sky-500/40 bg-sky-500/10" },
+  waiting:     { label: "Waiting for confirmation",    className: "text-sky-300 border-sky-500/40 bg-sky-500/10" },
+  // Monitoring (amber)
+  watch:       { label: "Monitoring",                  className: "text-amber-300 border-amber-500/40 bg-amber-500/10" },
+  monitoring:  { label: "Monitoring",                  className: "text-amber-300 border-amber-500/40 bg-amber-500/10" },
+  // Not actionable / rejected (red)
+  invalid:     { label: "Not actionable",              className: "text-rose-300 border-rose-500/40 bg-rose-500/10" },
+  rejected:    { label: "Not actionable",              className: "text-rose-300 border-rose-500/40 bg-rose-500/10" },
+  failed:      { label: "Not actionable",              className: "text-rose-300 border-rose-500/40 bg-rose-500/10" },
+  // Gray fallback handled by msaStatusBadge()
+};
+
+const MSA_STATUS_FALLBACK: MsaStatusBadge = {
+  label: "No current signal",
+  className: "text-muted-foreground",
+};
+
+/**
+ * Returns a { label, className } pair for a setup status value.
+ * Never returns a raw enum string to the caller.
+ */
+export function msaStatusBadge(status: string | null | undefined): MsaStatusBadge {
+  const s = String(status ?? "").toLowerCase().trim();
+  if (!s || s === "unknown") return MSA_STATUS_FALLBACK;
+  return MSA_STATUS_MAP[s] ?? MSA_STATUS_FALLBACK;
+}
+
+/** Plain-text label for a status value (uses the same map). */
+export function msaStatusLabel(status: string | null | undefined): string {
+  return msaStatusBadge(status).label;
+}
+
 export function msaStrategyName(s: MsaSetup): string {
   return s.strategyDisplayName ?? s.strategy;
 }
@@ -117,50 +177,47 @@ export function msaFmtPrice(n: number | null | undefined): string | null {
     : null;
 }
 
-export function msaStatusLabel(status: string | null | undefined): string {
-  const s = String(status ?? "").toLowerCase();
-  if (!s) return "Unknown";
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 export function msaFreshLabel(fresh: boolean | null): string {
-  return fresh === true ? "Fresh" : fresh === false ? "Stale" : "Unknown";
+  return fresh === true ? "Current" : fresh === false ? "Delayed" : "Unknown";
 }
 
 /**
- * Candidate-check label (spec §4). Derived ONLY from the server payload:
- * - QUALIFIED → "Trade candidate qualified"
- * - NO_TRADE  → "Candidate rejected: <MCP-supplied reason>"
- * - WATCH     → "Setup detected, but not tradeable yet"
- * - UNAVAILABLE (or legacy null candidate) → "Candidate qualification unavailable"
+ * Candidate-check label (Sprint 5.4E §2).
+ * Uses entirely user-facing language — no raw enum values.
+ *
+ * - QUALIFIED   → "Qualified research opportunity"
+ * - NO_TRADE    → "Did not qualify: <MCP-supplied reason>" / "Did not qualify"
+ * - WATCH       → "Setup forming, not yet actionable"
+ * - UNAVAILABLE → "Research outcome unavailable"
+ *
  * Returns null when the entry was never evaluated (no candidate check ran).
  */
 export function msaCandidateCheckLabel(entry: MsaSetupEntry): string | null {
   const cc = entry.candidateCheck;
   if (!cc) {
     // Legacy payloads without candidateCheck: null candidate = failed check.
-    return entry.candidate === null ? "Candidate qualification unavailable" : null;
+    return entry.candidate === null ? "Research outcome unavailable" : null;
   }
   switch (cc.status) {
     case "QUALIFIED":
-      return "Trade candidate qualified";
+      return "Qualified research opportunity";
     case "NO_TRADE":
-      return cc.reason ? `Candidate rejected: ${cc.reason}` : "Candidate rejected";
+      return cc.reason ? `Did not qualify: ${cc.reason}` : "Did not qualify";
     case "WATCH":
-      return "Setup detected, but not tradeable yet";
+      return "Setup forming, not yet actionable";
     case "UNAVAILABLE":
     default:
-      return "Candidate qualification unavailable";
+      return "Research outcome unavailable";
   }
 }
 
 export type MsaSupportGroup = "confirming" | "forming" | "rejected" | "unavailable";
 
 export const MSA_SUPPORT_GROUP_LABELS: Record<MsaSupportGroup, string> = {
-  confirming: "Confirming",
-  forming: "Forming",
-  rejected: "Rejected",
-  unavailable: "Unavailable / Unknown",
+  confirming:  "Confirming",
+  forming:     "Developing",
+  rejected:    "Did not qualify",
+  unavailable: "No signal available",
 };
 
 /**

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, HelpCircle, Sparkles, Pin, Check, BookOpen, LayoutDashboard, Wallet, GraduationCap, Settings as SettingsIcon } from "lucide-react";
+import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, Sparkles, Pin, Check, BookOpen, LayoutDashboard, Wallet, GraduationCap, Settings as SettingsIcon } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -305,12 +305,6 @@ export function TopNav() {
           <NavLinks />
         </div>
         <div className="flex items-center gap-1">
-          <Link href="/guide" data-testid="link-user-guide" title="User Guide">
-            <Button variant="ghost" size="sm" className="gap-1.5" aria-label="User Guide" data-testid="button-user-guide">
-              <HelpCircle className="h-5 w-5" />
-              <span className="hidden lg:inline">User Guide</span>
-            </Button>
-          </Link>
           <AlertBell />
           <ThemeToggle />
           <UserMenu />

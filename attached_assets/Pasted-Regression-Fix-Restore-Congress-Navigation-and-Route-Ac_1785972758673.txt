@@ -1,0 +1,225 @@
+Regression Fix — Restore Congress Navigation and Route Access
+
+PRIMARY REPOSITORY
+
+Implement this in the existing VCP Trader AI / StrategyAgent repository using Replit.
+
+CURRENT ISSUE
+
+The Congress page and navigation entry disappeared during the recent authenticated dashboard and navigation updates.
+
+Congress previously existed as a working product area and must be restored.
+
+This is a regression fix only.
+
+Do not redesign Congress.
+
+Do not change Congress data logic.
+
+Do not change dashboard opportunity logic.
+
+Do not change MCP.
+
+Do not change scanner, ranking, broker, portfolio, research, billing, or execution behavior.
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. AUDIT CURRENT CONGRESS IMPLEMENTATION
+==================================================
+
+Inspect the repository for all existing Congress-related code:
+
+- routes
+- page components
+- navigation items
+- embed routes
+- API endpoints
+- feature flags
+- permissions
+- responsive/mobile navigation
+- deep links
+- existing tests
+
+Search for:
+
+- Congress
+- congress
+- /congress
+- /embed
+- congress.vcptrader.com
+- politician
+- congressional trades
+- disclosures
+
+Document what still exists and what was removed or disconnected.
+
+Do not recreate functionality that is already present but simply unreachable.
+
+==================================================
+2. RESTORE AUTHENTICATED NAVIGATION
+==================================================
+
+Restore Congress to the authenticated top navigation in the same priority and style it previously used.
+
+Preferred authenticated navigation:
+
+- Dashboard
+- Ask AI
+- My Research
+- Portfolio
+- Congress
+- Education
+- Settings
+
+If desktop width becomes crowded:
+
+- preserve Congress in a More menu
+- ensure it remains directly accessible on mobile
+- do not remove another core section without explicit approval
+
+Keep the public marketing navigation unchanged unless Congress was previously exposed there.
+
+==================================================
+3. RESTORE ROUTE ACCESS
+==================================================
+
+Ensure the Congress page route works again.
+
+Expected behavior:
+
+- authenticated user can open Congress from navigation
+- direct navigation to the existing Congress route works
+- browser refresh on Congress works
+- back/forward navigation works
+- unauthenticated behavior matches the previous implementation
+- no redirect loop
+- no accidental redirect to Dashboard or Ask AI
+
+Reuse the existing route path.
+
+Do not invent a new route unless the original route is truly missing.
+
+==================================================
+4. PRESERVE EMBED FUNCTIONALITY
+==================================================
+
+Audit the existing Congress embed functionality.
+
+Previously supported behavior may include:
+
+- /embed
+- full table view
+- ticker card
+- politician profile
+- postMessage API
+- vcptrader.com allowlist
+
+Confirm whether these still exist.
+
+Restore only broken routing or mounting.
+
+Do not change embed contracts or security rules unless a regression is found.
+
+==================================================
+5. NAVIGATION RESPONSIVENESS
+==================================================
+
+Verify Congress appears correctly in:
+
+- desktop navigation
+- tablet navigation
+- mobile navigation
+- collapsed or overflow menu
+
+Do not allow Congress to disappear at smaller widths.
+
+Ensure the active route state highlights Congress correctly.
+
+==================================================
+6. ACCESSIBILITY
+==================================================
+
+Verify:
+
+- nav link has accessible text
+- keyboard navigation reaches Congress
+- active state is announced
+- icon is not the only label
+- mobile menu item is reachable
+- focus returns correctly when menus close
+
+==================================================
+7. TESTS
+==================================================
+
+Add or restore regression tests for:
+
+A. Navigation
+- Congress visible for authenticated users
+- Congress present on desktop
+- Congress present in mobile/overflow navigation
+- active state correct
+
+B. Routing
+- Congress route renders
+- direct URL works
+- refresh works
+- back/forward works
+- unauthenticated behavior preserved
+
+C. Embed
+- existing embed route still resolves
+- existing view parameters preserved
+- no security/allowlist regression
+
+D. Regression
+- Dashboard still works
+- Ask AI still works
+- My Research still works
+- Portfolio still works
+- Education still works
+- Settings still works
+- no MCP changes
+- no Congress data logic changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+8. DOCUMENTATION
+==================================================
+
+Update the relevant navigation or dashboard documentation.
+
+Document:
+
+- root cause of the missing Congress entry
+- route restored
+- desktop/mobile behavior
+- embed verification
+- tests added
+
+==================================================
+9. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. root cause
+2. Congress files found
+3. files changed
+4. route restored
+5. navigation restored
+6. mobile behavior
+7. embed behavior
+8. tests and totals
+9. build result
+10. screenshots
+11. compatibility concerns
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

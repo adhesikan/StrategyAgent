@@ -61,6 +61,15 @@ const NAV_ITEMS: TopNavItem[] = [
     matches: (p) => false, // settings tab — never shows as "active page"
   },
   {
+    label: "Congress",
+    href: "/markets/congress-activity",
+    icon: Landmark,
+    testId: "topnav-congress",
+    matches: (p) =>
+      p === "/markets/congress-activity" ||
+      p.startsWith("/markets/congress-activity/"),
+  },
+  {
     label: "Education",
     href: "/guide",
     icon: GraduationCap,

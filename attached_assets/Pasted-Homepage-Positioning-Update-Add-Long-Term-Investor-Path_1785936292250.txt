@@ -1,0 +1,815 @@
+Homepage Positioning Update — Add Long-Term Investor Path to the Existing Outcome-First Build
+
+CONTEXT
+
+The VCP Trader AI homepage has already been updated from feature-first messaging to outcome-first messaging for active stock and options traders.
+
+The current build emphasizes:
+
+- daily opportunities
+- growth ideas
+- income ideas
+- trade setups
+- opportunity grades
+- market context
+- risk review
+- InstaTrade™
+- self-directed decision making
+
+The visual design is already strong and should remain unchanged.
+
+GOAL
+
+Expand the existing homepage positioning so VCP Trader AI clearly serves both:
+
+1. active traders seeking stock and options setups
+2. long-term investors seeking growth opportunities, thesis monitoring, disciplined entry conditions, and portfolio intelligence
+
+Do not turn the homepage into a generic investing site.
+
+Do not weaken the appeal to active traders.
+
+Instead, organize the product around four user goals:
+
+- Grow
+- Generate Income
+- Trade
+- Understand Markets
+
+This remains an AI-powered opportunity discovery and decision-support platform for self-directed users.
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. PRESERVE THE CURRENT BUILD
+==================================================
+
+Do not replace the current homepage from scratch.
+
+Preserve:
+
+- current visual design
+- dark theme
+- responsive layout
+- animations
+- typography
+- CTA components
+- opportunity cards
+- pricing section
+- FAQ
+- navigation
+- legal disclosures
+- existing outcome-first copy where still applicable
+
+Make additive and targeted copy/layout updates only.
+
+==================================================
+2. UPDATE THE HERO
+==================================================
+
+The existing trader-focused headline may be too narrow for long-term investors.
+
+Use this recommended headline:
+
+Find Better Stock & Options Opportunities With AI
+
+Recommended subheadline:
+
+Discover growth, income, and trading opportunities, understand why they qualify, monitor the risks, and make your own informed decisions.
+
+Primary CTA:
+
+Start Free Trial
+
+Secondary CTA:
+
+See How It Works
+
+Below the CTA, use compact benefit badges:
+
+- Long-Term Growth Ideas
+- Daily Trade Setups
+- Income Opportunities
+- Plain-English Explanations
+- Portfolio Intelligence
+- 14-Day Free Trial
+
+Keep the existing compliance disclosure.
+
+Do not use:
+
+- best investment
+- personalized recommendation
+- guaranteed returns
+- winning trades
+- suitable for you
+
+==================================================
+3. ADD A “CHOOSE YOUR GOAL” SECTION
+==================================================
+
+Place this immediately after the hero.
+
+Headline:
+
+Choose Your Goal
+
+Subheadline:
+
+Start with what you want to accomplish. VCP Trader AI adapts the opportunity view, evidence, and risk context to your objective.
+
+Create four cards.
+
+A. Grow
+
+Title:
+
+Grow Long-Term Wealth
+
+Description:
+
+Discover companies with durable growth themes, improving business conditions, constructive long-term trends, and clearer entry considerations.
+
+Key items:
+
+- Long-term growth candidates
+- AI infrastructure and secular themes
+- Earnings and fundamental context
+- Valuation context
+- Thesis monitoring
+- Portfolio concentration awareness
+
+CTA:
+
+Explore Growth Opportunities
+
+B. Generate Income
+
+Title:
+
+Generate Income
+
+Description:
+
+Explore covered calls, cash-secured puts, credit spreads, dividend opportunities, and defined-risk income scenarios.
+
+Key items:
+
+- Covered calls
+- Cash-secured puts
+- Credit spreads
+- Dividend and income ideas
+- Capital and risk requirements
+- Stocks you may be willing to own
+
+CTA:
+
+Explore Income Opportunities
+
+C. Trade
+
+Title:
+
+Find Trade Setups
+
+Description:
+
+Discover breakouts, pullbacks, momentum setups, swing opportunities, and defined-risk options structures.
+
+Key items:
+
+- Breakout setups
+- Pullbacks
+- Momentum candidates
+- Swing opportunities
+- Defined-risk options
+- Freshness and trigger conditions
+
+CTA:
+
+Find Trade Setups
+
+D. Understand Markets
+
+Title:
+
+Understand Markets
+
+Description:
+
+Follow market regime, sector rotation, sentiment, volatility, earnings, and the risks shaping current opportunities.
+
+Key items:
+
+- Market regime
+- Sector strength
+- Sentiment
+- Earnings calendar
+- Volatility
+- Market risk observations
+
+CTA:
+
+View Market Intelligence
+
+Use existing card styling and icons.
+
+==================================================
+4. UPDATE “WHAT YOU GET EVERY DAY”
+==================================================
+
+Replace or revise the current six cards so they serve both traders and investors.
+
+Use:
+
+A. Today’s Opportunities
+
+Description:
+
+See AI-ranked stock and options opportunities based on current market conditions and deterministic qualification rules.
+
+B. Long-Term Growth Ideas
+
+Description:
+
+Discover companies with durable growth drivers, improving conditions, and favorable long-term technical trends.
+
+C. Income Opportunities
+
+Description:
+
+Explore covered calls, cash-secured puts, dividend ideas, and defined-risk income scenarios.
+
+D. Trade Setups
+
+Description:
+
+Find breakouts, pullbacks, momentum candidates, and swing opportunities.
+
+E. Portfolio & Watchlist Intelligence
+
+Description:
+
+Monitor holdings, concentration, earnings exposure, thesis changes, and symbols worth watching.
+
+F. Market Context
+
+Description:
+
+Understand market regime, sectors, sentiment, volatility, earnings, and major risks.
+
+==================================================
+5. UPDATE THE OPPORTUNITY PREVIEW
+==================================================
+
+Keep the existing “Today’s Opportunities” preview.
+
+Organize the sample cards by goal where practical.
+
+Suggested examples:
+
+Long-Term Growth
+
+NVDA
+AI Infrastructure Growth Candidate
+Long-Term View
+
+MU
+Memory Cycle Growth Candidate
+Thesis Monitoring
+
+Income
+
+AAPL
+Covered Call Scenario
+Income
+
+SPY
+Cash-Secured Put Scenario
+Income
+
+Trade
+
+BA
+Momentum Breakout
+Grade B
+
+AMD
+Bullish Pullback
+Grade A
+
+Watch
+
+CRDO
+Developing Setup
+Watchlist
+
+All examples must remain clearly labeled:
+
+Preview
+Example
+Sample Scenario
+
+Do not imply the cards are current live opportunities unless connected to live production data.
+
+==================================================
+6. ADD A LONG-TERM INVESTOR SECTION
+==================================================
+
+Add a dedicated section after the opportunity preview or after “How VCP Trader AI Finds Opportunities.”
+
+Headline:
+
+Invest With a Clearer Thesis
+
+Description:
+
+VCP Trader AI helps long-term investors evaluate companies, understand growth drivers and risks, monitor thesis changes, and identify more disciplined entry conditions.
+
+Use six compact benefit items:
+
+- Long-Term Opportunity Analysis
+- Growth Drivers and Business Context
+- Earnings and Fundamental Trends
+- Valuation Context
+- Technical Entry Conditions
+- Portfolio Concentration Review
+
+Add a workflow illustration:
+
+Discover
+
+↓
+
+Evaluate the Thesis
+
+↓
+
+Review Valuation and Risks
+
+↓
+
+Monitor Conditions
+
+↓
+
+Save and Revisit
+
+CTA:
+
+Explore Long-Term Opportunities
+
+Do not use language suggesting the system chooses investments on behalf of the user.
+
+==================================================
+7. DISTINGUISH TRADING FROM INVESTING OUTPUTS
+==================================================
+
+Add a section or comparison block:
+
+Headline:
+
+The Right View for Your Time Horizon
+
+Create two columns.
+
+A. Trading View
+
+Display:
+
+- Setup freshness
+- Trigger or confirmation
+- Invalidation
+- Technical objective
+- Momentum
+- Reward/risk
+- Options structure
+- Liquidity
+
+B. Long-Term Investment View
+
+Display:
+
+- Investment thesis
+- Growth drivers
+- Competitive positioning
+- Earnings trajectory
+- Valuation context
+- Long-term trend
+- Thesis risks
+- Conditions that strengthen or weaken conviction
+- Portfolio concentration
+- Review horizon
+
+Explain:
+
+A short-term setup can fail to qualify while the long-term investment thesis remains intact.
+
+This distinction is important.
+
+Do not combine short-term NO_TRADE outcomes with long-term thesis conclusions.
+
+==================================================
+8. UPDATE PLAIN-ENGLISH PROMPTS
+==================================================
+
+Rename the section if needed to:
+
+Ask About Opportunities in Plain English
+
+Use a balanced mix of prompts:
+
+Long-term:
+
+- Analyze MU as a three-year investment
+- Find long-term AI infrastructure opportunities
+- Compare NVDA, AVGO, and AMD for long-term growth
+- Which holdings have strengthening long-term conditions?
+- What could weaken the investment thesis for MU?
+
+Income:
+
+- Find covered call opportunities from stocks I own
+- Find cash-secured puts using stocks I would be willing to own
+- Show income opportunities under $500 risk
+
+Trading:
+
+- Show bullish setups on NVDA
+- Find stocks near breakout confirmation
+- Find swing setups under $500 risk
+- Show developing momentum candidates
+
+Markets:
+
+- What is the current market regime?
+- Which sectors are strengthening?
+- What earnings events matter this week?
+
+==================================================
+9. UPDATE “HOW VCP TRADER AI FINDS OPPORTUNITIES”
+==================================================
+
+Keep the existing opportunity workflow but broaden it slightly.
+
+Use:
+
+1. Discover
+
+Scans stocks, options, themes, sectors, and market conditions.
+
+2. Evaluate
+
+Applies deterministic technical, market, event, and portfolio criteria.
+
+3. Qualify
+
+Separates qualified, developing, rejected, and unavailable opportunities.
+
+4. Explain
+
+Shows the evidence, risks, limitations, and what conditions matter.
+
+5. Monitor
+
+Tracks saved ideas, watchlists, thesis changes, earnings, and market conditions.
+
+6. Prepare
+
+Helps users review a stock or options order through a connected broker with explicit confirmation.
+
+Do not mention internal MCP architecture.
+
+==================================================
+10. UPDATE OPPORTUNITY GRADES
+==================================================
+
+Keep the current “Opportunity Grades” section.
+
+Clarify that grades apply to scenarios, not to overall company quality or future investment returns.
+
+Recommended description:
+
+Each opportunity or scenario receives a clear grade based on the evidence available for that specific objective and time horizon.
+
+Add:
+
+A stock may receive different grades for:
+
+- long-term growth
+- swing trade
+- covered call
+- cash-secured put
+- portfolio fit
+
+Do not imply one universal grade means the stock is a good or bad investment.
+
+==================================================
+11. UPDATE STOCKS AND OPTIONS SECTION
+==================================================
+
+Use:
+
+Headline:
+
+Invest or Trade With Stocks and Options
+
+Description:
+
+Evaluate long-term stock opportunities, active trade setups, and options scenarios in one consistent decision-support workflow.
+
+Subsections:
+
+Long-Term Stock Opportunities
+
+- durable growth themes
+- earnings trends
+- valuation context
+- long-term technical conditions
+- thesis risks
+
+Active Stock Setups
+
+- breakouts
+- pullbacks
+- momentum
+- watch conditions
+- risk levels
+
+Options Opportunities
+
+- long calls and puts
+- spreads
+- covered calls
+- cash-secured puts
+- income and defined-risk scenarios
+
+==================================================
+12. UPDATE PORTFOLIO INTELLIGENCE COPY
+==================================================
+
+Add or strengthen a section:
+
+Headline:
+
+See How an Opportunity Fits Your Portfolio
+
+Description:
+
+Understand concentration, sector exposure, earnings overlap, cash utilization, and how a candidate could change your portfolio.
+
+Examples:
+
+- Existing AI exposure
+- Semiconductor concentration
+- Position size impact
+- Earnings clustering
+- Cash utilization
+- Diversification observations
+
+Use neutral language.
+
+Do not label concentration changes as automatically good or bad.
+
+Do not tell users to rebalance or sell.
+
+==================================================
+13. UPDATE SAVED RESEARCH / HISTORY SECTION
+==================================================
+
+Use:
+
+Headline:
+
+Build Your Investment and Trading Record
+
+Description:
+
+Save opportunity snapshots, record your own thesis and plans, revisit what changed, and improve your decision process over time.
+
+Use bullets:
+
+- Save long-term investment theses
+- Save active trade setups
+- Record user-created decision notes
+- Track watch conditions
+- Review thesis changes
+- Compare previous and current evidence
+
+Keep “My Research” where it refers to the actual saved-record product feature.
+
+==================================================
+14. UPDATE PRICING COPY
+==================================================
+
+Do not describe the plan as only for traders.
+
+Recommended pricing introduction:
+
+One complete platform for discovering, evaluating, monitoring, and reviewing stock and options opportunities across long-term growth, income, and active trading goals.
+
+Use plan benefits such as:
+
+- Long-term stock opportunity analysis
+- Daily stock and options ideas
+- Growth and income opportunity discovery
+- Multi-strategy technical analysis
+- Portfolio intelligence
+- Watchlists
+- Saved research and decision journal
+- Options strategy insights
+- Broker-connected data
+- InstaTrade™ review and submission
+
+Do not change pricing logic or price.
+
+==================================================
+15. UPDATE NAVIGATION IF APPROPRIATE
+==================================================
+
+Consider the following labels:
+
+- Features
+- Grow
+- Income
+- Trade
+- Markets
+- InstaTrade™
+- Pricing
+- FAQ
+
+Only use this if it does not overcrowd desktop or mobile navigation.
+
+Alternative:
+
+Keep the existing navigation and use the “Choose Your Goal” cards as the primary segmentation.
+
+Do not force navigation changes if they hurt responsiveness.
+
+==================================================
+16. USER MODE / GOAL ENTRY POINT
+==================================================
+
+Where appropriate, add a homepage or onboarding selector:
+
+What are you looking to do?
+
+- Grow
+- Generate Income
+- Trade
+- Understand Markets
+
+This should:
+
+- navigate to the relevant product section
+- prefill a relevant Ask AI starting prompt
+- or route into the corresponding current product mode
+
+Do not store a permanent investor profile in this task.
+
+Do not personalize investment decisions.
+
+==================================================
+17. COPY STYLE
+==================================================
+
+Use:
+
+- opportunity
+- idea
+- setup
+- thesis
+- growth
+- income
+- watch
+- monitor
+- market context
+- portfolio impact
+- risk observations
+- decision support
+- self-directed
+
+Use “research” selectively for:
+
+- My Research
+- Saved Research
+- Research Library
+- evidence snapshot
+- historical record
+- legal or disclosure copy
+
+Avoid:
+
+- best investment
+- recommended for you
+- should buy
+- should sell
+- suitable allocation
+- guaranteed growth
+- safe income
+- retire on this strategy
+
+==================================================
+18. REGULATORY POSITIONING
+==================================================
+
+Keep the platform positioned as:
+
+AI-powered opportunity discovery and decision support for self-directed traders and investors.
+
+Do not imply:
+
+- fiduciary advice
+- portfolio management
+- discretionary management
+- personalized suitability
+- guaranteed outcomes
+- automatic rebalancing
+- autonomous investment selection
+
+Add or retain concise disclosure:
+
+VCP Trader AI provides market analysis, opportunity discovery, educational information, and self-directed trade-preparation tools. It does not provide personalized investment advice or manage customer assets.
+
+==================================================
+19. SEO UPDATE
+==================================================
+
+Recommended homepage title:
+
+VCP Trader AI — AI Stock & Options Opportunities for Traders and Investors
+
+Recommended description:
+
+Discover long-term growth ideas, income opportunities, and active stock and options setups. Understand the evidence, monitor risk, and make your own informed decisions.
+
+Natural keyword targets:
+
+- AI stock ideas
+- long-term stock opportunities
+- options trade ideas
+- covered call ideas
+- cash-secured put ideas
+- swing trade setups
+- AI stock analysis
+- stock opportunity finder
+- portfolio intelligence
+
+Do not keyword-stuff.
+
+==================================================
+20. TESTS AND VALIDATION
+==================================================
+
+Verify:
+
+- homepage builds
+- pricing page builds
+- all current CTAs still work
+- new goal cards navigate or scroll correctly
+- existing trial/signup flow is unchanged
+- long-term investor copy renders correctly
+- trader copy remains prominent
+- no contradictory positioning
+- no raw internal enums
+- no unsupported return claims
+- no personalized advice language
+- mobile layout works
+- desktop layout works
+- dark/light themes work
+- no console errors
+- accessibility remains intact
+- no authentication, billing, broker, MCP, database, scanner, or execution code changed
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+21. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. files changed
+2. hero changes
+3. Choose Your Goal section
+4. long-term investor section
+5. trader/investor time-horizon distinction
+6. prompt-example changes
+7. portfolio copy
+8. saved-history copy
+9. pricing copy
+10. navigation decision
+11. SEO changes
+12. regulatory-language review
+13. responsive behavior
+14. tests
+15. build result
+16. screenshots
+17. compatibility concerns
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

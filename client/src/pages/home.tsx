@@ -50,6 +50,12 @@ import {
   DollarSign,
   Eye,
   Filter,
+  Clock,
+  Globe,
+  Briefcase,
+  ArrowDown,
+  SplitSquare,
+  Columns,
 } from "lucide-react";
 import { useBranding } from "@/hooks/use-branding";
 import { usePricing } from "@/hooks/use-pricing";
@@ -66,6 +72,7 @@ function NavBar({ onStartTrial }: { onStartTrial: () => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { instaTradeName } = useBranding();
 
+  // Keep the existing 7-link nav; "Choose Your Goal" cards handle goal segmentation
   const navLinks = [
     { href: "#features", label: "Features" },
     { href: "#opportunities", label: "Daily Ideas" },
@@ -260,22 +267,21 @@ function MockSetupCard() {
 }
 
 /* -----------------------------------------------------------
- * HERO
+ * HERO  (§2 — broadened for traders + investors)
  * --------------------------------------------------------- */
 function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
   const { instaTradeName } = useBranding();
   const trustBadges = [
-    "Daily AI Ideas",
-    "Growth & Income Opportunities",
+    "Long-Term Growth Ideas",
+    "Daily Trade Setups",
+    "Income Opportunities",
     "Plain-English Explanations",
-    "Stock & Options Setups",
-    "Broker-Connected Data",
+    "Portfolio Intelligence",
     "14-Day Free Trial",
   ];
 
   return (
     <section className="relative overflow-hidden">
-      {/* Subtle trading-grid background */}
       <div
         className="absolute inset-0 -z-10 opacity-40 dark:opacity-30"
         aria-hidden
@@ -294,20 +300,20 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
           <div className="text-center lg:text-left">
             <Badge variant="outline" className="mb-6 text-xs py-1 px-3 border-primary/30 bg-primary/5 text-primary">
               <Bot className="h-3 w-3 mr-1" />
-              AI Trade Intelligence for Self-Directed Traders
+              AI Trade Intelligence for Self-Directed Traders and Investors
             </Badge>
             <h1
               className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight"
               data-testid="text-hero-headline"
             >
               Find Better Stock &amp; Options{" "}
-              <span className="text-primary">Opportunities in Seconds</span>
+              <span className="text-primary">Opportunities With AI</span>
             </h1>
             <p
               className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0"
               data-testid="text-hero-subheadline"
             >
-              VCP Trader AI scans market conditions, ranks stock and options opportunities, explains why setups qualify, and helps you review risk before preparing an order through your connected broker.
+              Discover growth, income, and trading opportunities, understand why they qualify, monitor the risks, and make your own informed decisions.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
               <Button
@@ -365,62 +371,122 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
 }
 
 /* -----------------------------------------------------------
- * WHAT YOU GET EVERY DAY (replaces ProblemSection + BenefitsSection)
+ * CHOOSE YOUR GOAL  (§3 — new, immediately after hero)
  * --------------------------------------------------------- */
-function DailyValueSection() {
-  const cards = [
+function ChooseYourGoalSection({ onStartTrial }: { onStartTrial: () => void }) {
+  const goals = [
     {
       icon: TrendingUp,
-      title: "Today's Opportunities",
-      copy: "See AI-ranked stock and options setups based on current market conditions and deterministic qualification rules.",
-    },
-    {
-      icon: Sparkles,
-      title: "Growth Ideas",
-      copy: "Find bullish pullbacks, breakouts, momentum setups, and developing growth opportunities.",
+      title: "Grow Long-Term Wealth",
+      description:
+        "Discover companies with durable growth themes, improving business conditions, constructive long-term trends, and clearer entry considerations.",
+      items: [
+        "Long-term growth candidates",
+        "AI infrastructure and secular themes",
+        "Earnings and fundamental context",
+        "Valuation context",
+        "Thesis monitoring",
+        "Portfolio concentration awareness",
+      ],
+      cta: "Explore Growth Opportunities",
+      anchor: "#long-term-investor",
+      testId: "card-goal-grow",
+      color: "border-emerald-500/30 bg-emerald-500/5",
+      iconColor: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
     },
     {
       icon: DollarSign,
-      title: "Income Ideas",
-      copy: "Explore covered calls, cash-secured puts, credit spreads, and other defined-risk income scenarios.",
+      title: "Generate Income",
+      description:
+        "Explore covered calls, cash-secured puts, credit spreads, dividend opportunities, and defined-risk income scenarios.",
+      items: [
+        "Covered calls",
+        "Cash-secured puts",
+        "Credit spreads",
+        "Dividend and income ideas",
+        "Capital and risk requirements",
+        "Stocks you may be willing to own",
+      ],
+      cta: "Explore Income Opportunities",
+      anchor: "#stocks",
+      testId: "card-goal-income",
+      color: "border-sky-500/30 bg-sky-500/5",
+      iconColor: "text-sky-600 dark:text-sky-400 bg-sky-500/10",
     },
     {
-      icon: ListChecks,
-      title: "Watchlist Intelligence",
-      copy: "See which symbols are qualifying, developing, rejected, or worth monitoring.",
+      icon: Zap,
+      title: "Find Trade Setups",
+      description:
+        "Discover breakouts, pullbacks, momentum setups, swing opportunities, and defined-risk options structures.",
+      items: [
+        "Breakout setups",
+        "Pullbacks",
+        "Momentum candidates",
+        "Swing opportunities",
+        "Defined-risk options",
+        "Freshness and trigger conditions",
+      ],
+      cta: "Find Trade Setups",
+      anchor: "#opportunities",
+      testId: "card-goal-trade",
+      color: "border-primary/30 bg-primary/5",
+      iconColor: "text-primary bg-primary/10",
     },
     {
-      icon: Activity,
-      title: "Market Context",
-      copy: "Understand the technical, sentiment, earnings, and market conditions behind each setup.",
-    },
-    {
-      icon: ShieldCheck,
-      title: "Risk Review",
-      copy: "Review invalidation levels, reward/risk, liquidity, capital requirements, and portfolio fit before acting.",
+      icon: Globe,
+      title: "Understand Markets",
+      description:
+        "Follow market regime, sector rotation, sentiment, volatility, earnings, and the risks shaping current opportunities.",
+      items: [
+        "Market regime",
+        "Sector strength",
+        "Sentiment",
+        "Earnings calendar",
+        "Volatility",
+        "Market risk observations",
+      ],
+      cta: "View Market Intelligence",
+      anchor: "#plain-english",
+      testId: "card-goal-markets",
+      color: "border-amber-500/30 bg-amber-500/5",
+      iconColor: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
     },
   ];
 
   return (
-    <section className="py-16 md:py-24 bg-muted/30 border-y" id="features">
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="goals">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-problem-heading">
-            What You Get Every Day
+          <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-goals-heading">
+            Choose Your Goal
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            A focused view of the opportunities, market conditions, and risks that deserve your attention.
+            Start with what you want to accomplish. VCP Trader AI adapts the opportunity view, evidence, and risk context to your objective.
           </p>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {cards.map((c, i) => (
-            <Card key={c.title} className="bg-card hover-elevate" data-testid={`card-benefit-${i}`}>
-              <CardContent className="pt-6">
-                <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center mb-4">
-                  <c.icon className="h-5 w-5 text-primary" />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {goals.map((g) => (
+            <Card key={g.title} className={`flex flex-col border ${g.color}`} data-testid={g.testId}>
+              <CardContent className="pt-6 flex flex-col flex-1">
+                <div className={`h-10 w-10 rounded-md flex items-center justify-center mb-4 ${g.iconColor}`}>
+                  <g.icon className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold text-base">{c.title}</h3>
-                <p className="text-sm text-muted-foreground mt-2">{c.copy}</p>
+                <h3 className="font-semibold text-base mb-2">{g.title}</h3>
+                <p className="text-sm text-muted-foreground mb-4">{g.description}</p>
+                <ul className="space-y-1 mb-6 flex-1">
+                  {g.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a href={g.anchor}>
+                  <Button variant="outline" size="sm" className="w-full" data-testid={`button-goal-${g.testId}`}>
+                    {g.cta}
+                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Button>
+                </a>
               </CardContent>
             </Card>
           ))}
@@ -448,20 +514,111 @@ function MockPanel({ title, children }: { title: string; children: React.ReactNo
 }
 
 /* -----------------------------------------------------------
- * TODAY'S OPPORTUNITIES PREVIEW
+ * WHAT YOU GET EVERY DAY  (§4 — updated for traders + investors)
  * --------------------------------------------------------- */
-function TodaysOpportunitiesSection({ onStartTrial }: { onStartTrial: () => void }) {
-  const examples = [
-    { symbol: "AMD",  label: "Bullish Pullback",        badge: "Grade A",      tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10" },
-    { symbol: "NVDA", label: "Institutional Reclaim",   badge: "Grade A",      tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10" },
-    { symbol: "SPY",  label: "Cash-Secured Put",        badge: "Income Idea",  tone: "text-sky-600 dark:text-sky-400 border-sky-500/40 bg-sky-500/10" },
-    { symbol: "AAPL", label: "Covered Call",            badge: "Income Idea",  tone: "text-sky-600 dark:text-sky-400 border-sky-500/40 bg-sky-500/10" },
-    { symbol: "BA",   label: "Momentum Breakout",       badge: "Grade B",      tone: "text-amber-600 dark:text-amber-400 border-amber-500/40 bg-amber-500/10" },
-    { symbol: "MU",   label: "Watchlist Candidate",     badge: "Monitoring",   tone: "text-muted-foreground border-muted" },
+function DailyValueSection() {
+  const cards = [
+    {
+      icon: Sparkles,
+      title: "Today's Opportunities",
+      copy: "See AI-ranked stock and options opportunities based on current market conditions and deterministic qualification rules.",
+    },
+    {
+      icon: TrendingUp,
+      title: "Long-Term Growth Ideas",
+      copy: "Discover companies with durable growth drivers, improving conditions, and favorable long-term technical trends.",
+    },
+    {
+      icon: DollarSign,
+      title: "Income Opportunities",
+      copy: "Explore covered calls, cash-secured puts, dividend ideas, and defined-risk income scenarios.",
+    },
+    {
+      icon: Zap,
+      title: "Trade Setups",
+      copy: "Find breakouts, pullbacks, momentum candidates, and swing opportunities.",
+    },
+    {
+      icon: ListChecks,
+      title: "Portfolio & Watchlist Intelligence",
+      copy: "Monitor holdings, concentration, earnings exposure, thesis changes, and symbols worth watching.",
+    },
+    {
+      icon: Globe,
+      title: "Market Context",
+      copy: "Understand market regime, sectors, sentiment, volatility, earnings, and major risks.",
+    },
   ];
 
   return (
-    <section className="py-16 md:py-24" id="opportunities">
+    <section className="py-16 md:py-24" id="features">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-problem-heading">
+            What You Get Every Day
+          </h2>
+          <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+            A focused view of the opportunities, market conditions, and risks that deserve your attention — whether you're growing long-term, generating income, or actively trading.
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {cards.map((c, i) => (
+            <Card key={c.title} className="bg-card hover-elevate" data-testid={`card-benefit-${i}`}>
+              <CardContent className="pt-6">
+                <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center mb-4">
+                  <c.icon className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="font-semibold text-base">{c.title}</h3>
+                <p className="text-sm text-muted-foreground mt-2">{c.copy}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------
+ * TODAY'S OPPORTUNITIES PREVIEW  (§5 — organized by goal, 7 examples)
+ * --------------------------------------------------------- */
+function TodaysOpportunitiesSection({ onStartTrial }: { onStartTrial: () => void }) {
+  const groups = [
+    {
+      label: "Long-Term Growth",
+      labelClass: "text-emerald-600 dark:text-emerald-400",
+      examples: [
+        { symbol: "NVDA", sublabel: "AI Infrastructure Growth Candidate", badge: "Long-Term View",  tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10" },
+        { symbol: "MU",   sublabel: "Memory Cycle Growth Candidate",     badge: "Thesis Monitoring", tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10" },
+      ],
+    },
+    {
+      label: "Income",
+      labelClass: "text-sky-600 dark:text-sky-400",
+      examples: [
+        { symbol: "AAPL", sublabel: "Covered Call Scenario",    badge: "Income",  tone: "text-sky-600 dark:text-sky-400 border-sky-500/40 bg-sky-500/10" },
+        { symbol: "SPY",  sublabel: "Cash-Secured Put Scenario", badge: "Income",  tone: "text-sky-600 dark:text-sky-400 border-sky-500/40 bg-sky-500/10" },
+      ],
+    },
+    {
+      label: "Trade",
+      labelClass: "text-primary",
+      examples: [
+        { symbol: "BA",   sublabel: "Momentum Breakout",  badge: "Grade B", tone: "text-amber-600 dark:text-amber-400 border-amber-500/40 bg-amber-500/10" },
+        { symbol: "AMD",  sublabel: "Bullish Pullback",   badge: "Grade A", tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10" },
+      ],
+    },
+    {
+      label: "Watch",
+      labelClass: "text-muted-foreground",
+      examples: [
+        { symbol: "CRDO", sublabel: "Developing Setup", badge: "Watchlist", tone: "text-muted-foreground border-muted" },
+      ],
+    },
+  ];
+
+  return (
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="opportunities">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <Badge variant="outline" className="mb-4 text-[11px] border-primary/30 bg-primary/5 text-primary">
@@ -472,29 +629,40 @@ function TodaysOpportunitiesSection({ onStartTrial }: { onStartTrial: () => void
             Today's Opportunities
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            A preview of the types of stock and options setups VCP Trader AI can surface and explain.
+            A preview of the types of stock and options opportunities VCP Trader AI can surface and explain across different goals.
           </p>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {examples.map((ex) => (
-            <div
-              key={ex.symbol}
-              className="rounded-lg border bg-card p-4 space-y-2"
-              data-testid={`card-opportunity-preview-${ex.symbol.toLowerCase()}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-base">{ex.symbol}</span>
-                <Badge variant="outline" className={`text-[10px] ${ex.tone}`}>
-                  {ex.badge}
-                </Badge>
+
+        <div className="space-y-6 mb-8">
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className={`text-xs font-semibold uppercase tracking-wide mb-3 ${group.labelClass}`}>
+                {group.label}
+              </p>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {group.examples.map((ex) => (
+                  <div
+                    key={ex.symbol}
+                    className="rounded-lg border bg-card p-4 space-y-2"
+                    data-testid={`card-opportunity-preview-${ex.symbol.toLowerCase()}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-base">{ex.symbol}</span>
+                      <Badge variant="outline" className={`text-[10px] ${ex.tone}`}>
+                        {ex.badge}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{ex.sublabel}</p>
+                    <Badge variant="secondary" className="text-[9px] font-normal">
+                      Example · Not a live recommendation
+                    </Badge>
+                  </div>
+                ))}
               </div>
-              <p className="text-sm text-muted-foreground">{ex.label}</p>
-              <Badge variant="secondary" className="text-[9px] font-normal">
-                Example · Not a live recommendation
-              </Badge>
             </div>
           ))}
         </div>
+
         <p className="text-center text-xs text-muted-foreground mb-6">
           These are illustrative examples only. They are not current live signals, recommendations, or verified outcomes.
         </p>
@@ -516,57 +684,57 @@ function TodaysOpportunitiesSection({ onStartTrial }: { onStartTrial: () => void
 }
 
 /* -----------------------------------------------------------
- * HOW VCP TRADER AI FINDS OPPORTUNITIES
+ * HOW VCP TRADER AI FINDS OPPORTUNITIES  (§9 — broadened)
  * --------------------------------------------------------- */
 function HowItFindsSection() {
   const steps = [
     {
       n: "1",
       icon: Search,
-      title: "Scan",
-      copy: "Monitors technical setups, watchlists, market conditions, and options structures.",
+      title: "Discover",
+      copy: "Scans stocks, options, themes, sectors, and market conditions across growth, income, and active trading objectives.",
     },
     {
       n: "2",
-      icon: Filter,
-      title: "Qualify",
-      copy: "Applies deterministic rules to separate qualified, developing, rejected, and unavailable setups.",
+      icon: Brain,
+      title: "Evaluate",
+      copy: "Applies deterministic technical, market, event, and portfolio criteria to each opportunity.",
     },
     {
       n: "3",
-      icon: BarChart2,
-      title: "Rank",
-      copy: "Surfaces higher-quality candidates using strategy strength, freshness, market context, risk, and confluence.",
+      icon: Filter,
+      title: "Qualify",
+      copy: "Separates qualified, developing, rejected, and unavailable opportunities for each goal and time horizon.",
     },
     {
       n: "4",
       icon: MessageSquare,
       title: "Explain",
-      copy: "Summarizes why a setup qualifies or does not qualify in plain English.",
+      copy: "Shows the evidence, risks, limitations, and what conditions matter — in plain English.",
     },
     {
       n: "5",
-      icon: ShieldAlert,
-      title: "Review Risk",
-      copy: "Shows invalidation levels, reward/risk, capital requirements, liquidity, and portfolio impact.",
+      icon: Eye,
+      title: "Monitor",
+      copy: "Tracks saved ideas, watchlists, thesis changes, earnings, and market conditions over time.",
     },
     {
       n: "6",
       icon: Zap,
       title: "Prepare",
-      copy: "Lets you review a broker-ready order through InstaTrade™ with explicit confirmation before submission.",
+      copy: "Helps you review a stock or options order through a connected broker with explicit confirmation before submission.",
     },
   ];
 
   return (
-    <section className="py-16 md:py-24 bg-muted/30 border-y" id="how-it-works">
+    <section className="py-16 md:py-24" id="how-it-works">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-features-heading">
             How VCP Trader AI Finds Opportunities
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            From market scan to reviewed order — a consistent, transparent workflow.
+            From market scan to reviewed order — a consistent, transparent workflow for every goal and time horizon.
           </p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -585,6 +753,186 @@ function HowItFindsSection() {
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------
+ * INVEST WITH A CLEARER THESIS  (§6 — new long-term investor section)
+ * --------------------------------------------------------- */
+function LongTermInvestorSection({ onStartTrial }: { onStartTrial: () => void }) {
+  const benefits = [
+    "Long-Term Opportunity Analysis",
+    "Growth Drivers and Business Context",
+    "Earnings and Fundamental Trends",
+    "Valuation Context",
+    "Technical Entry Conditions",
+    "Portfolio Concentration Review",
+  ];
+
+  const workflow = [
+    "Discover",
+    "Evaluate the Thesis",
+    "Review Valuation and Risks",
+    "Monitor Conditions",
+    "Save and Revisit",
+  ];
+
+  return (
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="long-term-investor">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <Badge variant="outline" className="mb-4 text-[11px] border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400">
+              <TrendingUp className="h-3 w-3 mr-1" />
+              Long-Term Investing
+            </Badge>
+            <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-long-term-heading">
+              Invest With a Clearer Thesis
+            </h2>
+            <p className="mt-4 text-muted-foreground">
+              VCP Trader AI helps long-term investors evaluate companies, understand growth drivers and risks, monitor thesis changes, and identify more disciplined entry conditions.
+            </p>
+            <div className="mt-6 grid sm:grid-cols-2 gap-2">
+              {benefits.map((b) => (
+                <div key={b} className="flex items-start gap-2 text-sm">
+                  <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                  <span>{b}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8">
+              <Button
+                onClick={() => {
+                  track("start_free_trial_clicked", { location: "long_term_section" });
+                  onStartTrial();
+                }}
+                data-testid="button-long-term-cta"
+              >
+                Explore Long-Term Opportunities
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Workflow illustration */}
+          <div className="flex flex-col items-center gap-1">
+            {workflow.map((step, i) => (
+              <div key={step} className="flex flex-col items-center">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-6 py-3 text-sm font-medium text-center min-w-[220px]">
+                  {step}
+                </div>
+                {i < workflow.length - 1 && (
+                  <div className="flex flex-col items-center py-1">
+                    <div className="w-px h-4 bg-border" />
+                    <ArrowDown className="h-4 w-4 text-muted-foreground" />
+                    <div className="w-px h-1 bg-border" />
+                  </div>
+                )}
+              </div>
+            ))}
+            <p className="text-[10px] text-muted-foreground mt-4 text-center max-w-xs">
+              Illustrative workflow — you make every decision.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------
+ * THE RIGHT VIEW FOR YOUR TIME HORIZON  (§7 — trading vs investing)
+ * --------------------------------------------------------- */
+function TimeHorizonSection() {
+  const tradingItems = [
+    "Setup freshness",
+    "Trigger or confirmation",
+    "Invalidation",
+    "Technical objective",
+    "Momentum",
+    "Reward/risk",
+    "Options structure",
+    "Liquidity",
+  ];
+
+  const investingItems = [
+    "Investment thesis",
+    "Growth drivers",
+    "Competitive positioning",
+    "Earnings trajectory",
+    "Valuation context",
+    "Long-term trend",
+    "Thesis risks",
+    "Conditions that strengthen or weaken conviction",
+    "Portfolio concentration",
+    "Review horizon",
+  ];
+
+  return (
+    <section className="py-16 md:py-24" id="time-horizon">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-time-horizon-heading">
+            The Right View for Your Time Horizon
+          </h2>
+          <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+            A short-term setup can fail to qualify while the long-term investment thesis remains intact. VCP Trader AI keeps these views distinct so you never confuse a trade signal with an investment conclusion.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Trading View */}
+          <Card className="border-primary/30 bg-primary/5" data-testid="card-trading-view">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
+                  <Zap className="h-4 w-4 text-primary" />
+                </div>
+                <CardTitle className="text-base">Trading View</CardTitle>
+              </div>
+              <CardDescription className="text-xs">Short-term setup evaluation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {tradingItems.map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          {/* Long-Term Investment View */}
+          <Card className="border-emerald-500/30 bg-emerald-500/5" data-testid="card-investing-view">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <CardTitle className="text-base">Long-Term Investment View</CardTitle>
+              </div>
+              <CardDescription className="text-xs">Thesis and conviction evaluation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {investingItems.map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        <p className="mt-8 text-center text-sm text-muted-foreground max-w-2xl mx-auto">
+          Each view uses goal-appropriate evidence. A stock may qualify as a long-term growth candidate while its short-term setup remains developing or unconfirmed — and vice versa.
+        </p>
       </div>
     </section>
   );
@@ -627,47 +975,76 @@ function FeatureRow({ eyebrow, title, copy, bullets, visual, reverse, testId }: 
 }
 
 /* -----------------------------------------------------------
- * ASK FOR OPPORTUNITIES IN PLAIN ENGLISH
+ * ASK ABOUT OPPORTUNITIES IN PLAIN ENGLISH  (§8 — updated prompts)
  * --------------------------------------------------------- */
 function PlainEnglishSection() {
+  const promptGroups = [
+    {
+      label: "Long-Term",
+      prompts: [
+        "Analyze MU as a three-year investment",
+        "Find long-term AI infrastructure opportunities",
+        "Compare NVDA, AVGO, and AMD for long-term growth",
+        "Which holdings have strengthening long-term conditions?",
+        "What could weaken the investment thesis for MU?",
+      ],
+    },
+    {
+      label: "Income",
+      prompts: [
+        "Find covered call opportunities from stocks I own",
+        "Find cash-secured puts using stocks I would be willing to own",
+        "Show income opportunities under $500 risk",
+      ],
+    },
+    {
+      label: "Trading",
+      prompts: [
+        "Show bullish setups on NVDA",
+        "Find stocks near breakout confirmation",
+        "Find swing setups under $500 risk",
+        "Show developing momentum candidates",
+      ],
+    },
+    {
+      label: "Markets",
+      prompts: [
+        "What is the current market regime?",
+        "Which sectors are strengthening?",
+        "What earnings events matter this week?",
+      ],
+    },
+  ];
+
   return (
-    <section className="py-16 md:py-24">
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="plain-english">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FeatureRow
           testId="feature-plain-english"
-          eyebrow="For Active Traders"
-          title="Ask for Opportunities in Plain English"
-          copy="Describe what you're looking for and VCP Trader AI surfaces qualified candidates, explains the setup, and walks you through the risk."
+          eyebrow="For All Goals"
+          title="Ask About Opportunities in Plain English"
+          copy="Describe what you're looking for — whether it's a long-term growth thesis, an income setup, an active trade, or a market overview — and VCP Trader AI surfaces qualified opportunities with evidence and risk context."
           bullets={[
-            "Show bullish setups on NVDA",
-            "Find income ideas under $200 risk",
-            "Show covered call opportunities",
-            "Find stocks near breakout confirmation",
-            "Show developing swing setups",
-            "Find defensive stock or options ideas",
-            "Analyze BA and explain whether the setup qualifies",
+            "No complex setup required",
+            "Long-term, income, trading, and market prompts",
+            "Advanced controls available when needed",
           ]}
           visual={
-            <MockPanel title="Prompt → Opportunities">
-              <div className="space-y-2 text-sm">
-                <div className="rounded-md border bg-muted/50 p-2 italic text-xs">
-                  "Find income ideas under $200 risk."
-                </div>
-                <div className="rounded-md border bg-background p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">AAPL · Covered Call</span>
-                    <Badge variant="outline" className="text-[10px]">B · 73</Badge>
+            <MockPanel title="Prompt Examples">
+              <div className="space-y-3 text-sm">
+                {promptGroups.map((group) => (
+                  <div key={group.label}>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">{group.label}</p>
+                    <div className="space-y-1">
+                      {group.prompts.slice(0, 2).map((p) => (
+                        <div key={p} className="rounded-md border bg-muted/50 px-2 py-1 text-xs italic text-muted-foreground">
+                          "{p}"
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Income opportunity · Premium ~$165</p>
-                </div>
-                <div className="rounded-md border bg-background p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">SPY · Cash-Secured Put</span>
-                    <Badge variant="outline" className="text-[10px]">A · 79</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Income opportunity · 28 DTE</p>
-                </div>
-                <p className="text-[10px] text-muted-foreground border-t pt-2">Example only — not a live recommendation.</p>
+                ))}
+                <p className="text-[10px] text-muted-foreground border-t pt-2">Example prompts only.</p>
               </div>
             </MockPanel>
           }
@@ -678,22 +1055,23 @@ function PlainEnglishSection() {
 }
 
 /* -----------------------------------------------------------
- * OPPORTUNITY GRADES
+ * OPPORTUNITY GRADES  (§10 — updated with multi-goal note)
  * --------------------------------------------------------- */
 function OpportunityGradesSection() {
   return (
-    <section className="py-16 md:py-24 bg-muted/30 border-y">
+    <section className="py-16 md:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FeatureRow
           testId="feature-scoring"
           eyebrow="Built-In Quality Filters"
           title="Opportunity Grades"
-          copy="Each opportunity receives a clear A+ through C grade with plain-English reasons, supporting evidence, and risk warnings."
+          copy="Each opportunity or scenario receives a clear grade based on the evidence available for that specific objective and time horizon — not as a universal verdict on the stock."
           bullets={[
-            "One clear grade per scenario",
+            "One clear grade per scenario and objective",
             "Plain-English qualification reasons",
-            "Risks and limitations shown alongside the setup",
+            "Risks and limitations shown alongside the opportunity",
             "Higher-quality candidates surface first",
+            "A stock may receive different grades for long-term growth, swing trade, covered call, or portfolio fit",
           ]}
           reverse
           visual={
@@ -743,100 +1121,126 @@ function OpportunityGradesSection() {
 }
 
 /* -----------------------------------------------------------
- * TRADE STOCKS OR OPTIONS — YOUR CHOICE
+ * INVEST OR TRADE WITH STOCKS AND OPTIONS  (§11 — 3 subsections)
  * --------------------------------------------------------- */
 function StocksOptionsSection({ onStartTrial }: { onStartTrial: () => void }) {
-  const stockItems = [
-    "Swing setups",
-    "Pullbacks",
-    "Breakouts",
-    "Watchlist opportunities",
+  const longTermItems = [
+    "Durable growth themes",
+    "Earnings trends",
+    "Valuation context",
+    "Long-term technical conditions",
+    "Thesis risks",
   ];
-  const optionItems = [
+  const activeItems = [
+    "Breakouts",
+    "Pullbacks",
+    "Momentum",
+    "Watch conditions",
+    "Risk levels",
+  ];
+  const optionsItems = [
+    "Long calls and puts",
+    "Spreads",
     "Covered calls",
     "Cash-secured puts",
-    "Long calls / puts",
-    "Defined-risk debit spreads",
-    "Liquidity checks",
-    "Breakeven and max loss shown before order review",
+    "Income and defined-risk scenarios",
   ];
 
   return (
     <section className="py-16 md:py-24 bg-gradient-to-b from-background via-primary/5 to-background border-y" id="stocks">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-12 items-center">
-        <div>
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-10">
           <Badge variant="outline" className="mb-4 text-[11px] border-primary/30 bg-primary/5 text-primary">
             <PieChart className="h-3 w-3 mr-1" />
             Stocks &amp; Options
           </Badge>
           <h2 id="options" className="text-2xl md:text-3xl font-bold scroll-mt-20" data-testid="text-options-heading">
-            Trade Stocks or Options — Your Choice
+            Invest or Trade With Stocks and Options
           </h2>
-          <p className="mt-4 text-muted-foreground">
-            Review stock setups, long calls and puts, spreads, covered calls, and cash-secured puts in one consistent workflow — with risk context, liquidity checks, and income or growth framing.
+          <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+            Evaluate long-term stock opportunities, active trade setups, and options scenarios in one consistent decision-support workflow.
           </p>
-          <div className="mt-6 grid sm:grid-cols-2 gap-6">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Stocks</p>
-              <ul className="space-y-2">
-                {stockItems.map((it) => (
-                  <li key={it} className="flex items-start gap-2 text-sm">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>{it}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Options</p>
-              <ul className="space-y-2">
-                {optionItems.map((it) => (
-                  <li key={it} className="flex items-start gap-2 text-sm">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>{it}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <div className="mt-8">
-            <Button
-              size="lg"
-              onClick={() => {
-                track("start_free_trial_clicked", { location: "options_section" });
-                onStartTrial();
-              }}
-              data-testid="button-options-cta"
-            >
-              Explore Stocks &amp; Options
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
         </div>
-        <MockPanel title="Income Idea">
-          <div className="space-y-3 text-sm">
-            <div className="rounded-md border bg-background p-3">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">SPY · Cash-Secured Put</span>
-                <Badge variant="outline" className="text-[10px]">A · 79</Badge>
+
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <Card className="bg-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <CardTitle className="text-sm">Long-Term Stock Opportunities</CardTitle>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Sell 1 SPY 425P · 28 DTE</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Premium</p><p className="font-semibold text-emerald-600 dark:text-emerald-400">$245</p></div>
-              <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Breakeven</p><p className="font-semibold">$422.55</p></div>
-              <div className="rounded-md border bg-background p-2"><p className="text-[10px] text-muted-foreground uppercase">Max Risk</p><p className="font-semibold">$42,255</p></div>
-            </div>
-            <p className="text-[10px] text-muted-foreground border-t pt-2">Example scenario. Review before acting.</p>
-          </div>
-        </MockPanel>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {longTermItems.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                    <span>{it}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                <CardTitle className="text-sm">Active Stock Setups</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {activeItems.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>{it}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                <CardTitle className="text-sm">Options Opportunities</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {optionsItems.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-sm">
+                    <Check className="h-4 w-4 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
+                    <span>{it}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="text-center">
+          <Button
+            size="lg"
+            onClick={() => {
+              track("start_free_trial_clicked", { location: "options_section" });
+              onStartTrial();
+            }}
+            data-testid="button-options-cta"
+          >
+            Explore Stocks &amp; Options
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </section>
   );
 }
 
 /* -----------------------------------------------------------
- * FIND THE RIGHT OPTIONS STRUCTURE
+ * FIND THE RIGHT OPTIONS STRUCTURE  (keep from previous build)
  * --------------------------------------------------------- */
 function OptionsStructureSection() {
   return (
@@ -876,7 +1280,62 @@ function OptionsStructureSection() {
 }
 
 /* -----------------------------------------------------------
- * BUILT-IN RISK CHECKS (was GuardrailsSection)
+ * SEE HOW AN OPPORTUNITY FITS YOUR PORTFOLIO  (§12 — new)
+ * --------------------------------------------------------- */
+function PortfolioFitSection() {
+  const items = [
+    "Existing AI exposure",
+    "Semiconductor concentration",
+    "Position size impact",
+    "Earnings clustering",
+    "Cash utilization",
+    "Diversification observations",
+  ];
+
+  return (
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="portfolio">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <FeatureRow
+          testId="feature-portfolio"
+          eyebrow="Portfolio Intelligence"
+          title="See How an Opportunity Fits Your Portfolio"
+          copy="Understand concentration, sector exposure, earnings overlap, cash utilization, and how a candidate could change your portfolio — so you can make a more informed self-directed decision."
+          bullets={[
+            "Existing sector and theme concentration",
+            "Position size and capital impact",
+            "Earnings overlap and clustering",
+            "Cash utilization context",
+            "Neutral observations — you decide what to do",
+          ]}
+          reverse
+          visual={
+            <MockPanel title="Portfolio Context">
+              <div className="space-y-2 text-sm">
+                {items.map((item, i) => (
+                  <div key={item} className="flex items-center justify-between border-b last:border-0 pb-1 last:pb-0">
+                    <span className="text-xs text-muted-foreground">{item}</span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] ${i < 2 ? "text-amber-600 border-amber-500/40 bg-amber-500/10 dark:text-amber-400" : "text-muted-foreground"}`}
+                    >
+                      {i < 2 ? "Elevated" : "Moderate"}
+                    </Badge>
+                  </div>
+                ))}
+                <p className="text-[10px] text-muted-foreground pt-1">
+                  Illustrative example. You decide how to act on this context.
+                </p>
+              </div>
+            </MockPanel>
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
+/* -----------------------------------------------------------
+ * BUILT-IN RISK CHECKS  (keep from previous build)
  * --------------------------------------------------------- */
 function RiskChecksSection() {
   const blocks = [
@@ -888,7 +1347,7 @@ function RiskChecksSection() {
   ];
 
   return (
-    <section className="py-16 md:py-24 bg-muted/30 border-y" id="risk-controls">
+    <section className="py-16 md:py-24" id="risk-controls">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 text-center">
         <Badge variant="outline" className="mb-4 text-[11px] border-primary/30 bg-primary/5 text-primary">
           <ShieldAlert className="h-3 w-3 mr-1" />
@@ -918,12 +1377,12 @@ function RiskChecksSection() {
 }
 
 /* -----------------------------------------------------------
- * INSTATRADE — review and prepare orders
+ * INSTATRADE  (keep from previous build)
  * --------------------------------------------------------- */
 function InstaTradeSection({ onStartTrial }: { onStartTrial: () => void }) {
   const { instaTradeName } = useBranding();
   return (
-    <section className="py-16 md:py-24" id="instatrade">
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="instatrade">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FeatureRow
           testId="feature-instatrade"
@@ -936,7 +1395,6 @@ function InstaTradeSection({ onStartTrial }: { onStartTrial: () => void }) {
             "Live data through your brokerage connection",
             "Nothing is submitted without your approval",
           ]}
-          reverse
           visual={
             <MockPanel title="Order Review">
               <div className="space-y-2">
@@ -969,24 +1427,26 @@ function InstaTradeSection({ onStartTrial }: { onStartTrial: () => void }) {
 }
 
 /* -----------------------------------------------------------
- * IMPROVE YOUR PROCESS OVER TIME (was H · History/Learning)
- * Performance-by-grade win rates replaced with illustrative review summary
+ * BUILD YOUR INVESTMENT AND TRADING RECORD  (§13 — updated)
  * --------------------------------------------------------- */
 function ProcessSection() {
   return (
-    <section className="py-16 md:py-24 bg-muted/30 border-y">
+    <section className="py-16 md:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FeatureRow
           testId="feature-history"
           eyebrow="Track Your Process"
-          title="Improve Your Process Over Time"
-          copy="Review saved opportunities, user-recorded decisions, and outcomes to understand which setups and strategies fit your process."
+          title="Build Your Investment and Trading Record"
+          copy="Save opportunity snapshots, record your own thesis and plans, revisit what changed, and improve your decision process over time."
           bullets={[
-            "Review saved ideas and decisions",
-            "Compare outcomes by strategy and instrument",
-            "Track your own process over time",
-            "Learn from qualified and rejected setups",
+            "Save long-term investment theses",
+            "Save active trade setups",
+            "Record user-created decision notes",
+            "Track watch conditions",
+            "Review thesis changes",
+            "Compare previous and current evidence",
           ]}
+          reverse
           visual={
             <MockPanel title="Review Summary">
               <div className="space-y-2 text-sm">
@@ -1017,39 +1477,40 @@ function ProcessSection() {
 }
 
 /* -----------------------------------------------------------
- * PRICING — Single plan: VCP Trader AI Pro $99/mo + 14-day trial
+ * PRICING  (§14 — updated for traders + investors)
  * --------------------------------------------------------- */
 function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
   const { instaTradeName, instaTradeFooterNotice } = useBranding();
   const pricing = usePricing();
   const planFeatures = [
-    "Daily AI-ranked stock and options opportunities",
-    "Historical daily stock analysis during trial",
+    "Long-term stock opportunity analysis",
+    "Daily stock and options ideas",
+    "Growth and income opportunity discovery",
+    "Multi-strategy technical analysis",
+    "Portfolio intelligence",
+    "Watchlists",
+    "Saved research and decision journal",
     "Options strategy insights for calls, puts, debit spreads, credit spreads, covered calls, and cash-secured puts",
     "Risk, reward, breakeven, and capital-requirement review",
-    "Growth and income opportunity discovery",
     "Opportunity Radar and market condition monitoring",
     "News sentiment and market context",
-    "Watchlist intelligence",
     "Tradier and TradeStation connections",
-    "Current stock and options market data through connected brokerages",
-    "Options chains, Greeks, bid/ask, volume, and open interest where supported",
-    `${instaTradeName} stock and options order review and submission`,
+    "Broker-connected market data",
+    `${instaTradeName} order review and submission`,
     "Defined-risk options controls",
-    "Position and results tracking",
     "Opportunity-to-order workflow",
     "Bonus: Congress trade activity from public disclosures, organized with search, sort, and AI integration",
   ];
 
   return (
-    <section className="py-16 md:py-24" id="pricing">
+    <section className="py-16 md:py-24 bg-muted/30 border-y" id="pricing">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-pricing-heading">
             Simple Pricing. Bring Your Broker.
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Start with a 14-day trial featuring historical daily stock analysis, AI-ranked stock and options opportunities, market intelligence, and options strategy insights. Connect a supported brokerage account to unlock current quotes, options chains, Greeks, account context, and self-directed {instaTradeName} order review and submission.
+            One complete platform for discovering, evaluating, monitoring, and reviewing stock and options opportunities across long-term growth, income, and active trading goals.
           </p>
         </div>
 
@@ -1096,8 +1557,8 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                   <p className="font-medium text-foreground/80">Trial — No broker required</p>
                   <ul className="space-y-0.5 text-muted-foreground">
                     <li>· Historical/daily-close stock analysis</li>
+                    <li>· Long-term opportunity analysis</li>
                     <li>· Delayed or snapshot market context</li>
-                    <li>· Opportunity previews</li>
                     <li>· Estimated options strategy insights</li>
                   </ul>
                 </div>
@@ -1145,7 +1606,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
                   No broker connection required to explore analysis.
                 </p>
                 <p className="text-xs text-muted-foreground text-center" data-testid="text-supporting-copy">
-                  Explore stock and options ideas without connecting a broker. Connect when you are ready to review current market data and self-directed orders.
+                  Explore stock and options opportunities without connecting a broker. Connect when you are ready to review current market data and self-directed orders.
                 </p>
                 <Button
                   size="lg"
@@ -1178,7 +1639,7 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
 }
 
 /* -----------------------------------------------------------
- * COMPLIANCE / TRUST
+ * COMPLIANCE / TRUST  (§18 — updated disclosure)
  * --------------------------------------------------------- */
 function ComplianceSection() {
   return (
@@ -1188,7 +1649,7 @@ function ComplianceSection() {
           <CardContent className="pt-6 text-center">
             <ShieldCheck className="h-8 w-8 text-primary mx-auto mb-3" />
             <p className="text-sm text-muted-foreground" data-testid="text-compliance">
-              VCP Trader AI provides AI-generated trading scenarios, market context, and workflow tools for educational and informational purposes only. It is not a broker-dealer, investment adviser, or fiduciary and does not provide personalized investment advice. Trading stocks and options involves risk, including loss of principal. Live market data and order submission are available only through supported connected brokerage accounts. You are responsible for every trading decision and order submitted.
+              VCP Trader AI provides market analysis, opportunity discovery, educational information, and self-directed trade-preparation tools. It does not provide personalized investment advice or manage customer assets. Trading stocks and options involves risk, including loss of principal. Live market data and order submission are available only through supported connected brokerage accounts. You are responsible for every trading and investment decision.
             </p>
           </CardContent>
         </Card>
@@ -1212,7 +1673,7 @@ function FAQSection() {
     },
     {
       q: "What can I do without connecting a broker?",
-      a: "In Analysis Mode you get AI-generated market candidates, Opportunity Radar, scoring, news sentiment, Market Intel, watchlists, and educational strategy examples using delayed or snapshot market context. Order submission requires a connected broker.",
+      a: "In Analysis Mode you get AI-generated market candidates, long-term opportunity analysis, Opportunity Radar, scoring, news sentiment, Market Intel, watchlists, and educational strategy examples using delayed or snapshot market context. Order submission requires a connected broker.",
     },
     {
       q: "Does the trial include paper trading?",
@@ -1224,7 +1685,11 @@ function FAQSection() {
     },
     {
       q: "Is this investment advice?",
-      a: "No. VCP Trader AI provides AI-generated scenarios and market context for educational and informational purposes only. You remain responsible for every trading decision.",
+      a: "No. VCP Trader AI provides AI-generated scenarios and market context for educational and informational purposes only. It does not provide personalized investment advice or manage customer assets. You remain responsible for every trading and investment decision.",
+    },
+    {
+      q: "Can I use it for long-term investing, not just trading?",
+      a: "Yes. VCP Trader AI supports long-term growth opportunity analysis, thesis monitoring, valuation context, earnings trends, and portfolio intelligence alongside active trade setups and income ideas.",
     },
     {
       q: "Which brokers are supported?",
@@ -1320,15 +1785,15 @@ function LandingFooter() {
 }
 
 /* -----------------------------------------------------------
- * PAGE — section order per spec §14
+ * PAGE — final section order
  * --------------------------------------------------------- */
 export default function HomePage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const openWizard = () => setWizardOpen(true);
 
   useEffect(() => {
-    // SEO metadata
-    document.title = "VCP Trader AI — AI Stock & Options Opportunity Finder";
+    // §19 SEO metadata — trader + investor positioning
+    document.title = "VCP Trader AI — AI Stock & Options Opportunities for Traders and Investors";
     let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -1336,7 +1801,7 @@ export default function HomePage() {
       document.head.appendChild(meta);
     }
     meta.content =
-      "Discover AI-ranked stock and options opportunities, understand why setups qualify, review risk, and prepare self-directed trades through your connected broker.";
+      "Discover long-term growth ideas, income opportunities, and active stock and options setups. Understand the evidence, monitor risk, and make your own informed decisions.";
   }, []);
 
   useEffect(() => {
@@ -1365,16 +1830,19 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* §14 section order */}
       <NavBar onStartTrial={openWizard} />
       <HeroSection onStartTrial={openWizard} />
+      <ChooseYourGoalSection onStartTrial={openWizard} />
       <DailyValueSection />
       <TodaysOpportunitiesSection onStartTrial={openWizard} />
       <HowItFindsSection />
+      <LongTermInvestorSection onStartTrial={openWizard} />
+      <TimeHorizonSection />
       <PlainEnglishSection />
       <OpportunityGradesSection />
       <StocksOptionsSection onStartTrial={openWizard} />
       <OptionsStructureSection />
+      <PortfolioFitSection />
       <RiskChecksSection />
       <InstaTradeSection onStartTrial={openWizard} />
       <ProcessSection />

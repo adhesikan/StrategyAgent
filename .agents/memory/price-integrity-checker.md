@@ -14,21 +14,26 @@ description: Ratio-based independent cross-check of MCP setup prices against VCP
 - 0.01x: ref/setup 80–120 (inverse)
 - divergent: outside tolerance, not a clean decimal order
 
-## Reference price
-`ctx.tickers[0].last` — the live quote from the broker/market-snapshot route. Fetched independently of the MCP call.
+## Reference resolution (`server/services/price-reference-resolver.ts`)
+Deterministic precedence: broker quote → internal history close → unavailable.
+Conflict tolerance ±40% between broker and history (catches 2×/10× but not normal intraday gaps).
+Boundary is inclusive (`<=`/`>=`): ratio exactly 0.60 or 1.40 IS a conflict.
 
-**Why:** MCP fetches history from our own endpoint; comparing its output price back to our live quote is the independent cross-check.
+**Why:** Disconnected users had `PRICE_REFERENCE_UNAVAILABLE` always blocking saves, even when history was clean.
 
 ## Safety contract
 - `safeIntegrityResult()` MUST be called before attaching to any response — strips `setupPrice` and `referencePrice` fields (server-log only, never client).
 - Raw prices are logged under event `multi_strategy_price_integrity_failed`.
+- Resolver `_brokerPrice` / `_historyClose` fields are server-only — never forward to client.
 
 ## Gating in ask.ts
-1. `multiStrategy.priceIntegrity` is set after `runMultiStrategyAnalysis` (before GPT prompt).
-2. `_priceIntegrityBlocked = multiStrategy?.priceIntegrity?.valid === false` gates researchSave handle minting.
-3. GPT `mcpSystemRules` gets `PRICE INTEGRITY OVERRIDE` instruction appended when integrity fails.
+1. `resolveReferencePrice()` called after `runMultiStrategyAnalysis`.
+2. Conflict → `code: "PRICE_REFERENCE_CONFLICT"`, valid:false, save blocked.
+3. `_priceIntegrityBlocked = multiStrategy?.priceIntegrity?.valid === false` gates researchSave handle minting.
+4. GPT `mcpSystemRules` gets `PRICE INTEGRITY OVERRIDE` when integrity fails.
+5. Observability: `event: price_reference_resolved` logged on every check (safe fields only).
 
-## Known limitation
-Disconnected users have `ctx.tickers[0].last === null` → code `PRICE_REFERENCE_UNAVAILABLE` → valid:false → save always blocked. A history-close fallback would fix this but is not yet implemented.
+## Source independence caveat
+Both MCP and the history fallback may use Twelve Data. This is a cross-SERVICE consistency check, not a fully independent vendor check. Document this — do not claim vendor independence.
 
 **How to apply:** Any new flow that uses MCP setup prices as trusted values should run `checkPriceIntegrity` before persisting or displaying those values.

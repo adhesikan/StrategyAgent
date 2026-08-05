@@ -953,34 +953,91 @@ async function callOpenAi(
       }
     }
 
-    // --- Independent price integrity cross-check (Production Safety Fix) ---
-    // Compares the MCP-reported setup price against VCP Trader's own live
-    // quote for the symbol. Detects decimal-order mismatches (10×, 100×, etc.)
-    // before the analysis is trusted for display or research-save gating.
-    // Non-blocking: a check failure never breaks the response.
-    if (multiStrategy && ctx.tickers.length > 0) {
+    // --- Broker-independent price integrity cross-check (Task #40) ---
+    // Resolves a trusted reference price with deterministic precedence:
+    //   1. Connected-broker / market-snapshot live quote  (source: "broker_quote")
+    //   2. VCP Trader's own internal market-history close (source: "internal_history_close")
+    //   3. No reference available                         (source: "unavailable")
+    //
+    // Disconnected users (no live quote) fall back to the latest valid daily close
+    // from TwelveDataDailyProvider. Source-independence note: both the MCP scanner
+    // and this fallback may ultimately use Twelve Data — this is a cross-SERVICE
+    // consistency check (MCP vs VCP Trader), not a fully independent vendor check.
+    //
+    // When both sources are available but disagree >±40%, flags PRICE_REFERENCE_CONFLICT.
+    // Non-blocking: any uncaught error leaves priceIntegrity absent; save is not gated.
+    if (multiStrategy) {
       try {
+        const { resolveReferencePrice } = await import("../services/price-reference-resolver");
         const { checkPriceIntegrity, safeIntegrityResult } = await import("../services/price-integrity-checker");
-        const referencePrice = ctx.tickers[0].last;
+        const { TwelveDataDailyProvider } = await import("../services/daily-market-data/twelve-data-client");
+        type IntegrityResult = import("../services/price-integrity-checker").PriceIntegrityResult;
+
+        const sym = multiStrategy.symbol;
+        const quotePrice =
+          ctx.tickers.find((t) => t.symbol === sym)?.last ??
+          (ctx.tickers.length > 0 ? ctx.tickers[0].last : null) ??
+          null;
         const setupPrice =
           multiStrategy.marketContext?.price ??
           multiStrategy.primarySetup?.setup.currentPrice ??
           null;
-        const rawResult = checkPriceIntegrity(setupPrice, referencePrice, "live_quote");
-        if (!rawResult.valid) {
-          // Log detail server-side only — raw prices never reach the client.
+
+        const start = Date.now();
+        const resolved = await resolveReferencePrice(sym, quotePrice, {
+          fetchHistory: (s) =>
+            new TwelveDataDailyProvider().getDailyBars({ symbol: s, outputSize: 5, caller: "price_integrity_reference" }),
+        });
+        const durationMs = Date.now() - start;
+
+        let rawResult: IntegrityResult;
+        if (resolved.conflict) {
+          rawResult = {
+            valid: false,
+            code: "PRICE_REFERENCE_CONFLICT",
+            referenceSource: "unavailable",
+          };
+          // Log safe diagnostics — raw prices server-side only.
           console.warn(
             JSON.stringify({
               event: "multi_strategy_price_integrity_failed",
-              symbol: multiStrategy.symbol,
-              code: rawResult.code,
-              ratioCategory: rawResult.ratioCategory,
-              setupPrice: rawResult.setupPrice,
-              referencePrice: rawResult.referencePrice,
+              symbol: sym,
+              code: "PRICE_REFERENCE_CONFLICT",
+              brokerPrice: resolved._brokerPrice,
+              historyClose: resolved._historyClose,
+              historyTimestamp: resolved._historyTimestamp,
             }),
           );
+        } else {
+          rawResult = checkPriceIntegrity(setupPrice, resolved.referencePrice, resolved.source);
+          if (!rawResult.valid) {
+            console.warn(
+              JSON.stringify({
+                event: "multi_strategy_price_integrity_failed",
+                symbol: sym,
+                code: rawResult.code,
+                ratioCategory: rawResult.ratioCategory,
+                setupPrice: rawResult.setupPrice,
+                referencePrice: rawResult.referencePrice,
+              }),
+            );
+          }
         }
-        // Attach safe result (no raw prices) to the payload.
+
+        // Structured observability log (safe fields only — no raw prices).
+        console.info(
+          JSON.stringify({
+            event: "price_reference_resolved",
+            symbol: sym,
+            source: resolved.source,
+            freshness: resolved.freshness,
+            validationResult: rawResult.valid ? "ok" : (rawResult.code ?? "UNKNOWN"),
+            ratioCategory: rawResult.ratioCategory ?? null,
+            durationMs,
+          }),
+        );
+
+        // Attach safe result (raw prices stripped) to the payload.
         multiStrategy = { ...multiStrategy, priceIntegrity: safeIntegrityResult(rawResult) };
       } catch {
         /* non-blocking — integrity unavailable is handled gracefully downstream */

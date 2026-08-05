@@ -1,0 +1,295 @@
+Task #40 — Broker-Independent Price Integrity Reference
+
+GOAL
+
+Allow valid deterministic research to pass price-integrity validation when the user has no connected broker, while preserving strict protection against inconsistent MCP price levels.
+
+Do not modify:
+
+- MCP algorithms
+- scanner logic
+- recommendation logic
+- ranking
+- portfolio policy
+- risk calculations
+- options selection
+- execution
+- brokerage behavior
+
+Do not commit, push, or deploy automatically.
+
+CURRENT LIMITATION
+
+The current independent price-integrity check uses:
+
+ctx.tickers[0].last
+
+When no broker or live market snapshot is available:
+
+PRICE_REFERENCE_UNAVAILABLE
+
+This blocks ResearchSave even when VCP Trader's own internal market-history endpoint contains a valid recent close.
+
+==================================================
+1. REFERENCE SOURCE PRECEDENCE
+==================================================
+
+Implement deterministic reference-price precedence:
+
+1. Fresh connected-broker or trusted market-snapshot quote
+2. Latest valid close from VCP Trader internal market history
+3. No reference available
+
+Return metadata such as:
+
+{
+  source:
+    "broker_quote"
+    | "market_snapshot"
+    | "internal_history_close"
+    | "unavailable";
+
+  valid;
+  referenceTimestamp;
+  freshness;
+}
+
+Do not expose provider credentials or internal URLs.
+
+==================================================
+2. INTERNAL HISTORY REFERENCE
+==================================================
+
+Reuse the existing internal market-history service directly on the server.
+
+Do not call the application's public HTTP endpoint through the network when the underlying provider/service can be called directly.
+
+Fetch only the minimum data required:
+
+- symbol
+- daily interval
+- small output size sufficient to identify latest valid completed candle
+
+Use the most recent valid completed daily close.
+
+Do not use:
+
+- malformed candles
+- non-finite values
+- zero or negative closes
+- future-dated candles
+- clearly incomplete bars when an explicit completeness field exists
+
+==================================================
+3. FRESHNESS POLICY
+==================================================
+
+Define a market-calendar-aware or documented practical freshness policy.
+
+At minimum:
+
+During a normal weekday after recent trading:
+
+- accept the latest completed trading-day close within an approved age window
+
+During weekends and market holidays:
+
+- accept the last completed trading session
+- do not mark Friday's close stale merely because it is Saturday or Sunday
+
+Do not require the historical close to equal an intraday quote.
+
+Retain the existing ±15% comparison tolerance unless tests show a narrower policy is safe.
+
+Document the limitations around large overnight gaps and corporate actions.
+
+==================================================
+4. SOURCE INDEPENDENCE
+==================================================
+
+Confirm whether the MCP setup and VCP Trader history reference ultimately originate from the same provider.
+
+Even when they do, the check still protects against:
+
+- MCP-side scaling
+- serialization errors
+- transformation errors
+- stale setup-cache values
+
+Document that this is a cross-service consistency check, not necessarily a fully independent market-data vendor check.
+
+Do not claim vendor independence unless it exists.
+
+==================================================
+5. FAILURE BEHAVIOR
+==================================================
+
+A. Broker quote available and fresh:
+- use broker quote
+
+B. Broker quote unavailable but internal history valid:
+- use internal history close
+- allow save when consistency passes
+
+C. Both unavailable:
+- suppress unverified price levels
+- block ResearchSave
+- confidence cannot be high
+- show:
+  "Price levels could not be independently validated."
+
+D. Broker quote and history both available but materially disagree:
+- prefer neither silently
+- flag PRICE_REFERENCE_CONFLICT
+- block ResearchSave
+- suppress levels
+- log safe diagnostics
+
+==================================================
+6. RESEARCH-SAVE POLICY
+==================================================
+
+Allow ResearchSave only when:
+
+- price-integrity comparison passes against an approved reference source; or
+- the domain contains no price-derived evidence requiring validation
+
+Do not allow the frontend to choose or override the reference source.
+
+Include safe evidence metadata if appropriate:
+
+priceValidation: {
+  status: "validated";
+  referenceType: "internal_history_close";
+  validatedAt;
+}
+
+Do not persist raw reference prices unless explicitly required by the approved ResearchEvidenceRecord schema.
+
+==================================================
+7. PERFORMANCE AND CACHING
+==================================================
+
+Avoid adding repeated market-history requests.
+
+Within one Ask AI request:
+
+- fetch reference history at most once per symbol
+- reuse the result across analysis, GPT filtering and research-save gating
+
+Use a short bounded cache only if an existing safe market-data cache already exists.
+
+Do not introduce long-lived stale price caches.
+
+==================================================
+8. OBSERVABILITY
+==================================================
+
+Add safe structured logging:
+
+event: price_reference_resolved
+
+Allowed fields:
+
+- symbol
+- source
+- freshness category
+- validation result
+- ratio category
+- durationMs
+
+Do not log:
+
+- tokens
+- account identifiers
+- full price history
+- complete MCP payloads
+- raw portfolio context
+
+==================================================
+9. TESTS
+==================================================
+
+Add tests for:
+
+A. Reference precedence
+- fresh broker quote wins
+- no broker uses internal history close
+- missing broker and missing history
+- invalid broker quote falls back to history
+- broker/history conflict blocks validation
+
+B. Freshness
+- same-day completed close
+- previous trading-day close
+- weekend
+- holiday-like multi-day gap within policy
+- stale close outside policy
+- future candle rejected
+- malformed latest candle skipped safely
+
+C. Integrity
+- setup matches history
+- 10× setup mismatch
+- 100× mismatch
+- legitimate intraday difference within tolerance
+- large overnight gap outside tolerance
+- all setup fields scaled consistently
+
+D. ResearchSave
+- disconnected user with valid history receives handle
+- disconnected user with mismatched setup receives no handle
+- no reference receives no handle
+- connected user behavior unchanged
+- no invalid evidence enters save-handle store
+
+E. Regression
+- MU valid-scale analysis
+- BA valid analysis
+- existing recommendation flow
+- market-wide ranking
+- no extra MCP calls
+- no execution
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+10. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/PRICE_INTEGRITY_AND_RESEARCH_SAVE_SAFETY.md
+
+Document:
+
+- source precedence
+- freshness policy
+- cross-service versus vendor independence
+- conflict handling
+- save gating
+- known limitations
+
+==================================================
+11. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. files changed
+2. reference precedence
+3. internal history integration
+4. freshness policy
+5. source-conflict handling
+6. save-gating behavior
+7. request/cache impact
+8. tests and totals
+9. build result
+10. disconnected-user before/after
+11. compatibility concerns
+
+Do not commit or push.
+Wait for review.

@@ -15,7 +15,16 @@ export type PriceRatioCategory = "ok" | "10x" | "100x" | "0.1x" | "0.01x" | "div
 export interface PriceIntegrityResult {
   valid: boolean;
   /** Safe error code — never reveals provider internals. */
-  code?: "PRICE_REFERENCE_MISMATCH" | "PRICE_REFERENCE_UNAVAILABLE" | "PRICE_NON_FINITE";
+  code?:
+    | "PRICE_REFERENCE_MISMATCH"
+    | "PRICE_REFERENCE_UNAVAILABLE"
+    | "PRICE_NON_FINITE"
+    /**
+     * Both the broker quote and the internal history close were available but
+     * disagreed by more than the conflict tolerance (±40%). Prefer neither
+     * silently — block ResearchSave and suppress price levels.
+     */
+    | "PRICE_REFERENCE_CONFLICT";
   /** Category of the detected ratio mismatch. */
   ratioCategory?: PriceRatioCategory;
   /** Price-derived fields that should be suppressed when valid:false. */

@@ -1,7 +1,6 @@
 # Price Integrity and Research-Save Safety
 
-**Sprint:** Production Safety Fix  
-**Status:** Implemented  
+**Status:** Implemented (Task #40 — Broker-Independent Reference)  
 **Scope:** Multi-strategy analysis only (VCP explicit path unchanged)
 
 ---
@@ -11,89 +10,155 @@
 | Data | Authoritative Source | Used For |
 |---|---|---|
 | Latest OHLCV history | `TwelveDataDailyProvider` via `/api/internal/market/history` | Historical analysis, VCP structure |
-| Live quote (current price) | `ctx.tickers[0].last` — broker/market-snapshot quote | **Reference price for integrity check** |
+| Live quote (current price) | `ctx.tickers[n].last` — broker/market-snapshot quote | **Primary reference for integrity check** |
+| Internal history close | `TwelveDataDailyProvider.getDailyBars` (direct, no HTTP hop) | **Fallback reference for disconnected users** |
 | MCP setup currentPrice | `scan_strategy` response field | Setup display (gated by integrity check) |
 | MCP trigger / invalidation / objective | `scan_strategy` response fields | Level display (suppressed when integrity fails) |
 | MCP major high | `scan_strategy` response field | Historical context only — never an entry level |
 
-**Rule:** The MCP setup price is NOT independently authoritative when it originated from VCP Trader market-history data. The live quote from `ctx.tickers[0].last` (fetched independently from the broker/market-snapshot route) is the reference.
+---
+
+## 2. Source Precedence
+
+After `runMultiStrategyAnalysis` completes, `ask.ts` calls `resolveReferencePrice()` which implements deterministic precedence:
+
+```
+Priority 1: Connected-broker / market-snapshot live quote  (source: "broker_quote")
+Priority 2: Latest valid close from TwelveDataDailyProvider (source: "internal_history_close")
+Priority 3: No reference available                          (source: "unavailable")
+```
+
+### Source Independence Caveat
+
+Both the MCP scanner and the VCP Trader internal history may ultimately use **Twelve Data** as the underlying market-data vendor. This check is therefore a **cross-SERVICE consistency check** (MCP pipeline vs VCP Trader pipeline), **not** a fully independent vendor check. It still catches:
+
+- MCP-side decimal scaling bugs
+- Serialization or transformation errors between provider and MCP
+- Stale setup-cache values in the MCP service
+
+Do not claim full vendor independence — the same raw data may flow through both sides.
 
 ---
 
-## 2. Independent Reference Policy
-
-After `runMultiStrategyAnalysis` completes, `ask.ts` runs an independent price cross-check:
+## 3. Reference Resolution Logic
 
 ```
-referencePrice = ctx.tickers[0].last        (VCP Trader live quote)
-setupPrice     = multiStrategy.marketContext?.price
-              ?? multiStrategy.primarySetup?.setup.currentPrice
-              ?? null
-
-result = checkPriceIntegrity(setupPrice, referencePrice, "live_quote")
+resolveReferencePrice(symbol, quotePrice, { fetchHistory }) → ResolvedReference
 ```
 
-The result (`PriceIntegrityResult`) is stripped of raw price values via `safeIntegrityResult()` and attached to `multiStrategy.priceIntegrity` before the payload is used anywhere (GPT prompt, response serialization, researchSave gating).
+### Decision matrix
 
-When reference price is unavailable (no live quote for disconnected users), `code: "PRICE_REFERENCE_UNAVAILABLE"` — valid:false. In that case the save is blocked but no false "10x" alarm is raised.
-
----
-
-## 3. Ratio Thresholds
-
-| Category | Ratio range | Direction |
+| quotePrice valid? | historyClose valid? | Result |
 |---|---|---|
-| `ok` | 0.85 – 1.15 | setup ≈ reference (±15%) |
-| `10x` | 8 – 12 | setup >> reference |
-| `100x` | 80 – 120 | setup >> reference |
-| `0.1x` | inverse 8 – 12 | setup << reference |
-| `0.01x` | inverse 80 – 120 | setup << reference |
-| `divergent` | outside tolerance, not a clean decimal order | either direction |
-| `unknown` | reserved | — |
+| ✓ | ✓ (ratio ≤ ±40%) | `source: "broker_quote"` — broker preferred (more current) |
+| ✓ | ✓ (ratio > ±40%) | `conflict: true, source: "unavailable"` → PRICE_REFERENCE_CONFLICT |
+| ✓ | ✗ | `source: "broker_quote"` |
+| ✗ | ✓ | `source: "internal_history_close"` |
+| ✗ | ✗ | `source: "unavailable"` |
 
-±15% tolerance accounts for intraday movement, bid/ask spread, rounding differences, and brief delayed-data lag between the quote source and the history close.
-
-Raw `setupPrice` and `referencePrice` are logged server-side only (event: `multi_strategy_price_integrity_failed`). They are NEVER forwarded to the client.
+"Valid" for the broker quote: non-null, finite, positive.  
+"Valid" for a history bar: finite close > 0, not future-dated.
 
 ---
 
-## 4. Save-Handle Gating
+## 4. Freshness Policy
 
-A ResearchSave handle is NOT minted when:
+Used for `source: "internal_history_close"` only. Calendar-day based (no market calendar lookup required).
+
+| Category | Age of latest valid close | Notes |
+|---|---|---|
+| `fresh` | 0–1 calendar days | Same or previous trading day |
+| `acceptable` | 2–5 calendar days | Covers weekends and short holidays |
+| `stale` | > 5 calendar days | Still used as reference — not an automatic block |
+| `unknown` | Could not parse date | Treated as unavailable |
+
+**Weekend handling:** A Friday close is `acceptable` on Saturday or Sunday. The resolver does not require a market calendar.
+
+**Stale close:** A close older than 5 calendar days is still returned as the reference price with `freshness: "stale"`. The save-gating decision is based on the ratio check, not freshness alone. Staleness is surfaced via the `price_reference_resolved` log event.
+
+### Known limitations
+
+- **Large overnight gaps:** A legitimate >15% gap between today's quote and yesterday's close will fail the setup-vs-reference check even when both prices are correct. This is a documented false-positive risk for highly volatile stocks.
+- **Corporate actions:** Splits and dividend adjustments may cause a temporary ratio anomaly between live quote and adjusted historical close.
+- **Intraday setup:** The history close is a completed-day value. An MCP setup priced at the intraday level may legitimately differ from the prior close by >15% on gap days.
+
+---
+
+## 5. Conflict Handling
+
+When both broker quote and internal history close are available but their ratio exceeds ±40%:
+
+```
+code: "PRICE_REFERENCE_CONFLICT"
+```
+
+**Actions:**
+- `priceIntegrity.valid = false`
+- ResearchSave handle is NOT minted
+- Price-derived levels suppressed in the analysis card
+- GPT receives `PRICE INTEGRITY OVERRIDE` instruction
+- Confidence capped at `"low"`
+- Server log: `event: multi_strategy_price_integrity_failed, code: PRICE_REFERENCE_CONFLICT`
+
+The ±40% conflict threshold is intentionally wider than the setup ±15% tolerance to avoid false conflicts from large-gap days while still catching decimal-order broker/history discrepancies (2×, 10×).
+
+---
+
+## 6. Ratio Thresholds (Setup vs Reference)
+
+These apply after the reference is resolved:
+
+| Category | Ratio range (setup/ref) | Direction |
+|---|---|---|
+| `ok` | 0.85–1.15 | setup ≈ reference (±15%) |
+| `10x` | 8–12 | setup >> reference |
+| `100x` | 80–120 | setup >> reference |
+| `0.1x` | inverse 8–12 | setup << reference |
+| `0.01x` | inverse 80–120 | setup << reference |
+| `divergent` | outside tolerance, not a clean decimal order | either direction |
+
+Raw `setupPrice` and `referencePrice` are logged server-side only (event: `multi_strategy_price_integrity_failed`). They are **never** forwarded to the client.
+
+---
+
+## 7. Save-Handle Gating
+
+A ResearchSave handle is **NOT** minted when:
 
 | Condition | Code | Action |
 |---|---|---|
-| `multiStrategy.priceIntegrity?.valid === false` | any | Gate fires — handle omitted from response |
-| Structural validation fails | VALIDATION_ERROR | Already blocked by `validateResearchEvidence` |
+| `resolved.conflict === true` | `PRICE_REFERENCE_CONFLICT` | Gate fires — handle omitted |
+| `priceIntegrity.valid === false` | any | Gate fires — handle omitted |
+| Structural validation fails | `VALIDATION_ERROR` | Already blocked by `validateResearchEvidence` |
 | `brainInt` is education-only | — | Handle omitted (existing rule) |
 
-When the gate fires, `researchSave` is omitted from the response entirely. The integrity warning in the analysis card explains to the user why saving is not available. No partial snapshot containing suspect price levels is persisted.
+When the gate fires, `researchSave` is omitted from the response entirely. The integrity warning in the analysis card explains why saving is not available. No partial snapshot containing suspect price levels is persisted.
 
 **Frontend behaviour:** `SaveResearchButton` only renders when `data.researchSave?.available === true`. When the field is absent, the button is hidden — no client override is possible.
 
 ---
 
-## 5. Field Suppression
+## 8. Field Suppression
 
-When `priceIntegrity.valid === false`:
+When `priceIntegrity.valid === false` (any code):
 
 **Server-side (GPT prompt):** A `PRICE INTEGRITY OVERRIDE` instruction is appended to `mcpSystemRules`. GPT is explicitly prohibited from:
 - Repeating, approximating, or inferring any numeric price level
-- Describing the setup as if price levels were evaluated
+- Using "approximately" with any price
 - Overriding or softening the deterministic verdict
 
 GPT must state verbatim: *"Price-level evidence could not be independently validated, so the platform withheld trigger, invalidation and objective levels."*
 
 **Client-side (analysis card):** When `analysis.priceIntegrity?.valid === false`:
 - The `IntegrityWarning` banner is shown above the card
-- The `CountBreakdown` is still shown (non-price evidence)
-- The primary setup's trigger / invalidation / objective grid is replaced with a `"Price-level analysis unavailable"` notice
-- The `SaveResearchButton` is not rendered (no `researchSave` in the response)
-- Trade Builder CTA is suppressed by the NO_TRADE / WATCH verdict in `suggestionsForMultiStrategy`
+- Count breakdown is still shown (non-price evidence)
+- Primary setup's trigger / invalidation / objective grid → "Price-level analysis unavailable"
+- `SaveResearchButton` not rendered (no `researchSave` in response)
+- Trade Builder CTA suppressed by NO_TRADE / WATCH verdict
 
 ---
 
-## 6. Confidence Policy
+## 9. Confidence Policy
 
 `multiStrategyConfidence(a)` returns `"low" | "medium" | "high"`.
 
@@ -102,26 +167,20 @@ GPT must state verbatim: *"Price-level evidence could not be independently valid
 - `overallVerdict === "INSUFFICIENT_DATA"`
 - `!dataQuality.realMarketData` (mock/synthetic source)
 - `strategiesFailed > succeeded` (most strategies failed)
-- `priceIntegrity.valid === false` ← **new**
+- `priceIntegrity.valid === false` ← blocks high confidence on failed integrity
 
 ### HIGH requires ALL of:
-- `succeeded >= 3` (at least 3 strategies returned results)
-- `dataQuality.fresh === true` (at least one setup within 10-day window)
-- `dataQuality.complete === true` (primary has trigger+invalidation or qualified candidate)
-- `(confirmingCount + formingCount) > 0` ← **new: at least one setup with a real status**
-- `unavailableCount <= strategiesMatched / 2` ← **new: majority must not be Unknown-status**
+- `succeeded >= 3`
+- `dataQuality.fresh === true`
+- `dataQuality.complete === true`
+- `(confirmingCount + formingCount) > 0` — at least one setup with a real status
+- `unavailableCount <= strategiesMatched / 2` — majority must not be Unknown-status
 
 ### MEDIUM: everything else.
 
-**Rationale:** The previous policy allowed HIGH when all 10 strategies returned setups with `status: null` ("Unknown"). Receiving setup objects from the scanner is not the same as having meaningful confirmed or forming setups. HIGH confidence now requires at least one setup with an actionable status.
-
 ---
 
-## 7. Strategy-Count Semantics
-
-Previous label "X matches" meant "responses that returned a non-null setup object." This conflated receipt of a response with confirmation of a meaningful setup.
-
-### New fields on `MultiStrategyAnalysis`:
+## 10. Strategy-Count Semantics
 
 | Field | Meaning |
 |---|---|
@@ -132,46 +191,31 @@ Previous label "X matches" meant "responses that returned a non-null setup objec
 | `rejectedCount` | Setups where `candidateCheck.status === "NO_TRADE"` |
 | `unavailableCount` | Setups with `status = null / empty / unknown` |
 
-These counts are independent — a setup can appear in multiple buckets (e.g., a "triggered" setup with a NO_TRADE candidate contributes to both `confirmingCount` and `rejectedCount`).
-
-### UI display (analysis card):
-
-```
-10 strategies evaluated  |  0 confirming  ·  0 forming  ·  2 rejected  ·  8 unavailable
-```
-
 The old "X matches" / "X strategies checked" badges are replaced by the `CountBreakdown` component.
 
 ---
 
-## 8. GPT Safety
+## 11. Observability
 
-### When integrity passes:
-Existing rules apply. GPT explains the deterministic payload only; it may not invent levels, scores, or strategy matches not in the payload.
+### Resolved reference log (`price_reference_resolved`)
 
-### When integrity fails (`priceIntegrity.valid === false`):
-The `PRICE INTEGRITY OVERRIDE` instruction is appended:
-- GPT is prohibited from mentioning any price level by name or approximation
-- GPT is prohibited from suggesting levels can be inferred
-- GPT must state the withheld-levels explanation verbatim
-- GPT may not override, soften, or re-classify the `overallVerdict`
+Emitted on every multi-strategy analysis with integrity check enabled.
 
----
+```json
+{
+  "event": "price_reference_resolved",
+  "symbol": "MU",
+  "source": "internal_history_close",
+  "freshness": "fresh",
+  "validationResult": "ok",
+  "ratioCategory": null,
+  "durationMs": 142
+}
+```
 
-## 9. Known Limitations
+Safe fields only. No raw prices, no account identifiers, no full history.
 
-| Limitation | Impact |
-|---|---|
-| Reference price requires a live quote (`ctx.tickers[0].last`). Disconnected users have no quote → `PRICE_REFERENCE_UNAVAILABLE` → save blocked | Disconnected users cannot save multi-strategy research even when prices are correct |
-| The integrity check detects decimal-order mismatches and ±15% divergence, but cannot distinguish a legitimate volatility gap from a data error | A large intraday gap (>15%) for a volatile stock would be flagged as `divergent` |
-| The check compares only `marketContext.price` or `primarySetup.currentPrice` — not every supporting setup's price | Supporting setups with incorrect prices (but primary correct) would pass |
-| Integrity result is point-in-time — if the quote changes between check and client render, the flag may be stale | 10-minute TTL on ResearchSave handles mitigates stale-integrity saves |
-
----
-
-## 10. Production Monitoring
-
-Log event: `multi_strategy_price_integrity_failed`
+### Integrity failure log (`multi_strategy_price_integrity_failed`)
 
 ```json
 {
@@ -184,7 +228,43 @@ Log event: `multi_strategy_price_integrity_failed`
 }
 ```
 
+For `PRICE_REFERENCE_CONFLICT`:
+```json
+{
+  "event": "multi_strategy_price_integrity_failed",
+  "symbol": "MU",
+  "code": "PRICE_REFERENCE_CONFLICT",
+  "brokerPrice": 200.0,
+  "historyClose": 100.0,
+  "historyTimestamp": "2026-08-04"
+}
+```
+
 Alert on:
 - Repeated `ratioCategory: "10x"` or `"100x"` for the same symbol → likely MCP scaling regression
-- `ratioCategory: "divergent"` spikes → investigate market data provider outage
-- `code: "PRICE_REFERENCE_UNAVAILABLE"` for symbols with active quotes → market snapshot route may be failing
+- `PRICE_REFERENCE_CONFLICT` — broker and history disagree materially
+- `PRICE_REFERENCE_UNAVAILABLE` spike → market snapshot route may be failing
+- `source: "internal_history_close"` for many users → possible broker disconnection event
+
+---
+
+## 12. Performance and Caching
+
+Within one Ask AI request:
+- `fetchHistory` is called at most once per symbol (the resolver is called once; its `fetchHistory` dep is called once)
+- `TwelveDataDailyProvider` has its own in-flight deduplication (`inFlight` Map in twelve-data-client.ts) — repeated calls for the same symbol within the same event loop are deduplicated automatically
+- `outputSize: 5` — minimum needed to reliably identify the latest completed bar
+
+No long-lived price cache is introduced.
+
+---
+
+## 13. Disconnected-User Before / After
+
+| Scenario | Before (Task #40 absent) | After (Task #40) |
+|---|---|---|
+| No broker, no market snapshot | `PRICE_REFERENCE_UNAVAILABLE` → save blocked always | History close fetched → save allowed when prices consistent |
+| No broker, history matches setup (±15%) | Blocked | **Allowed** — `source: "internal_history_close"` |
+| No broker, setup 10× inflated | Blocked | **Still blocked** — history detects 10× mismatch |
+| Broker connected | No change | Broker quote used (same as before) |
+| Broker + history conflict | Not checked | **New** — `PRICE_REFERENCE_CONFLICT` detected |

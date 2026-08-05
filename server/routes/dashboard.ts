@@ -1,31 +1,34 @@
-// Dashboard Orchestration API — Sprint 5.5 / Task #58 (real market data)
+// Dashboard Orchestration API — Sprint 5.5 / Step 1 (Real Pipeline)
 //
 // GET /api/dashboard
 //
-// Single endpoint that fans out to all data sources in bounded parallel using
-// Promise.allSettled. Each section is independently tagged with status: "ok" |
-// "unavailable" so the client can isolate failures without a waterfall.
+// Single endpoint that fans out to all data sources via Promise.allSettled.
+// Each section is independently tagged with status: "ok" | "unavailable" so
+// the client can isolate failures without a waterfall.
+//
+// Opportunity pipeline (post-Step-1):
+//   MCP rank_market_trade_candidates → validateRankedTradeSearch adapter
+//   → stockOpportunities (deterministic, real Twelve Data-backed)
+//   → optionsAvailability (boundary descriptor, never fabricated contracts)
 //
 // Trust rules:
 //   - userId from req.session only; never from query/body.
 //   - No account numbers or broker identifiers returned to client.
 //   - No fabricated data — missing fields return status "unavailable".
-//   - dataMode "simulated" has been removed; all candidates are real or missing.
+//   - generateCandidateScenarios (radar-service) is NO LONGER called here —
+//     it produces simulated/mock data when no broker is connected.
+//   - OpenAI is never called in this route.
 
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { authStorage } from "../replit_integrations/auth";
 import { ResearchRecordService } from "../services/research-record-service";
-import { generateCandidateScenarios } from "../services/opportunity-radar/radar-service";
-import { getTrialFeatureRestriction } from "../services/daily-market-data/trial-entitlement";
 import { buildHomeSnapshot } from "./home-snapshot";
 import { buildAiInfraWatch } from "../services/ai-infra-watch";
-
-/** Strategy types that map to "growth" opportunities (stock or bullish-options). */
-const GROWTH_STRATEGIES = new Set(["stock_swing", "long_call", "debit_spread"]);
-
-/** Strategy types that map to "income" opportunities. */
-const INCOME_STRATEGIES = new Set(["covered_call", "cash_secured_put"]);
+import {
+  buildDashboardStockOpportunities,
+  buildOptionsAvailability,
+} from "../services/dashboard-stock-opportunities";
 
 export function registerDashboardRoutes(
   app: Express,
@@ -35,46 +38,24 @@ export function registerDashboardRoutes(
     const userId = (req.session as any)?.userId as string | undefined;
     if (!userId) return res.status(401).json({ error: "unauthorized" });
 
-    // Resolve trial restrictions once; needed for radar filter enforcement
-    const userRecord = await authStorage.getUser(userId).catch(() => null);
-    const restriction = userRecord
-      ? await getTrialFeatureRestriction(userRecord).catch(() => null)
-      : null;
-
-    // Build radar filters — broader universe to allow strategy-based splitting.
-    // Trial users get a restricted symbol set.
-    const radarFilters: Parameters<typeof generateCandidateScenarios>[1] = {
-      timeHorizon: "1_4w",
-      universe: "watchlist",
-      maxLoss: 2000,
-    };
-    if (restriction?.restricted) {
-      radarFilters.customSymbols = restriction.allowedSymbols;
-      delete radarFilters.universe;
-    }
+    // Check broker connection first (non-blocking; needed for optionsAvailability)
+    const brokerConnection = await storage.getBrokerConnection(userId).catch(() => null);
+    const brokerConnected = !!(brokerConnection?.isConnected);
 
     // Fan out in parallel — all settle independently
     const [
       snapshotResult,
-      radarResult,
+      stockOppsResult,
       aiInfraResult,
-      brokerConnectionResult,
       researchResult,
       watchlistsResult,
     ] = await Promise.allSettled([
       buildHomeSnapshot(userId),
-      generateCandidateScenarios(userId, radarFilters),
+      buildDashboardStockOpportunities(),
       buildAiInfraWatch(userId),
-      storage.getBrokerConnection(userId),
       ResearchRecordService.listForUser(userId, { limit: 5, archived: false }),
       storage.getWatchlists(userId),
     ]);
-
-    const brokerConnection =
-      brokerConnectionResult.status === "fulfilled"
-        ? brokerConnectionResult.value
-        : null;
-    const brokerConnected = !!(brokerConnection?.isConnected);
 
     // Fetch positions only when broker is connected
     let positionsResult: PromiseSettledResult<any[]> = {
@@ -90,56 +71,6 @@ export function registerDashboardRoutes(
         positionsResult = { status: "rejected", reason: String(err) };
       }
     }
-
-    // Clamp and split radar candidates by strategy type
-    let allCandidates: any[] = [];
-    if (radarResult.status === "fulfilled") {
-      allCandidates = Array.isArray((radarResult.value as any)?.candidates)
-        ? (radarResult.value as any).candidates
-        : [];
-      if (restriction?.restricted) {
-        allCandidates = allCandidates
-          .filter((c) =>
-            restriction.allowedSymbols.includes(
-              String(c.symbol ?? "").toUpperCase(),
-            ),
-          )
-          .slice(0, restriction.radarResultLimit ?? 5);
-      }
-    }
-
-    // Real-data eligibility gate: exclude candidates built on mock/hash-derived quotes.
-    //   "live"      — broker real-time quotes  ✓ real
-    //   "mixed"     — broker + Twelve Data stored bars  ✓ real
-    //   "simulated" — no broker, no stored bars, hash-derived mock only  ✗ excluded
-    //
-    // This enforces Task #58: only real market data surfaces to traders.
-    // Candidates that pass the gate have their internal dataMode stripped before
-    // reaching the client; provenance is communicated via section-level status only.
-    const realCandidates = allCandidates.filter(
-      (c: any) => c.dataMode !== "simulated",
-    );
-
-    function stripProvenance(c: any) {
-      const { dataMode: _dropped, ...rest } = c;
-      return rest;
-    }
-
-    // Split real candidates into strategy buckets
-    const growthCandidates = realCandidates
-      .filter((c: any) => GROWTH_STRATEGIES.has(c.strategyType) && c.bias !== "bearish")
-      .slice(0, 5)
-      .map(stripProvenance);
-    const incomeCandidates = realCandidates
-      .filter((c: any) => INCOME_STRATEGIES.has(c.strategyType))
-      .slice(0, 5)
-      .map(stripProvenance);
-    // Watchlist movers: any real-data strategy, sorted by score descending
-    const watchlistCandidates = realCandidates
-      .slice()
-      .sort((a: any, b: any) => (b.finalScore ?? 0) - (a.finalScore ?? 0))
-      .slice(0, 5)
-      .map(stripProvenance);
 
     // Sanitize positions — never return account IDs or raw balances
     const sanitizedPositions =
@@ -159,24 +90,15 @@ export function registerDashboardRoutes(
           ? { status: "ok", data: snapshotResult.value }
           : { status: "unavailable" },
 
-      // Growth opportunities: stock_swing + long_call (bullish bias)
-      // dataMode intentionally omitted — radar's internal "simulated" flag must never surface.
-      growthOpportunities:
-        radarResult.status === "fulfilled"
-          ? { status: "ok", candidates: growthCandidates }
-          : { status: "unavailable" },
+      // Real Twelve Data-backed stock opportunities via MCP ranking.
+      // No synthetic options fields. No simulated data.
+      stockOpportunities:
+        stockOppsResult.status === "fulfilled"
+          ? stockOppsResult.value
+          : { status: "unavailable", reason: "mcp_unavailable" },
 
-      // Income opportunities: covered_call + cash_secured_put
-      incomeOpportunities:
-        radarResult.status === "fulfilled"
-          ? { status: "ok", candidates: incomeCandidates }
-          : { status: "unavailable" },
-
-      // Top-ranked candidates across all strategies (watchlist movers)
-      watchlistOpportunities:
-        radarResult.status === "fulfilled"
-          ? { status: "ok", candidates: watchlistCandidates }
-          : { status: "unavailable" },
+      // Options-data boundary: always honest about what is and isn't available.
+      optionsAvailability: buildOptionsAvailability(brokerConnected),
 
       // AI Infrastructure Watch (NVDA, AMD, MU, AVGO, MRVL, CRDO, ANET, TSM)
       aiInfraWatch:

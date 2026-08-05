@@ -2181,23 +2181,72 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         }
       }
 
+      // Determine Twelve Data availability (independent of broker)
+      let twelveDataAvailable = false;
+      try {
+        const tdEnv = (process.env.TWELVE_DATA_API_KEY ?? "").trim();
+        twelveDataAvailable = tdEnv.length > 0;
+      } catch {
+        twelveDataAvailable = false;
+      }
+
+      // Capability-based shape (spec §7):
+      //   underlyingMarketData — Twelve Data stored bars, available to all entitled users
+      //   stockAnalysis        — MCP deterministic scanners, available when MCP is configured
+      //   liveOptionsData      — live options chain, only with a connected broker
+      //   portfolioContext     — positions/balances, only with a connected broker
+      //   execution            — order placement, only with a connected broker
+      const underlyingAvail = twelveDataAvailable || dailyCloseEntitled;
+      const mcpEnabled = (process.env.MCP_ENABLED ?? "").toLowerCase() === "true";
+
       res.json({
-        activeSource,
+        // Legacy fields (preserved for backward compatibility)
+        activeSource: hasBrokerConnection ? "brokerage" : twelveDataAvailable ? "twelve_data" : "unavailable",
         activeProvider,
-        isLive: activeSource !== "mock",
+        isLive: hasBrokerConnection,
         hasBrokerConnection,
         brokerProvider,
         dailyCloseEntitled,
+
+        // Capability-based fields (spec §7)
+        underlyingMarketData: {
+          available: underlyingAvail,
+          source: hasBrokerConnection ? "broker" : twelveDataAvailable ? "twelve_data" : "unavailable",
+          quality: hasBrokerConnection ? "live" : twelveDataAvailable ? "daily_close" : "unavailable",
+        },
+        stockAnalysis: {
+          available: underlyingAvail && mcpEnabled,
+          deterministic: true,
+          source: mcpEnabled ? "mcp" : "unavailable",
+        },
+        liveOptionsData: {
+          available: false, // requires a supported broker options-chain feed
+          source: null,
+          brokerRequired: true,
+        },
+        portfolioContext: {
+          available: hasBrokerConnection,
+          brokerConnected: hasBrokerConnection,
+        },
+        execution: {
+          available: hasBrokerConnection,
+          brokerConnected: hasBrokerConnection,
+        },
       });
     } catch (error) {
       console.error("Error in data-source/status:", error);
       // Return a safe default instead of 500 error
       res.json({
-        activeSource: "mock",
+        activeSource: "unavailable",
         activeProvider: null,
         isLive: false,
         hasBrokerConnection: false,
         brokerProvider: null,
+        underlyingMarketData: { available: false, source: "unavailable", quality: "unavailable" },
+        stockAnalysis: { available: false, deterministic: true, source: "unavailable" },
+        liveOptionsData: { available: false, source: null, brokerRequired: true },
+        portfolioContext: { available: false, brokerConnected: false },
+        execution: { available: false, brokerConnected: false },
         error: "Failed to get data source status",
       });
     }

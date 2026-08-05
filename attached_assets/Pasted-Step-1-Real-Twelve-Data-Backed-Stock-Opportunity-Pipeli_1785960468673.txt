@@ -1,0 +1,524 @@
+Step 1 — Real Twelve Data-Backed Stock Opportunity Pipeline
+
+PRIMARY REPOSITORY
+
+Implement this in the existing VCP Trader AI / StrategyAgent repository using Replit.
+
+This is the only scope for this step.
+
+Do not begin:
+
+- opportunity lifecycle
+- reusable opportunity pages
+- watchlist intelligence
+- research workspace changes
+- portfolio feature expansion
+- morning brief
+- subscription entitlement work
+
+Do not commit, push or deploy automatically.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Production GET /api/dashboard currently returns:
+
+marketSnapshot.dataMode = "live"
+marketSnapshot.dataSource = "twelve_data"
+
+but:
+
+opportunities.dataMode = "simulated"
+candidate.dataMode = "simulated"
+
+The opportunity candidates include a mixture of:
+
+- real Twelve Data underlying stock price/history
+- real or current sentiment context
+- simulated strategy selection
+- simulated options strikes
+- simulated expiration
+- simulated premium
+- simulated open interest
+- simulated options volume
+- simulated bid/ask spreads
+- simulated capital and payoff values
+
+The production dashboard must not present this mixed payload as real current opportunities.
+
+The MCP service already has deterministic scan and ranking tools and obtains market data through authenticated VCP Trader internal endpoints.
+
+==================================================
+GOAL
+==================================================
+
+Build a truthful production opportunity pipeline with two explicitly separate outputs:
+
+1. REAL STOCK OPPORTUNITIES
+
+Derived from:
+
+- Twelve Data-backed market history
+- deterministic MCP scanners
+- deterministic qualification
+- deterministic ranking
+- supported sentiment and event context
+
+2. OPTIONS AVAILABILITY
+
+Without a supported live options provider or broker chain:
+
+- no current contract candidates
+- no synthetic contract metrics in the real opportunity list
+- estimated strategy concepts may exist only in a clearly separate educational/estimated section
+
+A disconnected broker must not prevent real stock opportunity discovery.
+
+==================================================
+1. AUDIT THE CURRENT PIPELINE
+==================================================
+
+Trace GET /api/dashboard from route entry to serialized response.
+
+Identify:
+
+- the exact function generating opportunities.candidates
+- where dataMode becomes "simulated"
+- where strategyType is selected
+- where stock_swing, long_call and debit_spread candidates are constructed
+- where synthetic options fields are generated
+- whether candidates come from MCP or from a legacy/local scenario generator
+- whether an existing real MCP-ranked response is already available but ignored
+- why /api/data-source/status reports:
+  activeSource = "mock"
+  activeProvider = null
+  isLive = false
+  dailyCloseEntitled = true
+
+Create an audit section in the completion report before changing behavior.
+
+Do not assume the source.
+
+==================================================
+2. DEFINE SEPARATE RESPONSE CONTRACTS
+==================================================
+
+Refactor the dashboard response so opportunity data is separated into:
+
+stockOpportunities
+
+and:
+
+optionsAvailability
+
+Suggested shape:
+
+stockOpportunities: {
+  status,
+  dataSource,
+  dataQuality,
+  generatedAt,
+  sourceTimestamp,
+  reviewedCount,
+  qualifiedCount,
+  watchCount,
+  excludedCount,
+  unavailableCount,
+  candidates,
+  watchCandidates,
+  exclusionSummary,
+  warnings
+}
+
+optionsAvailability: {
+  liveChainAvailable,
+  source,
+  brokerRequired,
+  estimatedStructuresAvailable,
+  message
+}
+
+Use existing response fields and types where practical.
+
+Do not create a duplicate ranking vocabulary when the MCP ranked-search contract already provides one.
+
+==================================================
+3. REAL STOCK OPPORTUNITY SOURCE
+==================================================
+
+Use this production flow:
+
+Twelve Data-backed VCP Trader market history
+→ authenticated internal market endpoint
+→ MCP deterministic scanners and/or rank_market_trade_candidates
+→ validated VCP Trader adapter
+→ dashboard stock opportunities
+
+Reuse the same trusted validation and presentation contracts already used by Ask AI market-wide ranking.
+
+Do not use OpenAI to:
+
+- generate candidates
+- rank candidates
+- change qualification
+- change status
+- invent missing candidates
+
+OpenAI availability or API-credit exhaustion must not affect deterministic dashboard opportunities.
+
+==================================================
+4. STOCK CANDIDATE FIELDS
+==================================================
+
+For each real stock candidate, display only supported deterministic fields such as:
+
+- symbol
+- company name when available from a trusted mapping
+- strategy display name
+- direction
+- qualification status
+- deterministic score or confidence
+- setup state
+- trigger or confirmation level when validated
+- invalidation/risk reference when validated
+- objective only when independently meaningful
+- concise deterministic reason
+- warnings
+- earnings/event risk
+- source timestamp
+- data-quality label
+
+Do not carry over simulated scenario fields such as:
+
+- generated premium
+- synthetic expiration
+- synthetic strikes
+- synthetic open interest
+- synthetic options volume
+- synthetic bid/ask spread
+- synthetic maximum gain
+- synthetic options breakeven
+- synthetic contract liquidity claims
+
+==================================================
+5. OPTIONS BOUNDARY
+==================================================
+
+When no supported live options chain is available:
+
+optionsAvailability must clearly report:
+
+Live options chain unavailable
+
+Connect a supported broker for current contracts, premiums, Greeks, liquidity and broker-ready order review.
+
+An estimated options section may show only broad strategy concepts already supported by the deterministic recommendation engine, such as:
+
+- long call concept
+- debit spread concept
+- covered-call concept
+- cash-secured-put concept
+- approximate DTE range
+- defined-risk versus undefined-risk characteristics
+
+It must be labeled:
+
+Estimated structure — no live options chain used
+
+Never display invented contract details.
+
+Never place estimated options structures inside:
+
+Today’s Real Market Opportunities
+
+==================================================
+6. DASHBOARD PRESENTATION
+==================================================
+
+Replace the current simulated opportunity area with:
+
+Today’s Stock Opportunities
+
+Data badge:
+
+Latest daily market data
+
+or the precise supported freshness label.
+
+Display up to five real candidates in backend ranking order.
+
+Each card should include:
+
+- symbol
+- strategy
+- qualification label
+- score/confidence
+- concise reason
+- timestamp
+- Open Analysis
+
+If candidates are only watch candidates, label them accordingly.
+
+If no candidates qualify:
+
+- do not show simulated replacements
+- show the deterministic count summary
+- explain why nothing qualified using backend exclusion and unavailability data
+- show Open Scanner
+- show any real watch candidates in a separate “Approaching Qualification” subsection only if the backend provides them
+
+Do not invent near-miss candidates in this step.
+
+==================================================
+7. OPEN ANALYSIS BEHAVIOR
+==================================================
+
+For each real candidate, preserve enough result provenance to support later reuse.
+
+For this step:
+
+- Open Analysis may route to the existing analysis flow
+- do not silently add a new cache architecture
+- attach source timestamp and deterministic request context where safe
+- do not submit an order automatically
+
+Reusable result pages and explicit refresh behavior belong to Step 3.
+
+Do not expand this task into Step 3.
+
+==================================================
+8. DATA-SOURCE STATUS
+==================================================
+
+Correct /api/data-source/status so it does not treat the entire application as mock merely because no broker or live options chain exists.
+
+Expose distinct capabilities such as:
+
+underlyingMarketData: {
+  available,
+  source,
+  quality,
+  timestamp
+}
+
+stockAnalysis: {
+  available,
+  deterministic
+}
+
+liveOptionsData: {
+  available,
+  source
+}
+
+portfolioContext: {
+  available,
+  brokerConnected
+}
+
+execution: {
+  available,
+  brokerConnected
+}
+
+Expected disconnected-user state:
+
+- underlying market data: available through Twelve Data
+- stock analysis: available
+- live options data: unavailable unless another real provider exists
+- portfolio context: unavailable
+- execution: unavailable
+
+Do not label Twelve Data as broker data.
+
+==================================================
+9. MARKET SNAPSHOT FAILURE ISOLATION
+==================================================
+
+The latest screenshot shows:
+
+Market data is temporarily unavailable
+
+while AI Infrastructure Watch still has Twelve Data-backed prices.
+
+Make the message section-specific.
+
+Use:
+
+Market Snapshot is temporarily unavailable. Other market data may still be available below.
+
+A Market Snapshot failure must not invalidate:
+
+- stock opportunities
+- AI Infrastructure Watch
+- news context
+- saved research
+- watchlists
+- Ask AI
+
+==================================================
+10. SENTIMENT SYMBOL ISOLATION AUDIT
+==================================================
+
+Audit sentiment/news symbol isolation.
+
+Earlier payloads showed suspicious themes, including GOOGL candidate themes referring to Apple.
+
+Verify:
+
+- every article is associated with the requested symbol
+- cached sentiment results are keyed by symbol
+- no previous-symbol state leaks into another symbol
+- topThemes belong to the same symbol
+- article counts and labels are derived from the same symbol-specific set
+
+Do not rewrite the sentiment model in this step.
+
+Fix only confirmed symbol-isolation or cache-key defects.
+
+If no defect is found, document the trace and evidence.
+
+==================================================
+11. OPENAI FAILURE INDEPENDENCE
+==================================================
+
+Production currently receives:
+
+429 credit_balance_exhausted
+
+from OpenAI.
+
+The deterministic dashboard opportunity pipeline must continue to work when OpenAI is unavailable.
+
+Requirements:
+
+- no OpenAI dependency for candidate generation
+- no OpenAI dependency for qualification
+- no OpenAI dependency for ranking
+- no OpenAI dependency for empty-state counts
+- optional prose summaries may degrade to rule-based text
+- section must not fail because OpenAI billing is unavailable
+
+Do not modify OpenAI billing or keys in this task.
+
+==================================================
+12. TESTS
+==================================================
+
+Add tests for:
+
+A. Disconnected user
+
+- Twelve Data available
+- real stock opportunities returned
+- no portfolio context
+- no execution
+- no broker-only options data
+
+B. Stock opportunity integrity
+
+- candidate comes from deterministic MCP result
+- backend ranking order preserved
+- no simulated options fields survive
+- source timestamp preserved
+- data quality displayed
+- zero-qualified result remains honest
+- watch candidates shown only when supplied by backend
+
+C. Options boundary
+
+- no live options chain means no current contracts
+- no synthetic strike
+- no synthetic premium
+- no synthetic expiration
+- no synthetic Greeks
+- no synthetic open interest
+- estimated strategy concepts isolated and labeled
+
+D. Data-source status
+
+- Twelve Data stock availability does not report global mock state
+- broker disconnect affects only broker-dependent capabilities
+- live options and portfolio availability remain separate
+- market-open state does not determine data-source quality
+
+E. Failure isolation
+
+- market snapshot failure does not remove stock opportunities
+- OpenAI 429 does not remove deterministic opportunities
+- MCP failure produces an honest opportunity-section error
+- Twelve Data failure produces unavailable, not samples
+
+F. Sentiment isolation
+
+- symbol A articles cannot appear in symbol B themes
+- cache keys include symbol
+- concurrent symbol requests remain isolated
+
+G. Regression
+
+- Ask AI unchanged
+- scanner unchanged
+- My Research unchanged
+- broker flow unchanged
+- execution unchanged
+- no MCP algorithm changes
+- public homepage unchanged
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+13. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/SPRINT_5_5_PERSONALIZED_DASHBOARD.md
+
+Add:
+
+- verified current opportunity-pipeline audit
+- real stock opportunity architecture
+- options-data boundary
+- no-broker behavior
+- capability-based data-source status
+- OpenAI failure independence
+- market-snapshot failure isolation
+- sentiment symbol-isolation findings
+- known limitations
+
+==================================================
+14. COMPLETION REPORT
+==================================================
+
+Return:
+
+1. exact root cause of simulated opportunity output
+2. existing pipeline before the change
+3. pipeline after the change
+4. files created
+5. files modified
+6. dashboard response contract
+7. real stock opportunity source
+8. candidate-field policy
+9. options-data boundary
+10. data-source status changes
+11. market-snapshot failure isolation
+12. sentiment-isolation audit
+13. OpenAI failure behavior
+14. tests and totals
+15. build result
+16. screenshots for:
+    - no broker with real candidates
+    - no broker with zero qualified
+    - market snapshot failure with opportunities still available
+17. compatibility concerns
+18. recommended deployment and UAT sequence
+
+Do not commit, push or deploy automatically.
+
+Wait for review.

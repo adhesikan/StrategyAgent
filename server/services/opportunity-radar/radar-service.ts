@@ -11,7 +11,7 @@
 
 import { storage } from "../../storage";
 import { fetchQuotesFromBroker, type QuoteData } from "../../broker-service";
-import { getCachedYahooQuote, getYahooQuote } from "../yahoo-finance-cache";
+import { getHistoricalBars } from "../market-history-service";
 import {
   getReferenceSnapshotsBulk,
   type ReferenceSnapshot,
@@ -200,30 +200,44 @@ function pickBiasForSymbol(sym: string, requested: Bias | "any" | undefined, str
   return h === 0 ? "bullish" : h === 1 ? "neutral" : "bearish";
 }
 
-function buildMockQuote(sym: string): QuoteData {
-  // Prefer the daily Yahoo Finance reference price (warmed once/day) so mock
-  // examples shown to trial users are anchored to real prior-day closes
-  // instead of a hash-based fake. Falls back to the deterministic hash if
-  // Yahoo hasn't returned a value for this symbol yet.
-  const ref = getCachedYahooQuote(sym);
-  if (ref && ref.regularMarketPrice > 0 && ref.previousClose > 0) {
-    const last = ref.regularMarketPrice;
-    const prevClose = ref.previousClose;
-    const volume = ref.volume > 0 ? ref.volume : 500_000;
-    return {
+async function buildMockQuote(sym: string): Promise<QuoteData> {
+  // Prefer the latest stored daily close from PostgreSQL so mock examples
+  // shown to trial users are anchored to real prior-day closes instead of
+  // a hash-based fake. No HTTP requests are made — stored bars only.
+  // Falls back to the deterministic hash if the symbol is not in the
+  // stored universe (e.g. not one of the 20 ingested symbols).
+  try {
+    const result = await getHistoricalBars({
       symbol: sym,
-      last: round2(last),
-      change: round2(last - prevClose),
-      changePercent: round2(((last - prevClose) / prevClose) * 100),
-      volume,
-      avgVolume: Math.round(volume * 0.85),
-      high: round2(ref.high),
-      low: round2(ref.low),
-      open: round2(prevClose * 1.001),
-      prevClose: round2(prevClose),
-    };
+      outputSize: 2,
+      purpose: "scan",
+      allowExternalRefresh: false,
+    });
+    const bars = result.bars;
+    if (bars.length > 0) {
+      const latest = bars[bars.length - 1];
+      const prev = bars.length > 1 ? bars[bars.length - 2] : latest;
+      const last = Number(latest.close);
+      const prevClose = Number(prev.close);
+      const volume = Number(latest.volume) || 500_000;
+      return {
+        symbol: sym,
+        last: round2(last),
+        change: round2(last - prevClose),
+        changePercent: round2(prevClose > 0 ? ((last - prevClose) / prevClose) * 100 : 0),
+        volume,
+        avgVolume: Math.round(volume * 0.85),
+        high: round2(Number(latest.high)),
+        low: round2(Number(latest.low)),
+        open: round2(Number(latest.open)),
+        prevClose: round2(prevClose),
+      };
+    }
+  } catch {
+    // Symbol not in stored universe — fall through to deterministic hash.
   }
 
+  // Deterministic hash fallback for symbols not in the stored universe.
   const h = symbolHash(sym);
   const base = 25 + (h % 350);
   const drift = ((h % 700) - 350) / 100; // -3.5% .. +3.5%
@@ -232,8 +246,6 @@ function buildMockQuote(sym: string): QuoteData {
   const low = last * 0.97;
   const prevClose = last / (1 + drift / 100);
   const volume = 500_000 + (h % 9_500_000);
-  // Kick off a background fetch so subsequent calls can use the real price.
-  void getYahooQuote(sym);
   return {
     symbol: sym,
     last: round2(last),
@@ -781,7 +793,7 @@ async function enrichWithMarketData(symbols: string[], userId: string, ctx: User
       quotes.push(refQuote);
       referenceCount += 1;
     } else {
-      quotes.push(buildMockQuote(s));
+      quotes.push(await buildMockQuote(s));
     }
   }
   ctx.referenceQuoteCount = referenceCount;

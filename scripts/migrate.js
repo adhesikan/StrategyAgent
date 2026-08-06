@@ -869,6 +869,55 @@ async function migrate() {
       END $$;
     `);
 
+    // Sprint 1.1 — Opportunity Engine persisted snapshots
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = 'opportunity_scan_snapshots'
+        ) THEN
+          CREATE TABLE opportunity_scan_snapshots (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::VARCHAR,
+            status TEXT NOT NULL,
+            scan_type TEXT NOT NULL DEFAULT 'MARKET_RANKING',
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            generated_at TIMESTAMPTZ,
+            source_timestamp TIMESTAMPTZ,
+            market_session TEXT,
+            data_source TEXT,
+            data_quality TEXT,
+            scanner_version TEXT,
+            request_fingerprint TEXT,
+            request_summary JSONB,
+            reviewed_count INTEGER NOT NULL DEFAULT 0,
+            qualified_count INTEGER NOT NULL DEFAULT 0,
+            watch_count INTEGER NOT NULL DEFAULT 0,
+            rejected_count INTEGER NOT NULL DEFAULT 0,
+            excluded_count INTEGER NOT NULL DEFAULT 0,
+            unavailable_count INTEGER NOT NULL DEFAULT 0,
+            result_payload JSONB,
+            warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+            error_code TEXT,
+            error_summary TEXT,
+            duration_ms INTEGER,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_oss_completed_at
+            ON opportunity_scan_snapshots (completed_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_oss_status
+            ON opportunity_scan_snapshots (status);
+          CREATE INDEX IF NOT EXISTS idx_oss_scan_type_completed
+            ON opportunity_scan_snapshots (scan_type, completed_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_oss_fingerprint_completed
+            ON opportunity_scan_snapshots (request_fingerprint, completed_at DESC);
+          RAISE NOTICE 'Created opportunity_scan_snapshots table with indexes';
+        END IF;
+      END $$;
+    `);
+    console.log('Created/verified opportunity_scan_snapshots table');
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

@@ -27,7 +27,7 @@ The dashboard uses a single backend orchestration endpoint `GET /api/dashboard` 
 |----------|-----------|
 | `GET /api/dashboard` (orchestration) | All sections |
 | `buildHomeSnapshot(userId)` | Market Snapshot, Growth Watch, Market Events |
-| `buildDashboardStockOpportunities()` | Today's Stock Opportunities (Step 1) |
+| `GET /api/opportunities/latest` | Today's Stock Opportunities (pre-computed by Opportunity Engine) |
 | `buildOptionsAvailability(hasBroker)` | Options Availability (boundary descriptor) |
 | `buildAiInfraWatch(userId)` | AI Infrastructure Watch |
 | `storage.getBrokerConnection(userId)` | Portfolio section |

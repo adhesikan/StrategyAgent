@@ -2794,3 +2794,51 @@ export const decisionJournalEntries = pgTable("decision_journal_entries", {
 
 export type DecisionJournalEntry = typeof decisionJournalEntries.$inferSelect;
 export type InsertDecisionJournalEntry = typeof decisionJournalEntries.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Opportunity Engine — persisted scan snapshots (Sprint 1.1)
+// ---------------------------------------------------------------------------
+
+export const opportunityScanSnapshots = pgTable("opportunity_scan_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Scan outcome: SUCCESS | PARTIAL_SUCCESS | EMPTY_SUCCESS | FAILED */
+  status: text("status").notNull(),
+  /** Always MARKET_RANKING for now; reserved for future scan types. */
+  scanType: text("scan_type").notNull().default("MARKET_RANKING"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  /** Timestamp MCP reported for the underlying market data (may be null). */
+  generatedAt: timestamp("generated_at"),
+  sourceTimestamp: timestamp("source_timestamp"),
+  marketSession: text("market_session"),
+  dataSource: text("data_source"),
+  dataQuality: text("data_quality"),
+  scannerVersion: text("scanner_version"),
+  /** Hash of the request parameters for deduplication / provenance. */
+  requestFingerprint: text("request_fingerprint"),
+  /** Safe bounded request metadata (no tokens, no account IDs). */
+  requestSummary: jsonb("request_summary"),
+  reviewedCount: integer("reviewed_count").notNull().default(0),
+  qualifiedCount: integer("qualified_count").notNull().default(0),
+  watchCount: integer("watch_count").notNull().default(0),
+  rejectedCount: integer("rejected_count").notNull().default(0),
+  excludedCount: integer("excluded_count").notNull().default(0),
+  unavailableCount: integer("unavailable_count").notNull().default(0),
+  /** Candidate buckets + marketRegime. Null for FAILED rows. Validated before write. */
+  resultPayload: jsonb("result_payload"),
+  warnings: jsonb("warnings").notNull().default([]),
+  /** Safe short error code (no stack, no token, no session info). */
+  errorCode: text("error_code"),
+  /** Safe bounded error description. Never a stack trace. */
+  errorSummary: text("error_summary"),
+  durationMs: integer("duration_ms"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  idxCompletedAt: index("idx_oss_completed_at").on(t.completedAt),
+  idxStatus: index("idx_oss_status").on(t.status),
+  idxScanTypeCompleted: index("idx_oss_scan_type_completed").on(t.scanType, t.completedAt),
+  idxFingerprintCompleted: index("idx_oss_fingerprint_completed").on(t.requestFingerprint, t.completedAt),
+}));
+
+export type OpportunityScanSnapshot = typeof opportunityScanSnapshots.$inferSelect;
+export type InsertOpportunityScanSnapshot = typeof opportunityScanSnapshots.$inferInsert;

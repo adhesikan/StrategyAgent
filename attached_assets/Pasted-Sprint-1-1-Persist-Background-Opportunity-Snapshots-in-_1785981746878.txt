@@ -1,0 +1,699 @@
+Sprint 1.1 — Persist Background Opportunity Snapshots in PostgreSQL
+
+PRIMARY REPOSITORY
+
+Implement this in the existing VCP Trader AI / StrategyAgent repository using Replit.
+
+CURRENT IMPLEMENTATION
+
+The application already has:
+
+- server/services/opportunity-engine.ts
+- a non-blocking background scan at startup
+- scheduled refresh every four hours
+- an in-memory OpportunitySnapshot
+- GET /api/opportunities/latest
+- dashboard-side independent fetching of the latest snapshot
+- no synchronous dashboard MCP scan
+- 2,167 passing tests
+
+The current weakness is that the latest snapshot exists only in process memory.
+
+A Railway deployment, restart, crash, or process replacement removes the snapshot and forces users to wait for the next scan.
+
+GOAL
+
+Persist validated Opportunity Engine snapshots in the existing VCP Trader PostgreSQL database.
+
+The engine should:
+
+1. load the latest valid snapshot from PostgreSQL during startup
+2. serve that persisted snapshot immediately
+3. run the background refresh asynchronously
+4. persist successful, partial-success, and valid empty results
+5. preserve the last valid snapshot when a refresh fails
+6. continue using memory as a fast runtime cache
+
+This is a completion task for Sprint 1.
+
+Do not begin:
+
+- Opportunity Lifecycle
+- comparison/change detection
+- Watchlist Intelligence
+- Research Workspace expansion
+- Portfolio expansion
+- newsletter work
+- persistent MCP market-history caching
+- new MCP tools
+
+Do not modify MCP ranking, qualification, scoring, risk, options, portfolio, or execution logic.
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. AUDIT EXISTING DATABASE CONVENTIONS
+==================================================
+
+Before implementation, inspect:
+
+- shared/schema.ts
+- scripts/migrate.js
+- Drizzle ORM conventions
+- existing snapshot/history tables
+- existing JSONB usage
+- existing service/repository patterns
+- startup migration behavior
+- retention-job conventions
+- PostgreSQL advisory-lock conventions, if any
+- timestamp and UUID conventions
+
+Reuse the existing patterns.
+
+Do not introduce another ORM or database framework.
+
+==================================================
+2. CREATE THE SNAPSHOT TABLE
+==================================================
+
+Add an additive table such as:
+
+opportunity_scan_snapshots
+
+Recommended fields:
+
+id
+UUID primary key
+default gen_random_uuid()
+
+status
+text or enum-compatible string
+
+Allowed application values:
+
+SUCCESS
+PARTIAL_SUCCESS
+EMPTY_SUCCESS
+FAILED
+
+scan_type
+text
+default MARKET_RANKING
+
+started_at
+timestamp with timezone
+
+completed_at
+timestamp with timezone
+
+generated_at
+timestamp with timezone
+nullable when MCP did not supply it
+
+source_timestamp
+timestamp with timezone
+nullable
+
+market_session
+text
+nullable
+
+data_source
+text
+nullable
+
+data_quality
+text
+nullable
+
+scanner_version
+text
+nullable
+
+request_fingerprint
+text
+nullable
+
+request_summary
+JSONB
+safe bounded request metadata only
+
+reviewed_count
+integer
+
+qualified_count
+integer
+
+watch_count
+integer
+
+rejected_count
+integer
+
+excluded_count
+integer
+
+unavailable_count
+integer
+
+result_payload
+JSONB
+nullable for FAILED
+
+warnings
+JSONB
+default empty array
+
+error_code
+text
+nullable
+
+error_summary
+text
+nullable
+safe bounded text only
+
+duration_ms
+integer
+nullable
+
+created_at
+timestamp with timezone
+default now()
+
+Do not store:
+
+- MCP session IDs
+- access tokens
+- authorization headers
+- raw provider payloads
+- API keys
+- account identifiers
+- portfolio positions
+- user prompts
+- OpenAI payloads
+- brokerage data
+- unvalidated MCP responses
+
+==================================================
+3. INDEXES
+==================================================
+
+Add only useful indexes:
+
+- completed_at descending
+- status
+- scan_type plus completed_at descending
+- request_fingerprint plus completed_at descending
+
+Do not prematurely normalize every opportunity candidate into a child table.
+
+Keep the validated response as JSONB for this sprint.
+
+==================================================
+4. IDEMPOTENT MIGRATION
+==================================================
+
+Update scripts/migrate.js using the repository’s established idempotent pattern.
+
+Requirements:
+
+- CREATE TABLE only when absent
+- CREATE INDEX only when absent
+- safe to run repeatedly
+- no destructive migration
+- no dropping or renaming existing tables
+- no modification of existing research, portfolio, watchlist, trade, or broker tables
+
+Document the exact migration command.
+
+==================================================
+5. CREATE A SNAPSHOT STORE
+==================================================
+
+Create a focused service such as:
+
+server/services/opportunity-snapshot-store.ts
+
+Suggested interface:
+
+saveSuccessfulSnapshot(...)
+saveFailedAttempt(...)
+getLatestValidSnapshot(...)
+getLatestAttempt(...)
+deleteExpiredSnapshots(...)
+
+The Opportunity Engine should not contain direct SQL throughout its orchestration logic.
+
+Use the repository’s existing database abstraction.
+
+==================================================
+6. STRICT VALIDATION BEFORE PERSISTENCE
+==================================================
+
+Before writing result_payload:
+
+- reuse the existing validated dashboard/MCP ranked-result adapter
+- ensure timestamps are valid
+- ensure counts are finite non-negative integers
+- ensure candidates and watchCandidates are bounded
+- ensure ranking order is preserved
+- reject unknown or unsafe payload shapes according to existing conventions
+- scan for forbidden sensitive fields
+- confirm no dataMode = simulated
+- confirm no synthetic options-contract fields appear inside stock candidates
+
+Forbidden fields inside persisted stock opportunity payloads include:
+
+premium
+strikes
+expiration
+optionOpenInterest
+optionVolume
+bidAskSpreadPct
+delta
+gamma
+theta
+vega
+accessToken
+accountId
+sessionId
+authorization
+rawProviderResponse
+
+Do not persist a result that fails validation.
+
+A validation failure should create a safe FAILED attempt record or safe log, but must not replace the last valid snapshot.
+
+==================================================
+7. CLASSIFY SCAN OUTCOMES
+==================================================
+
+Use these definitions:
+
+SUCCESS
+
+A valid result contains one or more qualified candidates.
+
+PARTIAL_SUCCESS
+
+A valid result was returned, but some candidates were unavailable or warnings were present.
+
+EMPTY_SUCCESS
+
+A valid deterministic result was returned with zero qualified and zero watch candidates.
+
+This is not an error.
+
+FAILED
+
+The MCP call failed, timed out, returned an invalid schema, or could not be safely persisted.
+
+Rules:
+
+- SUCCESS, PARTIAL_SUCCESS, and EMPTY_SUCCESS may become the latest valid snapshot.
+- FAILED must never replace the latest valid snapshot.
+- FAILED may be recorded separately with safe error metadata.
+- Never replace a valid snapshot with fabricated or simulated data.
+
+If a result has candidates plus unavailable items, classify it as PARTIAL_SUCCESS.
+
+If an empty result is valid and honestly counted, classify it as EMPTY_SUCCESS.
+
+==================================================
+8. MEMORY + POSTGRES BEHAVIOR
+==================================================
+
+Use PostgreSQL as the durable source of truth and memory as a fast cache.
+
+Startup sequence:
+
+1. start application normally
+2. load latest valid snapshot from PostgreSQL
+3. place it in the in-memory snapshot cache
+4. serve /api/opportunities/latest immediately when one exists
+5. start a new background scan asynchronously
+6. replace memory and PostgreSQL latest state only after a new valid result is persisted
+
+Do not delay server startup waiting for MCP.
+
+If PostgreSQL loading fails:
+
+- log safely
+- continue running
+- background scan may still attempt later
+- dashboard shows honest unavailable/initializing state
+
+If MCP refresh fails:
+
+- keep serving the previous valid snapshot
+- attach stale/failure metadata where the current contract supports it
+- do not set the snapshot to null
+
+==================================================
+9. LATEST SNAPSHOT ENDPOINT
+==================================================
+
+Update:
+
+GET /api/opportunities/latest
+
+Recommended response:
+
+{
+  "snapshot": {
+    "id": "...",
+    "status": "SUCCESS | PARTIAL_SUCCESS | EMPTY_SUCCESS",
+    "freshnessStatus": "fresh | stale",
+    "refreshStatus": "idle | running | failed",
+    "startedAt": "...",
+    "completedAt": "...",
+    "generatedAt": "...",
+    "sourceTimestamp": "...",
+    "dataSource": "...",
+    "dataQuality": "...",
+    "scannerVersion": "...",
+    "counts": {
+      "reviewed": 0,
+      "qualified": 0,
+      "watch": 0,
+      "rejected": 0,
+      "excluded": 0,
+      "unavailable": 0
+    },
+    "topGrowth": [],
+    "topIncome": [],
+    "topWatchlist": [],
+    "approachingQualification": [],
+    "warnings": []
+  },
+  "lastRefresh": {
+    "status": "idle | running | failed",
+    "attemptedAt": "...",
+    "errorSummary": null
+  }
+}
+
+Preserve compatibility with the current client where practical.
+
+Do not expose error stack traces, MCP session details, tokens, or internal URLs.
+
+If there is no valid snapshot yet:
+
+{
+  "snapshot": null,
+  "lastRefresh": {
+    "status": "idle | running | failed",
+    "attemptedAt": "...",
+    "errorSummary": "safe message or null"
+  }
+}
+
+==================================================
+10. SCAN INTERVAL CONFIGURATION
+==================================================
+
+Replace the hardcoded four-hour interval with:
+
+OPPORTUNITY_SCAN_INTERVAL_MINUTES
+
+Default:
+
+240
+
+Apply reasonable bounds, such as:
+
+minimum 30
+maximum 1440
+
+Invalid values should safely fall back to 240.
+
+Do not schedule every five minutes for daily-close data.
+
+The interval belongs on the VCP Trader Railway service, not MCP.
+
+Do not change the default scan cadence beyond making it configurable.
+
+==================================================
+11. OVERLAP PROTECTION
+==================================================
+
+Ensure a second scan cannot start while one is already running.
+
+At minimum preserve an in-process running guard.
+
+For multi-instance safety, inspect whether PostgreSQL advisory locks are already used.
+
+Preferred:
+
+Use a PostgreSQL advisory lock around the background scan.
+
+Requirements:
+
+- only one Railway instance performs a scan
+- another instance skips safely
+- lock releases after success or failure
+- deployment/restart does not permanently orphan the lock
+- no second scan begins during an active scan
+
+If advisory locking cannot be implemented safely with current database conventions, report that honestly and implement the strongest compatible protection, but do not silently assume a permanent single instance.
+
+==================================================
+12. FAILURE AND STALE-WHILE-REFRESH
+==================================================
+
+Behavior:
+
+Fresh valid snapshot
+→ serve normally
+
+Background refresh running
+→ serve previous valid snapshot with refreshStatus = running
+
+Refresh failed
+→ serve previous valid snapshot with refreshStatus = failed and safe warning
+
+Snapshot older than the configured freshness policy
+→ serve it with freshnessStatus = stale
+
+No valid snapshot
+→ return snapshot: null
+
+Do not hide a valid previous snapshot because the most recent refresh failed.
+
+==================================================
+13. RETENTION
+==================================================
+
+Keep valid snapshots for 30 days initially.
+
+Keep failed-attempt records for a shorter period, such as 7 days.
+
+Implement retention using an existing cleanup convention or a bounded cleanup call after successful scans.
+
+Requirements:
+
+- cleanup is non-blocking where practical
+- cleanup failure does not fail a successful scan
+- no unrelated records are deleted
+- retention duration is documented
+
+Do not build a data warehouse.
+
+==================================================
+14. SAFE OBSERVABILITY
+==================================================
+
+Add or preserve structured events:
+
+opportunity_snapshot_loaded
+opportunity_snapshot_load_failed
+opportunity_scan_started
+opportunity_scan_skipped_locked
+opportunity_scan_completed
+opportunity_scan_partial
+opportunity_scan_empty
+opportunity_scan_failed
+opportunity_snapshot_persisted
+opportunity_snapshot_persistence_failed
+opportunity_snapshot_served
+opportunity_snapshot_served_stale
+opportunity_snapshot_retention_completed
+
+Safe fields:
+
+- snapshot ID
+- status
+- counts
+- duration
+- freshness
+- scanner version
+- data source
+- lock result
+- safe error code
+
+Do not log full result payloads, symbols from private user data, tokens, MCP session IDs, account data, or provider payloads.
+
+==================================================
+15. TESTS
+==================================================
+
+Add tests for:
+
+A. Persistence
+
+- SUCCESS persisted
+- PARTIAL_SUCCESS persisted
+- EMPTY_SUCCESS persisted
+- FAILED does not replace last valid snapshot
+- invalid payload rejected
+- forbidden fields rejected
+- candidate order preserved
+- counts preserved
+
+B. Startup
+
+- latest valid snapshot loads from PostgreSQL
+- loaded snapshot populates memory
+- dashboard can serve snapshot before first new scan
+- no stored snapshot returns null
+- database load failure degrades safely
+- startup is not blocked by MCP
+
+C. Refresh
+
+- successful refresh replaces latest memory snapshot after persistence
+- failed refresh retains previous snapshot
+- refresh running serves previous snapshot
+- overlapping scan prevented
+- advisory lock or chosen cross-instance protection works
+
+D. Endpoint
+
+- fresh snapshot
+- stale snapshot
+- partial snapshot
+- empty snapshot
+- failed latest attempt with prior good snapshot
+- no snapshot
+- safe error summary
+- no sensitive fields
+
+E. Configuration
+
+- default scan interval
+- valid override
+- malformed override
+- below minimum
+- above maximum
+
+F. Retention
+
+- valid snapshots older than 30 days deleted
+- failed attempts older than 7 days deleted
+- newer records preserved
+- cleanup failure does not invalidate scan
+
+G. Regression
+
+- dashboard still does not call MCP
+- Ask AI remains on-demand
+- Scanner remains on-demand
+- Research unchanged
+- Portfolio unchanged
+- Broker unchanged
+- Congress unchanged
+- execution unchanged
+- no MCP changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+16. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/SPRINT_5_5_PERSONALIZED_DASHBOARD.md
+
+And create:
+
+docs/OPPORTUNITY_ENGINE_PERSISTENCE.md
+
+Document:
+
+- database schema
+- migration
+- snapshot lifecycle
+- startup behavior
+- scan outcome classifications
+- memory versus PostgreSQL responsibility
+- locking
+- scan interval configuration
+- stale-while-refresh
+- retention
+- endpoint response
+- deployment sequence
+- rollback strategy
+- known limitations
+
+==================================================
+17. DEPLOYMENT PLAN
+==================================================
+
+Recommend this phased rollout:
+
+Phase 1
+
+- run database migration
+- deploy code with engine persistence enabled
+- keep current dashboard endpoint contract compatible
+
+Phase 2
+
+- verify startup loads the latest stored snapshot
+- verify a background scan persists a new snapshot
+- verify failed refresh preserves previous data
+
+Phase 3
+
+- restart VCP Trader
+- confirm dashboard immediately serves the PostgreSQL snapshot
+- confirm it does not wait for a new MCP scan
+
+No MCP deployment is required for this task.
+
+==================================================
+18. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. existing database conventions reused
+2. files created
+3. files modified
+4. table schema
+5. migration
+6. snapshot store design
+7. validation policy
+8. scan outcome classification
+9. startup-load behavior
+10. memory/PostgreSQL responsibilities
+11. locking and overlap prevention
+12. configurable interval
+13. stale-while-refresh behavior
+14. retention
+15. endpoint contract
+16. tests and totals
+17. build result
+18. migration command
+19. Railway variable changes
+20. deployment sequence
+21. compatibility concerns
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

@@ -182,22 +182,44 @@ interface StockOpportunitiesBlock {
 // Opportunity Engine snapshot (served by GET /api/opportunities/latest)
 // ---------------------------------------------------------------------------
 
+interface OpportunityCounts {
+  reviewed: number;
+  qualified: number;
+  watch: number;
+  rejected: number;
+  excluded: number;
+  unavailable: number;
+}
+
 interface OpportunitySnapshot {
+  id: string;
+  status: "SUCCESS" | "PARTIAL_SUCCESS" | "EMPTY_SUCCESS";
+  freshnessStatus: "fresh" | "stale";
+  refreshStatus: "idle" | "running" | "failed";
+  startedAt: string;
+  completedAt: string;
   generatedAt: string;
   scannerVersion: string;
   marketRegime: string | null;
   dataSource: string;
+  dataQuality: string;
+  counts: OpportunityCounts;
   topGrowth: RankedStockCandidate[];
   topIncome: RankedStockCandidate[];
   topWatchlist: WatchStockCandidate[];
   approachingQualification: WatchStockCandidate[];
-  reviewedCount: number;
-  qualifiedCount: number;
   warnings: string[];
+}
+
+interface LastRefreshInfo {
+  status: "idle" | "running" | "failed";
+  attemptedAt: string | null;
+  errorSummary: string | null;
 }
 
 interface OpportunityLatestResponse {
   snapshot: OpportunitySnapshot | null;
+  lastRefresh: LastRefreshInfo;
 }
 
 interface OptionsAvailabilityBlock {
@@ -1091,12 +1113,26 @@ function OpportunityEngineSection({
             Deterministic stock setups from latest daily market data, ranked by the scanner.
             Not a recommendation to buy or sell.
           </p>
-          {/* Metadata row: scan time + scanner version */}
+          {/* Metadata row: scan time, scanner version, counts */}
           {snapshot && (
             <div className="flex items-center gap-3 pt-0.5 flex-wrap">
+              {snapshot.freshnessStatus === "stale" && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] border-amber-400/40 text-amber-400"
+                  data-testid="badge-stale"
+                >
+                  Stale
+                </Badge>
+              )}
+              {snapshot.refreshStatus === "running" && (
+                <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+                  <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" /> Refreshing…
+                </span>
+              )}
               <span className="text-[10px] text-muted-foreground/70" data-testid="text-scan-time">
                 Newest scan:{" "}
-                {new Date(snapshot.generatedAt).toLocaleTimeString([], {
+                {new Date(snapshot.completedAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
@@ -1106,9 +1142,9 @@ function OpportunityEngineSection({
               </span>
               <span className="text-[10px] text-muted-foreground/70">
                 Reviewed{" "}
-                <span className="font-mono">{snapshot.reviewedCount}</span>
+                <span className="font-mono">{snapshot.counts.reviewed}</span>
                 {" · "}
-                <span className="font-mono">{snapshot.qualifiedCount}</span> qualified
+                <span className="font-mono">{snapshot.counts.qualified}</span> qualified
               </span>
             </div>
           )}

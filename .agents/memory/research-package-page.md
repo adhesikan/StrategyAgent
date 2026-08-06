@@ -29,6 +29,19 @@ description: Sprint 2.1 — /opportunity/:symbol page architecture, data contrac
 - `StockOpportunityCard` in dashboard.tsx: "Research" button → `/opportunity/:symbol`
 - data-testid: `btn-research-{symbol}`
 
+## Trade Structure Engine (Sprint 2.2)
+- 7 components in `client/src/components/research/structure/`: StockStructureCard, OptionsStructureCard, TradeComparisonCard, TradeStructureReasonCard, TradeStructureRiskCard, TradeStructureCard (orchestrator), TradeStructureEngine (tab)
+- New "Trade Planning" tab added (3rd tab, after Decision)
+- deriveStockStructure() → 5 types: breakout-entry, pullback-entry, swing-position, position-trade, long-stock; prioritizes VCP+HIGH=breakout, VCP+MEDIUM=pullback, PULLBACK, SWING, GAP/ORB=long-stock, TRENDING+HIGH+trend-text=position-trade
+- deriveOptionsStructures(pkg, thesis) → thesis=bearish | regime=RISK_OFF | intraday strategy → empty array; bullish+TRENDING+HIGH → [bull-call-spread(best-overall), long-call, cash-secured-put(income), bull-put-spread(income+conservative)]; neutral → [iron-condor, covered-call]
+- deriveDTE() → 30 DTE for ORB/GAP, 60-90 DTE for month/position/trend, 45-60 DTE for VCP/BREAKOUT, 30-45 DTE default
+- buildStructureComparisons() → up to 4 categories: best-overall, best-stock, income-alternative, conservative; confidence = techBase±regimeMod±thesisMod (0-100)
+- OptionsStructureCard explicitly shows NEVER-list: no premiums, Greeks, OI, bid/ask, expiration dates (Sprint 2.2.1 placeholder)
+- InstaTradePanel: brokerConnected=true → "Prepare Broker Review" (disabled); false → "Connect Broker to Verify Live Contracts"
+- Sections are collapsible (Illustrative Trade Structures + Structure Comparison)
+- 84 new tests in `client/src/components/research/structure/trade-structure-engine.test.tsx`
+- All compliance language used: never "Buy/Sell/Recommended Trade/Expected Profit/Guaranteed/Target Return"
+
 ## Research Decision Engine (Sprint 2.1.3)
 - 6 components in `client/src/components/research/decision/`: ResearchDecisionCard, QualificationSummaryCard, ScoreBreakdownCard, SupportingEvidenceCard, InvalidationCard, CatalystTimelineCard + ResearchDecisionEngine orchestrator
 - Answers 6 research questions: why qualify, why rank, what supports, what weakens, what invalidates, what would improve

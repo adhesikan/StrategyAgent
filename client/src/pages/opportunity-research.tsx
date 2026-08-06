@@ -74,6 +74,7 @@ export type { EvidenceStars } from "@/components/research/types";
 
 import { ResearchTradeCard } from "@/components/research";
 import { ResearchDecisionCard, ResearchDecisionEngine } from "@/components/research/decision";
+import { TradeStructureEngine } from "@/components/research/structure";
 
 // ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
@@ -2131,9 +2132,10 @@ function SymbolNotFound({ symbol }: { symbol: string }) {
 // ---------------------------------------------------------------------------
 
 const TABS = [
-  { value: "overview",      label: "Overview" },
-  { value: "decision",      label: "Decision" },
-  { value: "technical",     label: "Technical" },
+  { value: "overview",       label: "Overview" },
+  { value: "decision",       label: "Decision" },
+  { value: "trade-planning", label: "Trade Planning" },
+  { value: "technical",      label: "Technical" },
   { value: "congress",      label: "Congress" },
   { value: "news",          label: "News" },
   { value: "institutional", label: "Institutional" },
@@ -2323,6 +2325,18 @@ export default function OpportunityResearchPage() {
           <TabsContent value="decision" data-testid="tab-content-decision">
             <div className="mt-3">
               <ResearchDecisionEngine
+                pkg={pkg}
+                stars={stars}
+                snapshot={snapshot}
+                onNavigateTab={handleTabChange}
+              />
+            </div>
+          </TabsContent>
+
+          {/* ─── Trade Planning ─── */}
+          <TabsContent value="trade-planning" data-testid="tab-content-trade-planning">
+            <div className="mt-3">
+              <TradeStructureEngine
                 pkg={pkg}
                 stars={stars}
                 snapshot={snapshot}

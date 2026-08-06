@@ -1,0 +1,513 @@
+SPRINT 2.2 — Trade Structure Engine
+
+====================================================================
+OBJECTIVE
+====================================================================
+
+Build the Trade Structure Engine.
+
+This engine converts a completed Research Package into one or more
+deterministic trade structures.
+
+This sprint DOES NOT execute trades.
+
+This sprint DOES NOT resolve live option contracts.
+
+This sprint determines HOW a trader could express an investment thesis.
+
+The output must work for users with or without a connected broker.
+
+Everything produced is educational research and trade planning.
+
+Never fabricate option contracts.
+
+Never fabricate premiums.
+
+Never fabricate Greeks.
+
+Never fabricate bid/ask prices.
+
+====================================================================
+DO NOT MODIFY
+====================================================================
+
+Do NOT modify
+
+• Opportunity Engine
+• MCP
+• Scanner
+• PostgreSQL
+• MarketHistoryService
+• Broker abstraction
+• Existing APIs
+• Database schema
+• Research Package
+• Decision Engine
+
+Reuse all existing deterministic outputs.
+
+====================================================================
+ARCHITECTURE
+====================================================================
+
+Create a new Trade Structure Engine.
+
+Research Candidate
+
+↓
+
+Trade Structure Engine
+
+↓
+
+Trade Planning
+
+↓
+
+Prepare InstaTrade™
+
+↓
+
+(Live Contract Resolver in Sprint 2.2.1)
+
+====================================================================
+NEW COMPONENTS
+====================================================================
+
+Create reusable components
+
+TradeStructureEngine
+
+TradeStructureCard
+
+TradeComparisonCard
+
+StockStructureCard
+
+OptionsStructureCard
+
+IncomeStructureCard
+
+ConservativeStructureCard
+
+TradeStructureReasonCard
+
+TradeStructureRiskCard
+
+====================================================================
+DETERMINISTIC INPUTS
+====================================================================
+
+Use existing data only.
+
+Examples
+
+Market Regime
+
+Research Confidence
+
+Technical Trend
+
+Volume
+
+Momentum
+
+ATR
+
+Support
+
+Resistance
+
+Breakout Level
+
+Holding Period
+
+Scanner Strategy
+
+Risk / Reward
+
+Liquidity
+
+Earnings Date
+
+Sector
+
+Never call a new API.
+
+Never fabricate values.
+
+====================================================================
+STOCK STRUCTURE
+====================================================================
+
+Determine
+
+Long Stock
+
+Swing Position
+
+Position Trade
+
+Pullback Entry
+
+Breakout Entry
+
+Display
+
+Why this structure fits
+
+Capital efficiency
+
+Risk characteristics
+
+Holding horizon
+
+Advantages
+
+Disadvantages
+
+====================================================================
+OPTIONS STRUCTURE
+====================================================================
+
+Generate deterministic structure guidance.
+
+Examples
+
+Long Call
+
+Bull Call Spread
+
+Bull Put Spread
+
+Cash Secured Put
+
+Covered Call
+
+Protective Put
+
+Diagonal
+
+Call Debit Spread
+
+Call Credit Spread
+
+Iron Condor
+
+Only display structures appropriate for the research thesis.
+
+Never show all strategies.
+
+====================================================================
+OPTIONS GUIDANCE
+====================================================================
+
+Without a connected broker generate
+
+Preferred Structure
+
+Target DTE
+
+Example
+
+30–45 DTE
+
+45–60 DTE
+
+60–90 DTE
+
+Strike Guidance
+
+Near ATM
+
+1 Strike ITM
+
+2–5% OTM
+
+Near Support
+
+Near Breakout
+
+Near Technical Target
+
+Display
+
+Reason
+
+Capital efficiency
+
+Risk profile
+
+Time decay characteristics
+
+Typical market outlook
+
+Do NOT display
+
+Actual contracts
+
+Premiums
+
+Greeks
+
+Open Interest
+
+Bid
+
+Ask
+
+Volume
+
+Expiration dates
+
+These require Sprint 2.2.1.
+
+====================================================================
+TRADE COMPARISON
+====================================================================
+
+Rank structures.
+
+Example
+
+Best Overall
+
+Bull Call Spread
+
+Confidence
+
+94
+
+Reason
+
+Defined risk
+
+Capital efficient
+
+Best Stock Structure
+
+Long Stock
+
+Confidence
+
+91
+
+Income Alternative
+
+Cash Secured Put
+
+Confidence
+
+83
+
+Conservative
+
+Bull Put Spread
+
+Confidence
+
+81
+
+Display why.
+
+====================================================================
+TRADE STRUCTURE REASONS
+====================================================================
+
+For every structure explain
+
+Why it fits
+
+Advantages
+
+Trade-offs
+
+Capital required
+
+Defined risk
+
+Expected holding period
+
+Suitable market outlook
+
+Everything deterministic.
+
+====================================================================
+RISK SECTION
+====================================================================
+
+Display
+
+Maximum theoretical risk characteristics
+
+Assignment risk (if applicable)
+
+Time decay exposure
+
+Gap risk
+
+Volatility sensitivity
+
+Liquidity considerations
+
+Early assignment (where applicable)
+
+No numerical premium calculations.
+
+====================================================================
+USER EXPERIENCE
+====================================================================
+
+Create a new
+
+Trade Planning
+
+tab.
+
+Tabs become
+
+Overview
+
+Decision
+
+Trade Planning
+
+Technical
+
+Congress
+
+News
+
+Institutional
+
+Catalysts
+
+AI Summary
+
+Trade Planning becomes one of the primary tabs.
+
+====================================================================
+INSTATRADE™
+====================================================================
+
+Bottom of page
+
+Display
+
+Review with InstaTrade™
+
+If broker connected
+
+Display
+
+Prepare Broker Review
+
+If broker disconnected
+
+Display
+
+Connect Broker to verify live option contracts
+
+IMPORTANT
+
+This sprint never resolves contracts.
+
+That is Sprint 2.2.1.
+
+====================================================================
+COMPLIANCE
+====================================================================
+
+Never use
+
+Buy
+
+Sell
+
+Recommended Trade
+
+Expected Profit
+
+Guaranteed
+
+Target Return
+
+Instead use
+
+Illustrative Trade Structure
+
+Educational Planning
+
+Illustrative Strike Guidance
+
+Illustrative DTE Guidance
+
+Possible Trade Structure
+
+Research Planning
+
+====================================================================
+TESTING
+====================================================================
+
+Create comprehensive tests
+
+Trade structure selection
+
+DTE determination
+
+Strike guidance
+
+Holding period
+
+Risk classification
+
+Income strategies
+
+Growth strategies
+
+Conservative strategies
+
+Trade comparison ranking
+
+Conditional broker CTA
+
+No regressions.
+
+====================================================================
+SUCCESS CRITERIA
+====================================================================
+
+Given any completed Research Package the platform should answer
+
+1. What is the best stock structure?
+
+2. What is the best options structure?
+
+3. Why?
+
+4. What DTE range is appropriate?
+
+5. What strike selection approach is appropriate?
+
+6. What are the trade-offs?
+
+7. How does this compare with alternative structures?
+
+8. How does the user proceed to InstaTrade™?
+
+No infrastructure changes.
+
+No database changes.
+
+No new APIs.
+
+No broker execution.
+
+Return a detailed completion report listing
+
+• Components created
+• Existing APIs reused
+• Deterministic rules implemented
+• Tests added
+• Acceptance criteria verification

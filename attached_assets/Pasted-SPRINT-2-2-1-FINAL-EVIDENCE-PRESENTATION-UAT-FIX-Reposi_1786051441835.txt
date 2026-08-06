@@ -1,0 +1,106 @@
+SPRINT 2.2.1 — FINAL EVIDENCE PRESENTATION UAT FIX
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+This is a narrowly scoped production UAT correction.
+
+Do not add features.
+Do not modify the Opportunity Engine, MCP, scanner, database, market-data services,
+broker integrations, evidence-provider contracts, or research architecture.
+
+Production screenshot observations:
+
+- Candidate ranks #1
+- Market regime is strong_bull
+- Candidate Alignment says Aligned
+- Evidence Strength shows:
+  - Technical: 20 / 100 — Weak
+  - Regime: 40 / 100 — Weak
+  - Congress: 60 / 100 — Moderate
+  - News: 20 / 100 — Weak
+  - Catalysts: 100 / 100 — Moderate
+  - Institutional: N/A
+
+The clear presentation defect is that Catalysts displays 100 / 100 but the label says Moderate.
+
+The Technical and Regime values may also be derived from fields that do not represent
+the current research candidate correctly. Investigate; do not assume.
+
+Tasks:
+
+1. Audit EvidenceCard numeric-score and text-label derivation.
+
+2. For every evidence category, document:
+   - source field
+   - numeric transformation
+   - label thresholds
+   - unavailable behavior
+
+3. Ensure numeric score and label always agree.
+
+Use one shared deterministic threshold function, for example only if consistent with
+the existing product model:
+
+- 0–39: Weak
+- 40–69: Moderate
+- 70–100: Strong
+
+Do not adopt these exact thresholds blindly. First inspect existing intended semantics
+and preserve them where documented.
+
+4. Investigate why Catalysts 100 / 100 is labeled Moderate.
+
+Fix the mapping defect.
+
+5. Investigate Technical 20 / 100 for a rank-#1 institutional_reclaim candidate.
+
+Determine whether:
+- it correctly reflects candidate confidence;
+- it accidentally derives from a missing field;
+- it maps an unavailable value to a low score;
+- it is using evidence stars unrelated to the candidate’s scanner score.
+
+Missing data must display N/A, not 20 / 100.
+
+6. Investigate Regime 40 / 100 while:
+- marketRegime = strong_bull
+- candidate alignment = Aligned
+
+Determine whether the EvidenceCard is passing an incompatible regime string into
+computeRegimeScore(), such as strong_bull when the helper expects TRENDING.
+
+Normalize only at the presentation adapter boundary if required.
+
+Do not change the underlying market-regime classification.
+
+7. Preserve:
+- N/A for unavailable institutional data
+- independent evidence-provider failures
+- Congress disclaimer
+- existing dot-bar visualization
+- accessible text labels
+- no predictive claims
+- no AI-generated scores
+
+8. Add focused tests proving:
+- 100 / 100 cannot display Moderate or Weak
+- 60 / 100 maps consistently
+- missing score displays N/A, not a low numeric value
+- strong_bull is normalized correctly if the scoring helper expects another enum
+- RISK_OFF remains weak/defensive as intended
+- unknown regime displays N/A rather than an invented score
+- labels and dot-bar classes match numeric thresholds
+
+9. Run all client tests, server tests, typecheck and build.
+
+Return:
+- exact root cause
+- fields used by each evidence category
+- mapping before and after
+- files changed
+- tests added
+- totals
+- final GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push or deploy automatically.

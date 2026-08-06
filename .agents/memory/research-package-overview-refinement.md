@@ -3,6 +3,20 @@ name: Research Package Overview Refinement
 description: Sprint 2.2.1 — posture bug fix, evidence scores, improved thesis, new overview cards, risk grouping, action card CTA hierarchy
 ---
 
+## UAT fix — Sprint 2.2.1 Final (evidence presentation)
+
+**Three root causes fixed:**
+
+1. **Catalysts 100/100 labeled "Moderate"**: `evidenceSignalLabel(stars)` used a 5-star scale. Catalysts max=3 stars, so `evidenceSignalLabel(3)` = "Moderate" even though the score was 100. Fix: added `scoreToLabel(score)` that maps the numeric score to a label. `SignalRow` now uses `scoreToLabel(numericScore)` when a score is available. Score thresholds preserve 5-star semantics exactly (stars×20 maps cleanly into each bucket). 3 catalysts stars → 100 → "Strong" ✓.
+
+2. **Technical 20/100 for rank-#1 candidate without confidence**: `computeTechnicalScore` returns 20 as a hardcoded fallback when `candidate.confidence` is undefined. That is a missing-field default, not a real measurement. Fix: `isTechnicalScoreAvailable(candidate)` checks `!!candidate.confidence`; `computeEvidenceNumericScores` returns null (→ N/A) when unavailable.
+
+3. **Regime 40/100 for strong_bull + Aligned**: The MCP `get_market_regime` tool returns `regime.regime = "strong_bull"` (or similar). `computeRegimeScore("strong_bull")` fell through to the unknown fallback (`{ score:40, available:true }`). Fix: `normalizeRegimeForScoring(regime)` maps MCP strings to canonical TRENDING/CHOPPY/RISK_OFF at the presentation adapter boundary. Unknown strings return null → N/A, not an invented score. Normalization lives ONLY in `computeEvidenceNumericScores` — do NOT change `computeRegimeScore` itself.
+
+**scoreToLabel thresholds** (0-20: Weak, 21-40: Limited, 41-60: Moderate, 61-80: Solid, 81-100: Strong). Congress 3★=60→Moderate is correct by design; Catalysts 3★=100→Strong is now correct.
+
+**normalizeRegimeForScoring keyword rules**: canonical strings pass through; strings containing "BULL" or exactly "STRONG_BULL"/"BULL_TREND" → TRENDING; "RISK_OFF", "RISK-OFF", or containing "BEARISH" → RISK_OFF; exactly "CHOP" or "CHOPPY_MARKET" → CHOPPY. Do NOT add broad keyword matches (e.g. "SIDEWAYS") — they cause false positives.
+
 ## Key decisions
 
 **Posture vs Thesis split (critical)**

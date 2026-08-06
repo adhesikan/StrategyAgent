@@ -38,6 +38,64 @@ export function evidenceSignalLabel(stars: number): string {
   return "Weak";
 }
 
+/**
+ * Map a numeric score (0–100) to a human-readable label.
+ * Thresholds preserve the existing star-scale semantics for 5-star providers
+ * (stars × 20 maps cleanly into each bucket) while correctly handling
+ * providers with a different max-star count (e.g. Catalysts max=3).
+ *
+ * - 81–100 → Strong  (≈ 5★)
+ * - 61– 80 → Solid   (≈ 4★)
+ * - 41– 60 → Moderate(≈ 3★)
+ * - 21– 40 → Limited (≈ 2★)
+ * -  0– 20 → Weak    (≈ 1★)
+ * - null   → N/A
+ */
+export function scoreToLabel(score: number | null): string {
+  if (score === null) return "N/A";
+  if (score >= 81) return "Strong";
+  if (score >= 61) return "Solid";
+  if (score >= 41) return "Moderate";
+  if (score >= 21) return "Limited";
+  return "Weak";
+}
+
+/**
+ * Normalize various regime string formats the MCP may return into the
+ * canonical values expected by computeRegimeScore: TRENDING | CHOPPY | RISK_OFF.
+ * Returns null for unknown/unsupported strings so they display N/A rather than
+ * an invented score.
+ *
+ * Normalize ONLY at this presentation adapter boundary.
+ * Do not modify the underlying regime classification or computeRegimeScore.
+ */
+export function normalizeRegimeForScoring(regime: string | null | undefined): string | null {
+  if (!regime) return null;
+  const r = regime.toUpperCase();
+  // Canonical pass-through
+  if (r === "TRENDING") return "TRENDING";
+  if (r === "CHOPPY")   return "CHOPPY";
+  if (r === "RISK_OFF") return "RISK_OFF";
+  // MCP / alternative formats — only map patterns that are well-documented
+  // MCP regime variants. Do NOT add broad keyword matches for words that might
+  // appear in unrelated strings (e.g. "SIDEWAYS" could be part of "SIDEWAYS_MARKET_XYZ").
+  if (r.includes("BULL") || r === "STRONG_BULL" || r === "BULL_TREND") return "TRENDING";
+  if (r.includes("RISK_OFF") || r === "RISK-OFF" || r.includes("BEARISH")) return "RISK_OFF";
+  if (r === "CHOP" || r === "CHOPPY_MARKET") return "CHOPPY";
+  // Unknown string — return null so computeRegimeScore returns available:false → N/A
+  return null;
+}
+
+/**
+ * Returns true when a technical score can be meaningfully derived.
+ * Requires the candidate to have a confidence level; without it,
+ * computeTechnicalScore returns a hardcoded 20 fallback that is NOT a real
+ * measurement and must display as N/A rather than a low numeric value.
+ */
+export function isTechnicalScoreAvailable(candidate: { confidence?: string | null }): boolean {
+  return !!(candidate.confidence);
+}
+
 /** Maps a star count (0–5) to a Tailwind color class for the filled segment. */
 export function evidenceSignalClass(stars: number): string {
   if (stars === 0) return "bg-border/40";
@@ -59,15 +117,36 @@ export function evidenceSignalTextClass(stars: number): string {
 /**
  * Compute the numeric score (0–100) for each evidence category.
  * Uses the same deterministic mappings as computeScoreComponents.
- * Returns null for institutional (always N/A).
+ * Returns null for categories where data is missing or not computable.
+ *
+ * Sprint 2.2.1 UAT fix:
+ * - Technical: returns null (→ N/A) when candidate.confidence is not set,
+ *   because computeTechnicalScore's 20-fallback is a missing-field default,
+ *   not a real measurement.
+ * - Regime: normalizes MCP regime strings (e.g. "strong_bull") to canonical
+ *   enum values before scoring; unknown strings → null → N/A.
+ * - Catalysts: unchanged (Math.round(stars × 100/3)); label is now derived
+ *   from the score via scoreToLabel() so 100/100 shows "Strong", not "Moderate".
+ * - Institutional: always null (N/A).
  */
 export function computeEvidenceNumericScores(
   stars: EvidenceStars,
   pkg?: Pick<ResearchPackage, "candidate" | "marketRegime">,
 ): Record<keyof EvidenceStars, number | null> {
-  const techScore = pkg ? computeTechnicalScore(pkg.candidate) : stars.technical * 20;
+  // Technical — null when confidence is absent (missing-field default ≠ real score)
+  const techAvailable = pkg
+    ? isTechnicalScoreAvailable(pkg.candidate)
+    : stars.technical > 0;
+  const techScore = techAvailable
+    ? (pkg ? computeTechnicalScore(pkg.candidate) : stars.technical * 20)
+    : null;
+
+  // Regime — normalize MCP strings before passing to computeRegimeScore
+  const normalizedRegime = pkg
+    ? normalizeRegimeForScoring(pkg.marketRegime)
+    : (stars.regime > 0 ? null : null); // without pkg, fall through to star fallback
   const regimeResult = pkg
-    ? computeRegimeScore(pkg.marketRegime)
+    ? computeRegimeScore(normalizedRegime)
     : { score: stars.regime * 20, available: stars.regime > 0 };
 
   return {
@@ -76,7 +155,7 @@ export function computeEvidenceNumericScores(
     news: stars.news * 20,
     congress: stars.congress * 20,
     catalysts: Math.round(stars.catalysts * (100 / 3)),
-    institutional: null,  // always N/A
+    institutional: null, // always N/A
   };
 }
 
@@ -103,7 +182,13 @@ function SignalRow({
 }: SignalRowProps) {
   const filledClass = evidenceSignalClass(stars);
   const textClass = evidenceSignalTextClass(stars);
-  const signalLabel = evidenceSignalLabel(stars);
+  // When a numeric score is available use it as the authoritative label source
+  // so label and score always agree (fixes Catalysts 100/100 → "Moderate" bug).
+  // Fall back to star-based label when score is unavailable (null/undefined).
+  const signalLabel =
+    numericScore !== undefined && numericScore !== null
+      ? scoreToLabel(numericScore)
+      : evidenceSignalLabel(stars);
   const isUnavailable = stars === 0;
 
   const scoreDisplay =

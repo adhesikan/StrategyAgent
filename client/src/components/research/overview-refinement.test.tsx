@@ -24,6 +24,10 @@ import {
 import {
   evidenceSignalLabel,
   computeEvidenceNumericScores,
+  scoreToLabel,
+  normalizeRegimeForScoring,
+  isTechnicalScoreAvailable,
+  evidenceSignalClass,
 } from "./evidence-card";
 
 // ── Stock trade card helpers ─────────────────────────────────────────────────
@@ -626,5 +630,250 @@ describe("sanitizeDataSource", () => {
   it("never claims real-time when data is stored", () => {
     const result = sanitizeDataSource("Stored daily bars");
     expect(result.toLowerCase()).not.toContain("real-time");
+  });
+});
+
+// ===========================================================================
+// 9. Evidence Presentation UAT Fix — Sprint 2.2.1 Final
+// ===========================================================================
+
+// --- scoreToLabel -----------------------------------------------------------
+
+describe("scoreToLabel — shared threshold function", () => {
+  it("100 / 100 maps to Strong, never Moderate or Weak", () => {
+    expect(scoreToLabel(100)).toBe("Strong");
+    expect(scoreToLabel(100)).not.toBe("Moderate");
+    expect(scoreToLabel(100)).not.toBe("Weak");
+  });
+
+  it("81 maps to Strong (lower boundary)", () => {
+    expect(scoreToLabel(81)).toBe("Strong");
+  });
+
+  it("80 maps to Solid (upper boundary of Solid)", () => {
+    expect(scoreToLabel(80)).toBe("Solid");
+  });
+
+  it("60 maps to Moderate (consistent with Congress 3★ = 60 scenario)", () => {
+    // Congress: 3★ × 20 = 60 → Moderate ← this was correct in UAT; must stay correct
+    expect(scoreToLabel(60)).toBe("Moderate");
+  });
+
+  it("61 maps to Solid (not Moderate)", () => {
+    expect(scoreToLabel(61)).toBe("Solid");
+  });
+
+  it("41 maps to Moderate (lower boundary of Moderate)", () => {
+    expect(scoreToLabel(41)).toBe("Moderate");
+  });
+
+  it("40 maps to Limited", () => {
+    expect(scoreToLabel(40)).toBe("Limited");
+  });
+
+  it("20 maps to Weak", () => {
+    expect(scoreToLabel(20)).toBe("Weak");
+  });
+
+  it("null maps to N/A", () => {
+    expect(scoreToLabel(null)).toBe("N/A");
+  });
+
+  it("score label and evidenceSignalLabel agree for all 5-star providers", () => {
+    // stars × 20 must land in the same semantic bucket as evidenceSignalLabel(stars)
+    const starLabelMap: Record<number, string> = {
+      1: "Weak",
+      2: "Limited",
+      3: "Moderate",
+      4: "Solid",
+      5: "Strong",
+    };
+    for (const [stars, expected] of Object.entries(starLabelMap)) {
+      const score = Number(stars) * 20;
+      expect(scoreToLabel(score)).toBe(expected);
+    }
+  });
+});
+
+// --- normalizeRegimeForScoring ----------------------------------------------
+
+describe("normalizeRegimeForScoring — MCP string normalization", () => {
+  it("TRENDING (canonical) passes through unchanged", () => {
+    expect(normalizeRegimeForScoring("TRENDING")).toBe("TRENDING");
+  });
+
+  it("strong_bull normalizes to TRENDING", () => {
+    expect(normalizeRegimeForScoring("strong_bull")).toBe("TRENDING");
+  });
+
+  it("STRONG_BULL normalizes to TRENDING", () => {
+    expect(normalizeRegimeForScoring("STRONG_BULL")).toBe("TRENDING");
+  });
+
+  it("bull_trend normalizes to TRENDING", () => {
+    expect(normalizeRegimeForScoring("bull_trend")).toBe("TRENDING");
+  });
+
+  it("RISK_OFF (canonical) passes through unchanged", () => {
+    expect(normalizeRegimeForScoring("RISK_OFF")).toBe("RISK_OFF");
+  });
+
+  it("risk_off normalizes to RISK_OFF", () => {
+    expect(normalizeRegimeForScoring("risk_off")).toBe("RISK_OFF");
+  });
+
+  it("CHOPPY (canonical) passes through unchanged", () => {
+    expect(normalizeRegimeForScoring("CHOPPY")).toBe("CHOPPY");
+  });
+
+  it("choppy normalizes to CHOPPY", () => {
+    expect(normalizeRegimeForScoring("choppy")).toBe("CHOPPY");
+  });
+
+  it("unknown string returns null (→ N/A, not an invented score)", () => {
+    expect(normalizeRegimeForScoring("COMPLETELY_UNKNOWN")).toBeNull();
+    expect(normalizeRegimeForScoring("VOLATILE_REGIME")).toBeNull();
+    expect(normalizeRegimeForScoring("TRANSITION")).toBeNull();
+  });
+
+  it("null returns null", () => {
+    expect(normalizeRegimeForScoring(null)).toBeNull();
+  });
+
+  it("undefined returns null", () => {
+    expect(normalizeRegimeForScoring(undefined)).toBeNull();
+  });
+});
+
+// --- isTechnicalScoreAvailable ----------------------------------------------
+
+describe("isTechnicalScoreAvailable", () => {
+  it("candidate with confidence → available", () => {
+    expect(isTechnicalScoreAvailable({ confidence: "high" })).toBe(true);
+    expect(isTechnicalScoreAvailable({ confidence: "medium" })).toBe(true);
+    expect(isTechnicalScoreAvailable({ confidence: "low" })).toBe(true);
+  });
+
+  it("confidence undefined → not available (must show N/A, not 20)", () => {
+    expect(isTechnicalScoreAvailable({ confidence: undefined })).toBe(false);
+  });
+
+  it("confidence null → not available", () => {
+    expect(isTechnicalScoreAvailable({ confidence: null })).toBe(false);
+  });
+
+  it("confidence empty string → not available", () => {
+    expect(isTechnicalScoreAvailable({ confidence: "" })).toBe(false);
+  });
+});
+
+// --- computeEvidenceNumericScores UAT scenarios ----------------------------
+
+describe("computeEvidenceNumericScores — UAT fix scenarios", () => {
+  const baseStars = makeStars({ catalysts: 3, regime: 5, news: 3, congress: 3 });
+
+  it("Catalysts 3★ → score 100, label derived from score = Strong (UAT defect fix)", () => {
+    const scores = computeEvidenceNumericScores(baseStars);
+    expect(scores.catalysts).toBe(100);
+    // scoreToLabel(100) = "Strong" — not "Moderate"
+    expect(scoreToLabel(scores.catalysts!)).toBe("Strong");
+    expect(scoreToLabel(scores.catalysts!)).not.toBe("Moderate");
+  });
+
+  it("Congress 3★ → score 60 → Moderate (was correct in UAT; must stay correct)", () => {
+    const scores = computeEvidenceNumericScores(baseStars);
+    expect(scores.congress).toBe(60);
+    expect(scoreToLabel(scores.congress!)).toBe("Moderate");
+  });
+
+  it("Technical: missing confidence → null (N/A), not 20", () => {
+    const pkg = makePkg({
+      candidate: {
+        rank: 1,
+        symbol: "PLTR",
+        strategy: "VCP",
+        confidence: undefined,
+        whySelected: ["Strong RS", "Volume contraction", "Above 200 SMA"],
+        warnings: [],
+      },
+    });
+    const scores = computeEvidenceNumericScores(baseStars, pkg);
+    expect(scores.technical).toBeNull(); // must not be 20
+  });
+
+  it("Technical: confidence 'high' + 3 whySelected → score 85, not null", () => {
+    const pkg = makePkg({
+      candidate: {
+        rank: 1,
+        symbol: "PLTR",
+        strategy: "VCP",
+        confidence: "high",
+        whySelected: ["RS leader", "Volume contraction", "Above 200 SMA"],
+        warnings: [],
+      },
+    });
+    const scores = computeEvidenceNumericScores(baseStars, pkg);
+    expect(scores.technical).toBe(85);
+    expect(scoreToLabel(scores.technical!)).toBe("Strong");
+  });
+
+  it("Regime: strong_bull → normalized to TRENDING → score 90 (UAT defect fix)", () => {
+    const pkg = makePkg({ marketRegime: "strong_bull" });
+    const scores = computeEvidenceNumericScores(baseStars, pkg);
+    expect(scores.regime).toBe(90);
+    expect(scoreToLabel(scores.regime!)).toBe("Strong");
+  });
+
+  it("Regime: RISK_OFF → score 15 → Weak (remains correct, defensive intent preserved)", () => {
+    const pkg = makePkg({ marketRegime: "RISK_OFF" });
+    const scores = computeEvidenceNumericScores(baseStars, pkg);
+    expect(scores.regime).toBe(15);
+    expect(scoreToLabel(scores.regime!)).toBe("Weak");
+  });
+
+  it("Regime: TRENDING → score 90 → Strong", () => {
+    const pkg = makePkg({ marketRegime: "TRENDING" });
+    const scores = computeEvidenceNumericScores(baseStars, pkg);
+    expect(scores.regime).toBe(90);
+    expect(scoreToLabel(scores.regime!)).toBe("Strong");
+  });
+
+  it("Regime: unknown string → null (N/A, not an invented score)", () => {
+    const pkg = makePkg({ marketRegime: "COMPLETELY_UNKNOWN_REGIME" });
+    const scores = computeEvidenceNumericScores(baseStars, pkg);
+    expect(scores.regime).toBeNull();
+  });
+
+  it("Institutional → always null (N/A)", () => {
+    const scores = computeEvidenceNumericScores(baseStars, makePkg());
+    expect(scores.institutional).toBeNull();
+  });
+});
+
+// --- dot-bar color class consistency ----------------------------------------
+
+describe("evidenceSignalClass — dot-bar classes match thresholds", () => {
+  it("0 stars → unavailable class", () => {
+    expect(evidenceSignalClass(0)).toContain("border");
+  });
+
+  it("1 star → rose (Weak)", () => {
+    expect(evidenceSignalClass(1)).toContain("rose");
+  });
+
+  it("2 stars → amber (Limited)", () => {
+    expect(evidenceSignalClass(2)).toContain("amber");
+  });
+
+  it("3 stars → sky (Moderate)", () => {
+    expect(evidenceSignalClass(3)).toContain("sky");
+  });
+
+  it("4 stars → emerald (Solid)", () => {
+    expect(evidenceSignalClass(4)).toContain("emerald");
+  });
+
+  it("5 stars → emerald (Strong)", () => {
+    expect(evidenceSignalClass(5)).toContain("emerald");
   });
 });

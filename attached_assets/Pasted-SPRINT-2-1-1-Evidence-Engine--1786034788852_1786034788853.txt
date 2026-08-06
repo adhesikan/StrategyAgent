@@ -1,0 +1,487 @@
+SPRINT 2.1.1 – Evidence Engine
+
+====================================================================
+OBJECTIVE
+====================================================================
+
+Build a unified Evidence Engine that aggregates every research source
+supporting an Opportunity Engine candidate.
+
+This is NOT another scanner.
+
+This is NOT another dashboard.
+
+This is a structured evidence system.
+
+Every qualified research candidate should become an institutional-quality
+research dossier.
+
+The Evidence Engine must support multiple evidence providers while keeping
+one consistent user experience.
+
+Everything presented must be factual, deterministic or clearly attributed.
+
+Never fabricate information.
+
+Never generate unsupported claims.
+
+====================================================================
+DO NOT MODIFY
+====================================================================
+
+Do NOT modify
+
+• Opportunity Engine
+• MCP ranking
+• Lifecycle engine
+• Opportunity scoring
+• Broker integrations
+• MarketHistoryService
+• Database-first architecture
+• Scanner algorithms
+• Portfolio engine
+• Existing APIs
+
+This sprint extends the research experience only.
+
+====================================================================
+ARCHITECTURE
+====================================================================
+
+Create
+
+EvidenceEngine
+
+The Evidence Engine becomes an orchestration layer.
+
+It loads evidence from independent providers.
+
+Every provider returns
+
+status
+
+title
+
+summary
+
+confidence
+
+lastUpdated
+
+content
+
+errors
+
+The page renders whichever providers are available.
+
+One provider failing must never break the page.
+
+====================================================================
+PROVIDER INTERFACE
+====================================================================
+
+Create an interface
+
+EvidenceProvider
+
+Each provider implements
+
+id
+
+displayName
+
+priority
+
+supports(symbol)
+
+load(symbol)
+
+Providers execute independently.
+
+====================================================================
+INITIAL PROVIDERS
+====================================================================
+
+Implement providers for
+
+1 Technical Evidence
+
+2 Congressional Activity
+
+3 News & Sentiment
+
+4 Institutional Context
+
+5 Earnings & Catalysts
+
+6 AI Research Summary
+
+If data is unavailable
+
+display
+
+Unavailable
+
+rather than hiding the section.
+
+====================================================================
+TECHNICAL EVIDENCE
+====================================================================
+
+Display
+
+Trend
+
+Moving averages
+
+Volume
+
+Relative Strength
+
+Momentum
+
+Support
+
+Resistance
+
+Breakout status
+
+Liquidity
+
+Market Regime Alignment
+
+Everything comes from deterministic analysis.
+
+====================================================================
+CONGRESSIONAL ACTIVITY
+====================================================================
+
+Use the existing Congress repository.
+
+Do NOT duplicate Congress logic.
+
+Reuse the existing APIs.
+
+Display
+
+Recent disclosures
+
+Purchases
+
+Sales
+
+Disclosure dates
+
+Amount ranges
+
+Committee (if available)
+
+Source links
+
+Always state
+
+"Publicly disclosed congressional transactions."
+
+Never imply predictive power.
+
+Never imply recommendations.
+
+====================================================================
+NEWS & SENTIMENT
+====================================================================
+
+Display
+
+Recent news
+
+Headline summaries
+
+Sentiment
+
+Major themes
+
+Number of articles
+
+Latest update
+
+Never summarize beyond available evidence.
+
+Link to Market Intel.
+
+====================================================================
+INSTITUTIONAL CONTEXT
+====================================================================
+
+Display
+
+Institutional ownership
+
+Recent accumulation
+
+Ownership trends
+
+ETF exposure
+
+Sector participation
+
+Only factual data.
+
+====================================================================
+EARNINGS & CATALYSTS
+====================================================================
+
+Display
+
+Next earnings
+
+Economic events
+
+Sector catalysts
+
+Known upcoming events
+
+Risk reminders
+
+====================================================================
+AI RESEARCH SUMMARY
+====================================================================
+
+Generate
+
+Short summary only.
+
+Maximum
+
+5 bullet points.
+
+Summarize
+
+technical
+
+market
+
+news
+
+risk
+
+Never invent evidence.
+
+Every statement must reference available data.
+
+====================================================================
+PAGE LAYOUT
+====================================================================
+
+Research Package
+
+-----------------------------------------
+
+Overview
+
+Evidence Scorecard
+
+-----------------------------------------
+
+Tabs
+
+Overview
+
+Technical
+
+Congress
+
+News
+
+Institutional
+
+Catalysts
+
+AI Summary
+
+-----------------------------------------
+
+Each tab
+
+Loading
+
+Error
+
+Unavailable
+
+Last Updated
+
+Source
+
+=========================================
+
+OVERVIEW TAB
+=========================================
+
+Display an Evidence Scorecard.
+
+Example
+
+Technical
+
+★★★★★
+
+Congress
+
+★★★☆☆
+
+News
+
+★★★★☆
+
+Institutional
+
+★★★★☆
+
+Catalysts
+
+★★★☆☆
+
+Market Regime
+
+★★★★★
+
+This is a visual summary only.
+
+No AI weighting.
+
+No recommendation.
+
+====================================================================
+USER EXPERIENCE
+====================================================================
+
+Users should immediately answer
+
+Why is this opportunity interesting?
+
+What evidence supports it?
+
+What evidence contradicts it?
+
+What risks exist?
+
+Everything should be readable in less than 2 minutes.
+
+====================================================================
+INSTATRADE™
+====================================================================
+
+Do NOT modify InstaTrade.
+
+Only keep the existing
+
+Review with InstaTrade™
+
+button.
+
+Evidence should naturally flow into
+
+Research
+
+↓
+
+Evidence
+
+↓
+
+Trade Planning
+
+↓
+
+Review with InstaTrade™
+
+====================================================================
+COMPLIANCE
+====================================================================
+
+Avoid
+
+Buy
+
+Sell
+
+Strong Buy
+
+Expected Return
+
+Recommended Trade
+
+Target Price
+
+Instead use
+
+Research Evidence
+
+Observed Activity
+
+Technical Qualification
+
+Public Disclosure
+
+Possible Trade Structure
+
+Educational Information
+
+Scenario Analysis
+
+====================================================================
+PERFORMANCE
+====================================================================
+
+Lazy-load evidence providers.
+
+Do not block page rendering.
+
+Each provider loads independently.
+
+Reuse existing caching.
+
+Avoid duplicate API calls.
+
+====================================================================
+TESTING
+====================================================================
+
+Create tests for
+
+Provider loading
+
+Independent failures
+
+Congress unavailable
+
+News unavailable
+
+Partial evidence
+
+Loading states
+
+Tab navigation
+
+Accessibility
+
+No regressions
+
+====================================================================
+SUCCESS CRITERIA
+====================================================================
+
+Opening any research candidate should feel like opening an institutional
+research dossier.
+
+Every section should explain
+
+What evidence exists
+
+Where it came from
+
+When it was updated
+
+How it relates to the current research candidate
+
+without presenting personalized investment advice.

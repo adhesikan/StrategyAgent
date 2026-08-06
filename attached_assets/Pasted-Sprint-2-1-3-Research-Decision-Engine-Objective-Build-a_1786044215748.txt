@@ -1,0 +1,274 @@
+Sprint 2.1.3 – Research Decision Engine
+
+Objective
+
+Build an explainable institutional-quality Research Decision Engine.
+
+IMPORTANT
+
+DO NOT modify:
+
+- Opportunity Engine
+- MCP
+- Scanner
+- PostgreSQL
+- MarketHistoryService
+- Broker abstraction
+- Existing APIs
+- Database schema
+
+This sprint is UI and orchestration only.
+
+Reuse existing deterministic outputs.
+
+====================================================
+
+The research page should answer these questions:
+
+1. Why did this qualify?
+
+2. Why did it rank this high?
+
+3. What supports the thesis?
+
+4. What weakens the thesis?
+
+5. What would invalidate it?
+
+6. What would improve its score?
+
+====================================================
+
+Create reusable components
+
+ResearchDecisionCard
+
+QualificationSummaryCard
+
+InvalidationCard
+
+ScoreBreakdownCard
+
+SupportingEvidenceCard
+
+CatalystTimelineCard
+
+====================================================
+
+ResearchDecisionCard
+
+Display
+
+Overall Research Thesis
+
+Bullish
+
+Neutral
+
+Bearish
+
+Confidence
+
+Short explanation
+
+Example
+
+"This candidate qualified primarily because of increasing relative strength, expanding volume and confirmation from the deterministic Volume Surge strategy."
+
+====================================================
+
+Qualification Summary
+
+Display
+
+Qualified Strategy
+
+Supporting Strategies
+
+Rejected Strategies
+
+Score
+
+Market Regime Alignment
+
+Volume Confirmation
+
+Trend Confirmation
+
+Momentum Confirmation
+
+====================================================
+
+Score Breakdown
+
+Show every deterministic component
+
+Technical
+
+Momentum
+
+Volume
+
+Relative Strength
+
+Market Regime
+
+News
+
+Congress
+
+Institutional
+
+Fundamentals
+
+Liquidity
+
+Risk
+
+Display contribution bars.
+
+No stars.
+
+No AI-generated scores.
+
+Only deterministic values.
+
+====================================================
+
+Supporting Evidence
+
+Display
+
+Technical Evidence
+
+Fundamental Evidence
+
+Congress Activity
+
+Institutional
+
+News
+
+Market Regime
+
+Catalysts
+
+Each section
+
+Supports Thesis
+
+Neutral
+
+Weakens Thesis
+
+====================================================
+
+Invalidation
+
+Show
+
+Price invalidation
+
+Technical invalidation
+
+Fundamental invalidation
+
+Upcoming earnings
+
+Macro risk
+
+Sector risk
+
+====================================================
+
+Improvement Section
+
+Show
+
+"What would improve this candidate?"
+
+Examples
+
+Higher volume
+
+Break above resistance
+
+Improved relative strength
+
+Market regime improvement
+
+====================================================
+
+Warnings
+
+Highlight
+
+Upcoming earnings
+
+Low liquidity
+
+Wide spreads
+
+Sector weakness
+
+Market headwinds
+
+====================================================
+
+Buttons
+
+View Technical Detail
+
+View Congress Detail
+
+View News
+
+View Institutional
+
+View Fundamentals
+
+Compare With Top Ranked
+
+====================================================
+
+Compliance
+
+No investment advice.
+
+Educational research only.
+
+Everything deterministic.
+
+No fabricated explanations.
+
+If evidence unavailable
+
+Display
+
+"Not available."
+
+Never invent supporting evidence.
+
+====================================================
+
+Acceptance Criteria
+
+Research page clearly explains
+
+Why qualified
+
+Why ranked
+
+Supporting evidence
+
+Weakening evidence
+
+Invalidation
+
+Improvement opportunities
+
+Professional institutional UI.
+
+Return completion report.
+
+No infrastructure changes.

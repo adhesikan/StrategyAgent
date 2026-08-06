@@ -29,6 +29,19 @@ description: Sprint 2.1 — /opportunity/:symbol page architecture, data contrac
 - `StockOpportunityCard` in dashboard.tsx: "Research" button → `/opportunity/:symbol`
 - data-testid: `btn-research-{symbol}`
 
+## Research Decision Engine (Sprint 2.1.3)
+- 6 components in `client/src/components/research/decision/`: ResearchDecisionCard, QualificationSummaryCard, ScoreBreakdownCard, SupportingEvidenceCard, InvalidationCard, CatalystTimelineCard + ResearchDecisionEngine orchestrator
+- Answers 6 research questions: why qualify, why rank, what supports, what weakens, what invalidates, what would improve
+- deriveThesis() → "bullish"|"neutral"|"bearish" — fully deterministic (no AI), based on techScore+regime+riskScore thresholds
+- ScoreBreakdown: 11 components (Technical, Momentum, Volume, RS, Regime, News, Congress, Institutional, Fundamentals, Liquidity, Risk), each 0-100, shown as contribution bars; institutional always score=0+available=false
+- SupportingEvidenceCard: 7 sections each classified supports/neutral/weakens/unavailable via classifyEvidenceAlignment(score, available)
+- InvalidationCard: 6 types (price, technical, fundamental, earnings, macro, sector); price item uses candidate.invalidation; honest "Not available." when absent
+- CatalystTimelineCard: buildImprovementItems() (up to 5) + buildWarningItems() (up to 6, deduplicated by id)
+- QualificationSummaryCard: buildQualificationConfirmations() → 4 items (regime, volume, trend, momentum), each confirmed/partial/missing/unavailable
+- ResearchDecisionCard also placed at TOP of Overview tab (thesis summary) + full ResearchDecisionEngine in new "Decision" tab (8th tab, index 1)
+- 74 new tests in `client/src/components/research/decision/research-decision-engine.test.tsx`
+- All pure functions exported from each component file for testability; no new API calls; no server changes
+
 ## Professional Trade Cards (Sprint 2.1.2)
 - 6 reusable components in `client/src/components/research/`: StockTradeCard, OptionsTradeCard, EvidenceCard, RiskCard, ActionCard, ResearchTradeCard (orchestrator)
 - Shared types extracted to `client/src/components/research/types.ts`; opportunity-research.tsx imports from there + re-exports EvidenceStars for backward compat tests

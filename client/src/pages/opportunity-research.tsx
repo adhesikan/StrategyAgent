@@ -73,6 +73,7 @@ import {
 export type { EvidenceStars } from "@/components/research/types";
 
 import { ResearchTradeCard } from "@/components/research";
+import { ResearchDecisionCard, ResearchDecisionEngine } from "@/components/research/decision";
 
 // ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
@@ -2130,13 +2131,14 @@ function SymbolNotFound({ symbol }: { symbol: string }) {
 // ---------------------------------------------------------------------------
 
 const TABS = [
-  { value: "overview",       label: "Overview" },
-  { value: "technical",      label: "Technical" },
-  { value: "congress",       label: "Congress" },
-  { value: "news",           label: "News" },
-  { value: "institutional",  label: "Institutional" },
-  { value: "catalysts",      label: "Catalysts" },
-  { value: "ai-summary",     label: "AI Summary" },
+  { value: "overview",      label: "Overview" },
+  { value: "decision",      label: "Decision" },
+  { value: "technical",     label: "Technical" },
+  { value: "congress",      label: "Congress" },
+  { value: "news",          label: "News" },
+  { value: "institutional", label: "Institutional" },
+  { value: "catalysts",     label: "Catalysts" },
+  { value: "ai-summary",    label: "AI Summary" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
@@ -2299,6 +2301,8 @@ export default function OpportunityResearchPage() {
           {/* ─── Overview ─── */}
           <TabsContent value="overview" data-testid="tab-content-overview">
             <div className="space-y-4 mt-3">
+              {/* Thesis summary — answers "should I research this?" immediately */}
+              <ResearchDecisionCard pkg={pkg} stars={stars} />
               {/* Professional institutional research workspace */}
               <ResearchTradeCard
                 pkg={pkg}
@@ -2312,6 +2316,18 @@ export default function OpportunityResearchPage() {
                 isLoading={dashboardQuery.isLoading}
               />
               <ScanHistorySection history={pkg.scanHistory} symbol={pkg.symbol} />
+            </div>
+          </TabsContent>
+
+          {/* ─── Decision ─── */}
+          <TabsContent value="decision" data-testid="tab-content-decision">
+            <div className="mt-3">
+              <ResearchDecisionEngine
+                pkg={pkg}
+                stars={stars}
+                snapshot={snapshot}
+                onNavigateTab={handleTabChange}
+              />
             </div>
           </TabsContent>
 

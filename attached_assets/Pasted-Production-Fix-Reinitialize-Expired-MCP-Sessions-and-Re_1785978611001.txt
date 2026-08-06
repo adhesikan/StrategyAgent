@@ -1,0 +1,347 @@
+Production Fix — Reinitialize Expired MCP Sessions and Retry Once
+
+PRIMARY REPOSITORY
+
+Implement this in the VCP Trader AI / StrategyAgent repository using Replit.
+
+CURRENT PRODUCTION FAILURE
+
+The Railway MCP service is healthy and starts successfully.
+
+After the latest MCP deployment, production logs show:
+
+MCP session not found — client must re-initialize
+
+POST /mcp
+
+HTTP 404
+
+The VCP Trader dashboard then displays:
+
+Stock Opportunities is temporarily unavailable.
+
+The most likely sequence is:
+
+1. VCP Trader created an MCP session.
+2. MCP Railway service redeployed or restarted.
+3. The server-side session was lost.
+4. VCP Trader reused the stale session ID.
+5. MCP returned 404 and instructed the client to reinitialize.
+6. VCP Trader did not automatically create a new session and retry the tool call.
+
+GOAL
+
+Make the VCP Trader MCP client recover automatically when an MCP session is missing, expired, or invalid.
+
+The user should not need to restart VCP Trader or manually retry after every MCP deployment.
+
+Do not modify:
+
+- scanner algorithms
+- ranking
+- qualification
+- scoring
+- market-history concurrency
+- MCP public tool contracts
+- dashboard opportunity contracts
+- portfolio logic
+- options logic
+- broker integration
+- execution
+- database schema
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. TRACE THE MCP CLIENT SESSION LIFECYCLE
+==================================================
+
+Audit the VCP Trader MCP client implementation.
+
+Document:
+
+- where the MCP session is initialized
+- where the session ID is stored
+- whether it is global, per request, per user, or per process
+- how long it is retained
+- whether multiple MCP calls share it
+- how MCP deployments/restarts affect it
+- current handling of HTTP 404
+- current handling of:
+  “MCP session not found — client must re-initialize”
+- whether a failed session remains cached after the error
+- whether concurrent calls can create or reuse the same stale session
+
+Find the exact first line where the stale session continues to be used.
+
+==================================================
+2. CLASSIFY SESSION-INVALID RESPONSES
+==================================================
+
+Create one narrow classifier for recoverable session failures.
+
+Recoverable session conditions may include:
+
+- HTTP 404 from /mcp with the documented session-not-found response
+- MCP protocol error explicitly requiring reinitialization
+- known invalid-session or expired-session code returned by the MCP SDK
+
+Do not treat every 404 as a session error.
+
+Do not retry:
+
+- authentication failure
+- invalid token
+- unknown tool
+- malformed request
+- schema validation error
+- provider failure
+- tool execution failure
+- ordinary application 404
+
+==================================================
+3. CLEAR THE STALE SESSION
+==================================================
+
+When a confirmed session-invalid response occurs:
+
+- atomically invalidate the stored session/client state
+- close or dispose the old transport when supported
+- remove the stale session ID
+- ensure future calls cannot reuse it
+- preserve authentication configuration
+- never log the session ID or token
+
+==================================================
+4. REINITIALIZE AND RETRY ONCE
+==================================================
+
+After clearing the invalid session:
+
+1. create a fresh MCP session using the existing production configuration
+2. wait for initialization to complete
+3. retry the original tool request exactly once
+
+Rules:
+
+- maximum one session-recovery retry per tool call
+- do not create an infinite loop
+- do not retry the tool repeatedly if the new session also fails
+- preserve the original request payload
+- preserve timeout budget
+- preserve request ID or create a safe parent/child correlation
+- never duplicate write operations
+
+Current MCP tools used here are read-only, but implement the recovery at the client layer carefully so future write-capable calls are not automatically duplicated without explicit idempotency support.
+
+For now, auto-retry should be enabled only for allowlisted read-only MCP tools, including:
+
+- rank_market_trade_candidates
+- scan_strategy
+- scan_opportunities
+- market/history-related analysis tools
+- other currently verified read-only analysis tools
+
+==================================================
+5. CONCURRENT REINITIALIZATION
+==================================================
+
+Prevent a thundering herd after an MCP deployment.
+
+If several VCP Trader requests simultaneously encounter the stale session:
+
+- only one reinitialization should occur
+- other requests should await the same initialization Promise
+- once initialized, each may retry its original read-only request once
+- a failed initialization must clear the in-flight initializer
+- no deadlock
+- no permanently poisoned Promise
+
+==================================================
+6. STARTUP AND DEPLOYMENT BEHAVIOR
+==================================================
+
+Review whether VCP Trader should initialize the MCP client:
+
+- lazily on first call
+- eagerly during application startup
+- or both, with lazy recovery
+
+Preferred behavior:
+
+- optional startup health initialization
+- mandatory lazy initialization before a tool call
+- automatic recovery after server restart
+
+Do not make VCP Trader fail startup merely because MCP is temporarily unavailable.
+
+The application must continue to serve non-MCP functionality.
+
+==================================================
+7. TIMEOUT BUDGET
+==================================================
+
+Session initialization plus one retry must remain within the existing outer MCP request timeout.
+
+Do not reset the complete timeout budget after session failure.
+
+Use one overall deadline for:
+
+- original attempt
+- reinitialization
+- retry
+
+If insufficient budget remains:
+
+- return the existing unavailable response
+- do not start a retry that cannot reasonably complete
+
+==================================================
+8. DASHBOARD FAILURE BEHAVIOR
+==================================================
+
+When recovery succeeds:
+
+- dashboard stock opportunities should load normally
+- the user should not see the transient session error
+
+When recovery fails:
+
+- preserve the current isolated Stock Opportunities unavailable state
+- do not blank Market Snapshot
+- do not blank AI Infrastructure Watch
+- show safe retry behavior
+- do not expose MCP session details to the user
+
+==================================================
+9. SAFE OBSERVABILITY
+==================================================
+
+Add structured events:
+
+- mcp_session_invalid_detected
+- mcp_session_reinitialize_started
+- mcp_session_reinitialize_joined
+- mcp_session_reinitialize_succeeded
+- mcp_session_reinitialize_failed
+- mcp_tool_retried_after_reinitialize
+- mcp_tool_retry_failed
+
+Include only:
+
+- tool name
+- request ID
+- duration
+- attempt
+- HTTP/protocol error code
+- success/failure
+
+Do not log:
+
+- session IDs
+- bearer tokens
+- MCP service tokens
+- tool payload contents
+- portfolio data
+- user prompts
+- account information
+
+==================================================
+10. TESTS
+==================================================
+
+Add tests for:
+
+A. Session recovery
+- valid session succeeds normally
+- stale session returns documented 404
+- stale session is cleared
+- new session initializes
+- original read-only tool retries once
+- retry succeeds
+
+B. Retry boundaries
+- second session failure does not loop
+- authentication 401 does not reinitialize
+- unknown tool 404 does not reinitialize
+- malformed response does not reinitialize
+- ordinary provider failure does not reinitialize
+
+C. Concurrency
+- multiple stale-session callers trigger one initializer
+- waiting callers join initialization
+- failed initialization clears shared Promise
+- later request can initialize again
+- no deadlock
+
+D. Timeout
+- initialization uses remaining deadline
+- retry uses remaining deadline
+- insufficient remaining budget skips retry
+- total duration remains bounded
+
+E. Dashboard regression
+- recovered session returns stock opportunities
+- failed recovery returns section-level unavailable
+- other dashboard sections remain available
+- no simulated fallback
+
+F. Existing behavior
+- Ask AI MCP calls still work
+- scanner route still works
+- portfolio route unchanged
+- broker integration unchanged
+- no order duplication
+- no MCP server changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+11. DOCUMENTATION
+==================================================
+
+Create:
+
+docs/MCP_CLIENT_SESSION_RECOVERY.md
+
+Document:
+
+- root cause
+- current session lifecycle
+- invalid-session classifier
+- one-retry policy
+- read-only allowlist
+- concurrent reinitialization
+- timeout behavior
+- Railway restart behavior
+- observability
+- known limitations
+
+==================================================
+12. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. exact root cause
+2. stale-session storage location
+3. files changed
+4. invalid-session classifier
+5. session-clearing behavior
+6. reinitialization flow
+7. retry policy
+8. read-only allowlist
+9. concurrency protection
+10. timeout behavior
+11. dashboard behavior
+12. tests and totals
+13. build result
+14. compatibility concerns
+15. recommended Railway deployment/UAT sequence
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

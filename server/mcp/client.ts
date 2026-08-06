@@ -7,6 +7,8 @@
 //   - connects lazily on the first tool call
 //   - reuses the session across calls
 //   - reconnects (bounded backoff, no storms) when the session drops
+//   - auto-recovers from MCP_SESSION_INVALID (Railway redeploy) with one retry,
+//     for read-only tools in SESSION_RECOVERY_ALLOWLIST
 //   - never crashes the app if the MCP service is down — callers get a
 //     normalized McpError instead
 //   - closes cleanly on backend shutdown via disconnect()
@@ -17,11 +19,43 @@ import { McpError, normalizeMcpError } from "./errors";
 type SdkClient = import("@modelcontextprotocol/sdk/client/index.js").Client;
 
 const RECONNECT_COOLDOWN_MS = 5_000; // min gap between failed connect attempts
-const MAX_CALL_ATTEMPTS = 2; // 1 retry after a session/connection failure
+const MAX_CALL_ATTEMPTS = 2;         // 1 retry after a session/connection failure
+const MIN_VIABLE_RETRY_MS = 500;     // skip retry if less than this remains in deadline
+
+/**
+ * Read-only MCP tools that are safe to auto-retry after a session-invalid
+ * recovery. Tools that could produce side effects (prepare_trade_ticket) are
+ * excluded and must be retried explicitly by the caller.
+ *
+ * Maintain in sync with MCP_ALLOWED_TOOLS in ./tools.ts when adding new tools.
+ */
+export const SESSION_RECOVERY_ALLOWLIST = new Set<string>([
+  "get_quote",
+  "get_market_history",
+  "get_news",
+  "scan_vcp",
+  "get_positions",
+  "scan_strategy",
+  "scan_opportunities",
+  "build_trade_candidate",
+  "calculate_position_risk",
+  "get_market_regime",
+  "get_earnings",
+  "get_fundamentals",
+  "get_options_chain",
+  "analyze_options",
+  "select_option_contracts",
+  "calculate_trade_risk",
+  "recommend_trade_strategy",
+  "rank_market_trade_candidates",
+  "plan_portfolio_trade",
+]);
 
 export class McpToolsClient {
   private client: SdkClient | null = null;
   private connecting: Promise<SdkClient> | null = null;
+  /** Deduplicates concurrent session-invalid recoveries (thundering herd). */
+  private recovering: Promise<void> | null = null;
   private lastConnectFailureAt = 0;
   private toolNames: string[] | null = null;
   private stats = { calls: 0, failures: 0, reconnects: 0 };
@@ -133,6 +167,13 @@ export class McpToolsClient {
    * default (10s). Slow tools (recommend_trade_strategy) pass a longer
    * per-call timeout AND retryOnTimeout=false so the total wait stays
    * bounded — a deterministic slow computation won't get faster by retrying.
+   *
+   * Session recovery: when the MCP service returns HTTP 404 with a
+   * session-not-found body, the stale session is cleared, a fresh session is
+   * initialized, and the tool call is retried once — but only for tools in
+   * SESSION_RECOVERY_ALLOWLIST (all verified read-only tools). The recovery
+   * uses the remaining deadline budget; if budget is exhausted the original
+   * error is surfaced without retrying.
    */
   async callTool(
     name: string,
@@ -143,17 +184,31 @@ export class McpToolsClient {
     const timeoutMs =
       typeof opts?.timeoutMs === "number" && opts.timeoutMs > 0 ? opts.timeoutMs : cfg.timeoutMs;
     const retryOnTimeout = opts?.retryOnTimeout !== false;
+    // One deadline shared across the original call, any recovery, and the retry.
+    const deadline = Date.now() + timeoutMs;
     let lastError: McpError | null = null;
+    // Guard: only one session-recovery attempt per callTool invocation.
+    let sessionRecoveryAttempted = false;
 
     for (let attempt = 1; attempt <= MAX_CALL_ATTEMPTS; attempt++) {
-      const started = Date.now();
+      const attemptStarted = Date.now();
+      // Compute remaining budget. On the first attempt this equals timeoutMs.
+      const remainingMs = deadline - attemptStarted;
+      if (attempt > 1 && remainingMs < MIN_VIABLE_RETRY_MS) {
+        // Budget exhausted — surface whatever error we have rather than
+        // starting a retry that cannot reasonably complete.
+        break;
+      }
+      // Use whichever is tighter: the per-call timeout or the remaining budget.
+      const callTimeoutMs = Math.min(timeoutMs, Math.max(MIN_VIABLE_RETRY_MS, remainingMs));
+
       try {
         const client = await this.ensureClient();
         const result = await client.callTool({ name, arguments: args }, undefined, {
-          timeout: timeoutMs,
+          timeout: callTimeoutMs,
         });
         this.stats.calls++;
-        console.log(JSON.stringify({ event: "mcp_tool_call", tool: name, timeoutMs, attempt, durationMs: Date.now() - started, success: !result.isError }));
+        console.log(JSON.stringify({ event: "mcp_tool_call", tool: name, timeoutMs: callTimeoutMs, attempt, durationMs: Date.now() - attemptStarted, success: !result.isError }));
         if (result.isError) {
           const text = extractText(result.content);
           throw new McpError("MCP_TOOL_ERROR", text || "Market data is temporarily unavailable.", name);
@@ -173,7 +228,38 @@ export class McpToolsClient {
       } catch (err) {
         this.stats.failures++;
         lastError = normalizeMcpError(err, name);
-        console.warn(JSON.stringify({ event: "mcp_tool_call", tool: name, timeoutMs, attempt, durationMs: Date.now() - started, success: false, code: lastError.code }));
+        console.warn(JSON.stringify({ event: "mcp_tool_call", tool: name, timeoutMs: callTimeoutMs, attempt, durationMs: Date.now() - attemptStarted, success: false, code: lastError.code }));
+
+        // ── Session-invalid recovery ──────────────────────────────────────
+        // HTTP 404 + "session not found": the MCP service redeployed and
+        // discarded our session. Recover once for verified read-only tools.
+        if (
+          lastError.code === "MCP_SESSION_INVALID" &&
+          !sessionRecoveryAttempted &&
+          SESSION_RECOVERY_ALLOWLIST.has(name)
+        ) {
+          sessionRecoveryAttempted = true;
+          console.log(JSON.stringify({ event: "mcp_session_invalid_detected", tool: name, attempt, code: lastError.code }));
+
+          const budgetAfterFailure = deadline - Date.now();
+          if (budgetAfterFailure < MIN_VIABLE_RETRY_MS) {
+            // Not enough time left to recover + retry.
+            break;
+          }
+
+          try {
+            await this.recoverSession(name, attempt);
+            this.stats.reconnects++;
+            console.log(JSON.stringify({ event: "mcp_tool_retried_after_reinitialize", tool: name, attempt }));
+            continue; // proceed to attempt 2 with the fresh session
+          } catch (recoverErr) {
+            lastError = normalizeMcpError(recoverErr, name);
+            console.warn(JSON.stringify({ event: "mcp_tool_retry_failed", tool: name, attempt, code: lastError.code }));
+            break; // surface the recovery failure — no further retries
+          }
+        }
+
+        // ── Existing retry logic: reconnect on session drop / unavailable ─
         // Config/disabled/auth/tool errors won't be fixed by reconnecting.
         // Timeout retries are opt-out (retryOnTimeout=false) for slow tools.
         const retryable =
@@ -187,6 +273,43 @@ export class McpToolsClient {
       }
     }
     throw lastError ?? new McpError("MCP_TOOL_ERROR", "Market data is temporarily unavailable.", name);
+  }
+
+  /**
+   * Recover from a session-invalid error:
+   * - If a recovery is already in progress (concurrent callers), join it.
+   * - Otherwise, start a new recovery: clear the stale session, reinitialize.
+   * - Clears `this.recovering` on both success and failure so later callers
+   *   can start a fresh recovery if needed (no permanently poisoned Promise).
+   */
+  private async recoverSession(tool: string, attempt: number): Promise<void> {
+    if (this.recovering) {
+      // Another request already started recovery — join its Promise.
+      console.log(JSON.stringify({ event: "mcp_session_reinitialize_joined", tool, attempt }));
+      await this.recovering;
+      return;
+    }
+
+    console.log(JSON.stringify({ event: "mcp_session_reinitialize_started", tool, attempt }));
+    const started = Date.now();
+
+    this.recovering = (async () => {
+      try {
+        await this.resetSession();
+        await this.ensureClient();
+        console.log(JSON.stringify({ event: "mcp_session_reinitialize_succeeded", tool, attempt, durationMs: Date.now() - started }));
+      } catch (err) {
+        const norm = normalizeMcpError(err);
+        console.warn(JSON.stringify({ event: "mcp_session_reinitialize_failed", tool, attempt, durationMs: Date.now() - started, code: norm.code }));
+        throw norm;
+      } finally {
+        // Always clear — prevents a permanently poisoned Promise and allows
+        // subsequent requests to start a fresh recovery.
+        this.recovering = null;
+      }
+    })();
+
+    await this.recovering;
   }
 
   private async resetSession(): Promise<void> {

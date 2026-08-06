@@ -1,0 +1,391 @@
+SPRINT 2.0.1 — Dashboard UX Polish & Opportunity Command Center
+
+IMPORTANT
+
+This sprint is UI/UX only.
+
+DO NOT modify:
+
+- Opportunity Engine
+- MCP
+- Scanner algorithms
+- MarketHistoryService
+- PostgreSQL schema
+- Broker integrations
+- Opportunity Lifecycle logic
+- APIs
+- Persistence
+- Ranking
+- Confidence calculations
+
+Assume Sprint 2.0 backend is production-ready.
+
+The objective is to transform the dashboard into an institutional-quality trading command center.
+
+======================================================
+PRIMARY GOAL
+======================================================
+
+A trader should understand the market in less than 10 seconds.
+
+The dashboard should answer:
+
+1. What is today's market condition?
+2. What opportunities deserve immediate attention?
+3. What changed since yesterday?
+4. What should I watch next?
+5. What requires action?
+
+Prioritize information hierarchy over adding more information.
+
+======================================================
+SECTION 1
+MARKET SUMMARY HEADER
+======================================================
+
+Replace the current header with a compact Market Summary.
+
+Display:
+
+Market Regime
+
+Strength
+
+Trend
+
+Daily Data Timestamp
+
+Broker Status
+
+Live/Daily indicator
+
+Example
+
+Strong Bull
+Daily Close
+Latest Scan 8:32 AM
+Broker Connected
+Scanner v1
+
+Small badges only.
+
+======================================================
+SECTION 2
+TODAY'S TOP OPPORTUNITIES
+======================================================
+
+Redesign cards.
+
+Each card should contain:
+
+Ticker
+
+Company
+
+Strategy
+
+Lifecycle badge
+
+NEW
+
+TRIGGERED
+
+STRENGTHENING
+
+WATCH
+
+Confidence placeholder
+
+(coming soon)
+
+Current Rank
+
+Previous Rank
+
+Rank Change
+
+Market Regime alignment
+
+Analyze button
+
+Favorite button
+
+Clean institutional appearance.
+
+======================================================
+SECTION 3
+TODAY'S CHANGES
+======================================================
+
+New panel.
+
+Show only changes.
+
+Categories
+
+New Today
+
+Strengthening
+
+Weakening
+
+Dropped
+
+Triggered
+
+Each category collapsible.
+
+Each row:
+
+Ticker
+
+Strategy
+
+Rank movement
+
+Lifecycle badge
+
+Timestamp
+
+======================================================
+SECTION 4
+WATCHLIST
+======================================================
+
+Improve watchlist cards.
+
+Display
+
+Distance to qualification
+
+Current lifecycle
+
+Trend
+
+Next trigger
+
+Latest scan time
+
+======================================================
+SECTION 5
+MARKET SNAPSHOT
+======================================================
+
+Compress.
+
+Remove unnecessary whitespace.
+
+Keep
+
+Regime
+
+Indices
+
+Sector leaders
+
+Market breadth
+
+No large empty panels.
+
+======================================================
+SECTION 6
+OPPORTUNITY TIMELINE
+======================================================
+
+Add timeline.
+
+Newest scan
+
+↓
+
+Previous scan
+
+↓
+
+Previous day
+
+Each scan shows
+
+Qualified
+
+Watchlist
+
+Dropped
+
+New
+
+Small visual timeline.
+
+======================================================
+SECTION 7
+QUICK ACTIONS
+======================================================
+
+Redesign as action buttons.
+
+Find Growth
+
+Generate Income
+
+Analyze Stock
+
+Review Portfolio
+
+Market Research
+
+Education
+
+All equal size.
+
+======================================================
+SECTION 8
+CARD CONSISTENCY
+======================================================
+
+Every dashboard card should have
+
+Title
+
+Subtitle
+
+Status badge
+
+Last updated
+
+Loading state
+
+Error state
+
+Empty state
+
+Consistent padding
+
+Consistent spacing
+
+======================================================
+SECTION 9
+LOADING EXPERIENCE
+======================================================
+
+Skeleton loaders.
+
+Never flash empty cards.
+
+No layout shifting.
+
+======================================================
+SECTION 10
+VISUAL LANGUAGE
+======================================================
+
+Institutional look.
+
+Inspired by
+
+Bloomberg
+
+TradingView
+
+Koyfin
+
+Finviz Elite
+
+Dark theme
+
+Compact
+
+Minimal borders
+
+Consistent typography
+
+Do not copy any UI.
+
+======================================================
+SECTION 11
+RESPONSIVENESS
+======================================================
+
+Desktop first.
+
+Tablet support.
+
+Mobile readable.
+
+======================================================
+SECTION 12
+ACCESSIBILITY
+======================================================
+
+Keyboard navigation.
+
+ARIA labels.
+
+Focus states.
+
+High contrast.
+
+======================================================
+SECTION 13
+PERFORMANCE
+======================================================
+
+No additional API calls.
+
+Reuse existing queries.
+
+No polling changes.
+
+No backend changes.
+
+======================================================
+SECTION 14
+DO NOT CHANGE
+======================================================
+
+Opportunity Engine
+
+Lifecycle logic
+
+Database
+
+Routes
+
+Scanner
+
+Broker integrations
+
+MCP
+
+Historical data
+
+Persistence
+
+Only presentation.
+
+======================================================
+SUCCESS CRITERIA
+======================================================
+
+A first-time user should understand:
+
+• Current market condition
+
+• Best opportunities
+
+• What's new today
+
+• What changed
+
+• What deserves attention
+
+within 10 seconds of opening the dashboard.
+
+Use the existing backend data already available.
+
+No placeholder business logic.
+
+No fabricated values.
+
+No new APIs.
+
+Only improve presentation and user workflow.

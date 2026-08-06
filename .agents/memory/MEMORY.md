@@ -26,3 +26,4 @@
 - [Radar hash-fallback removal](radar-hash-fallback.md) — hash fallback removed from buildStoredQuote (was buildMockQuote); null returned when no stored bars → unavailableQuoteCount; RadarResult gained unavailableQuoteCount field.
 - [Analysis result cache researchSave strip](analysis-cache-research-save.md) — storeAnalysisResult must strip researchSave before caching; single-use handles must never be replayed via cache hits.
 - [Opportunity Lifecycle Intelligence](opportunity-lifecycle-intelligence.md) — Sprint 2.0: opportunity_history table, comparison service (pure, 8 states), history writer (fire-and-forget), two new endpoints, dashboard lifecycle section + symbol history drawer.
+- [Dashboard command-center redesign](dashboard-command-center.md) — Sprint 2.0.1: MarketCommandBar + OpportunityTimeline added; lifecycle badges wired into StockOpportunityCard via changesData prop; LifecycleSubsection is NOT yet collapsible (gap → Task #74).

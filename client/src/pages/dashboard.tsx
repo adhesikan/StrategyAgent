@@ -560,6 +560,27 @@ function MorningHeaderSection({ firstName }: { firstName: string }) {
   );
 }
 
+function MarketCommandBar({ snapshot, brokerConnected }: { snapshot?: MarketSnapshot; brokerConnected: boolean }) {
+  const now = new Date();
+  const sessionInfo = getMarketSessionInfo(now);
+  const regime = snapshot?.marketRegime?.regime;
+  const regimeLabel = regime === "TRENDING" ? "Strong Bull" : regime === "RISK_OFF" ? "Risk-Off" : regime === "CHOPPY" ? "Choppy" : "Unavailable";
+  const tone = snapshot?.marketTone ? snapshot.marketTone.charAt(0).toUpperCase() + snapshot.marketTone.slice(1) : "Unavailable";
+  const asOf = snapshot?.asOf ? new Date(snapshot.asOf).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : "—";
+  const dot = (color: string, pulse = false) => <span className={cn("h-1.5 w-1.5 rounded-full", color, pulse && "animate-pulse")} />;
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap rounded-md border border-border/40 bg-card/40 px-2.5 py-2 text-[10px]" data-testid="market-command-bar">
+      <span className="uppercase tracking-widest text-muted-foreground mr-1">Command</span>
+      <Badge variant="outline" className={cn("gap-1 text-[10px]", regime ? REGIME_CLASS[regime] : "text-muted-foreground border-border/40")}>{dot(regime === "RISK_OFF" ? "bg-rose-400" : regime === "CHOPPY" ? "bg-amber-400" : "bg-emerald-400")} Regime: {regimeLabel}</Badge>
+      <Badge variant="outline" className={cn("gap-1 text-[10px]", snapshot?.marketTone ? TONE_CLASS[snapshot.marketTone] : "text-muted-foreground border-border/40")}>{dot(snapshot?.marketTone === "defensive" ? "bg-rose-400" : snapshot?.marketTone === "mixed" ? "bg-amber-400" : "bg-emerald-400")} Trend: {tone}</Badge>
+      <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/40">Scanner: {snapshot?.dataSource === "broker" ? "Broker Data" : snapshot?.dataSource === "twelve_data" ? "Latest Daily Close" : "Unavailable"}</Badge>
+      <span className="text-muted-foreground">As of <span className="font-mono text-foreground/80">{asOf}</span></span>
+      <span className={cn("flex items-center gap-1", brokerConnected ? "text-emerald-300" : "text-muted-foreground")}>{dot(brokerConnected ? "bg-emerald-400" : "bg-muted-foreground")} Broker: {brokerConnected ? "Connected" : "Not Connected"}</span>
+      <span className={cn("ml-auto flex items-center gap-1", sessionInfo.session === "regular" ? "text-emerald-300" : "text-muted-foreground")}>{dot(sessionInfo.session === "regular" ? "bg-emerald-400" : "bg-muted-foreground", sessionInfo.session === "regular")} {sessionInfo.label}</span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 2. Quick Actions
 // ---------------------------------------------------------------------------
@@ -567,49 +588,42 @@ function MorningHeaderSection({ firstName }: { firstName: string }) {
 const QUICK_ACTIONS = [
   {
     id: "growth",
-    label: "Find Growth Opportunities",
+    label: "Find Growth",
     icon: TrendingUp,
     color: "text-emerald-400",
     href: askRoute("Find long-term AI infrastructure growth opportunities"),
   },
   {
     id: "income",
-    label: "Find Income Opportunities",
+    label: "Generate Income",
     icon: DollarSign,
     color: "text-amber-400",
     href: askRoute("Find income opportunities with covered calls or cash-secured puts under $500 risk"),
   },
   {
-    id: "trade",
-    label: "Find Trade Setups",
-    icon: Target,
-    color: "text-sky-400",
-    href: "/scanner",
-  },
-  {
     id: "analyze",
-    label: "Analyze a Stock",
+    label: "Analyze Stock",
     icon: Search,
     color: "text-violet-400",
     href: "/ask",
   },
   {
     id: "portfolio",
-    label: "Review My Portfolio",
+    label: "Review Portfolio",
     icon: Wallet,
     color: "text-primary",
     href: askRoute("Analyze my portfolio exposure and concentration"),
   },
   {
     id: "research",
-    label: "Continue Saved Research",
+    label: "Education",
     icon: BookOpen,
     color: "text-rose-400",
-    href: "/research",
+    href: "/ask",
   },
   {
     id: "markets",
-    label: "Understand Markets",
+    label: "Market Research",
     icon: Globe,
     color: "text-cyan-400",
     href: askRoute("Explain the current market regime and what it means for investors"),
@@ -924,9 +938,13 @@ const LIFECYCLE_BADGE: Record<LifecycleState, { label: string; className: string
 function StockOpportunityCard({
   candidate,
   hasCachedResult,
+  lifecycleState,
+  marketRegime,
 }: {
   candidate: RankedStockCandidate;
   hasCachedResult?: boolean;
+  lifecycleState?: LifecycleState;
+  marketRegime?: string | null;
 }) {
   const [, navigate] = useLocation();
   const ctaText = hasCachedResult ? "Open Analysis" : "Analyze";
@@ -934,19 +952,23 @@ function StockOpportunityCard({
 
   return (
     <div
-      className="rounded-lg border bg-card/50 p-3 space-y-2"
+      className="rounded-md border border-border/40 bg-card/50 p-3 space-y-2.5 transition-colors hover:border-border"
       data-testid={`card-stock-${candidate.symbol}`}
       role="article"
       aria-label={`${candidate.symbol} stock opportunity`}
     >
       {/* Header row: symbol + rank badge + confidence */}
       <div className="flex items-center gap-2 flex-wrap min-w-0">
-        <span className="font-mono font-semibold text-sm" data-testid={`symbol-${candidate.symbol}`}>
+        <span className="font-mono font-semibold text-lg tracking-tight" data-testid={`symbol-${candidate.symbol}`}>
           {candidate.symbol}
         </span>
-        <Badge variant="outline" className="text-[10px] border-border text-muted-foreground">
+        <Badge variant="outline" className="text-[10px] border-border/50 text-muted-foreground">
           #{candidate.rank}
         </Badge>
+        {candidate.rank > 0 && candidate.rank !== undefined && <span className="text-[10px] text-muted-foreground">{candidate.rank > 1 ? "▲" : ""}</span>}
+        {lifecycleState && <LifecycleBadge state={lifecycleState} />}
+        {lifecycleState && <span className="text-[10px] text-muted-foreground">•</span>}
+        {candidate.strategy && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{candidate.strategy}</span>}
         {confidence && CONFIDENCE_CLASS[confidence] && (
           <Badge
             variant="outline"
@@ -959,13 +981,8 @@ function StockOpportunityCard({
         )}
       </div>
 
-      {/* Strategy & setup status */}
-      {(candidate.strategy || candidate.setupStatus) && (
-        <div className="text-xs text-muted-foreground capitalize">
-          {candidate.strategy ?? ""}
-          {candidate.setupStatus ? ` · ${candidate.setupStatus}` : ""}
-        </div>
-      )}
+      {candidate.rank > 0 && candidate.setupStatus && <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{candidate.setupStatus}</div>}
+      {marketRegime && <div className="text-[10px] text-sky-300/80">Aligns with {REGIME_LABEL[marketRegime] ?? marketRegime} Regime</div>}
 
       {/* Primary selection reason — first reason from MCP (never fabricated) */}
       {candidate.whySelected.length > 0 && (
@@ -976,9 +993,9 @@ function StockOpportunityCard({
 
       {/* Trigger / invalidation levels when supplied by MCP */}
       {(candidate.trigger || candidate.invalidation) && (
-        <div className="flex gap-3 text-[10px] text-muted-foreground font-mono">
-          {candidate.trigger && <span>Entry: {candidate.trigger}</span>}
-          {candidate.invalidation && <span>Stop: {candidate.invalidation}</span>}
+        <div className="flex gap-1.5 text-[10px] text-muted-foreground font-mono">
+          {candidate.trigger && <span className="rounded border border-emerald-500/20 bg-emerald-500/5 px-1.5 py-0.5">Entry {candidate.trigger}</span>}
+          {candidate.invalidation && <span className="rounded border border-rose-500/20 bg-rose-500/5 px-1.5 py-0.5">Stop {candidate.invalidation}</span>}
         </div>
       )}
 
@@ -990,7 +1007,7 @@ function StockOpportunityCard({
         </div>
       )}
 
-      <div className="pt-0.5">
+      <div className="flex items-center gap-1.5 pt-0.5">
         <Button
           size="sm"
           variant="outline"
@@ -1007,6 +1024,9 @@ function StockOpportunityCard({
           aria-label={`${ctaText} for ${candidate.symbol}`}
         >
           {ctaText} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => navigate("/scanner")} aria-label={`Watch ${candidate.symbol}`}>
+          <Star className="h-3.5 w-3.5" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -1320,11 +1340,15 @@ function CandidateSubsection({
   candidates,
   cachedSymbols,
   emptyNote,
+  lifecycleBySymbol,
+  marketRegime,
 }: {
   heading: string;
   candidates: RankedStockCandidate[];
   cachedSymbols: Set<string>;
   emptyNote: string;
+  lifecycleBySymbol?: Map<string, LifecycleState>;
+  marketRegime?: string | null;
 }) {
   return (
     <div>
@@ -1343,6 +1367,8 @@ function CandidateSubsection({
               key={`${c.symbol}-${c.rank}`}
               candidate={c}
               hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
+              lifecycleState={lifecycleBySymbol?.get(c.symbol.toUpperCase())}
+              marketRegime={marketRegime}
             />
           ))}
         </div>
@@ -1460,6 +1486,7 @@ function OpportunityLifecycleSection({
   cachedSymbols: Set<string>;
 }) {
   const [historySymbol, setHistorySymbol] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   // Don't render until we have comparison data with a previous scan
   if (isLoading) return null;
@@ -1486,6 +1513,23 @@ function OpportunityLifecycleSection({
       onOpenHistory={setHistorySymbol}
     />
   );
+
+  const category = (key: string, heading: string, icon: React.ElementType, items: LifecycleItem[], render: (item: LifecycleItem) => React.ReactNode) => {
+    if (!items.length) return null;
+    const isOpen = !collapsed[key];
+    const Icon = icon;
+    return (
+      <div className="border-b border-border/30 last:border-0">
+        <button type="button" className="flex w-full items-center gap-2 py-2 text-left" onClick={() => setCollapsed((s) => ({ ...s, [key]: !s[key] }))} aria-expanded={isOpen}>
+          <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <span className="text-xs font-medium">{heading}</span>
+          <Badge variant="outline" className="ml-auto text-[10px] border-border/40">{items.length}</Badge>
+          {isOpen ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+        </button>
+        {isOpen && <div className="space-y-1 pb-2">{items.map(render)}</div>}
+      </div>
+    );
+  };
 
   const renderAbsent = (item: LifecycleItem) => (
     <AbsentLifecycleRow
@@ -1529,65 +1573,14 @@ function OpportunityLifecycleSection({
               </p>
             ) : (
               <>
-                {/* New Today */}
-                {newOpportunities.length > 0 && (
-                  <LifecycleSubsection
-                    heading="New Today"
-                    icon={Sparkles}
-                    items={newOpportunities}
-                    renderItem={renderQualified}
-                  />
-                )}
-
-                {/* Triggered */}
-                {triggered.length > 0 && (
-                  <LifecycleSubsection
-                    heading="Recently Triggered"
-                    icon={Zap}
-                    items={triggered}
-                    renderItem={renderAbsent}
-                  />
-                )}
-
-                {/* Strengthening */}
-                {improving.length > 0 && (
-                  <LifecycleSubsection
-                    heading="Strengthening"
-                    icon={TrendingUp}
-                    items={improving}
-                    renderItem={renderQualified}
-                  />
-                )}
-
-                {/* Weakening */}
-                {weakening.length > 0 && (
-                  <LifecycleSubsection
-                    heading="Weakening"
-                    icon={TrendingDown}
-                    items={weakening}
-                    renderItem={renderQualified}
-                  />
-                )}
-
-                {/* Approaching Qualification */}
-                {approaching.length > 0 && (
-                  <LifecycleSubsection
-                    heading="Approaching Qualification"
-                    icon={ArrowRight}
-                    items={approaching}
-                    renderItem={renderAbsent}
-                  />
-                )}
-
-                {/* Recently Dropped */}
-                {removed.length > 0 && (
-                  <LifecycleSubsection
-                    heading="Recently Dropped"
-                    icon={TrendingDown}
-                    items={removed}
-                    renderItem={renderAbsent}
-                  />
-                )}
+                <div className="divide-y divide-border/30">
+                  {category("new", "New Today", Sparkles, newOpportunities, renderQualified)}
+                  {category("improving", "Strengthening", TrendingUp, improving, renderQualified)}
+                  {category("weakening", "Weakening", TrendingDown, weakening, renderQualified)}
+                  {category("removed", "Dropped", TrendingDown, removed, renderAbsent)}
+                  {category("triggered", "Triggered", Zap, triggered, renderAbsent)}
+                  {category("approaching", "Approaching", ArrowRight, approaching, renderAbsent)}
+                </div>
 
                 {/* Stable positions (collapsed summary) */}
                 {stillQualified.length > 0 && (
@@ -1636,10 +1629,12 @@ function OpportunityEngineSection({
   data,
   isLoading,
   onRetry,
+  changesData,
 }: {
   data: OpportunityLatestResponse | undefined;
   isLoading: boolean;
   onRetry: () => void;
+  changesData?: SnapshotComparison;
 }) {
   const [, navigate] = useLocation();
   const snapshot = data?.snapshot ?? null;
@@ -1671,6 +1666,9 @@ function OpportunityEngineSection({
   });
   const cachedSymbols = new Set<string>(
     (cacheData?.hits ?? []).map((s) => s.toUpperCase()),
+  );
+  const lifecycleBySymbol = new Map<string, LifecycleState>(
+    (changesData?.all ?? []).map((item) => [item.symbol.toUpperCase(), item.lifecycleState]),
   );
 
   return (
@@ -1801,6 +1799,8 @@ function OpportunityEngineSection({
                 candidates={snapshot.topGrowth}
                 cachedSymbols={cachedSymbols}
                 emptyNote="No growth setups identified in the current scan."
+                lifecycleBySymbol={lifecycleBySymbol}
+                marketRegime={snapshot.marketRegime}
               />
 
               {/* Top Income */}
@@ -1809,6 +1809,8 @@ function OpportunityEngineSection({
                 candidates={snapshot.topIncome}
                 cachedSymbols={cachedSymbols}
                 emptyNote="No income setups identified in the current scan."
+                lifecycleBySymbol={lifecycleBySymbol}
+                marketRegime={snapshot.marketRegime}
               />
 
               {/* Top Watchlist */}
@@ -1838,6 +1840,44 @@ function OpportunityEngineSection({
               )}
             </>
           )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function OpportunityTimeline({ snapshot, changes }: { snapshot?: OpportunitySnapshot | null; changes?: SnapshotComparison }) {
+  if (!snapshot) return null;
+  const time = (value: string | null | undefined) => value ? new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—";
+  const previousQualified = changes?.summary ? changes.summary.stillQualifiedCount + changes.summary.newCount : 0;
+  return (
+    <section aria-labelledby="timeline-heading" data-testid="section-opportunity-timeline">
+      <Card className="border-border/40">
+        <CardHeader className="px-4 py-2.5">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[13px] font-medium flex items-center gap-1.5"><Activity className="h-3.5 w-3.5 text-sky-300" /><span id="timeline-heading">Opportunity Timeline</span></CardTitle>
+            <span className="text-[10px] text-muted-foreground">Scan history</span>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 pt-0">
+          <div className="relative space-y-2">
+            <div className="absolute left-[3px] top-2 bottom-2 w-px bg-border/60" />
+            <div className="relative flex items-center gap-3 text-[10px]">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-emerald-400/15" />
+              <span className="w-24 font-medium">Latest Scan</span>
+              <span className="font-mono text-muted-foreground">{time(snapshot.completedAt)}</span>
+              <Badge variant="outline" className="text-[10px] text-emerald-300 border-emerald-500/30">{snapshot.counts.qualified} qualified</Badge>
+              {changes?.summary && <span className="text-muted-foreground">{changes.summary.newCount} new · {changes.summary.removedCount} dropped</span>}
+            </div>
+            {changes?.hasPreviousScan ? (
+              <div className="relative flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span className="h-2 w-2 rounded-full bg-sky-400" />
+                <span className="w-24 font-medium">Previous Scan</span>
+                <span className="font-mono">{time(changes.summary.previousScanTime)}</span>
+                <Badge variant="outline" className="text-[10px] border-border/40">{previousQualified} qualified</Badge>
+              </div>
+            ) : <div className="pl-5 text-[10px] text-muted-foreground">First scan — no history yet</div>}
+          </div>
         </CardContent>
       </Card>
     </section>
@@ -2638,7 +2678,7 @@ export default function DashboardPage() {
       >
         <TrialBanner />
 
-        {/* 1. Morning Header */}
+        <MarketCommandBar snapshot={snapshot} brokerConnected={data.portfolio.brokerConnected} />
         <MorningHeaderSection firstName={firstName} />
 
         {/* 2. Quick Actions */}
@@ -2658,6 +2698,7 @@ export default function DashboardPage() {
         <OpportunityEngineSection
           data={oppsQuery.data}
           isLoading={oppsQuery.isLoading}
+          changesData={changesQuery.data}
           onRetry={() => {
             track("dashboard_section_retry", { section: "stock_opportunities" } as any);
             void oppsQuery.refetch();
@@ -2672,6 +2713,8 @@ export default function DashboardPage() {
           isLoading={changesQuery.isLoading}
           cachedSymbols={new Set<string>()} /* batch cache check omitted here — Analyze navigates directly */
         />
+
+        <OpportunityTimeline snapshot={oppsQuery.data?.snapshot} changes={changesQuery.data} />
 
         {/* 5. AI Infrastructure Watch */}
         <AiInfraWatchSection

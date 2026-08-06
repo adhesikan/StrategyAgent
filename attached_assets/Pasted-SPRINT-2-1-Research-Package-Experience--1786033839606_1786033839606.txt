@@ -1,0 +1,466 @@
+SPRINT 2.1 – Research Package Experience
+
+====================================================================
+OBJECTIVE
+====================================================================
+
+Transform every Opportunity Engine candidate into a complete Research Package.
+
+The goal is NOT to generate more opportunities.
+
+The goal is to help a self-directed trader understand WHY the opportunity qualified, WHAT evidence supports it, HOW they might research a stock or options trade, and WHEN they may decide to execute using InstaTrade™ if connected to a brokerage.
+
+This sprint is about research, education, planning and transparency.
+
+Never present investment recommendations.
+
+Never present personalized investment advice.
+
+Never fabricate data.
+
+====================================================================
+DO NOT CHANGE
+====================================================================
+
+Do NOT modify:
+
+• Opportunity Engine
+• MCP
+• Scanner algorithms
+• MarketHistoryService
+• Broker integrations
+• Portfolio engine
+• Opportunity Lifecycle
+• Opportunity scoring
+• PostgreSQL schema (unless absolutely required)
+• Existing API contracts
+
+Only extend the research experience.
+
+====================================================================
+CREATE A NEW PAGE
+====================================================================
+
+Research Package
+
+Route
+
+/research/:symbol
+
+This page becomes the central research experience for every candidate.
+
+====================================================================
+SECTION 1
+RESEARCH HEADER
+====================================================================
+
+Display
+
+Ticker
+
+Company
+
+Strategy
+
+Lifecycle badge
+
+Current Rank
+
+Previous Rank
+
+Market Regime
+
+Freshness
+
+Data Source
+
+Scan Timestamp
+
+Opportunity Status
+
+Qualified / Watch / Triggered
+
+Show only factual metadata.
+
+====================================================================
+SECTION 2
+RESEARCH SUMMARY
+====================================================================
+
+Generate a structured summary.
+
+Fields
+
+Why this qualified
+
+What changed
+
+Current technical posture
+
+Current market regime
+
+Primary opportunity
+
+Primary risks
+
+Upcoming catalysts
+
+Keep concise.
+
+Think Bloomberg Terminal.
+
+Not ChatGPT essay style.
+
+====================================================================
+SECTION 3
+TECHNICAL EVIDENCE
+====================================================================
+
+Display all deterministic evidence.
+
+Examples
+
+Trend
+
+Moving averages
+
+Volume expansion
+
+Relative strength
+
+Breakout status
+
+ATR
+
+Support
+
+Resistance
+
+Momentum
+
+Each item
+
+Pass
+
+Warning
+
+Neutral
+
+No AI.
+
+====================================================================
+SECTION 4
+MARKET CONTEXT
+====================================================================
+
+Display
+
+Current market regime
+
+Sector strength
+
+Industry strength
+
+Broad market alignment
+
+Volatility environment
+
+Economic calendar
+
+Upcoming earnings
+
+Only existing data.
+
+====================================================================
+SECTION 5
+STOCK RESEARCH
+====================================================================
+
+Educational planning only.
+
+Fields
+
+Current Price
+
+Support Zone
+
+Resistance Zone
+
+Breakout Zone
+
+Risk Zone
+
+Trend
+
+Liquidity
+
+Holding Horizon
+
+Capital Characteristics
+
+This is NOT a trade recommendation.
+
+Do NOT say Buy or Sell.
+
+====================================================================
+SECTION 6
+OPTIONS RESEARCH
+====================================================================
+
+Educational only.
+
+Display
+
+Possible trade structures
+
+Long Stock
+
+Long Call
+
+Bull Call Spread
+
+Cash Secured Put
+
+Covered Call
+
+Protective Put
+
+For each
+
+Typical market outlook
+
+Capital efficiency
+
+Defined risk
+
+Time decay
+
+Liquidity characteristics
+
+Suitable when
+
+Do NOT recommend one.
+
+Simply explain.
+
+====================================================================
+SECTION 7
+WHY THIS QUALIFIED
+====================================================================
+
+Visual checklist.
+
+Example
+
+✓ Trend Quality
+
+✓ Volume
+
+✓ Liquidity
+
+✓ Relative Strength
+
+✓ Market Alignment
+
+✓ Institutional Pattern
+
+✓ Scanner Rule
+
+Everything comes from deterministic scanner output.
+
+====================================================================
+SECTION 8
+RISK FACTORS
+====================================================================
+
+Display
+
+Upcoming earnings
+
+Macro events
+
+Sector weakness
+
+Volatility
+
+Invalidation conditions
+
+Known warnings
+
+====================================================================
+SECTION 9
+ACTION CENTER
+====================================================================
+
+Buttons
+
+Save Research
+
+Add to Watchlist
+
+Compare
+
+Congress Activity
+
+Institutional Activity
+
+News
+
+Education
+
+Trade Planning
+
+Only show
+
+Review with InstaTrade™
+
+if
+
+brokerConnected == true
+
+Otherwise show
+
+Connect Brokerage to use InstaTrade™
+
+====================================================================
+SECTION 10
+INSTATRADE™
+====================================================================
+
+IMPORTANT
+
+This is NOT an execution button.
+
+Rename workflow
+
+Review with InstaTrade™
+
+Clicking opens
+
+Trade Planning
+
+Estimated order
+
+Risk
+
+Capital
+
+Broker account
+
+Final review
+
+Only the connected broker executes the order.
+
+Never submit directly.
+
+====================================================================
+SECTION 11
+COMPLIANCE
+====================================================================
+
+Avoid
+
+Buy
+
+Sell
+
+Recommendation
+
+Expected Profit
+
+Target Return
+
+Must Buy
+
+Instead use
+
+Research Candidate
+
+Research Summary
+
+Potential Trade Structure
+
+Educational Example
+
+Scenario Analysis
+
+Risk Characteristics
+
+Opportunity Qualified
+
+====================================================================
+SECTION 12
+DESIGN
+====================================================================
+
+Institutional appearance.
+
+Dark theme.
+
+Compact cards.
+
+Evidence-based.
+
+Minimal empty space.
+
+Clear hierarchy.
+
+Every section
+
+Loading
+
+Error
+
+Empty
+
+Last Updated
+
+====================================================================
+TESTING
+====================================================================
+
+Add comprehensive tests.
+
+Research page
+
+Loading
+
+Errors
+
+Broker connected
+
+Broker disconnected
+
+Evidence rendering
+
+Options section
+
+Stock section
+
+Lifecycle badges
+
+InstaTrade visibility
+
+No regressions.
+
+====================================================================
+SUCCESS CRITERIA
+====================================================================
+
+When a trader opens a Research Package they should understand
+
+1. Why this opportunity exists.
+
+2. Why today.
+
+3. What evidence supports it.
+
+4. What risks exist.
+
+5. How they could research a stock position.
+
+6. How they could research an options position.
+
+7. When InstaTrade™ becomes available.
+
+The page should feel like a professional investment research terminal rather than a stock scanner.

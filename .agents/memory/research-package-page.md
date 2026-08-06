@@ -29,6 +29,15 @@ description: Sprint 2.1 — /opportunity/:symbol page architecture, data contrac
 - `StockOpportunityCard` in dashboard.tsx: "Research" button → `/opportunity/:symbol`
 - data-testid: `btn-research-{symbol}`
 
+## Professional Trade Cards (Sprint 2.1.2)
+- 6 reusable components in `client/src/components/research/`: StockTradeCard, OptionsTradeCard, EvidenceCard, RiskCard, ActionCard, ResearchTradeCard (orchestrator)
+- Shared types extracted to `client/src/components/research/types.ts`; opportunity-research.tsx imports from there + re-exports EvidenceStars for backward compat tests
+- ResearchTradeCard replaces the Overview tab stacked layout: 2/3+1/3 grid (StockTradeCard + EvidenceCard), optional OptionsTradeCard (gated by shouldShowOptionsCard()), 1/2+1/2 (RiskCard + ActionCard)
+- OptionsTradeCard renders only when candidate.instrument==="options" or structure contains option keywords; all fields are deterministic estimates, clearly labeled
+- ActionCard: 5 secondary buttons (View Why, View Evidence, Congress Activity, Related Research, Save Research) + primary CTA (Prepare InstaTrade™ or Connect Broker)
+- 57 new component unit tests in `client/src/components/research/research-trade-card.test.tsx`; all pure functions exported for testability
+- MarketContextSection + ScanHistorySection remain below ResearchTradeCard in Overview tab
+
 ## Evidence Engine (Sprint 2.1.1)
 - 7 tabs: Overview | Technical | Congress | News | Institutional | Catalysts | AI Summary
 - Tab lazy-load via `visitedTabs: Set<TabValue>` — Congress mount gated on set membership; News query `enabled` gated on set membership

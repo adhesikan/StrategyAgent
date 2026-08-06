@@ -1,0 +1,1302 @@
+SPRINT 2.2.2 — LIVE OPTIONS CONTRACT RESOLVER
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+====================================================================
+CURRENT PRODUCT STATE
+====================================================================
+
+The following work is complete and production-approved:
+
+- Database-first market history
+- Opportunity Engine
+- Opportunity lifecycle and persisted snapshots
+- Research Package
+- Evidence Engine
+- Professional Research Cards
+- Research Decision Engine
+- Trade Structure Engine
+- Research Experience Refinement
+- Evidence score/label consistency fixes
+- Deterministic options structure guidance
+- Illustrative DTE ranges
+- Illustrative strike-selection frameworks
+- Conditional InstaTrade™ / Connect Broker presentation
+
+Sprint 2.2 currently determines:
+
+- which stock structure fits the research thesis;
+- which options structure may fit;
+- illustrative DTE range;
+- illustrative strike-selection approach;
+- structure-fit comparison;
+- risk characteristics.
+
+It intentionally does not resolve actual listed contracts.
+
+This sprint adds contract resolution only when a connected, entitled brokerage
+or another explicitly approved options-chain provider can supply current chain data.
+
+====================================================================
+OBJECTIVE
+====================================================================
+
+Build a provider-neutral Live Contract Resolver.
+
+The resolver converts an illustrative options structure into one or more verified,
+currently listed option-contract candidates.
+
+The workflow must be:
+
+Research Candidate
+    ↓
+Trade Structure Engine
+    ↓
+Illustrative Structure + DTE + Strike Framework
+    ↓
+Broker Capability Check
+    ↓
+Live Options Chain
+    ↓
+Expiration Resolution
+    ↓
+Strike Resolution
+    ↓
+Liquidity and Quote Validation
+    ↓
+Verified Contract Candidates
+    ↓
+Review with InstaTrade™
+
+This sprint does not submit orders.
+
+This sprint does not auto-trade.
+
+This sprint does not bypass the broker abstraction.
+
+====================================================================
+PRODUCT PRINCIPLES
+====================================================================
+
+1. Research Mode without a brokerage remains fully functional.
+
+2. Live contracts are shown only when supplied by an entitled provider.
+
+3. No fabricated contract, expiration, strike, premium, Greek, open interest,
+   volume, bid, ask or probability may be shown.
+
+4. Missing capabilities must produce an honest unavailable state.
+
+5. One provider failure must not break the Research Package.
+
+6. The user always chooses whether to continue.
+
+7. Contract resolution is planning and verification, not a recommendation.
+
+====================================================================
+DO NOT MODIFY
+====================================================================
+
+Do not modify:
+
+- Opportunity Engine
+- lifecycle rules
+- MCP ranking logic
+- market-history architecture
+- scanner algorithms
+- stock opportunity qualification
+- Trade Structure Engine selection rules
+- existing DTE derivation rules
+- existing strike-framework rules
+- Evidence Engine
+- Congress integration
+- portfolio engine
+- order-submission behavior
+- Position Protection
+- InstaTrade™ order execution
+- billing or subscription logic
+- authentication
+- existing market-data ingestion
+- unrelated dashboards or pages
+
+Do not add another options-data vendor.
+
+Do not hardcode Tradier throughout the application.
+
+Do not add auto-execution.
+
+Do not submit test or production orders.
+
+====================================================================
+INITIAL INVESTIGATION — REQUIRED BEFORE CODE
+====================================================================
+
+Before implementing anything, audit the existing broker architecture.
+
+Report:
+
+1. Existing BrokerProvider or broker-adapter interfaces.
+
+2. Existing broker implementations:
+   - Tradier
+   - TradeStation
+   - Schwab
+   - any other current provider
+
+3. Current capability fields, including whether these exist:
+   - quotes
+   - historicalBars
+   - optionsChain
+   - greeks
+   - portfolio
+   - execution
+
+4. Existing options-chain methods.
+
+5. Existing option-contract types.
+
+6. Existing authentication and token-refresh handling.
+
+7. Existing endpoints that already retrieve:
+   - option expirations
+   - option chains
+   - option quotes
+   - Greeks
+   - open interest
+   - option volume
+
+8. Existing InstaTrade™ preparation or order-entry code.
+
+9. Any duplicate options-chain logic that should be reused rather than copied.
+
+Do not implement until this audit is complete.
+
+Use the existing architecture wherever possible.
+
+====================================================================
+BROKER-CAPABILITY MODEL
+====================================================================
+
+Use capability detection rather than provider-name conditionals.
+
+The resolver must determine whether the active broker connection supports:
+
+- optionsChain
+- optionQuotes
+- greeks
+- multiLegOptions
+- execution
+
+Use existing capability fields when available.
+
+If missing, extend the broker-capability contract additively and safely.
+
+Suggested capability model, only if compatible with existing code:
+
+BrokerCapabilities {
+  quotes?: boolean;
+  historicalBars?: boolean;
+  optionsChain?: boolean;
+  optionQuotes?: boolean;
+  greeks?: boolean;
+  multiLegOptions?: boolean;
+  portfolio?: boolean;
+  execution?: boolean;
+}
+
+Do not make existing fields required.
+
+Do not break current broker implementations.
+
+A provider may support options chains but not Greeks.
+
+A provider may support single-leg options but not multi-leg execution.
+
+The UI must reflect those differences honestly.
+
+====================================================================
+NORMALIZED OPTIONS-CHAIN CONTRACT
+====================================================================
+
+Create or reuse a provider-neutral normalized contract type.
+
+Suggested fields:
+
+NormalizedOptionContract {
+  provider: string;
+  symbol: string;
+  underlyingSymbol: string;
+  optionType: "call" | "put";
+  expiration: string;
+  strike: number;
+  contractId: string;
+  description?: string;
+
+  bid?: number | null;
+  ask?: number | null;
+  last?: number | null;
+  mark?: number | null;
+
+  volume?: number | null;
+  openInterest?: number | null;
+
+  impliedVolatility?: number | null;
+  delta?: number | null;
+  gamma?: number | null;
+  theta?: number | null;
+  vega?: number | null;
+  rho?: number | null;
+
+  multiplier?: number | null;
+  inTheMoney?: boolean | null;
+  updatedAt?: string | null;
+}
+
+Requirements:
+
+- unavailable fields remain null;
+- never default unavailable numeric fields to zero;
+- provider-specific raw payloads must not leak into UI contracts;
+- preserve provider contract identifiers required for later order preparation;
+- never log tokens or full account payloads.
+
+====================================================================
+TRADE-STRUCTURE INPUT
+====================================================================
+
+The Live Contract Resolver receives the existing Trade Structure Engine output.
+
+Inputs may include:
+
+- underlying symbol
+- current underlying price
+- structure type
+- bullish / neutral / defensive posture
+- target DTE minimum
+- target DTE maximum
+- long-leg strike guidance
+- short-leg strike guidance
+- support
+- resistance
+- breakout level
+- technical objective
+- risk characteristics
+- holding horizon
+- broker connection
+- broker capabilities
+
+Do not recompute the research thesis.
+
+Do not independently choose a different trade structure.
+
+The resolver resolves contracts for the structure the user selected.
+
+====================================================================
+SUPPORTED STRUCTURES — INITIAL RELEASE
+====================================================================
+
+Support only structures that can be safely normalized using current broker capabilities.
+
+Initial candidates:
+
+Single-leg:
+- Long Call
+- Cash-Secured Put
+- Covered Call
+- Protective Put
+
+Two-leg vertical spreads:
+- Bull Call Spread
+- Bull Put Spread
+
+Optional only if current broker support is already strong:
+- Bear Put Spread
+- Bear Call Spread
+
+Do not implement in this sprint unless already supported and tested:
+
+- Iron Condor
+- Calendar Spread
+- Diagonal Spread
+- Ratio Spread
+- Butterfly
+- Straddle
+- Strangle
+- more than two legs
+
+For unsupported structures, return:
+
+status: "unsupported_structure"
+
+with a clear explanation.
+
+Do not silently approximate a different structure.
+
+====================================================================
+EXPIRATION RESOLUTION
+====================================================================
+
+Resolve actual listed expiration dates from the connected provider.
+
+Given:
+
+- target minimum DTE
+- target maximum DTE
+- current date
+- listed expirations
+
+Rules:
+
+1. Filter expired contracts.
+
+2. Prefer expirations within the target DTE range.
+
+3. If multiple expirations qualify:
+   - prefer the expiration closest to the midpoint of the DTE range;
+   - preserve alternatives immediately above and below where useful.
+
+4. If no expiration exists inside the range:
+   - optionally return the nearest listed expiration;
+   - label it as outside the target range;
+   - never pretend it matches the requested DTE.
+
+5. Exclude contracts expiring before upcoming earnings when the existing
+   planning rules require avoiding earnings, if that rule is already available.
+
+6. Do not invent weekly or monthly expirations.
+
+Output:
+
+ExpirationCandidate {
+  expiration: string;
+  dte: number;
+  withinTargetRange: boolean;
+  distanceFromTargetMidpoint: number;
+  warnings: string[];
+}
+
+====================================================================
+STRIKE RESOLUTION
+====================================================================
+
+Map illustrative strike guidance to actual listed strikes.
+
+Supported guidance examples:
+
+- Near ATM
+- One strike ITM
+- 2–5% OTM
+- Near support
+- Below support
+- Near breakout
+- Near technical objective
+- Short strike near objective
+
+Rules:
+
+Near ATM:
+- choose the listed strike with the smallest absolute distance from underlying price.
+
+One strike ITM:
+- identify ATM;
+- select the immediately adjacent in-the-money strike when available.
+
+2–5% OTM:
+- filter listed strikes within the requested percentage band;
+- rank by closeness to the midpoint.
+
+Near support:
+- choose the listed strike closest to support;
+- preserve whether it is above or below support.
+
+Near technical objective:
+- choose the listed strike closest to the current objective.
+
+For spreads:
+
+Bull Call Spread:
+- long call near ATM or configured long-leg framework;
+- short call near the technical objective or configured short-leg framework;
+- long strike must be below short strike.
+
+Bull Put Spread:
+- short put near or below support;
+- long put below the short put;
+- width must be a listed and valid spread width.
+
+Never create a synthetic strike that is absent from the chain.
+
+====================================================================
+LIQUIDITY VALIDATION
+====================================================================
+
+Validate each contract candidate using data actually supplied by the provider.
+
+Possible checks:
+
+- bid exists
+- ask exists
+- bid <= ask
+- non-negative prices
+- spread width
+- spread percentage
+- open interest
+- contract volume
+- quote freshness
+- underlying quote freshness
+
+Do not require unavailable metrics unless the provider contract guarantees them.
+
+Suggested classification:
+
+LiquidityStatus:
+- verified
+- acceptable
+- limited
+- unavailable
+- rejected
+
+Example deterministic rules, only after auditing existing product thresholds:
+
+- reject crossed or invalid markets;
+- reject ask <= 0 for debit structures;
+- flag bid = 0;
+- flag unusually wide bid/ask spread;
+- flag low OI when available;
+- flag no volume when available;
+- flag stale quote timestamps.
+
+Reuse existing liquidity thresholds where they already exist.
+
+Do not create competing thresholds.
+
+====================================================================
+GREEKS AND IMPLIED VOLATILITY
+====================================================================
+
+Greeks are optional.
+
+If provider supports Greeks:
+
+- normalize and display them;
+- preserve source and timestamp;
+- validate finite numeric values.
+
+If provider does not support Greeks:
+
+- show “Not supplied by connected provider”;
+- do not calculate synthetic Greeks in this sprint;
+- do not block contract resolution solely because Greeks are absent.
+
+Do not derive probability of profit from delta unless an existing,
+approved deterministic rule already exists and is clearly labeled as an estimate.
+
+Prefer not to display probability of profit in this sprint.
+
+====================================================================
+PRICING AND SPREAD CALCULATIONS
+====================================================================
+
+Use only actual provider quotes.
+
+For a single contract:
+
+- display bid;
+- ask;
+- mark only if supplied or deterministically computed as midpoint and clearly labeled;
+- last;
+- quote timestamp.
+
+If computing midpoint:
+
+mark = (bid + ask) / 2
+
+Only when both bid and ask are valid.
+
+Label:
+
+“Calculated midpoint”
+
+For vertical spreads:
+
+Estimated debit or credit may be calculated from current leg quotes.
+
+Bull Call Spread debit framework:
+
+estimatedDebit =
+  longCallAsk - shortCallBid
+
+Bull Put Spread credit framework:
+
+estimatedCredit =
+  shortPutBid - longPutAsk
+
+Clearly label these as:
+
+- Estimated from current displayed quotes
+- Not a guaranteed fill
+- Verify in broker order preview
+
+Never use stale or missing quote values to calculate a spread price.
+
+If required leg prices are unavailable:
+
+- display “Pricing unavailable”;
+- preserve the contract candidates;
+- do not invent a price.
+
+====================================================================
+MAXIMUM RISK AND MAXIMUM GAIN
+====================================================================
+
+Only calculate when inputs are complete and mathematically defined.
+
+Long Call:
+- max risk = displayed premium × multiplier;
+- max gain = theoretically unlimited;
+- breakeven = strike + premium.
+
+Cash-Secured Put:
+- max risk = (strike - premium) × multiplier;
+- max gain = premium × multiplier;
+- breakeven = strike - premium.
+
+Covered Call:
+- show assignment and upside-cap characteristics;
+- do not claim full max-risk values without verified stock cost basis.
+
+Bull Call Spread:
+- spread width = short strike - long strike;
+- max risk = net debit × multiplier;
+- max gain = (spread width - net debit) × multiplier;
+- breakeven = long strike + net debit.
+
+Bull Put Spread:
+- spread width = short strike - long strike;
+- max gain = net credit × multiplier;
+- max risk = (spread width - net credit) × multiplier;
+- breakeven = short strike - net credit.
+
+Requirements:
+
+- calculate only from verified contract strikes and actual displayed quotes;
+- identify the quote basis used;
+- label calculations as estimates;
+- never present estimated values as guaranteed outcomes;
+- hide calculations when required data is missing.
+
+====================================================================
+CONTRACT-CANDIDATE RANKING
+====================================================================
+
+Rank verified candidates deterministically.
+
+Do not use AI.
+
+Possible factors:
+
+- expiration within target DTE
+- strike alignment with framework
+- valid quote
+- bid/ask spread quality
+- open interest, when available
+- volume, when available
+- quote freshness
+- structure validity
+- earnings-window compatibility
+- provider capability completeness
+
+Call the result:
+
+Contract Fit
+
+Do not call it:
+
+- success probability
+- win probability
+- recommendation score
+
+Suggested output:
+
+ResolvedContractCandidate {
+  id: string;
+  structure: string;
+  expiration: string;
+  dte: number;
+  legs: ResolvedContractLeg[];
+  contractFit: number;
+  fitReasons: string[];
+  warnings: string[];
+  liquidityStatus: string;
+  pricingStatus: string;
+  source: string;
+  asOf: string | null;
+}
+
+No AI-generated score.
+
+Document every factor and weight.
+
+====================================================================
+RESOLUTION RESULT CONTRACT
+====================================================================
+
+Create a clear result shape.
+
+LiveContractResolutionResult {
+  status:
+    | "resolved"
+    | "partial"
+    | "broker_not_connected"
+    | "capability_unavailable"
+    | "unsupported_structure"
+    | "chain_unavailable"
+    | "no_matching_expiration"
+    | "no_matching_strike"
+    | "pricing_unavailable"
+    | "error";
+
+  symbol: string;
+  structure: string;
+  provider?: string | null;
+  targetDte?: {
+    min: number;
+    max: number;
+  };
+  candidates: ResolvedContractCandidate[];
+  warnings: string[];
+  asOf?: string | null;
+}
+
+Errors must not include:
+
+- tokens
+- headers
+- account numbers
+- raw provider payloads
+- full URLs with credentials
+
+====================================================================
+SERVER SERVICE
+====================================================================
+
+Create a narrowly scoped service, for example:
+
+server/services/live-contract-resolver.ts
+
+Responsibilities:
+
+- validate input;
+- check broker connection;
+- check capabilities;
+- request chain through broker abstraction;
+- normalize contracts;
+- resolve expiration;
+- resolve strikes;
+- validate liquidity;
+- rank candidates;
+- return safe result.
+
+The service must not:
+
+- submit orders;
+- persist orders;
+- mutate portfolio state;
+- place holds;
+- create execution tickets;
+- call external vendors outside approved broker abstraction.
+
+====================================================================
+API ENDPOINT
+====================================================================
+
+Add one authenticated additive endpoint only if no suitable existing route exists.
+
+Suggested:
+
+POST /api/options/resolve-contracts
+
+Request:
+
+{
+  symbol: "PLTR",
+  structure: "bull_call_spread",
+  targetDte: {
+    min: 45,
+    max: 60
+  },
+  strikeGuidance: {
+    longLeg: "near_atm",
+    shortLeg: "near_technical_objective"
+  },
+  referenceLevels: {
+    underlyingPrice: 157.07,
+    support: null,
+    breakout: 164.52,
+    objective: 180
+  }
+}
+
+The server must independently validate all fields.
+
+Do not trust client-supplied prices for calculations when a broker quote is available.
+
+Response:
+
+LiveContractResolutionResult
+
+Security:
+
+- authenticated user only;
+- use that user’s broker connection;
+- never accept another user's account identifier;
+- never expose provider credentials;
+- enforce request-size limits;
+- validate symbol and enums;
+- rate-limit appropriately using existing infrastructure.
+
+If an existing route can support this safely without breaking contracts, reuse it.
+
+====================================================================
+CLIENT EXPERIENCE
+====================================================================
+
+Integrate into the existing Trade Planning tab.
+
+Initial state with no broker:
+
+Live Contract Verification
+
+Connect a supported brokerage to:
+
+- retrieve listed expirations;
+- view actual strikes;
+- inspect live bid/ask;
+- evaluate liquidity;
+- prepare an InstaTrade™ order review.
+
+CTA:
+
+Connect Broker
+
+Initial state with connected broker lacking options capability:
+
+Live option contracts are not available through the connected brokerage integration.
+
+Show:
+
+- current illustrative structure;
+- DTE guidance;
+- strike framework;
+- supported-capability explanation.
+
+Connected and supported:
+
+Button:
+
+Resolve Live Contracts
+
+Do not auto-fetch large chains merely because the page loads unless the existing
+architecture and rate limits make that safe.
+
+Prefer explicit user action.
+
+After resolution, show up to three candidates.
+
+Each candidate displays:
+
+- structure;
+- expiration;
+- DTE;
+- actual listed strikes;
+- bid/ask where supplied;
+- calculated midpoint, if used;
+- open interest where supplied;
+- volume where supplied;
+- IV/Greeks where supplied;
+- liquidity status;
+- contract-fit score;
+- fit reasons;
+- warnings;
+- quote timestamp;
+- provider.
+
+CTA:
+
+Select for InstaTrade™ Review
+
+This only stores client-side selection or forwards it to the existing preparation
+workflow.
+
+It must not submit an order.
+
+====================================================================
+MULTI-LEG DISPLAY
+====================================================================
+
+For spreads, show legs clearly.
+
+Example:
+
+Bull Call Spread
+
+Expiration: Sep 18, 2026
+DTE: 43
+
+Long 1 Call
+Strike: 160
+Ask: $4.20
+
+Short 1 Call
+Strike: 175
+Bid: $1.45
+
+Estimated Net Debit:
+$2.75 per share
+$275 per spread
+
+Maximum Risk:
+Estimated $275
+
+Maximum Gain:
+Estimated $1,225
+
+Quote basis:
+Long ask minus short bid
+
+As of:
+10:32:18 AM ET
+
+Required disclaimer:
+
+“Estimated from displayed quotes. Actual execution price may differ.”
+
+Never display a multi-leg spread as one verified broker instrument unless the provider
+supplies an actual complex-order representation.
+
+====================================================================
+INSTATRADE™ HANDOFF
+====================================================================
+
+This sprint prepares a selected verified contract candidate for the later
+InstaTrade™ Workspace.
+
+Handoff data may include:
+
+- broker provider
+- underlying symbol
+- structure
+- contract identifiers
+- leg directions
+- leg quantities
+- expiration
+- strikes
+- option types
+- estimated debit/credit
+- quote timestamps
+- calculation basis
+- warnings
+- data source
+
+Do not submit.
+
+Do not call an order-placement endpoint.
+
+Do not create a persistent order unless an existing draft mechanism explicitly
+supports safe, non-executable drafts.
+
+If using an existing preparation object, verify it cannot execute without
+another explicit user-confirmation step.
+
+====================================================================
+BROKER DISCONNECTION AND TOKEN EXPIRY
+====================================================================
+
+Handle:
+
+- broker disconnected while resolving;
+- expired access token;
+- refresh failure;
+- account unavailable;
+- provider outage;
+- option-chain entitlement missing;
+- provider rate limit;
+- stale session;
+- unsupported symbol;
+- no listed options.
+
+Return safe, specific statuses.
+
+Do not fall back to fabricated options data.
+
+Do not silently fall back to a different broker or provider.
+
+Research Mode must remain available.
+
+====================================================================
+CACHING AND RATE LIMITS
+====================================================================
+
+Audit existing broker-chain caching before adding anything.
+
+If caching exists, reuse it.
+
+If no caching exists, add only narrowly scoped short-lived caching if required.
+
+Suggested characteristics:
+
+- key by user, broker, symbol and expiration range;
+- very short TTL;
+- never share user-specific broker data across users;
+- invalidate on broker disconnect;
+- do not persist sensitive account data;
+- preserve quote timestamps.
+
+Avoid re-fetching the chain for every React render.
+
+Use explicit refresh with an understandable cooldown where appropriate.
+
+====================================================================
+OBSERVABILITY
+====================================================================
+
+Add safe structured events such as:
+
+live_contract_resolution_started
+live_contract_chain_loaded
+live_contract_candidates_resolved
+live_contract_resolution_partial
+live_contract_resolution_unavailable
+live_contract_resolution_failed
+
+Safe fields:
+
+- symbol
+- structure
+- provider
+- candidateCount
+- chainContractCount
+- durationMs
+- status
+- capability flags
+- safe error code
+
+Never log:
+
+- access token
+- refresh token
+- authorization header
+- account number
+- full raw chain
+- user portfolio
+- full provider response
+
+====================================================================
+COMPLIANCE LANGUAGE
+====================================================================
+
+Avoid:
+
+- Recommended Contract
+- Best contract for you
+- Buy this call
+- Sell this put
+- Expected profit
+- Guaranteed fill
+- Probability of success
+- Safe trade
+- Winning trade
+
+Use:
+
+- Verified Contract Candidate
+- Contract Fit
+- Listed Contract
+- Current Displayed Quote
+- Estimated Net Debit
+- Estimated Net Credit
+- Educational Trade Planning
+- Broker Verification
+- User Selection
+- Review with InstaTrade™
+- Actual execution price may differ
+
+Always display:
+
+- quote timestamp;
+- source;
+- live/delayed status where available;
+- estimated-calculation basis;
+- not-investment-advice disclaimer;
+- user confirmation required.
+
+====================================================================
+FAILURE ISOLATION
+====================================================================
+
+The Research Package must still load if:
+
+- broker is disconnected;
+- chain resolution fails;
+- provider is unavailable;
+- no matching contracts exist;
+- Greeks are unavailable;
+- pricing is unavailable.
+
+Only the Live Contract Verification panel should show the failure.
+
+Do not convert an optional contract-resolution failure into a page-level error.
+
+====================================================================
+TESTING
+====================================================================
+
+Add comprehensive tests.
+
+A. Capability detection
+
+- disconnected user
+- optionsChain unsupported
+- optionsChain supported
+- Greeks unsupported
+- multi-leg unsupported
+- execution unsupported
+
+B. Expiration resolution
+
+- exact DTE match
+- multiple matches
+- midpoint preference
+- no expiration in range
+- nearest outside-range expiration
+- expired dates excluded
+- invalid date ignored
+
+C. Strike resolution
+
+- near ATM
+- one strike ITM
+- 2–5% OTM
+- near support
+- near objective
+- no matching strike
+- spread leg ordering
+- invalid spread width
+
+D. Chain normalization
+
+- Tradier-like fixture
+- future-provider fixture
+- missing Greeks
+- missing OI
+- missing volume
+- null quote fields
+- malformed contract excluded
+
+E. Liquidity validation
+
+- valid bid/ask
+- crossed market rejected
+- zero ask rejected for debit leg
+- wide spread warning
+- low OI warning
+- unavailable metrics
+- stale quote warning
+
+F. Pricing
+
+- long-call midpoint
+- bull-call spread debit
+- bull-put spread credit
+- missing quote prevents estimate
+- negative debit rejected
+- multiplier handling
+
+G. Risk calculations
+
+- long call
+- cash-secured put
+- bull call spread
+- bull put spread
+- missing premium hides values
+- invalid strike ordering rejected
+
+H. Ranking
+
+- target DTE preferred
+- better strike alignment preferred
+- better liquidity preferred
+- stale quote penalized
+- unavailable metrics handled honestly
+- scores stay 0–100
+- no score presented as probability
+
+I. API
+
+- authentication required
+- request validation
+- symbol normalization
+- unsupported structure
+- broker disconnected
+- provider capability unavailable
+- successful resolution
+- partial result
+- safe errors
+- no secret leakage
+
+J. Client
+
+- disconnected state
+- unsupported-capability state
+- loading
+- resolved candidates
+- partial data
+- pricing unavailable
+- Greeks unavailable
+- select candidate
+- no submission occurs
+- provider failure does not break page
+- mobile and keyboard behavior
+
+K. Security
+
+- user cannot resolve using another user's broker
+- account IDs cannot be injected
+- provider tokens never returned
+- logs contain no credentials
+- cached chains isolated by user and broker
+
+Run:
+
+- all server tests;
+- all client tests;
+- typecheck;
+- build.
+
+====================================================================
+UAT CHECKLIST
+====================================================================
+
+Provide step-by-step production UAT covering:
+
+1. No broker connected
+
+- illustrative Trade Planning still works;
+- Connect Broker CTA appears;
+- no live contract data shown.
+
+2. Broker connected without options support
+
+- capability message appears;
+- Research Package still works;
+- no fallback data fabricated.
+
+3. Broker connected with options support
+
+- resolve contracts explicitly;
+- actual expirations appear;
+- actual strikes appear;
+- provider and timestamp appear.
+
+4. Bull Call Spread
+
+- valid long/short ordering;
+- quote basis shown;
+- estimated debit displayed only when quotes complete;
+- max risk/max gain formula verified.
+
+5. Missing Greeks
+
+- contracts remain usable for research;
+- Greeks show unavailable.
+
+6. Wide spread / poor liquidity
+
+- warning visible;
+- candidate may be ranked lower or rejected according to documented rules.
+
+7. No matching expiration
+
+- honest empty state;
+- nearest outside-range expiration clearly labeled if returned.
+
+8. Token expiry during request
+
+- safe error;
+- no page crash;
+- no fabricated fallback.
+
+9. InstaTrade™ handoff
+
+- selected contract transfers to review preparation;
+- no order submitted;
+- user confirmation still required.
+
+10. Responsive/accessibility
+
+- desktop;
+- tablet;
+- mobile;
+- keyboard;
+- screen-reader labels.
+
+====================================================================
+DEPLOYMENT SAFETY
+====================================================================
+
+Before recommending deployment, report:
+
+- schema changes;
+- migration requirement;
+- new environment variables;
+- broker-specific configuration changes;
+- capability changes;
+- API changes;
+- caching behavior;
+- rate-limit impact;
+- rollback procedure.
+
+Prefer no schema change.
+
+Do not commit, push or deploy automatically.
+
+====================================================================
+COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Existing broker architecture audit
+2. Exact capabilities discovered
+3. Files changed
+4. Interfaces added or extended
+5. Providers supported
+6. Structures supported
+7. Expiration-resolution rules
+8. Strike-resolution rules
+9. Liquidity rules
+10. Pricing formulas
+11. Risk formulas
+12. Contract-fit ranking formula
+13. API contract
+14. Client screens
+15. InstaTrade™ handoff
+16. Failure modes
+17. Security controls
+18. Logs added
+19. Tests added
+20. Total passing tests
+21. Typecheck
+22. Build
+23. Schema/migration requirements
+24. Environment-variable changes
+25. Deployment sequence
+26. Rollback
+27. Production UAT
+28. GO / CONDITIONAL_GO / NO_GO
+
+Do not start the InstaTrade™ order-submission workspace.
+
+Wait for review.

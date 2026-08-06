@@ -117,6 +117,11 @@ export const schwabProvider: BrokerProvider = {
     stocks: true,
     options: false,
     spreads: false,
+    optionsChain: false,
+    optionQuotes: false,
+    greeks: false,
+    multiLegOptions: false,
+    execution: true,
   },
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const numbers = await schwabFetch(`${TRADER_URL}/accounts/accountNumbers`, accessToken);

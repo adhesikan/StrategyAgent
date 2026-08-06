@@ -178,6 +178,11 @@ export const tradierProvider: BrokerProvider = {
     stocks: true,
     options: true,
     spreads: true,
+    optionsChain: true,
+    optionQuotes: true,
+    greeks: true,
+    multiLegOptions: false,
+    execution: true,
   },
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const data = await tradierFetch(`${getBaseUrlForToken(accessToken)}/user/profile`, accessToken);

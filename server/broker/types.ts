@@ -104,8 +104,17 @@ export interface BrokerCapabilities {
   historicalBars?: boolean;
   /** Broker can supply options chains (strikes, expirations). */
   optionsChain?: boolean;
-  /** Broker can supply Greeks for options positions. */
+  /** Broker can supply real-time or delayed quotes for individual option contracts. */
+  optionQuotes?: boolean;
+  /** Broker can supply Greeks for options contracts. */
   greeks?: boolean;
+  /**
+   * Broker supports multi-leg options orders (spreads, condors, etc.)
+   * submitted as a single complex order rather than individual legs.
+   */
+  multiLegOptions?: boolean;
+  /** Broker supports order execution (placeOrder). */
+  execution?: boolean;
 }
 
 export interface BrokerProvider {

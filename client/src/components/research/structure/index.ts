@@ -8,6 +8,8 @@ export { StockStructureCard, deriveStockStructure } from "./stock-structure-card
 export { OptionsStructureCard, deriveOptionsStructures, deriveDTE, deriveStrikeGuidance } from "./options-structure-card";
 export { TradeStructureReasonCard, buildStockStructureReason, buildOptionsStructureReason } from "./trade-structure-reason-card";
 export { TradeStructureRiskCard, buildStockRiskProfile, buildOptionsRiskProfile } from "./trade-structure-risk-card";
+export { LiveContractResolver } from "./live-contract-resolver";
+export type { LiveContractResolutionResult, ResolvedContractCandidate, LiveContractStatus } from "./live-contract-resolver";
 export type {
   StockStructure,
   StockStructureType,

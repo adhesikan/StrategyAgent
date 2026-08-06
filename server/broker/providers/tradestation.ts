@@ -248,6 +248,11 @@ export const tradestationProvider: BrokerProvider = {
     stocks: true,
     options: true,
     spreads: true,
+    optionsChain: true,
+    optionQuotes: true,
+    greeks: true,
+    multiLegOptions: false,
+    execution: true,
   },
   async getStatus(accessToken: string): Promise<BrokerStatus> {
     const accounts = await tsFetch(`${LIVE_BASE_URL}/brokerage/accounts`, accessToken);

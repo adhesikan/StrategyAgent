@@ -79,7 +79,8 @@ import {
   CongressSummaryCard,
 } from "@/components/research";
 import { ResearchDecisionCard, ResearchDecisionEngine } from "@/components/research/decision";
-import { TradeStructureEngine } from "@/components/research/structure";
+import { TradeStructureEngine, LiveContractResolver, deriveOptionsStructures } from "@/components/research/structure";
+import { deriveThesis } from "@/components/research/decision";
 
 // ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
@@ -2348,12 +2349,20 @@ export default function OpportunityResearchPage() {
 
           {/* ─── Trade Planning ─── */}
           <TabsContent value="trade-planning" data-testid="tab-content-trade-planning">
-            <div className="mt-3">
+            <div className="mt-3 space-y-4">
               <TradeStructureEngine
                 pkg={pkg}
                 stars={stars}
                 snapshot={snapshot}
                 onNavigateTab={handleTabChange}
+              />
+              {/* Live Contract Resolver — uses connected broker's chain data to verify
+                  illustrative structures with currently listed strikes and live quotes.
+                  Only visible after a structure is selected; never submits orders. */}
+              <LiveContractResolver
+                pkg={pkg}
+                structures={deriveOptionsStructures(pkg, deriveThesis(pkg, stars))}
+                snapshot={snapshot}
               />
             </div>
           </TabsContent>

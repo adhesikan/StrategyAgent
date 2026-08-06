@@ -1,0 +1,1282 @@
+SPRINT 2.2.3 — AI TRADING WORKSPACE WITH CONTEXTUAL RESEARCH ASSISTANT
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+====================================================================
+CURRENT PRODUCT STATE
+====================================================================
+
+The following capabilities are complete and must be preserved:
+
+- PostgreSQL-first historical market data
+- Twelve Data ingestion
+- broker abstraction for current and future supported brokerages
+- Opportunity Engine
+- opportunity lifecycle and persisted snapshots
+- Research Package
+- Evidence Engine
+- Professional Research Cards
+- Research Decision Engine
+- Trade Structure Engine
+- Research Experience Refinement
+- Live Options Contract Resolver
+- congressional disclosure integration
+- news and sentiment evidence
+- market-regime context
+- deterministic risk and trade-planning logic
+- conditional Review with InstaTrade™ workflow
+- existing Ask AI capability
+- no synthetic market prices or fabricated options contracts in production
+
+The application currently has strong components, but the research experience is
+distributed across tabs and cards.
+
+This sprint must unify those existing capabilities into one flagship workflow.
+
+====================================================================
+VISION
+====================================================================
+
+Create the AI Trading Workspace: the primary destination a trader enters after
+selecting a research candidate.
+
+The workspace should guide the user through one coherent journey:
+
+Discover
+    ↓
+Understand
+    ↓
+Evaluate Evidence
+    ↓
+Review Decision Logic
+    ↓
+Plan Stock or Options Structure
+    ↓
+Resolve Live Contracts, when supported
+    ↓
+Assess Risk
+    ↓
+Ask Contextual Questions
+    ↓
+Prepare for InstaTrade™ Review
+
+The user should not feel as though they are navigating several disconnected tools.
+
+This is primarily a composition, navigation and user-experience sprint.
+
+It is not a new scanner, ranking engine, data provider or execution system.
+
+====================================================================
+PRIMARY OBJECTIVE
+====================================================================
+
+Transform the existing /research/:symbol experience into a unified,
+institutional-quality AI Trading Workspace.
+
+The workspace must answer these questions quickly:
+
+1. Why did this candidate qualify?
+2. What is the current research thesis?
+3. What evidence supports or weakens it?
+4. What would invalidate it?
+5. Which stock structure fits the setup?
+6. Which illustrative options structure fits the setup?
+7. Are verified live contracts available through the connected broker?
+8. What are the major risks?
+9. What changed since the previous scan?
+10. What should the user review next?
+11. What questions can the user ask about this exact candidate?
+12. How can the user continue toward InstaTrade™ review?
+
+====================================================================
+NON-NEGOTIABLE SCOPE BOUNDARIES
+====================================================================
+
+DO NOT modify:
+
+- Opportunity Engine
+- lifecycle classification rules
+- MCP ranking logic
+- deterministic scanner algorithms
+- candidate qualification
+- scoring formulas
+- MarketHistoryService
+- daily ingestion architecture
+- market-data provider precedence
+- existing evidence-provider calculations
+- Trade Structure Engine rules
+- Live Contract Resolver calculations
+- broker execution behavior
+- order-submission APIs
+- Position Protection
+- portfolio calculation logic
+- Congress data ingestion
+- billing or subscriptions
+- database schema
+- migrations
+- authentication
+- production feature flags
+
+Do not add another market-data provider.
+
+Do not add another AI model or AI provider.
+
+Do not submit orders.
+
+Do not create automatic trading.
+
+Do not fabricate market data, options data, evidence, scores, news, congressional
+activity, broker data or trade parameters.
+
+Do not remove existing deep-dive tabs.
+
+Do not duplicate existing business logic inside React components.
+
+====================================================================
+AUDIT BEFORE IMPLEMENTATION
+====================================================================
+
+Before modifying code, audit the current Research Package page and report:
+
+1. Existing route and page component for /research/:symbol.
+2. Existing API queries used by the page.
+3. Existing tabs.
+4. Existing Overview components.
+5. Existing Decision components.
+6. Existing Trade Planning components.
+7. Existing Live Contract Resolver components.
+8. Existing Risk components.
+9. Existing Congress, News, Institutional and Catalyst components.
+10. Existing lifecycle and scan-history components.
+11. Existing broker-status query.
+12. Existing Ask AI endpoint and client integration.
+13. Existing research-save behavior.
+14. Duplicate information currently shown across sections.
+15. API calls that would be duplicated if components were mounted together.
+
+Produce the audit internally before implementation.
+
+Reuse existing components and queries whenever practical.
+
+====================================================================
+ROUTE AND PAGE STRATEGY
+====================================================================
+
+Preferred approach:
+
+Keep the existing route:
+
+/research/:symbol
+
+Rename the page presentation to:
+
+AI Trading Workspace
+
+Do not create a competing duplicate route unless technically unavoidable.
+
+Existing deep-dive tabs must remain accessible:
+
+- Overview
+- Decision
+- Trade Planning
+- Technical
+- Congress
+- News
+- Institutional
+- Catalysts
+- AI Summary
+
+The default Overview tab becomes the unified Workspace.
+
+The other tabs become detailed drill-down destinations.
+
+====================================================================
+WORKSPACE INFORMATION HIERARCHY
+====================================================================
+
+Recommended desktop order:
+
+1. Workspace Header
+2. Research Thesis and Market Context
+3. Opportunity Status and Lifecycle Changes
+4. Decision Summary
+5. Evidence Summary
+6. Stock and Options Trade Planning
+7. Live Contract Verification
+8. Risk and Invalidation
+9. Congress, News and Catalyst Summaries
+10. Contextual AI Research Assistant
+11. InstaTrade™ Preparation
+12. Scan History
+
+Prioritize the most decision-relevant information above the fold.
+
+Avoid rendering the full content of every deep-dive tab on Overview.
+
+Use compact summaries with clear links to details.
+
+====================================================================
+1. WORKSPACE HEADER
+====================================================================
+
+Create or refine a unified workspace header containing only factual,
+already-loaded information.
+
+Display when available:
+
+- ticker
+- company name
+- current or latest available underlying price
+- daily change, only if supplied by an approved current-price source
+- primary strategy
+- lifecycle status
+- qualification status
+- current rank
+- previous rank
+- rank change
+- market regime
+- research posture
+- freshness
+- latest market-data timestamp
+- scan timestamp
+- data source
+- connected broker
+- InstaTrade™ readiness
+
+Do not display daily change when only a prior daily close is available.
+
+Clearly distinguish:
+
+- latest daily close
+- delayed quote
+- real-time broker quote
+- stored history
+
+Use accurate source labels.
+
+====================================================================
+2. RESEARCH THESIS AND MARKET CONTEXT
+====================================================================
+
+Reuse:
+
+- ResearchDecisionCard
+- CompactMarketContext
+- existing deterministic thesis and posture helpers
+
+Display a concise thesis containing:
+
+- why the candidate qualified
+- strategy
+- rank
+- lifecycle state
+- market-regime alignment
+- active warning count
+- research posture
+
+Beside or immediately below it, display compact Market Context:
+
+- market regime
+- regime alignment
+- sector, if available
+- industry, if available
+- latest trading day
+- scanner version
+- market-data source
+- scan time
+
+Do not repeat the same facts in multiple cards.
+
+====================================================================
+3. LIFECYCLE AND WHAT CHANGED
+====================================================================
+
+Add a compact “What Changed” section using the existing opportunity lifecycle data.
+
+Display when available:
+
+- newly qualified
+- still qualified
+- triggered
+- strengthening
+- weakening
+- approaching qualification
+- dropped
+- unavailable
+- rank movement
+- first seen
+- previous scan time
+- current scan time
+
+For the current symbol, summarize the most relevant change.
+
+Examples:
+
+- “Newly qualified in the latest scan.”
+- “Improved from rank #5 to rank #2.”
+- “Moved from watch status to triggered.”
+- “No material lifecycle change since the previous scan.”
+
+Do not infer a change when no previous scan exists.
+
+====================================================================
+4. DECISION SUMMARY
+====================================================================
+
+Reuse the existing Research Decision Engine.
+
+The workspace summary should include:
+
+- research posture
+- why qualified
+- qualification strategy
+- deterministic score summary
+- supporting evidence
+- weakening evidence
+- invalidation summary
+- what could improve the setup
+- active warnings
+
+Keep the Overview version compact.
+
+Provide:
+
+Open Full Decision Analysis
+
+which navigates to or activates the Decision tab.
+
+Do not duplicate all 11 contribution bars on the Overview unless space permits cleanly.
+
+====================================================================
+5. EVIDENCE SUMMARY
+====================================================================
+
+Reuse the existing Evidence Engine and Evidence Strength presentation.
+
+Summarize:
+
+- Technical
+- Market Regime
+- Congress
+- News
+- Catalysts
+- Institutional
+- Fundamentals, if already available
+
+Each row or compact card should show:
+
+- evidence state
+- deterministic numeric strength when available
+- label
+- source
+- updated time when available
+- Supports / Neutral / Weakens / Unavailable
+
+Required behavior:
+
+- one provider failure does not break the workspace
+- unavailable evidence remains visible as N/A
+- Congress retains its disclosure-delay disclaimer
+- no provider is treated as predictive
+- do not create one synthetic overall evidence score unless one already exists and
+  is fully deterministic
+
+Provide links:
+
+- View Full Evidence
+- Congress Details
+- News Details
+- Institutional Details
+- Catalyst Details
+
+====================================================================
+6. STOCK TRADE PLANNING
+====================================================================
+
+Reuse:
+
+- StockStructureCard
+- StockTradeCard
+- TradeStructureReasonCard
+- TradeStructureRiskCard
+
+Display a concise stock-planning summary:
+
+- illustrative stock structure
+- entry framework
+- stop or invalidation framework
+- objective framework
+- holding period
+- risk/reward when resolved
+- position-size state
+- maximum-risk state
+- structure fit
+- why the structure fits
+- key trade-offs
+
+Missing fields must remain honest:
+
+- Not resolved
+- Requires risk budget
+- Scanner did not supply a stop
+- Requires entry, stop and objective
+- Verify with broker
+
+Do not fabricate concrete levels.
+
+Provide:
+
+Open Full Trade Planning
+
+which opens the Trade Planning tab.
+
+====================================================================
+7. ILLUSTRATIVE OPTIONS PLANNING
+====================================================================
+
+Reuse the Trade Structure Engine.
+
+Display:
+
+- primary illustrative options structure
+- target DTE range
+- long-leg strike framework
+- short-leg strike framework, when applicable
+- defined-risk characteristics
+- time-decay characteristics
+- volatility sensitivity
+- assignment risk
+- structure fit
+- why it fits
+- trade-offs
+
+Clearly label:
+
+Illustrative Options Structure
+
+Display:
+
+Broker verification required for listed contracts and current pricing.
+
+Do not show:
+
+- invented expiration dates
+- invented strikes
+- premiums
+- Greeks
+- open interest
+- bid/ask
+- probability of profit
+- fabricated risk calculations
+
+====================================================================
+8. LIVE CONTRACT VERIFICATION
+====================================================================
+
+Reuse the completed Live Options Contract Resolver.
+
+Do not automatically load a large options chain when the Workspace loads.
+
+Use an explicit user action.
+
+States:
+
+A. No broker connected
+
+Show:
+
+Connect a supported brokerage to verify:
+
+- listed expirations
+- actual strikes
+- current quotes
+- liquidity
+- available Greeks
+- contract identifiers
+
+CTA:
+
+Connect Broker
+
+B. Broker connected but options capability unavailable
+
+Show:
+
+The connected brokerage integration does not currently provide live options-chain
+data through VCP Trader.
+
+Keep illustrative planning visible.
+
+C. Broker connected and supported
+
+Show:
+
+Resolve Live Contracts
+
+D. Resolved
+
+Show up to three verified contract candidates.
+
+Each candidate may show only provider-supplied or safely derived values:
+
+- structure
+- expiration
+- DTE
+- actual strikes
+- contract identifiers
+- bid
+- ask
+- calculated midpoint, clearly labeled
+- open interest
+- volume
+- IV
+- Greeks
+- liquidity status
+- Contract Fit
+- fit reasons
+- warnings
+- quote timestamp
+- broker/provider
+
+CTA:
+
+Select for InstaTrade™ Review
+
+No order submission occurs.
+
+====================================================================
+9. RISK AND INVALIDATION
+====================================================================
+
+Reuse:
+
+- RiskCard
+- InvalidationCard
+- TradeStructureRiskCard
+
+Group risks into:
+
+- Market and Event Risks
+- Research-Thesis Risks
+- Trade-Plan Risks
+- Options Risks
+- Sizing and Execution Risks
+- Broker and Data Risks
+
+Display:
+
+- invalidation condition
+- earnings risk
+- macro risk
+- sector risk
+- liquidity risk
+- spread risk
+- assignment risk
+- time-decay exposure
+- gap risk
+- missing risk-budget warning
+- quote freshness warning
+- contract-verification state
+
+No warning may disappear because of summarization.
+
+Show the highest-severity items first.
+
+Provide:
+
+View All Risks
+
+where useful.
+
+====================================================================
+10. CONGRESS SUMMARY
+====================================================================
+
+Reuse CongressSummaryCard and existing Congress provider.
+
+Display only returned facts:
+
+- signal level
+- recent disclosure presence
+- transaction direction when available
+- reported value ranges
+- transaction date
+- disclosure date
+- politician name only when supplied
+- source link
+
+Always show:
+
+“Publicly disclosed congressional transactions. Disclosure dates may lag transaction
+dates and do not indicate future performance.”
+
+CTA:
+
+Open Congress Details
+
+Do not describe Congress activity as confirmation, smart money or predictive evidence.
+
+====================================================================
+11. NEWS AND CATALYST SUMMARY
+====================================================================
+
+Reuse existing News and Catalyst providers.
+
+Display compactly:
+
+- sentiment label
+- article count
+- top themes
+- latest headline time
+- upcoming earnings
+- known catalysts
+- high-impact warnings
+
+Do not generate claims beyond the returned evidence.
+
+Provide:
+
+Open News Details
+Open Catalyst Details
+
+====================================================================
+12. CONTEXTUAL AI RESEARCH ASSISTANT
+====================================================================
+
+Add a persistent contextual assistant to the AI Trading Workspace.
+
+Desktop:
+
+- collapsible right-side panel or docked assistant drawer
+
+Tablet/mobile:
+
+- slide-over panel or bottom sheet
+
+The assistant must be context-aware for the currently loaded symbol.
+
+It should receive or be able to use existing, already-loaded workspace context such as:
+
+- symbol
+- Research Package
+- current candidate
+- research thesis
+- Decision Engine output
+- Trade Structure Engine output
+- selected live contract candidate, if any
+- evidence states
+- congressional summary
+- news summary
+- market regime
+- risks
+- lifecycle state
+- broker capability status
+
+Do not create a second research engine.
+
+Do not create duplicate calculations.
+
+Prefer reusing the existing Ask AI endpoint and existing MCP/tool-calling workflow.
+
+====================================================================
+ASSISTANT AUDIT FIRST
+====================================================================
+
+Before implementing the assistant panel, audit:
+
+- current Ask AI component
+- current POST /api/ask contract
+- whether it supports symbol context
+- whether it supports preloaded research context
+- whether it already calls MCP deterministically
+- current response citations/source labels
+- current conversation-state behavior
+- current caching
+- current token and payload limits
+
+Do not send a large raw workspace payload if the backend can retrieve the same
+research package safely by symbol.
+
+Preferred request pattern:
+
+{
+  question: "...",
+  symbol: "PLTR",
+  contextMode: "trading_workspace",
+  optionalSelectedContractId: "..."
+}
+
+The backend should resolve authoritative context itself when practical.
+
+Do not trust client-submitted prices, evidence or risk values as authoritative.
+
+If the existing endpoint cannot accept additive context safely, make the smallest
+backward-compatible extension necessary.
+
+Do not create a new AI provider.
+
+====================================================================
+ASSISTANT SUGGESTED QUESTIONS
+====================================================================
+
+Display context-aware starter prompts such as:
+
+- Why did this candidate qualify?
+- What changed since the previous scan?
+- What are the strongest supporting factors?
+- What evidence weakens the thesis?
+- What would invalidate this setup?
+- Why does the stock structure fit?
+- Why does the illustrative options structure fit?
+- Explain the DTE and strike framework.
+- Summarize the congressional disclosures.
+- Summarize the latest news and catalysts.
+- Compare this candidate with the top-ranked opportunity.
+- What should I verify before using InstaTrade™?
+- Explain the selected live contract candidate.
+- What risks should I review before earnings?
+
+Only display prompts that the available context can support.
+
+====================================================================
+ASSISTANT RESPONSE RULES
+====================================================================
+
+The contextual assistant must:
+
+- use deterministic workspace facts as the primary source
+- clearly distinguish factual values from explanation
+- say when data is unavailable
+- avoid inventing prices, contracts, news or evidence
+- avoid personalized investment advice
+- avoid instructing the user to buy or sell
+- avoid claiming probability of success
+- avoid claiming Congress activity predicts returns
+- avoid treating an illustrative structure as a verified live contract
+- identify quote source and timestamp when discussing live contracts
+- preserve existing disclaimers
+- keep responses concise by default
+- link or guide the user to the relevant workspace section
+
+Preferred language:
+
+- “The deterministic scanner qualified this candidate because…”
+- “The current evidence supports…”
+- “The following factors weaken the research thesis…”
+- “The options structure is illustrative until verified through a connected broker.”
+- “The selected contract candidate was resolved from the connected broker’s chain as
+   of…”
+
+Avoid:
+
+- “You should buy…”
+- “The best trade for you is…”
+- “This will likely make…”
+- “Congress is buying, so…”
+- “This contract is guaranteed…”
+
+====================================================================
+ASSISTANT FAILURE BEHAVIOR
+====================================================================
+
+The workspace must remain fully usable when:
+
+- OpenAI API is unavailable
+- API credits are exhausted
+- assistant request times out
+- research context is incomplete
+- one evidence provider fails
+- MCP is unavailable
+- broker is disconnected
+- live contract data is unavailable
+
+Only the assistant panel should display the failure.
+
+Use the existing deterministic/rule-based fallback where available.
+
+Do not let assistant failure break the workspace.
+
+====================================================================
+ASSISTANT PERFORMANCE AND SAFETY
+====================================================================
+
+- do not call the AI endpoint automatically on page load
+- only call when the user submits a question
+- reuse existing conversation/loading patterns
+- limit context payload size
+- do not include broker tokens
+- do not include account numbers
+- do not include raw option-chain payloads
+- do not include raw congressional source payloads
+- do not include hidden research-save handles
+- do not include execution-ready credentials
+- sanitize logs
+- preserve user isolation
+- rate-limit through existing infrastructure
+- show source/freshness labels when available
+
+====================================================================
+13. INSTATRADE™ PREPARATION
+====================================================================
+
+At the end of the Workspace, display a clear next-step panel.
+
+No broker:
+
+Connect Broker
+
+Explain:
+
+- live quote verification
+- options-chain verification
+- account context
+- buying-power validation
+- order review
+
+Broker connected, no live contract selected:
+
+Resolve or select a verified contract candidate before preparing an options review.
+
+Broker connected with stock structure:
+
+Prepare Stock InstaTrade™ Review
+
+Broker connected with selected contract candidate:
+
+Prepare Options InstaTrade™ Review
+
+This sprint must not:
+
+- submit an order
+- preview the final broker order
+- reserve buying power
+- create an execution-ready server ticket unless the existing safe draft mechanism
+  already guarantees that another explicit confirmation is required
+
+Sprint 2.3 will build the complete InstaTrade™ Review Workspace.
+
+====================================================================
+14. STICKY WORKSPACE NAVIGATION
+====================================================================
+
+Add a sticky section navigator on desktop.
+
+Suggested sections:
+
+- Summary
+- What Changed
+- Decision
+- Evidence
+- Trade Planning
+- Live Contracts
+- Risk
+- Congress
+- News and Catalysts
+- Ask VCP AI
+- InstaTrade™
+- Scan History
+
+Clicking a section scrolls within the current page.
+
+Do not change routes.
+
+Mobile:
+
+Use a compact horizontal section menu or accessible drawer.
+
+Requirements:
+
+- keyboard accessible
+- active-section state
+- reduced-motion support
+- no overlap with sticky page header
+- semantic anchor targets
+- URL hash support only if it does not disrupt existing routing
+
+====================================================================
+15. EXISTING DEEP-DIVE TABS
+====================================================================
+
+Keep existing tabs intact.
+
+Overview becomes Workspace.
+
+Deep-dive tabs remain the source of detail.
+
+Summary cards should contain a “View Details” action that activates the relevant tab.
+
+Do not duplicate full detailed tables on Overview.
+
+Do not remove functionality from the tabs.
+
+====================================================================
+16. LOADING AND FAILURE ISOLATION
+====================================================================
+
+The core Research Package controls page-level success.
+
+Optional sections load independently.
+
+Requirements:
+
+- skeleton placeholders
+- stable card dimensions where practical
+- no major layout shift
+- no flash of fabricated empty values
+- Congress failure does not break News
+- News failure does not break Technical
+- Live Contract failure does not break Trade Planning
+- Assistant failure does not break any deterministic section
+- scan-history failure does not erase the core package
+
+====================================================================
+17. RESPONSIVE DESIGN
+====================================================================
+
+Desktop:
+
+- dense two-column or 2/3 + 1/3 layout
+- sticky navigation
+- docked or collapsible assistant
+
+Tablet:
+
+- one or two columns depending on width
+- assistant as slide-over
+
+Mobile:
+
+- one-column flow
+- primary thesis and risk near top
+- compact sticky section control
+- assistant as bottom sheet
+- no horizontal overflow
+- warnings and contract legs remain readable
+- InstaTrade™ CTA remains clear
+
+Do not hide critical warnings on smaller screens.
+
+====================================================================
+18. ACCESSIBILITY
+====================================================================
+
+Verify:
+
+- semantic heading hierarchy
+- keyboard-accessible tabs
+- keyboard-accessible section navigation
+- visible focus states
+- assistant drawer focus trap
+- Escape closes assistant drawer
+- screen-reader labels for icon-only controls
+- evidence and risk states do not rely only on color
+- live contract legs have accessible descriptions
+- loading state announced appropriately
+- error messages use role="alert" where appropriate
+- reduced-motion preferences respected
+- mobile reading order matches visual order
+
+====================================================================
+19. PERFORMANCE
+====================================================================
+
+Primary requirement:
+
+Do not increase the number of automatic backend calls made when loading the existing
+Research Package unless an already-existing component was previously lazy-loaded and
+the product explicitly needs it above the fold.
+
+Audit and prevent duplicate calls to:
+
+- /api/opportunities/research/:symbol
+- /api/dashboard
+- /api/sentiment/:symbol
+- Congress APIs
+- broker status
+- live contract capability
+- opportunity changes
+- Ask AI
+
+Use:
+
+- shared query keys
+- existing TanStack Query cache
+- memoized deterministic derivations
+- lazy-loading for deep-dive providers
+- explicit action for live chains
+- explicit user question for AI
+
+Do not add broad new caching.
+
+Do not preload live option chains.
+
+====================================================================
+20. COMPLIANCE AND TERMINOLOGY
+====================================================================
+
+Avoid:
+
+- Trade Recommendation
+- Recommended Contract
+- Buy
+- Sell
+- Best trade for you
+- Expected Profit
+- Guaranteed
+- High Probability
+- Winning Trade
+- Congress Confirmation
+- Smart Money Signal
+- Execute Now
+
+Use:
+
+- Research Candidate
+- Research Thesis
+- Research Posture
+- Evidence
+- Illustrative Trade Structure
+- Structure Fit
+- Verified Contract Candidate
+- Contract Fit
+- Current Displayed Quote
+- Estimated Risk
+- Broker Verification
+- Review with InstaTrade™
+- User Selection
+- User Confirmation Required
+
+The workspace must remain clearly positioned as research, education, planning and
+user-directed execution support.
+
+====================================================================
+21. TESTING
+====================================================================
+
+Add focused tests.
+
+A. Workspace composition
+
+- core Research Package loads
+- all required summary sections render
+- deep-dive tabs remain present
+- no duplicated core card
+- correct section order
+- missing optional provider does not break page
+
+B. Header
+
+- current source labels accurate
+- no real-time label for daily stored data
+- rank and lifecycle render
+- broker and InstaTrade™ states render correctly
+
+C. Lifecycle
+
+- newly qualified
+- strengthening
+- weakening
+- triggered
+- no previous scan
+- unavailable
+
+D. Evidence
+
+- provider summaries
+- N/A states
+- links activate correct tabs
+- Congress disclaimer always visible
+- no predictive copy
+
+E. Trade Planning
+
+- stock structure summary
+- illustrative options structure
+- no fabricated contract data
+- missing fields explain themselves
+- full Trade Planning navigation works
+
+F. Live Contracts
+
+- disconnected state
+- unsupported broker state
+- explicit resolution action
+- resolved candidates
+- no automatic chain call
+- selection does not submit order
+- provider failure remains isolated
+
+G. Risk
+
+- grouped categories
+- no warning loss
+- critical warnings visible
+- mobile readability
+
+H. Contextual Assistant
+
+- assistant does not call API on page load
+- context-aware starter prompts render
+- submitting a question calls existing Ask AI workflow
+- current symbol supplied
+- context mode supplied
+- response displays
+- deterministic fallback displays when AI unavailable
+- provider failure does not break workspace
+- no tokens/account IDs in payload
+- selected contract context is sanitized
+- no order execution method called
+- assistant links to relevant workspace sections
+
+I. Navigation
+
+- sticky navigation scroll targets
+- active-section update
+- tab detail links
+- keyboard navigation
+- mobile navigation
+- reduced motion
+
+J. InstaTrade™
+
+- disconnected CTA
+- connected stock CTA
+- connected options CTA
+- no order submission
+- no buying-power reservation
+- explicit review wording
+
+K. Performance
+
+- Research Package request not duplicated
+- broker-status request not duplicated
+- no live-chain request until clicked
+- no AI request until question submitted
+- existing query cache reused
+
+L. Accessibility
+
+- focus management
+- assistant drawer focus trap
+- Escape closes
+- ARIA labels
+- semantic headings
+- role alerts
+- mobile screen-reader order
+
+Run:
+
+- all client tests
+- all server tests
+- repository typecheck
+- repository build
+
+====================================================================
+22. PRODUCTION UAT
+====================================================================
+
+Provide a step-by-step UAT checklist covering:
+
+1. Workspace loads from a dashboard opportunity.
+2. Correct symbol, rank, strategy, regime and freshness appear.
+3. Thesis, market context and lifecycle are understandable above the fold.
+4. Decision summary matches the Decision tab.
+5. Evidence summaries match provider tabs.
+6. Congress disclaimer remains visible.
+7. Stock planning matches Trade Planning tab.
+8. Illustrative options guidance contains no fabricated live-contract values.
+9. No broker connected state.
+10. Connected broker without options capability.
+11. Connected broker with live contracts.
+12. Live contract selection.
+13. No order submission.
+14. Risk grouping and invalidation.
+15. Contextual assistant:
+    - why qualified
+    - what changed
+    - risks
+    - Congress summary
+    - selected contract explanation
+16. OpenAI unavailable fallback.
+17. Desktop layout.
+18. Tablet layout.
+19. Mobile layout.
+20. Keyboard and screen reader.
+21. Browser console.
+22. Railway request logs.
+23. Verify no duplicated API calls.
+24. Verify page performance remains acceptable.
+
+====================================================================
+23. DEPLOYMENT SAFETY
+====================================================================
+
+Before recommending deployment, report:
+
+- server files changed
+- client files changed
+- API changes
+- whether /api/ask changed additively
+- schema changes
+- migration requirement
+- environment-variable changes
+- OpenAI usage impact
+- broker API usage impact
+- options-chain usage impact
+- query-count before and after
+- rollback plan
+
+Prefer:
+
+- no schema changes
+- no migrations
+- no environment-variable changes
+- no automatic additional AI calls
+- no automatic options-chain calls
+
+Do not commit, push or deploy automatically.
+
+====================================================================
+24. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Existing workspace audit
+2. Existing Ask AI audit
+3. Workspace architecture
+4. Files changed
+5. Components reused
+6. New components
+7. Overview composition
+8. Lifecycle presentation
+9. Decision presentation
+10. Evidence presentation
+11. Trade-planning presentation
+12. Live-contract presentation
+13. Risk presentation
+14. Congress/news/catalyst presentation
+15. Contextual-assistant architecture
+16. Assistant request contract
+17. Assistant grounding and safety rules
+18. InstaTrade™ preparation states
+19. Navigation
+20. Responsive behavior
+21. Accessibility
+22. Query-count and performance impact
+23. Tests added
+24. Total passing tests
+25. Typecheck
+26. Build
+27. API changes
+28. Schema/migration changes
+29. Environment variables
+30. Production UAT
+31. Rollback
+32. Final GO / CONDITIONAL_GO / NO_GO verdict
+
+Do not implement final broker order review or order submission.
+
+Wait for review.

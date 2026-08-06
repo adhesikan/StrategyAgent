@@ -539,6 +539,19 @@ async function enrichTradeDetailFromBrokerChain(
 
 const askSchema = z.object({
   question: z.string().trim().min(1).max(500),
+  // Sprint 2.2.3 workspace context — optional, backward-compatible.
+  // Server resolves all authoritative context itself; client never supplies
+  // prices, evidence values, broker tokens, account IDs, or credentials.
+  symbol: z
+    .string()
+    .trim()
+    .min(1)
+    .max(10)
+    .regex(/^[A-Z]{1,10}$/)
+    .optional(),
+  contextMode: z.enum(["trading_workspace"]).optional(),
+  // Opaque contract ID — sanitized to ASCII printable, max 100 chars.
+  selectedContractId: z.string().trim().max(100).optional(),
 });
 
 // Ticker extraction is centralized (reserved-word denylist, constraint-phrase
@@ -1415,12 +1428,25 @@ export function registerAskRoutes(app: Express, isAuthenticated: RequestHandler)
       if (!parsed.success) {
         return res.status(400).json({ error: "Question is required (1-500 chars)." });
       }
-      const { question } = parsed.data;
+      const {
+        question,
+        symbol: bodySymbol,
+        contextMode,
+        // selectedContractId is received for context attribution; it is not
+        // used in the AI pipeline directly — the server resolves all context
+        // from its own authoritative sources.
+      } = parsed.data;
       const userId = req.session?.userId as string | undefined;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
 
       const intent = classifyIntent(question);
       const tickers = extractTickers(question);
+      // Sprint 2.2.3: when contextMode=trading_workspace, the client supplies
+      // the symbol it is viewing. Prepend it so buildContext always has the
+      // right ticker context even for generic questions ("Why did this qualify?").
+      if (bodySymbol && contextMode === "trading_workspace" && !tickers.includes(bodySymbol)) {
+        tickers.unshift(bodySymbol);
+      }
       const ctx = await buildContext(userId, question, intent, tickers);
 
       // ---------------------------------------------------------------

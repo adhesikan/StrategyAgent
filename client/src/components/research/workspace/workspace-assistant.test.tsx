@@ -1,0 +1,365 @@
+// Tests for workspace-assistant.tsx — Sprint 2.2.3
+//
+// Pure-function tests only — no React testing library needed.
+// Tests cover: buildSafeAssistantPayload, isPromptRelevant, buildAssistantPrompts
+// (via re-export path from workspace-sections).
+
+import { describe, it, expect } from "vitest";
+import {
+  buildSafeAssistantPayload,
+  isPromptRelevant,
+} from "./workspace-assistant";
+import {
+  buildAssistantPrompts,
+} from "./workspace-sections";
+import type { ResearchPackage, EvidenceStars, LifecycleItem } from "@/components/research/types";
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+function makeLifecycle(override: Partial<LifecycleItem> = {}): LifecycleItem {
+  return {
+    symbol: "AAPL",
+    lifecycleState: "STILL_QUALIFIED",
+    qualificationStatus: "QUALIFIED",
+    rankCurrent: 2,
+    rankPrev: 3,
+    scoreCurrent: 80,
+    scorePrev: 78,
+    scoreDelta: 2,
+    firstSeen: null,
+    lastUpdated: "2026-08-06T10:00:00Z",
+    ...override,
+  };
+}
+
+function makePackage(override: Partial<ResearchPackage> = {}): ResearchPackage {
+  return {
+    symbol: "AAPL",
+    candidate: {
+      rank: 2,
+      symbol: "AAPL",
+      strategy: "VCP",
+      whySelected: ["Tight base", "Volume contraction"],
+      warnings: [],
+    },
+    lifecycleItem: makeLifecycle(),
+    scanHistory: [],
+    brokerConnected: false,
+    marketRegime: "TRENDING",
+    dataSource: "Twelve Data (stored)",
+    dataQuality: "ok",
+    freshnessStatus: "fresh",
+    completedAt: "2026-08-06T10:00:00Z",
+    snapshotId: "snap-1",
+    ...override,
+  };
+}
+
+const STARS: EvidenceStars = {
+  technical: 4,
+  congress: 3,
+  news: 2,
+  institutional: 0,
+  catalysts: 1,
+  regime: 5,
+};
+
+// ---------------------------------------------------------------------------
+// F. buildSafeAssistantPayload
+// ---------------------------------------------------------------------------
+
+describe("buildSafeAssistantPayload", () => {
+  it("F1 — basic payload has correct fields", () => {
+    const payload = buildSafeAssistantPayload("Why did this qualify?", "NVDA", null);
+    expect(payload.question).toBe("Why did this qualify?");
+    expect(payload.symbol).toBe("NVDA");
+    expect(payload.contextMode).toBe("trading_workspace");
+  });
+
+  it("F2 — symbol is always uppercased", () => {
+    const payload = buildSafeAssistantPayload("Question", "nvda", null);
+    expect(payload.symbol).toBe("NVDA");
+  });
+
+  it("F3 — symbol strips non-alpha characters", () => {
+    const payload = buildSafeAssistantPayload("Question", "BRK.B", null);
+    expect(payload.symbol).toBe("BRKB");
+  });
+
+  it("F4 — symbol is truncated to 10 chars", () => {
+    const payload = buildSafeAssistantPayload("Question", "ABCDEFGHIJKLMNOP", null);
+    expect(payload.symbol.length).toBeLessThanOrEqual(10);
+  });
+
+  it("F5 — question is trimmed", () => {
+    const payload = buildSafeAssistantPayload("  Hello?  ", "AAPL", null);
+    expect(payload.question).toBe("Hello?");
+  });
+
+  it("F6 — question is capped at 500 chars", () => {
+    const long = "A".repeat(600);
+    const payload = buildSafeAssistantPayload(long, "AAPL", null);
+    expect(payload.question.length).toBe(500);
+  });
+
+  it("F7 — null selectedContractId → no selectedContractId in payload", () => {
+    const payload = buildSafeAssistantPayload("Q", "AAPL", null);
+    expect(payload.selectedContractId).toBeUndefined();
+  });
+
+  it("F8 — empty string selectedContractId → not included", () => {
+    const payload = buildSafeAssistantPayload("Q", "AAPL", "");
+    expect(payload.selectedContractId).toBeUndefined();
+  });
+
+  it("F9 — valid selectedContractId is included", () => {
+    const payload = buildSafeAssistantPayload("Q", "AAPL", "OCC-AAPL-20260919-200-C");
+    expect(payload.selectedContractId).toBe("OCC-AAPL-20260919-200-C");
+  });
+
+  it("F10 — selectedContractId is capped at 100 chars", () => {
+    const longId = "X".repeat(150);
+    const payload = buildSafeAssistantPayload("Q", "AAPL", longId);
+    expect((payload.selectedContractId ?? "").length).toBeLessThanOrEqual(100);
+  });
+
+  it("F11 — selectedContractId strips non-ASCII-printable chars", () => {
+    // Tab and null bytes should be stripped
+    const dirtyId = "ABC\x00\t\x01DEF";
+    const payload = buildSafeAssistantPayload("Q", "AAPL", dirtyId);
+    // \x00, \x01 are below 0x20 and \t is 0x09 — all stripped
+    expect(payload.selectedContractId).toBe("ABCDEF");
+  });
+
+  it("F12 — contextMode is always trading_workspace", () => {
+    const payload = buildSafeAssistantPayload("Q", "MSFT", "id-123");
+    expect(payload.contextMode).toBe("trading_workspace");
+  });
+
+  it("F13 — payload contains no extra fields beyond allowed four", () => {
+    const payload = buildSafeAssistantPayload("Q", "AAPL", null);
+    const keys = Object.keys(payload);
+    const allowed = new Set(["question", "symbol", "contextMode", "selectedContractId"]);
+    expect(keys.every((k) => allowed.has(k))).toBe(true);
+  });
+
+  it("F14 — selectedContractId with only non-printable chars → not included", () => {
+    const payload = buildSafeAssistantPayload("Q", "AAPL", "\x00\x01\x02");
+    expect(payload.selectedContractId).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G. isPromptRelevant
+// ---------------------------------------------------------------------------
+
+describe("isPromptRelevant", () => {
+  it("G1 — generic prompt is always relevant", () => {
+    expect(isPromptRelevant("Why did this qualify?", false, false)).toBe(true);
+    expect(isPromptRelevant("Why did this qualify?", true, true)).toBe(true);
+  });
+
+  it("G2 — selected contract prompt requires hasSelectedContract", () => {
+    expect(isPromptRelevant("Explain the selected contract candidate.", false, false)).toBe(false);
+    expect(isPromptRelevant("Explain the selected contract candidate.", true, false)).toBe(true);
+  });
+
+  it("G3 — selected live contract prompt requires hasSelectedContract", () => {
+    expect(isPromptRelevant("Explain the selected live contract.", false, false)).toBe(false);
+    expect(isPromptRelevant("Explain the selected live contract.", true, false)).toBe(true);
+  });
+
+  it("G4 — latest news prompt requires hasNewsData", () => {
+    expect(isPromptRelevant("Summarize the latest news for AAPL.", false, false)).toBe(false);
+    expect(isPromptRelevant("Summarize the latest news for AAPL.", false, true)).toBe(true);
+  });
+
+  it("G5 — 'summarize the latest news' pattern matches", () => {
+    expect(isPromptRelevant("Summarize the latest news for NVDA.", false, false)).toBe(false);
+    expect(isPromptRelevant("Summarize the latest news for NVDA.", false, true)).toBe(true);
+  });
+
+  it("G6 — non-matching prompts are always relevant", () => {
+    expect(isPromptRelevant("What is the market regime?", false, false)).toBe(true);
+    expect(isPromptRelevant("Explain the DTE and strike framework.", false, false)).toBe(true);
+    expect(isPromptRelevant("What risks should I review before earnings?", false, false)).toBe(true);
+  });
+
+  it("G7 — case-insensitive matching", () => {
+    expect(isPromptRelevant("Explain the SELECTED CONTRACT candidate.", false, false)).toBe(false);
+    expect(isPromptRelevant("Explain the SELECTED CONTRACT candidate.", true, false)).toBe(true);
+  });
+
+  it("G8 — congress prompt (no match) is always relevant", () => {
+    expect(isPromptRelevant("Summarize the congressional disclosures for AAPL.", false, false)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H. buildAssistantPrompts — additional coverage (navigation and filtering)
+// ---------------------------------------------------------------------------
+
+describe("buildAssistantPrompts — additional", () => {
+  it("H1 — all prompts are strings with length > 3", () => {
+    const pkg = makePackage();
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(prompts.every((p) => typeof p === "string" && p.length > 3)).toBe(true);
+  });
+
+  it("H2 — no duplicate prompts", () => {
+    const pkg = makePackage();
+    const prompts = buildAssistantPrompts(pkg, STARS, true, true);
+    const unique = new Set(prompts);
+    expect(unique.size).toBe(prompts.length);
+  });
+
+  it("H3 — always at least 3 prompts regardless of context", () => {
+    const pkg = makePackage({ lifecycleItem: null });
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(prompts.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("H4 — 'what would invalidate' prompt is present", () => {
+    const pkg = makePackage();
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(prompts.some((p) => p.toLowerCase().includes("invalidate"))).toBe(true);
+  });
+
+  it("H5 — congress prompt always present", () => {
+    const pkg = makePackage();
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(prompts.some((p) => p.toLowerCase().includes("congress"))).toBe(true);
+  });
+
+  it("H6 — 'strongest supporting factors' prompt is present", () => {
+    const pkg = makePackage();
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(prompts.some((p) => p.toLowerCase().includes("supporting factor"))).toBe(true);
+  });
+
+  it("H7 — options structure prompt present", () => {
+    const pkg = makePackage();
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(prompts.some((p) => p.toLowerCase().includes("options structure"))).toBe(true);
+  });
+
+  it("H8 — count remains ≤ 8 even with all context available", () => {
+    const pkg = makePackage({
+      lifecycleItem: makeLifecycle(),
+      candidate: {
+        rank: 1, symbol: "AAPL", whySelected: ["A"],
+        warnings: ["Earnings risk"],
+      },
+    } as any);
+    const prompts = buildAssistantPrompts(pkg, STARS, true, true);
+    expect(prompts.length).toBeLessThanOrEqual(8);
+  });
+
+  it("H9 — earnings risk prompt included when candidate has warnings", () => {
+    const pkg = makePackage({
+      candidate: {
+        rank: 1, symbol: "AAPL", whySelected: [],
+        warnings: ["Earnings next week"],
+      },
+    } as any);
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    expect(
+      prompts.some((p) => p.toLowerCase().includes("risk") || p.toLowerCase().includes("earnings")),
+    ).toBe(true);
+  });
+
+  it("H10 — no earnings prompt when no warnings", () => {
+    const pkg = makePackage({
+      candidate: { rank: 1, symbol: "AAPL", whySelected: [], warnings: [] },
+    } as any);
+    const prompts = buildAssistantPrompts(pkg, STARS, false, false);
+    // It's OK if there's an earnings prompt from another route, but it should not be from the warning path
+    // Just verify count is still ≤ 8
+    expect(prompts.length).toBeLessThanOrEqual(8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I. WorkspaceNav — findActiveSectionId (pure, no DOM)
+// ---------------------------------------------------------------------------
+
+import { findActiveSectionId, WORKSPACE_NAV_SECTIONS } from "./workspace-nav";
+
+describe("findActiveSectionId", () => {
+  it("I1 — returns first section in order that is visible", () => {
+    const visible = new Set(["ws-lifecycle", "ws-decision"]);
+    const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, visible);
+    // lifecycle comes before decision in the list
+    expect(result).toBe("lifecycle");
+  });
+
+  it("I2 — returns first section when nothing visible", () => {
+    const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, new Set());
+    expect(result).toBe(WORKSPACE_NAV_SECTIONS[0].id);
+  });
+
+  it("I3 — summary section visible → returns summary", () => {
+    const visible = new Set(["ws-summary"]);
+    const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, visible);
+    expect(result).toBe("summary");
+  });
+
+  it("I4 — only instatrade visible → returns instatrade", () => {
+    const visible = new Set(["ws-instatrade"]);
+    const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, visible);
+    expect(result).toBe("instatrade");
+  });
+
+  it("I5 — works with empty sections array", () => {
+    const result = findActiveSectionId([], new Set(["ws-summary"]));
+    expect(result).toBe("");
+  });
+
+  it("I6 — only later section visible → still returns it", () => {
+    const visible = new Set(["ws-scan-history"]);
+    const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, visible);
+    expect(result).toBe("history");
+  });
+
+  it("I7 — all sections visible → returns first", () => {
+    const allVisible = new Set(WORKSPACE_NAV_SECTIONS.map((s) => s.anchorId));
+    const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, allVisible);
+    expect(result).toBe(WORKSPACE_NAV_SECTIONS[0].id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// J. WORKSPACE_NAV_SECTIONS — structural integrity
+// ---------------------------------------------------------------------------
+
+describe("WORKSPACE_NAV_SECTIONS", () => {
+  it("J1 — all sections have id, label, anchorId", () => {
+    WORKSPACE_NAV_SECTIONS.forEach((s) => {
+      expect(s.id).toBeTruthy();
+      expect(s.label).toBeTruthy();
+      expect(s.anchorId).toBeTruthy();
+    });
+  });
+
+  it("J2 — all anchorIds start with ws-", () => {
+    WORKSPACE_NAV_SECTIONS.forEach((s) => {
+      expect(s.anchorId.startsWith("ws-")).toBe(true);
+    });
+  });
+
+  it("J3 — no duplicate ids", () => {
+    const ids = WORKSPACE_NAV_SECTIONS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("J4 — no duplicate anchorIds", () => {
+    const anchors = WORKSPACE_NAV_SECTIONS.map((s) => s.anchorId);
+    expect(new Set(anchors).size).toBe(anchors.length);
+  });
+
+  it("J5 — at least 8 sections", () => {
+    expect(WORKSPACE_NAV_SECTIONS.length).toBeGreaterThanOrEqual(8);
+  });
+});

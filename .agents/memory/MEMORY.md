@@ -30,3 +30,4 @@
 - [Dashboard command-center redesign](dashboard-command-center.md) — Sprint 2.0.1: MarketCommandBar + OpportunityTimeline added; lifecycle badges wired into StockOpportunityCard via changesData prop; LifecycleSubsection is NOT yet collapsible (gap → Task #74).
 - [Research Package overview refinement](research-package-overview-refinement.md) — Sprint 2.2.1: posture bug fix (warnings ≠ bearish), 6-way posture vocabulary, numeric evidence scores, resolved-field fallbacks, new overview cards, 58 new tests.
 - [Live Contract Resolver](live-contract-resolver.md) — Sprint 2.2.2: broker options chain → verified contract candidates; pure computation + injectable deps; 79 server + 25 client tests; GET/POST /api/options/*.
+- [AI Trading Workspace](ai-trading-workspace.md) — Sprint 2.2.3: Overview tab → Workspace; 12 sections; buildAssistantPrompts tier/slot contract; ask.ts schema extended; selectedContractId wired in Task #87.

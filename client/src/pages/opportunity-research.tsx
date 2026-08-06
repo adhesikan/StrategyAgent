@@ -83,6 +83,23 @@ import { TradeStructureEngine, LiveContractResolver, deriveOptionsStructures } f
 import { deriveThesis } from "@/components/research/decision";
 
 // ---------------------------------------------------------------------------
+// Sprint 2.2.3 — AI Trading Workspace components
+// ---------------------------------------------------------------------------
+import {
+  WorkspaceNav,
+  WorkspaceLifecycleSection,
+  WorkspaceDecisionSummary,
+  WorkspaceEvidenceSummary,
+  WorkspaceStockPlanSummary,
+  WorkspaceOptionsPlanSummary,
+  WorkspaceRiskSummary,
+  WorkspaceCongressNewsCatalystSummary,
+  WorkspaceInstaTradePrepPanel,
+  WorkspaceAssistantDrawer,
+  WorkspaceAssistantInlineSection,
+} from "@/components/research/workspace";
+
+// ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
 // ---------------------------------------------------------------------------
 
@@ -549,6 +566,17 @@ function ResearchHeader({ pkg }: { pkg: ResearchPackage }) {
   return (
     <Card className="border-border/40" data-testid="section-research-header">
       <CardContent className="px-4 py-4 space-y-3">
+        {/* Workspace label */}
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3 w-3 text-violet-400" aria-hidden="true" />
+          <span
+            className="text-[10px] uppercase tracking-widest text-violet-400 font-medium"
+            data-testid="ws-label"
+          >
+            AI Trading Workspace
+          </span>
+        </div>
+
         {/* Top row */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="space-y-1">
@@ -2138,7 +2166,7 @@ function SymbolNotFound({ symbol }: { symbol: string }) {
 // ---------------------------------------------------------------------------
 
 const TABS = [
-  { value: "overview",       label: "Overview" },
+  { value: "overview",       label: "Workspace" },
   { value: "decision",       label: "Decision" },
   { value: "trade-planning", label: "Trade Planning" },
   { value: "technical",      label: "Technical" },
@@ -2159,6 +2187,12 @@ export default function OpportunityResearchPage() {
   // Tab state + lazy-load tracking
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
   const [visitedTabs, setVisitedTabs] = useState<Set<TabValue>>(new Set<TabValue>(["overview"]));
+
+  // Sprint 2.2.3: AI Trading Workspace state
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // selectedContractId tracks the contract the user chose in LiveContractResolver
+  // (Task #87 will wire the callback; starts null — shows stock_ready when broker connected)
+  const [selectedContractId] = useState<string | null>(null);
 
   const handleTabChange = (value: string) => {
     const tab = value as TabValue;
@@ -2266,6 +2300,11 @@ export default function OpportunityResearchPage() {
   const newsData = newsQuery.data ?? null;
   const stars = computeEvidenceStars(pkg, newsData, snapshot);
 
+  // Sprint 2.2.3 — Workspace precomputed values (pure, memoized by reference)
+  const workspaceThesis = deriveThesis(pkg, stars);
+  const workspaceOptionsStructures = deriveOptionsStructures(pkg, workspaceThesis);
+  const primaryOptionsStructure = workspaceOptionsStructures[0] ?? null;
+
   return (
     <div className="flex-1 overflow-auto" data-testid="opportunity-research-page">
       <div className="w-full max-w-5xl mx-auto px-4 md:px-8 py-5 md:py-6 space-y-4">
@@ -2306,32 +2345,93 @@ export default function OpportunityResearchPage() {
             </TabsList>
           </div>
 
-          {/* ─── Overview ─── */}
+          {/* ─── Workspace ─── */}
           <TabsContent value="overview" data-testid="tab-content-overview">
+            {/* Sticky section navigator */}
+            <WorkspaceNav />
+
             <div className="space-y-4 mt-3">
-              {/* 1. Research Thesis — posture, explanation, warnings */}
-              <ResearchDecisionCard pkg={pkg} stars={stars} />
 
-              {/* 2. Market Context — regime, alignment, data source, scan time */}
-              <CompactMarketContext pkg={pkg} snapshot={snapshot} />
+              {/* §1 — Research Thesis + Market Context */}
+              <div id="ws-summary" className="space-y-3">
+                <ResearchDecisionCard pkg={pkg} stars={stars} />
+                <CompactMarketContext pkg={pkg} snapshot={snapshot} />
+              </div>
 
-              {/* 3. Research Trade Card — stock params + evidence + options + risk + actions */}
-              <ResearchTradeCard
+              {/* §2 — What Changed */}
+              <WorkspaceLifecycleSection item={pkg.lifecycleItem} />
+
+              {/* §3 — Decision Summary (compact) */}
+              <WorkspaceDecisionSummary
                 pkg={pkg}
                 stars={stars}
+                onNavigateTab={handleTabChange}
+              />
+
+              {/* §4 — Evidence Summary */}
+              <WorkspaceEvidenceSummary
+                pkg={pkg}
+                stars={stars}
+                newsData={newsData as any}
+                onNavigateTab={handleTabChange}
+                completedAt={pkg.completedAt}
+              />
+
+              {/* §5 — Stock Trade Planning (compact) */}
+              <WorkspaceStockPlanSummary pkg={pkg} onNavigateTab={handleTabChange} />
+
+              {/* §6 — Illustrative Options Planning (compact, no fabricated contract data) */}
+              <WorkspaceOptionsPlanSummary
+                optionsStructure={primaryOptionsStructure}
+                onNavigateTab={handleTabChange}
+              />
+
+              {/* §7 — Live Contract Verification */}
+              <div id="ws-live-contracts">
+                <LiveContractResolver
+                  pkg={pkg}
+                  structures={workspaceOptionsStructures}
+                  snapshot={snapshot}
+                />
+              </div>
+
+              {/* §8 — Risk & Invalidation */}
+              <WorkspaceRiskSummary
+                pkg={pkg}
                 snapshot={snapshot}
                 onNavigateTab={handleTabChange}
               />
 
-              {/* 4. Congressional Disclosure Summary */}
-              <CongressSummaryCard
-                stars={stars}
-                symbol={pkg.symbol}
-                onNavigateCongress={() => handleTabChange("congress")}
+              {/* §9 — Congress / News / Catalysts summaries */}
+              <WorkspaceCongressNewsCatalystSummary
+                pkg={pkg}
+                newsData={newsData as any}
+                snapshot={snapshot}
+                onNavigateTab={handleTabChange}
               />
 
-              {/* 5. Scan history */}
-              <ScanHistorySection history={pkg.scanHistory} symbol={pkg.symbol} />
+              {/* §10 — Contextual AI Research Assistant inline section */}
+              <WorkspaceAssistantInlineSection
+                pkg={pkg}
+                stars={stars}
+                selectedContractId={selectedContractId}
+                hasNewsData={newsData !== null}
+                onOpen={() => setAssistantOpen(true)}
+              />
+
+              {/* §11 — InstaTrade™ Preparation */}
+              <WorkspaceInstaTradePrepPanel
+                pkg={pkg}
+                hasSelectedContract={!!selectedContractId}
+                onConnectBroker={() => navigate("/settings")}
+                onNavigateTab={handleTabChange}
+              />
+
+              {/* §12 — Scan History */}
+              <div id="ws-scan-history">
+                <ScanHistorySection history={pkg.scanHistory} symbol={pkg.symbol} />
+              </div>
+
             </div>
           </TabsContent>
 
@@ -2412,6 +2512,18 @@ export default function OpportunityResearchPage() {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Sprint 2.2.3 — AI Research Assistant Drawer
+             Desktop: fixed right-side panel.  Mobile/tablet: bottom sheet.
+             Only rendered when assistantOpen is true — never auto-calls AI. */}
+        <WorkspaceAssistantDrawer
+          open={assistantOpen}
+          pkg={pkg}
+          stars={stars}
+          selectedContractId={selectedContractId}
+          hasNewsData={newsData !== null}
+          onClose={() => setAssistantOpen(false)}
+        />
 
         {/* Compliance Footer — always visible */}
         <p

@@ -291,28 +291,35 @@ export function WorkspaceAssistantPanel({
       className="flex flex-col h-full"
       data-testid="workspace-assistant-panel"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/30 shrink-0">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-          <span className="text-[13px] font-semibold">Ask VCP AI</span>
-          <Badge
-            variant="outline"
-            className="text-[9px] border-border/40 text-muted-foreground"
-          >
-            {pkg.symbol}
-          </Badge>
+      {/* Header — sticky via shrink-0; content area scrolls independently.
+           Close button: 40×40 px touch target, explicit contrast, keyboard-accessible. */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/30 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="h-3.5 w-3.5 text-violet-400 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-semibold leading-snug">Ask VCP AI</h2>
+            <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+              Research questions for {pkg.symbol}
+            </p>
+          </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0"
+
+        {/* Close — always visible, 40×40 px, explicit foreground color, visible focus ring */}
+        <button
+          type="button"
+          className={cn(
+            "shrink-0 h-10 w-10 flex items-center justify-center rounded",
+            "text-foreground/60 hover:text-foreground hover:bg-accent/60",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+            "transition-colors",
+          )}
           onClick={onClose}
-          aria-label="Close AI assistant panel"
+          aria-label="Close contextual research assistant"
+          title="Close"
           data-testid="assistant-close-btn"
         >
-          <X className="h-3.5 w-3.5" />
-        </Button>
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Content area */}
@@ -320,9 +327,6 @@ export function WorkspaceAssistantPanel({
         {/* Starter prompts — only before a response */}
         {!response && !isLoading && !error && (
           <div data-testid="assistant-starter-prompts">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">
-              Research questions for {pkg.symbol}
-            </p>
             <div className="space-y-1">
               {prompts.map((prompt, i) => (
                 <button

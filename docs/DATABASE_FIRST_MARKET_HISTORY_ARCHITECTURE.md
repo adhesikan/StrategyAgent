@@ -340,6 +340,118 @@ database-first architecture. No migration is required.
 
 ---
 
+## Production Readiness Audit
+
+Run before every deployment that touches the Opportunity Engine or market data pipeline:
+
+```bash
+DATABASE_URL=<prod-url> npx tsx scripts/audit-market-history-readiness.ts
+```
+
+Exit code: **0** = GO or CONDITIONAL_GO, **1** = NO_GO, **2** = database error.
+
+Output is sanitized — never prints DATABASE_URL, credentials, or raw candle data.
+
+### Readiness Thresholds
+
+| Verdict | Rule |
+|---|---|
+| **GO** | ≥ 95% READY or STALE_BUT_USABLE · all regime symbols READY · 0 INVALID bars |
+| **CONDITIONAL_GO** | 85–94.99% coverage · regime symbols not MISSING · 0 INVALID bars · previous valid snapshot exists · backfill actively running |
+| **NO_GO** | < 85% coverage · any regime symbol MISSING or INSUFFICIENT · any INVALID bars · universe empty |
+
+Regime symbols that must be READY for GO: **SPY, QQQ, IWM, DIA**
+
+### Per-Symbol Readiness Statuses
+
+| Status | Criteria |
+|---|---|
+| `READY` | barCount ≥ 320 · latest bar ≤ 3 weekdays old · 0 OHLC violations · 0 duplicate timestamps |
+| `STALE_BUT_USABLE` | barCount ≥ 50 · latest bar 4–10 weekdays old · 0 violations |
+| `INSUFFICIENT_HISTORY` | 0 < barCount < 50, OR barCount ≥ 50 but data > 10 weekdays old |
+| `MISSING` | 0 bars in market_daily_bars |
+| `INVALID` | OHLC violations (high < low, etc.) or duplicate trade_date |
+
+### Production Universe
+
+**20 symbols** (configured in `market_data_symbols` via `SEED_SYMBOLS` in `ingestion.ts`):
+
+| Symbol | Type | Role |
+|---|---|---|
+| SPY | ETF | Market regime (required) |
+| QQQ | ETF | Market regime (required) |
+| IWM | ETF | Market regime (required) |
+| DIA | ETF | Market regime (required) |
+| NVDA | Equity | Semiconductor / AI infrastructure |
+| MSFT | Equity | Mega-cap tech |
+| AAPL | Equity | Mega-cap tech |
+| AMZN | Equity | Mega-cap tech |
+| GOOGL | Equity | Mega-cap tech |
+| META | Equity | Mega-cap tech |
+| AVGO | Equity | Semiconductor |
+| AMD | Equity | Semiconductor |
+| MU | Equity | Semiconductor |
+| PLTR | Equity | Software / data |
+| ORCL | Equity | Software |
+| JPM | Equity | Financials |
+| COST | Equity | Consumer |
+| WMT | Equity | Consumer |
+| TSLA | Equity | EV / diversified |
+| XOM | Equity | Energy |
+
+**VIX is not in the universe.** The Opportunity Engine calls `getMarketRegime()` non-fatally; the regime service does not depend on stored VIX bars.
+
+> The MCP `rank_market_trade_candidates` tool has its own server-side universe and does not accept a symbol list from the engine. The 20-symbol ingestion universe is the database-first coverage target; MCP results may include additional symbols not in this set.
+
+### Minimum History Requirements
+
+| Depth | Bars | Covers |
+|---|---|---|
+| Scanner request (`REQUIRED_BARS`) | 320 | Full technical indicator suite |
+| Scanner minimum (`MINIMUM_BARS`) | 50 | VCP evaluation, SMA-50, EMA-21 |
+| SMA-200 warm-up | 250 | Deep trend confirmation |
+| `HISTORY_DEPTH.MINIMUM` (service) | 30 | Any computable indicator |
+
+### Ingestion Scheduling
+
+| Property | Value |
+|---|---|
+| Schedule | `15 19 * * 1-5` — 7:15 PM ET weekdays (node-cron, `server/index.ts:533`) |
+| Gate | `isExpectedTradingDay()` check before running |
+| Concurrency | Sequential, 1 symbol at a time |
+| Advisory lock | PostgreSQL key `774_412_001` (multi-instance safe) |
+| Incremental window | Latest stored date − 7 calendar days (covers corrections) |
+| Initial backfill | `backfill_years` column (default 2 years) |
+| Credit safety | 7/min, 750/day via `reserveCreditsBlocking()` |
+| Error isolation | One symbol failure does not stop the batch |
+| Quota stop | `DAILY_LIMIT` / `QUOTA` codes halt the run (resumes next day) |
+| Structured events | `daily_bar_ingestion_started`, `daily_bar_ingestion_completed`, `daily_bar_ingestion_partial`, `daily_bar_ingestion_failed` |
+
+### Deployment Gate
+
+1. Run `npx tsx scripts/audit-market-history-readiness.ts` against production DB
+2. Verify exit code is **0** (GO or CONDITIONAL_GO)
+3. If CONDITIONAL_GO: confirm previous valid opportunity snapshot exists + backfill is running
+4. If NO_GO: do not enable `MARKET_HISTORY_DATABASE_FIRST=true` on this deploy; ensure ingestion has populated bars first
+5. Deploy with `MARKET_HISTORY_DATABASE_FIRST=true` (default — no Railway variable change needed)
+
+### Recommended Railway Variable Values (Initial Production)
+
+| Variable | Value | Notes |
+|---|---|---|
+| `MARKET_HISTORY_DATABASE_FIRST` | (omit) | Defaults true |
+| `MARKET_HISTORY_EXTERNAL_REFRESH_ENABLED` | (omit) | Defaults true; set false to block all on-demand refresh |
+| `OPPORTUNITY_SCAN_TIMEOUT_MS` | 90000 | 90s scan deadline |
+| `OPPORTUNITY_SCAN_INTERVAL_MINUTES` | 240 | 4h scan cadence |
+
+### Rollback Conditions
+
+Roll back to legacy mode (`MARKET_HISTORY_DATABASE_FIRST=false`) when:
+- Internal route returns `sourceType:"external_refresh"` for > 20% of symbols (stored bars absent)
+- Opportunity Engine snapshot shows 0 stock opportunities for 2+ consecutive scans
+- Credit logs show unexpected burst during a scan window
+- Railway deployment shows repeated 502 PROVIDER_ERROR on `/api/internal/market/history`
+
 ## Rollback Plan
 
 1. Set `MARKET_HISTORY_DATABASE_FIRST=false` on Railway → immediate fallback to direct TwelveData proxy

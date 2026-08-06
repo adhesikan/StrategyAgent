@@ -1,0 +1,440 @@
+Database-First Market History — Production Readiness Audit
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+CURRENT IMPLEMENTATION
+
+The database-first historical market-data architecture is now implemented.
+
+Key behavior:
+
+- global deterministic scans use PostgreSQL historical bars
+- scan-time external history fetching is disabled
+- canonical market-history service owns provider selection
+- external refresh requires:
+  allowExternalRefresh = true
+  and MARKET_HISTORY_EXTERNAL_REFRESH_ENABLED = true
+- emergency rollback:
+  MARKET_HISTORY_DATABASE_FIRST = false
+- internal MCP history route is backward-compatible
+- provider error classification is improved
+- supported brokers are capability-based
+- 62 new tests were added
+- 1,414 server tests pass
+
+GOAL
+
+Verify that the production historical-bar database and ingestion pipeline are ready to support the Opportunity Engine before deployment.
+
+This task must not redesign the architecture.
+
+Do not change:
+
+- scanner formulas
+- ranking
+- qualification
+- opportunity snapshot schema
+- dashboard behavior
+- MCP contracts
+- broker execution
+- portfolio logic
+- options logic
+- research
+- Congress
+- billing
+
+Do not commit, push, migrate, change Railway variables, or deploy automatically.
+
+==================================================
+1. AUDIT THE PRODUCTION SCAN UNIVERSE
+==================================================
+
+Identify the exact symbol universe used by:
+
+rank_market_trade_candidates
+
+and the background Opportunity Engine.
+
+Report:
+
+- total universe size
+- source of the universe
+- symbols included
+- ETFs included
+- indices/proxies included
+- inactive or delisted symbols
+- duplicate symbols
+- canonical aliases
+- longest required history depth
+- required interval for each scanner component
+
+Do not assume numberOfIdeas equals universe size.
+
+==================================================
+2. AUDIT THE HISTORICAL-BAR TABLE
+==================================================
+
+Identify the exact PostgreSQL table used by market-history-service.ts.
+
+Document:
+
+- table name
+- columns
+- unique constraint
+- indexes
+- source field
+- interval field
+- timestamp field
+- adjustment mode
+- current retention
+- upsert behavior
+- duplicate handling
+- ordering behavior
+
+Confirm whether a migration is required for the new implementation.
+
+==================================================
+3. BUILD A READ-ONLY COVERAGE DIAGNOSTIC
+==================================================
+
+Create a read-only script:
+
+scripts/audit-market-history-readiness.ts
+
+The script must:
+
+- use the exact Opportunity Engine universe
+- use the exact minimum-history policies used by production scanners
+- read production PostgreSQL through the normal DATABASE_URL
+- not call Twelve Data
+- not call a broker
+- not call MCP
+- not write to the database
+- not modify any application state
+
+For every symbol calculate:
+
+- stored bar count
+- required bar count
+- latest bar date
+- earliest bar date
+- freshness status
+- source/provider
+- interval
+- duplicate timestamps
+- invalid bars
+- readiness status
+
+Readiness statuses:
+
+READY
+STALE_BUT_USABLE
+INSUFFICIENT_HISTORY
+MISSING
+INVALID
+
+==================================================
+4. SANITIZED SUMMARY OUTPUT
+==================================================
+
+Print only a sanitized summary such as:
+
+Universe size
+Ready count
+Stale-but-usable count
+Insufficient-history count
+Missing count
+Invalid count
+Coverage percentage
+Latest completed market date
+Oldest required date
+Provider/source distribution
+
+Also print bounded symbol lists for:
+
+- missing
+- insufficient
+- invalid
+- stale
+
+Do not print:
+
+- database URL
+- credentials
+- raw SQL connection details
+- complete candle payloads
+- user data
+- account data
+- provider keys
+
+==================================================
+5. DEFINE THE PRODUCTION READINESS THRESHOLD
+==================================================
+
+Recommend and enforce a clear threshold before enabling database-first scanning.
+
+Suggested initial rule:
+
+GO:
+- at least 95% of the universe is READY or STALE_BUT_USABLE
+- all required market-regime symbols are READY
+- no invalid-bar integrity failures
+- missing symbols are explicitly accounted for as unavailable
+
+CONDITIONAL_GO:
+- 85–94.99% coverage
+- missing symbols are non-critical
+- previous valid opportunity snapshot exists
+- ingestion/backfill is actively filling gaps
+
+NO_GO:
+- below 85% coverage
+- required index/regime symbols missing
+- widespread invalid bars
+- ingestion not functioning
+
+Document the final selected threshold.
+
+==================================================
+6. AUDIT INGESTION SCHEDULING
+==================================================
+
+Trace the production daily-bar ingestion path.
+
+Document:
+
+- startup registration
+- schedule/cadence
+- universe
+- batch size
+- concurrency
+- Twelve Data credit pacing
+- incremental refresh behavior
+- initial backfill behavior
+- retry policy
+- partial failure handling
+- last-success tracking
+- whether the job runs once per Railway instance
+- duplicate-job protection
+- graceful shutdown
+- structured logs
+
+Confirm that ingestion can populate every Opportunity Engine symbol.
+
+==================================================
+7. VERIFY INCREMENTAL BACKFILL
+==================================================
+
+For a new or incomplete symbol, verify the ingestion path can:
+
+- determine required history depth
+- request an initial bounded backfill
+- validate bars
+- persist them idempotently
+- avoid duplicate timestamps
+- later fetch only missing/recent bars
+- isolate one-symbol failure
+- preserve existing good data
+
+Do not trigger production backfills in this audit.
+
+Use tests or a controlled local fixture.
+
+==================================================
+8. VERIFY MARKET-REGIME DEPENDENCIES
+==================================================
+
+Identify every symbol required for:
+
+- SPY regime
+- QQQ regime
+- IWM regime
+- volatility context
+- breadth or sector context
+
+Confirm these have sufficient fresh PostgreSQL history.
+
+A market-wide scan must not proceed as complete if required regime inputs are unavailable.
+
+==================================================
+9. VERIFY FEATURE FLAGS
+==================================================
+
+Audit behavior for:
+
+MARKET_HISTORY_DATABASE_FIRST
+MARKET_HISTORY_EXTERNAL_REFRESH_ENABLED
+
+Confirm:
+
+Database-first true:
+- stored bars are primary
+
+External refresh false:
+- global scans do not call external providers
+
+External refresh true:
+- only explicitly authorized user/backfill paths may refresh
+
+Database-first false:
+- emergency rollback uses Twelve Data only
+- no Yahoo
+- no mock
+- no synthetic market data
+
+Document recommended initial Railway values.
+
+==================================================
+10. VERIFY INTERNAL ROUTE CONTRACT
+==================================================
+
+Run controlled tests against:
+
+GET /api/internal/market/history
+
+Cases:
+
+- sufficient stored history
+- stale-but-usable history
+- insufficient history
+- missing symbol
+- invalid symbol
+- external refresh disabled
+- external refresh enabled for an approved caller
+- provider rate limit
+- provider daily limit
+- provider timeout
+- provider malformed response
+
+Confirm the MCP-compatible response shape remains intact.
+
+==================================================
+11. VERIFY OPPORTUNITY ENGINE BEHAVIOR
+==================================================
+
+Using controlled fixtures or local database data, verify:
+
+A. High database coverage
+- scan completes
+- no Twelve Data requests during scan
+- opportunity snapshot persists
+- counts are deterministic
+
+B. Some missing symbols
+- missing symbols become unavailable
+- successful symbols continue
+- partial snapshot persists
+
+C. Low coverage
+- readiness gate prevents misleading scan completion
+- previous valid snapshot is preserved
+- safe failed/partial attempt is recorded
+
+D. Required regime symbols missing
+- scan does not present rankings as complete
+- previous valid snapshot remains
+
+==================================================
+12. OBSERVABILITY
+==================================================
+
+Confirm or add safe events:
+
+market_history_readiness_checked
+market_history_coverage_insufficient
+market_history_stored_hit
+market_history_stored_stale
+market_history_missing
+market_history_backfill_queued
+daily_bar_ingestion_started
+daily_bar_ingestion_completed
+daily_bar_ingestion_partial
+daily_bar_ingestion_failed
+
+Include:
+
+- aggregate counts
+- duration
+- market date
+- safe source labels
+- coverage percentage
+
+Do not log full bar arrays or credentials.
+
+==================================================
+13. TESTS
+==================================================
+
+Add tests for the readiness script and any narrowly required readiness helpers:
+
+- full coverage
+- partial coverage
+- low coverage
+- missing regime symbol
+- stale weekend data
+- duplicate timestamp detection
+- invalid OHLC
+- insufficient depth
+- no external call during audit
+- no database writes
+- safe output
+- feature-flag combinations
+
+Run:
+
+npm test
+npm run build
+
+Also run the complete client and server suites if separate commands exist.
+
+==================================================
+14. DOCUMENTATION
+==================================================
+
+Update:
+
+docs/DATABASE_FIRST_MARKET_HISTORY_ARCHITECTURE.md
+
+Add:
+
+- readiness threshold
+- production universe
+- minimum history requirements
+- ingestion readiness
+- feature-flag values
+- deployment gate
+- rollback conditions
+- exact audit command
+
+==================================================
+15. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. Opportunity Engine universe
+2. historical-bar table
+3. required history depths
+4. readiness script
+5. local/test audit result
+6. production execution command
+7. readiness threshold
+8. ingestion scheduling
+9. backfill capability
+10. regime-symbol readiness
+11. feature-flag recommendation
+12. internal-route compatibility
+13. Opportunity Engine behavior
+14. tests and totals
+15. full build result
+16. migration requirement
+17. Railway variables
+18. deployment sequence
+19. rollback conditions
+20. final GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, migrate, modify Railway variables, or deploy automatically.
+
+Wait for review.

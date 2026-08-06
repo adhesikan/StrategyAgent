@@ -200,6 +200,23 @@ function assertProviderAllowed(provider: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Structured observability events
+//
+// All events are written to stdout as newline-delimited JSON so Railway log
+// queries (grep, jq) can filter by event name without parsing free text.
+// Never log full bar arrays, credentials, or user PII.
+// ---------------------------------------------------------------------------
+
+function emitHistoryEvent(
+  name: string,
+  data: Record<string, string | number | boolean | null>,
+): void {
+  process.stdout.write(
+    JSON.stringify({ event: name, ...data, ts: new Date().toISOString() }) + "\n",
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Core service
 // ---------------------------------------------------------------------------
 
@@ -267,6 +284,10 @@ export async function getHistoricalBars(params: {
 
   // ── Phase 2: Return stored bars if sufficient ─────────────────────────────
   if (hasEnoughBars && storedFreshness === "fresh") {
+    emitHistoryEvent("market_history_stored_hit", {
+      symbol, purpose: params.purpose, barCount: trimmedStored.length,
+      latestBarDate: latestStored, provider: trimmedStored[0]?.provider ?? "twelve_data",
+    });
     return {
       bars: trimmedStored,
       sourceType: "stored",
@@ -328,6 +349,10 @@ export async function getHistoricalBars(params: {
 
   // ── Phase 4: Return stale stored bars if any exist ────────────────────────
   if (trimmedStored.length > 0) {
+    emitHistoryEvent("market_history_stored_stale", {
+      symbol, purpose: params.purpose, barCount: trimmedStored.length,
+      latestBarDate: latestStored, provider: trimmedStored[0]?.provider ?? "twelve_data",
+    });
     return {
       bars: trimmedStored,
       sourceType: "stored_stale",
@@ -340,6 +365,11 @@ export async function getHistoricalBars(params: {
   }
 
   // ── Phase 5: Unavailable ──────────────────────────────────────────────────
+  emitHistoryEvent("market_history_missing", {
+    symbol, purpose: params.purpose,
+    allowExternalRefresh: allowRefresh,
+    externalRefreshEnabled: isExternalRefreshEnabled(),
+  });
   throw new MarketDataProviderError(
     `No historical bars available for ${symbol}. Stored bars: 0. External refresh: ${allowRefresh ? "attempted and failed" : "disabled for this call"}.`,
     "EMPTY",
@@ -425,7 +455,7 @@ export async function checkScanReadiness(refDate = new Date()): Promise<ScanRead
   const coveragePercent =
     universeSize > 0 ? Math.round((readySymbols / universeSize) * 100) : 0;
 
-  return {
+  const result: ScanReadiness = {
     universeSize,
     readySymbols,
     staleSymbols,
@@ -435,6 +465,21 @@ export async function checkScanReadiness(refDate = new Date()): Promise<ScanRead
     dataSourceSummary: "PostgreSQL market_daily_bars (source: twelve_data)",
     checkedAt,
   };
+
+  emitHistoryEvent("market_history_readiness_checked", {
+    universeSize, readySymbols, staleSymbols, missingSymbols,
+    coveragePercent, latestCompletedBarDate,
+    adequate: isScanCoverageAdequate(result),
+  });
+
+  if (!isScanCoverageAdequate(result)) {
+    emitHistoryEvent("market_history_coverage_insufficient", {
+      universeSize, readySymbols, coveragePercent,
+      minRequiredPct: MIN_SCAN_COVERAGE_PCT,
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

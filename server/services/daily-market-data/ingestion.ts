@@ -471,6 +471,10 @@ async function ingestSymbol(
   }
 }
 
+function emitIngestionEvent(name: string, data: Record<string, string | number | boolean | null>): void {
+  process.stdout.write(JSON.stringify({ event: name, ...data, ts: new Date().toISOString() }) + "\n");
+}
+
 export async function runIngestion(options: {
   runType: "backfill" | "daily" | "manual";
   symbols?: string[]; // limit to specific symbols
@@ -487,6 +491,7 @@ export async function runIngestion(options: {
   }
 
   const cfg = getTwelveDataConfig();
+  const ingestionStartedAt = Date.now();
   try {
     await seedSymbolUniverseIfEmpty();
     await ensureLicenseConfigRow();
@@ -516,6 +521,10 @@ export async function runIngestion(options: {
 
     const results: SymbolIngestResult[] = [];
     const mode = options.runType === "backfill" ? "backfill" : "daily";
+    emitIngestionEvent("daily_bar_ingestion_started", {
+      runId, runType: options.runType, symbolsRequested: symbolRows.length,
+      environment: cfg.environment, initiatedBy: options.initiatedBy ?? null,
+    });
     for (const sym of symbolRows) {
       const r = await ingestSymbol({ symbol: sym.symbol, backfillYears: sym.backfillYears }, runId, mode);
       results.push(r);
@@ -557,6 +566,23 @@ export async function runIngestion(options: {
             : null,
       })
       .where(eq(marketDataIngestionRuns.id, runId));
+
+    const durationMs = Date.now() - ingestionStartedAt;
+    const ingestionEvent =
+      status === "completed"
+        ? "daily_bar_ingestion_completed"
+        : status === "partially_completed"
+          ? "daily_bar_ingestion_partial"
+          : status === "failed"
+            ? "daily_bar_ingestion_failed"
+            : "daily_bar_ingestion_completed";
+    emitIngestionEvent(ingestionEvent, {
+      runId, runType: options.runType, status,
+      symbolsRequested: symbolRows.length, symbolsSucceeded: succeeded, symbolsFailed: failed,
+      recordsInserted: results.reduce((a, r) => a + r.inserted, 0),
+      recordsUpdated: results.reduce((a, r) => a + r.updated, 0),
+      durationMs,
+    });
 
     // Fire-and-forget internal research report email summarizing the ingestion run.
     const reportTo = process.env.ADMIN_SUPPORT_NOTIFICATION_EMAIL || process.env.EMAIL_FORWARD_ADDRESS;

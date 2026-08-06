@@ -1,0 +1,305 @@
+Sprint 1 Production Blocker — Opportunity Engine Scheduled but Initial Scan Does Not Start
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+CURRENT VERIFIED PRODUCTION EVIDENCE
+
+Railway logs show:
+
+Opportunity engine scheduled (4-hour refresh cycle)
+Opportunity resolver job started
+
+But there are no logs for:
+
+opportunity_snapshot_loaded
+opportunity_scan_started
+opportunity_scan_lock_acquired
+opportunity_scan_completed
+opportunity_scan_partial
+opportunity_scan_empty
+opportunity_scan_failed
+opportunity_snapshot_persisted
+
+The dashboard continues to show:
+
+Opportunity Engine has not completed its first scan.
+
+GOAL
+
+Find and fix the exact reason the first background Opportunity Engine scan is not starting or not producing observable lifecycle events.
+
+This is a narrowly scoped Sprint 1 production blocker.
+
+Do not:
+
+- redesign the engine
+- change the database schema
+- change MCP ranking
+- change scanner logic
+- change the 4-hour default cadence
+- begin Sprint 2
+- add new product features
+- modify portfolio, broker, options, research, Congress, or execution
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. TRACE STARTUP REGISTRATION
+==================================================
+
+Trace the exact startup path from:
+
+server/index.ts
+
+to:
+
+startOpportunityEngine()
+scheduleOpportunityEngine()
+runOpportunityScan()
+or equivalent functions.
+
+Document:
+
+- which function is called at startup
+- whether it loads the latest PostgreSQL snapshot
+- whether it triggers an immediate scan
+- whether it only registers setInterval
+- whether the first scheduled run is four hours later
+- whether any Promise is intentionally fire-and-forget
+- whether rejections are caught and logged
+- whether the older Opportunity Resolver job is separate from the new Opportunity Engine
+
+Identify the exact first line where execution stops or diverges.
+
+==================================================
+2. DISTINGUISH THE TWO JOBS
+==================================================
+
+Audit the log:
+
+Opportunity resolver job started
+
+Determine whether this belongs to:
+
+- the new background Opportunity Engine
+- an older stored-opportunity resolver
+- scheduled candidate enrichment
+- another unrelated service
+
+Rename or clarify logs only if necessary to avoid confusing the two jobs.
+
+Do not merge unrelated workers.
+
+==================================================
+3. VERIFY IMMEDIATE STARTUP SCAN
+==================================================
+
+Required production behavior:
+
+1. server starts
+2. latest valid snapshot loads from PostgreSQL
+3. HTTP server becomes available
+4. initial scan begins asynchronously
+5. recurring interval is registered for later scans
+
+The initial scan must not wait four hours.
+
+It must not block server startup.
+
+Use an explicit fire-and-forget pattern with a terminal catch, for example according to repository conventions:
+
+void runOpportunityScan("startup").catch(...safe structured log...)
+
+Do not leave an unhandled rejection.
+
+==================================================
+4. VERIFY RUNTIME GATES
+==================================================
+
+Audit every condition that can prevent the scan:
+
+- MCP_ENABLED
+- environment mode
+- test/development mode
+- database availability
+- advisory-lock result
+- worker-enabled flag
+- Railway process role
+- feature flag
+- missing MCP configuration
+- shutdown state
+
+For each gate, add a safe structured log stating:
+
+- gate name
+- enabled/disabled
+- skip reason
+
+Do not log secret values.
+
+Production should not silently skip the scan.
+
+==================================================
+5. ADVISORY LOCK OBSERVABILITY
+==================================================
+
+Ensure lock behavior emits one of:
+
+opportunity_scan_lock_acquired
+opportunity_scan_skipped_locked
+opportunity_scan_lock_failed
+
+If lock acquisition returns false:
+
+- log it
+- do not report the engine as running
+- do not leave refreshStatus stuck at running
+
+If lock acquisition throws:
+
+- record a safe failed attempt
+- preserve the previous valid snapshot
+- emit opportunity_scan_failed
+
+==================================================
+6. LIFECYCLE LOGGING
+==================================================
+
+Guarantee every attempted startup scan emits:
+
+opportunity_scan_triggered
+opportunity_scan_started
+
+and exactly one terminal event:
+
+opportunity_scan_completed
+opportunity_scan_partial
+opportunity_scan_empty
+opportunity_scan_failed
+opportunity_scan_skipped_locked
+opportunity_scan_skipped_disabled
+
+Include safe fields:
+
+- trigger: startup | interval | manual
+- scanId
+- timestamp
+- duration
+- status
+- counts
+- lock result
+- safe error code
+
+Do not log full MCP payloads, tokens, session IDs, provider responses, or private data.
+
+==================================================
+7. STARTUP SNAPSHOT LOAD
+==================================================
+
+Ensure PostgreSQL snapshot loading emits:
+
+opportunity_snapshot_load_started
+opportunity_snapshot_loaded
+opportunity_snapshot_not_found
+opportunity_snapshot_load_failed
+
+If no row exists, log not_found and continue to the initial scan.
+
+A missing snapshot must not prevent scanning.
+
+==================================================
+8. REFRESH STATUS
+==================================================
+
+Verify refresh state transitions:
+
+before scan:
+idle
+
+scan begins:
+running
+
+successful/partial/empty terminal result:
+idle
+
+failure:
+failed
+
+skipped because another instance owns lock:
+idle or a clearly defined skipped state
+
+No path may leave refreshStatus permanently running.
+
+==================================================
+9. TESTS
+==================================================
+
+Add tests for:
+
+A. Startup
+- scheduler registration occurs
+- initial scan starts immediately
+- startup does not wait for scan completion
+- interval remains registered
+- initial scan failure is caught and logged
+- no unhandled rejection
+
+B. Runtime gates
+- MCP disabled logs skipped_disabled
+- MCP enabled starts scan
+- database snapshot absent still starts scan
+- database load failure still allows scan attempt when safe
+
+C. Locking
+- acquired lock starts scan
+- unavailable lock logs skipped_locked
+- lock exception logs failed
+- refresh status is not stuck
+
+D. Lifecycle
+- every attempt has started event
+- every path has exactly one terminal event
+- success
+- partial
+- empty
+- failed
+- skipped
+
+E. Regression
+- dashboard still does not call MCP
+- latest endpoint unchanged
+- persistence unchanged
+- interval default remains 240 minutes
+- Ask AI and Scanner unchanged
+- no MCP changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+10. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. exact root cause
+2. whether the initial scan was previously invoked
+3. whether Opportunity Resolver is a separate job
+4. files changed
+5. startup sequence before
+6. startup sequence after
+7. runtime gates
+8. lock behavior
+9. lifecycle events
+10. refresh-status behavior
+11. tests and totals
+12. build result
+13. recommended Railway deployment/UAT
+
+Do not commit or push.
+
+Wait for review.

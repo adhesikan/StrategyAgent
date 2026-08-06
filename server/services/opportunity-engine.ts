@@ -1,15 +1,24 @@
-// Opportunity Engine — Sprint 1.1
+// Opportunity Engine — Sprint 1 (Production-hardened)
 //
 // Background scanner that pre-computes stock opportunities and persists each
 // result to PostgreSQL. On startup, the latest valid snapshot is loaded from
 // the database so the dashboard can serve it immediately without waiting for
 // a new MCP scan.
 //
+// Startup sequence:
+//   1. initOpportunityEngine() — loads latest valid snapshot from PostgreSQL
+//   2. initial scan fires immediately (fire-and-forget, terminal catch)
+//   3. recurring interval registered for later scans (setInterval/setTimeout)
+//
 // Locking: PostgreSQL advisory lock prevents concurrent scans across Railway
 // instances. The lock is released after every success or failure.
 //
 // Interval: configurable via OPPORTUNITY_SCAN_INTERVAL_MINUTES (default 240,
 // min 30, max 1440). Invalid values fall back to the default.
+//
+// Observability: every scan emits opportunity_scan_triggered as the first
+// event and exactly one terminal event. All events use the same structured log
+// helper that is visible in Railway regardless of JSON parsing.
 //
 // Trust rules:
 //   - Never exposes MCP session IDs, tokens, account data, or raw provider payloads.
@@ -56,6 +65,32 @@ function getScanIntervalMs(): number {
 // Exported for tests and endpoint (freshness calculation).
 export function getIntervalMs(): number {
   return getScanIntervalMs();
+}
+
+// ---------------------------------------------------------------------------
+// Scan trigger type
+// ---------------------------------------------------------------------------
+
+export type ScanTrigger = "startup" | "interval" | "manual";
+
+// ---------------------------------------------------------------------------
+// Structured log helper
+//
+// Uses process.stdout.write so output appears as a plain line in Railway logs
+// regardless of how the runtime parses JSON or prefixes console.log output.
+// The format matches the structured events the spec requires.
+// ---------------------------------------------------------------------------
+
+function structuredLog(
+  level: "info" | "warn",
+  payload: Record<string, unknown>,
+): void {
+  const line = JSON.stringify(payload) + "\n";
+  if (level === "warn") {
+    process.stderr.write(line);
+  } else {
+    process.stdout.write(line);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +177,14 @@ async function releaseLock(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Scan-ID generator (safe non-secret identifier for log correlation)
+// ---------------------------------------------------------------------------
+
+function makeScanId(): string {
+  return `scan-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Startup: load latest valid snapshot from PostgreSQL
 // ---------------------------------------------------------------------------
 
@@ -151,31 +194,33 @@ async function releaseLock(): Promise<void> {
  * Never throws — DB failures are logged; the engine continues.
  */
 export async function initOpportunityEngine(): Promise<void> {
+  structuredLog("info", { event: "opportunity_snapshot_load_started", scannerVersion: SCANNER_VERSION });
+
   try {
     const stored = await getLatestValidSnapshot();
     if (stored) {
       latestSnapshot = stored;
-      console.log(
-        JSON.stringify({
-          event: "opportunity_snapshot_loaded",
-          id: stored.id,
-          status: stored.status,
-          qualifiedCount: stored.qualifiedCount,
-          watchCount: stored.watchCount,
-          scannerVersion: stored.scannerVersion,
-          completedAt: stored.completedAt,
-        }),
-      );
+      structuredLog("info", {
+        event: "opportunity_snapshot_loaded",
+        id: stored.id,
+        status: stored.status,
+        qualifiedCount: stored.qualifiedCount,
+        watchCount: stored.watchCount,
+        scannerVersion: stored.scannerVersion,
+        completedAt: stored.completedAt,
+      });
     } else {
-      console.log(JSON.stringify({ event: "opportunity_snapshot_loaded", id: null }));
+      structuredLog("info", {
+        event: "opportunity_snapshot_not_found",
+        detail: "No valid snapshot in database; initial scan will populate one.",
+      });
     }
   } catch (err: any) {
-    console.warn(
-      JSON.stringify({
-        event: "opportunity_snapshot_load_failed",
-        error: String(err?.message ?? err).slice(0, 200),
-      }),
-    );
+    structuredLog("warn", {
+      event: "opportunity_snapshot_load_failed",
+      error: String(err?.message ?? err).slice(0, 200),
+      detail: "Non-fatal. Engine will attempt a fresh scan.",
+    });
     // Non-fatal — continue without a pre-loaded snapshot.
   }
 }
@@ -203,64 +248,135 @@ function classifyOutcome(
 
 /**
  * Run one opportunity scan:
- *   1. Acquire advisory lock (skip if already running on another instance)
- *   2. Call MCP via runRankedTradeSearch
- *   3. Validate + classify the result
- *   4. Persist to PostgreSQL
- *   5. Update in-memory snapshot
- *   6. Release lock
+ *   1. Emit opportunity_scan_triggered (first event, before any gate)
+ *   2. Check gates: MCP enabled, in-process guard
+ *   3. Acquire advisory lock (skip if held by another instance)
+ *   4. Emit opportunity_scan_started
+ *   5. Call MCP via runRankedTradeSearch
+ *   6. Validate + classify the result
+ *   7. Persist to PostgreSQL
+ *   8. Update in-memory snapshot
+ *   9. Release lock, emit terminal event
  *
  * Never throws — failures update refreshState.errorSummary and log safely.
  */
-export async function runOpportunityEngine(): Promise<void> {
-  if (!isMcpEnabled()) {
-    console.log(
-      JSON.stringify({ event: "opportunity_engine_skipped", reason: "mcp_disabled" }),
-    );
-    return;
-  }
-
-  // In-process guard (complementary to advisory lock).
-  if (engineRunning) {
-    console.log(
-      JSON.stringify({ event: "opportunity_engine_skipped", reason: "already_running" }),
-    );
-    return;
-  }
-
+export async function runOpportunityEngine(trigger: ScanTrigger = "interval"): Promise<void> {
+  const scanId = makeScanId();
   const attemptedAt = new Date().toISOString();
+
+  // Top-level safety net: runOpportunityEngine must NEVER reject.
+  // Any unexpected throw (e.g. isMcpEnabled() misconfigured) is caught here
+  // and emitted as a failed event so the caller never sees an unhandled rejection.
+  try {
+  return await _runOpportunityEngineInner(scanId, trigger, attemptedAt);
+  } catch (err: any) {
+    structuredLog("warn", {
+      event: "opportunity_scan_failed",
+      scanId,
+      trigger,
+      errorCode: "UNEXPECTED_ERROR",
+      error: String(err?.message ?? err).slice(0, 500),
+    });
+    if (engineRunning) engineRunning = false;
+    if (refreshState.status === "running") {
+      refreshState = { status: "failed", attemptedAt, errorSummary: "Unexpected engine error." };
+    }
+  }
+}
+
+async function _runOpportunityEngineInner(
+  scanId: string,
+  trigger: ScanTrigger,
+  attemptedAt: string,
+): Promise<void> {
+  // ── Gate 0: triggered event (always emitted) ────────────────────────────
+  structuredLog("info", {
+    event: "opportunity_scan_triggered",
+    scanId,
+    trigger,
+    timestamp: attemptedAt,
+    scannerVersion: SCANNER_VERSION,
+  });
+
+  // ── Gate 1: MCP enabled ─────────────────────────────────────────────────
+  const mcpEnabled = isMcpEnabled();
+  if (!mcpEnabled) {
+    structuredLog("info", {
+      event: "opportunity_scan_skipped_disabled",
+      scanId,
+      trigger,
+      gate: "MCP_ENABLED",
+      gateValue: String(process.env.MCP_ENABLED ?? "(not set)"),
+      reason: "MCP_ENABLED is not set to 'true'. Set MCP_ENABLED=true on Railway to enable scanning.",
+    });
+    // refreshState stays idle — skipped is not a failure.
+    return;
+  }
+
+  // ── Gate 2: In-process guard ─────────────────────────────────────────────
+  if (engineRunning) {
+    structuredLog("info", {
+      event: "opportunity_scan_skipped_disabled",
+      scanId,
+      trigger,
+      gate: "in_process_guard",
+      reason: "Another scan is already running in this process.",
+    });
+    return;
+  }
+
   refreshState = { status: "running", attemptedAt, errorSummary: null };
   engineRunning = true;
   const startedAt = new Date();
   const started = Date.now();
 
-  // Try to acquire PostgreSQL advisory lock — skip if another instance holds it.
+  // ── Gate 3: Advisory lock ─────────────────────────────────────────────────
   let locked = false;
   try {
     locked = await tryAcquireLock();
   } catch (err: any) {
-    console.warn(
-      JSON.stringify({
-        event: "opportunity_scan_skipped_locked",
-        reason: "lock_acquisition_error",
-        error: String(err?.message ?? err).slice(0, 200),
-      }),
-    );
+    const errorSummary = String(err?.message ?? err).slice(0, 200);
+    structuredLog("warn", {
+      event: "opportunity_scan_skipped_locked",
+      scanId,
+      trigger,
+      gate: "advisory_lock",
+      reason: "Lock acquisition threw an error.",
+      error: errorSummary,
+    });
     refreshState = { status: "idle", attemptedAt, errorSummary: null };
     engineRunning = false;
     return;
   }
 
   if (!locked) {
-    console.log(
-      JSON.stringify({ event: "opportunity_scan_skipped_locked", reason: "held_by_another_instance" }),
-    );
+    structuredLog("info", {
+      event: "opportunity_scan_skipped_locked",
+      scanId,
+      trigger,
+      gate: "advisory_lock",
+      reason: "Lock held by another Railway instance; skipping this cycle.",
+    });
     refreshState = { status: "idle", attemptedAt, errorSummary: null };
     engineRunning = false;
     return;
   }
 
-  console.log(JSON.stringify({ event: "opportunity_scan_started", scannerVersion: SCANNER_VERSION }));
+  // ── Lock acquired ─────────────────────────────────────────────────────────
+  structuredLog("info", {
+    event: "opportunity_scan_lock_acquired",
+    scanId,
+    trigger,
+    lockKey: OPPORTUNITY_SCAN_LOCK_KEY,
+  });
+
+  structuredLog("info", {
+    event: "opportunity_scan_started",
+    scanId,
+    trigger,
+    scannerVersion: SCANNER_VERSION,
+    timestamp: new Date().toISOString(),
+  });
 
   try {
     const { rankMarketTradeCandidates } = await import("../mcp/tools");
@@ -296,9 +412,7 @@ export async function runOpportunityEngine(): Promise<void> {
     const completedAt = new Date();
     const durationMs = Date.now() - started;
 
-    // ---------------------------------------------------------------------------
-    // Partition candidates into growth vs income
-    // ---------------------------------------------------------------------------
+    // Partition candidates into growth vs income.
     const INCOME_RE = /income|covered|credit|spread|dividend|yield/i;
     const all = search.candidates;
     const growthCandidates = all.filter((c) => !c.strategy || !INCOME_RE.test(c.strategy));
@@ -317,9 +431,7 @@ export async function runOpportunityEngine(): Promise<void> {
       approachingQualification,
     };
 
-    // ---------------------------------------------------------------------------
-    // Validate before persistence
-    // ---------------------------------------------------------------------------
+    // ── Validate before persistence ──────────────────────────────────────────
 
     // 1. No forbidden fields
     const forbiddenScan = scanForForbiddenOpportunityFields(resultPayload);
@@ -348,9 +460,10 @@ export async function runOpportunityEngine(): Promise<void> {
     };
     for (const [k, v] of Object.entries(counts)) {
       if (!Number.isFinite(v) || v < 0) {
-        throw Object.assign(new Error(`Count field ${k} is not a finite non-negative integer: ${v}`), {
-          code: "INVALID_COUNT",
-        });
+        throw Object.assign(
+          new Error(`Count field ${k} is not a finite non-negative integer: ${v}`),
+          { code: "INVALID_COUNT" },
+        );
       }
     }
 
@@ -362,9 +475,7 @@ export async function runOpportunityEngine(): Promise<void> {
       search.warnings,
     );
 
-    // ---------------------------------------------------------------------------
-    // Persist
-    // ---------------------------------------------------------------------------
+    // ── Persist ──────────────────────────────────────────────────────────────
     let snapshotId: string;
     try {
       snapshotId = await saveSuccessfulSnapshot({
@@ -383,13 +494,11 @@ export async function runOpportunityEngine(): Promise<void> {
         durationMs,
       });
     } catch (err: any) {
-      console.warn(
-        JSON.stringify({
-          event: "opportunity_snapshot_persistence_failed",
-          error: String(err?.message ?? err).slice(0, 200),
-        }),
-      );
-      // Do not update the in-memory snapshot if persistence failed.
+      structuredLog("warn", {
+        event: "opportunity_snapshot_persistence_failed",
+        scanId,
+        error: String(err?.message ?? err).slice(0, 200),
+      });
       refreshState = {
         status: "failed",
         attemptedAt,
@@ -398,9 +507,7 @@ export async function runOpportunityEngine(): Promise<void> {
       return;
     }
 
-    // ---------------------------------------------------------------------------
-    // Update in-memory snapshot (only after successful persistence)
-    // ---------------------------------------------------------------------------
+    // ── Update in-memory snapshot (only after successful persistence) ─────────
     latestSnapshot = {
       id: snapshotId,
       status,
@@ -428,62 +535,61 @@ export async function runOpportunityEngine(): Promise<void> {
         ? "opportunity_scan_partial"
         : "opportunity_scan_empty";
 
-    console.log(
-      JSON.stringify({
-        event: logEvent,
-        id: snapshotId,
-        status,
-        durationMs,
-        topGrowth: topGrowth.length,
-        topIncome: topIncome.length,
-        topWatchlist: topWatchlist.length,
-        approachingQualification: approachingQualification.length,
-        reviewedCount: counts.reviewedCount,
-        qualifiedCount: counts.qualifiedCount,
-        scannerVersion: SCANNER_VERSION,
-        dataSource: "Twelve Data via MCP",
-      }),
-    );
+    structuredLog("info", {
+      event: logEvent,
+      scanId,
+      trigger,
+      id: snapshotId,
+      status,
+      durationMs,
+      topGrowth: topGrowth.length,
+      topIncome: topIncome.length,
+      topWatchlist: topWatchlist.length,
+      approachingQualification: approachingQualification.length,
+      reviewedCount: counts.reviewedCount,
+      qualifiedCount: counts.qualifiedCount,
+      scannerVersion: SCANNER_VERSION,
+      dataSource: "Twelve Data via MCP",
+    });
 
-    console.log(
-      JSON.stringify({ event: "opportunity_snapshot_persisted", id: snapshotId, status }),
-    );
+    structuredLog("info", {
+      event: "opportunity_snapshot_persisted",
+      scanId,
+      id: snapshotId,
+      status,
+    });
 
     // Retention cleanup — non-blocking, failure does not invalidate the scan.
     void deleteExpiredSnapshots()
       .then(({ validDeleted, failedDeleted }) => {
         if (validDeleted > 0 || failedDeleted > 0) {
-          console.log(
-            JSON.stringify({
-              event: "opportunity_snapshot_retention_completed",
-              validDeleted,
-              failedDeleted,
-            }),
-          );
+          structuredLog("info", {
+            event: "opportunity_snapshot_retention_completed",
+            validDeleted,
+            failedDeleted,
+          });
         }
       })
       .catch((err: any) => {
-        console.warn(
-          JSON.stringify({
-            event: "opportunity_snapshot_retention_failed",
-            error: String(err?.message ?? err).slice(0, 200),
-          }),
-        );
+        structuredLog("warn", {
+          event: "opportunity_snapshot_retention_failed",
+          error: String(err?.message ?? err).slice(0, 200),
+        });
       });
   } catch (err: any) {
     const durationMs = Date.now() - started;
     const errorCode = (err as any).code ?? "SCAN_ERROR";
     const errorSummary = String(err?.message ?? err).slice(0, 500);
 
-    console.warn(
-      JSON.stringify({
-        event: "opportunity_scan_failed",
-        durationMs,
-        errorCode,
-        error: errorSummary,
-        scannerVersion: SCANNER_VERSION,
-      }),
-    );
+    structuredLog("warn", {
+      event: "opportunity_scan_failed",
+      scanId,
+      trigger,
+      durationMs,
+      errorCode,
+      error: errorSummary,
+      scannerVersion: SCANNER_VERSION,
+    });
 
     // Record a failed attempt (does NOT replace last valid snapshot).
     try {
@@ -496,13 +602,12 @@ export async function runOpportunityEngine(): Promise<void> {
         requestSummary: { numberOfIdeas: 10, instrumentPreference: "stock", direction: "either" },
       });
     } catch (persistErr: any) {
-      console.warn(
-        JSON.stringify({
-          event: "opportunity_snapshot_persistence_failed",
-          context: "failed_attempt",
-          error: String(persistErr?.message ?? persistErr).slice(0, 200),
-        }),
-      );
+      structuredLog("warn", {
+        event: "opportunity_snapshot_persistence_failed",
+        scanId,
+        context: "failed_attempt",
+        error: String(persistErr?.message ?? persistErr).slice(0, 200),
+      });
     }
 
     refreshState = {
@@ -515,12 +620,11 @@ export async function runOpportunityEngine(): Promise<void> {
     try {
       await releaseLock();
     } catch (err: any) {
-      console.warn(
-        JSON.stringify({
-          event: "opportunity_scan_lock_release_failed",
-          error: String(err?.message ?? err).slice(0, 200),
-        }),
-      );
+      structuredLog("warn", {
+        event: "opportunity_scan_lock_release_failed",
+        scanId,
+        error: String(err?.message ?? err).slice(0, 200),
+      });
     }
     engineRunning = false;
   }
@@ -532,21 +636,55 @@ export async function runOpportunityEngine(): Promise<void> {
 
 /**
  * Initialize and schedule the opportunity engine:
- *   1. Load latest valid snapshot from PostgreSQL (non-blocking startup)
- *   2. Run the first background scan asynchronously
- *   3. Schedule periodic refreshes per OPPORTUNITY_SCAN_INTERVAL_MINUTES
+ *   1. Load latest valid snapshot from PostgreSQL (startup-load events emitted)
+ *   2. Fire the initial scan immediately — non-blocking, with a terminal catch
+ *      so unhandled rejections are impossible
+ *   3. Schedule recurring refreshes per OPPORTUNITY_SCAN_INTERVAL_MINUTES
  *
  * Call once from server startup. Never blocks startup or dashboard load.
  */
 export function scheduleOpportunityEngine(): void {
-  // Load from PostgreSQL, then kick off first scan — both non-blocking.
-  void initOpportunityEngine().then(() => void runOpportunityEngine());
+  const intervalMs = getScanIntervalMs();
+  const intervalMinutes = Math.round(intervalMs / 60_000);
 
+  // Load from PostgreSQL, then kick off first scan — both non-blocking.
+  // The outer catch is belt-and-suspenders: runOpportunityEngine() never
+  // rejects, but we guard against any unexpected runtime failure.
+  void initOpportunityEngine()
+    .then(() => {
+      void runOpportunityEngine("startup").catch((err: any) => {
+        structuredLog("warn", {
+          event: "opportunity_scan_failed",
+          scanId: makeScanId(),
+          trigger: "startup",
+          errorCode: "UNHANDLED_ERROR",
+          error: String(err?.message ?? err).slice(0, 500),
+        });
+      });
+    })
+    .catch((err: any) => {
+      // initOpportunityEngine should never reject, but guard defensively.
+      structuredLog("warn", {
+        event: "opportunity_snapshot_load_failed",
+        error: String(err?.message ?? err).slice(0, 200),
+        detail: "initOpportunityEngine threw unexpectedly; initial scan will still be attempted.",
+      });
+      void runOpportunityEngine("startup").catch((err2: any) => {
+        structuredLog("warn", {
+          event: "opportunity_scan_failed",
+          scanId: makeScanId(),
+          trigger: "startup",
+          errorCode: "UNHANDLED_ERROR",
+          error: String(err2?.message ?? err2).slice(0, 500),
+        });
+      });
+    });
+
+  // Recurring interval.
   function scheduleNext() {
     if (refreshTimer) clearTimeout(refreshTimer);
-    const intervalMs = getScanIntervalMs();
     refreshTimer = setTimeout(async () => {
-      await runOpportunityEngine();
+      await runOpportunityEngine("interval");
       scheduleNext();
     }, intervalMs);
     if (refreshTimer && typeof (refreshTimer as any).unref === "function") {
@@ -554,6 +692,12 @@ export function scheduleOpportunityEngine(): void {
     }
   }
   scheduleNext();
+
+  structuredLog("info", {
+    event: "opportunity_engine_scheduled",
+    intervalMinutes,
+    scannerVersion: SCANNER_VERSION,
+  });
 }
 
 export function stopOpportunityEngine(): void {

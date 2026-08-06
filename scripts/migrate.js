@@ -918,6 +918,41 @@ async function migrate() {
     `);
     console.log('Created/verified opportunity_scan_snapshots table');
 
+    // Sprint 2.0 — Opportunity Lifecycle History
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = 'opportunity_history'
+        ) THEN
+          CREATE TABLE opportunity_history (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::VARCHAR,
+            snapshot_id VARCHAR NOT NULL REFERENCES opportunity_scan_snapshots(id) ON DELETE CASCADE,
+            symbol TEXT NOT NULL,
+            strategy TEXT,
+            scan_time TIMESTAMPTZ NOT NULL,
+            rank INTEGER,
+            score NUMERIC(6,2) NOT NULL DEFAULT 0,
+            qualification_status TEXT NOT NULL,
+            lifecycle_state TEXT NOT NULL,
+            reason_summary TEXT,
+            market_regime TEXT,
+            technical_score NUMERIC(6,2),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_oh_symbol_scan_time
+            ON opportunity_history (symbol, scan_time DESC);
+          CREATE INDEX IF NOT EXISTS idx_oh_snapshot_id
+            ON opportunity_history (snapshot_id);
+          CREATE INDEX IF NOT EXISTS idx_oh_lifecycle_state
+            ON opportunity_history (lifecycle_state, scan_time DESC);
+          RAISE NOTICE 'Created opportunity_history table with indexes';
+        END IF;
+      END $$;
+    `);
+    console.log('Created/verified opportunity_history table');
+
     console.log('Migrations complete!');
     client.release();
   } catch (error) {

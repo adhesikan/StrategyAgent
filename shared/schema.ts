@@ -2842,3 +2842,35 @@ export const opportunityScanSnapshots = pgTable("opportunity_scan_snapshots", {
 
 export type OpportunityScanSnapshot = typeof opportunityScanSnapshots.$inferSelect;
 export type InsertOpportunityScanSnapshot = typeof opportunityScanSnapshots.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Opportunity Lifecycle History — Sprint 2.0
+// ---------------------------------------------------------------------------
+
+export const opportunityHistory = pgTable("opportunity_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** FK to opportunity_scan_snapshots.id (cascade delete on snapshot deletion) */
+  snapshotId: varchar("snapshot_id").notNull(),
+  symbol: text("symbol").notNull(),
+  strategy: text("strategy"),
+  scanTime: timestamp("scan_time", { withTimezone: true }).notNull(),
+  rank: integer("rank"),
+  /** Derived score: max(0, 100 - (rank-1)*5) for qualified; 0 for watch. */
+  score: numeric("score", { precision: 6, scale: 2 }).notNull().default("0"),
+  /** QUALIFIED | WATCHING */
+  qualificationStatus: text("qualification_status").notNull(),
+  /** NEWLY_QUALIFIED | STILL_QUALIFIED | STRENGTHENING | WEAKENING | APPROACHING | TRIGGERED | DROPPED | UNAVAILABLE */
+  lifecycleState: text("lifecycle_state").notNull(),
+  reasonSummary: text("reason_summary"),
+  marketRegime: text("market_regime"),
+  /** Reserved for future technical score from scorer; null until exposed. */
+  technicalScore: numeric("technical_score", { precision: 6, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  idxSymbolScanTime: index("idx_oh_symbol_scan_time").on(t.symbol, t.scanTime),
+  idxSnapshotId: index("idx_oh_snapshot_id").on(t.snapshotId),
+  idxLifecycleState: index("idx_oh_lifecycle_state").on(t.lifecycleState, t.scanTime),
+}));
+
+export type OpportunityHistoryRecord = typeof opportunityHistory.$inferSelect;
+export type InsertOpportunityHistory = typeof opportunityHistory.$inferInsert;

@@ -25,3 +25,4 @@
 - [Database-first market history](database-first-market-history.md) — getHistoricalBars() in market-history-service.ts is the sole entry point; scan purpose = stored only; MARKET_HISTORY_DATABASE_FIRST=false is the emergency rollback flag.
 - [Radar hash-fallback removal](radar-hash-fallback.md) — hash fallback removed from buildStoredQuote (was buildMockQuote); null returned when no stored bars → unavailableQuoteCount; RadarResult gained unavailableQuoteCount field.
 - [Analysis result cache researchSave strip](analysis-cache-research-save.md) — storeAnalysisResult must strip researchSave before caching; single-use handles must never be replayed via cache hits.
+- [Opportunity Lifecycle Intelligence](opportunity-lifecycle-intelligence.md) — Sprint 2.0: opportunity_history table, comparison service (pure, 8 states), history writer (fire-and-forget), two new endpoints, dashboard lifecycle section + symbol history drawer.

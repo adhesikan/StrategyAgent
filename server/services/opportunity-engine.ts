@@ -40,6 +40,7 @@ import {
   type PersistedOpportunitySnapshot,
   VALID_STATUSES,
 } from "./opportunity-snapshot-store";
+import { writeOpportunityHistory } from "./opportunity-history-writer";
 
 // ---------------------------------------------------------------------------
 // Re-export the canonical snapshot type used by routes
@@ -487,6 +488,11 @@ async function _runOpportunityEngineInner(
         search.warnings,
       );
 
+      // Capture previous snapshot for lifecycle tracking — must be done BEFORE
+      // saveSuccessfulSnapshot so we get the snapshot from the previous scan,
+      // not the one we're about to write.
+      const prevSnapshotForHistory = latestSnapshot;
+
       // Persist
       let snapshotId: string;
       try {
@@ -601,6 +607,26 @@ async function _runOpportunityEngineInner(
             error: String(err?.message ?? err).slice(0, 200),
           });
         });
+
+      // Lifecycle history — non-blocking, never fatal.
+      // Runs after the snapshot is persisted so snapshotId exists in DB.
+      void writeOpportunityHistory({
+        snapshotId,
+        completedAt,
+        marketRegime,
+        topGrowth,
+        topIncome,
+        topWatchlist,
+        approachingQualification,
+        unavailableCount: search.unavailableCount ?? 0,
+        previousSnapshot: prevSnapshotForHistory,
+      }).catch((err: any) => {
+        structuredLog("warn", {
+          event: "opportunity_history_write_failed_engine",
+          scanId,
+          error: String(err?.message ?? err).slice(0, 200),
+        });
+      });
 
       return "SCAN_DONE";
     })().catch((err: any): "SCAN_DONE" => {

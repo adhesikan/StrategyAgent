@@ -14,8 +14,8 @@
 //   - Failed attempts: 7 days
 
 import { db } from "../db";
-import { opportunityScanSnapshots } from "@shared/schema";
-import { desc, sql, inArray, lt, and } from "drizzle-orm";
+import { opportunityScanSnapshots, opportunityHistory } from "@shared/schema";
+import { desc, sql, inArray, lt, and, eq, asc } from "drizzle-orm";
 import type { RankedTradeCandidate, RankedWatchCandidate } from "../routes/ranked-trade-search";
 
 // ---------------------------------------------------------------------------
@@ -241,6 +241,125 @@ export async function deleteExpiredSnapshots(): Promise<{
   const validDeleted = (validResult as any).rowCount ?? 0;
   const failedDeleted = (failedResult as any).rowCount ?? 0;
   return { validDeleted, failedDeleted };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2.0 — History query functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the second-most-recent valid snapshot.
+ * Used by the changes endpoint to compute lifecycle deltas.
+ * Returns null when fewer than two valid snapshots exist.
+ */
+export async function getPreviousValidSnapshot(): Promise<PersistedOpportunitySnapshot | null> {
+  const rows = await db
+    .select()
+    .from(opportunityScanSnapshots)
+    .where(inArray(opportunityScanSnapshots.status, [...VALID_STATUSES]))
+    .orderBy(desc(opportunityScanSnapshots.completedAt))
+    .limit(2);
+
+  const row = rows[1]; // index 1 = second most recent
+  if (!row) return null;
+  return rowToSnapshot(row);
+}
+
+/**
+ * Return history rows for a single symbol ordered newest-first.
+ * Used by the symbol history drawer.
+ */
+export async function getSymbolHistory(
+  symbol: string,
+  limit = 50,
+): Promise<Array<{
+  id: string;
+  snapshotId: string;
+  scanTime: string;
+  rank: number | null;
+  score: number;
+  qualificationStatus: string;
+  lifecycleState: string;
+  strategy: string | null;
+  marketRegime: string | null;
+  createdAt: string;
+}>> {
+  const rows = await db
+    .select()
+    .from(opportunityHistory)
+    .where(eq(opportunityHistory.symbol, symbol.toUpperCase()))
+    .orderBy(desc(opportunityHistory.scanTime))
+    .limit(Math.min(limit, 200));
+
+  return rows.map(r => ({
+    id: r.id,
+    snapshotId: r.snapshotId,
+    scanTime: r.scanTime.toISOString(),
+    rank: r.rank,
+    score: parseFloat(String(r.score ?? "0")),
+    qualificationStatus: r.qualificationStatus,
+    lifecycleState: r.lifecycleState,
+    strategy: r.strategy,
+    marketRegime: r.marketRegime,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/**
+ * Return all history rows for a given snapshot (used for audit/debugging).
+ */
+export async function getSnapshotHistory(snapshotId: string): Promise<Array<{
+  symbol: string;
+  rank: number | null;
+  score: number;
+  qualificationStatus: string;
+  lifecycleState: string;
+  strategy: string | null;
+}>> {
+  const rows = await db
+    .select()
+    .from(opportunityHistory)
+    .where(eq(opportunityHistory.snapshotId, snapshotId))
+    .orderBy(asc(opportunityHistory.symbol));
+
+  return rows.map(r => ({
+    symbol: r.symbol,
+    rank: r.rank,
+    score: parseFloat(String(r.score ?? "0")),
+    qualificationStatus: r.qualificationStatus,
+    lifecycleState: r.lifecycleState,
+    strategy: r.strategy,
+  }));
+}
+
+/**
+ * Return a map of symbol → first-seen ISO date from the history table.
+ * Efficient single-query batch lookup for multiple symbols.
+ */
+export async function getFirstSeenMap(symbols: string[]): Promise<Map<string, string>> {
+  if (symbols.length === 0) return new Map();
+
+  const upperSymbols = symbols.map(s => s.toUpperCase());
+  const result = await db.execute(
+    sql`SELECT symbol, MIN(scan_time) AS first_seen
+        FROM opportunity_history
+        WHERE symbol = ANY(${upperSymbols})
+        GROUP BY symbol`,
+  );
+
+  const map = new Map<string, string>();
+  const rows = (result as any).rows ?? result;
+  for (const row of rows) {
+    if (row.symbol && row.first_seen) {
+      map.set(
+        String(row.symbol).toUpperCase(),
+        row.first_seen instanceof Date
+          ? row.first_seen.toISOString()
+          : String(row.first_seen),
+      );
+    }
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------

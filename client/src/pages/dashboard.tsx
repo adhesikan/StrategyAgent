@@ -15,7 +15,7 @@
 //   - GPT may not reorder opportunity candidates.
 //   - No raw internal enums exposed (verdicts come from stored record labels).
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -27,6 +27,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { TrialBanner } from "@/components/trial-banner";
 import {
   Sparkles,
@@ -53,6 +59,11 @@ import {
   Minus,
   Activity,
   Database,
+  History,
+  ChevronUp,
+  ChevronDown,
+  Zap,
+  X,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -220,6 +231,75 @@ interface LastRefreshInfo {
 interface OpportunityLatestResponse {
   snapshot: OpportunitySnapshot | null;
   lastRefresh: LastRefreshInfo;
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle types (Sprint 2.0 — mirrors opportunity-comparison-service.ts)
+// ---------------------------------------------------------------------------
+
+type LifecycleState =
+  | "NEWLY_QUALIFIED"
+  | "STILL_QUALIFIED"
+  | "STRENGTHENING"
+  | "WEAKENING"
+  | "APPROACHING"
+  | "TRIGGERED"
+  | "DROPPED"
+  | "UNAVAILABLE";
+
+interface LifecycleItem {
+  symbol: string;
+  lifecycleState: LifecycleState;
+  qualificationStatus: "QUALIFIED" | "WATCHING" | "ABSENT";
+  strategy?: string;
+  rankCurrent: number | null;
+  rankPrev: number | null;
+  scoreCurrent: number;
+  scorePrev: number;
+  scoreDelta: number;
+  firstSeen: string | null;
+  lastUpdated: string;
+}
+
+interface SnapshotComparison {
+  hasPreviousScan: boolean;
+  summary: {
+    newCount: number;
+    triggeredCount: number;
+    improvingCount: number;
+    weakeningCount: number;
+    removedCount: number;
+    approachingCount: number;
+    stillQualifiedCount: number;
+    latestScanTime: string | null;
+    previousScanTime: string | null;
+  };
+  newOpportunities: LifecycleItem[];
+  triggered: LifecycleItem[];
+  improving: LifecycleItem[];
+  weakening: LifecycleItem[];
+  removed: LifecycleItem[];
+  approaching: LifecycleItem[];
+  stillQualified: LifecycleItem[];
+  all: LifecycleItem[];
+  statistics: {
+    avgRankDelta: number;
+    topMover: string | null;
+    mostStable: string | null;
+  };
+}
+
+interface SymbolHistoryEntry {
+  id: string;
+  snapshotId: string;
+  scanTime: string;
+  rank: number | null;
+  score: number;
+  qualificationStatus: string;
+  lifecycleState: string;
+  strategy: string | null;
+  marketRegime: string | null;
+  createdAt: string;
 }
 
 interface OptionsAvailabilityBlock {
@@ -829,6 +909,18 @@ const CONFIDENCE_CLASS: Record<string, string> = {
   low:    "text-rose-300 border-rose-500/30 bg-rose-500/5",
 };
 
+/** Lifecycle state → badge label + colour class. */
+const LIFECYCLE_BADGE: Record<LifecycleState, { label: string; className: string }> = {
+  NEWLY_QUALIFIED: { label: "NEW",       className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/8" },
+  STILL_QUALIFIED: { label: "STABLE",    className: "text-sky-300     border-sky-500/40     bg-sky-500/8" },
+  STRENGTHENING:   { label: "UP",        className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/8" },
+  WEAKENING:       { label: "DOWN",      className: "text-rose-300    border-rose-500/40    bg-rose-500/8" },
+  APPROACHING:     { label: "WATCH",     className: "text-amber-300   border-amber-500/40   bg-amber-500/8" },
+  TRIGGERED:       { label: "TRIGGERED", className: "text-violet-300  border-violet-500/40  bg-violet-500/8" },
+  DROPPED:         { label: "DROPPED",   className: "text-rose-300    border-rose-500/40    bg-rose-500/8" },
+  UNAVAILABLE:     { label: "N/A",       className: "text-muted-foreground border-border" },
+};
+
 function StockOpportunityCard({
   candidate,
   hasCachedResult,
@@ -908,7 +1000,7 @@ function StockOpportunityCard({
               hasCachedResult ? "dashboard_existing_result_opened" : "dashboard_full_analysis_requested",
               { symbol: candidate.symbol } as any,
             );
-            track("dashboard_stock_opportunity_opened", { symbol: candidate.symbol } as any);
+            track("dashboard_stock_opportunity_opened" as any, { symbol: candidate.symbol } as any);
             navigate(askRoute(`Analyze ${candidate.symbol}`));
           }}
           data-testid={`btn-open-analysis-${candidate.symbol}`}
@@ -918,6 +1010,303 @@ function StockOpportunityCard({
         </Button>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle badge + cards (Sprint 2.0)
+// ---------------------------------------------------------------------------
+
+function LifecycleBadge({ state }: { state: LifecycleState }) {
+  const badge = LIFECYCLE_BADGE[state];
+  return (
+    <Badge
+      variant="outline"
+      className={cn("text-[10px]", badge.className)}
+      data-testid={`badge-lifecycle-${state}`}
+    >
+      {badge.label}
+    </Badge>
+  );
+}
+
+/** Compact lifecycle card for qualified symbols (includes rank delta + score). */
+function LifecycleItemCard({
+  item,
+  hasCachedResult,
+  onOpenHistory,
+}: {
+  item: LifecycleItem;
+  hasCachedResult?: boolean;
+  onOpenHistory: (symbol: string) => void;
+}) {
+  const [, navigate] = useLocation();
+  const ctaText = hasCachedResult ? "Open Analysis" : "Analyze";
+  const scoreUp   = item.scoreDelta > 0;
+  const scoreDown = item.scoreDelta < 0;
+
+  return (
+    <div
+      className="rounded-lg border bg-card/50 p-3 space-y-2"
+      data-testid={`card-lifecycle-${item.symbol}`}
+      role="article"
+      aria-label={`${item.symbol} lifecycle card`}
+    >
+      {/* Header: symbol + lifecycle badge + rank change */}
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <span className="font-mono font-semibold text-sm">
+          {item.symbol}
+        </span>
+        <LifecycleBadge state={item.lifecycleState} />
+        {/* Rank change indicator */}
+        {item.rankCurrent !== null && (
+          <span className="text-[10px] text-muted-foreground border border-border/40 rounded px-1">
+            #{item.rankCurrent}
+          </span>
+        )}
+        {item.rankPrev !== null && item.rankCurrent !== null && item.rankPrev !== item.rankCurrent && (
+          <span
+            className={cn(
+              "text-[10px] flex items-center gap-0.5",
+              item.rankCurrent < item.rankPrev ? "text-emerald-400" : "text-rose-400",
+            )}
+          >
+            {item.rankCurrent < item.rankPrev ? (
+              <ChevronUp className="h-3 w-3" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            )}
+            was #{item.rankPrev}
+          </span>
+        )}
+      </div>
+
+      {/* Strategy */}
+      {item.strategy && (
+        <div className="text-xs text-muted-foreground capitalize">{item.strategy}</div>
+      )}
+
+      {/* Score delta + first seen */}
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        {item.scoreDelta !== 0 && (
+          <span className={cn(scoreUp ? "text-emerald-400" : scoreDown ? "text-rose-400" : "")}>
+            {scoreUp ? "▲" : "▼"} {Math.abs(item.scoreDelta).toFixed(0)} pts
+          </span>
+        )}
+        {item.firstSeen && (
+          <span>
+            First seen{" "}
+            {new Date(item.firstSeen).toLocaleDateString([], {
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-1.5 pt-0.5">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          onClick={() => {
+            track("dashboard_stock_opportunity_opened" as any, { symbol: item.symbol } as any);
+            navigate(askRoute(`Analyze ${item.symbol}`));
+          }}
+          data-testid={`btn-lifecycle-analyze-${item.symbol}`}
+          aria-label={`${ctaText} for ${item.symbol}`}
+        >
+          {ctaText} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1"
+          onClick={() => onOpenHistory(item.symbol)}
+          aria-label={`View history for ${item.symbol}`}
+          data-testid={`btn-lifecycle-history-${item.symbol}`}
+        >
+          <History className="h-3 w-3" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Compact row for ABSENT symbols (triggered, dropped, unavailable). */
+function AbsentLifecycleRow({
+  item,
+  onOpenHistory,
+}: {
+  item: LifecycleItem;
+  onOpenHistory: (symbol: string) => void;
+}) {
+  const [, navigate] = useLocation();
+  return (
+    <div
+      className="rounded-md border bg-card/20 p-2.5 flex items-center justify-between gap-3"
+      data-testid={`card-absent-${item.symbol}`}
+    >
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <span className="font-mono text-sm font-semibold">{item.symbol}</span>
+        <LifecycleBadge state={item.lifecycleState} />
+        {item.rankPrev !== null && (
+          <span className="text-[10px] text-muted-foreground">was #{item.rankPrev}</span>
+        )}
+        {item.strategy && (
+          <span className="text-[10px] text-muted-foreground capitalize">{item.strategy}</span>
+        )}
+      </div>
+      <div className="flex gap-1 shrink-0">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1"
+          onClick={() => navigate(askRoute(`Analyze ${item.symbol}`))}
+          aria-label={`Analyze ${item.symbol}`}
+        >
+          <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1"
+          onClick={() => onOpenHistory(item.symbol)}
+          aria-label={`View history for ${item.symbol}`}
+        >
+          <History className="h-3 w-3" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Symbol History Drawer (Sprint 2.0)
+// ---------------------------------------------------------------------------
+
+function SymbolHistoryDrawer({
+  symbol,
+  onClose,
+}: {
+  symbol: string | null;
+  onClose: () => void;
+}) {
+  const { data, isLoading } = useQuery<{ symbol: string; history: SymbolHistoryEntry[] }>({
+    queryKey: ["/api/opportunities/symbol", symbol, "history"],
+    queryFn: async () => {
+      if (!symbol) return { symbol: "", history: [] };
+      const res = await apiRequest("GET", `/api/opportunities/symbol/${encodeURIComponent(symbol)}/history`);
+      if (!res.ok) return { symbol, history: [] };
+      return res.json();
+    },
+    enabled: !!symbol,
+    staleTime: 2 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  return (
+    <Sheet open={!!symbol} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+        <SheetHeader className="pb-4">
+          <SheetTitle className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" aria-hidden="true" />
+            {symbol} — Opportunity History
+          </SheetTitle>
+        </SheetHeader>
+
+        {isLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        )}
+
+        {!isLoading && (!data?.history.length) && (
+          <p className="text-sm text-muted-foreground py-4">
+            No history recorded yet. History is written after each Opportunity Engine scan.
+          </p>
+        )}
+
+        {!isLoading && data?.history && data.history.length > 0 && (
+          <div className="space-y-4">
+            {/* Summary: first seen */}
+            {data.history.length > 0 && (
+              <div className="text-xs text-muted-foreground border border-border/40 rounded-md p-3 space-y-1">
+                <div>
+                  <span className="font-medium text-foreground">First appeared: </span>
+                  {new Date(data.history[data.history.length - 1].scanTime).toLocaleString([], {
+                    month: "short", day: "numeric", year: "numeric",
+                    hour: "2-digit", minute: "2-digit",
+                  })}
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">Total scans tracked: </span>
+                  {data.history.length}
+                </div>
+                {data.history[0] && (
+                  <div>
+                    <span className="font-medium text-foreground">Last status: </span>
+                    <span className="capitalize">
+                      {LIFECYCLE_BADGE[data.history[0].lifecycleState as LifecycleState]?.label ?? data.history[0].lifecycleState}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* History table */}
+            <div className="space-y-1">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Historical Rankings
+              </h3>
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/40 border-b">
+                      <th className="text-left p-2 font-medium text-muted-foreground">Date</th>
+                      <th className="text-left p-2 font-medium text-muted-foreground">Status</th>
+                      <th className="text-right p-2 font-medium text-muted-foreground">Rank</th>
+                      <th className="text-right p-2 font-medium text-muted-foreground">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.history.slice(0, 30).map((entry) => (
+                      <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/20">
+                        <td className="p-2 text-muted-foreground">
+                          {new Date(entry.scanTime).toLocaleDateString([], {
+                            month: "short", day: "numeric",
+                          })}
+                        </td>
+                        <td className="p-2">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px]",
+                              LIFECYCLE_BADGE[entry.lifecycleState as LifecycleState]?.className ?? "",
+                            )}
+                          >
+                            {LIFECYCLE_BADGE[entry.lifecycleState as LifecycleState]?.label ?? entry.lifecycleState}
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-right font-mono">
+                          {entry.rank != null ? `#${entry.rank}` : "—"}
+                        </td>
+                        <td className="p-2 text-right font-mono">
+                          {entry.score.toFixed(0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -1020,6 +1409,226 @@ function WatchCandidateList({
         ))}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Opportunity Lifecycle Section (Sprint 2.0)
+// Renders when at least two successful scans have been completed.
+// Falls back gracefully to nothing when no prior scan exists.
+// ---------------------------------------------------------------------------
+
+function LifecycleSubsection({
+  heading,
+  icon: Icon,
+  items,
+  renderItem,
+  emptyNote,
+}: {
+  heading: string;
+  icon: React.ElementType;
+  items: LifecycleItem[];
+  renderItem: (item: LifecycleItem) => React.ReactNode;
+  emptyNote?: string;
+}) {
+  if (items.length === 0 && !emptyNote) return null;
+  return (
+    <div>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {heading}
+        {items.length > 0 && (
+          <span className="ml-auto text-[10px] font-normal normal-case">{items.length}</span>
+        )}
+      </h3>
+      {items.length > 0 ? (
+        <div className="space-y-2">{items.map(renderItem)}</div>
+      ) : emptyNote ? (
+        <p className="text-xs text-muted-foreground py-1">{emptyNote}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function OpportunityLifecycleSection({
+  changesData,
+  isLoading,
+  cachedSymbols,
+}: {
+  changesData: SnapshotComparison | undefined;
+  isLoading: boolean;
+  cachedSymbols: Set<string>;
+}) {
+  const [historySymbol, setHistorySymbol] = useState<string | null>(null);
+
+  // Don't render until we have comparison data with a previous scan
+  if (isLoading) return null;
+  if (!changesData?.hasPreviousScan) return null;
+
+  const { newOpportunities, triggered, improving, weakening, removed, approaching, stillQualified, summary } =
+    changesData;
+
+  const noChanges =
+    newOpportunities.length === 0 &&
+    triggered.length === 0 &&
+    improving.length === 0 &&
+    weakening.length === 0 &&
+    removed.length === 0 &&
+    approaching.length === 0;
+
+  const hasActivity = !noChanges;
+
+  const renderQualified = (item: LifecycleItem) => (
+    <LifecycleItemCard
+      key={item.symbol}
+      item={item}
+      hasCachedResult={cachedSymbols.has(item.symbol.toUpperCase())}
+      onOpenHistory={setHistorySymbol}
+    />
+  );
+
+  const renderAbsent = (item: LifecycleItem) => (
+    <AbsentLifecycleRow
+      key={item.symbol}
+      item={item}
+      onOpenHistory={setHistorySymbol}
+    />
+  );
+
+  return (
+    <>
+      <section
+        aria-labelledby="lifecycle-heading"
+        data-testid="section-opportunity-lifecycle"
+      >
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                <Zap className="h-4 w-4 text-primary" aria-hidden="true" />
+                <span id="lifecycle-heading">Opportunity Changes</span>
+              </CardTitle>
+              {summary.previousScanTime && (
+                <span className="text-[10px] text-muted-foreground">
+                  vs scan {new Date(summary.previousScanTime).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lifecycle changes between the two most recent scans. Not a recommendation to buy or sell.
+            </p>
+          </CardHeader>
+
+          <CardContent className="space-y-5">
+            {noChanges ? (
+              <p className="text-xs text-muted-foreground">
+                No changes between the last two scans — all positions held their status.
+              </p>
+            ) : (
+              <>
+                {/* New Today */}
+                {newOpportunities.length > 0 && (
+                  <LifecycleSubsection
+                    heading="New Today"
+                    icon={Sparkles}
+                    items={newOpportunities}
+                    renderItem={renderQualified}
+                  />
+                )}
+
+                {/* Triggered */}
+                {triggered.length > 0 && (
+                  <LifecycleSubsection
+                    heading="Recently Triggered"
+                    icon={Zap}
+                    items={triggered}
+                    renderItem={renderAbsent}
+                  />
+                )}
+
+                {/* Strengthening */}
+                {improving.length > 0 && (
+                  <LifecycleSubsection
+                    heading="Strengthening"
+                    icon={TrendingUp}
+                    items={improving}
+                    renderItem={renderQualified}
+                  />
+                )}
+
+                {/* Weakening */}
+                {weakening.length > 0 && (
+                  <LifecycleSubsection
+                    heading="Weakening"
+                    icon={TrendingDown}
+                    items={weakening}
+                    renderItem={renderQualified}
+                  />
+                )}
+
+                {/* Approaching Qualification */}
+                {approaching.length > 0 && (
+                  <LifecycleSubsection
+                    heading="Approaching Qualification"
+                    icon={ArrowRight}
+                    items={approaching}
+                    renderItem={renderAbsent}
+                  />
+                )}
+
+                {/* Recently Dropped */}
+                {removed.length > 0 && (
+                  <LifecycleSubsection
+                    heading="Recently Dropped"
+                    icon={TrendingDown}
+                    items={removed}
+                    renderItem={renderAbsent}
+                  />
+                )}
+
+                {/* Stable positions (collapsed summary) */}
+                {stillQualified.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                      Holding Position
+                      <span className="ml-auto text-[10px] font-normal normal-case">
+                        {stillQualified.length} unchanged
+                      </span>
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {stillQualified.map((item) => (
+                        <button
+                          key={item.symbol}
+                          className="font-mono text-xs px-2 py-1 rounded-md border border-border/50 bg-card/30 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                          onClick={() => setHistorySymbol(item.symbol)}
+                          aria-label={`View history for ${item.symbol}`}
+                          data-testid={`chip-stable-${item.symbol}`}
+                        >
+                          {item.symbol}
+                          {item.rankCurrent != null && (
+                            <span className="ml-1 opacity-60">#{item.rankCurrent}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Symbol history drawer */}
+      <SymbolHistoryDrawer
+        symbol={historySymbol}
+        onClose={() => setHistorySymbol(null)}
+      />
+    </>
   );
 }
 
@@ -1961,6 +2570,15 @@ export default function DashboardPage() {
     refetchOnWindowFocus: false,
   });
 
+  // Lifecycle changes — Sprint 2.0. Returns a diff between the two most recent
+  // valid scans. Empty diff returned when fewer than two scans exist.
+  const changesQuery = useQuery<SnapshotComparison>({
+    queryKey: ["/api/opportunities/changes"],
+    staleTime: 5 * 60_000,
+    refetchInterval: 12 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
     track("dashboard_viewed" as any);
   }, []);
@@ -2044,6 +2662,15 @@ export default function DashboardPage() {
             track("dashboard_section_retry", { section: "stock_opportunities" } as any);
             void oppsQuery.refetch();
           }}
+        />
+
+        {/* 4b. Opportunity Lifecycle Changes — Sprint 2.0
+              Appears only after the second successful scan has completed.
+              Falls back silently when no history is available. */}
+        <OpportunityLifecycleSection
+          changesData={changesQuery.data}
+          isLoading={changesQuery.isLoading}
+          cachedSymbols={new Set<string>()} /* batch cache check omitted here — Analyze navigates directly */
         />
 
         {/* 5. AI Infrastructure Watch */}

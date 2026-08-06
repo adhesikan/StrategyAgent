@@ -1,0 +1,265 @@
+SPRINT 2.0 – Opportunity Lifecycle Intelligence
+
+Do NOT modify any broker integrations, MCP server APIs, database-first market history architecture, Opportunity Engine scheduling, or existing scanner algorithms.
+
+Everything built in Sprint 1 is now considered production architecture.
+
+The objective of this sprint is NOT to find more opportunities.
+
+The objective is to make every opportunity far more valuable by tracking how it evolves over time.
+
+==================================================================
+GOAL
+==================================================================
+
+Instead of only displaying today's ranked opportunities, build a complete lifecycle tracking system.
+
+A trader should immediately understand:
+
+• What is NEW today
+• What became stronger
+• What weakened
+• What triggered
+• What disappeared
+• What should remain on the watchlist
+• How today's scan compares to yesterday
+
+The Opportunity Engine becomes a continuously evolving research engine rather than a one-time scanner.
+
+==================================================================
+DATABASE
+==================================================================
+
+Create a new table:
+
+opportunity_history
+
+Fields:
+
+id
+snapshotId
+symbol
+strategy
+scanTime
+rank
+score
+qualificationStatus
+lifecycleState
+reasonSummary
+marketRegime
+technicalScore
+createdAt
+
+Never overwrite history.
+
+Every Opportunity Engine run inserts a new historical record.
+
+==================================================================
+LIFECYCLE STATES
+==================================================================
+
+Determine lifecycle state by comparing the newest scan with the previous successful scan.
+
+Supported states:
+
+NEWLY_QUALIFIED
+
+STILL_QUALIFIED
+
+TRIGGERED
+
+APPROACHING
+
+STRENGTHENING
+
+WEAKENING
+
+DROPPED
+
+UNAVAILABLE
+
+Provide deterministic rules.
+
+No AI.
+
+No subjective logic.
+
+==================================================================
+COMPARISON ENGINE
+==================================================================
+
+Create
+
+OpportunityComparisonService
+
+Responsibilities
+
+Load previous snapshot
+
+Load latest snapshot
+
+Compare every symbol
+
+Detect
+
+rank movement
+
+strategy changes
+
+score movement
+
+qualification movement
+
+watchlist movement
+
+new opportunities
+
+removed opportunities
+
+Return a structured comparison object.
+
+==================================================================
+API
+==================================================================
+
+New endpoint
+
+GET
+
+/api/opportunities/changes
+
+Return
+
+summary
+
+new opportunities
+
+triggered
+
+improving
+
+weakening
+
+removed
+
+statistics
+
+==================================================================
+DASHBOARD
+==================================================================
+
+Replace the simple Opportunity section with:
+
+Today's New Opportunities
+
+Recently Triggered
+
+Strengthening
+
+Approaching Qualification
+
+Recently Dropped
+
+Opportunity Timeline
+
+Each card shows
+
+Previous Rank
+
+Current Rank
+
+Score Change
+
+Status Change
+
+First Seen
+
+Last Updated
+
+==================================================================
+VISUALS
+==================================================================
+
+Badges
+
+NEW
+
+TRIGGERED
+
+UP
+
+DOWN
+
+WATCH
+
+REMOVED
+
+Color code only through the existing design system.
+
+==================================================================
+ANALYZE PAGE
+==================================================================
+
+When clicking Analyze
+
+show
+
+First appeared
+
+Historical rankings
+
+Lifecycle
+
+Qualification history
+
+Trend chart of score
+
+==================================================================
+TESTING
+==================================================================
+
+Unit tests
+
+Lifecycle state rules
+
+Comparison engine
+
+API
+
+Dashboard mapping
+
+Edge cases
+
+No previous snapshot
+
+Partial scan
+
+Missing symbol
+
+Dropped symbol
+
+New symbol
+
+All existing tests must continue passing.
+
+==================================================================
+DO NOT CHANGE
+==================================================================
+
+MCP
+
+Broker APIs
+
+MarketHistoryService
+
+Database-first architecture
+
+Opportunity Engine scheduling
+
+Historical ingestion
+
+Scanner logic
+
+Opportunity ranking algorithm
+
+This sprint is purely about understanding how opportunities evolve over time.

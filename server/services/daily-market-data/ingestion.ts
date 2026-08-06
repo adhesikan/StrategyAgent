@@ -170,6 +170,19 @@ async function upsertBars(symbol: string, bars: NormalizedDailyBar[]): Promise<{
   return { inserted, updated, latest };
 }
 
+/**
+ * Persist a validated set of bars from any approved external provider.
+ * Used by market-history-service.ts to save freshly-fetched bars without
+ * going through a full ingestion run. Idempotent — safe to call repeatedly.
+ */
+export async function persistValidatedBars(
+  symbol: string,
+  bars: NormalizedDailyBar[],
+): Promise<{ inserted: number; updated: number }> {
+  const { inserted, updated } = await upsertBars(symbol, bars);
+  return { inserted, updated };
+}
+
 export async function loadStoredBars(symbol: string, limit = 320): Promise<NormalizedDailyBar[]> {
   const rows = await db
     .select()
@@ -430,7 +443,12 @@ async function ingestSymbol(
     });
     return { symbol: sym.symbol, status: "success", inserted, updated, received: bars.length, latestTradeDate: latest };
   } catch (e: any) {
-    const code = e?.code || (e?.message === "DAILY_CREDIT_LIMIT_REACHED" ? "QUOTA" : "UNKNOWN");
+    // e?.code is set when a MarketDataProviderError is thrown (e.g. "DAILY_LIMIT", "RATE_LIMITED").
+    // "DAILY_LIMIT" (new explicit code) is normalized to "QUOTA" for the item status
+    // so the existing deferred-stop logic downstream continues to work.
+    // Plain Errors from older code paths may still carry message strings — handle both.
+    const rawCode = e?.code || (e?.message === "DAILY_CREDIT_LIMIT_REACHED" ? "QUOTA" : "UNKNOWN");
+    const code = rawCode === "DAILY_LIMIT" ? "QUOTA" : rawCode;
     await db.insert(marketDataIngestionItems).values({
       ingestionRunId: runId,
       symbol: sym.symbol,
@@ -501,7 +519,7 @@ export async function runIngestion(options: {
     for (const sym of symbolRows) {
       const r = await ingestSymbol({ symbol: sym.symbol, backfillYears: sym.backfillYears }, runId, mode);
       results.push(r);
-      if (r.errorCode === "QUOTA" || r.errorMessage === "DAILY_CREDIT_LIMIT_REACHED") {
+      if (r.errorCode === "QUOTA" || r.errorCode === "DAILY_LIMIT" || r.errorMessage === "DAILY_CREDIT_LIMIT_REACHED") {
         // Stop optional ingestion when daily safety limit is hit; resumable later.
         break;
       }

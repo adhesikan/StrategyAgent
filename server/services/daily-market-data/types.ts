@@ -47,7 +47,13 @@ export class MarketDataProviderError extends Error {
       | "MALFORMED"
       | "NETWORK"
       | "DISABLED"
-      | "UNKNOWN",
+      | "UNKNOWN"
+      // Specific credit / rate-limit classifications — never collapse into generic UNKNOWN.
+      | "RATE_LIMITED"  // per-minute rate limit from provider or credit manager
+      | "DAILY_LIMIT"   // daily credit/quota limit exhausted
+      | "WAIT_TIMEOUT"  // credit-reservation wait exceeded max wait time
+      // Response-quality classification (distinct from general MALFORMED)
+      | "BAD_RESPONSE", // provider returned unparseable or structurally invalid response
     public permanent: boolean = false,
   ) {
     super(message);

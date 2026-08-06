@@ -1,0 +1,907 @@
+Sprint 1 Final Task — Database-First Historical Market Data for Deterministic Scanning
+
+PRIMARY REPOSITORY
+
+Implement this in the existing VCP Trader AI / StrategyAgent repository using Replit.
+
+PROJECT CONTEXT
+
+VCP Trader AI currently has:
+
+- a background Opportunity Engine
+- PostgreSQL opportunity snapshot persistence
+- a dashboard that reads stored opportunity snapshots
+- an MCP service that performs deterministic scanning and ranking
+- Twelve Data market-data integration
+- supported broker integrations, including Tradier and TradeStation
+- future support planned for Schwab and other established brokers
+- MCP session recovery
+- market-history concurrency limits
+- retry and timeout protection
+- safe failure handling
+- no simulated opportunity fallback in production
+
+Production investigation confirmed that the internal MCP-facing history route currently uses Twelve Data as its sole provider and that repeated scan-time requests can encounter quota, wait, timeout, malformed-response, and provider errors. :contentReference[oaicite:0]{index=0}
+
+The investigation also confirmed that the current credit gate may wait or fail before the provider request and that provider failures are currently surfaced through the internal history endpoint. :contentReference[oaicite:1]{index=1}
+
+PRODUCT GOAL
+
+Build a reliable and monetizable platform that helps self-directed traders and investors:
+
+- discover opportunities
+- understand why they qualify
+- evaluate risk
+- monitor changing conditions
+- prepare and submit self-directed orders through supported brokers
+
+This task must improve the reliability and scalability of the existing product without changing its product direction.
+
+ARCHITECTURAL GOAL
+
+Historical technical analysis and broad deterministic market scanning should primarily use validated market history stored in VCP Trader PostgreSQL.
+
+External providers should populate or refresh that stored history.
+
+The Opportunity Engine should not repeatedly request full historical datasets from Twelve Data during every market-wide scan when sufficiently fresh stored bars already exist.
+
+APPROVED EXTERNAL MARKET-DATA SOURCES
+
+Production market data may come only from:
+
+1. Twelve Data
+2. An established supported broker connection
+3. Future established broker integrations added through the approved broker-provider interface
+
+Examples include:
+
+- Tradier
+- TradeStation
+- Charles Schwab
+- Interactive Brokers
+- other future supported and properly integrated brokers
+
+Do not hardcode the architecture around Tradier alone.
+
+Disallowed production sources:
+
+- Yahoo Finance
+- mock providers
+- hash-generated prices
+- synthetic OHLCV
+- undocumented fallback providers
+- fabricated options chains
+- simulated values presented as current data
+
+Do not commit, push, migrate, or deploy automatically.
+
+==================================================
+1. SCOPE BOUNDARY
+==================================================
+
+This task is limited to the historical market-data path used by deterministic scanners and the Opportunity Engine.
+
+Do not change:
+
+- scanner formulas
+- qualification rules
+- opportunity rankings
+- scoring formulas
+- confidence policy
+- candidate verdicts
+- risk calculations
+- options-strategy selection
+- portfolio policy
+- broker order submission
+- InstaTrade™
+- saved research contracts
+- Congress
+- education
+- billing
+- homepage
+- opportunity snapshot schema unless strictly necessary
+- public MCP tool contracts unless an additive internal-source metadata field is unavoidable
+
+Do not begin:
+
+- Opportunity Lifecycle
+- Watchlist Intelligence
+- Research Workspace expansion
+- Portfolio Intelligence expansion
+- Morning Brief
+- newsletter publishing
+- monetization tiers
+
+==================================================
+2. AUDIT FIRST — DO NOT MODIFY CODE UNTIL COMPLETE
+==================================================
+
+Trace every history-data path used by:
+
+- Opportunity Engine
+- rank_market_trade_candidates
+- rank_trade_candidates
+- scan_strategy
+- scan_opportunities
+- multi-strategy analysis
+- Ask AI symbol analysis
+- watchlist scans
+- market-regime calculations
+- technical-indicator calculations
+
+Trace the complete call graph across the VCP Trader repository.
+
+Identify:
+
+- every call to /api/internal/market/history
+- every call to TwelveDataDailyProvider
+- every read from stored daily bars
+- every existing daily_bars or equivalent table
+- existing bar-ingestion jobs
+- current ingestion universe
+- retention policy
+- indexes
+- bar uniqueness constraints
+- supported intervals
+- source metadata
+- provider timestamp handling
+- split-adjustment handling
+- missing-bar handling
+- stale-bar handling
+- whether Ask AI and scanners use identical bars
+- whether broker history is currently stored anywhere
+- whether MCP can consume stored bars without a public contract change
+
+Produce the audit findings in the completion report.
+
+Do not assume that the existing daily-bars table is complete enough for scanning.
+
+==================================================
+3. DEFINE MARKET-DATA RESPONSIBILITIES
+==================================================
+
+Implement and document this responsibility model.
+
+A. PostgreSQL historical-bar store
+
+Primary source for:
+
+- historical OHLCV used by deterministic scanning
+- moving averages
+- RSI
+- ATR
+- trend classification
+- VCP structure
+- breakout structure
+- pullback structure
+- volume analysis
+- market-regime history
+- broad market ranking
+
+B. Twelve Data
+
+Approved external source for:
+
+- scheduled historical-bar ingestion
+- missing-history backfill
+- bar refresh when stored history is absent or stale
+- broker-independent quotes and market data supported by the subscription
+- current or delayed data when accurately labeled
+
+C. Established broker connections
+
+Broker-provider interface may supply:
+
+- current quote
+- bid and ask
+- extended-hours quote
+- live or entitled intraday data
+- options chains
+- Greeks
+- open interest and volume
+- account positions
+- buying power
+- order status
+- execution
+
+A supported broker may also supply historical bars when:
+
+- the broker integration explicitly supports them
+- entitlement is valid
+- the data passes the same canonical validation
+- the source is recorded
+- using broker history does not make global deterministic scan results user-dependent
+
+D. Deterministic global scanning
+
+Global Opportunity Engine scans should use a consistent, user-independent historical dataset.
+
+Recommended source:
+
+PostgreSQL bars populated primarily through Twelve Data ingestion.
+
+Do not make global rankings differ based on which broker an individual user connected.
+
+E. User-specific live context
+
+A user-facing analysis may supplement the stored historical analysis with a current quote from any established connected broker.
+
+The source must be accurately labeled.
+
+==================================================
+4. DO NOT REPLACE ONE FRAGILE PATH WITH ANOTHER
+==================================================
+
+Do not simply change:
+
+MCP → internal HTTP history route → Twelve Data
+
+into:
+
+MCP → a new unvalidated database query
+
+The stored-bar path must have:
+
+- strict validation
+- freshness policy
+- sufficient history depth
+- source metadata
+- canonical symbol handling
+- canonical interval handling
+- deterministic ordering
+- missing-data behavior
+- safe fallback behavior
+- test coverage
+
+If the stored bar set is incomplete, implement an incremental backfill strategy rather than silently returning partial technical data as complete.
+
+==================================================
+5. AUDIT AND REUSE EXISTING BAR TABLES
+==================================================
+
+Prefer existing tables and ingestion architecture.
+
+Do not create a second historical-bars table unless the existing schema is genuinely unsuitable.
+
+For the existing bar schema, verify or add where required:
+
+- symbol
+- interval/timeframe
+- bar timestamp
+- open
+- high
+- low
+- close
+- volume
+- adjusted/unadjusted indicator where applicable
+- source
+- source timestamp
+- retrieved timestamp
+- data quality
+- unique constraint on symbol + interval + timestamp + adjustment mode
+- useful indexes for symbol/time-range reads
+
+Any schema changes must be additive and idempotent.
+
+Do not store:
+
+- provider secrets
+- authorization headers
+- broker account IDs
+- user IDs for global market bars
+- raw provider payloads
+- MCP session IDs
+- OpenAI prompts
+
+==================================================
+6. BUILD A CANONICAL HISTORICAL-BAR SERVICE
+==================================================
+
+Create or extend one canonical VCP Trader service such as:
+
+server/services/market-history-service.ts
+
+or the repository’s existing equivalent.
+
+Suggested responsibility:
+
+getHistoricalBars({
+  symbol,
+  interval,
+  outputSize,
+  freshnessRequirement,
+  purpose,
+  allowExternalRefresh
+})
+
+The service should:
+
+1. normalize the symbol
+2. normalize the interval
+3. read stored PostgreSQL bars
+4. validate bar count and freshness
+5. return stored bars when sufficient
+6. request a permitted external refresh when missing or stale
+7. persist newly validated bars
+8. return the canonical bar series
+9. attach source and freshness metadata
+10. return honest unavailable status when no approved source succeeds
+
+Do not let individual callers independently implement provider selection.
+
+==================================================
+7. PROVIDER PRECEDENCE
+==================================================
+
+Use purpose-aware precedence.
+
+A. Global deterministic scanner history
+
+1. sufficiently fresh validated PostgreSQL bars
+2. Twelve Data backfill/refresh
+3. an approved non-user-specific broker-market-data feed only if explicitly configured for global use
+4. unavailable
+
+Do not use a user’s private broker connection for a global market scan.
+
+B. User-requested symbol history
+
+1. sufficiently fresh validated PostgreSQL bars
+2. established connected broker history when supported and entitled
+3. Twelve Data backfill/refresh
+4. unavailable
+
+C. User-requested current quote
+
+1. established connected broker quote when supported and valid
+2. Twelve Data
+3. unavailable
+
+D. Options chain
+
+1. established connected broker options feed
+2. another explicitly approved real options provider in the future
+3. unavailable or clearly labeled estimated strategy concept
+
+Do not fabricate current options contracts.
+
+==================================================
+8. STORED-BAR FRESHNESS POLICY
+==================================================
+
+Define freshness based on interval and market session.
+
+For daily bars:
+
+- latest completed trading-day bar is fresh
+- current incomplete daily candle must not replace a completed daily bar unless explicitly supported
+- weekends and market holidays must not incorrectly mark Friday’s bar stale
+- use an existing market calendar if available
+- otherwise implement a conservative documented policy
+
+For intraday bars:
+
+- define interval-specific freshness
+- do not claim real-time freshness when data is delayed
+- preserve provider timestamps
+
+For long-term analysis:
+
+- historical bars can remain reusable while current quote context is refreshed separately
+
+Do not use only wall-clock age without considering market sessions.
+
+==================================================
+9. HISTORY DEPTH REQUIREMENTS
+==================================================
+
+Define minimum history requirements by analysis purpose.
+
+Examples to verify against actual algorithms:
+
+- moving averages: enough bars for the longest required period plus warm-up
+- VCP analysis: enough trading days for base and contraction detection
+- ATR: required lookback plus warm-up
+- market regime: sufficient index history
+- ranking: enough data for every required metric
+
+Do not invent a single outputSize for all tools.
+
+Create explicit policy constants or configuration based on actual algorithm needs.
+
+If insufficient history exists:
+
+- mark the analysis unavailable or partial
+- request an approved backfill when allowed
+- do not calculate misleading indicators from undersized data
+
+==================================================
+10. INGESTION AND BACKFILL
+==================================================
+
+Reuse the existing ingestion scheduler where possible.
+
+Required capabilities:
+
+- scheduled daily-bar refresh
+- bounded symbol batches
+- approved concurrency
+- credit-aware requests
+- in-flight deduplication
+- retries for transient provider failures
+- idempotent upsert
+- no duplicate bars
+- incremental refresh
+- missing-history backfill
+- provider/source metadata
+- safe failure isolation by symbol
+
+Do not redownload the full history on every refresh.
+
+Recommended behavior:
+
+- existing symbol with current history → request only missing bars or a small overlap window
+- new symbol → bounded historical backfill
+- corporate-action or correction case → controlled revalidation window
+- failed symbol → record failure without aborting the entire ingestion batch
+
+==================================================
+11. TWELVE DATA CREDIT POLICY
+==================================================
+
+Audit the current safety limits against the actual configured plan.
+
+Do not hardcode Basic-plan limits if production has a higher entitlement.
+
+Separate:
+
+- actual provider entitlement
+- internal safety limit
+- per-minute request pacing
+- daily safety limit
+- retry behavior
+- ingestion priority
+
+Environment-configurable limits should be validated and documented.
+
+Credit-limit errors must use explicit error classifications such as:
+
+- PROVIDER_RATE_LIMITED
+- PROVIDER_DAILY_LIMIT
+- PROVIDER_WAIT_TIMEOUT
+- PROVIDER_TIMEOUT
+- PROVIDER_AUTH_ERROR
+- PROVIDER_BAD_RESPONSE
+- PROVIDER_UNAVAILABLE
+
+Do not collapse known credit errors into generic 502 PROVIDER_ERROR.
+
+==================================================
+12. INTERNAL MCP HISTORY ROUTE
+==================================================
+
+Preserve the existing authenticated internal route where possible:
+
+GET /api/internal/market/history
+
+Change its behavior from an external-provider proxy into a canonical history-service endpoint.
+
+Preferred route behavior:
+
+1. authenticate internal request
+2. validate symbol/interval/outputSize
+3. call canonical historical-bar service
+4. return stored validated bars immediately when sufficient
+5. optionally perform an approved refresh when required
+6. include source and freshness metadata
+7. return an honest error when unavailable
+
+The MCP contract should remain compatible unless additive metadata is introduced.
+
+Do not force MCP to know whether bars came from PostgreSQL, Twelve Data, Tradier, TradeStation, Schwab, or another approved broker.
+
+That provider abstraction belongs in VCP Trader.
+
+==================================================
+13. PREVENT SCAN-TIME EXTERNAL REQUEST STORMS
+==================================================
+
+For Opportunity Engine and broad MCP scans:
+
+- stored PostgreSQL bars should satisfy the normal scan path
+- external refreshes should not occur independently for dozens of symbols during the same ranking request
+- if data is missing, queue backfill separately or use a bounded controlled refresh stage
+- one scan must not trigger dozens of uncontrolled external API requests
+- return unavailable counts honestly for symbols not yet backfilled
+
+Preferred sequence:
+
+scheduled ingestion/backfill
+→ validated PostgreSQL bars
+→ MCP deterministic scan
+→ stored opportunity snapshot
+→ dashboard
+
+Do not let dashboard access trigger external history ingestion.
+
+==================================================
+14. GLOBAL SCAN READINESS CHECK
+==================================================
+
+Before launching a background Opportunity Engine scan, evaluate data readiness.
+
+Suggested readiness result:
+
+{
+  universeSize,
+  readySymbols,
+  staleSymbols,
+  missingSymbols,
+  coveragePercent,
+  latestCompletedBarDate,
+  dataSourceSummary
+}
+
+Policy:
+
+- run scan when coverage meets an approved threshold
+- do not silently scan a mostly incomplete universe
+- report incomplete symbols as unavailable
+- optionally queue missing symbols for backfill
+- preserve previous valid opportunity snapshot when current market-data coverage is inadequate
+
+Do not weaken qualification rules to compensate for missing data.
+
+==================================================
+15. BROKER ABSTRACTION
+==================================================
+
+Do not write broker-specific conditional logic throughout the codebase.
+
+Use or extend one broker market-data interface that future integrations can implement.
+
+Possible capabilities:
+
+supportsQuotes
+supportsExtendedHours
+supportsHistoricalBars
+supportsOptionsChains
+supportsGreeks
+supportsOpenInterest
+supportsAccountPositions
+supportsBuyingPower
+supportsOrders
+
+Current and future implementations may include:
+
+- Tradier
+- TradeStation
+- Charles Schwab
+- Interactive Brokers
+- other approved established brokers
+
+Provider selection should depend on capabilities and entitlements, not hardcoded provider names in business logic.
+
+==================================================
+16. SOURCE AND DATA-QUALITY METADATA
+==================================================
+
+Every successful market-history result should expose or internally preserve:
+
+- sourceType: stored | external_refresh
+- provider: twelve_data | broker identifier
+- quality: real_time | delayed | latest_daily_close | historical
+- sourceTimestamp
+- retrievedAt
+- latestBarTimestamp
+- completedBarOnly
+- freshnessStatus
+- barCount
+
+Do not label stored bars as live merely because they were recently read.
+
+Do not label broker data as Twelve Data.
+
+==================================================
+17. VALIDATION
+==================================================
+
+Validate all bars before storage or use:
+
+- finite numeric values
+- positive prices
+- non-negative volume
+- high >= open/close/low
+- low <= open/close/high
+- valid timestamp
+- ordered bars
+- no duplicate timestamp
+- correct symbol
+- correct interval
+- source metadata present
+- no future completed bars
+- no obviously mixed adjustment modes
+
+Reject unsafe bars.
+
+Do not auto-correct decimal scale without a trusted reference.
+
+==================================================
+18. CORPORATE ACTIONS AND SYMBOL NORMALIZATION
+==================================================
+
+Audit handling for:
+
+- splits
+- reverse splits
+- dividends where adjusted bars are used
+- renamed tickers
+- share-class symbols such as BRK.B
+- provider-specific aliases
+- delisted symbols
+- mergers
+- ETFs
+- ADRs
+
+Create one canonical symbol/alias layer.
+
+Do not use loose substring matching for symbol identity.
+
+Known aliases may be explicit and tested.
+
+==================================================
+19. FAILURE BEHAVIOR
+==================================================
+
+Expected behavior:
+
+Stored bars sufficient
+→ return immediately
+
+Stored bars stale/missing and approved refresh succeeds
+→ validate, persist, return
+
+Refresh fails but stored bars remain usable under policy
+→ return stored bars with stale/limited metadata
+
+Refresh fails and stored bars are unusable
+→ unavailable
+
+One symbol fails
+→ other symbols continue
+
+Market-data readiness too low
+→ preserve previous opportunity snapshot
+→ record a safe failed or partial scan attempt
+
+Never return:
+
+- Yahoo data
+- mock data
+- fabricated bars
+- silent provider substitution
+- an empty array presented as successful complete history
+
+==================================================
+20. MIGRATION SAFETY
+==================================================
+
+If schema changes are required:
+
+- use existing Drizzle/PostgreSQL conventions
+- add idempotent migration SQL
+- no destructive migration
+- no dropping existing bars
+- no mass rewriting without a controlled migration plan
+- existing ingestion remains operational during rollout
+- include rollback plan
+
+Prefer no schema change if existing bar storage already supports the required contract.
+
+==================================================
+21. PHASED IMPLEMENTATION
+==================================================
+
+Implement in phases within this task.
+
+Phase A — Audit and contracts
+
+- map current paths
+- confirm existing table coverage
+- define canonical service
+- define freshness and history-depth policies
+
+Phase B — Stored-bar read path
+
+- canonical PostgreSQL reader
+- validation
+- metadata
+- internal history route uses stored bars when sufficient
+
+Phase C — Controlled external refresh
+
+- Twelve Data backfill/refresh
+- broker-capability support where appropriate
+- validated persistence
+- accurate error classification
+
+Phase D — Scanner integration
+
+- broad scans use canonical route/service
+- no scan-time external request storm
+- readiness check
+- partial/unavailable accounting
+
+Phase E — Production feature flags
+
+Suggested flags:
+
+MARKET_HISTORY_DATABASE_FIRST=true
+MARKET_HISTORY_EXTERNAL_REFRESH_ENABLED=true
+
+Keep an emergency rollback path to the current Twelve Data route temporarily.
+
+Do not use Yahoo or mock as rollback.
+
+==================================================
+22. TESTS
+==================================================
+
+Add comprehensive tests.
+
+A. Stored history
+
+- sufficient stored bars return without external call
+- correct ordering
+- correct outputSize
+- freshness metadata
+- source metadata
+- insufficient history detected
+- stale history detected
+- weekend/holiday daily-bar behavior
+
+B. External refresh
+
+- missing history refreshes from Twelve Data
+- approved broker history may refresh user-specific requests
+- refreshed bars are validated and persisted
+- invalid bars rejected
+- provider failure falls back only to usable stored data
+- no disallowed provider selected
+
+C. Global scanner
+
+- scan uses stored bars
+- scan does not launch one external request per symbol
+- insufficient symbols become unavailable
+- readiness coverage calculated
+- candidate ranking unchanged with identical bars
+- previous snapshot preserved when coverage is inadequate
+
+D. Broker abstraction
+
+- Tradier capability map
+- TradeStation capability map
+- future broker implementation can satisfy interface
+- unsupported broker history falls back appropriately
+- global scan does not depend on user broker
+
+E. Provider safety
+
+- Yahoo cannot provide production history
+- mock cannot provide production history
+- synthetic bars rejected
+- NODE_ENV=production cannot select disallowed provider
+
+F. Symbol handling
+
+- ordinary US symbol
+- ETF
+- class-share symbol
+- explicit alias
+- renamed symbol behavior
+- provider-symbol mismatch rejected unless explicitly mapped
+
+G. Error classification
+
+- rate limit
+- daily limit
+- wait timeout
+- network failure
+- malformed response
+- auth failure
+- unsupported symbol
+- empty response
+- internal timeout
+
+H. Regression
+
+- Opportunity Engine snapshot persistence unchanged
+- dashboard remains snapshot-backed
+- Ask AI remains functional
+- scanner outputs unchanged for identical historical bars
+- MCP public tool contracts unchanged
+- broker execution unchanged
+- portfolio unchanged
+- options unchanged
+- Research unchanged
+- Congress unchanged
+- no OpenAI dependency added
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+23. DOCUMENTATION
+==================================================
+
+Create:
+
+docs/DATABASE_FIRST_MARKET_HISTORY_ARCHITECTURE.md
+
+Update:
+
+docs/MARKET_DATA_PROVIDER_POLICY.md
+docs/OPPORTUNITY_ENGINE_PERSISTENCE.md
+docs/SPRINT_5_5_PERSONALIZED_DASHBOARD.md
+
+Document:
+
+- approved providers
+- canonical data flow
+- stored-bar schema
+- global versus user-specific data policy
+- broker capability abstraction
+- ingestion and backfill
+- freshness
+- history-depth requirements
+- source metadata
+- data validation
+- readiness checks
+- error classifications
+- feature flags
+- phased deployment
+- rollback
+- known limitations
+
+==================================================
+24. COMPLETION REPORT
+==================================================
+
+Return:
+
+1. current history-path audit
+2. existing bar-table assessment
+3. external providers found
+4. disallowed provider audit
+5. files created
+6. files modified
+7. canonical history-service design
+8. global scan provider policy
+9. user-specific provider policy
+10. broker capability abstraction
+11. database read behavior
+12. external refresh behavior
+13. ingestion/backfill behavior
+14. freshness policy
+15. minimum-history policy
+16. symbol normalization
+17. validation
+18. readiness check
+19. internal route changes
+20. error-classification changes
+21. feature flags
+22. schema/migration changes
+23. tests and totals
+24. build result
+25. deployment sequence
+26. Railway variable changes
+27. rollback plan
+28. compatibility concerns
+29. final GO / CONDITIONAL_GO / NO_GO verdict
+
+Do not commit, push, run production migration, modify Railway variables, or deploy automatically.
+
+Wait for review.

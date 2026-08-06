@@ -3,11 +3,17 @@
 // 800/day) to preserve reserve capacity. Counters are stored in the
 // market_data_credit_usage table via atomic upserts so multiple instances
 // share the same budget — never in-memory only.
+//
+// Error classification: credit-limit errors are thrown as MarketDataProviderError
+// with explicit codes (RATE_LIMITED, DAILY_LIMIT, WAIT_TIMEOUT) so callers can
+// surface accurate HTTP status and log structured diagnostics.
+// They must NEVER collapse into the generic PROVIDER_ERROR 502.
 
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { marketDataCreditUsage, marketDataRequestLog } from "@shared/schema";
 import { getTwelveDataConfig } from "./config";
+import { MarketDataProviderError } from "./types";
 
 export type CreditReservation =
   | { granted: true; minuteUsed: number; dayUsed: number }
@@ -111,7 +117,13 @@ export async function releaseCredits(credits: number, reservedAt = new Date()): 
 
 /**
  * Reserve credits, waiting through minute windows if needed (up to maxWaitMs).
- * Stops immediately (throws) if the daily safety limit is reached.
+ *
+ * Throws MarketDataProviderError (not a plain Error) so callers can surface
+ * accurate HTTP status and diagnostics:
+ *   - DAILY_LIMIT (permanent) when the daily safety threshold is exhausted
+ *   - WAIT_TIMEOUT when a minute-window wait would exceed maxWaitMs
+ *   - RATE_LIMITED (non-permanent) for a single minute-window overrun that
+ *     fits within maxWaitMs (callers may choose to retry after the window)
  */
 export async function reserveCreditsBlocking(credits: number, maxWaitMs = 180_000): Promise<void> {
   const deadline = Date.now() + maxWaitMs;
@@ -119,10 +131,19 @@ export async function reserveCreditsBlocking(credits: number, maxWaitMs = 180_00
     const res = await reserveCredits(credits);
     if (res.granted) return;
     if (res.reason === "daily_limit") {
-      throw new Error("DAILY_CREDIT_LIMIT_REACHED");
+      throw new MarketDataProviderError(
+        `Daily credit safety limit reached (${res.dayUsed} credits used). Resets at UTC midnight.`,
+        "DAILY_LIMIT",
+        true, // permanent — never retry today
+      );
     }
+    // minute_limit
     if (Date.now() + res.retryAfterMs > deadline) {
-      throw new Error("CREDIT_WAIT_TIMEOUT");
+      throw new MarketDataProviderError(
+        `Credit reservation wait would exceed ${maxWaitMs}ms budget (minute limit: ${res.minuteUsed} credits used).`,
+        "WAIT_TIMEOUT",
+        false,
+      );
     }
     await new Promise((r) => setTimeout(r, res.retryAfterMs));
   }

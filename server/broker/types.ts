@@ -74,15 +74,38 @@ export interface OptionQuote {
   openInterest: number;
 }
 
-// Declares what an individual broker can do natively. Position Protection uses
-// `nativeTrailingStop` to decide whether it must run an application-managed
-// monitoring loop (true for every broker we support today — none accept a
-// native trailing_stop order).
+/**
+ * Capability map for a broker integration.
+ *
+ * Callers should check capabilities before invoking optional methods.
+ * New capabilities should be added here (as optional booleans) rather than
+ * scattered as broker-name conditionals throughout the codebase.
+ */
 export interface BrokerCapabilities {
+  // ── Trading ──────────────────────────────────────────────────────────────
   nativeTrailingStop: boolean;
   stocks: boolean;
   options: boolean;
   spreads: boolean;
+  // ── Market data ──────────────────────────────────────────────────────────
+  /** Broker can supply real-time or delayed quotes for display purposes. */
+  quotes?: boolean;
+  /** Broker supports pre/post-market extended-hours quotes. */
+  extendedHoursQuotes?: boolean;
+  /**
+   * Broker can supply validated historical OHLCV bars.
+   *
+   * When true, the BrokerProvider MAY implement getHistoricalBars().
+   * Broker history may only be used for user-specific paths (Ask AI, personal
+   * symbol analysis) — NEVER for global deterministic Opportunity Engine scans.
+   * Using per-user broker history in a global scan would make scan results
+   * user-dependent and non-deterministic.
+   */
+  historicalBars?: boolean;
+  /** Broker can supply options chains (strikes, expirations). */
+  optionsChain?: boolean;
+  /** Broker can supply Greeks for options positions. */
+  greeks?: boolean;
 }
 
 export interface BrokerProvider {
@@ -94,4 +117,15 @@ export interface BrokerProvider {
   placeOrder(accessToken: string, order: OrderRequest): Promise<OrderResponse>;
   cancelOrder(accessToken: string, orderId: string, accountId?: string): Promise<{ success: boolean; message: string }>;
   getOptionQuote?(accessToken: string, optionSymbol: string): Promise<OptionQuote | null>;
+  /**
+   * Optional: fetch historical daily bars for a symbol.
+   * Only called when capabilities.historicalBars === true.
+   * The returned bars must pass the same canonical validation as Twelve Data bars
+   * and must record provider: "<broker_id>" in each NormalizedDailyBar.
+   */
+  getHistoricalBars?(
+    accessToken: string,
+    symbol: string,
+    opts: { startDate?: string; endDate?: string; outputSize?: number },
+  ): Promise<import("../services/daily-market-data/types").NormalizedDailyBar[]>;
 }

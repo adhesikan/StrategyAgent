@@ -360,3 +360,12 @@ html:not(.dark) [class*="text-red-400/"] { color: rgb(185 28 28); }
     inset: -1px;
   }
 }
+
+/* ─── AI Trading Workspace — section scroll offset ─────────────────────────
+   Ensures click-to-scroll nav lands the section heading BELOW the sticky
+   workspace nav bar (~30 px) plus a breathing-room buffer.
+   Applies automatically to every element whose id starts with "ws-".
+   scrollIntoView({ block: "start" }) respects scroll-margin-top natively. */
+[id^="ws-"] {
+  scroll-margin-top: 52px;
+}

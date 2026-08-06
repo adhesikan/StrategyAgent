@@ -36,6 +36,7 @@ export type {
 export {
   WorkspaceNav,
   WORKSPACE_NAV_SECTIONS,
+  WS_SCROLL_MARGIN_TOP,
   findActiveSectionId,
   scrollToSection,
   useActiveSection,

@@ -448,6 +448,15 @@ interface WorkspaceAssistantDrawerProps {
   onClose: () => void;
 }
 
+/**
+ * Pure helper — determines whether body scroll should be locked.
+ * Lock applies only for mobile bottom sheet (viewport width < lg = 1024px).
+ * Exported for testing without DOM dependency.
+ */
+export function shouldLockScroll(open: boolean, viewportWidth: number): boolean {
+  return open && viewportWidth < 1024;
+}
+
 export function WorkspaceAssistantDrawer({
   open,
   pkg,
@@ -456,6 +465,20 @@ export function WorkspaceAssistantDrawer({
   hasNewsData,
   onClose,
 }: WorkspaceAssistantDrawerProps) {
+  // Scroll lock for mobile bottom sheet.
+  // Must be declared BEFORE any conditional return (React hooks rule).
+  // Stores previous overflow value and restores it on close, unmount, or
+  // route change — never leaves body.style.overflow = "hidden" behind.
+  useEffect(() => {
+    const width = typeof window !== "undefined" ? window.innerWidth : 1280;
+    if (!shouldLockScroll(open, width)) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (

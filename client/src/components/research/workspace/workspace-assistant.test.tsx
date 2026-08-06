@@ -288,11 +288,11 @@ describe("buildAssistantPrompts — additional", () => {
 import { findActiveSectionId, WORKSPACE_NAV_SECTIONS } from "./workspace-nav";
 
 describe("findActiveSectionId", () => {
-  it("I1 — returns first section in order that is visible", () => {
+  it("I1 — returns last visible section in DOM order (most recently scrolled into)", () => {
     const visible = new Set(["ws-lifecycle", "ws-decision"]);
     const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, visible);
-    // lifecycle comes before decision in the list
-    expect(result).toBe("lifecycle");
+    // decision comes AFTER lifecycle in DOM order → last visible wins
+    expect(result).toBe("decision");
   });
 
   it("I2 — returns first section when nothing visible", () => {
@@ -323,10 +323,10 @@ describe("findActiveSectionId", () => {
     expect(result).toBe("history");
   });
 
-  it("I7 — all sections visible → returns first", () => {
+  it("I7 — all sections visible → returns last (deepest section entered)", () => {
     const allVisible = new Set(WORKSPACE_NAV_SECTIONS.map((s) => s.anchorId));
     const result = findActiveSectionId(WORKSPACE_NAV_SECTIONS, allVisible);
-    expect(result).toBe(WORKSPACE_NAV_SECTIONS[0].id);
+    expect(result).toBe(WORKSPACE_NAV_SECTIONS[WORKSPACE_NAV_SECTIONS.length - 1].id);
   });
 });
 

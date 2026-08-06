@@ -1,0 +1,424 @@
+SPRINT 2.2.3 — WORKSPACE SCROLL AND SECTION-NAVIGATION REGRESSION FIX
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION DEFECT
+
+The AI Trading Workspace renders, but:
+
+1. The user cannot scroll down through the full Workspace.
+2. Clicking section-navigation items such as:
+   - Summary
+   - What Changed
+   - Decision
+   - Evidence
+   - Trade Planning
+   - Live Contracts
+   - Risk
+   - Congress / News
+   - Ask VCP AI
+   - InstaTrade™
+   - Scan History
+
+does not move to the corresponding section.
+
+This is a blocking UX regression found during production UAT.
+
+Do not add features.
+Do not redesign the Workspace.
+Do not modify backend APIs, Opportunity Engine, MCP, broker integrations,
+Live Contract Resolver, assistant behavior, database, routes or business logic.
+
+Fix scrolling and section navigation only.
+
+====================================================================
+1. REPRODUCE AND IDENTIFY THE ACTUAL SCROLL CONTAINER
+====================================================================
+
+Inspect the full layout hierarchy for /research/:symbol:
+
+- application shell
+- page layout
+- main content wrapper
+- opportunity-research page
+- Workspace tab wrapper
+- workspace navigation
+- workspace section container
+- assistant drawer wrappers
+
+Search for styles or classes including:
+
+- overflow-hidden
+- overflow-y-hidden
+- overflow-auto
+- overflow-y-auto
+- h-screen
+- min-h-screen
+- max-h-screen
+- h-full
+- fixed
+- absolute
+- inset-0
+- overscroll-none
+- pointer-events-none
+- touch-action
+- position: fixed
+- body scroll locks
+
+Determine:
+
+- whether document/body is intended to scroll;
+- whether a nested <main> element is intended to scroll;
+- whether opening or mounting the assistant drawer applies a permanent body-scroll lock;
+- whether a fixed-height parent clips the Workspace content;
+- whether a transparent overlay intercepts wheel or touch events.
+
+Document the exact root cause before changing code.
+
+====================================================================
+2. RESTORE NORMAL VERTICAL SCROLLING
+====================================================================
+
+Preferred behavior:
+
+- the main page/document scrolls normally;
+- the Workspace may grow naturally with content;
+- no fixed height clips sections;
+- sticky navigation remains sticky without becoming the scroll container;
+- the assistant drawer locks body scrolling only while visibly open;
+- closing or unmounting the drawer always restores scrolling.
+
+Avoid creating a second nested vertical scrollbar unless the existing application
+shell intentionally uses one.
+
+If the application shell already has a canonical scroll container, use that same
+container consistently.
+
+Requirements:
+
+- mouse wheel works;
+- trackpad works;
+- Page Up / Page Down works;
+- Space and Shift+Space work where appropriate;
+- touch scrolling works on mobile;
+- scrollbar is visible according to existing design;
+- scrolling reaches Scan History and the final page footer;
+- no content is clipped.
+
+====================================================================
+3. AUDIT SECTION IDS AND NAV TARGETS
+====================================================================
+
+Audit:
+
+- WORKSPACE_SECTIONS or equivalent configuration;
+- nav item IDs;
+- DOM section IDs;
+- React refs;
+- data attributes;
+- aria-controls;
+- anchor hrefs;
+- IntersectionObserver targets.
+
+Create one single source of truth for section identifiers.
+
+Example only:
+
+const WORKSPACE_SECTIONS = [
+  { id: "workspace-summary", label: "Summary" },
+  { id: "workspace-changes", label: "What Changed" },
+  { id: "workspace-decision", label: "Decision" },
+  ...
+];
+
+Every rendered section must use exactly the same ID:
+
+<section id="workspace-decision" ...>
+
+Do not maintain separate independently typed ID lists.
+
+Add development-time/test validation proving:
+
+- every nav target exists;
+- every section ID is unique;
+- no duplicate IDs occur;
+- no nav item points to a missing section.
+
+====================================================================
+4. FIX CLICK-TO-SCROLL BEHAVIOR
+====================================================================
+
+Clicking a workspace navigation item must scroll to the correct section.
+
+Use the correct scroll container.
+
+If the document scrolls:
+
+target.scrollIntoView({
+  behavior: reducedMotion ? "auto" : "smooth",
+  block: "start"
+});
+
+If a nested canonical container scrolls:
+
+- calculate the target offset relative to that container;
+- call scrollContainer.scrollTo(...);
+- do not use window scrolling.
+
+Account for sticky headers.
+
+Preferred CSS:
+
+scroll-margin-top
+
+on each section rather than hardcoded JavaScript offsets where practical.
+
+Example:
+
+.workspace-section {
+  scroll-margin-top: var(--workspace-sticky-offset);
+}
+
+The final position must not hide the section heading behind:
+
+- global top navigation;
+- data-source banner;
+- tab bar;
+- workspace section navigator.
+
+====================================================================
+5. FIX ACTIVE-SECTION TRACKING
+====================================================================
+
+Audit useActiveSection and IntersectionObserver.
+
+Common failure cases to check:
+
+- observer root is null but a nested container actually scrolls;
+- observer root references the wrong element;
+- thresholds are too strict;
+- rootMargin hides all intersections;
+- refs are attached before sections render and never re-observed;
+- IDs do not match;
+- sticky header covers the observed region;
+- observer is recreated repeatedly;
+- sections rendered conditionally are not registered.
+
+Requirements:
+
+- active pill updates while scrolling;
+- clicking a pill activates it immediately;
+- observer later confirms the correct active section;
+- optional/missing sections do not break tracking;
+- first section is active near the top;
+- last section can become active near the bottom.
+
+Use the actual scroll container as IntersectionObserver.root when scrolling is nested.
+
+Provide a robust fallback for browsers/tests without IntersectionObserver.
+
+====================================================================
+6. ASSISTANT DRAWER SCROLL-LOCK AUDIT
+====================================================================
+
+The contextual assistant introduced both:
+
+- a desktop assistant panel/drawer;
+- a mobile bottom sheet.
+
+Verify that scroll-lock logic:
+
+- activates only while the modal drawer is open;
+- does not activate merely because the drawer component is mounted;
+- restores the previous body overflow value on close;
+- restores overflow on component unmount;
+- handles route changes;
+- handles Escape;
+- does not leave body.style.overflow = "hidden";
+- does not mount a full-screen overlay with pointer events while closed.
+
+If using an existing Dialog/Sheet component, confirm its open prop is correctly
+controlled.
+
+Do not remove accessibility focus trapping while the drawer is genuinely open.
+
+====================================================================
+7. STICKY NAVIGATION LAYOUT
+====================================================================
+
+Keep the workspace section navigation sticky, but make sure it does not block scroll.
+
+Requirements:
+
+- sticky, not fixed, unless the existing layout requires fixed;
+- correct top offset beneath the application header and tab bar;
+- horizontal overflow is allowed on mobile;
+- no invisible full-width overlay extends below the nav;
+- pointer events apply only to visible nav controls;
+- z-index does not prevent interaction with content;
+- nav does not create a fixed-height parent.
+
+Use:
+
+position: sticky
+
+and avoid wrapping the entire Workspace in a viewport-height container.
+
+====================================================================
+8. URL HASH BEHAVIOR
+====================================================================
+
+If hash navigation is already implemented, preserve it.
+
+If not already implemented, do not add complex routing.
+
+Optional additive behavior:
+
+- clicking a section can update the hash using history.replaceState;
+- loading /research/PLTR#workspace-risk may scroll to Risk after the page is ready.
+
+Only implement this if it is simple and does not interfere with Wouter/current routing.
+
+The core fix must work without relying on hashes.
+
+====================================================================
+9. ACCESSIBILITY
+====================================================================
+
+Section navigation should use appropriate semantics:
+
+- nav aria-label="Workspace sections"
+- buttons or anchors with clear accessible names;
+- aria-current="location" or equivalent on active item;
+- visible focus state;
+- Enter and Space activate button items;
+- reduced-motion preference disables smooth scrolling;
+- focus should not unexpectedly jump on mouse click;
+- keyboard users can reach each section;
+- headings have tabindex="-1" only if programmatic focus is intentionally used.
+
+Do not automatically move keyboard focus on every scroll event.
+
+====================================================================
+10. TESTS
+====================================================================
+
+Add focused tests covering the regression.
+
+A. Section configuration
+
+- every nav ID has exactly one matching section;
+- every section ID is unique;
+- labels and IDs remain stable;
+- optional sections are handled.
+
+B. Scroll target resolution
+
+- findSectionTarget returns the correct DOM element;
+- missing target returns safely;
+- correct canonical scroll container is resolved;
+- document-scroll mode works;
+- nested-scroll-container mode works.
+
+C. Navigation click
+
+- clicking Decision scrolls to Decision;
+- clicking Trade Planning scrolls to Trade Planning;
+- clicking Scan History reaches the final section;
+- sticky-header offset or scroll-margin behavior is applied;
+- reduced-motion mode uses instant scrolling.
+
+D. Active-section logic
+
+- first section active initially;
+- observer updates to Evidence;
+- final section can become active;
+- missing optional section does not throw;
+- fallback works without IntersectionObserver.
+
+E. Scroll lock
+
+- assistant closed: body scrolling remains enabled;
+- assistant open: body scroll is locked;
+- assistant closed after open: previous overflow restored;
+- component unmount restores overflow;
+- route change does not leave scroll locked;
+- closed overlay does not intercept pointer/wheel events.
+
+F. Layout classes
+
+Add regression assertions or component-level checks that the Workspace root does not
+contain unintended:
+
+- overflow-hidden
+- h-screen
+- max-h-screen
+
+unless applied to a legitimate modal child.
+
+G. Responsive
+
+- desktop document scrolling;
+- tablet scrolling;
+- mobile touch-compatible layout;
+- horizontal section-nav scrolling does not suppress vertical page scrolling.
+
+Run:
+
+- all client tests;
+- all server tests;
+- typecheck;
+- production build.
+
+====================================================================
+11. MANUAL UAT
+====================================================================
+
+Provide exact production UAT steps:
+
+1. Open /research/COST.
+2. Confirm mouse-wheel/trackpad scrolling reaches the bottom.
+3. Click each navigation pill and verify the correct heading appears below the sticky
+   controls.
+4. Verify active pill changes while manually scrolling.
+5. Click Scan History and confirm the final section is reachable.
+6. Open and close Ask VCP AI.
+7. Confirm scrolling still works after closing the assistant.
+8. Open assistant and close using Escape.
+9. Confirm scrolling is restored.
+10. Navigate to another symbol and repeat.
+11. Test Chrome desktop.
+12. Test a narrow mobile viewport.
+13. Test keyboard Page Down, Shift+Space and nav activation.
+14. Confirm no browser-console errors.
+15. Confirm no new API requests occur solely from section navigation.
+
+====================================================================
+12. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact scrolling root cause
+2. Exact navigation root cause
+3. Whether assistant scroll lock contributed
+4. Actual canonical scroll container
+5. Files changed
+6. CSS/classes changed
+7. Section-ID architecture before and after
+8. Click-scroll implementation
+9. IntersectionObserver/root configuration
+10. Sticky offset solution
+11. Accessibility changes
+12. Tests added
+13. Total tests
+14. Typecheck
+15. Build
+16. Known issues
+17. Production UAT steps
+18. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push or deploy automatically.
+
+Wait for review.

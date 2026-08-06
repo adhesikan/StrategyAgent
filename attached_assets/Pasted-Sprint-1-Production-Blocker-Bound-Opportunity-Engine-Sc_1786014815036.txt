@@ -1,0 +1,267 @@
+Sprint 1 Production Blocker — Bound Opportunity Engine Scan Duration and Guarantee Terminal Events
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+CURRENT VERIFIED PRODUCTION STATE
+
+The Opportunity Engine startup path works:
+
+- opportunity_snapshot_not_found
+- opportunity_scan_triggered
+- opportunity_scan_lock_acquired
+- opportunity_scan_started
+- MCP connects
+- internal market-history requests return 200
+
+However, the scan never emits any terminal event:
+
+- opportunity_scan_completed
+- opportunity_scan_partial
+- opportunity_scan_empty
+- opportunity_scan_failed
+
+The same scan remains open indefinitely from the application’s perspective.
+
+GOAL
+
+Find the exact blocking point and guarantee that every Opportunity Engine scan finishes within a bounded total duration and emits exactly one terminal event.
+
+This is still Sprint 1. Do not begin Sprint 2.
+
+Do not change:
+
+- MCP ranking logic
+- scanner algorithms
+- qualification
+- scoring
+- database schema
+- dashboard contracts
+- broker logic
+- portfolio logic
+- options logic
+- execution
+- scan cadence
+
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. TRACE THE STUCK SCAN
+==================================================
+
+Trace the exact async path from:
+
+runOpportunityEngine()
+→ MCP client call
+→ rank_market_trade_candidates
+→ response validation
+→ persistence
+→ terminal logging
+
+Identify:
+
+- the exact await currently blocking
+- current MCP call timeout
+- current total Opportunity Engine scan timeout
+- whether the MCP client timeout is actually enforced
+- whether the timeout includes session initialization and retry
+- whether abort/cancellation propagates
+- whether persistence or advisory-lock release can block
+- whether any Promise can remain unresolved indefinitely
+
+Do not assume MCP is the only possible blocker.
+
+==================================================
+2. ADD ONE TOTAL SCAN DEADLINE
+==================================================
+
+Add a total Opportunity Engine deadline covering:
+
+- MCP initialization
+- MCP tool execution
+- any session recovery
+- validation
+- persistence
+- terminal status update
+
+Suggested default:
+
+OPPORTUNITY_SCAN_TIMEOUT_MS=90000
+
+Bounds:
+
+minimum 30000
+maximum 300000
+default 90000
+
+The timeout must be shorter than any outer platform timeout that could terminate the process unexpectedly.
+
+Do not silently use Node’s default 300-second timeout.
+
+==================================================
+3. GUARANTEE TERMINAL EVENT
+==================================================
+
+Every scan that emits:
+
+opportunity_scan_started
+
+must emit exactly one of:
+
+- opportunity_scan_completed
+- opportunity_scan_partial
+- opportunity_scan_empty
+- opportunity_scan_failed
+
+Use a single top-level try/catch/finally structure.
+
+On deadline expiry:
+
+- emit opportunity_scan_failed
+- safe errorCode: OPPORTUNITY_SCAN_TIMEOUT
+- include durationMs
+- set refreshStatus=failed
+- save a safe FAILED attempt record
+- preserve the last valid snapshot
+- release advisory lock
+- clear engineRunning
+
+No path may return after scan_started without a terminal event.
+
+==================================================
+4. ABORT/CANCELLATION
+==================================================
+
+Where supported, propagate AbortSignal or deadline to the MCP client.
+
+If the existing MCP client cannot cancel an in-flight call:
+
+- still enforce the engine-level deadline with Promise.race
+- ignore any late result after timeout
+- ensure the late result cannot overwrite a newer snapshot
+- ensure it cannot persist after the scan has been marked failed
+
+Use scanId or generation token to reject late completion.
+
+==================================================
+5. LATE RESULT SAFETY
+==================================================
+
+If a timed-out MCP call later resolves:
+
+- do not persist it
+- do not emit a second terminal event
+- do not change refreshStatus
+- do not replace the latest snapshot
+- log opportunity_scan_late_result_discarded with scanId only
+
+==================================================
+6. LOCK RELEASE
+==================================================
+
+Verify the advisory lock is always released on:
+
+- success
+- partial success
+- empty success
+- MCP error
+- validation error
+- persistence error
+- timeout
+- unexpected exception
+
+Add a test proving timeout cannot leave the lock held.
+
+==================================================
+7. OBSERVABILITY
+==================================================
+
+Add safe events:
+
+- opportunity_scan_timeout_scheduled
+- opportunity_scan_timeout_triggered
+- opportunity_scan_late_result_discarded
+- opportunity_scan_lock_released
+
+Include:
+
+- scanId
+- trigger
+- timeoutMs
+- elapsedMs
+- phase
+- safe error code
+
+Do not log payloads, tokens, session IDs, or full stack traces.
+
+==================================================
+8. TESTS
+==================================================
+
+Add tests for:
+
+A. Timeout
+- hanging MCP Promise times out
+- exactly one failed terminal event emitted
+- refreshStatus becomes failed
+- prior valid snapshot preserved
+- FAILED attempt stored
+- engineRunning cleared
+- lock released
+
+B. Late result
+- late MCP result is ignored
+- no snapshot overwrite
+- no second terminal event
+- late discard log emitted
+
+C. Normal outcomes
+- success unaffected
+- partial unaffected
+- empty unaffected
+- validation failure still terminal
+- persistence failure still terminal
+
+D. Configuration
+- default timeout
+- valid override
+- malformed override
+- below minimum
+- above maximum
+
+E. Regression
+- dashboard still does not call MCP synchronously
+- endpoint unchanged
+- persistence unchanged
+- scan interval unchanged
+- Ask AI and Scanner unchanged
+- no MCP repository changes
+
+Run:
+
+npm test
+npm run build
+
+==================================================
+9. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. exact stuck await
+2. current timeout hierarchy
+3. files changed
+4. total scan deadline design
+5. cancellation behavior
+6. late-result protection
+7. lock-release guarantee
+8. terminal-event guarantee
+9. tests and totals
+10. build result
+11. Railway variable changes
+12. recommended deployment/UAT
+
+Do not commit or push.
+
+Wait for review.

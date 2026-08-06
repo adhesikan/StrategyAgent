@@ -12,13 +12,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mocks — use vi.hoisted so factory closures can reference them
 // ---------------------------------------------------------------------------
 
-const { mockInsertValues, mockInsertReturning, mockSelectLimit, mockExecute } = vi.hoisted(() => {
+const { mockInsertValues, mockInsertReturning, mockSelectLimit, mockExecute, mockGroupBy } = vi.hoisted(() => {
   const mockInsertReturning = vi.fn();
   const mockInsertValues = vi.fn().mockReturnThis();
   const mockSelectLimit = vi.fn();
   const mockExecute = vi.fn();
+  const mockGroupBy = vi.fn();
 
-  return { mockInsertValues, mockInsertReturning, mockSelectLimit, mockExecute };
+  return { mockInsertValues, mockInsertReturning, mockSelectLimit, mockExecute, mockGroupBy };
 });
 
 vi.mock("../db", () => {
@@ -26,6 +27,7 @@ vi.mock("../db", () => {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
+    groupBy: mockGroupBy,
     limit: mockSelectLimit,
     select: vi.fn().mockReturnThis(),
   };
@@ -52,6 +54,10 @@ vi.mock("@shared/schema", () => ({
     createdAt: { name: "created_at" },
     requestFingerprint: { name: "request_fingerprint" },
   },
+  opportunityHistory: {
+    symbol:   { name: "symbol" },
+    scanTime: { name: "scan_time" },
+  },
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -67,6 +73,7 @@ import {
   saveFailedAttempt,
   getLatestValidSnapshot,
   deleteExpiredSnapshots,
+  getFirstSeenMap,
   VALID_STATUSES,
 } from "./opportunity-snapshot-store";
 
@@ -331,5 +338,117 @@ describe("VALID_STATUSES constant", () => {
 
   it("does NOT include FAILED", () => {
     expect(VALID_STATUSES).not.toContain("FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G. getFirstSeenMap — regression tests for ANY() → inArray() fix
+//
+// Root cause: the previous implementation used
+//   WHERE symbol = ANY(${upperSymbols})
+// Drizzle's sql template serialises a JS array as its .toString() string
+// representation (e.g. "PLTR"), not a PostgreSQL array literal. PostgreSQL then
+// rejects the query with:
+//   "op ANY/ALL (array) requires array on right side"
+//
+// Fix: replaced with db.select().from().where(inArray(...)).groupBy() which
+// generates a correct IN (...) clause via Drizzle's query builder.
+// ---------------------------------------------------------------------------
+
+describe("G. getFirstSeenMap — ANY() regression + edge cases", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns an empty Map immediately for an empty symbols array (no DB call)", async () => {
+    const result = await getFirstSeenMap([]);
+    expect(result).toBeInstanceOf(Map);
+    expect(result.size).toBe(0);
+    // No DB call should have been made
+    expect(mockGroupBy).not.toHaveBeenCalled();
+  });
+
+  it("single symbol — builds Map with correct uppercase key", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: "PLTR", firstSeen: "2024-06-01T00:00:00.000Z" },
+    ]);
+    const result = await getFirstSeenMap(["PLTR"]);
+    expect(result.size).toBe(1);
+    expect(result.has("PLTR")).toBe(true);
+    expect(result.get("PLTR")).toBe("2024-06-01T00:00:00.000Z");
+  });
+
+  it("single symbol lowercase input — normalised to uppercase key", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: "PLTR", firstSeen: "2024-06-01T00:00:00.000Z" },
+    ]);
+    const result = await getFirstSeenMap(["pltr"]);
+    expect(result.has("PLTR")).toBe(true);
+  });
+
+  it("multiple symbols — all entries present in the returned Map", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: "PLTR", firstSeen: "2024-06-01T00:00:00.000Z" },
+      { symbol: "NVDA", firstSeen: "2024-05-15T00:00:00.000Z" },
+      { symbol: "AAPL", firstSeen: "2024-04-01T00:00:00.000Z" },
+    ]);
+    const result = await getFirstSeenMap(["PLTR", "NVDA", "AAPL"]);
+    expect(result.size).toBe(3);
+    expect(result.get("PLTR")).toBe("2024-06-01T00:00:00.000Z");
+    expect(result.get("NVDA")).toBe("2024-05-15T00:00:00.000Z");
+    expect(result.get("AAPL")).toBe("2024-04-01T00:00:00.000Z");
+  });
+
+  it("DB returns empty rows for known symbols — Map is empty", async () => {
+    mockGroupBy.mockResolvedValueOnce([]);
+    const result = await getFirstSeenMap(["PLTR"]);
+    expect(result.size).toBe(0);
+  });
+
+  it("DB returns a Date object for firstSeen — converted to ISO string", async () => {
+    const d = new Date("2024-06-01T00:00:00.000Z");
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: "PLTR", firstSeen: d },
+    ]);
+    const result = await getFirstSeenMap(["PLTR"]);
+    expect(result.get("PLTR")).toBe("2024-06-01T00:00:00.000Z");
+  });
+
+  it("DB returns lowercase symbol — Map key is uppercased", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: "pltr", firstSeen: "2024-06-01T00:00:00.000Z" },
+    ]);
+    const result = await getFirstSeenMap(["pltr"]);
+    expect(result.has("PLTR")).toBe(true);
+    expect(result.has("pltr")).toBe(false);
+  });
+
+  it("row with null symbol is skipped", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: null, firstSeen: "2024-06-01T00:00:00.000Z" },
+      { symbol: "NVDA", firstSeen: "2024-05-01T00:00:00.000Z" },
+    ]);
+    const result = await getFirstSeenMap(["NVDA"]);
+    expect(result.size).toBe(1);
+    expect(result.has("NVDA")).toBe(true);
+  });
+
+  it("row with null firstSeen is skipped", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { symbol: "PLTR", firstSeen: null },
+      { symbol: "NVDA", firstSeen: "2024-05-01T00:00:00.000Z" },
+    ]);
+    const result = await getFirstSeenMap(["PLTR", "NVDA"]);
+    expect(result.size).toBe(1);
+    expect(result.has("NVDA")).toBe(true);
+    expect(result.has("PLTR")).toBe(false);
+  });
+
+  it("uses inArray (not raw ANY) — mockGroupBy receives the call", async () => {
+    mockGroupBy.mockResolvedValueOnce([]);
+    await getFirstSeenMap(["PLTR"]);
+    // Confirm the query builder path was taken (groupBy called, execute was not)
+    expect(mockGroupBy).toHaveBeenCalledTimes(1);
+    expect(mockExecute).not.toHaveBeenCalled();
   });
 });

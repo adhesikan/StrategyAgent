@@ -335,27 +335,34 @@ export async function getSnapshotHistory(snapshotId: string): Promise<Array<{
 /**
  * Return a map of symbol → first-seen ISO date from the history table.
  * Efficient single-query batch lookup for multiple symbols.
+ *
+ * NOTE: Uses the Drizzle query-builder (inArray) instead of raw sql`ANY()`.
+ * Raw ANY() requires a PostgreSQL array type; Drizzle's sql template serialises
+ * a JS array as its string representation, causing:
+ *   "op ANY/ALL (array) requires array on right side"
+ * inArray() generates a proper IN (...) clause and handles binding correctly.
  */
 export async function getFirstSeenMap(symbols: string[]): Promise<Map<string, string>> {
   if (symbols.length === 0) return new Map();
 
   const upperSymbols = symbols.map(s => s.toUpperCase());
-  const result = await db.execute(
-    sql`SELECT symbol, MIN(scan_time) AS first_seen
-        FROM opportunity_history
-        WHERE symbol = ANY(${upperSymbols})
-        GROUP BY symbol`,
-  );
+  const rows = await db
+    .select({
+      symbol: opportunityHistory.symbol,
+      firstSeen: sql<string>`min(${opportunityHistory.scanTime})`,
+    })
+    .from(opportunityHistory)
+    .where(inArray(opportunityHistory.symbol, upperSymbols))
+    .groupBy(opportunityHistory.symbol);
 
   const map = new Map<string, string>();
-  const rows = (result as any).rows ?? result;
   for (const row of rows) {
-    if (row.symbol && row.first_seen) {
+    if (row.symbol && row.firstSeen) {
       map.set(
         String(row.symbol).toUpperCase(),
-        row.first_seen instanceof Date
-          ? row.first_seen.toISOString()
-          : String(row.first_seen),
+        (row.firstSeen as unknown) instanceof Date
+          ? (row.firstSeen as unknown as Date).toISOString()
+          : String(row.firstSeen),
       );
     }
   }

@@ -75,6 +75,7 @@ import AskPage from "@/pages/ask";
 import CongressActivityPage from "@/pages/congress-activity";
 import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
+import OpportunityResearchPage from "@/pages/opportunity-research";
 import DashboardPage from "@/pages/dashboard";
 import { resolveLandingPage } from "@/lib/landing-page";
 import { Redirect } from "wouter";
@@ -123,6 +124,7 @@ function AppRouter() {
       <Route path="/ask" component={AskPage} />
       <Route path="/research/:id" component={ResearchDetailPage} />
       <Route path="/research" component={ResearchLibraryPage} />
+      <Route path="/opportunity/:symbol" component={OpportunityResearchPage} />
       <Route path="/scanner" component={StrategyScannerPage} />
       <Route path="/trade/:ticker" component={TradeDetailPage} />
       <Route path="/instatrade" component={InstaTradePage} />

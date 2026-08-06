@@ -1025,6 +1025,19 @@ function StockOpportunityCard({
         >
           {ctaText} <ExternalLink className="h-3 w-3" aria-hidden="true" />
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1 px-2"
+          onClick={() => {
+            track("dashboard_research_package_opened" as any, { symbol: candidate.symbol } as any);
+            navigate(`/opportunity/${candidate.symbol}`);
+          }}
+          data-testid={`btn-research-${candidate.symbol}`}
+          aria-label={`Research Package for ${candidate.symbol}`}
+        >
+          Research
+        </Button>
         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => navigate("/scanner")} aria-label={`Watch ${candidate.symbol}`}>
           <Star className="h-3.5 w-3.5" aria-hidden="true" />
         </Button>

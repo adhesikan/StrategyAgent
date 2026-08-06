@@ -83,11 +83,17 @@ describe("deriveThesis", () => {
     expect(deriveThesis(makePkg(), baseStars)).toBe("bullish");
   });
 
-  it("returns bearish for 3+ warnings", () => {
+  it("does NOT return bearish for 3+ warnings (warnings alone never reverse direction)", () => {
+    // Sprint 2.2.1 fix: warning count alone must not produce "bearish".
+    // A high-confidence VCP candidate in a TRENDING regime remains bullish
+    // or at worst neutral even with multiple warnings.
     const pkg = makePkg({
       candidate: makeCandidate({ warnings: ["W1", "W2", "W3"] }),
     });
-    expect(deriveThesis(pkg, baseStars)).toBe("bearish");
+    const result = deriveThesis(pkg, baseStars);
+    expect(result).not.toBe("bearish");
+    // Still a valid thesis value
+    expect(["bullish", "neutral"]).toContain(result);
   });
 
   it("returns bearish for RISK_OFF + low tech score", () => {
@@ -135,7 +141,7 @@ describe("buildThesisExplanation", () => {
     expect(exp.length).toBeGreaterThan(10);
   });
 
-  it("mentions the primary whySelected item", () => {
+  it("mentions the primary whySelected item (original casing preserved)", () => {
     const pkg = makePkg();
     const exp = buildThesisExplanation(pkg);
     expect(exp).toContain("Strong RS vs SPY");
@@ -147,8 +153,9 @@ describe("buildThesisExplanation", () => {
   });
 
   it("includes regime context for TRENDING", () => {
+    // Sprint 2.2.1: regime label updated from "uptrend" to "Strong Bull market regime"
     const exp = buildThesisExplanation(makePkg({ marketRegime: "TRENDING" }));
-    expect(exp.toLowerCase()).toContain("uptrend");
+    expect(exp.toLowerCase()).toContain("bull");
   });
 
   it("includes caution note for RISK_OFF", () => {
@@ -168,9 +175,11 @@ describe("buildThesisExplanation", () => {
   });
 
   it("handles missing whySelected gracefully", () => {
+    // Sprint 2.2.1: fallback message updated to be more factual
     const pkg = makePkg({ candidate: makeCandidate({ whySelected: [] }) });
     const exp = buildThesisExplanation(pkg);
-    expect(exp).toContain("scanner pattern identification");
+    expect(exp.toLowerCase()).toContain("scanner output");
+    expect(exp.length).toBeGreaterThan(20);
   });
 });
 

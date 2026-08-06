@@ -2,8 +2,8 @@
 // Orchestrates StockTradeCard, OptionsTradeCard, EvidenceCard, RiskCard,
 // and ActionCard into a single cohesive view for the Overview tab.
 //
-// No new API calls. All data flows from the pre-loaded ResearchPackage,
-// EvidenceStars, and MarketSnapshot.
+// Sprint 2.2.1: passes pkg to EvidenceCard so deterministic numeric scores
+// (Technical, Regime) can be computed using candidate fields + market regime.
 
 import { StockTradeCard } from "./stock-trade-card";
 import { OptionsTradeCard, shouldShowOptionsCard } from "./options-trade-card";
@@ -47,6 +47,7 @@ export function ResearchTradeCard({
             completedAt={pkg.completedAt}
             onViewEvidence={() => onNavigateTab("technical")}
             onViewCongress={() => onNavigateTab("congress")}
+            pkg={pkg}
           />
         </div>
       </div>

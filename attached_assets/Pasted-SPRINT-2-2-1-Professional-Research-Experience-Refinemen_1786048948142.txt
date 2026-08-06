@@ -1,0 +1,817 @@
+SPRINT 2.2.1 — Professional Research Experience Refinement
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCT STATE
+
+The following work is already complete and must be preserved:
+
+- Sprint 1: production Opportunity Engine and database-first market history
+- Sprint 2.0: opportunity lifecycle
+- Sprint 2.0.1: dashboard UX polish
+- Sprint 2.1.1: Evidence Engine
+- Sprint 2.1.2: Professional Research Trade Cards
+- Sprint 2.1.3: Research Decision Engine
+- Sprint 2.2: deterministic Trade Structure Engine
+- Opportunity research route regression fix
+- Research Package route is working in production
+- Broker-connected and disconnected presentation already exists
+- No synthetic option contracts, premiums, Greeks, quotes or fabricated execution data are allowed
+
+The current Research Package page is functional and visually strong, but the Overview experience still has several UX issues:
+
+- the thesis can sound generic or internally inconsistent
+- a bullish qualified candidate may display a bearish-looking badge
+- evidence is difficult to compare quickly
+- stock planning fields display unhelpful dashes
+- warnings are presented as one long undifferentiated list
+- the next action is not visually dominant
+- market context is fragmented
+- congressional evidence is not prominent enough
+- the page does not answer the trader’s key questions quickly enough
+
+This sprint must refine the existing experience without introducing another architecture change.
+
+====================================================================
+OBJECTIVE
+====================================================================
+
+Polish the existing Research Package into an institutional-quality decision-support interface.
+
+The page should answer these questions within approximately 10 seconds:
+
+1. Why did this candidate qualify?
+2. What is the current research posture?
+3. What supports or weakens the thesis?
+4. What stock or options structure is being considered?
+5. Which values are available, unresolved or broker-dependent?
+6. What are the major risks?
+7. What should the user review next?
+8. How can a connected user proceed toward InstaTrade™?
+
+This sprint is presentation, composition and wording only.
+
+Do not build new market-data, scoring, planning or execution capabilities.
+
+====================================================================
+NON-NEGOTIABLE SCOPE BOUNDARIES
+====================================================================
+
+DO NOT modify:
+
+- Opportunity Engine
+- Opportunity lifecycle rules
+- MCP server or MCP client
+- scanner algorithms
+- ranking formulas
+- MarketHistoryService
+- daily ingestion
+- market-data provider precedence
+- broker integrations
+- broker capability interfaces
+- options-chain resolution
+- order-entry APIs
+- InstaTrade™ execution behavior
+- portfolio engine
+- Congress backend
+- Evidence Engine provider contracts
+- database schema
+- migrations
+- server routes
+- endpoint response contracts
+- polling intervals
+- caching rules
+- deterministic calculations
+- structure-selection rules
+- DTE-selection rules
+- strike-guidance rules
+- production feature flags
+
+Do not add new APIs.
+
+Do not add new database queries.
+
+Do not add new backend services.
+
+Do not fabricate missing values.
+
+Do not convert this into a large refactor.
+
+====================================================================
+PRIMARY PAGE
+====================================================================
+
+Target the existing Research Package page:
+
+/research/:symbol
+
+Refine primarily:
+
+- Overview tab
+- reusable research presentation components
+- shared UI helpers directly used by the Research Package
+
+Preserve all existing tabs:
+
+- Overview
+- Decision
+- Trade Planning
+- Technical
+- Congress
+- News
+- Institutional
+- Catalysts
+- AI Summary
+
+Do not remove or rename those tabs unless a minor accessibility label adjustment is necessary.
+
+====================================================================
+1. RESEARCH HEADER
+====================================================================
+
+Preserve the existing header information:
+
+- ticker
+- company, when available
+- strategy
+- lifecycle status
+- current rank
+- freshness
+- market regime
+- data source
+- scan timestamp
+- qualification status
+
+Improve hierarchy:
+
+- ticker remains the largest element
+- rank remains visible but secondary
+- strategy and lifecycle badges remain compact
+- data-source and scan details remain factual and lower emphasis
+- avoid crowded badge rows
+- preserve responsive behavior
+
+Correct misleading data-source copy where possible using existing values only.
+
+For example, when the snapshot was produced through MCP using stored Twelve Data history, prefer factual wording such as:
+
+- Stored market history via MCP
+- Twelve Data history via MCP
+
+Do not claim real-time or broker data unless the existing response explicitly says so.
+
+====================================================================
+2. RESEARCH THESIS CARD
+====================================================================
+
+Refine the existing ResearchDecisionCard or equivalent Overview thesis component.
+
+The thesis must be concise, specific and deterministic.
+
+Maximum:
+
+- one concise title line
+- one short paragraph of approximately 2–4 sentences
+- one small compliance line
+
+The summary should use only existing fields such as:
+
+- symbol
+- strategy
+- qualification status
+- rank
+- market regime
+- lifecycle state
+- confidence label
+- whySelected
+- warnings
+- setup status
+
+Preferred structure:
+
+Research Thesis
+
+“PLTR qualified because the deterministic scanner identified a fresh
+Volume Surge setup. It currently ranks #2 among the latest qualified
+candidates and is being evaluated within a Strong Bull market regime.
+Four active warnings reduce the strength of the current research posture.”
+
+Do not use a generic essay.
+
+Do not invent catalysts, volume percentages, support levels or market facts.
+
+If relevant fields are missing, say:
+
+- “The available scanner output does not include a detailed qualification explanation.”
+- “Market-regime context is unavailable.”
+- “Confidence has not been resolved by the current deterministic output.”
+
+====================================================================
+3. RESEARCH POSTURE BADGE
+====================================================================
+
+Audit the current Bullish / Neutral / Bearish badge mapping.
+
+The badge must not contradict the actual candidate data.
+
+Use existing deterministic fields only.
+
+Recommended display vocabulary:
+
+- Bullish
+- Constructive
+- Neutral
+- Defensive
+- Bearish
+- Unrated
+
+Rules:
+
+- a bullish candidate should never display Bearish due only to warning count
+- warnings may reduce the posture from Bullish to Constructive or Unrated
+- warnings must not reverse the direction unless an existing deterministic field explicitly says the thesis is bearish
+- missing confidence or incomplete evidence should produce Unrated, not Bearish
+- RISK_OFF market context may produce Defensive only if the current deterministic mapping already supports that interpretation
+- do not add a new backend score
+
+Add narrowly scoped tests covering the contradictory case visible in production:
+
+- bullish qualified candidate
+- triggered bullish setup
+- multiple warnings
+- no explicit bearish thesis
+
+Expected badge:
+
+Constructive, Bullish or Unrated according to the existing deterministic fields—never Bearish without a bearish signal.
+
+====================================================================
+4. EVIDENCE SIGNALS
+====================================================================
+
+Preserve the current Evidence Signals card and dot-bar visual language.
+
+Add the existing deterministic numeric level beside each category when the underlying score exists.
+
+Display examples:
+
+Technical        72 / 100
+Market Regime    91 / 100
+Congress         60 / 100
+News             84 / 100
+Catalysts        65 / 100
+Institutional    N/A
+
+Requirements:
+
+- do not invent numbers from labels alone unless the current implementation already deterministically maps the same evidence level to a numeric score
+- if a score does not exist, show the existing label and “N/A”
+- do not present Congress activity as predictive
+- retain provider-specific freshness or update time where already available
+- preserve links to Full Evidence and Congress Disclosures
+- retain independent unavailable states
+- retain accessible text labels in addition to color
+
+Recommended label:
+
+Evidence Strength
+
+Avoid:
+
+- probability
+- expected performance
+- success likelihood
+
+====================================================================
+5. MARKET CONTEXT CARD
+====================================================================
+
+Add or refine a compact Market Context card directly below or beside the Research Thesis, using only data already loaded by the page.
+
+Possible fields:
+
+- Market Regime
+- Regime Strength
+- Candidate Alignment
+- Sector, if available
+- Industry, if available
+- Scanner Version
+- Data Source
+- Latest Trading Day
+- Scan Time
+
+Requirements:
+
+- no new API call
+- no duplicate market snapshot request
+- no made-up sector or industry
+- hide or mark unavailable fields honestly
+- do not repeat the entire page header
+- keep this compact and scannable
+
+Example:
+
+Market Context
+
+Regime              Strong Bull
+Candidate Alignment Aligned
+Sector              Not available
+Scanner             mcp-v1
+Market Data         Latest daily close
+Scanned             Aug 6, 4:34 PM ET
+
+====================================================================
+6. STOCK TRADE PARAMETERS
+====================================================================
+
+Preserve the current StockTradeCard fields:
+
+- Entry Zone
+- Stop Level
+- Objective
+- Risk / Reward
+- Max Risk Estimate
+- Position Size
+- Holding Period
+- Confidence or Structure Fit, depending on existing data
+
+Do not invent values.
+
+Replace bare “—” displays with informative resolution states.
+
+Approved fallback wording:
+
+- Not resolved
+- Not supplied by scanner
+- Pending broker verification
+- Requires risk budget
+- Requires entry and stop
+- Not applicable
+- Available in Trade Planning
+- Verify with broker
+
+Examples:
+
+Entry Zone
+Not resolved
+Scanner did not supply an entry level
+
+Position Size
+Requires risk budget
+Set account size and maximum risk
+
+Risk / Reward
+Not calculated
+Requires entry, stop and objective
+
+Requirements:
+
+- main value line must never look blank
+- secondary line explains why
+- maintain compact card height
+- do not imply a calculation is pending asynchronously when no calculation exists
+- do not label deterministic model levels as actual orders
+- preserve “Educational only” or equivalent label
+
+====================================================================
+7. OPTIONS RESEARCH SUMMARY
+====================================================================
+
+When an illustrative options structure exists from Sprint 2.2, make it easy to locate from the Overview without duplicating the full Trade Planning tab.
+
+Display a compact summary such as:
+
+Illustrative Options Structure
+
+Structure       Bull Call Spread
+Target Duration 45–60 DTE
+Long Leg Guide  Near ATM
+Short Leg Guide Near technical objective
+Live Contracts  Broker verification required
+
+Requirements:
+
+- no actual expiration date without an options chain
+- no actual strike presented as a verified listed contract
+- no premium
+- no bid/ask
+- no open interest
+- no Greeks
+- no probability of profit
+- no maximum gain derived from fabricated premium
+- link to Trade Planning for full educational structure detail
+
+If no options structure is appropriate, show:
+
+“No illustrative options structure was generated under the current planning rules.”
+
+====================================================================
+8. RISK SUMMARY
+====================================================================
+
+Preserve every existing warning exactly in substance.
+
+Reorganize presentation into deterministic categories.
+
+Suggested categories:
+
+Market and Event Risks
+
+- earnings
+- macro events
+- market regime
+- sector weakness
+
+Trade-Plan Risks
+
+- no stop supplied
+- no objective supplied
+- invalidation unresolved
+- unfavorable risk/reward
+- holding-period mismatch
+
+Sizing and Execution Risks
+
+- no account size
+- no risk budget
+- no broker connected
+- option liquidity unverified
+- live contract unverified
+
+Rules:
+
+- classify using deterministic keyword/rule mapping only
+- do not rewrite risk meaning
+- keep severity visible
+- show category counts
+- allow collapse/expand if the list is long
+- highest-severity items appear first
+- retain accessible warning icons and text
+- no warning may disappear because of grouping
+
+====================================================================
+9. CONGRESS SUMMARY
+====================================================================
+
+Make congressional evidence more visible without implying predictive power.
+
+Use the existing Congress evidence/provider response only.
+
+Possible display:
+
+Congressional Disclosures
+
+Recent disclosures      3
+Reported purchases      2
+Reported sales          1
+Latest disclosure       Aug 1
+Evidence assessment     Mixed
+
+Supporting text:
+
+“Publicly disclosed congressional transactions. Disclosure dates may lag transaction dates and do not indicate future performance.”
+
+Requirements:
+
+- do not name politicians unless returned by the existing data
+- do not invent counts
+- do not infer “Congress accumulation” from unavailable or mixed evidence
+- retain link to Congress details
+- retain source attribution where already available
+- show a clear unavailable state
+- distinguish transaction date from disclosure date when both exist
+
+If only a signal level is available, show the signal level and a link rather than fabricating summary statistics.
+
+====================================================================
+10. ACTIONS CARD
+====================================================================
+
+Refine hierarchy without changing behavior.
+
+Primary action:
+
+Broker connected:
+- Review with InstaTrade™
+
+Broker disconnected:
+- Connect Broker
+
+Secondary actions:
+
+- View Why
+- View Evidence
+- Congress Activity
+- Related Research
+- Save Research
+
+Requirements:
+
+- only one visually dominant primary CTA
+- preserve existing navigation and handlers
+- do not submit an order
+- do not preselect or resolve a live contract in this sprint
+- retain clear wording that InstaTrade™ begins an order-review workflow
+- for disconnected users, explain that broker connection provides live quotes, options-chain verification, account context and order review
+- keep secondary actions visually quieter
+- preserve keyboard focus states and ARIA labels
+
+Suggested connected copy:
+
+Review with InstaTrade™
+Prepare a broker-connected order for review. Nothing is submitted without confirmation.
+
+Suggested disconnected copy:
+
+Connect Broker
+Verify live contracts and prepare an InstaTrade™ order review.
+
+====================================================================
+11. OVERVIEW INFORMATION HIERARCHY
+====================================================================
+
+Recommended Overview order:
+
+1. Research Header
+2. Research Thesis
+3. Market Context
+4. Research Trade Card
+   - Stock Parameters
+   - Compact Options Summary, when available
+   - Evidence Strength
+5. Risk Summary
+6. Congressional Disclosure Summary
+7. Actions
+8. Existing Market Context and Scan History sections, if not already represented
+
+Avoid duplicating the same data in multiple cards.
+
+The Overview should summarize.
+
+The specialized tabs should provide detail:
+
+- Decision: why qualified and ranked
+- Trade Planning: complete structure comparison
+- Technical: technical evidence
+- Congress: disclosure detail
+- News: news evidence
+- Institutional: ownership/context
+- Catalysts: events and risks
+- AI Summary: concise generated synthesis
+
+====================================================================
+12. VISUAL DESIGN
+====================================================================
+
+Preserve the current dark institutional style.
+
+Refinements:
+
+- stronger typography hierarchy
+- larger primary metrics
+- consistent uppercase micro-labels
+- fewer decorative borders
+- consistent card headers
+- consistent badge sizing
+- reduce excessive empty space
+- align card heights where practical
+- preserve compact desktop density
+- responsive tablet layout
+- readable mobile stacking
+- no horizontal overflow
+- no text clipping for warnings
+- no layout shift while evidence providers load
+
+Use the existing design system and components.
+
+Do not copy another company’s exact UI.
+
+====================================================================
+13. LOADING, ERROR AND EMPTY STATES
+====================================================================
+
+Every refined card must support:
+
+- loading
+- error
+- unavailable
+- empty
+- stale data, where already represented
+- last updated, where available
+
+The Research Package page must not fail because one evidence provider is unavailable.
+
+Preserve independent provider failure isolation.
+
+Do not turn optional-provider failures into a page-level error.
+
+The top-level page error should remain reserved for failure to load the core Research Package.
+
+====================================================================
+14. COMPLIANCE AND PRODUCT LANGUAGE
+====================================================================
+
+Avoid platform-directed language such as:
+
+- Buy
+- Sell
+- Recommended Trade
+- Best trade for you
+- Expected profit
+- Expected return
+- Guaranteed
+- High probability winner
+- Target return
+- You should enter
+- You should exit
+
+Approved language:
+
+- Research Candidate
+- Research Thesis
+- Research Posture
+- Illustrative Structure
+- Structure Fit
+- Educational Trade Planning
+- Entry Framework
+- Invalidation Framework
+- Risk Characteristics
+- Broker Verification Required
+- Review with InstaTrade™
+- User confirmation required
+
+Preserve the existing informational disclaimer.
+
+Do not weaken or remove existing risk disclosures.
+
+====================================================================
+15. ACCESSIBILITY
+====================================================================
+
+Verify:
+
+- keyboard access to every tab and action
+- visible focus states
+- semantic headings
+- ARIA labels for icon-only buttons
+- evidence signals do not rely solely on color
+- warning severity has text labels
+- mobile screen-reader order follows visual hierarchy
+- collapse controls expose expanded/collapsed state
+
+====================================================================
+16. PERFORMANCE
+====================================================================
+
+No additional API calls.
+
+No additional polling.
+
+No new page-level query.
+
+Reuse the existing:
+
+- ResearchPackage query
+- Evidence data
+- MarketSnapshot data
+- broker status
+- lifecycle data
+- Trade Structure Engine output
+
+Memoize only where it materially reduces repeated derivation.
+
+Do not add premature caching.
+
+====================================================================
+17. TESTING
+====================================================================
+
+Add focused client tests for:
+
+Research thesis:
+- bullish candidate with multiple warnings does not become Bearish
+- explicit bearish candidate remains Bearish
+- missing confidence becomes Unrated
+- missing market regime is handled honestly
+- concise thesis includes strategy and rank when available
+
+Evidence:
+- numeric score shown when available
+- N/A shown when unavailable
+- labels remain visible without color
+- Congress disclaimer remains present
+
+Stock parameters:
+- resolved values display correctly
+- missing entry shows explanatory state
+- missing stop shows explanatory state
+- missing risk budget shows Requires risk budget
+- no bare blank metric values
+
+Options summary:
+- DTE range shown
+- strike framework shown
+- broker-verification disclaimer shown
+- no fabricated expiration, premium, Greeks or liquidity
+- withheld-structure state renders correctly
+
+Risk grouping:
+- warnings are grouped without loss
+- high severity sorted first
+- category counts are accurate
+- long lists can collapse without hiding critical count
+
+Actions:
+- connected user sees Review with InstaTrade™
+- disconnected user sees Connect Broker
+- no execution method is called
+- secondary actions preserve existing navigation
+
+Page behavior:
+- provider failure does not break Overview
+- loading state has no major layout shift
+- mobile stacking
+- keyboard navigation and focus
+- no regressions to other tabs
+
+Run all existing client tests.
+
+Run all existing server tests even though server code should remain untouched.
+
+Run repository typecheck and build commands.
+
+====================================================================
+18. UAT CHECKLIST
+====================================================================
+
+Provide a production UAT checklist covering:
+
+A. Qualified bullish candidate
+- posture is not incorrectly Bearish
+- thesis is concise and specific
+- rank, strategy and regime are correct
+
+B. Missing trade parameters
+- every field explains why it is unavailable
+- no fabricated values appear
+
+C. Options structure
+- DTE and strike guidance are illustrative
+- no live-contract implication
+- disconnected CTA is correct
+
+D. Evidence
+- Technical, Regime, Congress, News, Catalysts and Institutional states render
+- unavailable providers do not break the page
+
+E. Risk summary
+- warnings grouped correctly
+- no warning lost
+
+F. Congress
+- disclosure data factual
+- disclaimer visible
+- no predictive claim
+
+G. Broker states
+- disconnected: Connect Broker
+- connected: Review with InstaTrade™
+- no submission occurs
+
+H. Responsive behavior
+- desktop
+- tablet
+- mobile
+- keyboard navigation
+
+====================================================================
+19. COMPLETION REPORT
+====================================================================
+
+Return a detailed completion report with:
+
+1. Files changed
+2. Components changed
+3. New components, if any
+4. Existing APIs reused
+5. Research-posture mapping before and after
+6. Thesis generation rules
+7. Missing-value presentation rules
+8. Evidence score presentation
+9. Risk grouping rules
+10. Congress presentation
+11. CTA behavior
+12. Accessibility improvements
+13. Tests added
+14. Total passing tests
+15. Typecheck result
+16. Build result
+17. Known issues
+18. Production UAT steps
+19. Final GO / CONDITIONAL_GO / NO_GO verdict
+
+Do not commit, push or deploy automatically.
+
+Wait for review.

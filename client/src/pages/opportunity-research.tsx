@@ -72,7 +72,12 @@ import {
 
 export type { EvidenceStars } from "@/components/research/types";
 
-import { ResearchTradeCard } from "@/components/research";
+import {
+  ResearchTradeCard,
+  CompactMarketContext,
+  CompactOptionsOverview,
+  CongressSummaryCard,
+} from "@/components/research";
 import { ResearchDecisionCard, ResearchDecisionEngine } from "@/components/research/decision";
 import { TradeStructureEngine } from "@/components/research/structure";
 
@@ -2303,20 +2308,28 @@ export default function OpportunityResearchPage() {
           {/* ─── Overview ─── */}
           <TabsContent value="overview" data-testid="tab-content-overview">
             <div className="space-y-4 mt-3">
-              {/* Thesis summary — answers "should I research this?" immediately */}
+              {/* 1. Research Thesis — posture, explanation, warnings */}
               <ResearchDecisionCard pkg={pkg} stars={stars} />
-              {/* Professional institutional research workspace */}
+
+              {/* 2. Market Context — regime, alignment, data source, scan time */}
+              <CompactMarketContext pkg={pkg} snapshot={snapshot} />
+
+              {/* 3. Research Trade Card — stock params + evidence + options + risk + actions */}
               <ResearchTradeCard
                 pkg={pkg}
                 stars={stars}
                 snapshot={snapshot}
                 onNavigateTab={handleTabChange}
               />
-              {/* Market context + scan history remain below the trade card */}
-              <MarketContextSection
-                snapshot={snapshot}
-                isLoading={dashboardQuery.isLoading}
+
+              {/* 4. Congressional Disclosure Summary */}
+              <CongressSummaryCard
+                stars={stars}
+                symbol={pkg.symbol}
+                onNavigateCongress={() => handleTabChange("congress")}
               />
+
+              {/* 5. Scan history */}
               <ScanHistorySection history={pkg.scanHistory} symbol={pkg.symbol} />
             </div>
           </TabsContent>

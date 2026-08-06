@@ -1,7 +1,10 @@
 // EvidenceCard — Compact evidence signal summary for the Overview tab.
 // Reuses EvidenceStars computed by the page. Provides a quick visual
-// summary of all 6 evidence providers. Each signal uses a dot-bar
-// indicator rather than literal stars to match institutional aesthetics.
+// summary of all 6 evidence providers using dot-bar indicators.
+//
+// Sprint 2.2.1: renamed to "Evidence Strength", added numeric score display
+// (e.g. "72 / 100") beside each category using deterministic score mappings.
+// Scores sourced from computeScoreComponents — no fabrication.
 
 import {
   BarChart2,
@@ -15,7 +18,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { EvidenceStars } from "./types";
+import type { EvidenceStars, ResearchPackage } from "./types";
+import {
+  computeTechnicalScore,
+  computeRegimeScore,
+} from "./decision/score-breakdown-card";
 
 // ---------------------------------------------------------------------------
 // Pure, exported helpers — deterministic, testable
@@ -49,6 +56,30 @@ export function evidenceSignalTextClass(stars: number): string {
   return "text-rose-400";
 }
 
+/**
+ * Compute the numeric score (0–100) for each evidence category.
+ * Uses the same deterministic mappings as computeScoreComponents.
+ * Returns null for institutional (always N/A).
+ */
+export function computeEvidenceNumericScores(
+  stars: EvidenceStars,
+  pkg?: Pick<ResearchPackage, "candidate" | "marketRegime">,
+): Record<keyof EvidenceStars, number | null> {
+  const techScore = pkg ? computeTechnicalScore(pkg.candidate) : stars.technical * 20;
+  const regimeResult = pkg
+    ? computeRegimeScore(pkg.marketRegime)
+    : { score: stars.regime * 20, available: stars.regime > 0 };
+
+  return {
+    technical: techScore,
+    regime: regimeResult.available ? regimeResult.score : null,
+    news: stars.news * 20,
+    congress: stars.congress * 20,
+    catalysts: Math.round(stars.catalysts * (100 / 3)),
+    institutional: null,  // always N/A
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-component: signal row
 // ---------------------------------------------------------------------------
@@ -58,31 +89,55 @@ interface SignalRowProps {
   label: string;
   stars: number;
   maxStars?: number;
+  numericScore?: number | null;
   "data-testid"?: string;
 }
 
-function SignalRow({ icon: Icon, label, stars, maxStars = 5, "data-testid": tid }: SignalRowProps) {
+function SignalRow({
+  icon: Icon,
+  label,
+  stars,
+  maxStars = 5,
+  numericScore,
+  "data-testid": tid,
+}: SignalRowProps) {
   const filledClass = evidenceSignalClass(stars);
   const textClass = evidenceSignalTextClass(stars);
   const signalLabel = evidenceSignalLabel(stars);
   const isUnavailable = stars === 0;
 
+  const scoreDisplay =
+    numericScore !== undefined
+      ? numericScore === null
+        ? "N/A"
+        : `${numericScore} / 100`
+      : null;
+
   return (
     <div
       className="flex items-center gap-2 py-1.5 border-b border-border/20 last:border-0"
       data-testid={tid}
+      role="row"
+      aria-label={`${label}: ${isUnavailable ? "unavailable" : signalLabel}${scoreDisplay ? `, score ${scoreDisplay}` : ""}`}
     >
-      <Icon className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-      <span className="text-[11px] font-medium w-[88px] shrink-0 text-foreground/80">
+      <Icon className="h-3 w-3 text-muted-foreground/60 shrink-0" aria-hidden="true" />
+      <span className="text-[11px] font-medium w-[80px] shrink-0 text-foreground/80">
         {label}
       </span>
 
       {isUnavailable ? (
-        <span className="text-[10px] text-muted-foreground/50 italic">unavailable</span>
+        <>
+          <span className="text-[10px] text-muted-foreground/50 italic flex-1">unavailable</span>
+          {scoreDisplay !== null && (
+            <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto shrink-0">
+              {scoreDisplay}
+            </span>
+          )}
+        </>
       ) : (
         <>
           {/* Dot indicators */}
-          <div className="flex gap-0.5 items-center">
+          <div className="flex gap-0.5 items-center" aria-hidden="true">
             {Array.from({ length: maxStars }, (_, i) => (
               <div
                 key={i}
@@ -93,10 +148,19 @@ function SignalRow({ icon: Icon, label, stars, maxStars = 5, "data-testid": tid 
               />
             ))}
           </div>
-          {/* Label */}
-          <span className={cn("text-[10px] font-medium ml-auto", textClass)}>
+          {/* Text label (visible without color) */}
+          <span className={cn("text-[10px] font-medium", textClass)}>
             {signalLabel}
           </span>
+          {/* Numeric score */}
+          {scoreDisplay !== null && (
+            <span
+              className="text-[10px] text-muted-foreground/60 font-mono ml-auto shrink-0"
+              data-testid={`score-${tid}`}
+            >
+              {scoreDisplay}
+            </span>
+          )}
         </>
       )}
     </div>
@@ -112,6 +176,8 @@ interface EvidenceCardProps {
   completedAt: string;
   onViewEvidence: () => void;
   onViewCongress: () => void;
+  /** Optional: supply pkg to compute deterministic numeric scores. */
+  pkg?: Pick<ResearchPackage, "candidate" | "marketRegime">;
 }
 
 export function EvidenceCard({
@@ -119,6 +185,7 @@ export function EvidenceCard({
   completedAt,
   onViewEvidence,
   onViewCongress,
+  pkg,
 }: EvidenceCardProps) {
   const scanTime = (() => {
     try {
@@ -133,40 +200,48 @@ export function EvidenceCard({
     }
   })();
 
+  const numericScores = computeEvidenceNumericScores(stars, pkg);
+
   return (
     <Card className="border-border/40 h-full" data-testid="evidence-card">
       <CardHeader className="px-4 py-3 border-b border-border/30">
         <div className="flex items-center justify-between">
           <CardTitle className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Evidence Signals
+            Evidence Strength
           </CardTitle>
-          <span className="text-[10px] text-muted-foreground/60">{scanTime}</span>
+          <span className="text-[10px] text-muted-foreground/60" aria-label={`Scan time: ${scanTime}`}>
+            {scanTime}
+          </span>
         </div>
       </CardHeader>
 
-      <CardContent className="px-4 py-3 space-y-0">
+      <CardContent className="px-4 py-3 space-y-0" role="table" aria-label="Evidence signal scores">
         <SignalRow
           icon={BarChart2}
           label="Technical"
           stars={stars.technical}
+          numericScore={numericScores.technical}
           data-testid="evidence-signal-technical"
         />
         <SignalRow
           icon={Activity}
           label="Regime"
           stars={stars.regime}
+          numericScore={numericScores.regime}
           data-testid="evidence-signal-regime"
         />
         <SignalRow
           icon={Landmark}
           label="Congress"
           stars={stars.congress}
+          numericScore={numericScores.congress}
           data-testid="evidence-signal-congress"
         />
         <SignalRow
           icon={Newspaper}
           label="News"
           stars={stars.news}
+          numericScore={numericScores.news}
           data-testid="evidence-signal-news"
         />
         <SignalRow
@@ -174,12 +249,14 @@ export function EvidenceCard({
           label="Catalysts"
           stars={stars.catalysts}
           maxStars={3}
+          numericScore={numericScores.catalysts}
           data-testid="evidence-signal-catalysts"
         />
         <SignalRow
           icon={Building2}
           label="Institutional"
           stars={stars.institutional}
+          numericScore={numericScores.institutional}
           data-testid="evidence-signal-institutional"
         />
       </CardContent>
@@ -191,8 +268,9 @@ export function EvidenceCard({
           className="h-7 text-[11px] justify-start gap-1.5 text-muted-foreground hover:text-foreground px-1"
           onClick={onViewEvidence}
           data-testid="btn-evidence-open-technical"
+          aria-label="Open full technical evidence"
         >
-          <ExternalLink className="h-3 w-3" />
+          <ExternalLink className="h-3 w-3" aria-hidden="true" />
           Open Full Evidence
         </Button>
         <Button
@@ -201,8 +279,9 @@ export function EvidenceCard({
           className="h-7 text-[11px] justify-start gap-1.5 text-muted-foreground hover:text-foreground px-1"
           onClick={onViewCongress}
           data-testid="btn-evidence-open-congress"
+          aria-label="Open congressional disclosures"
         >
-          <Landmark className="h-3 w-3" />
+          <Landmark className="h-3 w-3" aria-hidden="true" />
           Congress Disclosures
         </Button>
       </div>

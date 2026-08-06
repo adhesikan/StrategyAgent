@@ -54,3 +54,22 @@ export {
 } from "./workspace-assistant";
 
 export type { AssistantAskPayload, AssistantResponse } from "./workspace-assistant";
+
+// Sprint 2.2.4 — simplified workspace components and helpers
+export {
+  selectTopRisks,
+  buildHeroData,
+  buildCompactPlanData,
+  formatWhatChanged,
+  WorkspaceHeroCard,
+  WorkspaceTradePlanCard,
+  WorkspacePrimaryActions,
+  WorkspaceRiskCompact,
+  WorkspaceEvidenceCompact,
+  WorkspaceMarketContextCompact,
+  WorkspaceWhatChangedCompact,
+  WorkspaceAdvancedAccordion,
+  WorkspaceFooterCta,
+} from "./workspace-simplified";
+
+export type { HeroData, CompactPlanData } from "./workspace-simplified";

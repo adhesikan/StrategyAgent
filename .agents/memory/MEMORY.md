@@ -32,3 +32,4 @@
 - [Live Contract Resolver](live-contract-resolver.md) — Sprint 2.2.2: broker options chain → verified contract candidates; pure computation + injectable deps; 79 server + 25 client tests; GET/POST /api/options/*.
 - [AI Trading Workspace](ai-trading-workspace.md) — Sprint 2.2.3: Overview tab → Workspace; 12 sections; buildAssistantPrompts tier/slot contract; ask.ts schema extended; selectedContractId wired in Task #87.
 - [Workspace scroll regression fix](workspace-scroll-fix.md) — Scroll and nav bugs: activeBtnRef.scrollIntoView scrolled page; findActiveSectionId must return LAST visible (not first); scroll-margin-top:52px via [id^="ws-"] CSS; scroll-lock only on mobile.
+- [Workspace UX simplification](workspace-ux-simplification.md) — Sprint 2.2.4: Understand→Plan→Verify→Execute layout; WorkspaceNav removed; 9 new components + 4 pure helpers in workspace-simplified.tsx; ScanHistorySection passed as ReactNode prop.

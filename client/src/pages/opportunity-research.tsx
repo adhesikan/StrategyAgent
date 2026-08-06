@@ -86,18 +86,22 @@ import { deriveThesis } from "@/components/research/decision";
 // Sprint 2.2.3 — AI Trading Workspace components
 // ---------------------------------------------------------------------------
 import {
-  WorkspaceNav,
-  WorkspaceLifecycleSection,
-  WorkspaceDecisionSummary,
-  WorkspaceEvidenceSummary,
-  WorkspaceStockPlanSummary,
-  WorkspaceOptionsPlanSummary,
-  WorkspaceRiskSummary,
-  WorkspaceCongressNewsCatalystSummary,
-  WorkspaceInstaTradePrepPanel,
+  buildRiskGroups,
   WorkspaceAssistantDrawer,
-  WorkspaceAssistantInlineSection,
 } from "@/components/research/workspace";
+
+// Sprint 2.2.4 — simplified workspace components
+import {
+  WorkspaceHeroCard,
+  WorkspaceTradePlanCard,
+  WorkspacePrimaryActions,
+  WorkspaceRiskCompact,
+  WorkspaceEvidenceCompact,
+  WorkspaceMarketContextCompact,
+  WorkspaceWhatChangedCompact,
+  WorkspaceAdvancedAccordion,
+  WorkspaceFooterCta,
+} from "@/components/research/workspace/workspace-simplified";
 
 // ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
@@ -2300,10 +2304,11 @@ export default function OpportunityResearchPage() {
   const newsData = newsQuery.data ?? null;
   const stars = computeEvidenceStars(pkg, newsData, snapshot);
 
-  // Sprint 2.2.3 — Workspace precomputed values (pure, memoized by reference)
+  // Sprint 2.2.3 / 2.2.4 — Workspace precomputed values (pure, memoized by reference)
   const workspaceThesis = deriveThesis(pkg, stars);
   const workspaceOptionsStructures = deriveOptionsStructures(pkg, workspaceThesis);
   const primaryOptionsStructure = workspaceOptionsStructures[0] ?? null;
+  const workspaceRiskGroups = buildRiskGroups(pkg, snapshot ?? undefined);
 
   return (
     <div className="flex-1 overflow-auto" data-testid="opportunity-research-page">
@@ -2345,92 +2350,74 @@ export default function OpportunityResearchPage() {
             </TabsList>
           </div>
 
-          {/* ─── Workspace ─── */}
+          {/* ─── Workspace (Sprint 2.2.4 simplified layout) ─── */}
           <TabsContent value="overview" data-testid="tab-content-overview">
-            {/* Sticky section navigator */}
-            <WorkspaceNav />
+            {/* pb-20 on mobile creates clearance above the sticky footer CTA */}
+            <div className="space-y-5 mt-3 pb-20 lg:pb-4">
 
-            <div className="space-y-4 mt-3">
-
-              {/* §1 — Research Thesis + Market Context */}
-              <div id="ws-summary" className="space-y-3">
-                <ResearchDecisionCard pkg={pkg} stars={stars} />
-                <CompactMarketContext pkg={pkg} snapshot={snapshot} />
-              </div>
-
-              {/* §2 — What Changed */}
-              <WorkspaceLifecycleSection item={pkg.lifecycleItem} />
-
-              {/* §3 — Decision Summary (compact) */}
-              <WorkspaceDecisionSummary
+              {/* UNDERSTAND — Hero Decision Card */}
+              <WorkspaceHeroCard
                 pkg={pkg}
-                stars={stars}
+                thesis={workspaceThesis}
+                riskGroups={workspaceRiskGroups}
                 onNavigateTab={handleTabChange}
               />
 
-              {/* §4 — Evidence Summary */}
-              <WorkspaceEvidenceSummary
+              {/* PLAN — Compact two-column trade plan */}
+              <WorkspaceTradePlanCard
                 pkg={pkg}
-                stars={stars}
-                newsData={newsData as any}
-                onNavigateTab={handleTabChange}
-                completedAt={pkg.completedAt}
-              />
-
-              {/* §5 — Stock Trade Planning (compact) */}
-              <WorkspaceStockPlanSummary pkg={pkg} onNavigateTab={handleTabChange} />
-
-              {/* §6 — Illustrative Options Planning (compact, no fabricated contract data) */}
-              <WorkspaceOptionsPlanSummary
-                optionsStructure={primaryOptionsStructure}
+                primaryOptionsStructure={primaryOptionsStructure}
                 onNavigateTab={handleTabChange}
               />
 
-              {/* §7 — Live Contract Verification */}
-              <div id="ws-live-contracts">
-                <LiveContractResolver
-                  pkg={pkg}
-                  structures={workspaceOptionsStructures}
-                  snapshot={snapshot}
-                />
-              </div>
-
-              {/* §8 — Risk & Invalidation */}
-              <WorkspaceRiskSummary
+              {/* EXECUTE — Single primary action area */}
+              <WorkspacePrimaryActions
                 pkg={pkg}
-                snapshot={snapshot}
-                onNavigateTab={handleTabChange}
-              />
-
-              {/* §9 — Congress / News / Catalysts summaries */}
-              <WorkspaceCongressNewsCatalystSummary
-                pkg={pkg}
-                newsData={newsData as any}
-                snapshot={snapshot}
-                onNavigateTab={handleTabChange}
-              />
-
-              {/* §10 — Contextual AI Research Assistant inline section */}
-              <WorkspaceAssistantInlineSection
-                pkg={pkg}
-                stars={stars}
-                selectedContractId={selectedContractId}
-                hasNewsData={newsData !== null}
-                onOpen={() => setAssistantOpen(true)}
-              />
-
-              {/* §11 — InstaTrade™ Preparation */}
-              <WorkspaceInstaTradePrepPanel
-                pkg={pkg}
-                hasSelectedContract={!!selectedContractId}
+                onOpenAssistant={() => setAssistantOpen(true)}
                 onConnectBroker={() => navigate("/settings")}
                 onNavigateTab={handleTabChange}
               />
 
-              {/* §12 — Scan History */}
-              <div id="ws-scan-history">
-                <ScanHistorySection history={pkg.scanHistory} symbol={pkg.symbol} />
-              </div>
+              {/* VERIFY — Risk compact (max 3 warnings) */}
+              <WorkspaceRiskCompact groups={workspaceRiskGroups} />
+
+              {/* VERIFY — Evidence compact (4 score bars, expandable) */}
+              <WorkspaceEvidenceCompact
+                pkg={pkg}
+                stars={stars}
+                newsData={newsData as any}
+                onNavigateTab={handleTabChange}
+              />
+
+              {/* VERIFY — Market context (4 rows) */}
+              <WorkspaceMarketContextCompact
+                pkg={pkg}
+                completedAt={pkg.completedAt}
+              />
+
+              {/* VERIFY — What changed (one sentence lifecycle) */}
+              <WorkspaceWhatChangedCompact
+                item={pkg.lifecycleItem}
+                onViewHistory={() =>
+                  document
+                    .getElementById("accordion-content-scan-history")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              />
+
+              {/* ADVANCED — Collapsible deep-dive sections (accordion) */}
+              <WorkspaceAdvancedAccordion
+                pkg={pkg}
+                stars={stars}
+                newsData={newsData as any}
+                snapshot={snapshot}
+                workspaceOptionsStructures={workspaceOptionsStructures}
+                selectedContractId={selectedContractId}
+                onNavigateTab={handleTabChange}
+                scanHistoryContent={
+                  <ScanHistorySection history={pkg.scanHistory} symbol={pkg.symbol} />
+                }
+              />
 
             </div>
           </TabsContent>
@@ -2523,6 +2510,15 @@ export default function OpportunityResearchPage() {
           selectedContractId={selectedContractId}
           hasNewsData={newsData !== null}
           onClose={() => setAssistantOpen(false)}
+        />
+
+        {/* Sprint 2.2.4 — Mobile-only sticky CTA. Hidden on desktop (lg:hidden inside component).
+             Hidden while the assistant drawer is open (it has its own bottom sheet CTA area). */}
+        <WorkspaceFooterCta
+          pkg={pkg}
+          hidden={assistantOpen}
+          onConnectBroker={() => navigate("/settings")}
+          onNavigateTab={handleTabChange}
         />
 
         {/* Compliance Footer — always visible */}

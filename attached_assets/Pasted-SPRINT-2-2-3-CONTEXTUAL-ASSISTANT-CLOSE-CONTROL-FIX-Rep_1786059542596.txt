@@ -1,0 +1,233 @@
+SPRINT 2.2.3 — CONTEXTUAL ASSISTANT CLOSE-CONTROL FIX
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION DEFECT
+
+The Contextual AI Research Assistant drawer opens correctly on the AI Trading Workspace,
+but there is no visible X/close button in the drawer header.
+
+The production screenshot shows:
+
+- assistant drawer open on the right side
+- suggested research questions visible
+- input visible at the bottom
+- blue help icon visible near the top
+- no visible close control
+
+This is a focused UI/accessibility regression fix only.
+
+Do not add features.
+Do not redesign the assistant.
+Do not modify /api/ask.
+Do not modify OpenAI integration.
+Do not modify broker logic, Workspace sections, navigation, database, MCP, or business logic.
+
+====================================================================
+1. AUDIT THE DRAWER HEADER
+====================================================================
+
+Inspect:
+
+- WorkspaceAssistantDrawer
+- WorkspaceAssistantPanel
+- existing Sheet/Dialog/Drawer primitives
+- header layout
+- close-button placement
+- z-index
+- color/contrast
+- overflow clipping
+- responsive variants
+- icon-only button styling
+
+Determine whether the close control:
+
+- was never rendered;
+- is rendered but clipped;
+- is hidden behind another element;
+- has transparent or low-contrast styling;
+- is positioned outside the visible viewport;
+- is only rendered on mobile or desktop;
+- depends on the underlying Sheet primitive's default close button, which may be disabled.
+
+Report the exact root cause.
+
+====================================================================
+2. ADD A PERMANENT VISIBLE CLOSE BUTTON
+====================================================================
+
+Add an explicit close button in the assistant header.
+
+Desktop placement:
+
+- top-right corner of the drawer
+- inside the visible panel
+- always present while the drawer is open
+
+Mobile placement:
+
+- top-right of the bottom-sheet header
+- large enough for touch
+
+Recommended structure:
+
+<header className="...">
+  <div>
+    <h2>Ask VCP AI</h2>
+    <p>Contextual research assistant for {symbol}</p>
+  </div>
+
+  <button
+    type="button"
+    aria-label="Close contextual research assistant"
+    onClick={onClose}
+  >
+    <X />
+  </button>
+</header>
+
+Requirements:
+
+- use the existing icon library;
+- minimum touch target approximately 40×40 px;
+- visible hover state;
+- visible focus ring;
+- sufficient contrast in dark mode;
+- no reliance on color alone;
+- button must remain visible while the assistant content scrolls;
+- header may be sticky inside the drawer if needed.
+
+====================================================================
+3. PRESERVE OTHER CLOSE METHODS
+====================================================================
+
+Verify and preserve:
+
+- Escape closes the drawer;
+- clicking the backdrop closes the drawer where appropriate;
+- opening button toggles correctly;
+- focus returns to the button that opened the drawer;
+- body scroll is restored after close;
+- route change closes or safely unmounts the drawer;
+- no invisible overlay remains after close.
+
+Do not make backdrop click close the drawer if the existing accessible modal primitive intentionally disables it, but document the behavior.
+
+====================================================================
+4. HEADER LAYOUT
+====================================================================
+
+The assistant header should clearly display:
+
+Ask VCP AI
+
+Research questions for COST
+
+[Close X]
+
+Do not use the blue help icon as the close control.
+
+The blue help icon may remain as informational branding only if it is useful, but it must not compete visually with the close button.
+
+Keep the close button visually distinct and familiar.
+
+====================================================================
+5. SCROLLING
+====================================================================
+
+Ensure:
+
+- the close button remains visible when the question list or conversation scrolls;
+- only the assistant body scrolls, not the header;
+- the input composer remains reachable;
+- the close button does not overlap scrollbar, text, or help icon;
+- closing restores Workspace page scrolling.
+
+====================================================================
+6. ACCESSIBILITY
+====================================================================
+
+Add or verify:
+
+- aria-label="Close contextual research assistant"
+- title="Close"
+- visible keyboard focus
+- Enter and Space activate the control
+- Escape closes
+- focus trap remains inside drawer while open
+- focus returns to opener after close
+- screen-reader dialog title remains associated
+- no duplicate close controls with identical inaccessible labels unless both are necessary
+
+====================================================================
+7. RESPONSIVE TESTING
+====================================================================
+
+Verify:
+
+Desktop:
+- drawer open
+- X visible at top-right
+- X remains visible while scrolling conversation
+- click closes
+- Workspace scroll restored
+
+Tablet:
+- close button visible
+- no overlap with title/help icon
+
+Mobile:
+- bottom sheet close button visible
+- touch target large enough
+- safe-area inset respected
+- no clipping near device notch
+- Escape/back behavior remains correct where supported
+
+====================================================================
+8. TESTS
+====================================================================
+
+Add focused tests:
+
+- drawer closed: close button absent
+- drawer open: close button visible
+- close button has correct aria-label
+- clicking close invokes onClose
+- Escape invokes onClose
+- focus returns to opener
+- close button remains in header when assistant body content is long
+- desktop rendering
+- mobile rendering
+- body scroll restored after close
+- no overlay remains after close
+
+Run:
+
+- all client tests
+- all server tests
+- typecheck
+- production build
+
+====================================================================
+9. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact root cause
+2. Files changed
+3. Header structure before and after
+4. Close behaviors supported
+5. Accessibility behavior
+6. Responsive behavior
+7. Tests added
+8. Total passing tests
+9. Typecheck
+10. Build
+11. Production UAT steps
+12. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push or deploy automatically.
+
+Wait for review.

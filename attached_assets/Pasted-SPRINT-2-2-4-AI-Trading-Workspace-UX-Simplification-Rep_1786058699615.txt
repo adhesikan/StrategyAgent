@@ -1,0 +1,521 @@
+SPRINT 2.2.4 — AI Trading Workspace UX Simplification
+
+Repository:
+VCP Trader AI
+
+OBJECTIVE
+
+The current AI Trading Workspace contains excellent information but presents too much simultaneously.
+
+The goal of this sprint is NOT to remove functionality.
+
+The goal is to redesign the information hierarchy so traders naturally move through:
+
+Understand
+↓
+
+Plan
+
+↓
+
+Verify
+
+↓
+
+Execute (InstaTrade™)
+
+The experience should feel like an institutional trading workstation with AI acting as the analyst—not a long research report.
+
+NO server changes.
+
+NO database changes.
+
+NO API changes.
+
+NO MCP changes.
+
+NO scanner changes.
+
+NO business logic changes.
+
+NO deterministic scoring changes.
+
+NO option calculations changed.
+
+UI / UX ONLY.
+
+--------------------------------------------------
+PRIMARY DESIGN PRINCIPLES
+--------------------------------------------------
+
+Reduce cognitive load.
+
+Show only what matters first.
+
+Everything else should progressively disclose.
+
+One primary CTA per screen.
+
+Professional institutional look.
+
+Fast scanning.
+
+Less scrolling.
+
+Cleaner typography.
+
+Better whitespace.
+
+--------------------------------------------------
+NEW PAGE STRUCTURE
+--------------------------------------------------
+
+HEADER
+---------------------------------
+
+Ticker
+Strategy
+Rank
+Status
+Market Regime
+
+Opportunity Qualified badge
+
+Freshness
+
+Scanner Version
+
+--------------------------------------------------
+
+HERO DECISION CARD
+--------------------------------------------------
+
+This becomes the most important card.
+
+Large.
+
+Immediately visible.
+
+Contains only:
+
+Research Thesis
+
+Why it qualified (3 bullets maximum)
+
+Research posture
+
+Highest risk
+
+Market regime
+
+Confidence (if available)
+
+Button:
+
+View Full Decision →
+
+Nothing else.
+
+--------------------------------------------------
+
+TRADE PLAN CARD
+--------------------------------------------------
+
+Immediately below Hero.
+
+Two-column layout.
+
+LEFT
+
+Stock Plan
+
+Entry Zone
+
+Stop
+
+Target
+
+Risk/Reward
+
+Holding Period
+
+RIGHT
+
+Options Plan
+
+Primary Structure
+
+Suggested DTE
+
+Strike Framework
+
+Live Contracts button
+
+Small educational disclaimer.
+
+No deep explanation.
+
+--------------------------------------------------
+
+PRIMARY ACTIONS
+--------------------------------------------------
+
+Single prominent action area.
+
+Buttons:
+
+Review with InstaTrade™
+
+Ask VCP AI
+
+Congress Activity
+
+Save Research
+
+If broker disconnected:
+
+Connect Broker
+
+No secondary grid of many equal buttons.
+
+One visually dominant CTA.
+
+--------------------------------------------------
+
+RISK SUMMARY
+--------------------------------------------------
+
+Only highest-priority warnings visible.
+
+Maximum:
+
+3 warnings
+
+If more exist:
+
+Show
+
+"+3 additional items"
+
+Expand button.
+
+Warnings grouped:
+
+Market
+
+Trade
+
+Execution
+
+--------------------------------------------------
+
+EVIDENCE SUMMARY
+--------------------------------------------------
+
+Collapse the current large evidence card.
+
+Initially show only:
+
+Technical
+
+Regime
+
+Congress
+
+News
+
+with compact score bars.
+
+Button:
+
+Expand Full Evidence
+
+--------------------------------------------------
+
+MARKET CONTEXT
+--------------------------------------------------
+
+Move below Evidence.
+
+Compact.
+
+Four rows only.
+
+Regime
+
+Alignment
+
+Data Source
+
+Scan Time
+
+--------------------------------------------------
+
+WHAT CHANGED
+--------------------------------------------------
+
+Compact card.
+
+One sentence.
+
+Example:
+
+Held Rank #1
+
+Score unchanged
+
+Still Qualified
+
+Button:
+
+View Scan History
+
+--------------------------------------------------
+
+COLLAPSIBLE ADVANCED SECTIONS
+--------------------------------------------------
+
+Everything below should be collapsed initially.
+
+Decision
+
+Trade Planning Details
+
+Technical
+
+Congress
+
+News
+
+Institutional
+
+Catalysts
+
+AI Summary
+
+Scan History
+
+Accordion style.
+
+Only one expanded at a time.
+
+Smooth animation.
+
+--------------------------------------------------
+
+REMOVE VISUAL CLUTTER
+--------------------------------------------------
+
+Reduce nested cards.
+
+Reduce borders.
+
+Increase whitespace.
+
+Increase padding.
+
+Reduce duplicate titles.
+
+Avoid repeating:
+
+Qualified
+
+Strong Bull
+
+Rank
+
+Research
+
+Evidence
+
+if already shown above.
+
+--------------------------------------------------
+
+NAVIGATION
+--------------------------------------------------
+
+Keep only ONE navigation system.
+
+Top tabs remain:
+
+Workspace
+
+Decision
+
+Trade Planning
+
+Technical
+
+Congress
+
+News
+
+Institutional
+
+Catalysts
+
+AI Summary
+
+Remove the secondary horizontal navigation under Workspace.
+
+Instead:
+
+Use vertical scrolling.
+
+Each collapsible section has anchor support.
+
+Optional floating section navigator on desktop.
+
+--------------------------------------------------
+
+TYPOGRAPHY
+--------------------------------------------------
+
+Increase visual hierarchy.
+
+H1
+
+Ticker
+
+H2
+
+Card titles
+
+Muted labels
+
+Large values
+
+Reduce ALL CAPS usage.
+
+--------------------------------------------------
+
+SPACING
+--------------------------------------------------
+
+Increase spacing between major cards.
+
+Reduce spacing inside metric grids.
+
+Use more negative space.
+
+--------------------------------------------------
+
+MOBILE
+--------------------------------------------------
+
+Cards stack vertically.
+
+Sticky CTA at bottom:
+
+Review with InstaTrade™
+
+or
+
+Connect Broker
+
+Accordion sections.
+
+No horizontal scrolling.
+
+--------------------------------------------------
+
+ACCESSIBILITY
+--------------------------------------------------
+
+Maintain:
+
+ARIA
+
+Keyboard support
+
+Reduced motion
+
+Focus rings
+
+Sticky navigation
+
+Screen-reader labels
+
+--------------------------------------------------
+
+DO NOT REMOVE
+--------------------------------------------------
+
+Any calculations
+
+Any deterministic scoring
+
+Any evidence
+
+Congress integration
+
+Live contract resolver
+
+Workspace Assistant
+
+InstaTrade™
+
+Everything must still exist.
+
+Only change presentation.
+
+--------------------------------------------------
+
+TESTS
+--------------------------------------------------
+
+Add UI regression tests covering:
+
+Hero card present
+
+Trade Plan present
+
+Only three warnings initially
+
+Accordion expansion
+
+Collapsed by default
+
+Primary CTA prominence
+
+Evidence expansion
+
+Mobile layout
+
+Keyboard navigation
+
+No horizontal overflow
+
+--------------------------------------------------
+
+DELIVERABLE
+--------------------------------------------------
+
+Return:
+
+1. Before vs After information architecture
+
+2. Components modified
+
+3. Components removed (if any)
+
+4. New layout diagram
+
+5. Accessibility impact
+
+6. Responsive impact
+
+7. Tests added
+
+8. Screenshots (development)
+
+9. Performance impact
+
+10. Production UAT checklist
+
+Do NOT commit.
+
+Do NOT push.
+
+Wait for review.

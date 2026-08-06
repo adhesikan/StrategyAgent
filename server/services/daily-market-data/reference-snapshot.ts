@@ -13,7 +13,7 @@
 // module returns null and never leaks data past the gate.
 
 import { canAccessTwelveDataBackedAnalysis } from "./access-control";
-import { loadStoredBars } from "./ingestion";
+import { getHistoricalBars } from "../market-history-service";
 import { ema, rsi, atr } from "./indicators";
 import { getRealtimeQuoteForUser, type RealTimeQuote } from "./realtime-quote";
 import type { NormalizedDailyBar } from "./types";
@@ -107,7 +107,10 @@ export async function getReferenceSnapshot(
   }
   let bars: NormalizedDailyBar[] = [];
   try {
-    bars = await loadStoredBars(symbol, opts.barLimit ?? 60);
+    const result = await getHistoricalBars({
+      symbol, outputSize: opts.barLimit ?? 60, purpose: "user", caller: "reference_snapshot",
+    });
+    bars = result.bars;
   } catch (err: any) {
     console.warn(`[ReferenceSnapshot] stored bars unavailable for ${symbol}:`, err?.message ?? err);
   }
@@ -147,7 +150,10 @@ export async function getReferenceSnapshotsBulk(
       while (queue.length > 0) {
         const symbol = queue.shift()!;
         try {
-          const bars = await loadStoredBars(symbol, limit);
+          const { bars } = await getHistoricalBars({
+            symbol, outputSize: limit, purpose: "scan", caller: "reference_snapshot_bulk",
+            allowExternalRefresh: false,
+          }).catch(() => ({ bars: [] as NormalizedDailyBar[] }));
           if (bars.length === 0) continue;
           const lastBar = bars[bars.length - 1];
           const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;

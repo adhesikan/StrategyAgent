@@ -6,8 +6,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { marketDataSymbols } from "@shared/schema";
-import { loadStoredBars } from "./ingestion";
 import { computeDailyIndicators, type DailyIndicatorSet } from "./indicators";
+import { getHistoricalBars } from "../market-history-service";
 
 export type DailyScanResult = {
   ticker: string;
@@ -119,7 +119,9 @@ export async function scanDailyBars(strategy: string, limit = 10): Promise<{ res
   let asOf: string | null = null;
 
   for (const sym of symbols) {
-    const bars = await loadStoredBars(sym.symbol, 320);
+    const { bars } = await getHistoricalBars({
+      symbol: sym.symbol, outputSize: 320, purpose: "scan", caller: "daily_scanner",
+    }).catch(() => ({ bars: [] as Awaited<ReturnType<typeof getHistoricalBars>>["bars"] }));
     if (bars.length < 50) continue;
     const ind = computeDailyIndicators(bars);
     if (!ind) continue;

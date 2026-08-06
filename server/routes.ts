@@ -308,28 +308,18 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.get("/api/market/regime", async (req, res) => {
     try {
-      const userId = req.session?.userId;
       let candles: CandleData[] = [];
-      
-      if (userId) {
-        const connection = await storage.getBrokerConnectionWithToken(userId);
-        if (connection?.accessToken && connection?.isConnected) {
-          try {
-            const history = await fetchHistoryFromBroker(connection, "SPY", "3M");
-            candles = history.map(c => ({
-              open: c.open,
-              high: c.high,
-              low: c.low,
-              close: c.close,
-              volume: c.volume,
-              time: c.time,
-            }));
-          } catch (e) {
-            console.error("Failed to fetch SPY for regime:", e);
-          }
-        }
+      try {
+        const { getHistoricalBars } = await import("./services/market-history-service");
+        const result = await getHistoricalBars({ symbol: "SPY", outputSize: 60, purpose: "user", caller: "market_regime" });
+        candles = result.bars.map(b => ({
+          open: b.open, high: b.high, low: b.low, close: b.close,
+          volume: b.volume, time: b.tradeDate,
+        }));
+      } catch (e) {
+        console.warn("[market/regime] SPY history unavailable:", e);
       }
-      
+
       if (candles.length < 30) {
         return res.json({
           regime: "CHOPPY",
@@ -339,7 +329,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
           description: "Insufficient market data for regime classification",
         });
       }
-      
+
       const regime = classifyMarketRegime(candles);
       res.json(regime);
     } catch (error) {
@@ -408,27 +398,17 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.get("/api/market/regime", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.session.userId!;
-      const connection = await storage.getBrokerConnectionWithToken(userId);
-      
-      // Try broker connection first
-      if (connection && connection.accessToken) {
-        const spyHistory = await fetchHistoryFromBroker(connection, "SPY", "3M");
-        const spyCandles: CandleData[] = spyHistory.map(c => ({
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume,
-          time: c.time,
-        }));
-        
-        const regime = classifyMarketRegime(spyCandles);
-        return res.json(regime);
+      const { getHistoricalBars } = await import("./services/market-history-service");
+      const result = await getHistoricalBars({ symbol: "SPY", outputSize: 60, purpose: "user", caller: "market_regime_auth" });
+      const spyCandles: CandleData[] = result.bars.map(b => ({
+        open: b.open, high: b.high, low: b.low, close: b.close,
+        volume: b.volume, time: b.tradeDate,
+      }));
+      if (spyCandles.length < 30) {
+        return res.json({ regime: "NEUTRAL", confidence: 0.5, trend: 0 });
       }
-      
-      // Return neutral regime if no data source available
-      return res.json({ regime: "NEUTRAL", confidence: 0.5, trend: 0 });
+      const regime = classifyMarketRegime(spyCandles);
+      return res.json(regime);
     } catch (error: any) {
       console.error("Market regime error:", error);
       res.status(500).json({ error: error.message || "Failed to get market regime" });
@@ -456,14 +436,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
         
         let marketRegime;
         try {
-          const spyHistory = await fetchHistoryFromBroker(connection, "SPY", "3M");
-          const spyCandles: CandleData[] = spyHistory.map(c => ({
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-            volume: c.volume,
-            time: c.time,
+          const { getHistoricalBars } = await import("./services/market-history-service");
+          const spyResult = await getHistoricalBars({ symbol: "SPY", outputSize: 60, purpose: "user", caller: "confluence_regime" });
+          const spyCandles: CandleData[] = spyResult.bars.map(b => ({
+            open: b.open, high: b.high, low: b.low, close: b.close,
+            volume: b.volume, time: b.tradeDate,
           }));
           marketRegime = classifyMarketRegime(spyCandles);
         } catch (e) {
@@ -727,10 +704,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             feature: "chart_daily_bars_fallback",
           });
           if (!decision.allowed) return null;
-          const { loadStoredBars } = await import("./services/daily-market-data/ingestion");
+          const { getHistoricalBars } = await import("./services/market-history-service");
           const barCounts: Record<string, number> = { "1M": 22, "3M": 66, "6M": 130, "1Y": 252, "2Y": 504, "5Y": 1260 };
           const limit = barCounts[timeframe] ?? 66;
-          const bars = await loadStoredBars(ticker.toUpperCase(), limit);
+          const chartResult = await getHistoricalBars({ symbol: ticker.toUpperCase(), outputSize: limit, purpose: "user", caller: "chart_daily_bars_fallback" })
+            .catch(() => ({ bars: [] as Awaited<ReturnType<Awaited<typeof import("./services/market-history-service")>["getHistoricalBars"]>>["bars"] }));
+          const bars = chartResult.bars;
           if (!bars.length) return null;
           const candles = bars.map((b) => ({
             time: b.tradeDate,
@@ -3309,9 +3288,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
             feature: "quote_daily_close_fallback",
           });
           if (!decision.allowed) return null;
-          const { loadStoredBars } = await import("./services/daily-market-data/ingestion");
-          // loadStoredBars returns bars in ascending date order.
-          const bars = await loadStoredBars(symbol, 2);
+          const { getHistoricalBars } = await import("./services/market-history-service");
+          const quoteResult = await getHistoricalBars({ symbol, outputSize: 2, purpose: "user", caller: "quote_daily_close_fallback" })
+            .catch(() => ({ bars: [] as Awaited<ReturnType<Awaited<typeof import("./services/market-history-service")>["getHistoricalBars"]>>["bars"] }));
+          const bars = quoteResult.bars;
           if (!bars.length) return null;
           const latest = bars[bars.length - 1];
           const prev = bars.length > 1 ? bars[bars.length - 2] : undefined;

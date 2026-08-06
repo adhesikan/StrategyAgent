@@ -19,7 +19,8 @@ import {
   TRIAL_SYMBOL_DENIAL_MESSAGE,
   type DailyAnalysisEntitlement,
 } from "../services/daily-market-data/trial-entitlement";
-import { evaluateDailyConditions, loadStoredBars } from "../services/daily-market-data/ingestion";
+import { evaluateDailyConditions } from "../services/daily-market-data/ingestion";
+import { getHistoricalBars } from "../services/market-history-service";
 import { computeDailyIndicators } from "../services/daily-market-data/indicators";
 
 const DISCLOSURE =
@@ -162,7 +163,8 @@ export function registerDailyAnalysisRoutes(
       .where(eq(dailyIndicators.symbol, symbol))
       .orderBy(desc(dailyIndicators.tradeDate))
       .limit(1);
-    const bars = await loadStoredBars(symbol, 5);
+    const { bars } = await getHistoricalBars({ symbol, outputSize: 5, purpose: "user", caller: "daily_analysis_symbol" })
+      .catch(() => ({ bars: [] as Awaited<ReturnType<typeof getHistoricalBars>>["bars"] }));
     const latestClose = bars.length ? bars[bars.length - 1].close : null;
     res.json({
       disclosure: DISCLOSURE,
@@ -184,7 +186,8 @@ export function registerDailyAnalysisRoutes(
   app.get("/api/daily-analysis/conditions/:symbol", isAuthenticated, gate, async (req: any, res) => {
     const symbol = await checkSymbol(req, res);
     if (!symbol) return;
-    const bars = await loadStoredBars(symbol, 320);
+    const { bars } = await getHistoricalBars({ symbol, outputSize: 320, purpose: "user", caller: "daily_analysis_conditions" })
+      .catch(() => ({ bars: [] as Awaited<ReturnType<typeof getHistoricalBars>>["bars"] }));
     if (bars.length < 30) return res.status(404).json({ error: "Insufficient stored history for this symbol." });
     const ind = computeDailyIndicators(bars);
     if (!ind) return res.status(404).json({ error: "Indicators unavailable." });
@@ -205,7 +208,8 @@ export function registerDailyAnalysisRoutes(
     const symbol = await checkSymbol(req, res);
     if (!symbol) return;
     const limit = Math.min(Math.max(parseInt(String(req.query.limit || "120"), 10) || 120, 1), 500);
-    const bars = await loadStoredBars(symbol, limit);
+    const { bars } = await getHistoricalBars({ symbol, outputSize: limit, purpose: "user", caller: "daily_analysis_history" })
+      .catch(() => ({ bars: [] as Awaited<ReturnType<typeof getHistoricalBars>>["bars"] }));
     res.json({
       disclosure: DISCLOSURE,
       attribution: attribution(),

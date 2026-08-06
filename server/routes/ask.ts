@@ -970,7 +970,7 @@ async function callOpenAi(
       try {
         const { resolveReferencePrice } = await import("../services/price-reference-resolver");
         const { checkPriceIntegrityFromResolved, safeIntegrityResult } = await import("../services/price-integrity-checker");
-        const { TwelveDataDailyProvider } = await import("../services/daily-market-data/twelve-data-client");
+        const { getHistoricalBars: _getHistoricalBarsForIntegrity } = await import("../services/market-history-service");
         type IntegrityResult = import("../services/price-integrity-checker").PriceIntegrityResult;
 
         const sym = multiStrategy.symbol;
@@ -985,8 +985,10 @@ async function callOpenAi(
 
         const start = Date.now();
         const resolved = await resolveReferencePrice(sym, quotePrice, {
-          fetchHistory: (s) =>
-            new TwelveDataDailyProvider().getDailyBars({ symbol: s, outputSize: 5, caller: "price_integrity_reference" }),
+          fetchHistory: async (s) => {
+            const r = await _getHistoricalBarsForIntegrity({ symbol: s, outputSize: 5, purpose: "user", caller: "price_integrity_reference" });
+            return r.bars;
+          },
         });
         const durationMs = Date.now() - start;
 

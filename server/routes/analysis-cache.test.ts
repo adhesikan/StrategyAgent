@@ -17,7 +17,7 @@ import {
   activeCacheEntryCount,
   _clearAllCacheEntries,
   type SafeAskResult,
-} from "../../services/analysis-result-cache";
+} from "../services/analysis-result-cache";
 
 // ---------------------------------------------------------------------------
 // Helpers

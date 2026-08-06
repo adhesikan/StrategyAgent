@@ -131,6 +131,8 @@ export interface RadarResult {
   liveQuoteCount: number;
   /** Symbols backed by REAL stored daily bars (delayed reference data) instead of live broker quotes. */
   referenceQuoteCount: number;
+  /** Symbols excluded from candidates because no stored bars exist and no broker quote was available. */
+  unavailableQuoteCount: number;
   quoteFetchError: string | null;
   notes: string[];
 }
@@ -147,6 +149,7 @@ interface UserContext {
   minRewardRisk: number;
   liveQuoteCount: number;
   referenceQuoteCount: number;
+  unavailableQuoteCount: number;
   requestedSymbolCount: number;
   quoteFetchError: string | null;
 }
@@ -200,12 +203,17 @@ function pickBiasForSymbol(sym: string, requested: Bias | "any" | undefined, str
   return h === 0 ? "bullish" : h === 1 ? "neutral" : "bearish";
 }
 
-async function buildMockQuote(sym: string): Promise<QuoteData> {
-  // Prefer the latest stored daily close from PostgreSQL so mock examples
-  // shown to trial users are anchored to real prior-day closes instead of
-  // a hash-based fake. No HTTP requests are made — stored bars only.
-  // Falls back to the deterministic hash if the symbol is not in the
-  // stored universe (e.g. not one of the 20 ingested symbols).
+/**
+ * Attempt to build a QuoteData from the latest stored PostgreSQL daily bars.
+ * Returns null when no stored bars exist for the symbol (symbol is not in the
+ * ingested universe). The caller must handle null by omitting the symbol from
+ * the candidate list — no synthetic/hash prices are ever substituted.
+ *
+ * Policy: deterministic hash fallback has been removed. Fabricated prices must
+ * never reach Opportunity Engine snapshots, ranked candidates, Ask AI, research
+ * saves, or any other production surface. Missing stored data = unavailable.
+ */
+async function buildStoredQuote(sym: string): Promise<QuoteData | null> {
   try {
     const result = await getHistoricalBars({
       symbol: sym,
@@ -214,50 +222,28 @@ async function buildMockQuote(sym: string): Promise<QuoteData> {
       allowExternalRefresh: false,
     });
     const bars = result.bars;
-    if (bars.length > 0) {
-      const latest = bars[bars.length - 1];
-      const prev = bars.length > 1 ? bars[bars.length - 2] : latest;
-      const last = Number(latest.close);
-      const prevClose = Number(prev.close);
-      const volume = Number(latest.volume) || 500_000;
-      return {
-        symbol: sym,
-        last: round2(last),
-        change: round2(last - prevClose),
-        changePercent: round2(prevClose > 0 ? ((last - prevClose) / prevClose) * 100 : 0),
-        volume,
-        avgVolume: Math.round(volume * 0.85),
-        high: round2(Number(latest.high)),
-        low: round2(Number(latest.low)),
-        open: round2(Number(latest.open)),
-        prevClose: round2(prevClose),
-      };
-    }
+    if (bars.length === 0) return null;
+    const latest = bars[bars.length - 1];
+    const prev = bars.length > 1 ? bars[bars.length - 2] : latest;
+    const last = Number(latest.close);
+    const prevClose = Number(prev.close);
+    const volume = Number(latest.volume) || 500_000;
+    return {
+      symbol: sym,
+      last: round2(last),
+      change: round2(last - prevClose),
+      changePercent: round2(prevClose > 0 ? ((last - prevClose) / prevClose) * 100 : 0),
+      volume,
+      avgVolume: Math.round(volume * 0.85),
+      high: round2(Number(latest.high)),
+      low: round2(Number(latest.low)),
+      open: round2(Number(latest.open)),
+      prevClose: round2(prevClose),
+    };
   } catch {
-    // Symbol not in stored universe — fall through to deterministic hash.
+    // Symbol not in stored universe or DB unavailable — report as unavailable.
+    return null;
   }
-
-  // Deterministic hash fallback for symbols not in the stored universe.
-  const h = symbolHash(sym);
-  const base = 25 + (h % 350);
-  const drift = ((h % 700) - 350) / 100; // -3.5% .. +3.5%
-  const last = base * (1 + drift / 100);
-  const high = last * 1.02;
-  const low = last * 0.97;
-  const prevClose = last / (1 + drift / 100);
-  const volume = 500_000 + (h % 9_500_000);
-  return {
-    symbol: sym,
-    last: round2(last),
-    change: round2(last - prevClose),
-    changePercent: round2(((last - prevClose) / prevClose) * 100),
-    volume,
-    avgVolume: Math.round(volume * 0.85),
-    high: round2(high),
-    low: round2(low),
-    open: round2(prevClose * 1.001),
-    prevClose: round2(prevClose),
-  };
 }
 
 function round2(n: number): number {
@@ -733,6 +719,7 @@ async function buildUserContext(userId: string, filters: RadarFilters): Promise<
     minRewardRisk: filters.minRewardRisk ?? 1.0,
     liveQuoteCount: 0,
     referenceQuoteCount: 0,
+    unavailableQuoteCount: 0,
     requestedSymbolCount: 0,
     quoteFetchError: null,
   };
@@ -786,6 +773,7 @@ async function enrichWithMarketData(symbols: string[], userId: string, ctx: User
   const present = new Set(quotes.map((q) => q.symbol.toUpperCase()));
   const missing = symbols.filter((s) => !present.has(s.toUpperCase()));
   let referenceCount = 0;
+  let unavailableCount = 0;
   for (const s of missing) {
     const snap = refSnaps.get(s.toUpperCase());
     const refQuote = snap ? quoteFromReferenceSnapshot(snap) : null;
@@ -793,12 +781,26 @@ async function enrichWithMarketData(symbols: string[], userId: string, ctx: User
       quotes.push(refQuote);
       referenceCount += 1;
     } else {
-      quotes.push(await buildMockQuote(s));
+      // No broker quote and no stored reference snapshot — try stored daily bars directly.
+      // Returns null when no bars exist; the symbol is excluded from candidates rather
+      // than receiving a fabricated hash-based price (policy: unavailable ≠ simulated).
+      const storedQuote = await buildStoredQuote(s);
+      if (storedQuote) {
+        quotes.push(storedQuote);
+        referenceCount += 1;
+      } else {
+        unavailableCount += 1;
+        console.log(`[OpportunityRadar] ${s}: no stored bars — excluded from candidates`);
+      }
     }
   }
   ctx.referenceQuoteCount = referenceCount;
+  ctx.unavailableQuoteCount = unavailableCount;
   if (referenceCount > 0) {
     console.log(`[OpportunityRadar] ${referenceCount}/${missing.length} non-broker symbols using real stored daily bars`);
+  }
+  if (unavailableCount > 0) {
+    console.log(`[OpportunityRadar] ${unavailableCount}/${missing.length} non-broker symbols excluded — no stored bars available`);
   }
 
   if (liveCount === 0) {
@@ -913,6 +915,7 @@ export async function generateCandidateScenarios(
     universeLabel: resolved.label,
     liveQuoteCount: ctx.liveQuoteCount,
     referenceQuoteCount: ctx.referenceQuoteCount,
+    unavailableQuoteCount: ctx.unavailableQuoteCount,
     quoteFetchError: ctx.quoteFetchError,
     notes: [
       ctx.dataMode === "live"
@@ -926,6 +929,9 @@ export async function generateCandidateScenarios(
               : ctx.referenceQuoteCount > 0
                 ? `Analysis Mode — using delayed reference data (real prior-session market prices) for ${ctx.referenceQuoteCount}/${ctx.requestedSymbolCount} symbols. Connect a broker for live quotes and account-aware risk checks.`
                 : "Analysis Mode — connect a broker for live quotes and account-aware risk checks.",
+      ...(ctx.unavailableQuoteCount > 0
+        ? [`${ctx.unavailableQuoteCount} symbol${ctx.unavailableQuoteCount > 1 ? "s" : ""} excluded — no stored market data available. Run daily ingestion or connect a broker.`]
+        : []),
       sentimentNote,
       ...relaxedNotes,
     ],

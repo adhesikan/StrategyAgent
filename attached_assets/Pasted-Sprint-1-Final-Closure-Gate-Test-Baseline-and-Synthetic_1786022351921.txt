@@ -1,0 +1,176 @@
+Sprint 1 Final Closure Gate — Test Baseline and Synthetic-Fallback Safety
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+CURRENT STATE
+
+The database-first market-data architecture and Yahoo-removal cleanup are complete.
+
+Do not redesign or refactor anything.
+
+This task has only two purposes:
+
+1. resolve or formally classify the single failing test file
+2. verify that the retained deterministic hash fallback cannot appear as real production market data
+
+Do not begin Sprint 2.
+Do not modify MCP.
+Do not modify scanner, qualification, ranking, portfolio, broker execution, Congress, billing, or UI unless a narrowly required labeling correction is proven necessary.
+Do not commit, push, or deploy automatically.
+
+==================================================
+1. IDENTIFY THE FAILING TEST
+==================================================
+
+Run the full repository test command exactly as CI/production validation uses it.
+
+Report:
+
+- exact command
+- failing test file
+- failing test name
+- complete concise failure reason
+- whether the test fails in isolation
+- whether it fails consistently
+- whether it is deterministic or flaky
+
+Then verify the claim that it is pre-existing:
+
+- identify the commit immediately before the Sprint 1 final cleanup
+- run the same failing test against that baseline, or otherwise provide reliable git-based proof
+- do not alter unrelated working-tree changes merely to reproduce the baseline
+- use a safe temporary worktree or equivalent approach if needed
+
+Classify it as:
+
+A. PRODUCT_DEFECT
+B. OBSOLETE_TEST
+C. TEST_INFRASTRUCTURE_DEFECT
+D. FLAKY_TEST
+E. VERIFIED_PRE_EXISTING_UNRELATED_FAILURE
+
+If the failure is caused by Sprint 1 changes, fix it.
+
+If it is unrelated, document the exact ownership and recommended backlog issue, but do not claim the full suite is clean.
+
+==================================================
+2. TRACE THE HASH FALLBACK
+==================================================
+
+Trace every call path to:
+
+buildMockQuote()
+
+and the deterministic hash fallback.
+
+Determine whether its output can reach:
+
+- Opportunity Engine snapshots
+- ranked opportunities
+- dashboard opportunity cards
+- Ask AI
+- scanners
+- saved research
+- portfolio intelligence
+- trade tickets
+- InstaTrade
+- alerts
+- email/newsletter output
+- production APIs consumed by authenticated users
+
+For every reachable surface, report:
+
+- file
+- function
+- response field
+- dataMode/source label
+- whether the user can mistake it for real market data
+
+==================================================
+3. ENFORCE THE APPROVED POLICY
+==================================================
+
+Approved real production market data:
+
+- stored PostgreSQL bars populated from Twelve Data
+- approved Twelve Data quote endpoints
+- an established connected broker through the broker abstraction
+- future approved providers added explicitly through the provider architecture
+
+Disallowed as real production market data:
+
+- deterministic hash prices
+- fabricated OHLCV
+- mock quotes
+- simulated options values
+- unlabeled sample values
+
+Policy:
+
+A. If the hash fallback is reachable only in an explicit demonstration mode:
+
+- preserve it only if clearly labeled:
+  dataMode: "simulated"
+  source: "demo"
+- verify it cannot be saved as real research
+- verify it cannot produce a trade ticket
+- verify it cannot enter execution
+- verify it cannot appear under labels such as live, broker, Twelve Data, stored, current, or latest daily close
+
+B. If it is reachable in normal authenticated production workflows:
+
+- remove the hash fallback
+- return an honest unavailable result when no stored or approved external data exists
+- preserve partial-result behavior so other valid symbols continue
+- do not add another provider
+
+Do not expand the stored universe as a workaround in this task.
+
+==================================================
+4. REGRESSION TESTS
+==================================================
+
+Add or update only narrowly required tests proving:
+
+- stored bars remain the primary radar quote anchor
+- no external HTTP request occurs in buildMockQuote
+- missing stored data becomes unavailable in normal production mode
+- demo-mode synthetic data is explicitly labeled, if demo mode remains
+- synthetic data cannot enter saved research
+- synthetic data cannot create an execution-ready trade ticket
+- synthetic data cannot appear as live/current/provider-backed data
+- existing Opportunity Engine behavior remains unchanged
+- Yahoo and Stooq remain absent
+
+Run:
+
+- full tests
+- typecheck
+- build
+
+==================================================
+5. COMPLETION REPORT
+==================================================
+
+Report:
+
+1. exact failing test
+2. failure classification
+3. baseline proof
+4. whether any fix was required
+5. all buildMockQuote callers
+6. all hash-fallback consumers
+7. production reachability
+8. final hash-fallback policy
+9. files changed
+10. tests and totals
+11. typecheck
+12. build
+13. remaining known failures
+14. final GO / CONDITIONAL_GO / NO_GO verdict
+
+Do not commit or push.
+
+Wait for review.

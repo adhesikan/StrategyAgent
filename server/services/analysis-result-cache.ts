@@ -147,12 +147,15 @@ export function storeAnalysisResult(
     if (totalEntries() >= MAX_TOTAL) return;
 
     const sym = symbol.toUpperCase();
+    // Strip single-use ephemeral handles before caching — they are user-bound
+    // and time-limited and must never be reused via a cache hit.
+    const { researchSave: _rs, ...safeResult } = result as SafeAskResult & { researchSave?: unknown };
     const entry: AnalysisCacheEntry = {
       symbol: sym,
-      intent: result.intent ?? "unknown",
+      intent: safeResult.intent ?? "unknown",
       generatedAt: new Date().toISOString(),
       storedAt: Date.now(),
-      result,
+      result: safeResult as SafeAskResult,
     };
 
     const existing = store.get(userId) ?? [];

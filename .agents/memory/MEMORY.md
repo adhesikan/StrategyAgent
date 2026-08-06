@@ -20,3 +20,4 @@
 - [GPT enum leak prevention](gpt-enum-leak.md) — raw enums (NO_TRADE, TRADE_CANDIDATE, etc.) must never appear in GPT system rules; always substitute display labels; PRICE INTEGRITY OVERRIDE must not fire for STALE/UNAVAILABLE codes.
 - [Dashboard real-data API shape](dashboard-real-data-api.md) — Sprint 5.5C: aiInfraWatch section added; VIX+sectors+regime in HomeSnapshotResponse; Step 1 replaced three radar buckets with stockOpportunities+optionsAvailability.
 - [Dashboard Step 1 real pipeline](dashboard-step1-real-pipeline.md) — generateCandidateScenarios retired from dashboard; MCP rank_market_trade_candidates is now the sole opportunity source; broker disconnect no longer causes simulated data.
+- [Opportunity Engine architecture](opportunity-engine-architecture.md) — stock opportunities moved off GET /api/dashboard into a background engine; client fetches /api/opportunities/latest independently; snapshot is null until first scan completes.

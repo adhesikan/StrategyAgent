@@ -50,6 +50,7 @@ import { registerFuturesRoutes } from "./routes/futures";
 import { registerAgentRoutes } from "./routes/agent";
 import { registerOpportunityRadarRoutes } from "./routes/opportunity-radar";
 import { registerDashboardRoutes } from "./routes/dashboard";
+import { registerOpportunityLatestRoute } from "./routes/opportunity-latest";
 import { registerAnalysisCacheRoutes } from "./routes/analysis-cache";
 import { registerNewsSentimentRoutes } from "./routes/news-sentiment";
 import { registerHomeSnapshotRoutes } from "./routes/home-snapshot";
@@ -190,6 +191,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerAgentRoutes(app, isAuthenticated);
   registerOpportunityRadarRoutes(app, isAuthenticated);
   registerDashboardRoutes(app, isAuthenticated);
+  registerOpportunityLatestRoute(app, isAuthenticated);
   registerAnalysisCacheRoutes(app, isAuthenticated);
   registerNewsSentimentRoutes(app, isAuthenticated, isAdmin);
   registerHomeSnapshotRoutes(app, isAuthenticated);

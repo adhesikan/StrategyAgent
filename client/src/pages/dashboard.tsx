@@ -178,6 +178,28 @@ interface StockOpportunitiesBlock {
   reason?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Opportunity Engine snapshot (served by GET /api/opportunities/latest)
+// ---------------------------------------------------------------------------
+
+interface OpportunitySnapshot {
+  generatedAt: string;
+  scannerVersion: string;
+  marketRegime: string | null;
+  dataSource: string;
+  topGrowth: RankedStockCandidate[];
+  topIncome: RankedStockCandidate[];
+  topWatchlist: WatchStockCandidate[];
+  approachingQualification: WatchStockCandidate[];
+  reviewedCount: number;
+  qualifiedCount: number;
+  warnings: string[];
+}
+
+interface OpportunityLatestResponse {
+  snapshot: OpportunitySnapshot | null;
+}
+
 interface OptionsAvailabilityBlock {
   liveChainAvailable: false;
   source: "broker" | null;
@@ -225,8 +247,6 @@ interface Watchlist {
 
 interface DashboardResponse {
   marketSnapshot: { status: "ok"; data: MarketSnapshot } | { status: "unavailable" };
-  /** Real Twelve Data-backed MCP stock candidates. No simulated or options-synthetic fields. */
-  stockOpportunities: StockOpportunitiesBlock;
   /** Options-data boundary. Never fabricated contracts; labeled "Estimated" only. */
   optionsAvailability: OptionsAvailabilityBlock;
   aiInfraWatch:
@@ -879,23 +899,135 @@ function StockOpportunityCard({
   );
 }
 
-function StockOpportunitiesSection({
-  opps,
+// ---------------------------------------------------------------------------
+// 4. Opportunity Engine Section
+// ---------------------------------------------------------------------------
+
+/** Renders a subsection of candidate cards (growth or income). */
+function CandidateSubsection({
+  heading,
+  candidates,
+  cachedSymbols,
+  emptyNote,
+}: {
+  heading: string;
+  candidates: RankedStockCandidate[];
+  cachedSymbols: Set<string>;
+  emptyNote: string;
+}) {
+  return (
+    <div>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+        {heading}
+      </h3>
+      {candidates.length > 0 ? (
+        <div
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          role="list"
+          aria-label={heading}
+        >
+          {candidates.map((c) => (
+            <StockOpportunityCard
+              key={`${c.symbol}-${c.rank}`}
+              candidate={c}
+              hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground py-1">{emptyNote}</p>
+      )}
+    </div>
+  );
+}
+
+/** Renders the watch-candidate list (Top Watchlist or Approaching Qualification). */
+function WatchCandidateList({
+  heading,
+  icon: Icon,
+  candidates,
+}: {
+  heading: string;
+  icon: React.ElementType;
+  candidates: WatchStockCandidate[];
+}) {
+  const [, navigate] = useLocation();
+  if (candidates.length === 0) return null;
+  return (
+    <div>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {heading}
+      </h3>
+      <div className="space-y-2">
+        {candidates.map((w) => (
+          <div
+            key={w.symbol}
+            className="rounded-md border bg-card/30 p-3 flex items-start justify-between gap-3"
+            data-testid={`card-watch-${w.symbol}`}
+          >
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-sm font-semibold">{w.symbol}</span>
+                {w.strategy && (
+                  <span className="text-xs text-muted-foreground">{w.strategy}</span>
+                )}
+                {w.currentStage && (
+                  <Badge variant="outline" className="text-[10px] border-border">
+                    {w.currentStage}
+                  </Badge>
+                )}
+              </div>
+              {w.watchConditions.length > 0 && (
+                <p className="text-xs text-muted-foreground line-clamp-1">
+                  {w.watchConditions[0]}
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1 shrink-0"
+              onClick={() => navigate(askRoute(`Analyze ${w.symbol}`))}
+              aria-label={`Analyze ${w.symbol}`}
+            >
+              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OpportunityEngineSection({
+  data,
+  isLoading,
   onRetry,
 }: {
-  opps: StockOpportunitiesBlock;
+  data: OpportunityLatestResponse | undefined;
+  isLoading: boolean;
   onRetry: () => void;
 }) {
   const [, navigate] = useLocation();
+  const snapshot = data?.snapshot ?? null;
 
   // Batch cache check for candidate symbols
-  const symbolsKey = (opps.candidates ?? []).map((c) => c.symbol).join(",");
+  const allCandidates = snapshot
+    ? [...snapshot.topGrowth, ...snapshot.topIncome]
+    : [];
+  const symbolsKey = allCandidates.map((c) => c.symbol).join(",");
+
   const { data: cacheData } = useQuery<{ hits: string[] }>({
     queryKey: ["analysis-cache-batch-stocks", symbolsKey],
     queryFn: async () => {
       if (!symbolsKey) return { hits: [] };
       try {
-        const res = await apiRequest("GET", `/api/analysis/cached?symbols=${encodeURIComponent(symbolsKey)}`);
+        const res = await apiRequest(
+          "GET",
+          `/api/analysis/cached?symbols=${encodeURIComponent(symbolsKey)}`,
+        );
         if (!res.ok) return { hits: [] };
         return res.json() as Promise<{ hits: string[] }>;
       } catch {
@@ -906,32 +1038,41 @@ function StockOpportunitiesSection({
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   });
-  const cachedSymbols = new Set<string>((cacheData?.hits ?? []).map((s) => s.toUpperCase()));
-
-  const candidates = opps.candidates ?? [];
-  const watchCandidates = opps.watchCandidates ?? [];
-  const hasCandidates = candidates.length > 0;
-  const hasWatchOnly = !hasCandidates && watchCandidates.length > 0;
+  const cachedSymbols = new Set<string>(
+    (cacheData?.hits ?? []).map((s) => s.toUpperCase()),
+  );
 
   return (
-    <section aria-labelledby="stock-opps-heading" data-testid="section-stock-opportunities">
+    <section
+      aria-labelledby="opp-engine-heading"
+      data-testid="section-opportunity-engine"
+    >
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-medium flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-              <span id="stock-opps-heading" data-testid="text-stock-opps-heading">
+              <span id="opp-engine-heading" data-testid="text-opp-engine-heading">
                 Today&rsquo;s Stock Opportunities
               </span>
             </CardTitle>
-            <div className="flex items-center gap-2">
-              {opps.status === "ok" && opps.dataQuality && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {snapshot?.marketRegime && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] border-border/60"
+                  data-testid="badge-market-regime"
+                >
+                  {snapshot.marketRegime}
+                </Badge>
+              )}
+              {snapshot && (
                 <Badge
                   variant="outline"
                   className={cn("text-[10px]", DATA_QUALITY_CLASS.DAILY_CLOSE)}
-                  data-testid="badge-stock-opps-data-quality"
+                  data-testid="badge-data-source"
                 >
-                  {opps.dataQuality}
+                  {snapshot.dataSource}
                 </Badge>
               )}
               <Button
@@ -950,134 +1091,107 @@ function StockOpportunitiesSection({
             Deterministic stock setups from latest daily market data, ranked by the scanner.
             Not a recommendation to buy or sell.
           </p>
+          {/* Metadata row: scan time + scanner version */}
+          {snapshot && (
+            <div className="flex items-center gap-3 pt-0.5 flex-wrap">
+              <span className="text-[10px] text-muted-foreground/70" data-testid="text-scan-time">
+                Newest scan:{" "}
+                {new Date(snapshot.generatedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span className="text-[10px] text-muted-foreground/70" data-testid="text-scanner-version">
+                v{snapshot.scannerVersion}
+              </span>
+              <span className="text-[10px] text-muted-foreground/70">
+                Reviewed{" "}
+                <span className="font-mono">{snapshot.reviewedCount}</span>
+                {" · "}
+                <span className="font-mono">{snapshot.qualifiedCount}</span> qualified
+              </span>
+            </div>
+          )}
         </CardHeader>
-        <CardContent>
-          {/* Error state */}
-          {opps.status === "unavailable" && (
-            <div className="rounded-lg border bg-card/30 p-4 text-center space-y-2">
+
+        <CardContent className="space-y-5">
+          {/* Loading state */}
+          {isLoading && (
+            <div className="space-y-3">
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-28 w-full" />
+            </div>
+          )}
+
+          {/* No snapshot yet — first scan hasn't completed */}
+          {!isLoading && !snapshot && (
+            <div className="rounded-lg border bg-card/30 p-5 text-center space-y-2">
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" aria-hidden="true" />
-                <span>
-                  Stock Opportunities is temporarily unavailable. Other market data may still be available above.
+                <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span data-testid="text-no-scan-yet">
+                  Opportunity Engine has not completed its first scan.
                 </span>
               </div>
+              <p className="text-xs text-muted-foreground">
+                The engine runs automatically in the background. Check back in a few minutes.
+              </p>
               <Button
                 size="sm"
                 variant="outline"
                 className="mt-1 text-xs gap-1"
                 onClick={onRetry}
-                data-testid="btn-stock-opps-retry"
+                data-testid="btn-opp-engine-retry"
               >
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Retry
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Refresh
               </Button>
             </div>
           )}
 
-          {/* Qualified candidates */}
-          {opps.status === "ok" && hasCandidates && (
-            <div
-              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-              role="list"
-              aria-label="Qualified stock opportunities"
-            >
-              {candidates.slice(0, 5).map((c) => (
-                <StockOpportunityCard
-                  key={`${c.symbol}-${c.rank}`}
-                  candidate={c}
-                  hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
-                />
-              ))}
-            </div>
-          )}
+          {/* Snapshot loaded — show categorised buckets */}
+          {!isLoading && snapshot && (
+            <>
+              {/* Top Growth */}
+              <CandidateSubsection
+                heading="Top Growth"
+                candidates={snapshot.topGrowth}
+                cachedSymbols={cachedSymbols}
+                emptyNote="No growth setups identified in the current scan."
+              />
 
-          {/* Empty state — with honest counts */}
-          {opps.status === "ok" && !hasCandidates && !hasWatchOnly && (
-            <div className="rounded-lg border bg-card/30 px-4 py-5 space-y-2">
-              <p className="text-xs font-medium">No setups qualify right now.</p>
-              {opps.reviewedCount != null && (
-                <p className="text-xs text-muted-foreground">
-                  Scanner reviewed{" "}
-                  <span className="font-mono">{opps.reviewedCount}</span> stored opportunities.
-                  {typeof opps.qualifiedCount === "number" && opps.qualifiedCount === 0 && " None met all qualification criteria today."}
-                </p>
-              )}
-              {opps.exclusionSummary && opps.exclusionSummary.length > 0 && (
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  {opps.exclusionSummary.slice(0, 3).map((g) => (
-                    <div key={g.reason} className="flex gap-1.5">
-                      <span className="font-mono">{g.count}</span>
-                      <span>{g.reason.toLowerCase().replace(/_/g, " ")}</span>
+              {/* Top Income */}
+              <CandidateSubsection
+                heading="Top Income"
+                candidates={snapshot.topIncome}
+                cachedSymbols={cachedSymbols}
+                emptyNote="No income setups identified in the current scan."
+              />
+
+              {/* Top Watchlist */}
+              <WatchCandidateList
+                heading="Top Watchlist"
+                icon={Clock}
+                candidates={snapshot.topWatchlist}
+              />
+
+              {/* Approaching Qualification */}
+              <WatchCandidateList
+                heading="Approaching Qualification"
+                icon={ArrowRight}
+                candidates={snapshot.approachingQualification}
+              />
+
+              {/* Warnings */}
+              {snapshot.warnings.length > 0 && (
+                <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
+                  {snapshot.warnings.slice(0, 3).map((w, i) => (
+                    <div key={i} className="flex items-start gap-1.5">
+                      <AlertTriangle className="h-3 w-3 shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
+                      {w}
                     </div>
                   ))}
                 </div>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 text-xs"
-                onClick={() => navigate("/scanner")}
-                data-testid="btn-open-scanner-empty"
-              >
-                Open Scanner
-              </Button>
-            </div>
-          )}
-
-          {/* Approaching Qualification — watch candidates when no qualifiers */}
-          {opps.status === "ok" && hasWatchOnly && (
-            <div className="space-y-3">
-              <div className="rounded-lg border bg-card/30 px-4 py-3">
-                <p className="text-xs text-muted-foreground">
-                  No setups fully qualify right now.
-                  {opps.reviewedCount != null && (
-                    <> Scanner reviewed <span className="font-mono">{opps.reviewedCount}</span> setups.</>
-                  )}
-                </p>
-              </div>
-              <div>
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                  Approaching Qualification
-                </h3>
-                <div className="space-y-2">
-                  {watchCandidates.slice(0, 5).map((w) => (
-                    <div
-                      key={w.symbol}
-                      className="rounded-md border bg-card/30 p-3 flex items-start justify-between gap-3"
-                      data-testid={`card-watch-${w.symbol}`}
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-sm font-semibold">{w.symbol}</span>
-                          {w.strategy && (
-                            <span className="text-xs text-muted-foreground">{w.strategy}</span>
-                          )}
-                          {w.currentStage && (
-                            <Badge variant="outline" className="text-[10px] border-border">
-                              {w.currentStage}
-                            </Badge>
-                          )}
-                        </div>
-                        {w.watchConditions.length > 0 && (
-                          <p className="text-xs text-muted-foreground line-clamp-1">
-                            {w.watchConditions[0]}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs gap-1 shrink-0"
-                        onClick={() => navigate(askRoute(`Analyze ${w.symbol}`))}
-                        aria-label={`Analyze ${w.symbol}`}
-                      >
-                        <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1802,6 +1916,15 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
 
+  // Opportunity Engine — fetched independently so the dashboard doesn't block
+  // on the MCP scan. Refreshes every 10 minutes; the engine itself runs every 4 hours.
+  const oppsQuery = useQuery<OpportunityLatestResponse>({
+    queryKey: ["/api/opportunities/latest"],
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
     track("dashboard_viewed" as any);
   }, []);
@@ -1877,12 +2000,13 @@ export default function DashboardPage() {
           }}
         />
 
-        {/* 4. Today's Stock Opportunities — real MCP pipeline, no simulated data */}
-        <StockOpportunitiesSection
-          opps={data.stockOpportunities}
+        {/* 4. Today's Stock Opportunities — pre-computed by Opportunity Engine */}
+        <OpportunityEngineSection
+          data={oppsQuery.data}
+          isLoading={oppsQuery.isLoading}
           onRetry={() => {
             track("dashboard_section_retry", { section: "stock_opportunities" } as any);
-            dashboardQuery.refetch();
+            void oppsQuery.refetch();
           }}
         />
 

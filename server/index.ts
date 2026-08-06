@@ -515,6 +515,17 @@ async function restoreBrokerConnections() {
     60000
   );
   log("Alert engine started");
+
+  // Opportunity Engine — pre-computes stock opportunities in the background.
+  // Runs once at startup (non-blocking) then every 4 hours.
+  // Dashboard reads from the cached snapshot via GET /api/opportunities/latest.
+  try {
+    const { scheduleOpportunityEngine } = await import("./services/opportunity-engine");
+    scheduleOpportunityEngine();
+    log("Opportunity engine scheduled (4-hour refresh cycle)");
+  } catch (err: any) {
+    log(`Opportunity engine schedule error (non-fatal): ${err?.message}`, "opportunity-engine");
+  }
   
   // Daily market-data ingestion (Twelve Data) — runs after 7:15 PM ET on
   // expected US trading days. Uses a Postgres advisory lock internally so

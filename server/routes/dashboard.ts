@@ -6,29 +6,22 @@
 // Each section is independently tagged with status: "ok" | "unavailable" so
 // the client can isolate failures without a waterfall.
 //
-// Opportunity pipeline (post-Step-1):
-//   MCP rank_market_trade_candidates → validateRankedTradeSearch adapter
-//   → stockOpportunities (deterministic, real Twelve Data-backed)
-//   → optionsAvailability (boundary descriptor, never fabricated contracts)
+// Stock opportunities are NO LONGER included here. They are served by the
+// Opportunity Engine via GET /api/opportunities/latest (pre-computed, async).
+// This removes all synchronous MCP opportunity generation from the dashboard.
 //
 // Trust rules:
 //   - userId from req.session only; never from query/body.
 //   - No account numbers or broker identifiers returned to client.
 //   - No fabricated data — missing fields return status "unavailable".
-//   - generateCandidateScenarios (radar-service) is NO LONGER called here —
-//     it produces simulated/mock data when no broker is connected.
 //   - OpenAI is never called in this route.
 
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
-import { authStorage } from "../replit_integrations/auth";
 import { ResearchRecordService } from "../services/research-record-service";
 import { buildHomeSnapshot } from "./home-snapshot";
 import { buildAiInfraWatch } from "../services/ai-infra-watch";
-import {
-  buildDashboardStockOpportunities,
-  buildOptionsAvailability,
-} from "../services/dashboard-stock-opportunities";
+import { buildOptionsAvailability } from "../services/dashboard-stock-opportunities";
 
 export function registerDashboardRoutes(
   app: Express,
@@ -45,13 +38,11 @@ export function registerDashboardRoutes(
     // Fan out in parallel — all settle independently
     const [
       snapshotResult,
-      stockOppsResult,
       aiInfraResult,
       researchResult,
       watchlistsResult,
     ] = await Promise.allSettled([
       buildHomeSnapshot(userId),
-      buildDashboardStockOpportunities(),
       buildAiInfraWatch(userId),
       ResearchRecordService.listForUser(userId, { limit: 5, archived: false }),
       storage.getWatchlists(userId),
@@ -89,13 +80,6 @@ export function registerDashboardRoutes(
         snapshotResult.status === "fulfilled"
           ? { status: "ok", data: snapshotResult.value }
           : { status: "unavailable" },
-
-      // Real Twelve Data-backed stock opportunities via MCP ranking.
-      // No synthetic options fields. No simulated data.
-      stockOpportunities:
-        stockOppsResult.status === "fulfilled"
-          ? stockOppsResult.value
-          : { status: "unavailable", reason: "mcp_unavailable" },
 
       // Options-data boundary: always honest about what is and isn't available.
       optionsAvailability: buildOptionsAvailability(brokerConnected),

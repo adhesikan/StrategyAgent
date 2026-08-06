@@ -29,6 +29,16 @@ description: Sprint 2.1 — /opportunity/:symbol page architecture, data contrac
 - `StockOpportunityCard` in dashboard.tsx: "Research" button → `/opportunity/:symbol`
 - data-testid: `btn-research-{symbol}`
 
+## Evidence Engine (Sprint 2.1.1)
+- 7 tabs: Overview | Technical | Congress | News | Institutional | Catalysts | AI Summary
+- Tab lazy-load via `visitedTabs: Set<TabValue>` — Congress mount gated on set membership; News query `enabled` gated on set membership
+- `computeEvidenceStars()` and `buildAiSummaryBullets()` are exported pure functions — testable without DOM
+- 50 client-side unit tests in `client/src/pages/opportunity-research.test.tsx`
+- Congress tab: `CongressFlowEmbed view="ticker"` with disclaimer card above; no server API
+- Institutional tab: static unavailable state — no data source exists yet
+- AI Summary: 5 deterministic bullets (technical, regime, news, risk, lifecycle) — no LLM call
+- `EvidenceStars.institutional` is typed as `0` (not 1–5) to enforce unavailable state
+
 ## Test file
 - `server/routes/opportunity-research.test.ts` — 22 tests; mocks storage, snapshot-store, opportunity-engine
 

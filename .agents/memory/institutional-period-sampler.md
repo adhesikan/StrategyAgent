@@ -8,6 +8,11 @@ When `rejectedInvalidPeriodOfReport = recognizedHoldingsFormRows` in the --valid
 
 **Why:** The production run showed 9,716/9,716 holdings-bearing rows rejected for invalid period format. All 5 existing formats (ISO_DASH, ISO_COMPACT, US_SLASH, US_DASH, ISO_SLASH) failed, meaning the SEC post-2023 bulk archive uses a 6th format that is not yet implemented. The format cannot be determined without seeing raw values.
 
+## Production format confirmed: DD-MMM-YYYY
+All 9,716 holdings-bearing rows use `31-MAR-2026` style. Fix: `SEC_DD_MMM_YYYY` label +
+strict `SEC_MONTH_MAP` in `normalizeDateField`. `Array.from()` required (not spread) for
+Map/Set iteration — tsconfig target rejects spread on iterators.
+
 ## New exports in sec-13f-bulk-parser.ts
 - `detectDateFormat(raw)` — pure classifier returning DateFormatLabel; diagnostic only
 - `normalizeDateField(raw)` — now exported; canonical parser

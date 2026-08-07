@@ -239,7 +239,8 @@ async function main(): Promise<void> {
       (parsed.detectedPeriodFormats.ISO_COMPACT ?? 0) +
       (parsed.detectedPeriodFormats.US_SLASH ?? 0) +
       (parsed.detectedPeriodFormats.US_DASH ?? 0) +
-      (parsed.detectedPeriodFormats.ISO_SLASH ?? 0);
+      (parsed.detectedPeriodFormats.ISO_SLASH ?? 0) +
+      (parsed.detectedPeriodFormats.SEC_DD_MMM_YYYY ?? 0);
     const currentlyRejected = parsed.detectedPeriodFormats.UNKNOWN ?? 0;
 
     console.log(`[inspect] PERIODOFREPORT diagnostics:`);
@@ -282,6 +283,16 @@ async function main(): Promise<void> {
 
     if (!invariantHolds) {
       console.error("[inspect] WARNING: invariant violated — rejectedInvalidAccession (informational) may account for the difference");
+    }
+
+    // Normalized period distribution (only populated when parsedRows > 0)
+    const periodDistEntries = Object.entries(parsed.normalizedPeriodDistribution);
+    if (periodDistEntries.length > 0) {
+      console.log("");
+      console.log("[inspect] Normalized period distribution (from parsed rows):");
+      for (const [period, count] of periodDistEntries) {
+        console.log(`[inspect]   ${period.padEnd(14)} ${count}`);
+      }
     }
 
     // Observed field format sampling (safe — no raw filing content)

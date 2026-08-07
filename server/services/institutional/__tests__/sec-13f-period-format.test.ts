@@ -209,11 +209,22 @@ describe("J – No ambiguity between formats", () => {
     expect(detectDateFormat("2026-03-31")).toBe("ISO_DASH");
   });
 
+  it("SEC_DD_MMM_YYYY is distinct from US_DASH (alpha vs numeric month segment)", () => {
+    // US_DASH has numeric month: dd-dd-yyyy
+    expect(detectDateFormat("03-31-2026")).toBe("US_DASH");
+    // SEC_DD_MMM_YYYY has alpha month: dd-MMM-yyyy
+    expect(detectDateFormat("31-MAR-2026")).toBe("SEC_DD_MMM_YYYY");
+    // Single-digit day does NOT match SEC_DD_MMM_YYYY (requires 2-digit day)
+    expect(detectDateFormat("1-MAR-2026")).toBe("UNKNOWN");
+  });
+
   it("unknown/unsupported format returns UNKNOWN", () => {
     expect(detectDateFormat("not-a-date")).toBe("UNKNOWN");
     expect(detectDateFormat("2026-03-31 00:00:00")).toBe("UNKNOWN");
     expect(detectDateFormat("20260331000000")).toBe("UNKNOWN"); // 14-digit timestamp
     expect(detectDateFormat('"2026-03-31"')).toBe("UNKNOWN");  // quoted value
+    expect(detectDateFormat("MAR-31-2026")).toBe("UNKNOWN");   // wrong order
+    expect(detectDateFormat("31-MARCH-2026")).toBe("UNKNOWN"); // full month name
   });
 });
 
@@ -228,6 +239,12 @@ describe("N – detectDateFormat classifies all supported formats", () => {
     ["3/1/2026",     "US_SLASH"],  // single-digit month/day
     ["03-31-2026",   "US_DASH"],
     ["2026/03/31",   "ISO_SLASH"],
+    // SEC DD-MMM-YYYY (post-2023 bulk archive production format)
+    ["31-MAR-2026",  "SEC_DD_MMM_YYYY"],
+    ["30-SEP-2025",  "SEC_DD_MMM_YYYY"],
+    ["31-dec-2025",  "SEC_DD_MMM_YYYY"],  // lowercase accepted
+    ["30-Jun-2024",  "SEC_DD_MMM_YYYY"],  // mixed-case accepted
+    // UNKNOWN
     ["",             "UNKNOWN"],
     ["   ",          "UNKNOWN"],  // whitespace only
     ["not-a-date",   "UNKNOWN"],
@@ -236,6 +253,9 @@ describe("N – detectDateFormat classifies all supported formats", () => {
     ["2026-03-31T00:00:00", "UNKNOWN"], // ISO datetime
     ["2026-03-31 00:00:00", "UNKNOWN"], // SQL datetime
     ["20260331000000",      "UNKNOWN"], // 14-digit YYYYMMDDHHMMSS
+    ["1-MAR-2026",          "UNKNOWN"], // single-digit day — not accepted
+    ["MAR-31-2026",         "UNKNOWN"], // wrong order
+    ["31-MARCH-2026",       "UNKNOWN"], // full month name — not accepted
   ];
 
   for (const [input, expected] of cases) {
@@ -487,6 +507,7 @@ describe("detectDateFormat – edge cases", () => {
     expect(detectDateFormat("  2026-03-31  ")).toBe("ISO_DASH");
     expect(detectDateFormat("  20260331  ")).toBe("ISO_COMPACT");
     expect(detectDateFormat("  03/31/2026  ")).toBe("US_SLASH");
+    expect(detectDateFormat("  31-MAR-2026  ")).toBe("SEC_DD_MMM_YYYY");
   });
 
   it("empty string returns UNKNOWN", () => {
@@ -504,5 +525,362 @@ describe("detectDateFormat – edge cases", () => {
     expect(detectDateFormat("2026-03-31T00:00:00Z")).toBe("UNKNOWN");
     expect(detectDateFormat("2026-03-31 00:00:00")).toBe("UNKNOWN");
     expect(detectDateFormat("2026-03-31 00:00:00.0")).toBe("UNKNOWN");
+  });
+});
+
+// ===========================================================================
+// NEW FORMAT: DD-MMM-YYYY  (SEC EDGAR post-2023 production PERIODOFREPORT)
+// ===========================================================================
+// Observed production values: 31-MAR-2026, 30-SEP-2024, 30-SEP-2025,
+//   30-JUN-2023, 30-JUN-2020, 31-DEC-2025, 31-DEC-2022, 31-MAR-2023,
+//   30-SEP-2023, 30-JUN-2024  (all 9,716 holdings-bearing submissions use this format)
+
+// ---------------------------------------------------------------------------
+// A–D. Basic conversions
+// ---------------------------------------------------------------------------
+describe("A–D – DD-MMM-YYYY basic conversions (observed production values)", () => {
+  it("A. 31-MAR-2026 → 2026-03-31", () => {
+    expect(normalizeDateField("31-MAR-2026")).toBe("2026-03-31");
+  });
+
+  it("B. 30-SEP-2025 → 2025-09-30", () => {
+    expect(normalizeDateField("30-SEP-2025")).toBe("2025-09-30");
+  });
+
+  it("C. 31-DEC-2025 → 2025-12-31", () => {
+    expect(normalizeDateField("31-DEC-2025")).toBe("2025-12-31");
+  });
+
+  it("D. 30-JUN-2024 → 2024-06-30", () => {
+    expect(normalizeDateField("30-JUN-2024")).toBe("2024-06-30");
+  });
+
+  it("all 10 observed production period values parse correctly", () => {
+    const observed: [string, string][] = [
+      ["31-MAR-2026", "2026-03-31"],
+      ["30-SEP-2024", "2024-09-30"],
+      ["30-SEP-2025", "2025-09-30"],
+      ["30-JUN-2023", "2023-06-30"],
+      ["30-JUN-2020", "2020-06-30"],
+      ["31-DEC-2025", "2025-12-31"],
+      ["31-DEC-2022", "2022-12-31"],
+      ["31-MAR-2023", "2023-03-31"],
+      ["30-SEP-2023", "2023-09-30"],
+      ["30-JUN-2024", "2024-06-30"],
+    ];
+    for (const [input, expected] of observed) {
+      expect(normalizeDateField(input), `parsing "${input}"`).toBe(expected);
+    }
+  });
+
+  it("all months normalize correctly", () => {
+    const months: [string, string][] = [
+      ["01-JAN-2026", "2026-01-01"],
+      ["28-FEB-2026", "2026-02-28"],
+      ["31-MAR-2026", "2026-03-31"],
+      ["30-APR-2026", "2026-04-30"],
+      ["31-MAY-2026", "2026-05-31"],
+      ["30-JUN-2026", "2026-06-30"],
+      ["31-JUL-2026", "2026-07-31"],
+      ["31-AUG-2026", "2026-08-31"],
+      ["30-SEP-2026", "2026-09-30"],
+      ["31-OCT-2026", "2026-10-31"],
+      ["30-NOV-2026", "2026-11-30"],
+      ["31-DEC-2026", "2026-12-31"],
+    ];
+    for (const [input, expected] of months) {
+      expect(normalizeDateField(input), `parsing "${input}"`).toBe(expected);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E–F. Case sensitivity
+// ---------------------------------------------------------------------------
+describe("E–F – Case sensitivity (spec: case-insensitive month input is acceptable)", () => {
+  it("E. lowercase month is accepted (30-sep-2025 → 2025-09-30)", () => {
+    expect(normalizeDateField("30-sep-2025")).toBe("2025-09-30");
+    expect(normalizeDateField("31-jan-2026")).toBe("2026-01-31");
+    expect(normalizeDateField("30-jun-2024")).toBe("2024-06-30");
+  });
+
+  it("F. mixed-case month is accepted (30-Sep-2025 → 2025-09-30)", () => {
+    expect(normalizeDateField("30-Sep-2025")).toBe("2025-09-30");
+    expect(normalizeDateField("31-Mar-2026")).toBe("2026-03-31");
+    expect(normalizeDateField("31-Dec-2022")).toBe("2022-12-31");
+  });
+
+  it("E/F: case-insensitive months produce the same result as uppercase", () => {
+    const upper = normalizeDateField("31-MAR-2026");
+    expect(normalizeDateField("31-mar-2026")).toBe(upper);
+    expect(normalizeDateField("31-Mar-2026")).toBe(upper);
+    expect(normalizeDateField("31-mAr-2026")).toBe(upper);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G. Invalid month rejected
+// ---------------------------------------------------------------------------
+describe("G – Invalid month abbreviation rejected", () => {
+  it("G. XYZ is not a valid month abbreviation → null", () => {
+    expect(normalizeDateField("31-XYZ-2026")).toBeNull();
+  });
+
+  it("other invalid 3-letter abbreviations are rejected", () => {
+    expect(normalizeDateField("31-ABC-2026")).toBeNull();
+    expect(normalizeDateField("30-FOO-2025")).toBeNull();
+    expect(normalizeDateField("31-ZZZ-2026")).toBeNull();
+    expect(normalizeDateField("31-JA1-2026")).toBeNull(); // digit in month
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H–L. Calendar rejection
+// ---------------------------------------------------------------------------
+describe("H–L – Calendar validation rejects impossible dates", () => {
+  it("H. 31-APR-2026 rejected (April has 30 days)", () => {
+    expect(normalizeDateField("31-APR-2026")).toBeNull();
+  });
+
+  it("I. 29-FEB-2025 rejected (2025 is not a leap year)", () => {
+    expect(normalizeDateField("29-FEB-2025")).toBeNull();
+  });
+
+  it("J. 29-FEB-2024 accepted (2024 is a leap year)", () => {
+    expect(normalizeDateField("29-FEB-2024")).toBe("2024-02-29");
+  });
+
+  it("K. 00-JAN-2026 rejected (day 0 is invalid)", () => {
+    expect(normalizeDateField("00-JAN-2026")).toBeNull();
+  });
+
+  it("L. 32-MAR-2026 rejected (day 32 is invalid)", () => {
+    expect(normalizeDateField("32-MAR-2026")).toBeNull();
+  });
+
+  it("additional impossible dates are rejected", () => {
+    expect(normalizeDateField("31-NOV-2026")).toBeNull(); // November has 30 days
+    expect(normalizeDateField("31-JUN-2026")).toBeNull(); // June has 30 days
+    expect(normalizeDateField("31-SEP-2026")).toBeNull(); // September has 30 days
+  });
+
+  it("format constraint: single-digit day does not match (requires 2-digit)", () => {
+    // 1-MAR-2026 → fails regex ^\d{2}-... → normalizeDateField returns null
+    expect(normalizeDateField("1-MAR-2026")).toBeNull();
+    expect(normalizeDateField("5-DEC-2025")).toBeNull();
+  });
+
+  it("format constraint: wrong field order is rejected", () => {
+    // MAR-31-2026 → month first, not day first → fails regex
+    expect(normalizeDateField("MAR-31-2026")).toBeNull();
+    // 2026-MAR-31 → year first → fails regex (first segment is 4 chars)
+    expect(normalizeDateField("2026-MAR-31")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M. detectDateFormat returns SEC_DD_MMM_YYYY
+// ---------------------------------------------------------------------------
+describe("M – detectDateFormat returns SEC_DD_MMM_YYYY for DD-MMM-YYYY strings", () => {
+  it("M. detectDateFormat('31-MAR-2026') → 'SEC_DD_MMM_YYYY'", () => {
+    expect(detectDateFormat("31-MAR-2026")).toBe("SEC_DD_MMM_YYYY");
+  });
+
+  it("all 10 observed production values classify as SEC_DD_MMM_YYYY", () => {
+    const observed = [
+      "31-MAR-2026", "30-SEP-2024", "30-SEP-2025", "30-JUN-2023",
+      "30-JUN-2020", "31-DEC-2025", "31-DEC-2022", "31-MAR-2023",
+      "30-SEP-2023", "30-JUN-2024",
+    ];
+    for (const v of observed) {
+      expect(detectDateFormat(v), `classifying "${v}"`).toBe("SEC_DD_MMM_YYYY");
+    }
+  });
+
+  it("lowercase and mixed-case also classify as SEC_DD_MMM_YYYY", () => {
+    expect(detectDateFormat("31-mar-2026")).toBe("SEC_DD_MMM_YYYY");
+    expect(detectDateFormat("30-Sep-2025")).toBe("SEC_DD_MMM_YYYY");
+    expect(detectDateFormat("31-Dec-2022")).toBe("SEC_DD_MMM_YYYY");
+  });
+
+  it("invalid DD-MMM-YYYY strings still classify correctly for diagnostics", () => {
+    // detectDateFormat is syntactic only — invalid calendar dates still get the label
+    expect(detectDateFormat("31-APR-2026")).toBe("SEC_DD_MMM_YYYY"); // invalid calendar but valid syntax
+    expect(detectDateFormat("32-MAR-2026")).toBe("SEC_DD_MMM_YYYY"); // invalid day but valid syntax
+    // Single-digit day → UNKNOWN (regex requires exactly 2 digits)
+    expect(detectDateFormat("1-MAR-2026")).toBe("UNKNOWN");
+    // Wrong order → UNKNOWN
+    expect(detectDateFormat("MAR-31-2026")).toBe("UNKNOWN");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O. 9716-row production simulation
+// ---------------------------------------------------------------------------
+describe("O – 9716-row production dataset simulation", () => {
+  // The production dataset has 9716 holdings-bearing rows, all with DD-MMM-YYYY period.
+  // After the fix, all should parse successfully with rejectedInvalidPeriodOfReport = 0.
+
+  const PRODUCTION_PERIODS = [
+    "31-MAR-2026", "30-SEP-2024", "30-SEP-2025", "30-JUN-2023",
+    "30-JUN-2020", "31-DEC-2025", "31-DEC-2022", "31-MAR-2023",
+    "30-SEP-2023", "30-JUN-2024",
+  ];
+
+  it("O. simulated 9716-row dataset: all parsed, zero rejected for invalid period", () => {
+    // Generate 9716 rows cycling through the 10 observed period values
+    const rows: string[][] = [];
+    for (let i = 0; i < 9716; i++) {
+      const period = PRODUCTION_PERIODS[i % PRODUCTION_PERIODS.length];
+      // Use unique accession numbers to avoid duplicate-row concerns
+      const seq = String(i + 1).padStart(6, "0");
+      const acc = `000000${seq}-26-000001`;
+      rows.push([acc, "13F-HR", GOOD_CIK, "Mgr", period, GOOD_DATE]);
+    }
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+
+    expect(r.recognizedHoldingsFormRows).toBe(9716);
+    expect(r.parsedRows).toBe(9716);
+    expect(r.rejectedInvalidPeriodOfReport).toBe(0);
+    expect(r.rejectedMissingPeriodOfReport).toBe(0);
+    expect(r.detectedPeriodFormats.SEC_DD_MMM_YYYY).toBe(9716);
+    expect(r.detectedPeriodFormats.UNKNOWN).toBe(0);
+
+    // Counter invariant: recognized = parsed + all gated rejections
+    const gated =
+      r.rejectedMissingAccession +
+      r.rejectedMissingCik +
+      r.rejectedInvalidCik +
+      r.rejectedMissingPeriodOfReport +
+      r.rejectedInvalidPeriodOfReport +
+      r.rejectedInvalidFilingDate +
+      r.rejectedOtherSubmissionValidation;
+    expect(r.recognizedHoldingsFormRows).toBe(r.parsedRows + gated);
+  });
+
+  it("O. rows from the simulation parse to ISO YYYY-MM-DD (not raw DD-MMM-YYYY)", () => {
+    const rows = [
+      [GOOD_ACCESSION,         "13F-HR", GOOD_CIK, "Mgr", "31-MAR-2026", GOOD_DATE],
+      ["0000001234-26-000002", "13F-HR", GOOD_CIK, "Mgr", "30-SEP-2025", GOOD_DATE],
+    ];
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.parsedRows).toBe(2);
+    expect(r.rows[0]?.periodOfReport).toBe("2026-03-31");
+    expect(r.rows[1]?.periodOfReport).toBe("2025-09-30");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P. normalizedPeriodDistribution preserves multiple historical periods
+// ---------------------------------------------------------------------------
+describe("P – normalizedPeriodDistribution preserves multiple historical periods", () => {
+  it("P. distribution correctly counts multiple distinct normalized periods", () => {
+    const rows = [
+      [GOOD_ACCESSION,         "13F-HR", GOOD_CIK, "Mgr", "31-MAR-2026", GOOD_DATE],
+      ["0000001234-26-000002", "13F-HR", GOOD_CIK, "Mgr", "31-MAR-2026", GOOD_DATE],
+      ["0000001234-26-000003", "13F-HR", GOOD_CIK, "Mgr", "30-SEP-2025", GOOD_DATE],
+      ["0000001234-26-000004", "13F-HR", GOOD_CIK, "Mgr", "30-JUN-2023", GOOD_DATE],
+      ["0000001234-26-000005", "13F-HR", GOOD_CIK, "Mgr", "30-JUN-2020", GOOD_DATE],
+    ];
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.parsedRows).toBe(5);
+    // Distribution should reflect normalized ISO dates, not raw DD-MMM-YYYY
+    expect(r.normalizedPeriodDistribution["2026-03-31"]).toBe(2);
+    expect(r.normalizedPeriodDistribution["2025-09-30"]).toBe(1);
+    expect(r.normalizedPeriodDistribution["2023-06-30"]).toBe(1);
+    expect(r.normalizedPeriodDistribution["2020-06-30"]).toBe(1);
+    // Keys are ISO dates, not raw SEC format
+    expect(Object.keys(r.normalizedPeriodDistribution)).not.toContain("31-MAR-2026");
+  });
+
+  it("P. distribution total matches parsedRows", () => {
+    const rows = Array.from({ length: 20 }, (_, i) => {
+      const seq = String(i + 1).padStart(6, "0");
+      const period = i < 12 ? "31-MAR-2026" : "30-SEP-2025";
+      return [`000000${seq}-26-000001`, "13F-HR", GOOD_CIK, "Mgr", period, GOOD_DATE];
+    });
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    const distTotal = Object.entries(r.normalizedPeriodDistribution)
+      .filter(([k]) => k !== "other")
+      .reduce((s, [, v]) => s + v, 0);
+    const other = r.normalizedPeriodDistribution["other"] ?? 0;
+    expect(distTotal + other).toBe(r.parsedRows);
+  });
+
+  it("P. empty when parsedRows = 0 (all periods invalid format)", () => {
+    const rows = [
+      [GOOD_ACCESSION, "13F-HR", GOOD_CIK, "Mgr", "UNSUPPORTED-FORMAT", GOOD_DATE],
+    ];
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.parsedRows).toBe(0);
+    expect(Object.keys(r.normalizedPeriodDistribution)).toHaveLength(0);
+  });
+
+  it("P. distribution preserves each filing's actual period (not forced to current quarter)", () => {
+    // Historical periods must be preserved exactly as filed — not normalized to today
+    const historical = ["30-JUN-2020", "31-DEC-2022", "30-SEP-2023", "31-MAR-2026"];
+    const rows = historical.map((period, i) => {
+      const seq = String(i + 1).padStart(6, "0");
+      return [`000000${seq}-26-000001`, "13F-HR", GOOD_CIK, "Mgr", period, GOOD_DATE];
+    });
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.parsedRows).toBe(4);
+    expect(r.normalizedPeriodDistribution["2020-06-30"]).toBe(1);
+    expect(r.normalizedPeriodDistribution["2022-12-31"]).toBe(1);
+    expect(r.normalizedPeriodDistribution["2023-09-30"]).toBe(1);
+    expect(r.normalizedPeriodDistribution["2026-03-31"]).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R. ALL_HOLDINGS_SUBMISSIONS_INVALID no longer fires for valid DD-MMM-YYYY rows
+// ---------------------------------------------------------------------------
+describe("R – ALL_HOLDINGS_SUBMISSIONS_INVALID no longer fires for valid DD-MMM-YYYY rows", () => {
+  it("R. recognizedHoldingsFormRows > 0 AND parsedRows > 0 when period is DD-MMM-YYYY", () => {
+    const rows = [
+      [GOOD_ACCESSION, "13F-HR", GOOD_CIK, "Mgr", "31-MAR-2026", GOOD_DATE],
+    ];
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.recognizedHoldingsFormRows).toBe(1);
+    expect(r.parsedRows).toBe(1);
+    expect(r.rejectedInvalidPeriodOfReport).toBe(0);
+    // detectedPeriodFormats shows SEC_DD_MMM_YYYY, not UNKNOWN
+    expect(r.detectedPeriodFormats.SEC_DD_MMM_YYYY).toBe(1);
+    expect(r.detectedPeriodFormats.UNKNOWN).toBe(0);
+  });
+
+  it("R. ALL_HOLDINGS_SUBMISSIONS_INVALID still fires for genuinely unsupported formats", () => {
+    // A format that is still unsupported should still produce zero parsedRows
+    const rows = [
+      [GOOD_ACCESSION, "13F-HR", GOOD_CIK, "Mgr", "2026-03-31 00:00:00", GOOD_DATE],
+    ];
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.parsedRows).toBe(0);
+    expect(r.rejectedInvalidPeriodOfReport).toBe(1);
+    expect(r.detectedPeriodFormats.UNKNOWN).toBe(1);
+  });
+
+  it("R. mixed batch: DD-MMM-YYYY rows parse, UNKNOWN-format rows are rejected", () => {
+    const rows = [
+      [GOOD_ACCESSION,         "13F-HR", GOOD_CIK, "Mgr", "31-MAR-2026",        GOOD_DATE], // valid
+      ["0000001234-26-000002", "13F-HR", GOOD_CIK, "Mgr", "2026-03-31 00:00:00", GOOD_DATE], // UNKNOWN
+      ["0000001234-26-000003", "13F-HR", GOOD_CIK, "Mgr", "30-SEP-2025",         GOOD_DATE], // valid
+    ];
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, rows));
+    expect(r.recognizedHoldingsFormRows).toBe(3);
+    expect(r.parsedRows).toBe(2);
+    expect(r.rejectedInvalidPeriodOfReport).toBe(1);
+    expect(r.detectedPeriodFormats.SEC_DD_MMM_YYYY).toBe(2);
+    expect(r.detectedPeriodFormats.UNKNOWN).toBe(1);
+  });
+
+  it("R. parseSubmissionTsv integrated: DD-MMM-YYYY period flows through to row.periodOfReport", () => {
+    const r = parseSubmissionTsv(buildTsv(STD_HEADERS, [goodRow("31-MAR-2026")]));
+    expect(r.parsedRows).toBe(1);
+    expect(r.rows[0]?.periodOfReport).toBe("2026-03-31");
+    expect(r.detectedPeriodFormats.SEC_DD_MMM_YYYY).toBe(1);
+    // normalizedPeriodDistribution reflects the normalized value, not the raw value
+    expect(r.normalizedPeriodDistribution["2026-03-31"]).toBe(1);
+    expect(Object.keys(r.normalizedPeriodDistribution)).not.toContain("31-MAR-2026");
   });
 });

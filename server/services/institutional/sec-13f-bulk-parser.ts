@@ -161,6 +161,12 @@ export interface BulkParseDiagnostics {
    * distribution means the date format is not yet supported.
    */
   detectedPeriodFormats: Record<DateFormatLabel, number>;
+  /**
+   * Bounded distribution of normalized PERIODOFREPORT values from successfully parsed rows.
+   * Keys are ISO YYYY-MM-DD dates (sorted by row count, most common first); "other" rolls
+   * up any periods beyond the top-10. Empty object when parsedRows = 0.
+   */
+  normalizedPeriodDistribution: Record<string, number>;
 }
 
 export interface ParsedBulkHolding {
@@ -583,12 +589,13 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
  * normalizeDateField() is always the canonical parser — never use this for conversion.
  */
 export type DateFormatLabel =
-  | "ISO_DASH"     // YYYY-MM-DD
-  | "ISO_COMPACT"  // YYYYMMDD (8 digits)
-  | "US_SLASH"     // MM/DD/YYYY
-  | "US_DASH"      // MM-DD-YYYY
-  | "ISO_SLASH"    // YYYY/MM/DD
-  | "UNKNOWN";     // no supported pattern matched
+  | "ISO_DASH"         // YYYY-MM-DD
+  | "ISO_COMPACT"      // YYYYMMDD (8 digits)
+  | "US_SLASH"         // MM/DD/YYYY
+  | "US_DASH"          // MM-DD-YYYY
+  | "ISO_SLASH"        // YYYY/MM/DD
+  | "SEC_DD_MMM_YYYY"  // DD-MMM-YYYY (SEC EDGAR post-2023 bulk archive PERIODOFREPORT format)
+  | "UNKNOWN";         // no supported pattern matched
 
 /**
  * Classify the syntactic format of a raw date string.
@@ -603,6 +610,7 @@ export function detectDateFormat(raw: string): DateFormatLabel {
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) return "US_SLASH";
   if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s))   return "US_DASH";
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(s))     return "ISO_SLASH";
+  if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(s)) return "SEC_DD_MMM_YYYY";
   return "UNKNOWN";
 }
 
@@ -669,6 +677,26 @@ export function normalizeDateField(raw: string): string | null {
     const d = parseInt(ymdSlash[3], 10);
     if (!isValidCalendarDate(y, m, d)) return null;
     return `${ymdSlash[1]}-${ymdSlash[2]}-${ymdSlash[3]}`;
+  }
+
+  // ── DD-MMM-YYYY (SEC EDGAR post-2023 bulk archive PERIODOFREPORT format) ─
+  // Examples: 31-MAR-2026, 30-SEP-2025, 01-JAN-2024
+  // Requires exactly 2-digit day and exactly 3-letter month abbreviation.
+  // Case-insensitive month input is accepted; arbitrary month words are rejected.
+  // Never uses Date.parse() or new Date(raw) — all parsing is explicit.
+  const ddMmmYyyy = s.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+  if (ddMmmYyyy) {
+    const SEC_MONTH_MAP: Record<string, number> = {
+      JAN: 1, FEB: 2,  MAR: 3,  APR: 4,  MAY: 5,  JUN: 6,
+      JUL: 7, AUG: 8,  SEP: 9,  OCT: 10, NOV: 11, DEC: 12,
+    };
+    const d = parseInt(ddMmmYyyy[1], 10);
+    const monthKey = ddMmmYyyy[2].toUpperCase();
+    const m = SEC_MONTH_MAP[monthKey];
+    const y = parseInt(ddMmmYyyy[3], 10);
+    if (m === undefined) return null;            // unrecognised month abbreviation
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${ddMmmYyyy[3]}-${String(m).padStart(2, "0")}-${ddMmmYyyy[1]}`;
   }
 
   return null;
@@ -836,6 +864,8 @@ export function parseSubmissionTsv(text: string): {
   detectedPeriodFormats: Record<DateFormatLabel, number>;
   /** Up to 10 distinct raw PERIODOFREPORT values from holdings-bearing rows (for diagnostics) */
   rawPeriodSamples: string[];
+  /** Bounded distribution of normalized period-of-report values from successfully parsed rows */
+  normalizedPeriodDistribution: Record<string, number>;
 } {
   const { headers, rows: rawRows } = parseTsv(text);
   const lookup = buildHeaderLookup(headers);
@@ -877,7 +907,7 @@ export function parseSubmissionTsv(text: string): {
 
   // Period-of-report diagnostic collection (holdings-bearing rows only)
   const periodFormatCounts: Record<DateFormatLabel, number> = {
-    ISO_DASH: 0, ISO_COMPACT: 0, US_SLASH: 0, US_DASH: 0, ISO_SLASH: 0, UNKNOWN: 0,
+    ISO_DASH: 0, ISO_COMPACT: 0, US_SLASH: 0, US_DASH: 0, ISO_SLASH: 0, SEC_DD_MMM_YYYY: 0, UNKNOWN: 0,
   };
   const rawPeriodSampleSet = new Set<string>(); // distinct values, capped at 10
   const MAX_PERIOD_SAMPLES = 10;
@@ -1010,6 +1040,27 @@ export function parseSubmissionTsv(text: string): {
   const submissionTypeCounts: Record<string, number> = Object.fromEntries(rawTypeCounts);
   const normalizedSubmissionTypeCounts: Record<string, number> = Object.fromEntries(normTypeCounts);
 
+  // ── Bounded normalized period-of-report distribution ──────────────────────
+  // Built from successfully parsed rows only. Top-10 periods by row count;
+  // any remainder rolls into "other". Empty when parsedRows = 0.
+  const MAX_PERIOD_DIST = 10;
+  const periodDistMap = new Map<string, number>();
+  for (const row of rows) {
+    const p = row.periodOfReport;
+    periodDistMap.set(p, (periodDistMap.get(p) ?? 0) + 1);
+  }
+  const sortedPeriodDist = Array.from(periodDistMap.entries()).sort((a, b) => b[1] - a[1]);
+  const normalizedPeriodDistribution: Record<string, number> = {};
+  let periodDistOther = 0;
+  for (let i = 0; i < sortedPeriodDist.length; i++) {
+    if (i < MAX_PERIOD_DIST) {
+      normalizedPeriodDistribution[sortedPeriodDist[i][0]] = sortedPeriodDist[i][1];
+    } else {
+      periodDistOther += sortedPeriodDist[i][1];
+    }
+  }
+  if (periodDistOther > 0) normalizedPeriodDistribution["other"] = periodDistOther;
+
   return {
     rows,
     unknownTypeRows,
@@ -1038,7 +1089,8 @@ export function parseSubmissionTsv(text: string): {
     excludedUnknownCount: excludedUnknownTypeRows,
     amendmentCount,
     detectedPeriodFormats: periodFormatCounts,
-    rawPeriodSamples: [...rawPeriodSampleSet],
+    rawPeriodSamples: Array.from(rawPeriodSampleSet),
+    normalizedPeriodDistribution,
   };
 }
 
@@ -1405,8 +1457,9 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   amendmentSubmissionCount: 0,
   amendmentFlagConflictCount: 0,
   detectedPeriodFormats: {
-    ISO_DASH: 0, ISO_COMPACT: 0, US_SLASH: 0, US_DASH: 0, ISO_SLASH: 0, UNKNOWN: 0,
+    ISO_DASH: 0, ISO_COMPACT: 0, US_SLASH: 0, US_DASH: 0, ISO_SLASH: 0, SEC_DD_MMM_YYYY: 0, UNKNOWN: 0,
   },
+  normalizedPeriodDistribution: {},
 };
 
 /**
@@ -1555,6 +1608,7 @@ export function parseBulkQuarterFromBuffer(
     amendmentCount: amendmentSubmissionCount,
     detectedPeriodFormats,
     rawPeriodSamples,
+    normalizedPeriodDistribution,
   } = parseSubmissionTsv(subText);
 
   /** Submission type diagnostics — shared into every early-return below. */
@@ -1580,6 +1634,7 @@ export function parseBulkQuarterFromBuffer(
     amendmentSubmissionCount,
     detectedPeriodFormats,
     rawPeriodSamples,
+    normalizedPeriodDistribution,
   };
 
   if (missingSubH.length > 0) {

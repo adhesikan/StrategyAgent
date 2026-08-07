@@ -1,0 +1,306 @@
+INSTITUTIONAL 13F — ADD STRICT DD-MMM-YYYY PERIOD DATE SUPPORT
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION DIAGNOSIS
+
+The production validation command:
+
+npx tsx scripts/inspect-submission-types.ts --validate
+
+proved conclusively that PERIODOFREPORT uses the format:
+
+DD-MMM-YYYY
+
+Observed examples:
+
+31-MAR-2026
+30-SEP-2024
+30-SEP-2025
+30-JUN-2023
+30-JUN-2020
+31-DEC-2025
+31-DEC-2022
+31-MAR-2023
+30-SEP-2023
+30-JUN-2024
+
+All 9,716 holdings-bearing submissions were rejected only because
+normalizeDateField() does not support this format.
+
+Current counters:
+
+recognizedHoldingsFormRows: 9716
+parsedSubmissionRows: 0
+rejectedInvalidPeriodOfReport: 9716
+
+This is a narrowly scoped date-parser fix.
+
+Do not modify:
+
+- submission-type normalization
+- SEC catalog logic
+- ZIP entry resolution
+- COVERPAGE joins
+- INFOTABLE parsing
+- CIK/accession handling
+- database schema
+- aggregation
+- mappings
+- feature flags
+- UI
+
+Keep:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+============================================================
+1. ADD NEW DATE FORMAT LABEL
+============================================================
+
+Extend DateFormatLabel with:
+
+SEC_DD_MMM_YYYY
+
+Update detectDateFormat(raw) to recognize exactly:
+
+^\d{2}-[A-Za-z]{3}-\d{4}$
+
+Examples:
+
+31-MAR-2026
+30-SEP-2025
+01-JAN-2024
+
+Do not accept arbitrary month words.
+
+============================================================
+2. ADD STRICT MONTH MAP
+============================================================
+
+Use an explicit map:
+
+JAN -> 01
+FEB -> 02
+MAR -> 03
+APR -> 04
+MAY -> 05
+JUN -> 06
+JUL -> 07
+AUG -> 08
+SEP -> 09
+OCT -> 10
+NOV -> 11
+DEC -> 12
+
+Case-insensitive input is acceptable.
+
+Do not use Date.parse().
+Do not use new Date(raw) for parsing.
+
+============================================================
+3. NORMALIZE TO ISO DATE
+============================================================
+
+For:
+
+31-MAR-2026
+
+return:
+
+2026-03-31
+
+For:
+
+30-SEP-2025
+
+return:
+
+2025-09-30
+
+Run the result through existing strict calendar validation.
+
+Reject:
+
+31-APR-2026
+29-FEB-2025
+32-MAR-2026
+00-JAN-2026
+31-XYZ-2026
+1-MAR-2026 if the observed SEC contract requires 2-digit day
+MAR-31-2026
+
+Do not broaden beyond the observed production format unless an existing supported
+format already covers the input.
+
+============================================================
+4. UPDATE FORMAT DIAGNOSTICS
+============================================================
+
+After the fix:
+
+detectDateFormat("31-MAR-2026")
+
+must return:
+
+SEC_DD_MMM_YYYY
+
+The production validation output should show:
+
+Detected patterns:
+SEC_DD_MMM_YYYY  9716
+
+currently parseable: 9716
+currently rejected: 0
+
+============================================================
+5. VALIDATION SUCCESS TARGET
+============================================================
+
+The exact expected production result for the current dataset is:
+
+Recognized holdings total: 9716
+
+Field validation:
+  parsed successfully:          9716
+  missing accession:               0
+  invalid accession:               0
+  missing CIK:                     0
+  invalid CIK:                     0
+  missing period of report:        0
+  invalid period of report:        0
+  invalid filing date:             0
+  other validation:                0
+
+Invariant:
+
+9716 === 9716 + 0 ✓
+
+If filingDate uses a different format and starts failing after this change,
+diagnostics must identify it separately rather than changing this period parser
+speculatively.
+
+============================================================
+6. PERIOD DISTRIBUTION
+============================================================
+
+Once parsing succeeds, report bounded actual normalized period counts.
+
+Because this SEC ZIP is a filing-window dataset, it legitimately contains historical
+periods such as:
+
+2026-03-31
+2025-09-30
+2023-06-30
+2020-06-30
+
+Do not force all filings in the ZIP to 2026Q1.
+
+Preserve each filing's actual PERIODOFREPORT.
+
+Add diagnostic:
+
+normalizedPeriodDistribution
+
+bounded to the most common periods plus an "other" count if needed.
+
+============================================================
+7. TESTS
+============================================================
+
+Add focused tests:
+
+A. 31-MAR-2026 -> 2026-03-31
+
+B. 30-SEP-2025 -> 2025-09-30
+
+C. 31-DEC-2025 -> 2025-12-31
+
+D. 30-JUN-2024 -> 2024-06-30
+
+E. lowercase month works if intentionally supported
+
+F. mixed-case month works if intentionally supported
+
+G. invalid month rejected
+
+H. 31-APR rejected
+
+I. non-leap 29-FEB rejected
+
+J. leap-year 29-FEB accepted
+
+K. 00 day rejected
+
+L. 32 day rejected
+
+M. detectDateFormat returns SEC_DD_MMM_YYYY
+
+N. all previous five formats remain unchanged
+
+O. 9716-row simulated production dataset parses all holdings-bearing submissions
+
+P. normalized period distribution preserves multiple historical periods
+
+Q. filing-date regression remains green
+
+R. ALL_HOLDINGS_SUBMISSIONS_INVALID no longer fires for valid DD-MMM-YYYY rows
+
+Run:
+
+- period-format tests
+- submission-validation tests
+- institutional tests
+- TypeScript check
+- client tests
+
+============================================================
+8. PRODUCTION VERIFICATION ORDER
+============================================================
+
+After deployment:
+
+FIRST run:
+
+npx tsx scripts/inspect-submission-types.ts --validate
+
+Do not run the full backfill until validation shows:
+
+parsed successfully: 9716
+invalid period of report: 0
+detected pattern: SEC_DD_MMM_YYYY
+
+Then run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+Then:
+
+npx tsx scripts/audit-institutional-readiness.ts
+
+Only after real holdings exist should COST mapping begin.
+
+============================================================
+9. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Files changed
+2. New DateFormatLabel
+3. Month-map implementation
+4. normalizeDateField before/after
+5. Strict validation behavior
+6. Tests added
+7. Total passing tests
+8. Typecheck
+9. Exact production validation command
+10. Expected validation output
+11. Exact full-backfill command
+12. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run full production ingestion, seed mappings, change
+Railway variables, or enable Institutional Intelligence automatically.
+
+Wait for review.

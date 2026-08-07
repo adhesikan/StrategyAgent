@@ -53,10 +53,27 @@ export type BulkQuarterStatus =
   | "empty_parse_failure"
   | "failed";
 
+/** Resolution tier used to locate a required archive entry. */
+export type ArchiveResolutionMode =
+  | "bare_exact"       // Root-level bare basename: SUBMISSION.tsv
+  | "legacy_prefixed"  // Quarter-prefixed legacy: 2023Q4_SUBMISSION.tsv
+  | "nested_basename"; // Nested under a directory: dataset/SUBMISSION.tsv
+
+/** Result of resolveRequiredArchiveEntry(). */
+export type ResolveArchiveEntryResult =
+  | { found: true;  entry: AdmZip.IZipEntry; mode: ArchiveResolutionMode }
+  | { found: false; error: "REQUIRED_ARCHIVE_ENTRY_MISSING" | "AMBIGUOUS_ARCHIVE_ENTRY" };
+
 export interface BulkParseDiagnostics {
   archiveBytes: number;
   /** First ≤8 entry names (safe to log) */
   archiveEntries: string[];
+  /** Original entry name as found in the archive (null if not resolved) */
+  resolvedSubmissionEntry: string | null;
+  /** Original entry name as found in the archive (null if not resolved) */
+  resolvedInfoTableEntry: string | null;
+  /** How the entries were located */
+  resolutionMode: ArchiveResolutionMode | null;
   submissionRows: number;
   informationTableRows: number;
   joinedHoldingRows: number;
@@ -403,12 +420,91 @@ export function parseInfoTableTsv(text: string): {
 }
 
 // ---------------------------------------------------------------------------
-// ZIP entry resolution (case-insensitive)
+// ZIP entry resolution
 // ---------------------------------------------------------------------------
+
+/**
+ * Locate a required ZIP entry by canonical base name, case-insensitively.
+ *
+ * Normalizes each entry name: replaces `\` with `/`, strips leading `./`,
+ * trims whitespace, then compares the lowercase basename.
+ *
+ * Resolution priority (first non-empty tier wins):
+ *   A. Bare root basename (e.g. SUBMISSION.tsv at the archive root)
+ *   B. Legacy quarter-prefixed match (e.g. 2023Q4_SUBMISSION.tsv — any depth)
+ *   C. Unique nested basename match (e.g. dataset/SUBMISSION.tsv)
+ *
+ * Ambiguity: multiple equally-valid candidates at the same tier returns
+ * AMBIGUOUS_ARCHIVE_ENTRY rather than selecting arbitrarily.
+ *
+ * Rejects unrelated partial matches (OLD_SUBMISSION_BACKUP.tsv, etc.).
+ * Does NOT depend on descriptor quarter — works for all archive generations.
+ *
+ * Archive generations:
+ *   - Post-2023: bare filenames (SUBMISSION.tsv, INFOTABLE.tsv)
+ *   - Pre-2024:  quarter-prefixed (2023Q4_SUBMISSION.TSV, 2023Q4_INFOTABLE.TSV)
+ */
+export function resolveRequiredArchiveEntry(
+  entries: AdmZip.IZipEntry[],
+  requiredBaseName: string,
+): ResolveArchiveEntryResult {
+  const target = requiredBaseName.toLowerCase();
+
+  const tierA: AdmZip.IZipEntry[] = []; // bare root exact match
+  const tierB: AdmZip.IZipEntry[] = []; // legacy quarter-prefixed match
+  const tierC: AdmZip.IZipEntry[] = []; // nested (non-root) exact match
+
+  for (const entry of entries) {
+    // Normalize: backslash → slash, strip leading ./, trim
+    const normalized = entry.entryName
+      .replace(/\\/g, "/")
+      .replace(/^\.\//, "")
+      .trim();
+
+    const parts = normalized.split("/");
+    const rawBase = parts[parts.length - 1];
+    if (!rawBase) continue; // skip directory-marker entries (trailing slash)
+
+    const basename = rawBase.toLowerCase();
+    const isRoot = parts.length === 1;
+    const isExact = basename === target;
+
+    // Legacy: must be exactly <YYYYQN>_<target>, nothing else.
+    // e.g. "2023q4_submission.tsv" when target = "submission.tsv"
+    const isLegacy =
+      !isExact &&
+      /^\d{4}q[1-4]_/i.test(basename) &&
+      basename.slice(basename.indexOf("_") + 1) === target;
+
+    if (isExact && isRoot) {
+      tierA.push(entry);
+    } else if (isLegacy) {
+      tierB.push(entry);
+    } else if (isExact) {
+      tierC.push(entry); // nested non-root exact match
+    }
+    // All other entries (partial/wrong name, wrong extension, etc.) ignored
+  }
+
+  if (tierA.length === 1) return { found: true, entry: tierA[0], mode: "bare_exact" };
+  if (tierA.length > 1)   return { found: false, error: "AMBIGUOUS_ARCHIVE_ENTRY" };
+
+  if (tierB.length === 1) return { found: true, entry: tierB[0], mode: "legacy_prefixed" };
+  if (tierB.length > 1)   return { found: false, error: "AMBIGUOUS_ARCHIVE_ENTRY" };
+
+  if (tierC.length === 1) return { found: true, entry: tierC[0], mode: "nested_basename" };
+  if (tierC.length > 1)   return { found: false, error: "AMBIGUOUS_ARCHIVE_ENTRY" };
+
+  return { found: false, error: "REQUIRED_ARCHIVE_ENTRY_MISSING" };
+}
 
 /**
  * Find a ZIP entry by name suffix, case-insensitive.
  * Handles entries with directory prefixes (e.g. "data/2026Q1_SUBMISSION.TSV").
+ *
+ * @deprecated Use resolveRequiredArchiveEntry() for new code. This helper
+ *   requires the caller to construct the exact suffix (including prefix), which
+ *   does not work for post-2023 bare-named archives.
  */
 export function findZipEntry(
   zip: AdmZip,
@@ -429,6 +525,9 @@ export function findZipEntry(
 const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   archiveBytes: 0,
   archiveEntries: [],
+  resolvedSubmissionEntry: null,
+  resolvedInfoTableEntry: null,
+  resolutionMode: null,
   submissionRows: 0,
   informationTableRows: 0,
   joinedHoldingRows: 0,
@@ -444,27 +543,27 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
  * Exported for testing — does not make any HTTP requests.
  *
  * @param buffer             ZIP archive buffer
- * @param year               Holdings period year (used to derive entry prefix)
- * @param q                  Holdings period quarter (used to derive entry prefix)
+ * @param year               Holdings period year (retained for caller compat; not
+ *                           used for entry resolution — resolveRequiredArchiveEntry
+ *                           handles both bare and legacy-prefixed archives)
+ * @param q                  Holdings period quarter (same note as year)
  * @param startMs            Timestamp of download start for durationMs diagnostic
- * @param entryPrefixOverride  Optional explicit entry prefix (e.g. "2026Q1").
- *                             When provided it is tried first. If no matching
- *                             entry is found, auto-detection from archive entries
- *                             is attempted before falling back to year+q.
+ * @param entryPrefixOverride  @deprecated No longer used for entry resolution.
+ *                             The resolver auto-detects bare and legacy-prefixed
+ *                             entries without constructing an expected name.
  */
 export function parseBulkQuarterFromBuffer(
   buffer: Buffer,
   year: number,
   q: 1 | 2 | 3 | 4,
   startMs = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   entryPrefixOverride?: string,
 ): BulkParseResult {
-  // Determine the entry prefix to use:
-  //   1. Caller-supplied override (first attempt)
-  //   2. Year+quarter derived (fallback)
-  // Auto-detect from archive entries when neither resolves.
-  const derivedPrefix = entryPrefix(year, q);
-  const preferredPrefix = entryPrefixOverride ?? derivedPrefix;
+  // year and q are retained for caller backward-compat but are no longer used
+  // for entry-name construction. resolveRequiredArchiveEntry() handles all
+  // archive generations (post-2023 bare + pre-2024 legacy-prefixed) without
+  // requiring the caller to specify the expected filename prefix.
 
   // Open ZIP
   let zip: AdmZip;
@@ -483,50 +582,62 @@ export function parseBulkQuarterFromBuffer(
     };
   }
 
-  const allEntries = zip.getEntries().map((e) => e.entryName);
-  const baseDiag = { archiveBytes: buffer.length, archiveEntries: allEntries };
+  const zipEntries = zip.getEntries();
+  const allEntryNames = zipEntries.map((e) => e.entryName);
+  const baseDiag = { archiveBytes: buffer.length, archiveEntries: allEntryNames };
 
-  // Resolve the actual entry prefix to look up:
-  //   1. Try preferredPrefix (override or derived from year+q)
-  //   2. If not found, auto-detect from archive entries
-  //   3. Fall back to derivedPrefix for error messages
-  let resolvedPrefix = preferredPrefix;
-  let submissionEntry = findZipEntry(zip, `${resolvedPrefix}_SUBMISSION.TSV`);
-  let infoTableEntry  = findZipEntry(zip, `${resolvedPrefix}_INFOTABLE.TSV`);
+  // Resolve SUBMISSION.tsv and INFOTABLE.tsv using the robust basename resolver.
+  // Works for all archive generations:
+  //   - Post-2023 bare filenames: SUBMISSION.tsv, INFOTABLE.tsv
+  //   - Pre-2024 quarter-prefixed: 2023Q4_SUBMISSION.TSV, 2023Q4_INFOTABLE.TSV
+  //   - Nested paths, case variants, any combination
+  // Does NOT depend on year/q or entryPrefixOverride to construct expected names.
+  const subResolve  = resolveRequiredArchiveEntry(zipEntries, "SUBMISSION.tsv");
+  const infoResolve = resolveRequiredArchiveEntry(zipEntries, "INFOTABLE.tsv");
 
-  if ((!submissionEntry || !infoTableEntry) && resolvedPrefix !== derivedPrefix) {
-    // Try the year+q derived prefix if override didn't match
-    submissionEntry = findZipEntry(zip, `${derivedPrefix}_SUBMISSION.TSV`);
-    infoTableEntry  = findZipEntry(zip, `${derivedPrefix}_INFOTABLE.TSV`);
-    if (submissionEntry || infoTableEntry) resolvedPrefix = derivedPrefix;
-  }
+  const resolvedSubmissionEntry = subResolve.found  ? subResolve.entry.entryName  : null;
+  const resolvedInfoTableEntry  = infoResolve.found ? infoResolve.entry.entryName : null;
+  const resolutionMode: ArchiveResolutionMode | null =
+    subResolve.found  ? subResolve.mode  :
+    infoResolve.found ? infoResolve.mode : null;
 
-  if (!submissionEntry || !infoTableEntry) {
-    // Last resort: auto-detect prefix from archive entries
-    const autoPrefix = detectEntryPrefix(zip);
-    if (autoPrefix) {
-      submissionEntry = findZipEntry(zip, `${autoPrefix}_SUBMISSION.TSV`);
-      infoTableEntry  = findZipEntry(zip, `${autoPrefix}_INFOTABLE.TSV`);
-      if (submissionEntry && infoTableEntry) resolvedPrefix = autoPrefix;
-    }
-  }
+  const resolutionDiag = { resolvedSubmissionEntry, resolvedInfoTableEntry, resolutionMode };
 
-  if (!submissionEntry || !infoTableEntry) {
-    const missing = [
-      !submissionEntry ? `${resolvedPrefix}_SUBMISSION.TSV` : null,
-      !infoTableEntry ? `${resolvedPrefix}_INFOTABLE.TSV` : null,
-    ]
-      .filter(Boolean)
-      .join(", ");
+  // Ambiguity — multiple equally-valid candidates at the same tier
+  const ambiguous = [subResolve, infoResolve].some(
+    (r) => !r.found && r.error === "AMBIGUOUS_ARCHIVE_ENTRY",
+  );
+  if (ambiguous) {
+    const ambigNames = [
+      !subResolve.found  && subResolve.error  === "AMBIGUOUS_ARCHIVE_ENTRY" ? "SUBMISSION.tsv"  : null,
+      !infoResolve.found && infoResolve.error === "AMBIGUOUS_ARCHIVE_ENTRY" ? "INFOTABLE.tsv" : null,
+    ].filter(Boolean).join(", ");
     return {
       status: "empty_parse_failure",
       holdings: [],
-      diagnostics: { ...EMPTY_DIAGNOSTICS, ...baseDiag, durationMs: Date.now() - startMs },
-      reason:
-        `Required TSV entries not found: [${missing}]. ` +
-        `Archive has: [${allEntries.slice(0, 8).join(", ")}${allEntries.length > 8 ? ", …" : ""}]`,
+      diagnostics: { ...EMPTY_DIAGNOSTICS, ...baseDiag, ...resolutionDiag, durationMs: Date.now() - startMs },
+      reason: `AMBIGUOUS_ARCHIVE_ENTRY: multiple equally-valid candidates for [${ambigNames}] — cannot safely select one`,
     };
   }
+
+  // Required entries missing
+  if (!subResolve.found || !infoResolve.found) {
+    const missing = [
+      !subResolve.found  ? "SUBMISSION.tsv"  : null,
+      !infoResolve.found ? "INFOTABLE.tsv" : null,
+    ].filter(Boolean).join(", ");
+    return {
+      status: "empty_parse_failure",
+      holdings: [],
+      diagnostics: { ...EMPTY_DIAGNOSTICS, ...baseDiag, ...resolutionDiag, durationMs: Date.now() - startMs },
+      reason:
+        `REQUIRED_ARCHIVE_ENTRY_MISSING: [${missing}]. ` +
+        `Archive has: [${allEntryNames.slice(0, 8).join(", ")}${allEntryNames.length > 8 ? ", …" : ""}]`,
+    };
+  }
+
+  const submissionEntry = subResolve.entry;
+  const infoTableEntry  = infoResolve.entry;
 
   // Parse SUBMISSION.tsv
   const subText = submissionEntry.getData().toString("utf8");
@@ -553,6 +664,7 @@ export function parseBulkQuarterFromBuffer(
       diagnostics: {
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
+        ...resolutionDiag,
         submissionRows: totalSubRows,
         informationTableRows: totalInfoRows,
         durationMs: Date.now() - startMs,
@@ -571,6 +683,7 @@ export function parseBulkQuarterFromBuffer(
       diagnostics: {
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
+        ...resolutionDiag,
         submissionRows: totalSubRows,
         informationTableRows: totalInfoRows,
         rejectedRows,
@@ -628,7 +741,8 @@ export function parseBulkQuarterFromBuffer(
 
   const diagnostics: BulkParseDiagnostics = {
     archiveBytes: buffer.length,
-    archiveEntries: allEntries,
+    archiveEntries: allEntryNames,
+    ...resolutionDiag,
     submissionRows: totalSubRows,
     informationTableRows: totalInfoRows,
     joinedHoldingRows,

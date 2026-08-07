@@ -1,0 +1,433 @@
+INSTITUTIONAL 13F — FIX BARE TSV ARCHIVE ENTRY RESOLUTION
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION FAILURE
+
+The corrected SEC catalog resolver successfully selected and downloaded:
+
+- 01mar2026-31may2026_form13f.zip
+- 01dec2025-28feb2026_form13f.zip
+
+Both ZIP files downloaded successfully at approximately 90–99 MB and contained the
+expected SEC bulk files.
+
+Observed archive entries:
+
+COVERPAGE.tsv
+INFOTABLE.tsv
+OTHERMANAGER.tsv
+OTHERMANAGER2.tsv
+SIGNATURE.tsv
+SUBMISSION.tsv
+SUMMARYPAGE.tsv
+FORM13F_metadata.json
+
+However, the parser failed with:
+
+Required TSV entries not found:
+[2026Q1_SUBMISSION.TSV, 2026Q1_INFOTABLE.TSV]
+
+and:
+
+[2025Q4_SUBMISSION.TSV, 2025Q4_INFOTABLE.TSV]
+
+The current resolver incorrectly expects quarter-prefixed entry names even though the
+actual post-2023 SEC archives use bare filenames:
+
+SUBMISSION.tsv
+INFOTABLE.tsv
+
+This is a focused ZIP-entry resolution fix.
+
+Do not modify:
+
+- SEC catalog discovery
+- dataset-window mapping
+- TSV row parsing
+- database schema
+- aggregation formulas
+- amendment handling
+- security mapping policy
+- Institutional UI
+- feature flags
+- Opportunity Engine
+- MCP
+- scanner
+- broker integrations
+
+Do not enable the public Institutional Intelligence feature.
+
+====================================================================
+1. CONFIRM ROOT CAUSE
+====================================================================
+
+Trace:
+
+parseBulkFromDescriptor()
+→ parseBulkQuarterFromBuffer()
+→ detectEntryPrefix()
+→ required-entry lookup
+
+Confirm why detectEntryPrefix() or the required-entry builder converts the descriptor
+period into expected names such as:
+
+2026Q1_SUBMISSION.TSV
+2026Q1_INFOTABLE.TSV
+
+even though the extracted archive contains:
+
+SUBMISSION.tsv
+INFOTABLE.tsv
+
+Report the exact function and conditional responsible.
+
+====================================================================
+2. IMPLEMENT A ROBUST ENTRY RESOLVER
+====================================================================
+
+Replace quarter-prefix assumptions with a general-purpose ZIP entry resolver.
+
+Create a pure helper similar to:
+
+resolveRequiredArchiveEntry(
+  entries,
+  requiredBaseName
+): ZipEntry | null
+
+Required behavior:
+
+1. Match entry names case-insensitively.
+2. Normalize path separators.
+3. Compare using the basename of each ZIP entry.
+4. Prefer an exact bare basename match:
+   SUBMISSION.tsv
+   INFOTABLE.tsv
+5. Support legacy prefixed names:
+   2023Q4_SUBMISSION.tsv
+   2023Q4_INFOTABLE.tsv
+6. Support nested paths:
+   some-folder/SUBMISSION.tsv
+7. Support case variants:
+   SUBMISSION.TSV
+   submission.tsv
+   Submission.tsv
+8. Reject unrelated partial matches such as:
+   OLD_SUBMISSION_BACKUP.tsv
+   SUBMISSION_NOTES.txt
+9. Detect ambiguity:
+   if multiple equally valid entries match, fail safely with
+   AMBIGUOUS_ARCHIVE_ENTRY rather than selecting arbitrarily.
+
+Preferred lookup order:
+
+A. Exact bare basename match, case-insensitive
+B. Exact recognized legacy-prefixed basename match
+C. Unique nested basename match
+D. Failure or ambiguity
+
+Do not depend on the descriptor quarter to find post-2023 bare filenames.
+
+====================================================================
+3. REMOVE OR LIMIT detectEntryPrefix()
+====================================================================
+
+Audit detectEntryPrefix().
+
+If it is no longer necessary, remove it.
+
+If legacy datasets still require it:
+
+- use it only as a fallback for legacy-prefixed archives;
+- never prepend a quarter when bare canonical names exist;
+- do not let it override exact bare matches.
+
+Document which archive generations use:
+
+- bare canonical TSV names;
+- prefixed legacy TSV names.
+
+====================================================================
+4. REQUIRED ARCHIVE FILES
+====================================================================
+
+The ingestion parser requires at minimum:
+
+- SUBMISSION.tsv
+- INFOTABLE.tsv
+
+Resolve these by canonical base name.
+
+Other files remain optional unless currently required:
+
+- COVERPAGE.tsv
+- SUMMARYPAGE.tsv
+- SIGNATURE.tsv
+- OTHERMANAGER.tsv
+- OTHERMANAGER2.tsv
+- FORM13F_metadata.json
+
+Do not fail merely because optional files are absent unless existing business logic
+explicitly needs them.
+
+====================================================================
+5. CASE AND PATH NORMALIZATION
+====================================================================
+
+Normalize ZIP entry names by:
+
+- replacing backslashes with forward slashes;
+- removing leading `./`;
+- extracting final path segment;
+- trimming whitespace;
+- applying lowercase only for comparison.
+
+Preserve the original entry name for logging and diagnostics.
+
+Do not mutate archive contents.
+
+====================================================================
+6. SAFE DIAGNOSTICS
+====================================================================
+
+Update `institutional_13f_archive_inspected` to include bounded safe fields:
+
+- resolvedSubmissionEntry
+- resolvedInfoTableEntry
+- resolutionMode:
+  - bare_exact
+  - legacy_prefixed
+  - nested_basename
+- entryCount
+- bounded entryNames
+- archiveBytes
+
+Never log raw TSV rows.
+
+Example:
+
+{
+  "resolvedSubmissionEntry": "SUBMISSION.tsv",
+  "resolvedInfoTableEntry": "INFOTABLE.tsv",
+  "resolutionMode": "bare_exact"
+}
+
+====================================================================
+7. FAILURE CLASSIFICATION
+====================================================================
+
+Preserve EMPTY_PARSE_FAILURE when required files genuinely cannot be found.
+
+Use more precise safe reasons:
+
+REQUIRED_ARCHIVE_ENTRY_MISSING
+
+AMBIGUOUS_ARCHIVE_ENTRY
+
+Do not report success or partial success when required entries are missing.
+
+The CLI must still exit non-zero for these failures.
+
+====================================================================
+8. DUPLICATE FAILURE EVENT
+====================================================================
+
+The production output emitted `institutional_13f_empty_parse_failure` twice for each
+dataset.
+
+Audit why:
+
+- once inside archive parsing;
+- once inside ingestion-service catch/result handling.
+
+Emit one authoritative failure event per dataset attempt.
+
+A higher-level batch summary event is acceptable, but do not duplicate the identical
+quarter-level failure event.
+
+Preserve all useful diagnostics in the single event.
+
+====================================================================
+9. TEST FIXTURES
+====================================================================
+
+Add tests using minimal in-memory ZIP fixtures.
+
+Required cases:
+
+A. Current post-2023 archive
+
+Entries:
+- SUBMISSION.tsv
+- INFOTABLE.tsv
+
+Expected:
+- both resolved
+- mode = bare_exact
+- parser proceeds
+
+B. Uppercase current archive
+
+- SUBMISSION.TSV
+- INFOTABLE.TSV
+
+Expected:
+- case-insensitive resolution
+
+C. Mixed-case archive
+
+- Submission.tsv
+- InfoTable.tsv
+
+D. Nested archive
+
+- dataset/SUBMISSION.tsv
+- dataset/INFOTABLE.tsv
+
+E. Legacy-prefixed archive
+
+- 2023Q4_SUBMISSION.tsv
+- 2023Q4_INFOTABLE.tsv
+
+F. Quarter-prefix mismatch
+
+Descriptor = 2026Q1
+Archive entries = bare canonical names
+
+Expected:
+- succeeds
+- no prefix imposed
+
+G. Missing submission
+
+Expected:
+- REQUIRED_ARCHIVE_ENTRY_MISSING
+- EMPTY_PARSE_FAILURE
+
+H. Missing infotable
+
+Expected:
+- same safe failure behavior
+
+I. Ambiguous submission entries
+
+- folder-a/SUBMISSION.tsv
+- folder-b/SUBMISSION.tsv
+- no root bare entry
+
+Expected:
+- AMBIGUOUS_ARCHIVE_ENTRY
+
+J. Bare entry plus nested duplicate
+
+- SUBMISSION.tsv
+- backup/SUBMISSION.tsv
+
+Expected:
+- exact root bare entry wins
+
+K. Partial-name rejection
+
+- OLD_SUBMISSION_BACKUP.tsv
+- INFOTABLE.tsv
+
+Expected:
+- submission missing
+
+L. Existing parser regression
+
+Once entries resolve:
+
+- submissionRows > 0
+- informationTableRows > 0
+- joinedHoldingRows > 0
+
+M. Duplicate event regression
+
+- exactly one quarter-level empty-parse event emitted per failed dataset
+
+====================================================================
+10. PRODUCTION RE-RUN SEQUENCE
+====================================================================
+
+After the fix:
+
+1. Deploy while:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+2. Run dry-run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2 --dry-run
+
+3. Run one recent dataset through the catalog-backed two-quarter command or an
+implemented safe descriptor selector.
+
+4. Run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+5. Confirm logs show:
+
+resolvedSubmissionEntry: SUBMISSION.tsv
+resolvedInfoTableEntry: INFOTABLE.tsv
+submissionRows: > 0
+informationTableRows: > 0
+joinedHoldingRows: > 0
+filingCount: > 0
+holdingCount: > 0
+
+6. Confirm no EMPTY_PARSE_FAILURE.
+
+7. Run:
+
+npx tsx scripts/audit-institutional-readiness.ts
+
+8. Only after real holdings exist, verify and seed COST mapping.
+
+9. Rebuild aggregates if required.
+
+10. Keep the public feature disabled until final readiness GO.
+
+====================================================================
+11. TESTS AND BUILD
+====================================================================
+
+Run:
+
+- new archive-entry resolver tests
+- bulk parser tests
+- ingestion-service tests
+- CLI tests
+- full institutional tests
+- full server tests
+- full client tests
+- typecheck
+- production build
+
+====================================================================
+12. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact entry-resolution root cause
+2. Files changed
+3. Resolver algorithm
+4. Bare versus legacy naming support
+5. Ambiguity policy
+6. Optional versus required archive files
+7. Duplicate event root cause and fix
+8. Tests added
+9. Total passing tests
+10. Typecheck
+11. Build
+12. Exact production rerun commands
+13. Expected successful log fields
+14. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run production ingestion, seed mappings, change Railway
+variables, or enable the public feature automatically.
+
+Wait for review.

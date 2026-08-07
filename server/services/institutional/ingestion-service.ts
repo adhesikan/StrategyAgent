@@ -388,6 +388,9 @@ async function ingestQuarter(
     archiveBytes: parseResult.diagnostics.archiveBytes,
     entryCount: parseResult.diagnostics.archiveEntries.length,
     entryNames: parseResult.diagnostics.archiveEntries.slice(0, 8),
+    resolvedSubmissionEntry: parseResult.diagnostics.resolvedSubmissionEntry,
+    resolvedInfoTableEntry: parseResult.diagnostics.resolvedInfoTableEntry,
+    resolutionMode: parseResult.diagnostics.resolutionMode,
     status: parseResult.status,
   });
 
@@ -610,6 +613,9 @@ async function ingestFromDescriptor(
     archiveBytes: parseResult.diagnostics.archiveBytes,
     entryCount: parseResult.diagnostics.archiveEntries.length,
     entryNames: parseResult.diagnostics.archiveEntries.slice(0, 8),
+    resolvedSubmissionEntry: parseResult.diagnostics.resolvedSubmissionEntry,
+    resolvedInfoTableEntry: parseResult.diagnostics.resolvedInfoTableEntry,
+    resolutionMode: parseResult.diagnostics.resolutionMode,
     status: parseResult.status,
   });
 
@@ -896,7 +902,9 @@ export async function runInstitutionalIngestion(
               completedAt: new Date(),
               durationMs,
             });
-            log("institutional_13f_empty_parse_failure", { quarter: runQuarter, fileName: descriptor.fileName });
+            // Note: institutional_13f_empty_parse_failure is already emitted
+            // inside ingestFromDescriptor() with full parse diagnostics.
+            // Do NOT re-emit here — that was the source of duplicate events.
             quartersProcessed++;
             overallStatus = "partial";
           } else {

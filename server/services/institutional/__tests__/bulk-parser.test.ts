@@ -394,7 +394,9 @@ describe("P6 — parseBulkQuarterFromBuffer", () => {
     zip.addFile("2026Q1_INFOTABLE.TSV", Buffer.from(VALID_INFO, "utf8"));
     const result = parseBulkQuarterFromBuffer(zip.toBuffer(), 2026, 1);
     expect(result.status).toBe("empty_parse_failure");
-    expect(result.reason).toContain("2026Q1_SUBMISSION.TSV");
+    // New resolver emits REQUIRED_ARCHIVE_ENTRY_MISSING with canonical basename
+    expect(result.reason).toContain("REQUIRED_ARCHIVE_ENTRY_MISSING");
+    expect(result.reason).toMatch(/SUBMISSION\.tsv/i);
   });
 
   it("returns empty_parse_failure when INFOTABLE entry is missing", () => {
@@ -402,7 +404,9 @@ describe("P6 — parseBulkQuarterFromBuffer", () => {
     zip.addFile("2026Q1_SUBMISSION.TSV", Buffer.from(VALID_SUB, "utf8"));
     const result = parseBulkQuarterFromBuffer(zip.toBuffer(), 2026, 1);
     expect(result.status).toBe("empty_parse_failure");
-    expect(result.reason).toContain("2026Q1_INFOTABLE.TSV");
+    // New resolver emits REQUIRED_ARCHIVE_ENTRY_MISSING with canonical basename
+    expect(result.reason).toContain("REQUIRED_ARCHIVE_ENTRY_MISSING");
+    expect(result.reason).toMatch(/INFOTABLE\.tsv/i);
   });
 
   it("returns empty_parse_failure when valid archive has 0 parsed 13F-HR rows", () => {

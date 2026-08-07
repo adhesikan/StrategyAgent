@@ -1,0 +1,439 @@
+SPRINT 2.2.5 — INSTITUTIONAL INTELLIGENCE BACKGROUND OPERATIONS
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+OBJECTIVE
+
+Institutional Intelligence must no longer block the primary VCP Trader AI roadmap.
+
+The SEC parser is proven operational:
+
+- official SEC catalog discovery works
+- current post-2023 datasets download correctly
+- SUBMISSION.tsv parses correctly
+- COVERPAGE.tsv parses correctly
+- INFOTABLE.tsv parses correctly
+- current SEC headers and date formats are supported
+- millions of holdings join successfully
+- common-stock filtering works
+
+Current production limitation:
+
+2025-Q4:
+eligibleCommonStockRows: 3,331,742
+persistence throughput: approximately 195 holdings/sec
+application timeout: approximately 20 minutes
+approximately 824 / 9,364 accessions processed before timeout
+
+The immediate goal is NOT to fully optimize the entire ingestion pipeline.
+
+Instead, operationalize Institutional Intelligence as a safe, scheduled, resumable
+background workflow so development can continue on the main VCP Trader roadmap.
+
+Do not redesign the SEC parser.
+
+Do not block the product roadmap on historical backfill completion.
+
+Keep:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+until minimum data readiness is reached.
+
+====================================================================
+1. DAILY SEC CATALOG CHECK
+====================================================================
+
+Create a scheduled institutional refresh entry point.
+
+Example:
+
+scripts/run-institutional-daily.ts
+
+Behavior:
+
+1. fetch official SEC 13F catalog
+2. identify latest published dataset(s)
+3. compare against ingestion DB
+4. if no new/incomplete dataset exists:
+   log "institutional_refresh_no_work"
+   exit successfully
+5. if work exists:
+   process/resume it
+
+The daily job must NOT redownload/reprocess completed quarters unnecessarily.
+
+13F datasets are quarterly, so daily checking is sufficient.
+
+====================================================================
+2. RESUMABLE CHUNK MODE
+====================================================================
+
+Introduce bounded persistence work per scheduled invocation.
+
+Example configuration:
+
+INSTITUTIONAL_ACCESSIONS_PER_RUN=500
+
+or choose an appropriate safe value based on production timing.
+
+Each scheduled run:
+
+- resumes incomplete quarter
+- identifies completed accessions
+- processes the next bounded group
+- persists holdings
+- checkpoints
+- exits successfully
+
+Do NOT intentionally run into the 20-minute timeout.
+
+Target scheduled execution time:
+
+< 10–15 minutes per invocation
+
+with safety margin.
+
+====================================================================
+3. PRIORITY ORDER
+====================================================================
+
+Scheduled work priority:
+
+1. stale/incomplete latest quarter
+2. latest unprocessed quarter
+3. previous quarter required for comparison
+4. optional historical backfill
+
+Do not spend scheduled resources backfilling old history before the two most useful
+comparable quarters are ready.
+
+For current production prioritize:
+
+2026-Q1
+2025-Q4
+
+====================================================================
+4. QUARTER STATE MACHINE
+====================================================================
+
+Use clear quarter states:
+
+NOT_STARTED
+PARSING
+PERSISTING
+PARTIAL
+READY_FOR_MAPPING
+AGGREGATING
+READY
+FAILED
+
+Legacy run statuses may remain for audit, but derive operational state consistently.
+
+A quarter is READY only when persistence reconciliation succeeds.
+
+====================================================================
+5. ACCESSION CHECKPOINTING
+====================================================================
+
+Track progress at accession granularity.
+
+For each quarter expose:
+
+totalAccessions
+processedAccessions
+remainingAccessions
+storedFilings
+storedHoldings
+lastHeartbeat
+lastScheduledRun
+progressPercent
+
+A scheduled rerun must continue from existing completed accessions.
+
+Never duplicate holdings.
+
+Never treat presence of a filing row alone as proof that an accession is complete
+unless all expected holdings have been persisted.
+
+====================================================================
+6. REMOVE INTERACTIVE-SHELL DEPENDENCY
+====================================================================
+
+The scheduled workflow must run independently from Railway shell sessions.
+
+Closing a browser or shell must have no impact.
+
+The job must be invokable as:
+
+npx tsx scripts/run-institutional-daily.ts
+
+and be suitable for Railway Cron / scheduled execution.
+
+Do not require an operator to keep a shell open.
+
+====================================================================
+7. STALE RUN CLEANUP
+====================================================================
+
+At the beginning of each scheduled invocation:
+
+detect stale "running" attempts.
+
+If heartbeat exceeds threshold:
+
+mark old attempt interrupted/partial
+
+and resume safely.
+
+No stale run should remain "running" indefinitely.
+
+====================================================================
+8. AUTOMATIC AGGREGATION AFTER COMPLETION
+====================================================================
+
+Do NOT rebuild aggregates after every 500-accession chunk.
+
+Only when a quarter becomes persistence-complete:
+
+1. run mapping
+2. rebuild institutional aggregates
+3. run data-quality validation
+4. update quarter state
+
+This keeps scheduled jobs efficient.
+
+====================================================================
+9. AUTOMATIC READINESS GATE
+====================================================================
+
+After aggregate rebuild, automatically evaluate:
+
+- latest quarter available
+- previous comparable quarter available
+- mapping coverage
+- aggregate rows exist
+- data quality checks pass
+
+Do NOT automatically enable:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED
+
+The flag remains an explicit deployment/operator decision.
+
+But expose:
+
+institutionalDataReady: true/false
+
+so activation becomes simple later.
+
+====================================================================
+10. CURRENT PARTIAL DATA
+====================================================================
+
+Safely recover current production state.
+
+2026-Q1 has a legacy incomplete run incorrectly marked completed.
+
+2025-Q4 has partial persistence from interrupted attempts.
+
+Normal scheduled processing must:
+
+- recognize both as incomplete
+- retain valid persisted work
+- finish remaining work
+- reconcile counts
+- eventually mark them READY
+
+Do not require --force.
+
+====================================================================
+11. ADMIN STATUS API
+====================================================================
+
+Expose:
+
+GET /api/admin/institutional/pipeline-status
+
+Return:
+
+{
+  schedulerEnabled,
+  lastRun,
+  nextExpectedRun,
+  quarters: [
+    {
+      quarter,
+      state,
+      progressPercent,
+      processedAccessions,
+      totalAccessions,
+      storedFilings,
+      storedHoldings,
+      lastHeartbeat,
+      ready
+    }
+  ]
+}
+
+Admin only.
+
+No raw holdings.
+
+====================================================================
+12. STATUS SCRIPT
+====================================================================
+
+Create and TEST:
+
+scripts/institutional-ingestion-status.ts
+
+Command:
+
+npx tsx scripts/institutional-ingestion-status.ts
+
+Example:
+
+Institutional Pipeline
+
+2026-Q1
+  State: PARTIAL
+  Progress: 5.9%
+  Filings: 570
+  Holdings: 297,097
+  Remaining accessions: ...
+  Resumable: yes
+
+2025-Q4
+  State: PARTIAL
+  Progress: ...
+  Holdings: ...
+  Resumable: yes
+
+Scheduler:
+  Last run: ...
+  Status: healthy
+
+====================================================================
+13. RAILWAY SCHEDULER DOCUMENTATION
+====================================================================
+
+Document the exact production configuration.
+
+Recommended cadence:
+
+once daily.
+
+The job should execute:
+
+npx tsx scripts/run-institutional-daily.ts
+
+Provide Railway setup instructions.
+
+Do not automatically change Railway configuration.
+
+====================================================================
+14. FAILURE BEHAVIOR
+====================================================================
+
+One failed daily run must not break the product.
+
+If Institutional processing fails:
+
+- existing institutional data remains available
+- latest READY quarter remains active
+- failure is logged
+- next scheduled execution retries/resumes
+- other VCP Trader features remain unaffected
+
+Institutional Intelligence is an enhancement, not a dependency for:
+
+Opportunity Engine
+Decision Engine
+Trade Structure Engine
+Live Contracts
+InstaTrade
+VCP AI
+
+====================================================================
+15. FUTURE PERFORMANCE OPTIMIZATION
+====================================================================
+
+Document but DO NOT make blocking:
+
+Institutional Persistence Optimization
+
+Possible future improvements:
+
+- larger Drizzle bulk inserts
+- PostgreSQL COPY
+- streaming INFOTABLE parsing
+- parallel bounded persistence
+- precomputed CUSIP mapping
+
+Move these to the technical backlog.
+
+The scheduled/resumable architecture should work even at current throughput.
+
+====================================================================
+16. TESTS
+====================================================================
+
+Add tests covering:
+
+daily no-work run
+new quarter detection
+partial-quarter resume
+bounded accession execution
+checkpointing
+idempotent rerun
+stale run recovery
+completed quarter skip
+two-quarter priority
+failure retry
+aggregation only after completion
+status endpoint
+status script
+shell-independent execution
+legacy false-completed 2026-Q1 recovery
+current 2025-Q4 partial recovery
+
+Run:
+
+institutional tests
+server tests
+client tests
+typecheck/build
+
+====================================================================
+17. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Files changed
+2. Daily workflow architecture
+3. Default schedule
+4. Accessions processed per run
+5. Expected execution time per scheduled run
+6. Checkpoint/resume model
+7. Current 2026-Q1 recovery behavior
+8. Current 2025-Q4 recovery behavior
+9. State machine
+10. Aggregate trigger
+11. Readiness gate
+12. Admin status endpoint
+13. Status script
+14. Railway cron setup instructions
+15. Tests
+16. Total passing tests
+17. Typecheck/build
+18. Technical backlog items
+19. GO / CONDITIONAL_GO / NO_GO
+
+Do not enable Institutional Intelligence automatically.
+Do not modify unrelated product features.
+Do not start major persistence optimization work.
+
+Wait for review.

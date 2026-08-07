@@ -18,6 +18,8 @@ import {
   type InstitutionalDatasetCatalogEntry,
 } from "../server/services/institutional/sec-dataset-catalog";
 import { normalizeSubmissionType } from "../server/services/institutional/sec-13f-bulk-parser";
+// secFetchBuffer(url, signal?) — reads SEC_USER_AGENT from institutional config internally.
+// Do NOT pass userAgent as an argument; the function has exactly two parameters.
 import { secFetchBuffer } from "../server/services/institutional/sec-client";
 import AdmZip from "adm-zip";
 
@@ -83,9 +85,22 @@ async function main(): Promise<void> {
   const window = windows[0];
   const descriptor = toDatasetDescriptor(window);
 
-  console.log(`[inspect] Resolving SUBMISSION.tsv…`);
-  const ac = new AbortController();
-  const buffer = await secFetchBuffer(descriptor.downloadUrl, userAgent, ac.signal);
+  console.log("[inspect] Downloading selected SEC dataset…");
+
+  // secFetchBuffer(url, signal?) — userAgent is sourced internally from getInstitutionalConfig().
+  // Pass ONLY the URL and the AbortSignal; never pass userAgent in the signal position.
+  const controller = new AbortController();
+  const DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+
+  let buffer: Buffer;
+  try {
+    buffer = await secFetchBuffer(descriptor.downloadUrl, controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  console.log(`[inspect] Archive bytes: ${buffer.length}`);
 
   let zip: AdmZip;
   try {
@@ -94,6 +109,8 @@ async function main(): Promise<void> {
     console.error("[inspect] ERROR: could not open archive as ZIP");
     process.exit(1);
   }
+
+  console.log("[inspect] Resolving SUBMISSION.tsv…");
 
   // Find SUBMISSION.tsv (case-insensitive)
   const subEntry = zip.getEntries().find((e) => {
@@ -106,6 +123,8 @@ async function main(): Promise<void> {
     console.error("[inspect] ERROR: SUBMISSION.tsv not found. Entries:", names);
     process.exit(1);
   }
+
+  console.log(`[inspect] Resolved: ${subEntry.entryName}`);
 
   const text = subEntry.getData().toString("utf8").replace(/^\uFEFF/, "");
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");

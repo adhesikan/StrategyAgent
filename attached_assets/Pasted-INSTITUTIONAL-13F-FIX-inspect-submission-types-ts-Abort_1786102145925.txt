@@ -1,0 +1,350 @@
+INSTITUTIONAL 13F — FIX inspect-submission-types.ts AbortSignal ARGUMENT WIRING
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION FAILURE
+
+Command:
+
+npx tsx scripts/inspect-submission-types.ts
+
+now progresses successfully through:
+
+[inspect] Fetching SEC 13F dataset catalog…
+[inspect] Catalog returned 53 recognised dataset(s).
+[inspect] Selected:
+[inspect]   01mar2026-31may2026_form13f.zip (2026Q1)
+[inspect] Resolving SUBMISSION.tsv…
+
+Then fails:
+
+[inspect] FATAL: Failed to construct 'Request':
+member signal is not of type AbortSignal.
+
+IMPORTANT CONTEXT
+
+The production backfill already successfully downloads these same SEC ZIP files.
+
+Therefore:
+
+- SEC_USER_AGENT is valid
+- SEC catalog works
+- selected dataset URL is valid
+- SEC HTTP client works in the normal ingestion path
+
+Do NOT modify the working SEC fetch implementation unless inspection proves an
+underlying shared defect.
+
+The likely issue is incorrect argument order/type usage in
+scripts/inspect-submission-types.ts.
+
+This is a focused diagnostic-script fix.
+
+Do not modify:
+
+- SEC catalog discovery
+- production backfill behavior
+- bulk TSV parser
+- ingestion service
+- database
+- institutional feature flags
+- mapping
+- aggregation
+- UI
+
+============================================================
+1. TRACE THE EXACT CALL
+============================================================
+
+Inspect the code beginning at:
+
+scripts/inspect-submission-types.ts
+
+after:
+
+"Resolving SUBMISSION.tsv…"
+
+Trace every call through:
+
+- selected dataset descriptor
+- SEC ZIP downloader
+- secFetchBuffer / fetch helper
+- AbortController / AbortSignal
+- archive parser
+
+Find the exact function whose signature expects AbortSignal.
+
+Report its exact signature.
+
+For example only:
+
+secFetchBuffer(
+  url: string,
+  signal?: AbortSignal
+)
+
+or:
+
+secFetchBuffer(
+  url: string,
+  userAgent: string,
+  signal?: AbortSignal
+)
+
+Do not infer the signature from previous prompts.
+Read the actual implementation.
+
+============================================================
+2. IDENTIFY THE WRONG ARGUMENT
+============================================================
+
+Determine exactly what value is currently being supplied as `signal`.
+
+The production error strongly suggests a value such as:
+
+- SEC_USER_AGENT string
+- DatasetDescriptor
+- options object
+- number
+- another non-AbortSignal object
+
+is being passed into RequestInit.signal.
+
+Report:
+
+expected type
+actual value/type
+call site
+
+Example:
+
+Expected:
+AbortSignal | undefined
+
+Received:
+string containing SEC User-Agent
+
+Do not log the actual SEC_USER_AGENT value.
+
+============================================================
+3. REUSE THE SAME DOWNLOAD PATH AS BACKFILL
+============================================================
+
+The diagnostic must not create its own subtly different SEC request invocation.
+
+Prefer reusing the exact same safe helper used by:
+
+run-institutional-backfill
+→ ingestion service
+→ bulk dataset downloader
+
+If that helper can download a DatasetDescriptor safely, expose/reuse it rather than
+reimplementing fetch options in the diagnostic.
+
+Ideal architecture:
+
+const descriptor = toDatasetDescriptor(selectedWindow);
+
+const archive = await downloadInstitutionalDataset(
+  descriptor,
+  abortController.signal
+);
+
+The helper itself should obtain SEC_USER_AGENT from the canonical configuration or
+receive it using its actual typed contract.
+
+Do not duplicate:
+
+- User-Agent header construction
+- retry/backoff
+- SEC request logic
+- URL construction
+
+============================================================
+4. ABORTCONTROLLER HANDLING
+============================================================
+
+If the diagnostic needs timeout support, create:
+
+const controller = new AbortController();
+
+Pass ONLY:
+
+controller.signal
+
+to a parameter typed AbortSignal.
+
+Optional bounded timeout:
+
+const timer = setTimeout(
+  () => controller.abort(),
+  timeoutMs
+);
+
+try {
+  ...
+} finally {
+  clearTimeout(timer);
+}
+
+Do not pass AbortController itself where AbortSignal is expected.
+
+Do not pass SEC_USER_AGENT in the signal position.
+
+============================================================
+5. ADD COMPILE-TIME SAFETY
+============================================================
+
+Avoid using:
+
+any
+as any
+unknown casts
+
+around SEC fetch calls.
+
+The diagnostic should use typed function parameters so reversed/wrong arguments cause
+a TypeScript error.
+
+If a shared helper currently accepts ambiguous positional arguments such as:
+
+fetch(url, userAgent?, signal?)
+
+consider introducing an options object ONLY if it can be done additively without
+changing the working ingestion behavior:
+
+{
+  userAgent,
+  signal
+}
+
+But do not refactor production code unnecessarily for this diagnostic fix.
+
+============================================================
+6. DIAGNOSTIC SHOULD REMAIN READ-ONLY
+============================================================
+
+After the fix, the script must:
+
+1. fetch catalog
+2. select latest dataset
+3. download ZIP
+4. resolve SUBMISSION.tsv
+5. inspect SUBMISSIONTYPE
+6. output counts
+7. exit
+
+It must NOT:
+
+- connect to PostgreSQL
+- write ingestion runs
+- persist filings
+- parse millions of INFOTABLE rows
+- create mappings
+- rebuild aggregates
+
+============================================================
+7. SAFE OUTPUT
+============================================================
+
+Expected production output:
+
+[inspect] Fetching SEC 13F dataset catalog…
+[inspect] Catalog returned 53 recognised dataset(s).
+
+[inspect] Selected:
+[inspect]   01mar2026-31may2026_form13f.zip (2026Q1)
+
+[inspect] Downloading selected SEC dataset…
+[inspect] Archive bytes: <safe count>
+
+[inspect] Resolving SUBMISSION.tsv…
+[inspect] Resolved: SUBMISSION.tsv
+
+[inspect] Submission rows: 11761
+
+[inspect] Raw SUBMISSIONTYPE values:
+[inspect]   <actual value>  <count>
+
+[inspect] Normalized values:
+[inspect]   13F-HR      <count>
+[inspect]   13F-HR/A    <count>
+[inspect]   13F-NT      <count>
+[inspect]   13F-NT/A    <count>
+[inspect]   UNKNOWN     <count>
+
+Never print:
+
+- SEC_USER_AGENT contents
+- DATABASE_URL
+- raw submission records
+- headers containing credentials
+- full ZIP contents
+
+============================================================
+8. TESTS
+============================================================
+
+Add focused regression tests.
+
+A. Correct fetch-helper signature used
+
+B. AbortSignal parameter receives:
+   AbortSignal or undefined only
+
+C. SEC_USER_AGENT is never passed as AbortSignal
+
+D. AbortController itself is not passed as signal
+
+E. DatasetDescriptor is not passed as signal
+
+F. shared backfill downloader and diagnostic downloader use the same request contract
+
+G. timeout cancellation produces AbortError safely
+
+H. timeout timer cleaned up after success
+
+I. download failure is reported safely
+
+J. diagnostic remains read-only
+
+K. catalog-selection tests continue passing
+
+L. submission-type counting tests continue passing
+
+M. no `any` cast hides wrong fetch arguments
+
+Run:
+
+- diagnostic tests
+- institutional tests
+- TypeScript check on modified code
+- client tests
+
+============================================================
+9. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact fetch-helper signature
+2. Exact offending call
+3. Expected argument type
+4. Actual argument type supplied
+5. Root cause
+6. Files changed
+7. Before/after invocation
+8. Whether shared backfill download path is reused
+9. AbortController handling
+10. Tests added
+11. Total passing tests
+12. Typecheck
+13. Exact production command
+14. Expected output
+15. GO / NO_GO
+
+Do not commit, push, deploy, run ingestion, seed mappings, or enable Institutional
+Intelligence automatically.
+
+Wait for review.

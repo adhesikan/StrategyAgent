@@ -43,23 +43,8 @@ import {
   quarterFromPeriodDate,
   INSTITUTIONAL_ADVISORY_LOCK_KEY,
 } from "./config";
-import {
-  secFetch,
-  parseQuarterlyIndex,
-  filingIndexUrl,
-  filingDocUrl,
-  quarterlyIndexUrl,
-  SecUserAgentMissingError,
-} from "./sec-client";
-import {
-  parseInfoTableXml,
-  findInfoTableDocumentFilename,
-  extractPeriodOfReport,
-  extractFiledDate,
-  extractFilerCik,
-  extractFilerName,
-  isInfoTableXml,
-} from "./sec-13f-parser";
+import { parseBulkQuarter, bulkDatasetUrl } from "./sec-13f-bulk-parser";
+import type { ParsedBulkHolding } from "./sec-13f-bulk-parser";
 import { resolveMappingsBatch, applyMappingsToHoldings, getMappedSymbols } from "./mapping-service";
 import { computeQuarterlyAggregate, derivePeriodLabel, type AggregationInput } from "./aggregation-engine";
 import { classifyTrend } from "./trend-classifier";
@@ -362,131 +347,6 @@ async function recomputeAggregateForSymbol(
     });
 }
 
-// ---------------------------------------------------------------------------
-// Single-filing ingestion
-// ---------------------------------------------------------------------------
-
-async function ingestOneFiling(
-  cik: string,
-  accessionNumber: string,
-  companyName: string,
-  filingType: string,
-  dateFiled: string,
-  targetPeriodOfReport: string,
-  signal: AbortSignal,
-): Promise<{ holdingCount: number; mappedCount: number; unmappedCount: number; skipped: boolean }> {
-  // Check if already ingested
-  const existing = await db
-    .select({ id: institutional13fFilings.id })
-    .from(institutional13fFilings)
-    .where(eq(institutional13fFilings.accessionNumber, accessionNumber))
-    .limit(1);
-
-  if (existing.length > 0) {
-    return { holdingCount: 0, mappedCount: 0, unmappedCount: 0, skipped: true };
-  }
-
-  // Fetch the filing index page to find the InfoTable document
-  const indexUrl = filingIndexUrl(cik, accessionNumber);
-  let indexHtml: string;
-  try {
-    indexHtml = await secFetch(indexUrl, undefined, signal);
-  } catch (err: any) {
-    log("institutional_13f_filing_fetch_failed", {
-      cik, accessionNumber, errorCode: err.name ?? "FETCH_ERROR",
-    });
-    return { holdingCount: 0, mappedCount: 0, unmappedCount: 0, skipped: true };
-  }
-
-  const docFilename = findInfoTableDocumentFilename(indexHtml);
-  if (!docFilename) {
-    log("institutional_13f_filing_no_infotable", { cik, accessionNumber });
-    return { holdingCount: 0, mappedCount: 0, unmappedCount: 0, skipped: true };
-  }
-
-  const docUrl = filingDocUrl(cik, accessionNumber, docFilename);
-  let docContent: string;
-  try {
-    docContent = await secFetch(docUrl, undefined, signal);
-  } catch {
-    return { holdingCount: 0, mappedCount: 0, unmappedCount: 0, skipped: true };
-  }
-
-  if (!isInfoTableXml(docContent) && !docContent.toLowerCase().includes("infotable")) {
-    return { holdingCount: 0, mappedCount: 0, unmappedCount: 0, skipped: true };
-  }
-
-  const parseResult = parseInfoTableXml(docContent);
-
-  // Derive period of report from filing header or use target
-  const periodOfReport = targetPeriodOfReport;
-  const amendmentFlag = filingType.endsWith("/A");
-
-  // Store the filing record
-  await upsertFiling({
-    accessionNumber,
-    filerCik: cik.padStart(10, "0"),
-    filerName: companyName,
-    filingType,
-    filingDate: dateFiled,
-    acceptedAt: null,
-    periodOfReport,
-    amendmentFlag,
-    amendmentNumber: null,
-    amendmentType: null,
-    isEffective: true,
-    sourceUrl: docUrl,
-    sourceChecksum: null,
-  });
-
-  // If amendment, update effectiveness
-  if (amendmentFlag) {
-    await updateEffectivenessForFiler(cik.padStart(10, "0"), periodOfReport, accessionNumber, dateFiled);
-  }
-
-  // Build holding rows
-  const holdingRows: InsertInstitutional13fHolding[] = parseResult.holdings.map((h) => ({
-    accessionNumber,
-    filerCik: cik.padStart(10, "0"),
-    filerName: companyName,
-    issuerName: h.issuerName,
-    classTitle: h.classTitle,
-    cusip: h.cusip,
-    figi: h.figi,
-    reportedValue: h.reportedValue,
-    reportedShares: h.reportedShares,
-    sharesPrnType: h.sharesPrnType,
-    putCall: h.putCall,
-    investmentDiscretion: h.investmentDiscretion,
-    otherManager: h.otherManager,
-    votingSole: h.votingSole,
-    votingShared: h.votingShared,
-    votingNone: h.votingNone,
-    periodOfReport,
-    filingDate: dateFiled,
-    mappedSymbol: null,
-    mappingStatus: "unmapped",
-  }));
-
-  await upsertHoldings(holdingRows);
-
-  // Apply mappings
-  const { mappedCount, unmappedCount } = await applyMappingsToHoldings(accessionNumber);
-
-  log("institutional_13f_filing_processed", {
-    accessionNumber,
-    filerCik: cik,
-    holdingCount: holdingRows.length,
-    mappedCount,
-    unmappedCount,
-    hasPutCall: parseResult.hasPutCallRows,
-    hasPrn: parseResult.hasPrnRows,
-    skippedRows: parseResult.skippedRows,
-    warnings: parseResult.parseWarnings.length,
-  });
-
-  return { holdingCount: holdingRows.length, mappedCount, unmappedCount, skipped: false };
-}
 
 // ---------------------------------------------------------------------------
 // Quarter ingestion
@@ -499,69 +359,184 @@ interface QuarterIngestionResult {
   holdingCount: number;
   mappedCount: number;
   unmappedCount: number;
-  status: "completed" | "partial" | "failed";
+  status: "completed" | "partial" | "empty_not_published" | "empty_parse_failure" | "failed";
 }
 
 async function ingestQuarter(
   year: number,
-  qtr: string,
+  q: 1 | 2 | 3 | 4,
   periodEnd: string,
   signal: AbortSignal,
 ): Promise<QuarterIngestionResult> {
-  const quarter = `${year}-${qtr.replace("QTR", "Q")}`;
+  const quarter = `${year}-Q${q}`;
 
-  log("institutional_13f_ingestion_started", { quarter, year, qtr });
+  log("institutional_13f_ingestion_started", { quarter, year, q });
 
-  // Download and parse the quarterly index
-  const indexUrl = quarterlyIndexUrl(year, qtr);
-  let indexText: string;
-  try {
-    indexText = await secFetch(indexUrl, `quarterly-index-${year}-${qtr}`);
-  } catch (err: any) {
-    log("institutional_13f_dataset_download_failed", {
-      quarter, errorCode: err.name ?? "DOWNLOAD_ERROR",
-    });
-    return { quarter, periodOfReport: periodEnd, filingCount: 0, holdingCount: 0, mappedCount: 0, unmappedCount: 0, status: "failed" };
+  // Download and parse the bulk archive (replaces the prior per-filing XML approach which
+  // produced zero results because company.idx is fixed-width, not pipe-delimited).
+  const parseResult = await parseBulkQuarter(year, q, signal);
+
+  log("institutional_13f_archive_inspected", {
+    quarter,
+    archiveBytes: parseResult.diagnostics.archiveBytes,
+    entryCount: parseResult.diagnostics.archiveEntries.length,
+    entryNames: parseResult.diagnostics.archiveEntries.slice(0, 8),
+    status: parseResult.status,
+  });
+
+  if (parseResult.status === "empty_not_published") {
+    log("institutional_13f_quarter_not_published", { quarter });
+    return {
+      quarter,
+      periodOfReport: periodEnd,
+      filingCount: 0,
+      holdingCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      status: "empty_not_published",
+    };
   }
 
-  log("institutional_13f_dataset_downloaded", { quarter, indexBytes: indexText.length });
+  if (parseResult.status === "failed" || parseResult.status === "empty_parse_failure") {
+    log("institutional_13f_empty_parse_failure", {
+      quarter,
+      reason: parseResult.reason,
+      submissionRows: parseResult.diagnostics.submissionRows,
+      informationTableRows: parseResult.diagnostics.informationTableRows,
+      joinedHoldingRows: parseResult.diagnostics.joinedHoldingRows,
+      rejectedRows: parseResult.diagnostics.rejectedRows,
+    });
+    return {
+      quarter,
+      periodOfReport: periodEnd,
+      filingCount: 0,
+      holdingCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      status: parseResult.status,
+    };
+  }
 
-  const entries = parseQuarterlyIndex(indexText, ["13F-HR", "13F-HR/A"]);
-  log("institutional_13f_ingestion_started", { quarter, totalFilings: entries.length });
+  log("institutional_13f_rows_parsed", {
+    quarter,
+    submissionRows: parseResult.diagnostics.submissionRows,
+    informationTableRows: parseResult.diagnostics.informationTableRows,
+    joinedHoldingRows: parseResult.diagnostics.joinedHoldingRows,
+    rejectedRows: parseResult.diagnostics.rejectedRows,
+    eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
+    putCallExcludedRows: parseResult.diagnostics.putCallExcludedRows,
+    prnExcludedRows: parseResult.diagnostics.prnExcludedRows,
+    durationMs: parseResult.diagnostics.durationMs,
+  });
+
+  // Group holdings by accession number (one DB filing row per accession)
+  const holdingsByAccession = new Map<string, ParsedBulkHolding[]>();
+  for (const h of parseResult.holdings) {
+    if (!holdingsByAccession.has(h.accessionNumber)) {
+      holdingsByAccession.set(h.accessionNumber, []);
+    }
+    holdingsByAccession.get(h.accessionNumber)!.push(h);
+  }
 
   let filingCount = 0;
   let holdingCount = 0;
   let mappedCount = 0;
   let unmappedCount = 0;
+  const sourceUrl = bulkDatasetUrl(year, q);
 
-  // Process each filing (with bounded concurrency — 1 at a time to respect rate limits)
-  for (const entry of entries) {
+  for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
     if (signal.aborted) break;
 
-    const result = await ingestOneFiling(
-      entry.cik,
-      entry.accessionNumber,
-      entry.companyName,
-      entry.formType,
-      entry.dateFiled,
-      periodEnd,
-      signal,
-    ).catch((err: any) => {
-      log("institutional_13f_filing_error", {
-        accession: entry.accessionNumber,
-        errorCode: err.name ?? "ERROR",
-      });
-      return null;
+    // Idempotent: skip accessions already in the database
+    const existing = await db
+      .select({ id: institutional13fFilings.id })
+      .from(institutional13fFilings)
+      .where(eq(institutional13fFilings.accessionNumber, accession))
+      .limit(1);
+
+    if (existing.length > 0) continue;
+
+    const first = holdings[0];
+
+    await upsertFiling({
+      accessionNumber: accession,
+      filerCik: first.filerCik,
+      filerName: first.filerName,
+      filingType: first.filingType,
+      filingDate: first.filingDate,
+      acceptedAt: null,
+      periodOfReport: first.periodOfReport,
+      amendmentFlag: first.isAmendment,
+      amendmentNumber: null,
+      amendmentType: null,
+      isEffective: true,
+      sourceUrl,
+      sourceChecksum: null,
     });
 
-    if (!result || result.skipped) continue;
+    if (first.isAmendment) {
+      await updateEffectivenessForFiler(
+        first.filerCik,
+        first.periodOfReport,
+        accession,
+        first.filingDate,
+      );
+    }
+
+    const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h) => ({
+      accessionNumber: h.accessionNumber,
+      filerCik: h.filerCik,
+      filerName: h.filerName,
+      issuerName: h.issuerName,
+      classTitle: h.classTitle,
+      cusip: h.cusip,
+      figi: h.figi,
+      reportedValue: h.reportedValue,
+      reportedShares: h.reportedShares,
+      sharesPrnType: h.sharesPrnType,
+      putCall: h.putCall,
+      investmentDiscretion: h.investmentDiscretion,
+      otherManager: h.otherManager,
+      votingSole: h.votingSole,
+      votingShared: h.votingShared,
+      votingNone: h.votingNone,
+      periodOfReport: h.periodOfReport,
+      filingDate: h.filingDate,
+      mappedSymbol: null,
+      mappingStatus: "unmapped",
+    }));
+
+    await upsertHoldings(holdingRows);
+
+    const { mappedCount: mc, unmappedCount: uc } =
+      await applyMappingsToHoldings(accession);
+
     filingCount++;
-    holdingCount += result.holdingCount;
-    mappedCount += result.mappedCount;
-    unmappedCount += result.unmappedCount;
+    holdingCount += holdingRows.length;
+    mappedCount += mc;
+    unmappedCount += uc;
   }
 
-  log("institutional_13f_mapping_summary", { quarter, filingCount, holdingCount, mappedCount, unmappedCount });
+  log("institutional_13f_join_summary", {
+    quarter,
+    filingCount,
+    holdingCount,
+    mappedCount,
+    unmappedCount,
+  });
+
+  // All filings were already in the DB (idempotent re-run)
+  if (filingCount === 0 && parseResult.holdings.length > 0) {
+    return {
+      quarter,
+      periodOfReport: periodEnd,
+      filingCount: 0,
+      holdingCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      status: "completed",
+    };
+  }
 
   // Recompute aggregates for all mapped symbols
   const mappedSymbols = await getMappedSymbols();
@@ -574,7 +549,10 @@ async function ingestQuarter(
     }
   }
 
-  log("institutional_13f_aggregation_completed", { quarter, symbolCount: mappedSymbols.length });
+  log("institutional_13f_aggregation_completed", {
+    quarter,
+    symbolCount: mappedSymbols.length,
+  });
 
   return {
     quarter,
@@ -583,7 +561,7 @@ async function ingestQuarter(
     holdingCount,
     mappedCount,
     unmappedCount,
-    status: holdingCount > 0 ? "completed" : "partial",
+    status: parseResult.status === "partial_success" ? "partial" : "completed",
   };
 }
 
@@ -665,21 +643,47 @@ export async function runInstitutionalIngestion(
       const start = Date.now();
 
       try {
-        const result = await ingestQuarter(q.year, `QTR${q.q}`, q.periodEnd, controller.signal);
+        const result = await ingestQuarter(q.year, q.q, q.periodEnd, controller.signal);
         const durationMs = Date.now() - start;
 
-        await updateRun(runId, {
-          status: result.status,
-          filingCount: result.filingCount,
-          holdingCount: result.holdingCount,
-          mappedCount: result.mappedCount,
-          unmappedCount: result.unmappedCount,
-          completedAt: new Date(),
-          durationMs,
-        });
-
-        quartersProcessed++;
-        if (result.status !== "completed") overallStatus = "partial";
+        if (result.status === "empty_not_published") {
+          // Quarter not yet released by SEC — record for audit, do not count as processed
+          await updateRun(runId, {
+            status: "empty_not_published",
+            errorCode: "EMPTY_NOT_PUBLISHED",
+            errorSummary: "Quarterly bulk dataset not yet published by SEC",
+            completedAt: new Date(),
+            durationMs,
+          });
+          log("institutional_13f_quarter_not_published", { quarter: q.label });
+          // quartersProcessed intentionally NOT incremented — retry later
+        } else if (result.status === "empty_parse_failure") {
+          // Archive downloaded but zero 13F-HR filings parsed — parser failure
+          await updateRun(runId, {
+            status: "failed",
+            errorCode: "EMPTY_PARSE_FAILURE",
+            errorSummary: "Archive downloaded but zero 13F-HR holdings parsed",
+            filingCount: 0,
+            holdingCount: 0,
+            completedAt: new Date(),
+            durationMs,
+          });
+          log("institutional_13f_empty_parse_failure", { quarter: q.label });
+          quartersProcessed++;
+          overallStatus = "partial";
+        } else {
+          await updateRun(runId, {
+            status: result.status === "partial" ? "partial" : "completed",
+            filingCount: result.filingCount,
+            holdingCount: result.holdingCount,
+            mappedCount: result.mappedCount,
+            unmappedCount: result.unmappedCount,
+            completedAt: new Date(),
+            durationMs,
+          });
+          quartersProcessed++;
+          if (result.status !== "completed") overallStatus = "partial";
+        }
       } catch (err: any) {
         const durationMs = Date.now() - start;
         const errMsg = String(err?.message ?? "").slice(0, 200);

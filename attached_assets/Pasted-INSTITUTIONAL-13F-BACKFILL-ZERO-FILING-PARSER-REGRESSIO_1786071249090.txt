@@ -1,0 +1,416 @@
+INSTITUTIONAL 13F BACKFILL — ZERO-FILING PARSER REGRESSION
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION OBSERVATION
+
+The production command:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+completed without throwing, but ingested zero records.
+
+Observed logs:
+
+Target quarters: 2026-Q2, 2026-Q1
+
+2026-Q2:
+- downloaded indexBytes: approximately 5.5 MB
+- totalFilings: 0
+- filingCount: 0
+- holdingCount: 0
+- mappedCount: 0
+- symbolCount: 0
+
+2026-Q1:
+- downloaded indexBytes: approximately 5.57 MB
+- totalFilings: 0
+- filingCount: 0
+- holdingCount: 0
+- mappedCount: 0
+- symbolCount: 0
+
+The command incorrectly reported:
+
+Quarters succeeded: 2
+
+This is not a valid successful ingestion.
+
+IMPORTANT CONTEXT
+
+- Q2 2026 may not yet have a completed SEC quarterly bulk dataset because the
+  quarter ended June 30 and the 13F filing window is still open.
+- Q1 2026 definitely has published 13F filings, so Q1 returning zero indicates
+  a downloader, ZIP extraction, filename, delimiter, schema, quarter-selection,
+  or parser defect.
+
+Do not add product features.
+Do not enable Institutional Intelligence.
+Do not seed COST yet.
+Do not change aggregation formulas, mapping policy, UI, Opportunity Engine, MCP,
+scanner, broker code, or research logic.
+
+====================================================================
+1. REPRODUCE WITH A KNOWN COMPLETE QUARTER
+====================================================================
+
+Run the ingestion/parser locally or in a safe development environment against:
+
+- 2026Q1
+- 2025Q4
+
+Do not use 2026Q2 as the primary parser test because it may not yet be finalized.
+
+Capture safely:
+
+- requested URL
+- HTTP status
+- content type
+- content length
+- ZIP entry names
+- uncompressed file sizes
+- detected delimiter
+- header names
+- parsed row counts
+
+Do not log full data files, SEC_USER_AGENT, credentials, DATABASE_URL, or raw
+holding payloads.
+
+====================================================================
+2. AUDIT THE OFFICIAL SEC DATASET FORMAT
+====================================================================
+
+Inspect the actual downloaded ZIP contents.
+
+Do not assume it contains:
+
+- one XML file per filing;
+- a file literally named filings.csv;
+- EDGAR search-index JSON;
+- filing pages requiring HTML scraping.
+
+Identify the actual files present, including case and extension.
+
+Audit whether the SEC dataset uses files such as:
+
+- SUBMISSION.tsv
+- INFOTABLE.tsv
+- COVERPAGE.tsv
+- SUMMARYPAGE.tsv
+- OTHERMANAGER.tsv
+- SIGNATURE.tsv
+
+Use the actual downloaded archive as the source of truth.
+
+Verify:
+
+- tab-separated versus comma-separated format;
+- UTF-8/BOM handling;
+- CRLF versus LF;
+- quoted fields;
+- null markers;
+- uppercase/lowercase entry names;
+- nested directory paths;
+- current SEC column names.
+
+Document the exact format encountered.
+
+====================================================================
+3. FIND WHY totalFilings IS ZERO
+====================================================================
+
+Trace the full call path:
+
+run-institutional-backfill.ts
+→ runInstitutionalIngestion()
+→ quarter downloader
+→ ZIP extraction
+→ submission parser
+→ information-table parser
+→ filing persistence
+→ aggregation
+
+Identify exactly where the count changes to zero.
+
+Investigate these likely defects:
+
+A. ZIP entry-name mismatch
+- parser expects old or incorrect filenames;
+- filenames are uppercase;
+- filenames include a directory prefix;
+- extension changed.
+
+B. Incorrect content parser
+- parsing TSV as CSV;
+- parsing a ZIP as text;
+- treating the bulk dataset as EDGAR JSON;
+- incorrect encoding or BOM handling.
+
+C. Header mismatch
+- parser expects camelCase or historical columns;
+- SEC fields are uppercase or renamed;
+- required-column validation rejects every row.
+
+D. Quarter mismatch
+- dataset quarter label and period-of-report date are compared incorrectly;
+- code expects 2026-Q1 but records use 2026Q1 or 2026-03-31;
+- fiscal/calendar interpretation is wrong.
+
+E. Join-key mismatch
+- SUBMISSION and INFOTABLE are joined using the wrong accession-number field;
+- accession formatting differs because hyphens or leading zeroes were removed.
+
+F. Silent error swallowing
+- row-level parser catches errors and returns [];
+- validation failures are counted neither as rejected nor failed;
+- missing required files produce an empty array instead of an error.
+
+Return the exact root cause—not only a workaround.
+
+====================================================================
+4. EMPTY-QUARTER POLICY
+====================================================================
+
+A downloaded quarter containing zero parsed filings must not be reported as success.
+
+Introduce explicit result states:
+
+- SUCCESS
+- PARTIAL_SUCCESS
+- EMPTY_NOT_PUBLISHED
+- EMPTY_PARSE_FAILURE
+- FAILED
+
+Rules:
+
+EMPTY_NOT_PUBLISHED:
+- official quarterly dataset is unavailable or not yet published;
+- response is 404 or page/archive indicates no quarter dataset;
+- no ingestion-run success;
+- no aggregates generated;
+- safe retry later.
+
+EMPTY_PARSE_FAILURE:
+- a nontrivial archive downloaded;
+- expected source files exist;
+- parser returns zero filings or holdings;
+- mark ingestion run FAILED;
+- emit safe diagnostics;
+- exit CLI non-zero.
+
+SUCCESS requires at minimum:
+
+- filingCount > 0
+- holdingCount > 0
+
+unless an explicitly supported dataset genuinely contains no eligible holdings,
+which must be independently classified.
+
+Do not create an aggregate-completed event with symbolCount: 0 and call it success.
+
+====================================================================
+5. QUARTER-SELECTION POLICY
+====================================================================
+
+The --quarters N option must select the most recent N quarters whose SEC bulk data
+is actually available—not merely the most recent calendar quarters.
+
+At minimum:
+
+- probe dataset availability;
+- skip a quarter not yet published;
+- continue backward until N available quarters are found.
+
+Example on August 6, 2026:
+
+Requested:
+--quarters 2
+
+Likely eligible completed quarters:
+- 2026Q1
+- 2025Q4
+
+Do not hardcode those dates.
+
+Determine availability from the official dataset index or safe HEAD/GET response.
+
+The CLI should print:
+
+Requested available quarters:
+2026Q1, 2025Q4
+
+Skipped:
+2026Q2 — dataset not yet published
+
+====================================================================
+6. PARSER VALIDATION
+====================================================================
+
+Add validation before database writes:
+
+- required archive entries found;
+- required headers found;
+- submission rows > 0;
+- information-table rows > 0;
+- accession join rate above a documented threshold;
+- period-of-report values correspond to the requested quarter;
+- numeric share/value parsing produces valid finite values;
+- rejected-row count and reasons are measured.
+
+Return diagnostics such as:
+
+archiveEntries: 6
+submissionRows: 8,214
+informationTableRows: 1,234,567
+joinedHoldingRows: 1,229,000
+rejectedRows: 5,567
+eligibleCommonStockRows: ...
+putCallExcludedRows: ...
+
+Use actual counts; do not print raw rows.
+
+If the join rate is zero or implausibly low, fail the quarter.
+
+====================================================================
+7. DATABASE SAFETY
+====================================================================
+
+The failed empty runs may already exist in institutional_ingestion_runs.
+
+Inspect them.
+
+Correct status:
+
+- do not leave them as completed;
+- mark or supersede them as FAILED / EMPTY_PARSE_FAILURE;
+- ensure a corrected rerun is allowed;
+- do not let the uniqueness constraint prevent retry;
+- preserve the original attempt for auditability where the schema permits.
+
+Delete no production data automatically.
+
+Provide a safe remediation command if those run records must be reset or superseded.
+
+====================================================================
+8. TEST FIXTURES
+====================================================================
+
+Add a small sanitized fixture that mirrors the actual SEC bulk archive structure.
+
+Tests must cover:
+
+- actual uppercase/nested ZIP filenames;
+- TSV parsing;
+- BOM handling;
+- SUBMISSION headers;
+- INFOTABLE headers;
+- accession normalization;
+- submission-to-holding join;
+- Q1 period filtering;
+- put/call exclusion;
+- malformed numeric value;
+- missing required ZIP entry;
+- valid archive with zero parsed rows → EMPTY_PARSE_FAILURE;
+- unavailable future quarter → EMPTY_NOT_PUBLISHED;
+- --quarters 2 skips unpublished quarter and chooses two available quarters;
+- CLI exits non-zero for parse failure;
+- CLI does not claim success when filingCount=0;
+- corrected rerun succeeds after prior empty attempt.
+
+Use realistic but minimal fixture rows.
+
+====================================================================
+9. OBSERVABILITY
+====================================================================
+
+Add safe events:
+
+institutional_13f_archive_inspected
+institutional_13f_source_files_detected
+institutional_13f_rows_parsed
+institutional_13f_join_summary
+institutional_13f_quarter_not_published
+institutional_13f_empty_parse_failure
+
+Safe fields:
+
+- quarter
+- archiveBytes
+- entryNames, bounded list
+- submissionRowCount
+- holdingRowCount
+- joinedRowCount
+- rejectedRowCount
+- eligibleRowCount
+- durationMs
+- safe error code
+
+Never log raw filing rows, credentials, database URLs, or full archive contents.
+
+====================================================================
+10. RE-RUN PLAN
+====================================================================
+
+After the fix, provide exact production commands.
+
+Expected sequence:
+
+1. Deploy parser/quarter-selection fix.
+2. Keep:
+   INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+3. Run dry-run:
+   npx tsx scripts/run-institutional-backfill.ts --quarters 2 --dry-run
+4. Confirm it selects two published quarters.
+5. Run:
+   npx tsx scripts/run-institutional-backfill.ts --quarters 2
+6. Verify filingCount and holdingCount are greater than zero.
+7. Run:
+   npx tsx scripts/audit-institutional-readiness.ts
+8. Only after real holdings exist, verify and seed COST mapping.
+9. Rebuild aggregates if mapping seeding does not automatically trigger it.
+10. Audit again.
+11. Do not enable the public feature until GO or acceptable CONDITIONAL_GO.
+
+====================================================================
+11. TESTS AND BUILD
+====================================================================
+
+Run:
+
+- institutional parser tests;
+- ingestion-service tests;
+- CLI tests;
+- readiness-audit tests;
+- full server tests;
+- full client tests;
+- typecheck;
+- production build.
+
+====================================================================
+12. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact parser/downloader root cause
+2. Actual SEC archive entry names
+3. Actual delimiter and header format
+4. Why 2026Q1 produced zero
+5. 2026Q2 publication/availability handling
+6. Files changed
+7. Empty-quarter status policy
+8. Available-quarter selection logic
+9. Database remediation for prior empty runs
+10. Parsed fixture tests
+11. Tests added
+12. Total passing tests
+13. Typecheck
+14. Build
+15. Exact production rerun commands
+16. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, change Railway variables, seed mappings, enable the public
+feature, or rerun production ingestion automatically.
+
+Wait for review.

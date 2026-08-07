@@ -29,9 +29,12 @@ import { sql } from "drizzle-orm";
 import {
   getInstitutionalConfig,
   parseQuarterLabel,
-  recentQuarters,
   isIngestionConfigured,
 } from "../server/services/institutional/config";
+import {
+  probeQuarterAvailability,
+  selectAvailableQuarters,
+} from "../server/services/institutional/sec-13f-bulk-parser";
 import { runInstitutionalIngestion } from "../server/services/institutional/ingestion-service";
 
 // ---------------------------------------------------------------------------
@@ -194,14 +197,33 @@ async function main(): Promise<void> {
   info("✓ Schema exists.");
 
   // 4. Determine target quarters
+  //    For --quarters N: probe SEC availability and skip any quarter not yet published.
+  //    For --quarter SPECIFIC: use exactly as requested (user takes responsibility).
   const targetLabels: string[] = [];
   if (specificQuarter) {
     targetLabels.push(specificQuarter);
     info(`Target quarter: ${specificQuarter}`);
   } else {
-    const recentList = recentQuarters(quarters!);
-    for (const q of recentList) targetLabels.push(q.label);
-    info(`Target quarters (${quarters} most recent): ${targetLabels.join(", ")}`);
+    info(`Probing SEC availability for ${quarters} most-recent quarters…`);
+    const { available, skipped } = await selectAvailableQuarters(
+      quarters!,
+      new Date(),
+      (y, q) => probeQuarterAvailability(y, q, cfg.secUserAgent!),
+    );
+    if (skipped.length > 0) {
+      info("Skipped:");
+      for (const s of skipped) info(`  ${s.label} — ${s.reason}`);
+    }
+    if (available.length === 0) {
+      fail(
+        "NO_AVAILABLE_QUARTERS",
+        "No published quarters found. " +
+        "The SEC may not have released the dataset for recent quarters yet. " +
+        "Try again later or use --quarter YYYYQN to specify an exact quarter.",
+      );
+    }
+    for (const q of available) targetLabels.push(q.label);
+    info(`Requested available quarters: ${targetLabels.join(", ")}`);
   }
 
   // 5. Dry-run mode — list what would be ingested and exit
@@ -231,7 +253,12 @@ async function main(): Promise<void> {
       info(`✓ Ingestion completed. Quarters processed: ${result.quartersProcessed}`);
       break;
     case "partial":
-      warn(`Ingestion partially completed. Quarters processed: ${result.quartersProcessed}. Check logs for errors.`);
+      // Partial includes EMPTY_PARSE_FAILURE cases — exit non-zero so CI/operator is alerted.
+      fail(
+        "INGESTION_PARTIAL",
+        `Ingestion partially completed. Quarters processed: ${result.quartersProcessed}. ` +
+        "Check structured logs above for EMPTY_PARSE_FAILURE or other error codes.",
+      );
       break;
     case "skipped_locked":
       fail("ADVISORY_LOCK_HELD", "Another ingestion run is already in progress (advisory lock is held). Try again later.");

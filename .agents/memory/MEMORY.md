@@ -39,3 +39,4 @@
 - [Institutional SEC dataset catalog](institutional-sec-catalog.md) — post-2023 SEC uses date-range ZIPs (e.g. 01mar2026-31may2026_form13f.zip); old YYYYqN URL returns 404; new catalog fetches official index page; DatasetDescriptor carries exact URL.
 - [Institutional 13F COVERPAGE join](institutional-coverpage-join.md) — current SEC archive has 9 entries; FILINGMANAGER_NAME is in COVERPAGE.tsv not SUBMISSION.tsv; VOTING_AUTH_SOLE/SHARED/NONE replaced VOTINGAUTHORITY_*; three-table join required.
 - [Institutional persistence abort fix](institutional-persistence-fix.md) — abort → "partial" fix, resumable skip, PERSISTENCE_COUNT_MISMATCH, progress logging, force flag, verify script.
+- [Security Master Mapping Engine](security-master-mapping.md) — two-table arch (security_master + institutionalSecurityMappings); 5-level priority; reviewed=100 never auto-overwritten; approve syncs to ingestion table.

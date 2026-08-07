@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck, Database } from "lucide-react";
+import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck, Database, Link2 } from "lucide-react";
 
 interface AdminStats {
   totalUsers: number;
@@ -76,6 +76,13 @@ const tools = [
     href: "/admin/market-data",
     icon: Database,
     testId: "card-admin-market-data",
+  },
+  {
+    title: "Institutional Mappings",
+    description: "CUSIP → ticker review queue, approval workflow & coverage audit",
+    href: "/admin/institutional-mappings",
+    icon: Link2,
+    testId: "card-admin-institutional-mappings",
   },
 ];
 

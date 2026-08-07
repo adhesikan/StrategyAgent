@@ -1,0 +1,193 @@
+// Institutional Mapping Routes — Sprint 2.2.5
+//
+// Public (authenticated):
+//   GET  /api/institutional/mappings          — paginated mapping queue
+//   GET  /api/institutional/unmapped          — top unmapped issuers
+//   GET  /api/institutional/mapping-audit     — stats + audit summary
+//
+// Admin-only:
+//   POST /api/institutional/mapping-pipeline  — run the mapping pipeline
+//   POST /api/institutional/review            — approve / reject / merge
+//
+// Security:
+//   - isAuthenticated required on all routes
+//   - isAdmin required on mutating routes
+//   - No raw holdings, CUSIPs, or issuer names returned unless requested
+//   - All user-supplied tickers/CUSIPs are validated before DB writes
+
+import type { Express, RequestHandler } from "express";
+import { z } from "zod";
+import {
+  getMappingQueue,
+  getMappingStats,
+  getTopUnmapped,
+  getMappingAudit,
+  approveMapping,
+  rejectMapping,
+  mergeMapping,
+  runMappingPipeline,
+} from "../services/institutional/security-master-service";
+
+// ---------------------------------------------------------------------------
+// Validation schemas
+// ---------------------------------------------------------------------------
+
+const queueQuerySchema = z.object({
+  status: z
+    .enum(["reviewed", "probable", "needs_review", "unmapped", "rejected", "all"])
+    .default("all"),
+  search: z.string().max(100).optional(),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  orderBy: z.enum(["holdingCount", "confidence", "lastVerified"]).default("holdingCount"),
+  order: z.enum(["asc", "desc"]).default("desc"),
+});
+
+const reviewBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("approve"),
+    cusip: z.string().length(9).regex(/^[A-Z0-9]{9}$/, "CUSIP must be 9 uppercase alphanumeric characters"),
+    ticker: z.string().min(1).max(10).regex(/^[A-Z]{1,10}$/, "Ticker must be 1–10 uppercase letters"),
+    exchange: z.enum(["NYSE", "NASDAQ", "OTC", "CBOE", "other"]).optional(),
+    assetType: z.enum(["common_stock", "etf", "reit", "adr", "preferred", "warrant", "other"]).optional(),
+    notes: z.string().max(500).optional(),
+  }),
+  z.object({
+    action: z.literal("reject"),
+    cusip: z.string().length(9).regex(/^[A-Z0-9]{9}$/),
+    notes: z.string().max(500).optional(),
+  }),
+  z.object({
+    action: z.literal("merge"),
+    fromCusip: z.string().length(9).regex(/^[A-Z0-9]{9}$/),
+    intoCusip: z.string().length(9).regex(/^[A-Z0-9]{9}$/),
+  }),
+]);
+
+const pipelineBodySchema = z.object({
+  quarter: z.string().regex(/^\d{4}-Q[1-4]$/).optional(),
+  limitCusips: z.number().int().min(1).max(10000).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Route registration
+// ---------------------------------------------------------------------------
+
+export function registerInstitutionalMappingRoutes(
+  app: Express,
+  isAuthenticated: RequestHandler,
+  isAdmin: RequestHandler,
+): void {
+  /**
+   * GET /api/institutional/mappings
+   * Paginated view of the security_master queue.
+   */
+  app.get("/api/institutional/mappings", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = queueQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid query", details: parsed.error.flatten().fieldErrors });
+      }
+      const result = await getMappingQueue(parsed.data);
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[mapping-queue]", err?.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/institutional/unmapped
+   * Top unmapped issuers by holding count.
+   */
+  app.get("/api/institutional/unmapped", isAuthenticated, async (req, res) => {
+    try {
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 25)));
+      const rows = await getTopUnmapped(limit);
+      return res.json({ unmapped: rows, count: rows.length });
+    } catch (err: any) {
+      console.error("[unmapped-issuers]", err?.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/institutional/mapping-audit
+   * Full audit: stats + coverage + top unmapped + remaining work.
+   */
+  app.get("/api/institutional/mapping-audit", isAuthenticated, async (_req, res) => {
+    try {
+      const audit = await getMappingAudit();
+      return res.json(audit);
+    } catch (err: any) {
+      console.error("[mapping-audit]", err?.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * POST /api/institutional/review
+   * Approve, reject, or merge a mapping. Admin-only.
+   */
+  app.post("/api/institutional/review", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const parsed = reviewBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.flatten().fieldErrors });
+      }
+
+      const body = parsed.data;
+      let result: any;
+
+      if (body.action === "approve") {
+        result = await approveMapping(body.cusip, body.ticker, {
+          exchange: body.exchange,
+          assetType: body.assetType,
+          notes: body.notes,
+        });
+        return res.json({ status: "approved", mapping: result });
+      }
+
+      if (body.action === "reject") {
+        result = await rejectMapping(body.cusip, body.notes);
+        return res.json({ status: "rejected", mapping: result });
+      }
+
+      if (body.action === "merge") {
+        result = await mergeMapping(body.fromCusip, body.intoCusip);
+        return res.json({ status: "merged", mapping: result });
+      }
+
+      return res.status(400).json({ error: "Unknown action" });
+    } catch (err: any) {
+      if (err?.message?.includes("not found") || err?.message?.includes("not reviewed")) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err?.message?.includes("already reviewed")) {
+        return res.status(409).json({ error: err.message });
+      }
+      console.error("[mapping-review]", err?.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * POST /api/institutional/mapping-pipeline
+   * Run the CUSIP → ticker mapping pipeline. Admin-only, fire-and-forget style.
+   */
+  app.post("/api/institutional/mapping-pipeline", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const parsed = pipelineBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.flatten().fieldErrors });
+      }
+
+      // Run synchronously (typically < 5s for discovery pass); long runs use limitCusips
+      const result = await runMappingPipeline(parsed.data);
+      return res.json({ status: "complete", result });
+    } catch (err: any) {
+      console.error("[mapping-pipeline]", err?.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+}

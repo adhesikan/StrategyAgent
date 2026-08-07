@@ -3126,3 +3126,58 @@ export const institutionalIngestionRuns = pgTable("institutional_ingestion_runs"
 
 export type InstitutionalIngestionRun = typeof institutionalIngestionRuns.$inferSelect;
 export type InsertInstitutionalIngestionRun = typeof institutionalIngestionRuns.$inferInsert;
+
+/**
+ * Canonical CUSIP → ticker reference store for the Institutional Intelligence
+ * mapping engine. Richer metadata than institutionalSecurityMappings; the review
+ * queue operates on this table. Approved entries are synced back to
+ * institutionalSecurityMappings so the ingestion pipeline picks them up.
+ *
+ * reviewStatus values:
+ *   reviewed   — manually confirmed; never overwritten by automation
+ *   probable   — high-confidence automated match, awaiting review
+ *   needs_review — low-confidence or ambiguous match, flagged for human review
+ *   unmapped   — no automated match found
+ *   rejected   — explicitly rejected; excluded from analytics
+ *
+ * confidence scale:
+ *   100 — reviewed (manually confirmed)
+ *   95  — exact CUSIP match in legacy mapping table
+ *   90  — FIGI exact match
+ *   80  — issuer name deterministic match (unique)
+ *   60  — probable (heuristic)
+ *   0   — unmapped
+ */
+export const securityMaster = pgTable("security_master", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Normalized 9-character CUSIP (uppercase, no dashes) */
+  cusip: text("cusip").notNull(),
+  /** VCP Trader internal symbol (e.g. "AAPL") */
+  ticker: text("ticker"),
+  issuerName: text("issuer_name"),
+  /** NYSE | NASDAQ | OTC | CBOE | other */
+  exchange: text("exchange"),
+  /** common_stock | etf | reit | adr | preferred | warrant | other */
+  assetType: text("asset_type"),
+  figi: text("figi"),
+  /** 0–100 confidence in the ticker assignment */
+  confidence: integer("confidence").notNull().default(0),
+  /** manual | cusip_exact | figi_exact | name_match | heuristic | unmapped */
+  mappingMethod: text("mapping_method").notNull().default("unmapped"),
+  /** reviewed | probable | needs_review | unmapped | rejected */
+  reviewStatus: text("review_status").notNull().default("unmapped"),
+  firstSeen: timestamp("first_seen").defaultNow().notNull(),
+  lastVerified: timestamp("last_verified").defaultNow().notNull(),
+  notes: text("notes"),
+  /** Number of holdings rows referencing this CUSIP (updated on pipeline runs) */
+  holdingCount: integer("holding_count").notNull().default(0),
+}, (t) => ({
+  idxCusip: uniqueIndex("idx_sm_cusip").on(t.cusip),
+  idxTicker: index("idx_sm_ticker").on(t.ticker),
+  idxReviewStatus: index("idx_sm_review_status").on(t.reviewStatus),
+  idxConfidence: index("idx_sm_confidence").on(t.confidence),
+  idxHoldingCount: index("idx_sm_holding_count").on(t.holdingCount),
+}));
+
+export type SecurityMaster = typeof securityMaster.$inferSelect;
+export type InsertSecurityMaster = typeof securityMaster.$inferInsert;

@@ -29,6 +29,30 @@ import {
 } from "../services/institutional/security-master-service";
 
 // ---------------------------------------------------------------------------
+// Helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+/** True when the error is a missing-table error (migration not yet applied). */
+export function isTableMissingError(err: unknown): boolean {
+  const msg = (err as any)?.message ?? "";
+  // Postgres: "relation \"security_master\" does not exist"
+  return /relation .* does not exist/i.test(msg) || /table .* does not exist/i.test(msg);
+}
+
+/** Empty MappingPage — the shape the queue endpoint always returns. */
+export const EMPTY_QUEUE = { entries: [] as any[], total: 0, page: 1, pageSize: 25 };
+
+/** Empty MappingAudit — the shape the audit endpoint always returns. */
+export const EMPTY_AUDIT = {
+  stats: {
+    reviewed: 0, probable: 0, needsReview: 0, unmapped: 0, rejected: 0,
+    total: 0, mappedHoldings: 0, unmappedHoldings: 0, totalHoldings: 0, coveragePercent: 0,
+  },
+  topUnmapped: [] as any[],
+  remainingWork: { toReview: 0, estimatedReviewMinutes: 0 },
+};
+
+// ---------------------------------------------------------------------------
 // Validation schemas
 // ---------------------------------------------------------------------------
 
@@ -81,6 +105,7 @@ export function registerInstitutionalMappingRoutes(
   /**
    * GET /api/institutional/mappings
    * Paginated view of the security_master queue.
+   * Returns EMPTY_QUEUE shape when table has not been migrated yet.
    */
   app.get("/api/institutional/mappings", isAuthenticated, async (req, res) => {
     try {
@@ -91,6 +116,10 @@ export function registerInstitutionalMappingRoutes(
       const result = await getMappingQueue(parsed.data);
       return res.json(result);
     } catch (err: any) {
+      if (isTableMissingError(err)) {
+        console.warn("[mapping-queue] security_master table not found — migration needed");
+        return res.json({ ...EMPTY_QUEUE, page: Number(req.query.page ?? 1) });
+      }
       console.error("[mapping-queue]", err?.message);
       return res.status(500).json({ error: "Internal server error" });
     }
@@ -99,6 +128,7 @@ export function registerInstitutionalMappingRoutes(
   /**
    * GET /api/institutional/unmapped
    * Top unmapped issuers by holding count.
+   * Returns empty list when table has not been migrated yet.
    */
   app.get("/api/institutional/unmapped", isAuthenticated, async (req, res) => {
     try {
@@ -106,6 +136,10 @@ export function registerInstitutionalMappingRoutes(
       const rows = await getTopUnmapped(limit);
       return res.json({ unmapped: rows, count: rows.length });
     } catch (err: any) {
+      if (isTableMissingError(err)) {
+        console.warn("[unmapped-issuers] security_master table not found — migration needed");
+        return res.json({ unmapped: [], count: 0 });
+      }
       console.error("[unmapped-issuers]", err?.message);
       return res.status(500).json({ error: "Internal server error" });
     }
@@ -114,12 +148,17 @@ export function registerInstitutionalMappingRoutes(
   /**
    * GET /api/institutional/mapping-audit
    * Full audit: stats + coverage + top unmapped + remaining work.
+   * Returns EMPTY_AUDIT shape when table has not been migrated yet.
    */
   app.get("/api/institutional/mapping-audit", isAuthenticated, async (_req, res) => {
     try {
       const audit = await getMappingAudit();
       return res.json(audit);
     } catch (err: any) {
+      if (isTableMissingError(err)) {
+        console.warn("[mapping-audit] security_master table not found — migration needed");
+        return res.json(EMPTY_AUDIT);
+      }
       console.error("[mapping-audit]", err?.message);
       return res.status(500).json({ error: "Internal server error" });
     }

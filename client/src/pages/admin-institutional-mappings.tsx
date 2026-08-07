@@ -328,7 +328,15 @@ export default function AdminInstitutionalMappingsPage() {
                 <Skeleton key={i} className="h-12" />
               ))}
             </div>
-          ) : queueQuery.data?.entries.length === 0 ? (
+          ) : queueQuery.isError ? (
+            <div className="p-12 text-center text-zinc-500 flex flex-col items-center gap-2">
+              <AlertCircle className="w-6 h-6 text-red-400" />
+              <p className="text-red-400 font-medium">Failed to load mapping queue</p>
+              <p className="text-xs text-zinc-600">
+                The security_master table may not exist yet — run the schema migration first.
+              </p>
+            </div>
+          ) : (queueQuery.data?.entries?.length ?? 0) === 0 ? (
             <div className="p-12 text-center text-zinc-500">
               No entries found{search ? ` for "${search}"` : ""}.
             </div>
@@ -348,7 +356,7 @@ export default function AdminInstitutionalMappingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {queueQuery.data?.entries.map((entry) => (
+                  {(queueQuery.data?.entries ?? []).map((entry) => (
                     <tr
                       key={entry.id}
                       className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
@@ -365,7 +373,7 @@ export default function AdminInstitutionalMappingsPage() {
                         <ConfidencePill value={entry.confidence} />
                       </td>
                       <td className="p-3 text-center text-zinc-400">
-                        {entry.holdingCount.toLocaleString()}
+                        {(entry.holdingCount ?? 0).toLocaleString()}
                       </td>
                       <td className="p-3">
                         <span
@@ -476,7 +484,7 @@ export default function AdminInstitutionalMappingsPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-zinc-500">
-                      {item.holdingCount.toLocaleString()} holdings
+                      {(item.holdingCount ?? 0).toLocaleString()} holdings
                     </span>
                     <Button
                       size="sm"

@@ -1,0 +1,510 @@
+INSTITUTIONAL 13F — TRACE WHY VALID 13F-HR SUBMISSIONS ARE DROPPED
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION FAILURE
+
+The current production backfill proves SUBMISSIONTYPE normalization is working at
+the raw-value level.
+
+2026-Q1 SUBMISSION.tsv:
+
+total rows: 11,761
+
+Raw types:
+13F-HR       9,312
+13F-HR/A       404
+13F-NT       2,001
+13F-NT/A        44
+
+Therefore expected holdings-bearing submissions before field validation:
+
+9,312 + 404 = 9,716
+
+2025-Q4:
+
+13F-HR       9,016
+13F-HR/A       348
+13F-NT       1,970
+13F-NT/A        38
+
+Expected holdings-bearing submissions:
+
+9,364
+
+However the bulk parser returns:
+
+NO_HOLDINGS_BEARING_SUBMISSIONS:
+11761 SUBMISSION rows found but none normalised to 13F-HR or 13F-HR/A
+
+This message is demonstrably inaccurate.
+
+The diagnostic script separately proves the same normalizeSubmissionType() function
+recognizes the canonical SEC values correctly.
+
+Therefore:
+
+DO NOT expand normalizeSubmissionType aliases again.
+
+The bug is almost certainly downstream of form-type classification inside
+parseSubmissionTsv(), where otherwise eligible rows are rejected because another
+required field cannot be parsed.
+
+This task is to identify exactly which validation stage removes the 9,716 / 9,364
+eligible rows and correct that field handling.
+
+Do not modify:
+
+- SEC dataset catalog
+- ZIP resolution
+- COVERPAGE architecture
+- INFOTABLE parser
+- database schema
+- aggregation
+- CUSIP mappings
+- feature flags
+- Institutional UI
+- Opportunity Engine
+- brokers
+
+Keep INSTITUTIONAL_INTELLIGENCE_ENABLED=false.
+
+====================================================================
+1. TRACE parseSubmissionTsv ROW PIPELINE
+====================================================================
+
+Inspect the complete current implementation of:
+
+parseSubmissionTsv()
+
+Document the exact per-row sequence.
+
+It should conceptually be something like:
+
+raw row
+→ resolve SUBMISSIONTYPE
+→ normalize form type
+→ exclude 13F-NT
+→ resolve accession
+→ normalize accession
+→ resolve CIK
+→ normalize CIK
+→ resolve period of report
+→ parse period date
+→ resolve filing date
+→ parse filing date
+→ construct SubmissionRow
+
+Identify every `continue`, `return`, null guard, or validation condition after
+form-type classification.
+
+Do not infer.
+
+Report exact code locations.
+
+====================================================================
+2. SPLIT TYPE ELIGIBILITY FROM FINAL PARSE SUCCESS
+====================================================================
+
+The current diagnostic conflates:
+
+"recognized as holdings-bearing form"
+
+with:
+
+"fully parsed submission row"
+
+These must be separate.
+
+Add diagnostics:
+
+rawSubmissionRows
+recognizedHoldingsFormRows
+recognized13fHrRows
+recognized13fHrAmendmentRows
+excludedNoticeRows
+excludedUnknownTypeRows
+
+Then field-level rejection counters:
+
+rejectedMissingAccession
+rejectedInvalidAccession
+rejectedMissingCik
+rejectedInvalidCik
+rejectedMissingPeriodOfReport
+rejectedInvalidPeriodOfReport
+rejectedInvalidFilingDate
+rejectedOtherSubmissionValidation
+
+And:
+
+parsedSubmissionRows
+
+For 2026-Q1 we already know:
+
+recognizedHoldingsFormRows SHOULD equal 9,716
+
+before field validation.
+
+If it does not, that is a normalization/inclusion bug.
+
+If it does, identify which rejection counter explains the drop to zero.
+
+====================================================================
+3. INSPECT ACTUAL FIELD FORMATS SAFELY
+====================================================================
+
+Use the production diagnostic path to inspect DISTINCT / bounded examples of formats,
+not complete records.
+
+For holdings-bearing submissions only, report safely:
+
+ACCESSION_NUMBER:
+- example format pattern
+- nonempty count
+
+CIK:
+- example format pattern
+- nonempty count
+
+PERIODOFREPORT:
+- distinct format patterns
+- up to 5 sanitized example values
+
+FILING_DATE:
+- distinct format patterns
+- up to 5 sanitized example values
+
+SUBMISSIONTYPE:
+- already known
+
+These are public filing metadata, but still avoid logging full rows.
+
+Example safe output:
+
+Period-of-report formats:
+YYYY-MM-DD: 9716
+
+or:
+
+MM-DD-YYYY: 9716
+
+or whatever the archive actually contains.
+
+Do not assume date format.
+
+====================================================================
+4. AUDIT DATE PARSER
+====================================================================
+
+Inspect the current date-normalization function used for:
+
+PERIODOFREPORT
+FILING_DATE
+
+Determine exactly which formats it accepts.
+
+Current code previously appeared to recognize narrow variants such as:
+
+YYYY-MM-DD
+YYYYMMDD
+
+Verify whether the actual SEC bulk values use a different representation.
+
+If so, extend date parsing deterministically.
+
+Potential formats should ONLY be added when observed or supported by fixtures.
+
+Examples that may need support if actually present:
+
+MM-DD-YYYY
+MM/DD/YYYY
+YYYY/MM/DD
+
+Normalize every accepted value to:
+
+YYYY-MM-DD
+
+Use strict calendar validation.
+
+Reject:
+
+- impossible dates
+- partial dates
+- ambiguous nonstandard values
+
+Do not let JavaScript Date loosely interpret arbitrary strings.
+
+====================================================================
+5. AUDIT ACCESSION NORMALIZATION
+====================================================================
+
+Confirm actual production ACCESSION_NUMBER values.
+
+Ensure normalizeAccession supports what the SEC currently supplies.
+
+Track separately:
+
+recognized holdings rows
+→ accession normalized successfully
+→ accession rejected
+
+Do not classify an accession failure as a form-type failure.
+
+====================================================================
+6. AUDIT CIK NORMALIZATION
+====================================================================
+
+Confirm production CIK representation.
+
+Support valid SEC CIKs deterministically:
+
+- integer-like text
+- leading zeros
+- bounded digit length
+
+Normalize to the existing canonical representation.
+
+Do not reject valid CIKs merely because they are not already ten characters.
+
+Track missing and invalid separately.
+
+====================================================================
+7. FIX THE FAILURE MESSAGE
+====================================================================
+
+The parser must never again report:
+
+"none normalised to 13F-HR or 13F-HR/A"
+
+when type counts contain thousands of those exact forms.
+
+Define separate failure codes.
+
+If no holdings-bearing form is recognized:
+
+NO_HOLDINGS_BEARING_SUBMISSIONS
+
+If holdings forms are recognized but every one fails required-field parsing:
+
+ALL_HOLDINGS_SUBMISSIONS_INVALID
+
+Include safe diagnostic counts such as:
+
+recognizedHoldingsFormRows: 9716
+parsedSubmissionRows: 0
+rejectedInvalidPeriodOfReport: 9716
+
+The reason should identify the actual stage.
+
+====================================================================
+8. CORRECT COUNTER SEMANTICS
+====================================================================
+
+Current:
+
+includedSubmissionCount
+
+appears to mean "fully parsed submission rows."
+
+That naming is misleading.
+
+Use:
+
+recognizedHoldingsFormRows
+parsedSubmissionRows
+
+Then after COVERPAGE fallback, if applicable:
+
+includedSubmissionCount
+
+should mean rows accepted into the filing/holding join.
+
+Document the distinction.
+
+The following invariant should hold:
+
+totalRows
+=
+excludedNoticeRows
++ excludedUnknownTypeRows
++ recognizedHoldingsFormRows
+(+ blank type handling if separate)
+
+And:
+
+recognizedHoldingsFormRows
+=
+parsedSubmissionRows
++ all field-validation rejection counters
+
+Allow COVERPAGE-fallback adjustments where explicitly documented.
+
+Add invariant tests.
+
+====================================================================
+9. PRODUCTION-SAFE DIAGNOSTIC
+====================================================================
+
+Extend inspect-submission-types.ts or create:
+
+scripts/inspect-submission-validation.ts
+
+Preferred: extend the existing script with:
+
+--validate
+
+Example:
+
+npx tsx scripts/inspect-submission-types.ts --validate
+
+Output:
+
+Submission rows: 11761
+
+Type classification:
+  13F-HR:       9312
+  13F-HR/A:      404
+  13F-NT:       2001
+  13F-NT/A:       44
+
+Recognized holdings-bearing: 9716
+
+Validation:
+  parsed:                         XXXX
+  missing accession:                X
+  invalid accession:                X
+  missing CIK:                      X
+  invalid CIK:                      X
+  missing period of report:         X
+  invalid period of report:         X
+  invalid filing date:              X
+
+Observed formats:
+  accession: <format description>
+  CIK: <format description>
+  period: <format description>
+  filing date: <format description>
+
+No database writes.
+No INFOTABLE parsing.
+
+====================================================================
+10. TESTS
+====================================================================
+
+Add tests covering:
+
+A. 13F-HR increments recognizedHoldingsFormRows
+
+B. 13F-HR/A increments recognizedHoldingsFormRows
+
+C. 13F-NT does not
+
+D. Production type distribution produces expected recognized count
+
+E. Valid form + invalid period increments rejectedInvalidPeriodOfReport,
+not excludedUnknownTypeRows
+
+F. Valid form + missing accession increments rejectedMissingAccession
+
+G. Valid form + invalid accession increments rejectedInvalidAccession
+
+H. Valid form + missing CIK increments rejectedMissingCik
+
+I. Valid form + invalid CIK increments rejectedInvalidCik
+
+J. Actual observed SEC period format parses correctly
+
+K. Actual observed SEC filing-date format parses correctly
+
+L. Legacy date formats remain supported
+
+M. Invalid calendar date rejected
+
+N. Counter invariant holds
+
+O. recognized > 0 + parsed = 0 returns ALL_HOLDINGS_SUBMISSIONS_INVALID
+
+P. recognized = 0 returns NO_HOLDINGS_BEARING_SUBMISSIONS
+
+Q. failure reason reports actual rejection stage
+
+R. diagnostic --validate performs no DB writes
+
+S. existing normalization tests remain green
+
+T. existing COVERPAGE tests remain green
+
+====================================================================
+11. DO NOT PARSE INFOTABLE UNTIL SUBMISSION VALIDATION PASSES
+====================================================================
+
+This is important because INFOTABLE contains 3.8 million rows.
+
+Keep the efficient early validation.
+
+Do not decompress/parse the giant INFOTABLE payload until:
+
+parsedSubmissionRows > 0
+
+and manager identity prerequisites are viable.
+
+====================================================================
+12. PRODUCTION VERIFICATION SEQUENCE
+====================================================================
+
+After the fix, do NOT immediately rerun the full backfill.
+
+First run:
+
+npx tsx scripts/inspect-submission-types.ts --validate
+
+For 2026-Q1 we expect:
+
+recognizedHoldingsFormRows: 9716
+parsedSubmissionRows: > 0
+
+If parsedSubmissionRows is much lower, review rejection counters.
+
+Only when the submission validation is healthy run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+Then expect progression into:
+
+COVERPAGE
+INFOTABLE
+joinedHoldingRows
+database persistence.
+
+====================================================================
+13. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact parseSubmissionTsv validation sequence
+2. Exact stage dropping the production rows
+3. Actual observed accession format
+4. Actual observed CIK format
+5. Actual observed PERIODOFREPORT format
+6. Actual observed FILING_DATE format
+7. Root cause
+8. Files changed
+9. Parser correction
+10. New rejection diagnostics
+11. Failure-code changes
+12. Counter invariants
+13. Tests added
+14. Total passing tests
+15. Typecheck
+16. Exact production diagnostic command
+17. Expected diagnostic result
+18. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run full ingestion, seed mappings, change Railway
+variables, or enable Institutional Intelligence automatically.
+
+Wait for review.

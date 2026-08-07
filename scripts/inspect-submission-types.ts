@@ -17,7 +17,10 @@ import {
   toDatasetDescriptor,
   type InstitutionalDatasetCatalogEntry,
 } from "../server/services/institutional/sec-dataset-catalog";
-import { normalizeSubmissionType } from "../server/services/institutional/sec-13f-bulk-parser";
+import {
+  normalizeSubmissionType,
+  parseSubmissionTsv,
+} from "../server/services/institutional/sec-13f-bulk-parser";
 // secFetchBuffer(url, signal?) — reads SEC_USER_AGENT from institutional config internally.
 // Do NOT pass userAgent as an argument; the function has exactly two parameters.
 import { secFetchBuffer } from "../server/services/institutional/sec-client";
@@ -134,7 +137,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Parse header to find SUBMISSIONTYPE column index
+  const fullText = subEntry.getData().toString("utf8").replace(/^\uFEFF/, "");
+
+  // Parse header to find SUBMISSIONTYPE column index (for lightweight type-only scan)
   const headers = lines[0].split("\t").map((h) => h.trim().toUpperCase());
 
   const formTypeIdx = headers.findIndex((h) => {
@@ -194,6 +199,77 @@ async function main(): Promise<void> {
   console.log("[inspect] Normalized values:");
   for (const [val, count] of Object.entries(normalizedSubmissionTypeCounts)) {
     console.log(`[inspect]   ${val.padEnd(20)} ${count}`);
+  }
+
+  // ── --validate mode: full field-level validation via parseSubmissionTsv ──
+  if (process.argv.includes("--validate")) {
+    console.log("");
+    console.log("[inspect] ── Field validation (--validate) ─────────────────────────────");
+
+    // parseSubmissionTsv reads the full TSV and validates all required fields.
+    // It performs no DB writes, no INFOTABLE parsing, no network calls.
+    const parsed = parseSubmissionTsv(fullText);
+
+    console.log(`[inspect] Type classification:`);
+    console.log(`[inspect]   13F-HR recognized:         ${parsed.recognized13fHrRows}`);
+    console.log(`[inspect]   13F-HR/A recognized:       ${parsed.recognized13fHrAmendmentRows}`);
+    console.log(`[inspect]   13F-NT excluded:           ${parsed.excludedNoticeRows}`);
+    console.log(`[inspect]   UNKNOWN type excluded:     ${parsed.excludedUnknownTypeRows}`);
+    console.log(`[inspect]   Recognized holdings total: ${parsed.recognizedHoldingsFormRows}`);
+    console.log("");
+    console.log(`[inspect] Field validation (holdings-bearing rows only):`);
+    console.log(`[inspect]   parsed successfully:          ${parsed.parsedRows}`);
+    console.log(`[inspect]   missing accession:            ${parsed.rejectedMissingAccession}`);
+    console.log(`[inspect]   non-standard accession fmt:   ${parsed.rejectedInvalidAccession}  (informational — not gated)`);
+    console.log(`[inspect]   missing CIK:                  ${parsed.rejectedMissingCik}`);
+    console.log(`[inspect]   invalid CIK (non-numeric):    ${parsed.rejectedInvalidCik}`);
+    console.log(`[inspect]   missing period of report:     ${parsed.rejectedMissingPeriodOfReport}`);
+    console.log(`[inspect]   invalid period of report:     ${parsed.rejectedInvalidPeriodOfReport}`);
+    console.log(`[inspect]   invalid filing date:          ${parsed.rejectedInvalidFilingDate}`);
+    console.log(`[inspect]   other validation:             ${parsed.rejectedOtherSubmissionValidation}`);
+    console.log("");
+
+    // Invariant check
+    const totalRejected =
+      parsed.rejectedMissingAccession +
+      parsed.rejectedMissingCik +
+      parsed.rejectedInvalidCik +
+      parsed.rejectedMissingPeriodOfReport +
+      parsed.rejectedInvalidPeriodOfReport +
+      parsed.rejectedInvalidFilingDate +
+      parsed.rejectedOtherSubmissionValidation;
+    const invariantHolds = parsed.recognizedHoldingsFormRows === parsed.parsedRows + totalRejected;
+    console.log(`[inspect] Invariant check: recognizedHoldingsFormRows === parsedRows + totalRejected`);
+    console.log(`[inspect]   ${parsed.recognizedHoldingsFormRows} === ${parsed.parsedRows} + ${totalRejected}  →  ${invariantHolds ? "✓ OK" : "✗ FAIL"}`);
+
+    if (!invariantHolds) {
+      console.error("[inspect] WARNING: invariant violated — rejectedInvalidAccession (informational) may account for the difference");
+    }
+
+    // Observed field format sampling (safe — no raw filing content)
+    if (parsed.rows.length > 0) {
+      const sample = parsed.rows[0];
+      console.log("");
+      console.log("[inspect] Observed field formats (from first parsed row):");
+      console.log(`[inspect]   accession format: ${/^\d{10}-\d{2}-\d{6}$/.test(sample.accessionNumber) ? "dashed (10-2-6)" : "non-standard"}`);
+      console.log(`[inspect]   CIK digits:       ${sample.cik.length} chars (${/^\d{10}$/.test(sample.cik) ? "padded 10-digit" : "other"})`);
+      console.log(`[inspect]   period format:    YYYY-MM-DD (normalized from source)`);
+      console.log(`[inspect]   filing date fmt:  YYYY-MM-DD (normalized from source)`);
+    }
+
+    // Diagnosis
+    console.log("");
+    if (parsed.parsedRows === 0 && parsed.recognizedHoldingsFormRows > 0) {
+      console.log("[inspect] ⚠  DIAGNOSIS: Holdings forms recognized but all failed field validation.");
+      console.log("[inspect]    Check the rejection counters above to identify the blocking field.");
+      console.log("[inspect]    Expected: ALL_HOLDINGS_SUBMISSIONS_INVALID failure code in bulk parser.");
+    } else if (parsed.parsedRows === 0 && parsed.recognizedHoldingsFormRows === 0) {
+      console.log("[inspect] ⚠  DIAGNOSIS: No holdings-bearing form types recognized at all.");
+      console.log("[inspect]    Expected: NO_HOLDINGS_BEARING_SUBMISSIONS failure code in bulk parser.");
+    } else {
+      console.log(`[inspect] ✓  DIAGNOSIS: ${parsed.parsedRows} rows parsed successfully.`);
+      console.log("[inspect]    Proceed to run the full backfill when ready.");
+    }
   }
 }
 

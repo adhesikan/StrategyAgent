@@ -116,11 +116,40 @@ export interface BulkParseDiagnostics {
   submissionTypeCounts: Record<string, number>;
   /** Normalized SUBMISSIONTYPE → row count */
   normalizedSubmissionTypeCounts: Record<string, number>;
-  /** Rows retained for holdings ingestion (normalized 13F-HR + 13F-HR/A) */
-  includedSubmissionCount: number;
+  // ── Submission type classification (pre-field-validation) ────────────────
+  /** Rows whose SUBMISSIONTYPE normalized to 13F-HR or 13F-HR/A (BEFORE field validation) */
+  recognizedHoldingsFormRows: number;
+  /** Rows whose SUBMISSIONTYPE normalized to 13F-HR specifically */
+  recognized13fHrRows: number;
+  /** Rows whose SUBMISSIONTYPE normalized to 13F-HR/A specifically */
+  recognized13fHrAmendmentRows: number;
   /** Rows excluded as notice-only (normalized 13F-NT / 13F-NT/A) */
-  excludedNoticeCount: number;
+  excludedNoticeRows: number;
   /** Rows excluded because SUBMISSIONTYPE could not be normalized (UNKNOWN or blank) */
+  excludedUnknownTypeRows: number;
+  // ── Field-level rejection counters (holdings-bearing rows only) ───────────
+  /** Holdings-bearing rows rejected due to empty accession field */
+  rejectedMissingAccession: number;
+  /** Holdings-bearing rows rejected due to non-standard accession format (tracked; not gated) */
+  rejectedInvalidAccession: number;
+  /** Holdings-bearing rows rejected due to empty CIK field */
+  rejectedMissingCik: number;
+  /** Holdings-bearing rows rejected due to non-numeric CIK value */
+  rejectedInvalidCik: number;
+  /** Holdings-bearing rows rejected due to empty period-of-report field */
+  rejectedMissingPeriodOfReport: number;
+  /** Holdings-bearing rows rejected due to unrecognized period-of-report date format */
+  rejectedInvalidPeriodOfReport: number;
+  /** Holdings-bearing rows rejected due to unrecognized filing-date format (non-empty but unparseable) */
+  rejectedInvalidFilingDate: number;
+  /** Holdings-bearing rows rejected for any other validation reason */
+  rejectedOtherSubmissionValidation: number;
+  // ── Post-validation counts ────────────────────────────────────────────────
+  /** Rows retained for holdings ingestion (normalized 13F-HR + 13F-HR/A, all fields valid) */
+  includedSubmissionCount: number;
+  /** Deprecated alias for includedSubmissionCount (kept for log compat). Same value. */
+  excludedNoticeCount: number;
+  /** Deprecated alias for excludedUnknownTypeRows (kept for log compat). Same value. */
   excludedUnknownSubmissionTypeCount: number;
   /** Included rows that are amendments (normalized 13F-HR/A) */
   amendmentSubmissionCount: number;
@@ -533,11 +562,94 @@ function normalizePutCall(raw: string): "Put" | "Call" | null {
   return null;
 }
 
+/** Strict calendar validation — year 1993–2099, month 1–12, day in range. */
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  if (year < 1993 || year > 2099) return false;
+  if (month < 1 || month > 12) return false;
+  const daysInMonth = new Date(year, month, 0).getDate(); // day 0 = last day of prior month
+  if (day < 1 || day > daysInMonth) return false;
+  return true;
+}
+
+/**
+ * Normalize a date string to ISO 8601 (YYYY-MM-DD) with strict calendar validation.
+ *
+ * Accepted input formats:
+ *   YYYY-MM-DD   (ISO 8601 — most common in current SEC TSVs)
+ *   YYYYMMDD     (compact EDGAR form — 8 digits)
+ *   MM/DD/YYYY   (US slash format — observed in some EDGAR bulk exports)
+ *   MM-DD-YYYY   (US hyphen format)
+ *   YYYY/MM/DD   (ISO slash variant)
+ *
+ * Rejects impossible dates, partial dates, and unrecognised formats.
+ * Never uses JavaScript Date loose-parsing.
+ */
 function normalizeDateField(raw: string): string | null {
   const s = raw.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  if (!s) return null;
+
+  // ── YYYY-MM-DD (current SEC schema, most common) ───────────────────────
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const y = parseInt(s.slice(0, 4), 10);
+    const m = parseInt(s.slice(5, 7), 10);
+    const d = parseInt(s.slice(8, 10), 10);
+    return isValidCalendarDate(y, m, d) ? s : null;
+  }
+
+  // ── YYYYMMDD (compact, 8 digits) ─────────────────────────────────────
+  if (/^\d{8}$/.test(s)) {
+    const y = parseInt(s.slice(0, 4), 10);
+    const m = parseInt(s.slice(4, 6), 10);
+    const d = parseInt(s.slice(6, 8), 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  }
+
+  // ── MM/DD/YYYY (US slash — observed in some EDGAR bulk exports) ───────
+  const mdySlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdySlash) {
+    const m = parseInt(mdySlash[1], 10);
+    const d = parseInt(mdySlash[2], 10);
+    const y = parseInt(mdySlash[3], 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${mdySlash[3]}-${mdySlash[1].padStart(2, "0")}-${mdySlash[2].padStart(2, "0")}`;
+  }
+
+  // ── MM-DD-YYYY (US hyphen) ────────────────────────────────────────────
+  // Guard: distinguish from YYYY-MM-DD by checking first 4 chars < 1000 (unlikely year)
+  const mdyDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (mdyDash) {
+    const m = parseInt(mdyDash[1], 10);
+    const d = parseInt(mdyDash[2], 10);
+    const y = parseInt(mdyDash[3], 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${mdyDash[3]}-${mdyDash[1].padStart(2, "0")}-${mdyDash[2].padStart(2, "0")}`;
+  }
+
+  // ── YYYY/MM/DD (ISO slash variant) ───────────────────────────────────
+  const ymdSlash = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (ymdSlash) {
+    const y = parseInt(ymdSlash[1], 10);
+    const m = parseInt(ymdSlash[2], 10);
+    const d = parseInt(ymdSlash[3], 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${ymdSlash[1]}-${ymdSlash[2]}-${ymdSlash[3]}`;
+  }
+
   return null;
+}
+
+/**
+ * Normalize a CIK string to 10-digit zero-padded format.
+ * Returns null for missing (blank) or invalid (non-numeric) input.
+ * SEC CIKs are always positive integers, 1–10 digits.
+ */
+function normalizeCik(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;                       // missing
+  if (!/^\d+$/.test(s)) return null;         // non-numeric → invalid
+  if (s.length > 10) return null;            // exceeds max CIK length
+  return s.replace(/^0+/, "").padStart(10, "0") || "0000000000";
 }
 
 // ---------------------------------------------------------------------------
@@ -665,6 +777,22 @@ export function parseSubmissionTsv(text: string): {
   submissionTypeCounts: Record<string, number>;
   /** Normalized type string → count */
   normalizedSubmissionTypeCounts: Record<string, number>;
+  // type classification
+  recognizedHoldingsFormRows: number;
+  recognized13fHrRows: number;
+  recognized13fHrAmendmentRows: number;
+  excludedNoticeRows: number;
+  excludedUnknownTypeRows: number;
+  // field-level rejection counters
+  rejectedMissingAccession: number;
+  rejectedInvalidAccession: number;
+  rejectedMissingCik: number;
+  rejectedInvalidCik: number;
+  rejectedMissingPeriodOfReport: number;
+  rejectedInvalidPeriodOfReport: number;
+  rejectedInvalidFilingDate: number;
+  rejectedOtherSubmissionValidation: number;
+  // post-validation (legacy compat aliases)
   includedCount: number;
   excludedNoticeCount: number;
   excludedUnknownCount: number;
@@ -688,8 +816,24 @@ export function parseSubmissionTsv(text: string): {
   const rows: SubmissionRow[] = [];
   const unknownTypeRows: SubmissionRow[] = [];
   let totalRows = 0;
-  let excludedNoticeCount = 0;
-  let excludedUnknownCount = 0;
+
+  // type classification counters
+  let recognizedHoldingsFormRows = 0;
+  let recognized13fHrRows        = 0;
+  let recognized13fHrAmendmentRows = 0;
+  let excludedNoticeRows         = 0;
+  let excludedUnknownTypeRows    = 0;
+
+  // field-level rejection counters (holdings-bearing rows only)
+  let rejectedMissingAccession         = 0;
+  let rejectedInvalidAccession         = 0;  // informational — non-standard format (not gated)
+  let rejectedMissingCik               = 0;
+  let rejectedInvalidCik               = 0;
+  let rejectedMissingPeriodOfReport    = 0;
+  let rejectedInvalidPeriodOfReport    = 0;
+  let rejectedInvalidFilingDate        = 0;
+  let rejectedOtherSubmissionValidation = 0;
+
   let amendmentCount = 0;
 
   for (const raw of rawRows) {
@@ -712,7 +856,7 @@ export function parseSubmissionTsv(text: string): {
 
     // Notice-only: exclude, count, skip
     if (normalizedFT === "13F-NT" || normalizedFT === "13F-NT/A") {
-      excludedNoticeCount++;
+      excludedNoticeRows++;
       continue;
     }
 
@@ -724,14 +868,14 @@ export function parseSubmissionTsv(text: string): {
 
     if (normalizedFT === "UNKNOWN") {
       // Column present, value unrecognised — keep for COVERPAGE fallback
-      excludedUnknownCount++;
+      excludedUnknownTypeRows++;
       const accRaw        = getField(raw, lookup, SUB_ACCESSION_ALIASES);
       const cikRaw        = getField(raw, lookup, SUB_CIK_ALIASES);
       const name          = getField(raw, lookup, SUB_NAME_ALIASES).trim();
       const periodRaw     = getField(raw, lookup, SUB_PERIOD_ALIASES);
       const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
       const accession     = normalizeAccession(accRaw);
-      const cik           = cikRaw.replace(/^0+/, "").padStart(10, "0") || cikRaw;
+      const cik           = normalizeCik(cikRaw) ?? cikRaw.trim();
       const periodOfReport = normalizeDateField(periodRaw);
       const filingDate    = normalizeDateField(filingDateRaw) ?? periodOfReport ?? "";
       if (accession && cik && periodOfReport) {
@@ -750,25 +894,47 @@ export function parseSubmissionTsv(text: string): {
 
     if (normalizedFT === null && !columnAbsent) {
       // Column present, value is blank → unknown, exclude
-      excludedUnknownCount++;
+      excludedUnknownTypeRows++;
       continue;
     }
 
-    // normalizedFT is "13F-HR", "13F-HR/A", or null (column absent → treat as 13F-HR)
+    // ── Holdings-bearing form: "13F-HR", "13F-HR/A", or null (column absent → 13F-HR) ──
     const resolvedType: "13F-HR" | "13F-HR/A" = normalizedFT === "13F-HR/A" ? "13F-HR/A" : "13F-HR";
+    recognizedHoldingsFormRows++;
+    if (resolvedType === "13F-HR/A") recognized13fHrAmendmentRows++;
+    else recognized13fHrRows++;
 
+    // ── Per-field validation with granular rejection counters ─────────────
     const accRaw        = getField(raw, lookup, SUB_ACCESSION_ALIASES);
     const cikRaw        = getField(raw, lookup, SUB_CIK_ALIASES);
     const name          = getField(raw, lookup, SUB_NAME_ALIASES).trim();
     const periodRaw     = getField(raw, lookup, SUB_PERIOD_ALIASES);
     const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
 
-    const accession      = normalizeAccession(accRaw);
-    const cik            = cikRaw.replace(/^0+/, "").padStart(10, "0") || cikRaw;
-    const periodOfReport = normalizeDateField(periodRaw);
-    const filingDate     = normalizeDateField(filingDateRaw) ?? periodOfReport ?? "";
+    // Accession: missing check first; unknown format passes through
+    if (!accRaw.trim()) { rejectedMissingAccession++; continue; }
+    const accession = normalizeAccession(accRaw);
+    // Track non-standard format (informational — still accepted)
+    if (!/^\d{10}-\d{2}-\d{6}$/.test(accession)) rejectedInvalidAccession++;
 
-    if (!accession || !cik || !periodOfReport) continue;
+    // CIK: missing and non-numeric are separate gates
+    if (!cikRaw.trim()) { rejectedMissingCik++; continue; }
+    const cik = normalizeCik(cikRaw);
+    if (cik === null) { rejectedInvalidCik++; continue; }
+
+    // Period of report: required field — reject if missing or unrecognised format
+    if (!periodRaw.trim()) { rejectedMissingPeriodOfReport++; continue; }
+    const periodOfReport = normalizeDateField(periodRaw);
+    if (periodOfReport === null) { rejectedInvalidPeriodOfReport++; continue; }
+
+    // Filing date: optional field; falls back to periodOfReport when absent.
+    // Reject only if the field is present (non-empty) but fails all format patterns.
+    const filingDateNorm = normalizeDateField(filingDateRaw);
+    if (filingDateRaw.trim() && filingDateNorm === null) {
+      rejectedInvalidFilingDate++;
+      continue;
+    }
+    const filingDate = filingDateNorm ?? periodOfReport;
 
     const isAmendment = resolvedType === "13F-HR/A";
     if (isAmendment) amendmentCount++;
@@ -796,9 +962,23 @@ export function parseSubmissionTsv(text: string): {
     canonicalMapping,
     submissionTypeCounts,
     normalizedSubmissionTypeCounts,
+    recognizedHoldingsFormRows,
+    recognized13fHrRows,
+    recognized13fHrAmendmentRows,
+    excludedNoticeRows,
+    excludedUnknownTypeRows,
+    rejectedMissingAccession,
+    rejectedInvalidAccession,
+    rejectedMissingCik,
+    rejectedInvalidCik,
+    rejectedMissingPeriodOfReport,
+    rejectedInvalidPeriodOfReport,
+    rejectedInvalidFilingDate,
+    rejectedOtherSubmissionValidation,
+    // legacy aliases for backward compatibility
     includedCount: rows.length,
-    excludedNoticeCount,
-    excludedUnknownCount,
+    excludedNoticeCount: excludedNoticeRows,
+    excludedUnknownCount: excludedUnknownTypeRows,
     amendmentCount,
   };
 }
@@ -1144,9 +1324,25 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   infoTableHeaderMapping: {},
   submissionTypeCounts: {},
   normalizedSubmissionTypeCounts: {},
+  // type classification
+  recognizedHoldingsFormRows: 0,
+  recognized13fHrRows: 0,
+  recognized13fHrAmendmentRows: 0,
+  excludedNoticeRows: 0,
+  excludedUnknownTypeRows: 0,
+  // field-level rejection counters
+  rejectedMissingAccession: 0,
+  rejectedInvalidAccession: 0,
+  rejectedMissingCik: 0,
+  rejectedInvalidCik: 0,
+  rejectedMissingPeriodOfReport: 0,
+  rejectedInvalidPeriodOfReport: 0,
+  rejectedInvalidFilingDate: 0,
+  rejectedOtherSubmissionValidation: 0,
+  // post-validation
   includedSubmissionCount: 0,
-  excludedNoticeCount: 0,
-  excludedUnknownSubmissionTypeCount: 0,
+  excludedNoticeCount: 0,               // alias for excludedNoticeRows
+  excludedUnknownSubmissionTypeCount: 0, // alias for excludedUnknownTypeRows
   amendmentSubmissionCount: 0,
   amendmentFlagConflictCount: 0,
 };
@@ -1279,6 +1475,19 @@ export function parseBulkQuarterFromBuffer(
     submissionTypeCounts,
     normalizedSubmissionTypeCounts,
     includedCount: includedSubmissionCount,
+    recognizedHoldingsFormRows,
+    recognized13fHrRows,
+    recognized13fHrAmendmentRows,
+    excludedNoticeRows,
+    excludedUnknownTypeRows,
+    rejectedMissingAccession,
+    rejectedInvalidAccession,
+    rejectedMissingCik,
+    rejectedInvalidCik,
+    rejectedMissingPeriodOfReport,
+    rejectedInvalidPeriodOfReport,
+    rejectedInvalidFilingDate,
+    rejectedOtherSubmissionValidation,
     excludedNoticeCount,
     excludedUnknownCount,
     amendmentCount: amendmentSubmissionCount,
@@ -1289,6 +1498,19 @@ export function parseBulkQuarterFromBuffer(
     submissionTypeCounts,
     normalizedSubmissionTypeCounts,
     includedSubmissionCount,
+    recognizedHoldingsFormRows,
+    recognized13fHrRows,
+    recognized13fHrAmendmentRows,
+    excludedNoticeRows,
+    excludedUnknownTypeRows,
+    rejectedMissingAccession,
+    rejectedInvalidAccession,
+    rejectedMissingCik,
+    rejectedInvalidCik,
+    rejectedMissingPeriodOfReport,
+    rejectedInvalidPeriodOfReport,
+    rejectedInvalidFilingDate,
+    rejectedOtherSubmissionValidation,
     excludedNoticeCount,
     excludedUnknownSubmissionTypeCount: excludedUnknownCount,
     amendmentSubmissionCount,
@@ -1418,7 +1640,8 @@ export function parseBulkQuarterFromBuffer(
     //   1. No holdings-bearing submissions at all (all UNKNOWN/NT) → NO_HOLDINGS_BEARING_SUBMISSIONS
     //      (primary problem is submission-type filtering, not manager identity)
     //   2. Valid 13F-HR submissions exist but no manager name source → MANAGER_IDENTITY_SOURCE_MISSING
-    if (subRowsVerified.length === 0) {
+    // No COVERPAGE; distinguish by whether form-type recognition produced anything.
+    if (recognizedHoldingsFormRows === 0) {
       return {
         status: "empty_parse_failure",
         holdings: [],
@@ -1438,6 +1661,35 @@ export function parseBulkQuarterFromBuffer(
           `NO_HOLDINGS_BEARING_SUBMISSIONS: ${totalSubRows} SUBMISSION rows found but none ` +
           `normalised to 13F-HR or 13F-HR/A. ` +
           `Distinct SUBMISSIONTYPE values: ${JSON.stringify(submissionTypeCounts)}`,
+      };
+    }
+    if (subRowsVerified.length === 0) {
+      // Form types recognized but all rows rejected by field validation
+      return {
+        status: "empty_parse_failure",
+        holdings: [],
+        diagnostics: {
+          ...EMPTY_DIAGNOSTICS,
+          ...baseDiag,
+          ...resolutionDiag,
+          ...subTypeDiag,
+          submissionHeaderMapping: subHeaderMapping,
+          coverPageHeaderMapping: {},
+          infoTableHeaderMapping: {},
+          submissionRows: totalSubRows,
+          parsedSubmissionRows: parsedSubRows,
+          durationMs: Date.now() - startMs,
+        },
+        reason:
+          `ALL_HOLDINGS_SUBMISSIONS_INVALID: ${recognizedHoldingsFormRows} holdings-bearing ` +
+          `SUBMISSION rows recognised but all failed field validation. ` +
+          `rejectedMissingAccession=${rejectedMissingAccession} ` +
+          `rejectedMissingCik=${rejectedMissingCik} ` +
+          `rejectedInvalidCik=${rejectedInvalidCik} ` +
+          `rejectedMissingPeriodOfReport=${rejectedMissingPeriodOfReport} ` +
+          `rejectedInvalidPeriodOfReport=${rejectedInvalidPeriodOfReport} ` +
+          `rejectedInvalidFilingDate=${rejectedInvalidFilingDate} ` +
+          `rejectedOtherSubmissionValidation=${rejectedOtherSubmissionValidation}`,
       };
     }
     return {
@@ -1464,9 +1716,25 @@ export function parseBulkQuarterFromBuffer(
   // ── Check for zero included submissions AFTER COVERPAGE fallback ──────────
   //
   // Only now — after COVERPAGE REPORTTYPE fallback may have promoted rows —
-  // do we know the true includedSubmissionCount. If still zero, return a
-  // precise NO_HOLDINGS_BEARING_SUBMISSIONS failure.
+  // do we know the true count. Distinguish recognition failure from validation failure.
   if (subRows.length === 0) {
+    const code = recognizedHoldingsFormRows === 0
+      ? "NO_HOLDINGS_BEARING_SUBMISSIONS"
+      : "ALL_HOLDINGS_SUBMISSIONS_INVALID";
+    const reason = recognizedHoldingsFormRows === 0
+      ? `NO_HOLDINGS_BEARING_SUBMISSIONS: ${totalSubRows} SUBMISSION rows found but none ` +
+        `normalised to 13F-HR or 13F-HR/A. ` +
+        `Distinct SUBMISSIONTYPE values: ${JSON.stringify(submissionTypeCounts)}`
+      : `ALL_HOLDINGS_SUBMISSIONS_INVALID: ${recognizedHoldingsFormRows} holdings-bearing ` +
+        `SUBMISSION rows recognised but all failed field validation. ` +
+        `rejectedMissingAccession=${rejectedMissingAccession} ` +
+        `rejectedMissingCik=${rejectedMissingCik} ` +
+        `rejectedInvalidCik=${rejectedInvalidCik} ` +
+        `rejectedMissingPeriodOfReport=${rejectedMissingPeriodOfReport} ` +
+        `rejectedInvalidPeriodOfReport=${rejectedInvalidPeriodOfReport} ` +
+        `rejectedInvalidFilingDate=${rejectedInvalidFilingDate} ` +
+        `rejectedOtherSubmissionValidation=${rejectedOtherSubmissionValidation}`;
+    void code; // code is embedded in reason string
     return {
       status: "empty_parse_failure",
       holdings: [],
@@ -1484,10 +1752,7 @@ export function parseBulkQuarterFromBuffer(
         parsedCoverPageRows: coverPageParsedRows,
         durationMs: Date.now() - startMs,
       },
-      reason:
-        `NO_HOLDINGS_BEARING_SUBMISSIONS: ${totalSubRows} SUBMISSION rows found but none ` +
-        `normalised to 13F-HR or 13F-HR/A. ` +
-        `Distinct SUBMISSIONTYPE values: ${JSON.stringify(submissionTypeCounts)}`,
+      reason,
     };
   }
 

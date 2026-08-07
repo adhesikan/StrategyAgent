@@ -23,6 +23,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { getMarketSessionInfo } from "@shared/market-session";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import {
+  getScoreColorClass,
+  getScoreBarClass,
+  formatRelativeTime as formatRankingAge,
+  getCategoryLabel,
+  getCategoryBadgeClass,
+  getChangeDisplay,
+  getChangeBadgeClass,
+  getConfidenceBadgeClass,
+} from "@/lib/opportunity-ranking-helpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -287,6 +297,61 @@ interface SnapshotComparison {
     topMover: string | null;
     mostStable: string | null;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Opportunity Ranking Engine types (Sprint 2.2.8)
+// Mirrors the server-side engine output from /api/opportunities/today.
+// ---------------------------------------------------------------------------
+
+interface OpportunityScore {
+  symbol: string;
+  overallScore: number;
+  confidence: "high" | "medium" | "low";
+  technicalScore: number;
+  institutionalScore: number;
+  fundamentalScore: number;
+  riskScore: number;
+  regimeScore: number;
+  category: "Top Growth" | "Income" | "Watch" | "Avoid";
+  reasons: string[];
+  warnings: string[];
+  lastUpdated: string;
+}
+
+/** RankedStockCandidate extended with a composite OpportunityScore. */
+interface ScoredStockCandidate extends RankedStockCandidate {
+  opportunityScore: OpportunityScore;
+}
+
+/** WatchStockCandidate extended with a composite OpportunityScore. */
+interface ScoredWatchStockCandidate extends WatchStockCandidate {
+  opportunityScore: OpportunityScore;
+}
+
+interface OpportunityChange {
+  symbol: string;
+  from: string;
+  to: string;
+  direction: "upgraded" | "downgraded" | "new" | "moved";
+}
+
+interface OpportunityRanking {
+  generatedAt: string;
+  snapshotId: string;
+  regime: string | null;
+  weights: Record<string, number>;
+  topGrowth: ScoredStockCandidate[];
+  topIncome: ScoredStockCandidate[];
+  watchlist: ScoredWatchStockCandidate[];
+  approaching: ScoredWatchStockCandidate[];
+  changes: OpportunityChange[];
+}
+
+interface OpportunityTodayResponse {
+  ranking: OpportunityRanking | null;
+  available: boolean;
+  message: string | null;
 }
 
 interface SymbolHistoryEntry {
@@ -916,13 +981,6 @@ function MarketSnapshotSection({
 //    Options data boundary is a separate section.
 // ---------------------------------------------------------------------------
 
-/** Confidence level → colour class mapping. */
-const CONFIDENCE_CLASS: Record<string, string> = {
-  high:   "text-emerald-300 border-emerald-500/30 bg-emerald-500/5",
-  medium: "text-amber-300 border-amber-500/30 bg-amber-500/5",
-  low:    "text-rose-300 border-rose-500/30 bg-rose-500/5",
-};
-
 /** Lifecycle state → badge label + colour class. */
 const LIFECYCLE_BADGE: Record<LifecycleState, { label: string; className: string }> = {
   NEWLY_QUALIFIED: { label: "NEW",       className: "text-emerald-300 border-emerald-500/40 bg-emerald-500/8" },
@@ -935,20 +993,38 @@ const LIFECYCLE_BADGE: Record<LifecycleState, { label: string; className: string
   UNAVAILABLE:     { label: "N/A",       className: "text-muted-foreground border-border" },
 };
 
+/** Mini score pill — label + coloured numeric value. */
+function ScorePill({ label, score }: { label: string; score: number }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 min-w-0">
+      <span
+        className={cn("text-[11px] font-mono font-semibold tabular-nums", getScoreColorClass(score))}
+        data-testid={`score-${label.toLowerCase()}`}
+      >
+        {score}
+      </span>
+      <span className="text-[9px] text-muted-foreground truncate">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Opportunity card — Sprint 2.2.8.
+ * Displays the composite OpportunityScore alongside all scanner evidence.
+ * `opportunityScore` is required for candidates from /api/opportunities/today.
+ */
 function StockOpportunityCard({
   candidate,
   hasCachedResult,
   lifecycleState,
-  marketRegime,
 }: {
-  candidate: RankedStockCandidate;
+  candidate: ScoredStockCandidate;
   hasCachedResult?: boolean;
   lifecycleState?: LifecycleState;
-  marketRegime?: string | null;
 }) {
   const [, navigate] = useLocation();
   const ctaText = hasCachedResult ? "Open Analysis" : "Analyze";
-  const confidence = candidate.confidence?.toLowerCase() ?? "";
+  const score = candidate.opportunityScore;
 
   return (
     <div
@@ -957,56 +1033,114 @@ function StockOpportunityCard({
       role="article"
       aria-label={`${candidate.symbol} stock opportunity`}
     >
-      {/* Header row: symbol + rank badge + confidence */}
+      {/* ── Header row ──────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap min-w-0">
-        <span className="font-mono font-semibold text-lg tracking-tight" data-testid={`symbol-${candidate.symbol}`}>
+        <span
+          className="font-mono font-semibold text-lg tracking-tight"
+          data-testid={`symbol-${candidate.symbol}`}
+        >
           {candidate.symbol}
         </span>
         <Badge variant="outline" className="text-[10px] border-border/50 text-muted-foreground">
           #{candidate.rank}
         </Badge>
-        {candidate.rank > 0 && candidate.rank !== undefined && <span className="text-[10px] text-muted-foreground">{candidate.rank > 1 ? "▲" : ""}</span>}
+        {/* Category badge from the ranking engine */}
+        <Badge
+          variant="outline"
+          className={cn("text-[10px]", getCategoryBadgeClass(score.category))}
+          data-testid={`badge-category-${candidate.symbol}`}
+        >
+          {getCategoryLabel(score.category)}
+        </Badge>
+        {/* Composite confidence (not raw MCP confidence) */}
+        <Badge
+          variant="outline"
+          className={cn("text-[10px]", getConfidenceBadgeClass(score.confidence))}
+          data-testid={`confidence-${candidate.symbol}`}
+          aria-label={`Confidence: ${score.confidence}`}
+        >
+          {score.confidence.charAt(0).toUpperCase() + score.confidence.slice(1)}
+        </Badge>
         {lifecycleState && <LifecycleBadge state={lifecycleState} />}
-        {lifecycleState && <span className="text-[10px] text-muted-foreground">•</span>}
-        {candidate.strategy && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{candidate.strategy}</span>}
-        {confidence && CONFIDENCE_CLASS[confidence] && (
-          <Badge
-            variant="outline"
-            className={cn("text-[10px]", CONFIDENCE_CLASS[confidence])}
-            data-testid={`confidence-${candidate.symbol}`}
-            aria-label={`Confidence: ${confidence}`}
-          >
-            {confidence.charAt(0).toUpperCase() + confidence.slice(1)} confidence
-          </Badge>
-        )}
       </div>
 
-      {candidate.rank > 0 && candidate.setupStatus && <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{candidate.setupStatus}</div>}
-      {marketRegime && <div className="text-[10px] text-sky-300/80">Aligns with {REGIME_LABEL[marketRegime] ?? marketRegime} Regime</div>}
-
-      {/* Primary selection reason — first reason from MCP (never fabricated) */}
-      {candidate.whySelected.length > 0 && (
-        <p className="text-xs leading-snug line-clamp-2" data-testid={`reason-${candidate.symbol}`}>
-          {candidate.whySelected[0]}
-        </p>
+      {/* ── Scanner strategy ────────────────────────────────────────────── */}
+      {candidate.strategy && (
+        <div
+          className="text-[10px] uppercase tracking-wide text-muted-foreground"
+          data-testid={`strategy-${candidate.symbol}`}
+        >
+          {candidate.strategy}
+        </div>
       )}
 
-      {/* Trigger / invalidation levels when supplied by MCP */}
+      {/* ── Overall score bar ───────────────────────────────────────────── */}
+      <div className="flex items-center gap-2">
+        <span
+          className={cn("text-xl font-bold font-mono tabular-nums", getScoreColorClass(score.overallScore))}
+          data-testid={`overall-score-${candidate.symbol}`}
+        >
+          {score.overallScore}
+        </span>
+        <div className="flex-1 h-1.5 bg-border/30 rounded-full overflow-hidden" aria-hidden="true">
+          <div
+            className={cn("h-full rounded-full transition-all", getScoreBarClass(score.overallScore))}
+            style={{ width: `${score.overallScore}%` }}
+          />
+        </div>
+        <span className="text-[10px] text-muted-foreground">/ 100</span>
+      </div>
+
+      {/* ── Score breakdown ─────────────────────────────────────────────── */}
+      <div
+        className="grid grid-cols-4 gap-2 py-0.5 border-y border-border/20"
+        data-testid={`score-breakdown-${candidate.symbol}`}
+      >
+        <ScorePill label="Tech"  score={score.technicalScore} />
+        <ScorePill label="Inst"  score={score.institutionalScore} />
+        <ScorePill label="Fund"  score={score.fundamentalScore} />
+        <ScorePill label="Risk"  score={score.riskScore} />
+      </div>
+
+      {/* ── Reasons (from ranking engine, not raw MCP) ──────────────────── */}
+      {score.reasons.length > 0 && (
+        <div className="space-y-1" data-testid={`reasons-${candidate.symbol}`}>
+          {score.reasons.slice(0, 2).map((r, i) => (
+            <p key={i} className="text-xs leading-snug text-foreground/80">
+              {r}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* ── Warnings ────────────────────────────────────────────────────── */}
+      {score.warnings.length > 0 && (
+        <div
+          className="flex items-start gap-1 text-[10px] text-amber-400"
+          data-testid={`warnings-${candidate.symbol}`}
+        >
+          <AlertTriangle className="h-3 w-3 mt-px shrink-0" aria-hidden="true" />
+          <span>{score.warnings[0]}</span>
+        </div>
+      )}
+
+      {/* ── Entry / stop levels from MCP ────────────────────────────────── */}
       {(candidate.trigger || candidate.invalidation) && (
         <div className="flex gap-1.5 text-[10px] text-muted-foreground font-mono">
-          {candidate.trigger && <span className="rounded border border-emerald-500/20 bg-emerald-500/5 px-1.5 py-0.5">Entry {candidate.trigger}</span>}
-          {candidate.invalidation && <span className="rounded border border-rose-500/20 bg-rose-500/5 px-1.5 py-0.5">Stop {candidate.invalidation}</span>}
+          {candidate.trigger && (
+            <span className="rounded border border-emerald-500/20 bg-emerald-500/5 px-1.5 py-0.5">
+              Entry {candidate.trigger}
+            </span>
+          )}
+          {candidate.invalidation && (
+            <span className="rounded border border-rose-500/20 bg-rose-500/5 px-1.5 py-0.5">
+              Stop {candidate.invalidation}
+            </span>
+          )}
         </div>
       )}
 
-      {/* Warnings from MCP (e.g. earnings proximity) */}
-      {candidate.warnings.length > 0 && (
-        <div className="flex items-start gap-1 text-[10px] text-amber-400">
-          <AlertTriangle className="h-3 w-3 mt-px shrink-0" aria-hidden="true" />
-          <span>{candidate.warnings[0]}</span>
-        </div>
-      )}
-
+      {/* ── CTAs ────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1.5 pt-0.5">
         <Button
           size="sm"
@@ -1038,9 +1172,54 @@ function StockOpportunityCard({
         >
           Research
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => navigate("/scanner")} aria-label={`Watch ${candidate.symbol}`}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0"
+          onClick={() => navigate("/scanner")}
+          aria-label={`Watch ${candidate.symbol}`}
+        >
           <Star className="h-3.5 w-3.5" aria-hidden="true" />
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ranking Changes Panel (Sprint 2.2.8)
+// Shows New / Upgraded / Downgraded / Moved entries from ranking.changes[].
+// Separate from OpportunityLifecycleSection which uses /api/opportunities/changes.
+// ---------------------------------------------------------------------------
+
+function RankingChangesPanel({ changes }: { changes: OpportunityChange[] }) {
+  if (changes.length === 0) return null;
+  return (
+    <div data-testid="ranking-changes-panel">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+        Ranking Changes
+        <span className="ml-auto text-[10px] font-normal normal-case">{changes.length}</span>
+      </h3>
+      <div className="flex flex-wrap gap-2">
+        {changes.map((c) => {
+          const { symbol: sym, label } = { symbol: getChangeDisplay(c.direction).symbol, label: getChangeDisplay(c.direction).label };
+          return (
+            <div
+              key={`${c.symbol}-${c.direction}`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] font-mono",
+                getChangeBadgeClass(c.direction),
+              )}
+              data-testid={`ranking-change-${c.symbol}`}
+              title={`${c.symbol}: ${label} — ${c.from} → ${c.to}`}
+            >
+              <span aria-hidden="true">{sym}</span>
+              <span className="font-semibold">{c.symbol}</span>
+              <span className="opacity-60 font-sans normal-case">{label}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1354,14 +1533,12 @@ function CandidateSubsection({
   cachedSymbols,
   emptyNote,
   lifecycleBySymbol,
-  marketRegime,
 }: {
   heading: string;
-  candidates: RankedStockCandidate[];
+  candidates: ScoredStockCandidate[];
   cachedSymbols: Set<string>;
   emptyNote: string;
   lifecycleBySymbol?: Map<string, LifecycleState>;
-  marketRegime?: string | null;
 }) {
   return (
     <div>
@@ -1381,7 +1558,6 @@ function CandidateSubsection({
               candidate={c}
               hasCachedResult={cachedSymbols.has(c.symbol.toUpperCase())}
               lifecycleState={lifecycleBySymbol?.get(c.symbol.toUpperCase())}
-              marketRegime={marketRegime}
             />
           ))}
         </div>
@@ -1641,20 +1817,20 @@ function OpportunityLifecycleSection({
 function OpportunityEngineSection({
   data,
   isLoading,
+  isError,
   onRetry,
-  changesData,
 }: {
-  data: OpportunityLatestResponse | undefined;
+  data: OpportunityTodayResponse | undefined;
   isLoading: boolean;
+  isError?: boolean;
   onRetry: () => void;
-  changesData?: SnapshotComparison;
 }) {
   const [, navigate] = useLocation();
-  const snapshot = data?.snapshot ?? null;
+  const ranking = data?.ranking ?? null;
 
-  // Batch cache check for candidate symbols
-  const allCandidates = snapshot
-    ? [...snapshot.topGrowth, ...snapshot.topIncome]
+  // Batch cache check for candidate symbols from the ranking engine
+  const allCandidates = ranking
+    ? [...ranking.topGrowth, ...ranking.topIncome]
     : [];
   const symbolsKey = allCandidates.map((c) => c.symbol).join(",");
 
@@ -1680,9 +1856,10 @@ function OpportunityEngineSection({
   const cachedSymbols = new Set<string>(
     (cacheData?.hits ?? []).map((s) => s.toUpperCase()),
   );
-  const lifecycleBySymbol = new Map<string, LifecycleState>(
-    (changesData?.all ?? []).map((item) => [item.symbol.toUpperCase(), item.lifecycleState]),
-  );
+
+  const qualifiedCount = ranking
+    ? ranking.topGrowth.length + ranking.topIncome.length
+    : 0;
 
   return (
     <section
@@ -1699,22 +1876,14 @@ function OpportunityEngineSection({
               </span>
             </CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
-              {snapshot?.marketRegime && (
+              {/* Market regime from ranking engine */}
+              {ranking?.regime && (
                 <Badge
                   variant="outline"
                   className="text-[10px] border-border/60"
                   data-testid="badge-market-regime"
                 >
-                  {snapshot.marketRegime}
-                </Badge>
-              )}
-              {snapshot && (
-                <Badge
-                  variant="outline"
-                  className={cn("text-[10px]", DATA_QUALITY_CLASS.DAILY_CLOSE)}
-                  data-testid="badge-data-source"
-                >
-                  {snapshot.dataSource}
+                  {ranking.regime}
                 </Badge>
               )}
               <Button
@@ -1730,41 +1899,20 @@ function OpportunityEngineSection({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Deterministic stock setups from latest daily market data, ranked by the scanner.
+            Stock setups ranked by Technical, Institutional, Fundamental and Risk signals.
             Not a recommendation to buy or sell.
           </p>
-          {/* Metadata row: scan time, scanner version, counts */}
-          {snapshot && (
+          {/* Freshness row — uses ranking.generatedAt */}
+          {ranking && (
             <div className="flex items-center gap-3 pt-0.5 flex-wrap">
-              {snapshot.freshnessStatus === "stale" && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] border-amber-400/40 text-amber-400"
-                  data-testid="badge-stale"
-                >
-                  Stale
-                </Badge>
-              )}
-              {snapshot.refreshStatus === "running" && (
-                <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
-                  <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" /> Refreshing…
-                </span>
-              )}
-              <span className="text-[10px] text-muted-foreground/70" data-testid="text-scan-time">
-                Newest scan:{" "}
-                {new Date(snapshot.completedAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-              <span className="text-[10px] text-muted-foreground/70" data-testid="text-scanner-version">
-                v{snapshot.scannerVersion}
+              <span
+                className="text-[10px] text-muted-foreground/70"
+                data-testid="text-ranking-freshness"
+              >
+                Updated {formatRankingAge(ranking.generatedAt)}
               </span>
               <span className="text-[10px] text-muted-foreground/70">
-                Reviewed{" "}
-                <span className="font-mono">{snapshot.counts.reviewed}</span>
-                {" · "}
-                <span className="font-mono">{snapshot.counts.qualified}</span> qualified
+                <span className="font-mono">{qualifiedCount}</span> ranked
               </span>
             </div>
           )}
@@ -1779,13 +1927,39 @@ function OpportunityEngineSection({
             </div>
           )}
 
-          {/* No snapshot yet — first scan hasn't completed */}
-          {!isLoading && !snapshot && (
+          {/* Error state */}
+          {!isLoading && isError && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-5 text-center space-y-2">
+              <div className="flex items-center justify-center gap-2 text-sm text-destructive">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span data-testid="text-opp-engine-error">
+                  Could not load ranked opportunities.
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The ranking engine may still be computing. Check back shortly.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-1 text-xs gap-1"
+                onClick={onRetry}
+                data-testid="btn-opp-engine-retry"
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Retry
+              </Button>
+            </div>
+          )}
+
+          {/* No ranking yet — scan hasn't completed or engine hasn't run */}
+          {!isLoading && !isError && !ranking && (
             <div className="rounded-lg border bg-card/30 p-5 text-center space-y-2">
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span data-testid="text-no-scan-yet">
-                  Opportunity Engine has not completed its first scan.
+                  {data?.available === false && data.message
+                    ? data.message
+                    : "Opportunity Engine has not completed its first scan."}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -1803,54 +1977,41 @@ function OpportunityEngineSection({
             </div>
           )}
 
-          {/* Snapshot loaded — show categorised buckets */}
-          {!isLoading && snapshot && (
+          {/* Ranking loaded — show categorised buckets */}
+          {!isLoading && !isError && ranking && (
             <>
               {/* Top Growth */}
               <CandidateSubsection
                 heading="Top Growth"
-                candidates={snapshot.topGrowth}
+                candidates={ranking.topGrowth}
                 cachedSymbols={cachedSymbols}
-                emptyNote="No growth setups identified in the current scan."
-                lifecycleBySymbol={lifecycleBySymbol}
-                marketRegime={snapshot.marketRegime}
+                emptyNote="No growth setups ranked in the current cycle."
               />
 
               {/* Top Income */}
               <CandidateSubsection
                 heading="Top Income"
-                candidates={snapshot.topIncome}
+                candidates={ranking.topIncome}
                 cachedSymbols={cachedSymbols}
-                emptyNote="No income setups identified in the current scan."
-                lifecycleBySymbol={lifecycleBySymbol}
-                marketRegime={snapshot.marketRegime}
+                emptyNote="No income setups ranked in the current cycle."
               />
 
               {/* Top Watchlist */}
               <WatchCandidateList
                 heading="Top Watchlist"
                 icon={Clock}
-                candidates={snapshot.topWatchlist}
+                candidates={ranking.watchlist}
               />
 
               {/* Approaching Qualification */}
               <WatchCandidateList
                 heading="Approaching Qualification"
                 icon={ArrowRight}
-                candidates={snapshot.approachingQualification}
+                candidates={ranking.approaching}
               />
 
-              {/* Warnings */}
-              {snapshot.warnings.length > 0 && (
-                <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
-                  {snapshot.warnings.slice(0, 3).map((w, i) => (
-                    <div key={i} className="flex items-start gap-1.5">
-                      <AlertTriangle className="h-3 w-3 shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
-                      {w}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Ranking changes — New / Upgraded / Downgraded / Moved */}
+              <RankingChangesPanel changes={ranking.changes} />
             </>
           )}
         </CardContent>
@@ -1859,17 +2020,32 @@ function OpportunityEngineSection({
   );
 }
 
-function OpportunityTimeline({ snapshot, changes }: { snapshot?: OpportunitySnapshot | null; changes?: SnapshotComparison }) {
-  if (!snapshot) return null;
-  const time = (value: string | null | undefined) => value ? new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—";
-  const previousQualified = changes?.summary ? changes.summary.stillQualifiedCount + changes.summary.newCount : 0;
+function OpportunityTimeline({
+  ranking,
+  changes,
+}: {
+  ranking?: OpportunityRanking | null;
+  changes?: SnapshotComparison;
+}) {
+  if (!ranking) return null;
+  const time = (value: string | null | undefined) =>
+    value
+      ? new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      : "—";
+  const qualifiedCount = ranking.topGrowth.length + ranking.topIncome.length;
+  const previousQualified = changes?.summary
+    ? changes.summary.stillQualifiedCount + changes.summary.newCount
+    : 0;
   return (
     <section aria-labelledby="timeline-heading" data-testid="section-opportunity-timeline">
       <Card className="border-border/40">
         <CardHeader className="px-4 py-2.5">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-[13px] font-medium flex items-center gap-1.5"><Activity className="h-3.5 w-3.5 text-sky-300" /><span id="timeline-heading">Opportunity Timeline</span></CardTitle>
-            <span className="text-[10px] text-muted-foreground">Scan history</span>
+            <CardTitle className="text-[13px] font-medium flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-sky-300" />
+              <span id="timeline-heading">Opportunity Timeline</span>
+            </CardTitle>
+            <span className="text-[10px] text-muted-foreground">Ranking history</span>
           </div>
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
@@ -1877,19 +2053,29 @@ function OpportunityTimeline({ snapshot, changes }: { snapshot?: OpportunitySnap
             <div className="absolute left-[3px] top-2 bottom-2 w-px bg-border/60" />
             <div className="relative flex items-center gap-3 text-[10px]">
               <span className="h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-emerald-400/15" />
-              <span className="w-24 font-medium">Latest Scan</span>
-              <span className="font-mono text-muted-foreground">{time(snapshot.completedAt)}</span>
-              <Badge variant="outline" className="text-[10px] text-emerald-300 border-emerald-500/30">{snapshot.counts.qualified} qualified</Badge>
-              {changes?.summary && <span className="text-muted-foreground">{changes.summary.newCount} new · {changes.summary.removedCount} dropped</span>}
+              <span className="w-24 font-medium">Latest Ranking</span>
+              <span className="font-mono text-muted-foreground">{time(ranking.generatedAt)}</span>
+              <Badge variant="outline" className="text-[10px] text-emerald-300 border-emerald-500/30">
+                {qualifiedCount} ranked
+              </Badge>
+              {changes?.summary && (
+                <span className="text-muted-foreground">
+                  {changes.summary.newCount} new · {changes.summary.removedCount} dropped
+                </span>
+              )}
             </div>
             {changes?.hasPreviousScan ? (
               <div className="relative flex items-center gap-3 text-[10px] text-muted-foreground">
                 <span className="h-2 w-2 rounded-full bg-sky-400" />
                 <span className="w-24 font-medium">Previous Scan</span>
                 <span className="font-mono">{time(changes.summary.previousScanTime)}</span>
-                <Badge variant="outline" className="text-[10px] border-border/40">{previousQualified} qualified</Badge>
+                <Badge variant="outline" className="text-[10px] border-border/40">
+                  {previousQualified} qualified
+                </Badge>
               </div>
-            ) : <div className="pl-5 text-[10px] text-muted-foreground">First scan — no history yet</div>}
+            ) : (
+              <div className="pl-5 text-[10px] text-muted-foreground">First scan — no history yet</div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -2614,10 +2800,11 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
 
-  // Opportunity Engine — fetched independently so the dashboard doesn't block
-  // on the MCP scan. Refreshes every 10 minutes; the engine itself runs every 4 hours.
-  const oppsQuery = useQuery<OpportunityLatestResponse>({
-    queryKey: ["/api/opportunities/latest"],
+  // Opportunity Ranking Engine — fetched independently so the dashboard doesn't block
+  // on the scanner. Returns composite-scored candidates from /api/opportunities/today.
+  // Refreshes every 10 minutes; the ranking engine itself runs after each scanner cycle.
+  const oppsQuery = useQuery<OpportunityTodayResponse>({
+    queryKey: ["/api/opportunities/today"],
     staleTime: 5 * 60_000,
     refetchInterval: 10 * 60_000,
     refetchOnWindowFocus: false,
@@ -2707,11 +2894,11 @@ export default function DashboardPage() {
           }}
         />
 
-        {/* 4. Today's Stock Opportunities — pre-computed by Opportunity Engine */}
+        {/* 4. Today's Stock Opportunities — ranked by Opportunity Ranking Engine */}
         <OpportunityEngineSection
           data={oppsQuery.data}
           isLoading={oppsQuery.isLoading}
-          changesData={changesQuery.data}
+          isError={oppsQuery.isError}
           onRetry={() => {
             track("dashboard_section_retry", { section: "stock_opportunities" } as any);
             void oppsQuery.refetch();
@@ -2727,7 +2914,7 @@ export default function DashboardPage() {
           cachedSymbols={new Set<string>()} /* batch cache check omitted here — Analyze navigates directly */
         />
 
-        <OpportunityTimeline snapshot={oppsQuery.data?.snapshot} changes={changesQuery.data} />
+        <OpportunityTimeline ranking={oppsQuery.data?.ranking} changes={changesQuery.data} />
 
         {/* 5. AI Infrastructure Watch */}
         <AiInfraWatchSection

@@ -1,0 +1,255 @@
+Sprint 2.2.8 — Connect Dashboard to Opportunity Ranking Engine
+
+IMPORTANT
+
+Do NOT redesign the application.
+
+Do NOT modify scanner logic.
+
+Do NOT modify Opportunity Ranking Engine.
+
+Do NOT change institutional signal calculations.
+
+The ranking engine is complete.
+
+This sprint ONLY connects the dashboard to the new engine.
+
+======================================================
+OBJECTIVE
+======================================================
+
+The dashboard must stop using the legacy opportunity endpoint.
+
+Instead it should consume
+
+GET /api/opportunities/today
+
+which already returns
+
+generatedAt
+
+regime
+
+weights
+
+topGrowth
+
+topIncome
+
+watchlist
+
+approaching
+
+changes
+
+======================================================
+REMOVE LEGACY DATA
+======================================================
+
+Remove every dependency on
+
+/api/opportunities/latest
+
+for dashboard opportunity cards.
+
+Leave the endpoint available for backwards compatibility.
+
+Dashboard should never call it again.
+
+======================================================
+TODAY'S OPPORTUNITIES
+======================================================
+
+Replace existing cards.
+
+Display
+
+Rank
+
+Overall Score
+
+Confidence
+
+Category
+
+Technical Score
+
+Institutional Score
+
+Fundamental Score
+
+Risk Score
+
+Reasons
+
+Warnings
+
+Scanner Strategy
+
+======================================================
+TOP GROWTH
+======================================================
+
+Show topGrowth
+
+sorted exactly as returned.
+
+Never sort client-side.
+
+======================================================
+TOP INCOME
+======================================================
+
+Show topIncome
+
+======================================================
+WATCHLIST
+======================================================
+
+Show watchlist
+
+======================================================
+APPROACHING
+======================================================
+
+Show approaching
+
+======================================================
+CHANGES PANEL
+======================================================
+
+Use changes[]
+
+Display
+
+New
+
+Upgraded
+
+Downgraded
+
+Moved
+
+with icons.
+
+======================================================
+MARKET REGIME
+======================================================
+
+Display
+
+TRENDING
+
+CHOPPY
+
+RISK_OFF
+
+directly from the ranking response.
+
+======================================================
+DATA FRESHNESS
+======================================================
+
+Display
+
+generatedAt
+
+as
+
+"Updated 4 minutes ago"
+
+======================================================
+LOADING
+======================================================
+
+Skeleton loading.
+
+======================================================
+EMPTY STATE
+======================================================
+
+If available=false
+
+show
+
+"No completed scanner run available."
+
+======================================================
+ERROR STATE
+======================================================
+
+Professional retry panel.
+
+======================================================
+NO HARDCODED SYMBOLS
+======================================================
+
+Remove every hardcoded ticker.
+
+No COST
+
+No PLTR
+
+No META
+
+No test data
+
+Everything comes from the API.
+
+======================================================
+PERFORMANCE
+======================================================
+
+Exactly ONE API call.
+
+No additional fetches.
+
+No recomputation.
+
+======================================================
+TESTS
+======================================================
+
+Add UI tests
+
+Verify
+
+loading
+
+empty
+
+error
+
+ranking render
+
+changes render
+
+score display
+
+confidence badges
+
+reason lists
+
+no hardcoded symbols
+
+======================================================
+ACCEPTANCE
+======================================================
+
+✔ Dashboard uses only /api/opportunities/today
+
+✔ No hardcoded opportunities
+
+✔ Ranking updates automatically after scanner
+
+✔ Opportunity changes visible
+
+✔ Institutional score displayed
+
+✔ Professional loading/error states
+
+✔ Full TypeScript
+
+✔ Tests passing
+
+Produce a completion report.

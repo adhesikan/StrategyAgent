@@ -205,13 +205,13 @@ function WorkspaceMockCard() {
               <Sparkles className="h-3 w-3 mr-1" />
               AI Trading Workspace
             </Badge>
-            <Badge variant="secondary" className="text-[11px]">MU · Research Candidate</Badge>
+            <Badge variant="secondary" className="text-[11px]">MU · Qualified Opportunity</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Research Thesis */}
+          {/* Opportunity Thesis */}
           <div className="rounded-md border bg-background p-2.5 space-y-1">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Research Thesis</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Opportunity Thesis</p>
             <p className="text-xs">Memory technology company with improving demand cycle, constructive technical structure, and confirmed breakout entry conditions.</p>
           </div>
 
@@ -306,20 +306,20 @@ function HeroSection({ onStartTrial }: { onStartTrial: () => void }) {
           <div className="text-center lg:text-left">
             <Badge variant="outline" className="mb-6 text-xs py-1 px-3 border-primary/30 bg-primary/5 text-primary">
               <Bot className="h-3 w-3 mr-1" />
-              AI-Powered Research and Trade Planning for Self-Directed Traders
+              AI-Powered Opportunity Intelligence for Self-Directed Traders
             </Badge>
             <h1
               className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight"
               data-testid="text-hero-headline"
             >
-              Research, Plan, and Verify{" "}
+              Find, Evaluate, and Plan{" "}
               <span className="text-primary">Stock &amp; Options Opportunities</span>
             </h1>
             <p
               className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0"
               data-testid="text-hero-subheadline"
             >
-              Discover qualified research candidates, understand why they matter, compare stock and
+              Discover qualified setups, understand the evidence and risks, compare stock and
               options structures, verify live contracts through supported brokerages, and prepare
               trades for review with InstaTrade™.
             </p>
@@ -385,7 +385,7 @@ function ChooseYourGoalSection({ onStartTrial }: { onStartTrial: () => void }) {
       description:
         "Research companies with durable growth drivers, improving fundamentals, favorable long-term trends, and clearer entry conditions.",
       items: [
-        "Long-term research candidates",
+        "Long-term market opportunities",
         "Growth and earnings context",
         "Valuation context",
         "Thesis monitoring",
@@ -457,8 +457,8 @@ function ChooseYourGoalSection({ onStartTrial }: { onStartTrial: () => void }) {
             Choose Your Goal
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-            Start with what you want to accomplish. VCP Trader AI adapts the research view,
-            evidence, and risk context to your objective.
+            Start with what you want to accomplish. VCP Trader AI adapts the opportunity view,
+            evidence, planning framework, and risk context to your objective.
           </p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -509,7 +509,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
       n: "1",
       icon: Search,
       title: "Discover",
-      copy: "VCP Trader AI scans supported market data and surfaces qualified growth, income, trading, watchlist, and approaching-qualification research candidates.",
+      copy: "VCP Trader AI scans supported market data and surfaces qualified growth, income, trading, watchlist, and approaching-qualification market opportunities.",
     },
     {
       n: "2",
@@ -546,7 +546,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
   const exampleCards = [
     {
       label: "Long-Term Growth",
-      sublabel: "Research candidate with durable growth thesis",
+      sublabel: "Qualified opportunity with durable growth thesis",
       tone: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
     },
     {
@@ -571,7 +571,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-features-heading">
-            How VCP Trader AI Turns Research Into a Structured Trade Plan
+            How VCP Trader AI Surfaces and Evaluates Market Opportunities
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
             A transparent workflow for different goals, strategies, and time horizons.
@@ -594,7 +594,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
           ))}
         </div>
 
-        {/* Examples of Research Candidates */}
+        {/* Examples of Qualified Market Opportunities */}
         <div className="border-t pt-12">
           <div className="text-center mb-6">
             <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -626,7 +626,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
               }}
               data-testid="button-examples-cta"
             >
-              Start Free Trial to Explore Current Research
+              Start Free Trial to Explore Current Opportunities
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
@@ -641,7 +641,7 @@ function HowItWorksSection({ onStartTrial }: { onStartTrial: () => void }) {
  * --------------------------------------------------------- */
 function WorkspaceSection({ onStartTrial }: { onStartTrial: () => void }) {
   const modules = [
-    { icon: BookOpen, label: "Research Thesis", desc: "Candidate rationale and qualification reasons" },
+    { icon: BookOpen, label: "Opportunity Thesis", desc: "Opportunity rationale and qualification reasons" },
     { icon: Activity, label: "What Changed", desc: "Lifecycle state and scan-over-scan comparison" },
     { icon: Award, label: "Decision & Evidence", desc: "Scored evidence across technical, market, and news" },
     { icon: Layers, label: "Stock & Options Planning", desc: "Illustrative structure comparison and frameworks" },
@@ -671,7 +671,7 @@ function WorkspaceSection({ onStartTrial }: { onStartTrial: () => void }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold" data-testid="text-workspace-heading">
-            One Workspace for the Full Research Process
+            One Workspace for the Full Opportunity Evaluation Process
           </h2>
           <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
             Instead of moving between disconnected scanners, research tools, options calculators,
@@ -999,8 +999,8 @@ function BrokerSection({ onStartTrial }: { onStartTrial: () => void }) {
   const { instaTradeName } = useBranding();
 
   const withoutBroker = [
-    "Daily-close and stored market research",
-    "Qualified research candidates",
+    "Daily-close and stored market data",
+    "Qualified market opportunities",
     "AI Trading Workspace",
     "Stock structure planning",
     "Illustrative options structures",
@@ -1142,9 +1142,9 @@ function PricingSection({ onStartTrial }: { onStartTrial: () => void }) {
 
   const featureGroups = [
     {
-      label: "Research and Opportunities",
+      label: "Opportunities and Market Intelligence",
       items: [
-        "Qualified stock and options research candidates",
+        "Qualified stock and options market opportunities",
         "Long-term, income, and active-trading views",
         "Market regime and evidence context",
         "Saved research and watchlists",
@@ -1327,7 +1327,7 @@ function FAQSection() {
     },
     {
       q: "What can I do without connecting a broker?",
-      a: "Discover research candidates, review evidence, compare stock and illustrative options structures, explore DTE and strike frameworks, save research, use supported Congress, news, catalyst, and market-context tools, and ask contextual questions with VCP AI.",
+      a: "Discover qualified opportunities, review evidence, compare stock and illustrative options structures, explore DTE and strike frameworks, save research, use supported Congress, news, catalyst, and market-context tools, and ask contextual questions with VCP AI.",
     },
     {
       q: "Does the trial include paper trading?",
@@ -1468,7 +1468,7 @@ export default function HomePage() {
   const openWizard = () => setWizardOpen(true);
 
   useEffect(() => {
-    document.title = "VCP Trader AI — Stock and Options Research & Trade Planning";
+    document.title = "VCP Trader AI — Stock and Options Opportunity Intelligence";
     let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -1476,7 +1476,7 @@ export default function HomePage() {
       document.head.appendChild(meta);
     }
     meta.content =
-      "Discover qualified stock and options research candidates, evaluate evidence, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+      "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
 
     // Open Graph
     const setOg = (property: string, content: string) => {
@@ -1488,8 +1488,8 @@ export default function HomePage() {
       }
       el.content = content;
     };
-    setOg("og:title", "VCP Trader AI — Research, Plan, and Verify Stock & Options Opportunities");
-    setOg("og:description", "A deterministic research and trade-planning platform for self-directed stock and options traders.");
+    setOg("og:title", "VCP Trader AI — Stock and Options Opportunity Intelligence");
+    setOg("og:description", "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.");
   }, []);
 
   useEffect(() => {

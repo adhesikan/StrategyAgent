@@ -19,10 +19,10 @@ export const NAV_LINKS = [
 export const NAV_SECTION_IDS = ["goals", "how-it-works", "workspace", "planning", "broker", "pricing", "faq"];
 
 // ── Hero ────────────────────────────────────────────────────────────────────
-export const HERO_HEADLINE = "Research, Plan, and Verify Stock & Options Opportunities";
-export const HERO_EYEBROW = "AI-Powered Research and Trade Planning for Self-Directed Traders";
+export const HERO_HEADLINE = "Find, Evaluate, and Plan Stock & Options Opportunities";
+export const HERO_EYEBROW = "AI-Powered Opportunity Intelligence for Self-Directed Traders";
 export const HERO_SUBHEADLINE =
-  "Discover qualified research candidates, understand why they matter, compare stock and options structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+  "Discover qualified setups, understand the evidence and risks, compare stock and options structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
 
 export const HERO_BADGES = [
   "Deterministic Opportunity Screening",
@@ -78,7 +78,7 @@ export const GOAL_CARDS: GoalCard[] = [
     description:
       "Research companies with durable growth drivers, improving fundamentals, favorable long-term trends, and clearer entry conditions.",
     items: [
-      "Long-term research candidates",
+      "Long-term market opportunities",
       "Growth and earnings context",
       "Valuation context",
       "Thesis monitoring",
@@ -142,7 +142,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
   {
     n: "1",
     title: "Discover",
-    copy: "VCP Trader AI scans supported market data and surfaces qualified growth, income, trading, watchlist, and approaching-qualification research candidates.",
+    copy: "VCP Trader AI scans supported market data and surfaces qualified growth, income, trading, watchlist, and approaching-qualification market opportunities.",
   },
   {
     n: "2",
@@ -175,7 +175,7 @@ export const STEP_NAMES_IN_ORDER = ["Discover", "Understand", "Evaluate", "Plan"
 
 // ── Workspace modules ──────────────────────────────────────────────────────
 export const WORKSPACE_MODULES = [
-  { label: "Research Thesis", desc: "Candidate rationale and qualification reasons" },
+  { label: "Opportunity Thesis", desc: "Opportunity rationale and qualification reasons" },
   { label: "What Changed", desc: "Lifecycle state and scan-over-scan comparison" },
   { label: "Decision & Evidence", desc: "Scored evidence across technical, market, and news" },
   { label: "Stock & Options Planning", desc: "Illustrative structure comparison and frameworks" },
@@ -267,8 +267,8 @@ export const BROKER_ITEMS = [
 
 // ── Broker section ─────────────────────────────────────────────────────────
 export const WITHOUT_BROKER_CAPABILITIES = [
-  "Daily-close and stored market research",
-  "Qualified research candidates",
+  "Daily-close and stored market data",
+  "Qualified market opportunities",
   "AI Trading Workspace",
   "Stock structure planning",
   "Illustrative options structures",
@@ -313,7 +313,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   },
   {
     q: "What can I do without connecting a broker?",
-    a: "Discover research candidates, review evidence, compare stock and illustrative options structures, explore DTE and strike frameworks, save research, use supported Congress, news, catalyst, and market-context tools, and ask contextual questions with VCP AI.",
+    a: "Discover qualified opportunities, review evidence, compare stock and illustrative options structures, explore DTE and strike frameworks, save research, use supported Congress, news, catalyst, and market-context tools, and ask contextual questions with VCP AI.",
   },
   {
     q: "Does the trial include paper trading?",
@@ -350,19 +350,19 @@ export const FOOTER_COMPLIANCE_TEXT =
   "VCP Trader AI provides educational research, market analysis, and user-directed trade planning tools. It does not provide personalized investment advice, guarantee outcomes, or independently determine whether a trade is suitable for a user. Market, options, broker, congressional, institutional, and news data may be delayed, incomplete, or unavailable. Users should verify all information with their brokerage and conduct independent due diligence before making financial decisions.";
 
 // ── SEO metadata ───────────────────────────────────────────────────────────
-export const PAGE_TITLE = "VCP Trader AI — Stock and Options Research & Trade Planning";
+export const PAGE_TITLE = "VCP Trader AI — Stock and Options Opportunity Intelligence";
 export const META_DESCRIPTION =
-  "Discover qualified stock and options research candidates, evaluate evidence, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
-export const OG_TITLE = "VCP Trader AI — Research, Plan, and Verify Stock & Options Opportunities";
+  "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
+export const OG_TITLE = "VCP Trader AI — Stock and Options Opportunity Intelligence";
 export const OG_DESCRIPTION =
-  "A deterministic research and trade-planning platform for self-directed stock and options traders.";
+  "Discover qualified stock and options opportunities, evaluate evidence and risk, compare trade structures, verify live contracts through supported brokerages, and prepare trades for review with InstaTrade™.";
 
 // ── Pricing ────────────────────────────────────────────────────────────────
 export const PRICING_FEATURE_GROUPS = [
   {
-    label: "Research and Opportunities",
+    label: "Opportunities and Market Intelligence",
     items: [
-      "Qualified stock and options research candidates",
+      "Qualified stock and options market opportunities",
       "Long-term, income, and active-trading views",
       "Market regime and evidence context",
       "Saved research and watchlists",

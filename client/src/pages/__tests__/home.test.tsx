@@ -144,7 +144,7 @@ describe("A. Page structure", () => {
 // ── B. Hero ───────────────────────────────────────────────────────────────
 describe("B. Hero section", () => {
   it("headline is the spec-required text", () => {
-    expect(HERO_HEADLINE).toMatch(/Research, Plan, and Verify/i);
+    expect(HERO_HEADLINE).toMatch(/Find, Evaluate, and Plan/i);
     expect(HERO_HEADLINE).toMatch(/Stock.*Options Opportunities/i);
   });
 
@@ -153,12 +153,12 @@ describe("B. Hero section", () => {
   });
 
   it("eyebrow uses research/trade-planning framing", () => {
-    expect(HERO_EYEBROW).toMatch(/Research and Trade Planning/i);
+    expect(HERO_EYEBROW).toMatch(/Opportunity Intelligence/i);
     expect(HERO_EYEBROW).toMatch(/Self-Directed Traders/i);
   });
 
-  it("subheadline mentions qualified research candidates", () => {
-    expect(HERO_SUBHEADLINE).toMatch(/qualified research candidates/i);
+  it("subheadline mentions qualified setups", () => {
+    expect(HERO_SUBHEADLINE).toMatch(/qualified setups/i);
   });
 
   it("subheadline mentions verify.*live contracts.*supported brokerages", () => {
@@ -194,6 +194,60 @@ describe("B. Hero section", () => {
     // The three data cells in the mock should say "Illustrative"
     const illustrativeMatches = Array.from(src.matchAll(/Illustrative/g));
     expect(illustrativeMatches.length).toBeGreaterThan(3);
+  });
+
+  // New spec-required tests (section 11)
+  it("hero headline does NOT say 'Research, Plan, and Verify'", () => {
+    expect(HERO_HEADLINE).not.toMatch(/Research, Plan, and Verify/i);
+    const src = loadSource();
+    // The h1 in home.tsx must not contain the old headline
+    expect(src).not.toMatch(/Research, Plan, and Verify.*Stock.*Options/i);
+  });
+
+  it("product mockup badge says 'Qualified Opportunity'", () => {
+    const src = loadSource();
+    expect(src).toMatch(/MU\s*·\s*Qualified Opportunity/i);
+    expect(src).not.toMatch(/MU\s*·\s*Research Candidate/i);
+  });
+
+  it("product mockup label says 'Opportunity Thesis'", () => {
+    const src = loadSource();
+    expect(src).toMatch(/Opportunity Thesis/);
+    // The old 'Research Thesis' label must not appear in the mockup badge or label
+    // Note: 'Research Thesis' may still appear in the workspace module label (Opportunity Thesis replaced it)
+    expect(src).not.toMatch(/MU\s*·\s*Research Candidate/i);
+  });
+
+  it("eyebrow uses 'Opportunity Intelligence', not 'Research and Trade Planning'", () => {
+    expect(HERO_EYEBROW).toMatch(/Opportunity Intelligence/i);
+    expect(HERO_EYEBROW).not.toMatch(/Research and Trade Planning/i);
+  });
+});
+
+// ── B++. Research terminology retention ───────────────────────────────────
+describe("B++. Research terminology — retained where compliance requires", () => {
+  it("landing page retains 'Saved research' capability description", () => {
+    // 'Saved research and watchlists' is a feature capability — must remain
+    const items = PRICING_FEATURE_GROUPS.flatMap((g) => g.items).join(" ");
+    expect(items).toMatch(/[Ss]aved research/i);
+  });
+
+  it("landing page retains 'save research' and 'saved research' in appropriate contexts", () => {
+    const src = loadSource();
+    // Save research / saved research are valid capability references — must remain
+    expect(src).toMatch(/[Ss]aved? research/i);
+  });
+
+  it("landing page retains 'independent research' or 'due diligence' in disclaimer", () => {
+    const src = loadSource();
+    // Compliance disclaimer must retain research methodology reference
+    expect(src).toMatch(/independent due diligence/i);
+  });
+
+  it("WORKSPACE_MODULES has 'Opportunity Thesis', not 'Research Thesis'", () => {
+    const module = WORKSPACE_MODULES.find((m) => m.label === "Opportunity Thesis");
+    expect(module).toBeDefined();
+    expect(WORKSPACE_MODULES.find((m) => m.label === "Research Thesis")).toBeUndefined();
   });
 });
 
@@ -290,7 +344,7 @@ describe("C. Choose Your Goal cards", () => {
   it("Grow Long-Term Wealth has correct bullets per spec", () => {
     const card = GOAL_CARDS.find((g) => g.title === "Grow Long-Term Wealth")!;
     const text = card.items.join(" | ");
-    expect(text).toMatch(/Long-term research candidates/i);
+    expect(text).toMatch(/Long-term market opportunities/i);
     expect(text).toMatch(/Growth and earnings context/i);
     expect(text).toMatch(/Valuation context/i);
     expect(text).toMatch(/Thesis monitoring/i);
@@ -330,8 +384,8 @@ describe("D. How It Works — 6-step workflow", () => {
     expect(nums).toEqual(["1", "2", "3", "4", "5", "6"]);
   });
 
-  it("Discover step mentions qualified research candidates", () => {
-    expect(WORKFLOW_STEPS[0].copy).toMatch(/qualified.*research candidates/i);
+  it("Discover step mentions qualified market opportunities", () => {
+    expect(WORKFLOW_STEPS[0].copy).toMatch(/qualified.*market opportunities/i);
   });
 
   it("Understand step mentions AI Trading Workspace", () => {
@@ -370,9 +424,9 @@ describe("D. How It Works — 6-step workflow", () => {
     }
   });
 
-  it("home.tsx examples CTA says 'Explore Current Research' not 'See Live Ideas'", () => {
+  it("home.tsx examples CTA says 'Explore Current Opportunities' not 'See Live Ideas'", () => {
     const src = loadSource();
-    expect(src).toMatch(/Start Free Trial to Explore Current Research/i);
+    expect(src).toMatch(/Start Free Trial to Explore Current Opportunities/i);
     expect(src).not.toMatch(/Start Free Trial.*See Live Ideas/i);
   });
 
@@ -393,7 +447,7 @@ describe("E. AI Trading Workspace section", () => {
   it("workspace modules include all required spec items", () => {
     const labels = WORKSPACE_MODULES.map((m) => m.label);
     const text = labels.join(" | ");
-    expect(text).toMatch(/Research Thesis/i);
+    expect(text).toMatch(/Opportunity Thesis/i);
     expect(text).toMatch(/What Changed/i);
     expect(text).toMatch(/Decision.*Evidence/i);
     expect(text).toMatch(/Stock.*Options Planning/i);
@@ -452,7 +506,7 @@ describe("E. AI Trading Workspace section", () => {
 
   it("home.tsx section headline matches spec", () => {
     const src = loadSource();
-    expect(src).toMatch(/One Workspace for the Full Research Process/i);
+    expect(src).toMatch(/One Workspace for the Full Opportunity Evaluation Process/i);
   });
 
   it("home.tsx capability strip headline matches spec", () => {
@@ -583,7 +637,7 @@ describe("G. Broker section and InstaTrade™", () => {
 describe("H. Pricing section", () => {
   it("feature groups cover 4 required categories", () => {
     const labels = PRICING_FEATURE_GROUPS.map((g) => g.label);
-    expect(labels).toContain("Research and Opportunities");
+    expect(labels).toContain("Opportunities and Market Intelligence");
     expect(labels).toContain("Trade Planning");
     expect(labels).toContain("Portfolio and Monitoring");
     expect(labels).toContain("Broker-Connected Capabilities");
@@ -811,12 +865,12 @@ describe("L. Accessibility", () => {
   it("h1 contains the spec hero headline", () => {
     const src = loadSource();
     const h1Match = src.match(/<h1[\s\S]*?<\/h1>/);
-    expect(h1Match![0]).toMatch(/Research, Plan, and Verify/i);
+    expect(h1Match![0]).toMatch(/Find, Evaluate, and Plan/i);
   });
 
   it("home.tsx uses semantic h2 headings for primary sections", () => {
     const src = loadSource();
-    const h2Labels = ["Choose Your Goal", "How VCP Trader AI Turns Research", "One Workspace for the Full Research Process", "Plan the Structure Before Selecting the Contract", "Connect a Supported Brokerage When You Are Ready", "Simple Pricing", "Frequently Asked Questions"];
+    const h2Labels = ["Choose Your Goal", "How VCP Trader AI Surfaces and Evaluates Market Opportunities", "One Workspace for the Full Opportunity Evaluation Process", "Plan the Structure Before Selecting the Contract", "Connect a Supported Brokerage When You Are Ready", "Simple Pricing", "Frequently Asked Questions"];
     for (const label of h2Labels) {
       expect(src).toContain(label);
     }
@@ -844,13 +898,12 @@ describe("L. Accessibility", () => {
 // ── M. SEO metadata ───────────────────────────────────────────────────────
 describe("M. SEO metadata", () => {
   it("page title matches spec", () => {
-    expect(PAGE_TITLE).toBe(
-      "VCP Trader AI — Stock and Options Research & Trade Planning",
-    );
+    expect(PAGE_TITLE).toMatch(/Opportunity Intelligence/i);
+    expect(PAGE_TITLE).toContain("VCP Trader AI");
   });
 
-  it("meta description mentions qualified research candidates", () => {
-    expect(META_DESCRIPTION).toMatch(/qualified stock and options research candidates/i);
+  it("meta description mentions qualified stock and options opportunities", () => {
+    expect(META_DESCRIPTION).toMatch(/qualified stock and options opportunities/i);
   });
 
   it("meta description mentions InstaTrade™", () => {
@@ -862,24 +915,23 @@ describe("M. SEO metadata", () => {
   });
 
   it("Open Graph title matches spec", () => {
-    expect(OG_TITLE).toMatch(
-      /Research, Plan, and Verify Stock.*Options Opportunities/i,
-    );
+    expect(OG_TITLE).toMatch(/Opportunity Intelligence/i);
   });
 
-  it("Open Graph description says 'deterministic'", () => {
-    expect(OG_DESCRIPTION).toMatch(/deterministic/i);
+  it("Open Graph description mentions qualified opportunities and InstaTrade™", () => {
+    expect(OG_DESCRIPTION).toMatch(/qualified stock and options opportunities/i);
+    expect(OG_DESCRIPTION).toMatch(/InstaTrade™/i);
   });
 
   it("home.tsx sets page title on mount", () => {
     const src = loadSource();
-    expect(src).toMatch(/document\.title = "VCP Trader AI — Stock and Options Research/);
+    expect(src).toMatch(/document\.title = "VCP Trader AI — Stock and Options Opportunity Intelligence"/);
   });
 
   it("home.tsx sets og:title on mount", () => {
     const src = loadSource();
     expect(src).toMatch(/og:title/);
-    expect(src).toMatch(/Research, Plan, and Verify Stock.*Options Opportunities/);
+    expect(src).toMatch(/Stock and Options Opportunity Intelligence/);
   });
 });
 

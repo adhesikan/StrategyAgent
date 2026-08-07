@@ -37,6 +37,9 @@ SUBMISSION → COVERPAGE (by accession) → INFOTABLE (by accession)
 - INFOTABLE required: accession, issuer name, class title, CUSIP
 - If SUBMISSION lacks manager name AND COVERPAGE missing/invalid → MANAGER_IDENTITY_SOURCE_MISSING
 
-## Alias additions needed
-- SUB_FORMTYPE_ALIASES must include SUBMISSIONTYPE
-- INFO_VSOLE_ALIASES must include VOTING-AUTH-SOLE (normalizes to VOTINGAUTHSOLE ≠ VOTINGAUTHORITYSOLE)
+## SUBMISSIONTYPE value normalization (post-fix)
+normalizeSubmissionType() resolves all known variants to "13F-HR" / "13F-HR/A" / "13F-NT" / "13F-NT/A" / "UNKNOWN".
+Key aliases: 13F_HR, 13FHR, 13F-HR-A, 13F_HR_A → 13F-HR/A. UNKNOWN rows kept for COVERPAGE.REPORTTYPE fallback.
+Failure reason changed from "0 parsed as 13F-HR/A" to NO_HOLDINGS_BEARING_SUBMISSIONS (includes distinct type counts).
+New diagnostics: submissionTypeCounts, normalizedSubmissionTypeCounts, includedSubmissionCount, excludedNoticeCount,
+excludedUnknownSubmissionTypeCount, amendmentSubmissionCount, amendmentFlagConflictCount.

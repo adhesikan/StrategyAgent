@@ -424,7 +424,7 @@ describe("P6 — parseBulkQuarterFromBuffer", () => {
     expect(result.status).toBe("empty_parse_failure");
     expect(result.diagnostics.submissionRows).toBe(1);
     expect(result.holdings).toHaveLength(0);
-    expect(result.reason).toContain("0 parsed as 13F-HR/A");
+    expect(result.reason).toContain("NO_HOLDINGS_BEARING_SUBMISSIONS");
   });
 
   it("returns empty_parse_failure when join rate is 0% (accession mismatch)", () => {

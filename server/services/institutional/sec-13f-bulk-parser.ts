@@ -112,6 +112,20 @@ export interface BulkParseDiagnostics {
   coverPageHeaderMapping: Record<string, string | null>;
   /** Canonical field → actual header found in INFOTABLE.tsv (null = not present) */
   infoTableHeaderMapping: Record<string, string | null>;
+  /** Raw SUBMISSIONTYPE value → row count (≤30 distinct values) */
+  submissionTypeCounts: Record<string, number>;
+  /** Normalized SUBMISSIONTYPE → row count */
+  normalizedSubmissionTypeCounts: Record<string, number>;
+  /** Rows retained for holdings ingestion (normalized 13F-HR + 13F-HR/A) */
+  includedSubmissionCount: number;
+  /** Rows excluded as notice-only (normalized 13F-NT / 13F-NT/A) */
+  excludedNoticeCount: number;
+  /** Rows excluded because SUBMISSIONTYPE could not be normalized (UNKNOWN or blank) */
+  excludedUnknownSubmissionTypeCount: number;
+  /** Included rows that are amendments (normalized 13F-HR/A) */
+  amendmentSubmissionCount: number;
+  /** Accessions where SUBMISSION and COVERPAGE disagreed on amendment status */
+  amendmentFlagConflictCount: number;
 }
 
 export interface ParsedBulkHolding {
@@ -527,6 +541,76 @@ function normalizeDateField(raw: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// SUBMISSIONTYPE normalization
+// ---------------------------------------------------------------------------
+//
+// SEC bulk TSV SUBMISSIONTYPE values have varied across schema generations and
+// may differ from the canonical strings "13F-HR" / "13F-HR/A".
+// normalizeSubmissionType() resolves all known variants to a canonical form.
+//
+// Accepted alias table (all treated case-insensitively after trim):
+//
+//   "13F-HR"                → "13F-HR"   (current/legacy exact)
+//   "13F-HR/A"              → "13F-HR/A" (current/legacy exact)
+//   "13F-NT"                → "13F-NT"   (notice-only, excluded)
+//   "13F-NT/A"              → "13F-NT/A" (notice-only amendment, excluded)
+//   "13F_HR"                → "13F-HR"   (underscore separator)
+//   "13F_HR_A" / "13FHRA"   → "13F-HR/A" (underscore/no-sep amendment)
+//   "13F_NT"                → "13F-NT"
+//   "13F_NT_A" / "13FNTA"   → "13F-NT/A"
+//   "13FHR"                 → "13F-HR"   (no separator at all)
+//   "13FNT"                 → "13F-NT"
+//   "13F-HR /A" / "13F-HR- A"  → "13F-HR/A" (spacing around amendment suffix)
+//   anything else           → "UNKNOWN"
+//   null / blank            → null
+
+export type NormalizedSubmissionType =
+  | "13F-HR"
+  | "13F-HR/A"
+  | "13F-NT"
+  | "13F-NT/A"
+  | "UNKNOWN";
+
+export function normalizeSubmissionType(
+  raw: string | null | undefined,
+): NormalizedSubmissionType | null {
+  if (raw == null) return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  const u = s.toUpperCase();
+
+  // ── 1. Exact matches (most common fast path) ───────────────────────────
+  if (u === "13F-HR")   return "13F-HR";
+  if (u === "13F-HR/A") return "13F-HR/A";
+  if (u === "13F-NT")   return "13F-NT";
+  if (u === "13F-NT/A") return "13F-NT/A";
+
+  // ── 2. Strip all separators (hyphens, underscores, spaces, slashes) ────
+  //    This handles: 13F_HR, 13FHR, 13F HR, 13F_HR_A, 13FHRA, 13FNTA …
+  const noSep = u.replace(/[-_\s/]+/g, "");
+  if (noSep === "13FHR")             return "13F-HR";
+  if (noSep === "13FHRA")            return "13F-HR/A"; // 13F_HR_A / 13F-HRA / 13FHRA
+  if (noSep === "13FHRIA")           return "13F-HR/A"; // 13F-HR/A with extra i (rare)
+  if (noSep === "13FNT")             return "13F-NT";
+  if (noSep === "13FNTA")            return "13F-NT/A";
+  if (noSep === "13FNTIA")           return "13F-NT/A";
+
+  // ── 3. Normalize internal separators then match amendment suffix ────────
+  //    Handles: "13F-HR /A", "13F-HR- A", "13F-HR / A"
+  const normalized = u
+    .replace(/[-_\s]+/g, "-")        // collapse runs to single hyphen
+    .replace(/-\s*\/\s*A$/, "/A")    // "-/A" → "/A"
+    .replace(/-A$/, "/A");           // trailing "-A" → "/A" (e.g. "13F-HR-A")
+  if (normalized === "13F-HR/A") return "13F-HR/A";
+  if (normalized === "13F-NT/A") return "13F-NT/A";
+  if (normalized === "13F-HR")   return "13F-HR";
+  if (normalized === "13F-NT")   return "13F-NT";
+
+  return "UNKNOWN";
+}
+
+// ---------------------------------------------------------------------------
 // SUBMISSION.tsv parser
 // ---------------------------------------------------------------------------
 
@@ -542,13 +626,28 @@ export interface SubmissionRow {
 }
 
 /**
- * Parse SUBMISSION.tsv. Returns 13F-HR and 13F-HR/A rows only.
- * Excludes 13F-NT and 13F-NT/A (notice-only, no information table).
+ * Parse SUBMISSION.tsv.
+ *
+ * Retained rows: normalized 13F-HR and 13F-HR/A (holdings-bearing filings).
+ * Excluded rows:
+ *   - 13F-NT / 13F-NT/A  → notice-only, no information table
+ *   - UNKNOWN             → unrecognized SUBMISSIONTYPE value
+ *   - blank               → no SUBMISSIONTYPE column or empty value
+ *
+ * Rows with an UNKNOWN SUBMISSIONTYPE are returned separately in `unknownTypeRows`
+ * so the caller can attempt a COVERPAGE.REPORTTYPE fallback before discarding them.
+ *
+ * Normalization (via normalizeSubmissionType):
+ *   - Case, whitespace, hyphens, underscores, slashes are all normalised.
+ *   - "13F_HR", "13FHR", "13F-HR- A" all map to a canonical form.
+ *   - See normalizeSubmissionType() for the full alias table.
+ *
+ * CRITICAL: Do NOT default UNKNOWN types to "13F-HR". Only explicitly recognised
+ * canonical values are included.
  *
  * Supports all SEC bulk TSV schema generations via canonical alias resolution:
- *   Legacy (pre-2024):  ACCESSION-NUMBER, NAME, CONFORMED-PERIOD-OF-REPORT, FILING-DATE
+ *   Legacy (pre-2024):   ACCESSION-NUMBER, NAME, CONFORMED-PERIOD-OF-REPORT, FILING-DATE
  *   Current (post-2023): ACCESSION_NUMBER, SUBMISSIONTYPE, PERIODOFREPORT, FILING_DATE
- *   And any future hyphen/underscore variant
  *
  * Required canonical fields: accession, CIK, period of report.
  * Manager name is OPTIONAL — current SEC schema stores it in COVERPAGE.tsv.
@@ -556,10 +655,20 @@ export interface SubmissionRow {
  */
 export function parseSubmissionTsv(text: string): {
   rows: SubmissionRow[];
+  /** Rows with UNKNOWN SUBMISSIONTYPE kept for COVERPAGE.REPORTTYPE fallback */
+  unknownTypeRows: SubmissionRow[];
   totalRows: number;
   parsedRows: number;
   missingHeaders: string[];
   canonicalMapping: Record<string, string | null>;
+  /** Raw SUBMISSIONTYPE value → count (≤30 distinct values; extra bucketed as "[OTHER]") */
+  submissionTypeCounts: Record<string, number>;
+  /** Normalized type string → count */
+  normalizedSubmissionTypeCounts: Record<string, number>;
+  includedCount: number;
+  excludedNoticeCount: number;
+  excludedUnknownCount: number;
+  amendmentCount: number;
 } {
   const { headers, rows: rawRows } = parseTsv(text);
   const lookup = buildHeaderLookup(headers);
@@ -572,43 +681,126 @@ export function parseSubmissionTsv(text: string): {
   // Diagnostic mapping: canonical label → actual header found (null if absent)
   const canonicalMapping = buildCanonicalMapping(lookup, ALL_SUBMISSION_FIELDS);
 
+  const MAX_DISTINCT_TYPES = 30;
+  const rawTypeCounts = new Map<string, number>();
+  const normTypeCounts = new Map<string, number>();
+
   const rows: SubmissionRow[] = [];
+  const unknownTypeRows: SubmissionRow[] = [];
   let totalRows = 0;
+  let excludedNoticeCount = 0;
+  let excludedUnknownCount = 0;
+  let amendmentCount = 0;
 
   for (const raw of rawRows) {
     totalRows++;
 
-    const formTypeRaw = getField(raw, lookup, SUB_FORMTYPE_ALIASES).trim().toUpperCase();
-    // Exclude notice-only filings (13F-NT / 13F-NT/A) — they have no information table.
-    // If form-type column is absent, accept all rows (dataset is exclusively 13F forms).
-    if (formTypeRaw === "13F-NT" || formTypeRaw === "13F-NT/A") continue;
-    if (formTypeRaw && formTypeRaw !== "13F-HR" && formTypeRaw !== "13F-HR/A") continue;
+    const formTypeRaw  = getField(raw, lookup, SUB_FORMTYPE_ALIASES);
+    const normalizedFT = normalizeSubmissionType(formTypeRaw);
+
+    // Track raw counts (bounded)
+    const rawKey = formTypeRaw.trim() || "(blank)";
+    if (rawTypeCounts.size < MAX_DISTINCT_TYPES || rawTypeCounts.has(rawKey)) {
+      rawTypeCounts.set(rawKey, (rawTypeCounts.get(rawKey) ?? 0) + 1);
+    } else {
+      rawTypeCounts.set("[OTHER]", (rawTypeCounts.get("[OTHER]") ?? 0) + 1);
+    }
+
+    // Track normalized counts
+    const normKey = normalizedFT ?? "(blank)";
+    normTypeCounts.set(normKey, (normTypeCounts.get(normKey) ?? 0) + 1);
+
+    // Notice-only: exclude, count, skip
+    if (normalizedFT === "13F-NT" || normalizedFT === "13F-NT/A") {
+      excludedNoticeCount++;
+      continue;
+    }
+
+    // If SUBMISSIONTYPE column is absent (formTypeRaw blank AND no column), accept the
+    // row — the dataset is exclusively 13F forms. Treat as "13F-HR" (non-amendment).
+    //
+    // If the column IS present but the value is UNKNOWN, defer to COVERPAGE fallback.
+    const columnAbsent = !hasAnyAlias(lookup, SUB_FORMTYPE_ALIASES);
+
+    if (normalizedFT === "UNKNOWN") {
+      // Column present, value unrecognised — keep for COVERPAGE fallback
+      excludedUnknownCount++;
+      const accRaw        = getField(raw, lookup, SUB_ACCESSION_ALIASES);
+      const cikRaw        = getField(raw, lookup, SUB_CIK_ALIASES);
+      const name          = getField(raw, lookup, SUB_NAME_ALIASES).trim();
+      const periodRaw     = getField(raw, lookup, SUB_PERIOD_ALIASES);
+      const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
+      const accession     = normalizeAccession(accRaw);
+      const cik           = cikRaw.replace(/^0+/, "").padStart(10, "0") || cikRaw;
+      const periodOfReport = normalizeDateField(periodRaw);
+      const filingDate    = normalizeDateField(filingDateRaw) ?? periodOfReport ?? "";
+      if (accession && cik && periodOfReport) {
+        unknownTypeRows.push({
+          accessionNumber: accession,
+          cik,
+          name,
+          formType: "UNKNOWN",
+          filingDate,
+          periodOfReport,
+          isAmendment: false,
+        });
+      }
+      continue;
+    }
+
+    if (normalizedFT === null && !columnAbsent) {
+      // Column present, value is blank → unknown, exclude
+      excludedUnknownCount++;
+      continue;
+    }
+
+    // normalizedFT is "13F-HR", "13F-HR/A", or null (column absent → treat as 13F-HR)
+    const resolvedType: "13F-HR" | "13F-HR/A" = normalizedFT === "13F-HR/A" ? "13F-HR/A" : "13F-HR";
 
     const accRaw        = getField(raw, lookup, SUB_ACCESSION_ALIASES);
     const cikRaw        = getField(raw, lookup, SUB_CIK_ALIASES);
-    const name          = getField(raw, lookup, SUB_NAME_ALIASES).trim(); // empty for current schema
+    const name          = getField(raw, lookup, SUB_NAME_ALIASES).trim();
     const periodRaw     = getField(raw, lookup, SUB_PERIOD_ALIASES);
     const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
 
-    const accession = normalizeAccession(accRaw);
-    const cik = cikRaw.replace(/^0+/, "").padStart(10, "0") || cikRaw;
+    const accession      = normalizeAccession(accRaw);
+    const cik            = cikRaw.replace(/^0+/, "").padStart(10, "0") || cikRaw;
     const periodOfReport = normalizeDateField(periodRaw);
-    const filingDate = normalizeDateField(filingDateRaw) ?? periodOfReport ?? "";
+    const filingDate     = normalizeDateField(filingDateRaw) ?? periodOfReport ?? "";
 
     if (!accession || !cik || !periodOfReport) continue;
+
+    const isAmendment = resolvedType === "13F-HR/A";
+    if (isAmendment) amendmentCount++;
 
     rows.push({
       accessionNumber: accession,
       cik,
       name,
-      formType: formTypeRaw || "13F-HR",
+      formType: resolvedType,
       filingDate,
       periodOfReport,
-      isAmendment: formTypeRaw === "13F-HR/A",
+      isAmendment,
     });
   }
 
-  return { rows, totalRows, parsedRows: rows.length, missingHeaders, canonicalMapping };
+  const submissionTypeCounts: Record<string, number> = Object.fromEntries(rawTypeCounts);
+  const normalizedSubmissionTypeCounts: Record<string, number> = Object.fromEntries(normTypeCounts);
+
+  return {
+    rows,
+    unknownTypeRows,
+    totalRows,
+    parsedRows: rows.length,
+    missingHeaders,
+    canonicalMapping,
+    submissionTypeCounts,
+    normalizedSubmissionTypeCounts,
+    includedCount: rows.length,
+    excludedNoticeCount,
+    excludedUnknownCount,
+    amendmentCount,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -950,6 +1142,13 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   submissionHeaderMapping: {},
   coverPageHeaderMapping: {},
   infoTableHeaderMapping: {},
+  submissionTypeCounts: {},
+  normalizedSubmissionTypeCounts: {},
+  includedSubmissionCount: 0,
+  excludedNoticeCount: 0,
+  excludedUnknownSubmissionTypeCount: 0,
+  amendmentSubmissionCount: 0,
+  amendmentFlagConflictCount: 0,
 };
 
 /**
@@ -1071,12 +1270,29 @@ export function parseBulkQuarterFromBuffer(
   // ── STEP 2: Parse SUBMISSION.tsv ─────────────────────────────────────────
   const subText = submissionEntry.getData().toString("utf8");
   const {
-    rows: subRows,
+    rows: subRowsVerified,
+    unknownTypeRows,
     totalRows: totalSubRows,
     parsedRows: parsedSubRows,
     missingHeaders: missingSubH,
     canonicalMapping: subHeaderMapping,
+    submissionTypeCounts,
+    normalizedSubmissionTypeCounts,
+    includedCount: includedSubmissionCount,
+    excludedNoticeCount,
+    excludedUnknownCount,
+    amendmentCount: amendmentSubmissionCount,
   } = parseSubmissionTsv(subText);
+
+  /** Submission type diagnostics — shared into every early-return below. */
+  const subTypeDiag = {
+    submissionTypeCounts,
+    normalizedSubmissionTypeCounts,
+    includedSubmissionCount,
+    excludedNoticeCount,
+    excludedUnknownSubmissionTypeCount: excludedUnknownCount,
+    amendmentSubmissionCount,
+  };
 
   if (missingSubH.length > 0) {
     return {
@@ -1086,6 +1302,7 @@ export function parseBulkQuarterFromBuffer(
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
         ...resolutionDiag,
+        ...subTypeDiag,
         submissionHeaderMapping: subHeaderMapping,
         coverPageHeaderMapping: {},
         infoTableHeaderMapping: {},
@@ -1097,24 +1314,9 @@ export function parseBulkQuarterFromBuffer(
     };
   }
 
-  if (subRows.length === 0) {
-    return {
-      status: "empty_parse_failure",
-      holdings: [],
-      diagnostics: {
-        ...EMPTY_DIAGNOSTICS,
-        ...baseDiag,
-        ...resolutionDiag,
-        submissionHeaderMapping: subHeaderMapping,
-        coverPageHeaderMapping: {},
-        infoTableHeaderMapping: {},
-        submissionRows: totalSubRows,
-        parsedSubmissionRows: parsedSubRows,
-        durationMs: Date.now() - startMs,
-      },
-      reason: `SUBMISSION.tsv has ${totalSubRows} rows but 0 parsed as 13F-HR/A form type`,
-    };
-  }
+  // Working submission row set — starts with verified (13F-HR / 13F-HR/A) rows.
+  // COVERPAGE REPORTTYPE fallback may promote additional rows from unknownTypeRows.
+  let subRows = subRowsVerified;
 
   // ── STEP 3: Resolve manager identity source ───────────────────────────────
   //
@@ -1155,6 +1357,7 @@ export function parseBulkQuarterFromBuffer(
           ...EMPTY_DIAGNOSTICS,
           ...baseDiag,
           ...resolutionDiag,
+          ...subTypeDiag,
           submissionHeaderMapping: subHeaderMapping,
           coverPageHeaderMapping: cpHeaderMapping,
           infoTableHeaderMapping: {},
@@ -1169,8 +1372,74 @@ export function parseBulkQuarterFromBuffer(
           `[${cpResult.missingHeaders.join(", ")}] and SUBMISSION has no manager-name column`,
       };
     }
+
+    // ── COVERPAGE REPORTTYPE fallback for UNKNOWN-typed submission rows ─────
+    //
+    // If SUBMISSIONTYPE was unrecognized ("UNKNOWN"), check whether
+    // COVERPAGE.REPORTTYPE can resolve it to a holdings-bearing form type.
+    // COVERPAGE.REPORTTYPE is only used as a fallback — it supplements but
+    // never overrides a verified SUBMISSION.SUBMISSIONTYPE value.
+    //
+    // Only accept COVERPAGE.REPORTTYPE values that normalise cleanly to
+    // "13F-HR" or "13F-HR/A". Anything else is excluded (UNKNOWN → no infer).
+    if (unknownTypeRows.length > 0) {
+      let coverPageFallbackCount = 0;
+      for (const pending of unknownTypeRows) {
+        const cpRow = coverPageByAccession.get(pending.accessionNumber);
+        if (!cpRow?.reportType) continue;
+        const resolvedViaCP = normalizeSubmissionType(cpRow.reportType);
+        if (resolvedViaCP === "13F-HR" || resolvedViaCP === "13F-HR/A") {
+          subRows = [
+            ...subRows,
+            {
+              ...pending,
+              formType: resolvedViaCP,
+              isAmendment: resolvedViaCP === "13F-HR/A" || cpRow.isAmendment,
+            },
+          ];
+          coverPageFallbackCount++;
+        }
+        // If COVERPAGE.REPORTTYPE is also UNKNOWN/NT, row stays excluded.
+      }
+      // Accumulate into counts so diagnostics reflect reality
+      if (coverPageFallbackCount > 0) {
+        subTypeDiag.includedSubmissionCount += coverPageFallbackCount;
+        subTypeDiag.excludedUnknownSubmissionTypeCount -= coverPageFallbackCount;
+        const fallbackAmendments = subRows.filter(
+          (s) => !subRowsVerified.includes(s) && s.isAmendment,
+        ).length;
+        subTypeDiag.amendmentSubmissionCount += fallbackAmendments;
+      }
+    }
   } else if (!subHasManagerName) {
-    // COVERPAGE not in archive AND SUBMISSION has no manager-name column
+    // COVERPAGE not in archive AND SUBMISSION has no manager-name column.
+    //
+    // Distinguish two distinct root causes:
+    //   1. No holdings-bearing submissions at all (all UNKNOWN/NT) → NO_HOLDINGS_BEARING_SUBMISSIONS
+    //      (primary problem is submission-type filtering, not manager identity)
+    //   2. Valid 13F-HR submissions exist but no manager name source → MANAGER_IDENTITY_SOURCE_MISSING
+    if (subRowsVerified.length === 0) {
+      return {
+        status: "empty_parse_failure",
+        holdings: [],
+        diagnostics: {
+          ...EMPTY_DIAGNOSTICS,
+          ...baseDiag,
+          ...resolutionDiag,
+          ...subTypeDiag,
+          submissionHeaderMapping: subHeaderMapping,
+          coverPageHeaderMapping: {},
+          infoTableHeaderMapping: {},
+          submissionRows: totalSubRows,
+          parsedSubmissionRows: parsedSubRows,
+          durationMs: Date.now() - startMs,
+        },
+        reason:
+          `NO_HOLDINGS_BEARING_SUBMISSIONS: ${totalSubRows} SUBMISSION rows found but none ` +
+          `normalised to 13F-HR or 13F-HR/A. ` +
+          `Distinct SUBMISSIONTYPE values: ${JSON.stringify(submissionTypeCounts)}`,
+      };
+    }
     return {
       status: "empty_parse_failure",
       holdings: [],
@@ -1178,6 +1447,7 @@ export function parseBulkQuarterFromBuffer(
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
         ...resolutionDiag,
+        ...subTypeDiag,
         submissionHeaderMapping: subHeaderMapping,
         coverPageHeaderMapping: {},
         infoTableHeaderMapping: {},
@@ -1188,6 +1458,36 @@ export function parseBulkQuarterFromBuffer(
       reason:
         `MANAGER_IDENTITY_SOURCE_MISSING: COVERPAGE.tsv not found in archive and ` +
         `SUBMISSION.tsv has no manager-name column — cannot identify filing managers`,
+    };
+  }
+
+  // ── Check for zero included submissions AFTER COVERPAGE fallback ──────────
+  //
+  // Only now — after COVERPAGE REPORTTYPE fallback may have promoted rows —
+  // do we know the true includedSubmissionCount. If still zero, return a
+  // precise NO_HOLDINGS_BEARING_SUBMISSIONS failure.
+  if (subRows.length === 0) {
+    return {
+      status: "empty_parse_failure",
+      holdings: [],
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS,
+        ...baseDiag,
+        ...resolutionDiag,
+        ...subTypeDiag,
+        submissionHeaderMapping: subHeaderMapping,
+        coverPageHeaderMapping: cpHeaderMapping,
+        infoTableHeaderMapping: {},
+        submissionRows: totalSubRows,
+        parsedSubmissionRows: parsedSubRows,
+        coverPageRows: coverPageTotalRows,
+        parsedCoverPageRows: coverPageParsedRows,
+        durationMs: Date.now() - startMs,
+      },
+      reason:
+        `NO_HOLDINGS_BEARING_SUBMISSIONS: ${totalSubRows} SUBMISSION rows found but none ` +
+        `normalised to 13F-HR or 13F-HR/A. ` +
+        `Distinct SUBMISSIONTYPE values: ${JSON.stringify(submissionTypeCounts)}`,
     };
   }
 
@@ -1216,6 +1516,7 @@ export function parseBulkQuarterFromBuffer(
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
         ...resolutionDiag,
+        ...subTypeDiag,
         ...headerDiag,
         submissionRows: totalSubRows,
         parsedSubmissionRows: parsedSubRows,
@@ -1254,6 +1555,8 @@ export function parseBulkQuarterFromBuffer(
   // Currently CIK is SUBMISSION-only → managerCikConflictCount is always 0.
   let managerCikConflictCount = 0;
   let missingManagerCikCount  = 0;
+  // Amendment conflict: counts accessions where SUBMISSION and COVERPAGE disagree.
+  let amendmentFlagConflictCount = 0;
 
   // Submission → coverpage join diagnostics
   let coverPageJoinCount               = 0;
@@ -1286,8 +1589,15 @@ export function parseBulkQuarterFromBuffer(
     // CIK tracking (from SUBMISSION only in current schema)
     if (!sub.cik) missingManagerCikCount++;
 
-    // Amendment: SUBMISSION formType takes precedence; fall back to COVERPAGE.ISAMENDMENT
-    const isAmendment = sub.isAmendment || (cpRow?.isAmendment ?? false);
+    // Amendment flag precedence:
+    //   Either authoritative source indicating amendment → isAmendment = true.
+    //   Inconsistency between SUBMISSION and COVERPAGE is counted (not silently resolved).
+    //   SUBMISSION.SUBMISSIONTYPE (= 13F-HR/A) is the primary authority.
+    //   COVERPAGE.ISAMENDMENT supplements it (some archives only set one).
+    const subSaysAmend = sub.isAmendment;
+    const cpSaysAmend  = cpRow?.isAmendment ?? false;
+    const isAmendment  = subSaysAmend || cpSaysAmend;
+    if (subSaysAmend !== cpSaysAmend) amendmentFlagConflictCount++;
 
     joinedHoldingRows++;
 
@@ -1325,6 +1635,7 @@ export function parseBulkQuarterFromBuffer(
     archiveEntries: allEntryNames,
     ...resolutionDiag,
     ...headerDiag,
+    ...subTypeDiag,
     submissionRows: totalSubRows,
     parsedSubmissionRows: parsedSubRows,
     coverPageRows: coverPageTotalRows,
@@ -1342,6 +1653,7 @@ export function parseBulkQuarterFromBuffer(
     eligibleCommonStockRows,
     putCallExcludedRows,
     prnExcludedRows,
+    amendmentFlagConflictCount,
     durationMs: Date.now() - startMs,
   };
 

@@ -1,0 +1,374 @@
+INSTITUTIONAL 13F — FIX SUBMISSIONTYPE VALUE NORMALIZATION
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION FAILURE
+
+The latest production backfill now successfully:
+
+- fetches the official SEC Form 13F dataset catalog
+- selects the newest post-2023 date-window datasets
+- downloads the ZIP archives
+- resolves:
+  - SUBMISSION.tsv
+  - COVERPAGE.tsv
+  - INFOTABLE.tsv
+- recognizes current SEC headers
+- correctly joins manager identity architecture through COVERPAGE.tsv
+
+But ingestion still fails before INFOTABLE parsing with:
+
+2026-Q1:
+SUBMISSION.tsv has 11,761 rows but 0 parsed as 13F-HR/A form type
+
+2025-Q4:
+SUBMISSION.tsv has 11,372 rows but 0 parsed as 13F-HR/A form type
+
+The actual SUBMISSION.tsv headers are known:
+
+ACCESSION_NUMBER
+FILING_DATE
+SUBMISSIONTYPE
+CIK
+PERIODOFREPORT
+
+The parser currently filters on expected values:
+
+13F-HR
+13F-HR/A
+
+No rows survive that filter.
+
+This is a narrowly scoped SUBMISSIONTYPE value-normalization and filtering fix.
+
+Do not modify:
+
+- SEC catalog discovery
+- ZIP entry resolution
+- header alias framework
+- COVERPAGE join architecture
+- INFOTABLE parsing
+- database schema
+- aggregation formulas
+- amendment policy
+- CUSIP mapping policy
+- Institutional UI
+- feature flags
+- Opportunity Engine
+- MCP
+- scanner
+- broker integrations
+
+Do not enable Institutional Intelligence.
+
+============================================================
+1. INSPECT ACTUAL SUBMISSIONTYPE VALUES SAFELY
+============================================================
+
+Before changing the filter, inspect the distinct values appearing in the current
+SUBMISSION.tsv.
+
+Do not log full rows.
+
+Log only:
+
+- distinct SUBMISSIONTYPE values
+- count for each value
+- total row count
+
+Example safe diagnostic shape:
+
+{
+  "submissionTypeCounts": {
+    "13F-HR": 0,
+    "13F-HR/A": 0,
+    "...actual value...": 11000
+  }
+}
+
+Bound the number of distinct values.
+
+Use the actual production archive as source of truth.
+
+Do not assume the value format.
+
+============================================================
+2. NORMALIZE SUBMISSION TYPE
+============================================================
+
+Create a pure helper:
+
+normalizeSubmissionType(raw: string | null | undefined)
+
+Return one of:
+
+"13F-HR"
+"13F-HR/A"
+"13F-NT"
+"13F-NT/A"
+"UNKNOWN"
+null
+
+Normalization may safely handle:
+
+- surrounding whitespace
+- lowercase/mixed case
+- underscore variants
+- missing hyphen variants
+- slash formatting differences
+- SEC-specific current labels discovered in production
+
+Do not map unrelated forms to 13F-HR.
+
+Document every accepted alias.
+
+============================================================
+3. INCLUDE ONLY HOLDINGS-BEARING FILINGS
+============================================================
+
+The inclusion rule should be:
+
+include:
+- normalized 13F-HR
+- normalized 13F-HR/A
+
+exclude:
+- 13F-NT
+- 13F-NT/A
+- UNKNOWN
+- blank
+
+Do not default unknown submission types to 13F-HR.
+
+This is critical.
+
+If a bulk dataset contains only known 13F filing variants, preserve that fact in
+diagnostics, but still normalize explicitly.
+
+============================================================
+4. ADD SAFE FALLBACK USING COVERPAGE REPORTTYPE ONLY IF VERIFIED
+============================================================
+
+Inspect COVERPAGE.tsv fields:
+
+- REPORTTYPE
+- ISAMENDMENT
+- AMENDMENTTYPE
+
+Determine whether REPORTTYPE can safely distinguish holdings-bearing filings when
+SUBMISSIONTYPE is absent or encoded differently.
+
+Only use COVERPAGE as a fallback if actual production values prove it is reliable.
+
+Possible precedence:
+
+1. normalized SUBMISSION.SUBMISSIONTYPE
+2. verified COVERPAGE.REPORTTYPE mapping
+3. UNKNOWN → exclude
+
+Do not infer form type from the presence of INFOTABLE rows alone unless explicitly
+documented as a safe fallback.
+
+============================================================
+5. AMENDMENT FLAG
+============================================================
+
+Current logic:
+
+isAmendment =
+  SUBMISSIONTYPE === "13F-HR/A"
+  OR COVERPAGE.ISAMENDMENT === "Y"
+
+Refine this using normalized form type.
+
+Keep COVERPAGE amendment metadata.
+
+Document precedence when:
+
+- SUBMISSION says amendment
+- COVERPAGE says not amendment
+- or vice versa
+
+Prefer preserving amendment status if either authoritative source indicates amendment,
+but log inconsistencies.
+
+Add:
+
+amendmentFlagConflictCount
+
+============================================================
+6. PARSED SUBMISSION DIAGNOSTICS
+============================================================
+
+Extend diagnostics with:
+
+submissionTypeCounts
+normalizedSubmissionTypeCounts
+includedSubmissionCount
+excludedNoticeCount
+excludedUnknownSubmissionTypeCount
+amendmentSubmissionCount
+
+Safe structured log example:
+
+{
+  "submissionRows": 11761,
+  "includedSubmissionCount": 10542,
+  "excludedNoticeCount": 900,
+  "excludedUnknownSubmissionTypeCount": 319,
+  "amendmentSubmissionCount": 250
+}
+
+Use actual values.
+
+Never log raw filing rows.
+
+============================================================
+7. FAILURE POLICY
+============================================================
+
+If:
+
+submissionRows > 0
+AND includedSubmissionCount === 0
+
+return:
+
+EMPTY_PARSE_FAILURE
+
+with precise reason:
+
+NO_HOLDINGS_BEARING_SUBMISSIONS
+
+and include the bounded distinct submission-type values in diagnostics.
+
+Do not use the generic:
+
+"0 parsed as 13F-HR/A form type"
+
+after this fix.
+
+============================================================
+8. TESTS
+============================================================
+
+Add focused tests.
+
+A. Exact "13F-HR"
+→ included
+
+B. Exact "13F-HR/A"
+→ included + amendment
+
+C. "13F-NT"
+→ excluded
+
+D. "13F-NT/A"
+→ excluded
+
+E. lowercase
+→ normalized
+
+F. whitespace
+→ normalized
+
+G. underscore/hyphen variants discovered in production
+→ normalized correctly
+
+H. malformed unknown value
+→ UNKNOWN + excluded
+
+I. null/blank
+→ excluded
+
+J. current production SUBMISSIONTYPE fixture
+→ included rows > 0
+
+K. current production dataset with mixed types
+→ only holdings-bearing filings retained
+
+L. amendment flag conflict
+→ counted, no silent overwrite
+
+M. COVERPAGE REPORTTYPE fallback only when verified
+
+N. 0 included with nonzero rows
+→ NO_HOLDINGS_BEARING_SUBMISSIONS
+
+O. diagnostics expose counts, not raw rows
+
+P. existing COVERPAGE join tests remain green
+
+Q. existing INFOTABLE parser tests remain green
+
+R. legacy 2023Q4 dataset still parses
+
+============================================================
+9. PRODUCTION RERUN
+============================================================
+
+After the fix:
+
+1. Deploy with:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+2. Run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+3. Confirm logs show:
+
+submissionRows: > 0
+includedSubmissionCount: > 0
+parsedSubmissionRows: > 0
+coverPageRows: > 0
+parsedCoverPageRows: > 0
+coverPageJoinCount: > 0
+informationTableRows: > 0
+parsedInformationRows: > 0
+joinedHoldingRows: > 0
+filingCount: > 0
+holdingCount: > 0
+
+4. Confirm there is no:
+
+NO_HOLDINGS_BEARING_SUBMISSIONS
+EMPTY_PARSE_FAILURE
+MANAGER_IDENTITY_SOURCE_MISSING
+
+5. Run:
+
+npx tsx scripts/audit-institutional-readiness.ts
+
+6. Only after holdings exist, verify COST CUSIP and seed reviewed mapping.
+
+7. Keep the public feature disabled until final readiness GO.
+
+============================================================
+10. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Actual distinct SUBMISSIONTYPE values observed
+2. Exact value-format root cause
+3. Files changed
+4. normalizeSubmissionType mapping
+5. Included/excluded form rules
+6. COVERPAGE fallback decision
+7. Amendment conflict policy
+8. New diagnostics
+9. Tests added
+10. Total passing tests
+11. Typecheck
+12. Build
+13. Exact production rerun command
+14. Expected successful log fields
+15. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run production ingestion, seed mappings, change Railway
+variables, or enable the public feature automatically.
+
+Wait for review.

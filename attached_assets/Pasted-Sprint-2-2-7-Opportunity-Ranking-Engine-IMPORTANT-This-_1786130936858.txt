@@ -1,0 +1,276 @@
+Sprint 2.2.7 — Opportunity Ranking Engine
+
+IMPORTANT
+
+This is the next sprint in the VCP Trader AI roadmap.
+
+Do NOT redesign the UI.
+Do NOT add new AI features.
+Do NOT change the scanner algorithms.
+Do NOT introduce investment recommendations.
+
+The objective is to build the deterministic Opportunity Ranking Engine that consumes existing evidence and powers every dashboard opportunity card.
+
+=================================================
+CURRENT ARCHITECTURE
+=================================================
+
+Already completed
+
+✓ Technical Scanner
+✓ Regime Engine
+✓ Volume analysis
+✓ Momentum analysis
+✓ Earnings calendar
+✓ Institutional Mapping
+✓ Institutional Signal Engine
+✓ Opportunity lifecycle
+✓ Daily scanner
+
+Build ON TOP of these.
+
+=================================================
+NEW SERVICE
+=================================================
+
+Create
+
+server/services/opportunity-ranking-engine.ts
+
+Pure deterministic service.
+
+No OpenAI.
+
+=================================================
+INPUT
+=================================================
+
+For every candidate returned by today's scanner combine:
+
+Technical evidence
+
+- Scanner score
+- VCP quality
+- Breakout quality
+- Relative strength
+- Trend
+- Volume confirmation
+
+Institutional evidence
+
+Read from
+
+institutional_symbol_signals
+
+if available.
+
+Use
+
+score
+
+confidence
+
+mapping quality
+
+Fundamental evidence
+
+Current earnings window
+
+Market cap
+
+Liquidity
+
+Price filters
+
+Risk evidence
+
+ATR
+
+Gap risk
+
+Event risk
+
+Regime
+
+Existing regime engine
+
+=================================================
+OUTPUT
+=================================================
+
+OpportunityScore
+
+interface OpportunityScore {
+
+symbol
+
+overallScore (0-100)
+
+confidence
+
+technicalScore
+
+institutionalScore
+
+fundamentalScore
+
+riskScore
+
+category
+
+Top Growth
+
+Income
+
+Watch
+
+Avoid
+
+reasons[]
+
+warnings[]
+
+lastUpdated
+
+}
+
+=================================================
+WEIGHTING
+=================================================
+
+Initial deterministic weights
+
+Technical
+40%
+
+Institutional
+20%
+
+Fundamental
+15%
+
+Risk
+15%
+
+Regime
+10%
+
+Keep all weights configurable.
+
+=================================================
+RANKING
+=================================================
+
+Return
+
+Top Growth
+
+Top Income
+
+Watchlist
+
+Approaching
+
+Breaking Out
+
+Weakening
+
+Dropped
+
+ordered by overallScore.
+
+=================================================
+DASHBOARD
+=================================================
+
+Replace static dashboard data.
+
+Today's Opportunities should read directly from the Opportunity Ranking Engine.
+
+No hardcoded COST/PLTR.
+
+Every scanner run produces fresh rankings.
+
+=================================================
+API
+=================================================
+
+Create
+
+GET /api/opportunities/today
+
+Returns
+
+{
+
+generatedAt
+
+regime
+
+topGrowth[]
+
+topIncome[]
+
+watchlist[]
+
+changes[]
+
+}
+
+=================================================
+PERFORMANCE
+=================================================
+
+Precompute rankings after every scanner run.
+
+Dashboard must never calculate rankings live.
+
+Dashboard performs one read only.
+
+=================================================
+TESTS
+=================================================
+
+Add comprehensive deterministic tests.
+
+Verify
+
+ranking stability
+
+weight calculations
+
+tie breaking
+
+confidence
+
+missing institutional data
+
+missing earnings
+
+missing scanner data
+
+edge cases
+
+=================================================
+ACCEPTANCE CRITERIA
+=================================================
+
+✔ Dashboard shows live ranked opportunities
+
+✔ No hardcoded symbols
+
+✔ Rankings regenerate after every scanner
+
+✔ Pure deterministic engine
+
+✔ No OpenAI
+
+✔ Existing scanner unchanged
+
+✔ Existing APIs unaffected
+
+✔ Full TypeScript
+
+✔ Full test coverage
+
+Produce a completion report when finished including architecture, APIs, tests, performance, and remaining backlog.

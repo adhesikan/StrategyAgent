@@ -40,3 +40,4 @@
 - [Institutional 13F COVERPAGE join](institutional-coverpage-join.md) — current SEC archive has 9 entries; FILINGMANAGER_NAME is in COVERPAGE.tsv not SUBMISSION.tsv; VOTING_AUTH_SOLE/SHARED/NONE replaced VOTINGAUTHORITY_*; three-table join required.
 - [Institutional persistence abort fix](institutional-persistence-fix.md) — abort → "partial" fix, resumable skip, PERSISTENCE_COUNT_MISMATCH, progress logging, force flag, verify script.
 - [Security Master Mapping Engine](security-master-mapping.md) — two-table arch (security_master + institutionalSecurityMappings); 5-level priority; reviewed=100 never auto-overwritten; approve syncs to ingestion table.
+- [Opportunity Ranking Engine](opportunity-ranking-engine.md) — Sprint 2.2.7: pure composite scorer (Tech×40+Inst×20+Fund×15+Risk×15+Regime×10); fire-and-forget hook in opportunity-engine.ts; GET /api/opportunities/today.

@@ -41,6 +41,11 @@ import {
   VALID_STATUSES,
 } from "./opportunity-snapshot-store";
 import { writeOpportunityHistory } from "./opportunity-history-writer";
+import {
+  computeRankingForSnapshot,
+  getLatestRanking,
+  setLatestRanking,
+} from "./opportunity-ranking-engine";
 
 // ---------------------------------------------------------------------------
 // Re-export the canonical snapshot type used by routes
@@ -570,6 +575,30 @@ async function _runOpportunityEngineInner(
         warnings: search.warnings,
       };
       refreshState = { status: "idle", attemptedAt, errorSummary: null };
+
+      // ── Opportunity Ranking Engine (Sprint 2.2.7) ─────────────────────────
+      // Fire-and-forget: reads institutional signals from DB and computes
+      // composite scores. Never throws — failures are logged and skipped.
+      void computeRankingForSnapshot(latestSnapshot, getLatestRanking())
+        .then((ranking) => {
+          setLatestRanking(ranking);
+          structuredLog("info", {
+            event: "opportunity_ranking_computed",
+            scanId,
+            snapshotId,
+            topGrowth: ranking.topGrowth.length,
+            topIncome: ranking.topIncome.length,
+            watchlist: ranking.watchlist.length,
+            regime: ranking.regime,
+          });
+        })
+        .catch((err: any) => {
+          structuredLog("warn", {
+            event: "opportunity_ranking_failed",
+            scanId,
+            error: String(err?.message ?? err).slice(0, 200),
+          });
+        });
 
       const logEvent =
         status === "SUCCESS"

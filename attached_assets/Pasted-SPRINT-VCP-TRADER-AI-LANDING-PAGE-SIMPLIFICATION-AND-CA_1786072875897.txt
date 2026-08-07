@@ -1,0 +1,1506 @@
+SPRINT — VCP TRADER AI LANDING PAGE SIMPLIFICATION AND CAPABILITY REFRESH
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+====================================================================
+CURRENT LANDING PAGE
+====================================================================
+
+The current public landing page is visually polished and professional, but it has
+become too long, repetitive, and feature-dense.
+
+Current page sections include variations of:
+
+- Hero
+- Choose Your Goal
+- What You Get Every Day
+- Today’s Opportunities
+- How VCP Trader AI Finds Opportunities
+- Long-Term Investing
+- Trading View versus Long-Term View
+- Ask About Opportunities in Plain English
+- Opportunity Grades
+- Stocks and Options
+- Options Intelligence
+- Portfolio Intelligence
+- Built-In Risk Checks
+- InstaTrade™
+- Decision Journal / process tracking
+- Pricing
+- FAQ
+- multiple repeated calls to action
+
+Many of these sections communicate overlapping ideas.
+
+The landing page currently feels closer to a product manual than a focused
+conversion page.
+
+The product itself has evolved significantly and now includes:
+
+- Opportunity Engine
+- AI Trading Workspace
+- Research Decision Engine
+- Evidence Intelligence
+- lifecycle and “What Changed” analysis
+- stock structure planning
+- illustrative options structure planning
+- live options contract resolution through supported brokerage connections
+- contextual VCP AI assistant
+- Congress disclosure research
+- news and catalyst research
+- portfolio and watchlist context
+- risk and invalidation presentation
+- InstaTrade™ preparation workflow
+- Institutional Intelligence infrastructure, still rolling out and not yet generally
+  enabled
+
+The public page must reflect these capabilities accurately without overwhelming the
+visitor or claiming unfinished execution features.
+
+====================================================================
+PRIMARY OBJECTIVE
+====================================================================
+
+Redesign the existing VCP Trader AI public landing page into a shorter, clearer,
+higher-converting product story.
+
+The user should understand the platform within approximately 20 seconds.
+
+The revised page should communicate this journey:
+
+Discover
+→ Understand
+→ Evaluate
+→ Plan
+→ Verify
+→ Review
+
+Core positioning:
+
+VCP Trader AI helps self-directed traders discover qualified research candidates,
+understand the evidence, compare stock and options structures, verify available live
+contracts through supported broker connections, and prepare a trade for user-controlled
+review.
+
+This is a public marketing and UX sprint.
+
+Do not change any product engine or authenticated application workflow.
+
+====================================================================
+NON-NEGOTIABLE SCOPE BOUNDARIES
+====================================================================
+
+Do not modify:
+
+- Opportunity Engine
+- scanner logic
+- MCP
+- Research Package
+- AI Trading Workspace
+- Decision Engine
+- Trade Structure Engine
+- Live Contract Resolver
+- broker adapters
+- market-data architecture
+- portfolio calculations
+- Institutional Intelligence ingestion
+- SEC parsing
+- database schema
+- migrations
+- authentication
+- billing logic
+- user entitlements
+- order execution
+- Position Protection
+- contextual AI backend
+- Congress ingestion
+- pricing amounts unless explicitly required by existing product configuration
+
+Do not add a new CMS, analytics vendor, animation library, or design system.
+
+Do not make authenticated API calls from the anonymous landing page.
+
+Do not invent performance metrics, customer counts, returns, testimonials, live market
+prices, broker balances, or verified outcomes.
+
+====================================================================
+REQUIRED PRE-IMPLEMENTATION AUDIT
+====================================================================
+
+Before changing code, audit the existing public landing-page implementation.
+
+Report internally:
+
+1. Main landing-page route and component.
+2. Current navigation anchors.
+3. Current hero copy.
+4. Every major page section in display order.
+5. Repeated or overlapping sections.
+6. Current pricing source and entitlement logic.
+7. Current FAQ data.
+8. Current CTA destinations.
+9. Current metadata and Open Graph tags.
+10. Current analytics event hooks.
+11. Current external broker names and logos.
+12. Every statement implying:
+    - order submission;
+    - automatic trading;
+    - live data;
+    - broker support;
+    - AI recommendations;
+    - guaranteed outcomes;
+    - Institutional Intelligence availability.
+13. Whether the current page uses authenticated application data.
+14. Whether feature visuals are static examples or live data.
+15. Existing landing-page tests.
+
+Do not replace working infrastructure unnecessarily.
+
+Reuse the current styling, components, navigation shell, and CTA routes wherever
+practical.
+
+====================================================================
+NEW LANDING PAGE INFORMATION ARCHITECTURE
+====================================================================
+
+Reduce the page to approximately seven primary content sections:
+
+1. Hero
+2. Choose Your Goal
+3. How It Works
+4. AI Trading Workspace
+5. Stock and Options Planning
+6. Broker Verification and InstaTrade™
+7. Pricing, FAQ, and Final CTA
+
+Supporting capabilities such as:
+
+- Opportunity Grades
+- Risk Checks
+- Portfolio Intelligence
+- long-term versus trading views
+- decision journal
+- contextual AI
+- Congress
+- news
+- Institutional Intelligence
+
+should be incorporated compactly within these sections instead of each receiving a
+large standalone section.
+
+The page must retain analytical depth without forcing the visitor to read every feature
+before understanding the product.
+
+====================================================================
+1. HEADER AND NAVIGATION
+====================================================================
+
+Simplify the public navigation.
+
+Recommended navigation:
+
+- Product
+- How It Works
+- Stocks & Options
+- InstaTrade™
+- Pricing
+- FAQ
+- Login
+- Start Free Trial
+
+Remove redundant top-level items if they point to overlapping sections, such as:
+
+- Features and Daily Ideas both leading to similar content
+- separate Stocks and Options links when one combined section is clearer
+
+It is acceptable to retain Stocks and Options separately only if each leads to a
+meaningfully different destination.
+
+Requirements:
+
+- sticky navigation;
+- clear active hover/focus states;
+- mobile navigation works;
+- Start Free Trial remains the primary CTA;
+- Login remains visible but visually secondary;
+- no internal authenticated application tabs appear in public navigation.
+
+====================================================================
+2. HERO SECTION
+====================================================================
+
+Replace the current generic AI-heavy headline:
+
+“Find Better Stock & Options Opportunities With AI”
+
+with:
+
+“Research, Plan, and Verify Stock & Options Opportunities”
+
+Optional emphasized second line:
+
+“With VCP Trader AI”
+
+Recommended eyebrow:
+
+AI-Powered Research and Trade Planning for Self-Directed Traders
+
+Recommended supporting copy:
+
+VCP Trader AI combines deterministic opportunity screening, evidence-based research,
+stock and options structure planning, contextual AI explanations, and broker-connected
+contract verification in one workflow.
+
+Alternative shorter supporting copy:
+
+Discover qualified research candidates, understand why they matter, compare stock and
+options structures, verify live contracts through supported brokerages, and prepare
+trades for review with InstaTrade™.
+
+Primary CTA:
+
+Start Free Trial
+
+Secondary CTA:
+
+See How It Works
+
+Secondary CTA scrolls to the workflow section.
+
+Compact benefit badges:
+
+- Deterministic Opportunity Screening
+- AI Trading Workspace
+- Stock & Options Planning
+- Broker-Connected Verification
+- User-Controlled Review
+
+Do not use:
+
+- Find winning trades
+- Better trades guaranteed
+- AI picks
+- AI tells you what to buy
+- Beat the market
+- High-probability winners
+- Profit with AI
+
+====================================================================
+HERO PRODUCT VISUAL
+====================================================================
+
+Replace or refine the current fictional trade card so it better represents the current
+product workflow.
+
+Preferred visual:
+
+A simplified AI Trading Workspace mockup showing:
+
+- qualified research candidate;
+- research thesis;
+- evidence summary;
+- stock or options structure;
+- top risk;
+- broker-verification state;
+- Review with InstaTrade™ CTA.
+
+Keep the mockup compact and easy to read.
+
+Do not show:
+
+- fake live market prices without an “Illustrative example” label;
+- fake broker account balances;
+- guaranteed max gain;
+- a fully executable order;
+- unsupported contract data;
+- results presented as live recommendations.
+
+Every mockup must visibly state:
+
+Illustrative example — not a live recommendation
+
+If using actual screenshots:
+
+- remove personal user information;
+- remove timestamps that may quickly look stale;
+- avoid unavailable/error states;
+- do not expose account identifiers or broker details.
+
+====================================================================
+3. CHOOSE YOUR GOAL
+====================================================================
+
+Retain the current four goal cards because they are one of the strongest parts of the
+page.
+
+Cards:
+
+A. Grow Long-Term Wealth
+
+Copy:
+
+Research companies with durable growth drivers, improving fundamentals, favorable
+long-term trends, and clearer entry conditions.
+
+Compact bullets:
+
+- Long-term research candidates
+- Growth and earnings context
+- Valuation context
+- Thesis monitoring
+- Portfolio concentration awareness
+
+CTA:
+
+Explore Growth Research
+
+B. Generate Income
+
+Copy:
+
+Evaluate covered calls, cash-secured puts, credit spreads, dividend opportunities, and
+defined-risk income structures.
+
+Compact bullets:
+
+- Covered calls
+- Cash-secured puts
+- Credit spreads
+- Dividend and income research
+- Capital and risk requirements
+
+CTA:
+
+Explore Income Research
+
+C. Find Trade Setups
+
+Copy:
+
+Discover breakouts, pullbacks, momentum candidates, swing opportunities, and
+defined-risk options structures.
+
+Compact bullets:
+
+- Breakout and pullback setups
+- Momentum and swing candidates
+- Trigger and freshness context
+- Defined-risk options structures
+- Invalidation and risk levels
+
+CTA:
+
+Explore Trade Setups
+
+D. Understand Markets
+
+Copy:
+
+Follow market regime, sector strength, sentiment, volatility, earnings, and the risks
+shaping current opportunities.
+
+Compact bullets:
+
+- Market regime
+- Sector strength
+- News and sentiment
+- Earnings and catalysts
+- Market-risk observations
+
+CTA:
+
+View Market Intelligence
+
+Avoid long card copy and long bullet lists.
+
+Limit each card to approximately five bullets.
+
+====================================================================
+4. HOW IT WORKS
+====================================================================
+
+Create one clean six-step workflow.
+
+Section headline:
+
+How VCP Trader AI Turns Research Into a Structured Trade Plan
+
+Supporting copy:
+
+A transparent workflow for different goals, strategies, and time horizons.
+
+Step 1 — Discover
+
+VCP Trader AI scans supported market data and surfaces qualified growth, income,
+trading, watchlist, and approaching-qualification research candidates.
+
+Step 2 — Understand
+
+Open the AI Trading Workspace to see why a candidate qualified, its lifecycle state,
+market regime, rank, evidence, and active risks.
+
+Step 3 — Evaluate
+
+Review technical context, news, catalysts, congressional disclosures, available
+institutional context, and thesis invalidation conditions.
+
+Step 4 — Plan
+
+Compare possible stock and illustrative options structures, including holding period,
+DTE framework, strike-selection framework, advantages, and trade-offs.
+
+Step 5 — Verify
+
+With a supported brokerage connection, resolve actual listed expirations and strikes,
+inspect available quotes, liquidity, and Greeks, and compare verified contract
+candidates.
+
+Step 6 — Review
+
+Prepare the selected stock or options structure for review through InstaTrade™.
+Nothing is submitted without explicit user confirmation.
+
+Do not say:
+
+Reviewed order
+
+if the full order-review workflow is not yet production complete.
+
+Preferred wording:
+
+Prepared for review
+
+====================================================================
+5. AI TRADING WORKSPACE
+====================================================================
+
+Create one flagship section.
+
+Headline:
+
+One Workspace for the Full Research Process
+
+Supporting copy:
+
+Instead of moving between disconnected scanners, research tools, options calculators,
+and broker screens, VCP Trader AI organizes the decision-support workflow around the
+selected opportunity.
+
+Show a clean workspace visual with no more than six compact modules:
+
+- Research Thesis
+- What Changed
+- Decision and Evidence
+- Stock and Options Planning
+- Risk and Invalidation
+- Ask VCP AI
+
+Add small capability labels beneath the visual:
+
+- Market regime and lifecycle context
+- Congress, news, and catalyst research
+- Portfolio and watchlist context
+- Live contract verification when connected
+- Saved research and decision journal
+
+Do not recreate the full crowded authenticated Workspace on the landing page.
+
+The marketing visual should demonstrate hierarchy, not every tab.
+
+Add CTA:
+
+Explore the AI Trading Workspace
+
+Use the correct existing trial, signup, or authenticated destination.
+
+====================================================================
+CONTEXTUAL AI COPY
+====================================================================
+
+Within the Workspace section, add a compact panel:
+
+Ask VCP AI About the Opportunity in Front of You
+
+Example prompts:
+
+- Why did this candidate qualify?
+- What changed since the previous scan?
+- What evidence weakens the thesis?
+- What would invalidate the setup?
+- Explain the illustrative options structure.
+- What should I verify before using InstaTrade™?
+
+Supporting disclosure:
+
+VCP AI explains available platform research and deterministic outputs. It may be
+incomplete when source data is unavailable and does not provide personalized
+investment advice.
+
+Do not create another large standalone AI section unless needed for page rhythm.
+
+====================================================================
+6. STOCK AND OPTIONS PLANNING
+====================================================================
+
+Combine these existing concepts into one section:
+
+- long-term versus trading view;
+- stock and options opportunities;
+- opportunity grades;
+- options intelligence;
+- built-in quality filters;
+- risk checks.
+
+Headline:
+
+Plan the Structure Before Selecting the Contract
+
+Supporting copy:
+
+VCP Trader AI separates research, structure planning, and live contract verification
+so users can understand the trade-offs before reviewing an order.
+
+Create three compact columns or tabs.
+
+A. Stock Research
+
+- Long-term position
+- Breakout entry
+- Pullback entry
+- Swing position
+- Holding horizon
+- Entry, stop, and objective framework
+- Invalidation conditions
+
+B. Illustrative Options Planning
+
+- Structure selection
+- Target DTE range
+- Strike-selection framework
+- Debit versus credit characteristics
+- Time decay
+- Assignment risk
+- Defined-risk characteristics
+
+C. Broker-Verified Contracts
+
+- Actual listed expirations
+- Actual strikes
+- Displayed bid and ask
+- Available open interest and volume
+- Available Greeks
+- Quote timestamp
+- Liquidity and Contract Fit
+
+Add note:
+
+Illustrative planning does not represent a live option contract. Actual contract
+availability and pricing require a supported connected brokerage.
+
+====================================================================
+OPPORTUNITY GRADES
+====================================================================
+
+Keep Opportunity Grades as a compact element inside the planning or Workspace section.
+
+Headline:
+
+Clear Qualification, Not a Universal Stock Rating
+
+Copy:
+
+Each candidate or scenario is evaluated for a specific objective and time horizon.
+A stock may qualify differently for long-term growth, an active trade, a covered call,
+or portfolio fit.
+
+Show example factors:
+
+- Technical
+- Market context
+- Evidence
+- Risk
+- Liquidity, when applicable
+
+Use:
+
+Opportunity Grade
+
+Avoid implying the grade predicts returns.
+
+Do not dedicate a full large page-height section to this feature.
+
+====================================================================
+RISK CONTROLS
+====================================================================
+
+Condense the current Built-In Risk Checks section into a compact strip.
+
+Headline:
+
+Risk Checks Before Broker Review
+
+Display no more than five concise items:
+
+- Minimum qualification filters
+- Risk-budget validation
+- Liquidity and spread checks
+- Defined-risk structure controls
+- Reward/risk and invalidation warnings
+
+Use wording:
+
+Checks and warnings
+
+Avoid:
+
+Prevents every risky order
+
+unless that is technically guaranteed.
+
+Do not imply suitability or fiduciary review.
+
+====================================================================
+7. BROKER VERIFICATION AND INSTATRADE™
+====================================================================
+
+Headline:
+
+Connect a Supported Brokerage When You Are Ready
+
+Two-column capability comparison:
+
+WITHOUT A BROKER
+
+- Daily-close and stored market research
+- Qualified research candidates
+- AI Trading Workspace
+- Stock structure planning
+- Illustrative options structures
+- DTE and strike frameworks
+- News, catalysts, and Congress research
+- Contextual AI explanations
+- Saved research and watchlists
+
+WITH A SUPPORTED BROKER
+
+- Current broker-supplied quotes
+- Live options chains
+- Actual listed expirations and strikes
+- Available bid/ask, liquidity, and Greeks
+- Account and position context
+- Buying-power validation where supported
+- InstaTrade™ preparation and review
+- User-directed order submission only where implemented and enabled
+
+Add:
+
+Capabilities vary by brokerage, account type, market-data entitlement, and integration
+status.
+
+====================================================================
+INSTATRADE™ WORDING
+====================================================================
+
+Until the complete order-review and final submission workflow has passed production
+UAT, use:
+
+- InstaTrade™ preparation workflow
+- Prepare with InstaTrade™
+- Review with InstaTrade™
+- Prepare a broker-connected order for review
+- User confirmation required
+
+Replace:
+
+- InstaTrade™ order review and submission
+- Trade Now
+- Execute Now
+- One-click execution
+- Automatically send orders
+
+Pricing and feature lists must not claim final submission unless the corresponding
+execution workflow is actually enabled in production.
+
+====================================================================
+BROKER SUPPORT AUDIT
+====================================================================
+
+Before displaying broker names or logos, audit the actual production integrations.
+
+Verify:
+
+- Tradier
+- TradeStation
+- SnapTrade
+- Schwab
+- any other integration
+
+For each, determine:
+
+- connection availability;
+- quotes;
+- options chains;
+- Greeks;
+- account context;
+- multi-leg capability;
+- execution capability;
+- current production status;
+- permission to display its logo or name publicly.
+
+Do not claim SnapTrade-connected brokerages as fully supported unless current
+production capabilities support the marketed features.
+
+Safe default public wording:
+
+Supported brokerage connections include Tradier and TradeStation. Additional
+connections and capabilities may vary.
+
+Only use that sentence if verified.
+
+Otherwise use:
+
+Connect a supported brokerage.
+
+====================================================================
+8. SUPPORTING RESEARCH CAPABILITIES
+====================================================================
+
+Add one compact evidence strip rather than separate large sections.
+
+Headline:
+
+Research More Than the Chart
+
+Show small cards or icons:
+
+Technical Context
+
+Trend, momentum, setup quality, and invalidation.
+
+Market Regime
+
+Market environment and candidate alignment.
+
+News and Catalysts
+
+Recent coverage, sentiment, earnings, and event risks.
+
+Congressional Disclosures
+
+Publicly disclosed congressional transactions with transaction and reporting dates.
+
+Portfolio Context
+
+Concentration, sector exposure, earnings overlap, and capital impact where available.
+
+Institutional Intelligence
+
+Rolling out with delayed SEC Form 13F data and verified security mappings.
+
+Required disclosures:
+
+Congressional transactions may be disclosed after the transaction date and do not
+indicate future performance.
+
+Institutional Intelligence is based on delayed quarterly filings and may have limited
+coverage while mappings are validated.
+
+Do not claim Institutional Intelligence is currently available to all users.
+
+====================================================================
+9. TODAY’S OPPORTUNITIES / DAILY IDEAS
+====================================================================
+
+The current illustrative examples are visually useful, but the section should be
+shorter and clearer.
+
+Rename:
+
+Today’s Opportunities
+
+to:
+
+Examples of Research Candidates
+
+or:
+
+What VCP Trader AI Can Surface
+
+Display no more than four example cards:
+
+- Long-Term Growth
+- Income
+- Active Trade Setup
+- Watchlist / Developing Setup
+
+Every card must show:
+
+Illustrative example — not a live recommendation
+
+Do not use a large grid with multiple fake ticker recommendations.
+
+Alternative:
+
+Use a single product screenshot showing actual categories without ticker-level
+fictional results.
+
+CTA:
+
+Start Free Trial to Explore Current Research
+
+Avoid:
+
+See Live Ideas
+
+unless the destination genuinely contains current qualifying candidates.
+
+====================================================================
+10. PRICING
+====================================================================
+
+Retain the existing pricing amount only if it matches the current billing system:
+
+- 14-Day Free Trial
+- Founding Member Access
+- $99/month
+- standard price $149/month
+
+Do not change price values without checking the billing source.
+
+Simplify the pricing card.
+
+Use four feature groups:
+
+RESEARCH AND OPPORTUNITIES
+
+- Qualified stock and options research candidates
+- Long-term, income, and active-trading views
+- Market regime and evidence context
+- Saved research and watchlists
+
+TRADE PLANNING
+
+- Stock structure guidance
+- Illustrative options structure guidance
+- DTE and strike frameworks
+- Risk, breakeven, and capital-review tools
+
+PORTFOLIO AND MONITORING
+
+- Portfolio and watchlist intelligence
+- Thesis and lifecycle monitoring
+- News, earnings, and catalyst context
+- Decision journal
+
+BROKER-CONNECTED CAPABILITIES
+
+- Current quotes through supported connections
+- Options-chain and listed-contract verification
+- Available Greeks and liquidity context
+- InstaTrade™ preparation and review
+
+Limit the visible list to approximately 10–12 concise items.
+
+Remove or qualify:
+
+- InstaTrade™ order review and submission
+- all brokerage names unless verified
+- paper trading if not actually included in the trial
+- live market data if not universally available
+
+Display two small columns:
+
+Trial — No Broker Required
+
+Broker Connected
+
+Retain these distinctions because they are helpful.
+
+Add:
+
+Features vary by brokerage and account entitlement.
+
+====================================================================
+11. FAQ
+====================================================================
+
+Retain the FAQ but update answers for current product reality.
+
+Required questions:
+
+1. Do I need a brokerage account to start?
+
+Answer:
+
+No. You can use Opportunity Research, the AI Trading Workspace, stock and illustrative
+options planning, delayed or daily-close market context, and supported research tools
+without connecting a broker. A broker is needed for live contract verification,
+account context, and broker-connected review capabilities.
+
+2. Does VCP Trader AI include live market data?
+
+Answer:
+
+The platform includes daily-close or stored market data for research. Current quotes,
+live options chains, and broker-specific market data require a supported connected
+brokerage and appropriate account entitlements.
+
+3. What can I do without connecting a broker?
+
+Answer:
+
+Discover research candidates, review evidence, compare stock and illustrative options
+structures, explore DTE and strike frameworks, save research, use supported Congress,
+news, catalyst, and market-context tools, and ask contextual questions with VCP AI.
+
+4. Does the trial include paper trading?
+
+Answer based only on actual product capability.
+
+Do not claim paper trading if it is not implemented.
+
+5. Does VCP Trader AI trade automatically?
+
+Answer:
+
+No. VCP Trader AI supports research, planning, verification, and user-directed order
+review. It does not autonomously place trades or manage a user’s assets.
+
+6. Is this investment advice?
+
+Answer:
+
+No. VCP Trader AI provides educational research, analysis, and user-directed planning
+tools. Users remain responsible for their own decisions and should independently
+verify all data.
+
+7. Can I use it for long-term investing?
+
+Answer:
+
+Yes. The platform supports long-term thesis research, growth and earnings context,
+valuation context, technical conditions, portfolio concentration, and thesis
+monitoring, in addition to active trading workflows.
+
+8. Which brokers are supported?
+
+Use capability-qualified current production wording.
+
+Do not list future integrations as available.
+
+9. Can I cancel anytime?
+
+Ensure answer matches actual billing policy.
+
+10. What is Institutional Intelligence?
+
+Answer:
+
+Institutional Intelligence is a rolling-out research capability based on delayed SEC
+Form 13F filings. Coverage may be limited while data, amendments, and security mappings
+are validated.
+
+====================================================================
+12. FINAL CTA
+====================================================================
+
+Headline:
+
+Ready to Research Your Next Opportunity?
+
+Supporting copy:
+
+Start with daily-close research and structured trade planning. Connect a supported
+brokerage when you are ready to verify live contracts and prepare a trade for review.
+
+Primary CTA:
+
+Start Free Trial
+
+Secondary CTA:
+
+See How It Works
+
+Avoid:
+
+Find your next winning trade
+
+====================================================================
+13. FOOTER DISCLAIMER
+====================================================================
+
+Use one concise complete footer disclaimer rather than a large disclaimer block near
+the top of the page.
+
+Recommended language:
+
+VCP Trader AI provides educational research, market analysis, and user-directed trade
+planning tools. It does not provide personalized investment advice, guarantee outcomes,
+or independently determine whether a trade is suitable for a user. Market, options,
+broker, congressional, institutional, and news data may be delayed, incomplete, or
+unavailable. Users should verify all information with their brokerage and conduct
+independent due diligence before making financial decisions.
+
+Retain:
+
+Powered by Sunfish Technologies LLC
+
+where appropriate.
+
+Do not place an oversized disclaimer immediately beneath the hero.
+
+Use compact contextual disclosures near:
+
+- live-data claims;
+- options examples;
+- Congress;
+- Institutional Intelligence;
+- InstaTrade™.
+
+====================================================================
+14. TERMINOLOGY CORRECTIONS
+====================================================================
+
+Search the full landing page and replace or qualify these terms.
+
+Replace:
+
+AI-ranked stock and options opportunities
+
+with:
+
+Deterministically ranked stock and options research candidates
+
+Replace:
+
+Daily stock and options ideas
+
+with:
+
+Daily stock and options research opportunities
+
+or:
+
+Daily research candidates
+
+Replace:
+
+Estimated options strategy insights
+
+with:
+
+Illustrative options structure guidance
+
+Replace:
+
+Live options chains and Greeks
+
+with:
+
+Live options chains and available Greeks through supported broker connections
+
+Replace:
+
+InstaTrade™ order review and submission
+
+with:
+
+InstaTrade™ order preparation and review
+
+Replace:
+
+Defined-risk options controls
+
+with:
+
+Defined-risk options planning and validation
+
+Replace:
+
+AI finds the right option
+
+with:
+
+VCP Trader AI helps compare possible option structures
+
+Avoid:
+
+- recommendation
+- recommended trade
+- stock picks
+- winning trade
+- guaranteed
+- high probability
+- expected return
+- expected profit
+- beat the market
+- risk-free
+- AI predicts
+- autonomous trading
+- fully automated
+- one-click execution
+
+Use:
+
+- qualified research candidate
+- research opportunity
+- deterministic analysis
+- illustrative trade structure
+- structure fit
+- verified contract candidate
+- contract fit
+- broker verification
+- user-selected
+- user confirmation
+- educational analysis
+- user-directed review
+
+====================================================================
+15. VISUAL SIMPLIFICATION
+====================================================================
+
+Preserve the dark institutional visual design.
+
+Improve page rhythm by:
+
+- reducing total vertical page length;
+- removing repeated standalone sections;
+- limiting large alternating two-column blocks;
+- using consistent max-width;
+- reducing repeated “Preview” badges;
+- reducing unnecessary card borders;
+- increasing whitespace between major concepts;
+- shortening paragraphs;
+- limiting bullet lists;
+- using one primary visual per section;
+- reducing excessive ALL CAPS labels;
+- standardizing section eyebrow style;
+- ensuring major CTAs are not repeated excessively.
+
+No more than two CTAs per major section.
+
+Do not use flashy animation.
+
+Use subtle transitions only.
+
+====================================================================
+16. RESPONSIVE DESIGN
+====================================================================
+
+Desktop:
+
+- clear hero;
+- shorter page;
+- two-column sections where useful;
+- product visual remains readable;
+- pricing does not become excessively tall.
+
+Tablet:
+
+- cards stack logically;
+- goal cards become two columns;
+- product screenshots remain legible;
+- nav collapses appropriately.
+
+Mobile:
+
+- one-column layout;
+- headline wraps naturally;
+- goal cards stack;
+- no horizontal overflow;
+- screenshots use responsive containers;
+- buttons remain easy to tap;
+- CTA order remains clear;
+- pricing content remains concise;
+- FAQ remains keyboard and touch accessible.
+
+====================================================================
+17. PERFORMANCE
+====================================================================
+
+Do not load authenticated application data.
+
+No page-load calls to:
+
+- Opportunity Engine
+- Research Package
+- Ask AI
+- Congress APIs
+- Institutional APIs
+- broker status
+- options chains
+- portfolio
+- market-data routes
+
+Use static examples only.
+
+Optimize all images:
+
+- WebP or current optimized format;
+- correct dimensions;
+- lazy-load below the fold;
+- hero visual may load eagerly;
+- preserve aspect ratio;
+- avoid oversized screenshot assets.
+
+Avoid adding new heavy dependencies.
+
+====================================================================
+18. SEO AND METADATA
+====================================================================
+
+Update:
+
+Page title:
+
+VCP Trader AI — Stock and Options Research & Trade Planning
+
+Meta description:
+
+Discover qualified stock and options research candidates, evaluate evidence, compare
+trade structures, verify live contracts through supported brokerages, and prepare
+trades for review with InstaTrade™.
+
+Open Graph title:
+
+VCP Trader AI — Research, Plan, and Verify Stock & Options Opportunities
+
+Open Graph description:
+
+A deterministic research and trade-planning platform for self-directed stock and
+options traders.
+
+Update social preview image only if an approved asset already exists.
+
+Use semantic heading hierarchy:
+
+H1:
+Research, Plan, and Verify Stock & Options Opportunities
+
+H2:
+Choose Your Goal
+How VCP Trader AI Works
+One Workspace for the Full Research Process
+Plan the Structure Before Selecting the Contract
+Connect a Supported Brokerage When You Are Ready
+Simple Pricing
+Frequently Asked Questions
+
+Do not make performance promises in metadata.
+
+====================================================================
+19. ANALYTICS
+====================================================================
+
+Reuse only existing analytics.
+
+Track:
+
+- hero Start Free Trial
+- hero See How It Works
+- goal-card CTAs
+- Workspace CTA
+- broker section CTA
+- pricing CTA
+- final CTA
+- Login
+- FAQ interaction where already supported
+
+Do not add a new analytics provider.
+
+Do not transmit trading or research data.
+
+====================================================================
+20. TESTING
+====================================================================
+
+Add focused landing-page tests.
+
+A. Structure
+
+- seven primary page sections or an equivalently simplified hierarchy;
+- no duplicated large feature sections;
+- correct section order;
+- navigation anchors work.
+
+B. Hero
+
+- revised headline;
+- deterministic/research wording;
+- primary CTA;
+- secondary CTA;
+- no prohibited claims.
+
+C. Goal cards
+
+- four goal cards;
+- concise copy;
+- correct CTAs.
+
+D. Workflow
+
+- six steps;
+- Discover → Understand → Evaluate → Plan → Verify → Review;
+- no automatic-trading wording.
+
+E. Workspace
+
+- AI Trading Workspace section exists;
+- compact modules;
+- contextual AI explanation;
+- no authenticated API calls.
+
+F. Planning
+
+- stock planning;
+- illustrative options planning;
+- broker-verified contracts;
+- disclaimer differentiates illustrative versus live.
+
+G. Broker and InstaTrade™
+
+- disconnected versus connected capabilities;
+- capability-qualified wording;
+- no unsupported broker claim;
+- “preparation and review” wording;
+- no final-submission claim unless enabled.
+
+H. Pricing
+
+- actual price values preserved;
+- list simplified;
+- no unsupported features;
+- broker-dependent wording present.
+
+I. Evidence
+
+- Congress disclosure disclaimer;
+- Institutional Intelligence marked rolling out or limited availability;
+- no predictive wording.
+
+J. FAQ
+
+- current data answer;
+- no broker answer;
+- no auto-trading answer;
+- Institutional Intelligence answer;
+- broker support qualified.
+
+K. Compliance
+
+Confirm rendered landing page does not contain:
+
+- winning trades
+- guaranteed
+- high probability
+- AI predicts
+- automatic trading
+- recommendation
+- InstaTrade™ order review and submission
+
+unless required in a negating FAQ context such as:
+
+“Does it trade automatically? No.”
+
+L. Accessibility
+
+- semantic headings;
+- keyboard navigation;
+- focus states;
+- accordion accessibility;
+- button labels;
+- image alt text;
+- reduced motion.
+
+M. Responsive
+
+- desktop;
+- tablet;
+- mobile;
+- no horizontal overflow.
+
+N. Performance
+
+- no authenticated API calls;
+- lazy-loaded below-fold imagery;
+- no new heavy dependency.
+
+Run:
+
+- landing-page tests;
+- full client tests;
+- full server tests;
+- typecheck;
+- production build.
+
+====================================================================
+21. PRODUCTION UAT
+====================================================================
+
+Provide exact UAT steps:
+
+1. Open landing page logged out.
+2. Verify revised headline and supporting copy.
+3. Confirm Start Free Trial destination.
+4. Confirm See How It Works scroll.
+5. Test each goal-card CTA.
+6. Verify six-step workflow.
+7. Verify Workspace section accurately describes the product.
+8. Confirm no overcrowded duplicate sections remain.
+9. Verify options planning versus live contract distinction.
+10. Confirm no claim of automatic execution.
+11. Confirm InstaTrade™ uses preparation/review wording.
+12. Confirm only currently supported broker names are displayed.
+13. Confirm Institutional Intelligence says rolling out or limited availability.
+14. Confirm pricing matches billing.
+15. Confirm FAQ answers match production behavior.
+16. Test desktop, tablet, and mobile.
+17. Test navigation and FAQ by keyboard.
+18. Inspect browser console.
+19. Inspect Network tab and confirm no authenticated API calls.
+20. Test page load and image performance.
+21. Verify SEO title and description.
+22. Verify all external links.
+
+====================================================================
+22. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Existing landing-page audit
+2. Sections removed
+3. Sections combined
+4. Final page hierarchy
+5. Hero copy before and after
+6. Goal-card changes
+7. Workflow changes
+8. Workspace presentation
+9. Stock/options planning presentation
+10. Broker capability audit
+11. InstaTrade™ wording changes
+12. Institutional Intelligence wording
+13. Pricing changes
+14. FAQ changes
+15. Terminology replacements
+16. Navigation changes
+17. Responsive changes
+18. Accessibility changes
+19. SEO changes
+20. Analytics changes
+21. Performance impact
+22. Files changed
+23. Tests added
+24. Total passing tests
+25. Typecheck
+26. Build
+27. Screenshots
+28. Production UAT checklist
+29. GO / CONDITIONAL_GO / NO_GO
+
+Do not modify product engines.
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

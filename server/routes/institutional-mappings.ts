@@ -1,4 +1,4 @@
-// Institutional Mapping Routes — Sprint 2.2.5
+// Institutional Mapping Routes — Sprint 2.2.5 (updated)
 //
 // Public (authenticated):
 //   GET  /api/institutional/mappings          — paginated mapping queue

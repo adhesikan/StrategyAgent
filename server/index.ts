@@ -527,6 +527,22 @@ async function restoreBrokerConnections() {
     log(`Opportunity engine schedule error (non-fatal): ${err?.message}`, "opportunity-engine");
   }
   
+  // Institutional Intelligence ingestion (SEC 13F) — weekly on Sunday nights.
+  // Harmless no-op when INSTITUTIONAL_INTELLIGENCE_ENABLED is false or
+  // SEC_USER_AGENT is not configured.
+  try {
+    const { scheduleInstitutionalIngestion } = await import(
+      "./services/institutional/ingestion-service"
+    );
+    scheduleInstitutionalIngestion();
+    log("Institutional ingestion scheduled (weekly cycle)");
+  } catch (err: any) {
+    log(
+      `Institutional ingestion schedule error (non-fatal): ${err?.message}`,
+      "institutional",
+    );
+  }
+
   // Daily market-data ingestion (Twelve Data) — runs after 7:15 PM ET on
   // expected US trading days. Uses a Postgres advisory lock internally so
   // duplicate/multi-instance starts are safe. No-ops when disabled/paused.

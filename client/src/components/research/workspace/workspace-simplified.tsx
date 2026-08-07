@@ -44,6 +44,7 @@ import {
   WorkspaceCongressNewsCatalystSummary,
 } from "@/components/research/workspace/workspace-sections";
 import type { RiskGroup, RiskItem, SentimentResponseMin } from "@/components/research/workspace/workspace-sections";
+import { InstitutionalWorkspaceCompact } from "@/components/research/institutional";
 
 // ---------------------------------------------------------------------------
 // Types

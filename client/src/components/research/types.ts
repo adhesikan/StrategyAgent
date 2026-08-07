@@ -104,7 +104,7 @@ export interface EvidenceStars {
   technical: 1 | 2 | 3 | 4 | 5;
   congress: 1 | 2 | 3 | 4 | 5;
   news: 1 | 2 | 3 | 4 | 5;
-  institutional: 0;
+  institutional: 0 | 1 | 2 | 3 | 4 | 5;
   catalysts: 1 | 2 | 3;
   regime: 1 | 2 | 3 | 4 | 5;
 }

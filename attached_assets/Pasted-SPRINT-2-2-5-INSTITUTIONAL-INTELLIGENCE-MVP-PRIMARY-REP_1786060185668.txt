@@ -1,0 +1,1401 @@
+SPRINT 2.2.5 — INSTITUTIONAL INTELLIGENCE MVP
+
+PRIMARY REPOSITORY
+
+VCP Trader AI / StrategyAgent
+
+====================================================================
+ROADMAP POSITION
+====================================================================
+
+The following work is already complete or in progress and must be preserved:
+
+- database-first market history
+- Opportunity Engine
+- Research Package
+- Evidence Engine
+- Research Decision Engine
+- Trade Structure Engine
+- Live Options Contract Resolver
+- AI Trading Workspace
+- Contextual AI Research Assistant
+- Congress integration
+- InstaTrade™ preparation workflow
+- Workspace UX simplification and regression fixes
+
+This sprint adds factual institutional-holdings research.
+
+It does not replace or redesign those systems.
+
+The Institutional tab currently displays a placeholder explaining what institutional
+context could contain.
+
+Replace that placeholder with an honest Institutional Intelligence MVP backed by
+approved source data.
+
+====================================================================
+PRIMARY OBJECTIVE
+====================================================================
+
+Build an Institutional Intelligence feature that helps a self-directed investor
+understand publicly reported institutional participation in a company.
+
+Initial authoritative source:
+
+SEC Form 13F reported holdings.
+
+Optional supporting source:
+
+Existing Twelve Data fundamental/reference endpoints, but only after entitlement,
+coverage, cost and licensing are verified against the current subscription.
+
+The user should be able to answer:
+
+1. How many reporting 13F managers disclosed a position?
+2. Did aggregate reported shares increase or decrease quarter over quarter?
+3. Which reporting managers disclosed the largest positions?
+4. How concentrated are the reported holdings among the largest managers?
+5. Which managers initiated, increased, reduced or exited disclosed positions?
+6. How old is the information?
+7. What limitations apply to the data?
+8. Does this institutional context support, remain neutral toward, or weaken the
+   current research thesis under transparent deterministic rules?
+
+Do not present 13F filings as real-time institutional flow.
+
+Do not describe the result as complete institutional ownership unless the data and
+calculation genuinely support that claim.
+
+====================================================================
+NON-NEGOTIABLE ACCURACY PRINCIPLES
+====================================================================
+
+Use the following terminology:
+
+- 13F Reported Holdings
+- Reporting Managers
+- Reported Shares
+- Reported Market Value
+- Quarter-over-Quarter Change
+- Filing Date
+- Period of Report
+- Publicly Reported Institutional Position
+- Reported Holder Concentration
+- Data Through [quarter-end date]
+
+Avoid unless independently supported:
+
+- Total Institutional Ownership
+- Institutions Own X% of the Company
+- Smart Money Is Buying
+- Institutional Flow Today
+- Current Institutional Position
+- Real-Time Accumulation
+- Institutions Are Accumulating Now
+- Strong Buy
+- Institutional Confirmation
+
+Important limitations must remain visible:
+
+- Form 13F is periodic and delayed.
+- The position reflects the period-of-report date, not necessarily the filing date.
+- Filings may be amended.
+- Form 13F does not provide a complete picture of all institutional activity.
+- Short positions are not represented as ordinary long holdings.
+- Put/call entries must not be mixed into common-stock share totals.
+- Reported holdings may have changed after quarter end.
+- Source filings may contain filer-supplied inaccuracies.
+
+Never imply that institutional participation predicts future returns.
+
+====================================================================
+DO NOT MODIFY
+====================================================================
+
+Do not modify:
+
+- Opportunity Engine
+- scanner qualification
+- MCP ranking
+- lifecycle logic
+- MarketHistoryService
+- Twelve Data market-history ingestion
+- Trade Structure Engine
+- Live Contract Resolver
+- broker integrations
+- options-chain logic
+- InstaTrade™ order preparation
+- order submission
+- Congress data
+- news provider logic
+- existing evidence scores outside the Institutional provider
+- portfolio engine
+- Ask AI provider
+- authentication
+- billing
+
+Do not introduce a commercial institutional-data vendor in this sprint.
+
+Do not scrape websites whose terms do not permit automated retrieval.
+
+Do not use Yahoo Finance, Stooq or unofficial HTML scraping.
+
+====================================================================
+PHASE 0 — REQUIRED ARCHITECTURE AND DATA AUDIT
+====================================================================
+
+Before implementing, audit the repository and current subscriptions.
+
+Report:
+
+1. Current Institutional tab components and provider interface.
+2. Existing Evidence Engine institutional provider or placeholder.
+3. Existing database tables related to:
+   - securities
+   - symbols
+   - companies
+   - CIKs
+   - CUSIPs
+   - FIGIs
+   - institutional holders
+   - SEC filings
+   - fundamentals
+   - ETF holdings
+4. Existing SEC/EDGAR integration, if any.
+5. Existing Twelve Data endpoints currently used.
+6. Whether the current Twelve Data plan exposes:
+   - profile
+   - statistics
+   - shares outstanding
+   - market capitalization
+   - institutional ownership
+   - holders
+   - mutual-fund holders
+   - ETF holdings
+   - income statement
+   - balance sheet
+   - cash flow
+7. Credit cost and rate-limit implications for each available endpoint.
+8. Existing security-master or ticker/CUSIP mapping.
+9. Existing scheduled-job architecture and advisory-lock pattern.
+10. Existing source-attribution and freshness components.
+11. Existing caching and retention patterns.
+12. Licensing restrictions affecting redistribution to VCP Trader users.
+
+Do not assume an endpoint exists because a provider markets “fundamental data.”
+
+Verify it from the installed client, documentation already in the repository, a
+safe entitlement probe, or provider response.
+
+Do not make a paid API request loop during the audit.
+
+Return the audit internally before coding.
+
+====================================================================
+SOURCE STRATEGY
+====================================================================
+
+Use this source hierarchy:
+
+1. SEC Form 13F quarterly bulk datasets, when practical.
+2. SEC EDGAR filing documents for targeted validation or recent filings not yet in a
+   bulk quarter.
+3. Existing approved Twelve Data fundamental/reference endpoints only for fields the
+   current plan is entitled to use.
+4. Existing internal security master.
+
+Do not silently substitute another source.
+
+Every returned metric must include:
+
+- source
+- period of report
+- latest filing date used
+- generated-at timestamp
+- freshness state
+- coverage limitations
+
+====================================================================
+SEC ACCESS REQUIREMENTS
+====================================================================
+
+Follow SEC fair-access practices.
+
+All SEC requests must:
+
+- include a descriptive User-Agent identifying the application and contact email;
+- use a low bounded request rate;
+- use retries with backoff for retryable failures;
+- honor HTTP errors and rate limits;
+- use caching;
+- avoid repeated downloads of unchanged quarterly files;
+- avoid concurrent request storms;
+- never bypass SEC access controls.
+
+Add configuration such as:
+
+SEC_USER_AGENT="VCP Trader AI contact@example.com"
+
+Do not hardcode a personal email in source code.
+
+If SEC_USER_AGENT is absent:
+
+- disable SEC ingestion;
+- emit a clear safe configuration error;
+- keep the existing placeholder/unavailable state;
+- do not issue anonymous high-volume requests.
+
+====================================================================
+FORM 13F DATA MODEL
+====================================================================
+
+Use Form 13F-HR and 13F-HR/A holdings information.
+
+Model at least:
+
+13F filing:
+
+- accession number
+- filer CIK
+- filer name
+- filing type
+- filing date
+- accepted timestamp, when available
+- period of report
+- amendment flag
+- amendment number/type, when available
+- source URL or accession reference
+- ingested at
+- source checksum/version
+
+13F holding:
+
+- filing accession
+- filer CIK
+- filer name
+- issuer name
+- class title
+- CUSIP
+- FIGI, when supplied
+- reported value
+- reported share amount
+- share/principal type
+- put/call indicator
+- investment discretion
+- other manager identifiers, when supplied
+- voting authority fields, when supplied
+- period of report
+- filing date
+- mapped internal symbol, nullable
+- mapping status
+- mapping confidence/method
+- ingested at
+
+Never discard the original reported identifier fields.
+
+Never overwrite historical quarters.
+
+====================================================================
+DATABASE DESIGN
+====================================================================
+
+Prefer additive tables such as:
+
+institutional_13f_filings
+
+institutional_13f_holdings
+
+institutional_security_mappings
+
+institutional_quarterly_aggregates
+
+institutional_ingestion_runs
+
+Use the repository’s current naming and migration conventions.
+
+Required constraints:
+
+- accession number uniqueness for filings
+- deterministic holding-row uniqueness
+- idempotent re-ingestion
+- amendment-safe processing
+- indexes on:
+  - period of report
+  - filer CIK
+  - CUSIP
+  - mapped symbol
+  - accession number
+  - filing date
+
+Do not create a table named institutional_ownership if the stored data is only
+13F-reported holdings.
+
+====================================================================
+AMENDMENT AND DUPLICATION POLICY
+====================================================================
+
+Define a deterministic policy for amendments.
+
+Requirements:
+
+- retain original and amended filings for auditability;
+- determine which filing version is considered effective;
+- avoid double-counting an original filing and its amendment;
+- avoid double-counting holdings reported through included managers;
+- preserve amendment metadata;
+- document limitations where manager relationships cannot be fully de-duplicated.
+
+Do not simply sum every filing row in a quarter.
+
+Add tests for:
+
+- original filing
+- full amendment
+- partial amendment
+- duplicate accession
+- late amendment
+- same manager filing twice
+- included-manager metadata
+
+====================================================================
+SECURITY IDENTIFIER MAPPING
+====================================================================
+
+The most important implementation risk is mapping 13F securities to VCP Trader
+symbols.
+
+Do not map solely by issuer-name string matching.
+
+Preferred mapping hierarchy:
+
+1. Exact CUSIP mapping already present in the internal security master.
+2. Exact FIGI mapping when both sources provide FIGI.
+3. Previously reviewed durable mapping.
+4. Deterministic issuer/class match only when unique and high-confidence.
+5. Unmapped.
+
+Every mapping must record:
+
+- mapping method
+- mapped symbol
+- confidence/status
+- created at
+- last verified at
+- source identifiers
+
+Suggested statuses:
+
+- exact
+- reviewed
+- probable
+- ambiguous
+- unmapped
+- rejected
+
+Production analytics may use only:
+
+- exact
+- reviewed
+
+Optionally allow probable mappings in an internal diagnostic view, never silently in
+user-visible totals.
+
+If the repository lacks reliable CUSIP/ticker mapping:
+
+- implement the mapping architecture;
+- populate only mappings that can be verified from existing approved data;
+- return CONDITIONAL_GO;
+- do not create guessed mappings for the entire market.
+
+For the initial VCP Trader tracked universe, a controlled reviewed mapping table is
+acceptable if it is auditable and versioned.
+
+====================================================================
+INGESTION DESIGN
+====================================================================
+
+Create a bounded background ingestion workflow.
+
+Suggested cadence:
+
+- check for a new SEC quarterly dataset daily during filing season;
+- ingest each available quarter once;
+- process amendments incrementally;
+- allow an authenticated/admin manual run;
+- never perform bulk ingestion during ordinary page requests.
+
+Use:
+
+- PostgreSQL advisory lock
+- idempotent upserts
+- structured ingestion status
+- retries
+- bounded concurrency
+- resumable checkpoints
+- retention of run metadata
+
+Do not block application startup while downloading or processing a large quarter.
+
+Startup may schedule the job asynchronously.
+
+Required statuses:
+
+- pending
+- running
+- completed
+- partial
+- failed
+- skipped_locked
+- skipped_disabled
+
+====================================================================
+INITIAL BACKFILL
+====================================================================
+
+Initial production target:
+
+- most recent 8 quarters, if storage and processing are reasonable;
+- minimum viable target: latest quarter plus previous quarter.
+
+A two-quarter minimum is required for quarter-over-quarter change.
+
+Do not download the entire SEC archive before the MVP can be used.
+
+Support a configurable range, for example:
+
+INSTITUTIONAL_13F_BACKFILL_QUARTERS=8
+
+Bound and validate the value.
+
+====================================================================
+NORMALIZATION RULES
+====================================================================
+
+Normalize:
+
+- CIK with leading zeros consistently
+- CUSIP formatting
+- issuer whitespace
+- class-title whitespace
+- dates
+- values and shares
+- put/call values
+- amendment flags
+
+Do not:
+
+- convert nulls to zero;
+- infer shares from market value;
+- combine put/call positions with common-stock shares;
+- treat principal amount as shares;
+- treat filing date as period of report;
+- calculate price from value/shares and present it as a market quote.
+
+Filter common-equity aggregation carefully.
+
+Keep excluded rows available for audit.
+
+====================================================================
+QUARTERLY AGGREGATION
+====================================================================
+
+For each mapped symbol and period of report, calculate:
+
+- reportingManagerCount
+- aggregateReportedShares
+- aggregateReportedValue
+- previousQuarterReportedShares
+- previousQuarterReportedValue
+- reportedSharesChange
+- reportedSharesChangePercent, when denominator is valid
+- newPositionManagerCount
+- increasedPositionManagerCount
+- reducedPositionManagerCount
+- exitedPositionManagerCount
+- unchangedManagerCount
+- topHolderShareOfReportedShares
+- top5HolderShareOfReportedShares
+- top10HolderShareOfReportedShares
+- largest reported holders
+- coverage status
+- amendment status
+- generated at
+
+Definitions must be documented.
+
+“New position” means:
+
+- manager has positive eligible shares this quarter;
+- no eligible position for the same mapped security in the immediately previous
+  comparable quarter.
+
+“Exit” means:
+
+- manager had a positive eligible position in the prior comparable quarter;
+- no eligible position in the current effective filing set.
+
+Do not infer intraperiod transactions.
+
+====================================================================
+INSTITUTIONAL OWNERSHIP PERCENTAGE
+====================================================================
+
+Do not display “Institutional Ownership %” in the MVP unless all of the following
+are true:
+
+- reliable aggregate eligible 13F shares;
+- reliable period-compatible shares outstanding;
+- no material mapping ambiguity;
+- documented denominator;
+- clear disclosure that the numerator is 13F-reported holdings, not all institutional
+  holdings.
+
+If supported, label it:
+
+“Reported 13F Shares as % of Shares Outstanding”
+
+not:
+
+“Institutional Ownership”
+
+Include:
+
+- numerator period
+- denominator period
+- source of shares outstanding
+- calculation timestamp
+- coverage warning
+
+If shares outstanding are not reliably available, omit the percentage.
+
+Never estimate it from market capitalization and current price.
+
+====================================================================
+CONCENTRATION METRICS
+====================================================================
+
+Concentration must refer to the reported 13F universe:
+
+- Top holder share of reported 13F shares
+- Top 5 share of reported 13F shares
+- Top 10 share of reported 13F shares
+
+Label:
+
+Reported Holder Concentration
+
+Do not label it:
+
+Total Ownership Concentration
+
+Suggested deterministic categories:
+
+- Low
+- Moderate
+- High
+
+Document thresholds and make clear that the denominator is aggregate mapped,
+eligible 13F-reported shares for that quarter.
+
+====================================================================
+INSTITUTIONAL TREND CLASSIFICATION
+====================================================================
+
+Create a deterministic classification based only on available 13F data.
+
+Suggested states:
+
+- Increasing
+- Stable
+- Decreasing
+- Mixed
+- Insufficient History
+- Unavailable
+
+Inputs may include:
+
+- aggregate reported-shares change
+- number of increasing versus reducing managers
+- new versus exited positions
+- amendment/coverage quality
+
+Do not call the result accumulation when confidence or coverage is insufficient.
+
+Preferred label:
+
+13F Reported Holdings Trend
+
+Avoid:
+
+Institutional Accumulation Signal
+
+Document every rule.
+
+====================================================================
+INSTITUTIONAL EVIDENCE ALIGNMENT
+====================================================================
+
+Integrate institutional context into the existing Evidence Engine additively.
+
+Possible states:
+
+- Supports
+- Neutral
+- Weakens
+- Unavailable
+
+Use deterministic rules only.
+
+Example principles:
+
+Supports:
+- eligible reported shares increased;
+- increasing managers meaningfully exceed reducing managers;
+- coverage is adequate;
+- no unresolved amendment/mapping issue.
+
+Weakens:
+- eligible reported shares decreased;
+- reducers/exits meaningfully exceed increasers/new positions;
+- coverage is adequate.
+
+Neutral:
+- small change or mixed manager activity.
+
+Unavailable:
+- missing quarter;
+- inadequate mapping;
+- only one quarter;
+- ingestion failure;
+- unresolved amendments.
+
+Do not change existing global evidence-score formulas without a separate explicit
+review.
+
+Institutional evidence should not dominate technical qualification.
+
+====================================================================
+API DESIGN
+====================================================================
+
+Add one authenticated additive endpoint if an existing Evidence Engine endpoint cannot
+safely carry the data.
+
+Suggested:
+
+GET /api/institutional/:symbol
+
+Response shape:
+
+{
+  "status": "available | partial | unavailable | stale | error",
+  "symbol": "COST",
+  "source": "SEC Form 13F",
+  "periodOfReport": "2026-06-30",
+  "latestFilingDate": "2026-08-14",
+  "generatedAt": "...",
+  "freshness": {
+    "status": "current_quarter | prior_quarter | stale",
+    "daysSincePeriodEnd": 0,
+    "daysSinceLatestFiling": 0
+  },
+  "coverage": {
+    "mappingStatus": "complete | partial | insufficient",
+    "eligibleHoldingCount": 0,
+    "excludedHoldingCount": 0,
+    "warnings": []
+  },
+  "summary": {
+    "reportingManagerCount": 0,
+    "aggregateReportedShares": null,
+    "aggregateReportedValue": null,
+    "reportedSharesChange": null,
+    "reportedSharesChangePercent": null,
+    "trend": "increasing | stable | decreasing | mixed | insufficient_history"
+  },
+  "managerActivity": {
+    "new": 0,
+    "increased": 0,
+    "reduced": 0,
+    "exited": 0,
+    "unchanged": 0
+  },
+  "concentration": {
+    "topHolderPercentOfReportedShares": null,
+    "top5PercentOfReportedShares": null,
+    "top10PercentOfReportedShares": null,
+    "classification": "low | moderate | high | unavailable"
+  },
+  "largestReportedHolders": [
+    {
+      "managerCik": "...",
+      "managerName": "...",
+      "reportedShares": 0,
+      "reportedValue": 0,
+      "quarterChangeShares": null,
+      "quarterChangePercent": null,
+      "activity": "new | increased | reduced | unchanged",
+      "periodOfReport": "...",
+      "filingDate": "..."
+    }
+  ],
+  "evidenceAlignment": {
+    "state": "supports | neutral | weakens | unavailable",
+    "reasons": []
+  },
+  "limitations": [],
+  "sourceLinks": []
+}
+
+Requirements:
+
+- no raw full SEC payload;
+- no credentials;
+- no internal stack traces;
+- safe bounded holder list;
+- pagination or separate endpoint for full list if required;
+- source links must use safe accession references;
+- cache public aggregates.
+
+====================================================================
+CLIENT — INSTITUTIONAL TAB
+====================================================================
+
+Replace the placeholder with:
+
+Institutional Intelligence
+
+Top summary:
+
+- 13F Reported Holdings Trend
+- Reporting Manager Count
+- Quarter-over-Quarter Reported Shares Change
+- Period of Report
+- Latest Filing Date
+- Evidence Alignment
+
+Example:
+
+13F Reported Holdings Trend
+Increasing
+
+Reported managers
+1,248
+
+Reported shares change
++2.8% QoQ
+
+Data through
+Jun 30, 2026
+
+Latest filing used
+Aug 14, 2026
+
+Do not display fake sample numbers.
+
+====================================================================
+CLIENT — REQUIRED SECTIONS
+====================================================================
+
+A. Data Freshness and Limitations
+
+Display prominently:
+
+“Form 13F information is periodic and delayed. Holdings reflect the stated
+quarter-end reporting period and may have changed since then.”
+
+Show:
+
+- period of report
+- latest filing date
+- generated time
+- source
+- mapping/coverage warning
+
+B. Reported Holdings Trend
+
+Display:
+
+- aggregate reported shares current quarter
+- prior quarter
+- absolute change
+- percentage change
+- trend classification
+
+A small chart may show up to 8 quarters.
+
+Use actual historical quarters only.
+
+No interpolation.
+
+C. Reporting Manager Activity
+
+Display:
+
+- New positions
+- Increased positions
+- Reduced positions
+- Exited positions
+- Unchanged
+
+Explain that these are changes between disclosed quarter-end positions, not known
+transaction dates.
+
+D. Largest Reported Holders
+
+Table:
+
+- Manager
+- Reported Shares
+- Reported Value
+- QoQ Change
+- Activity
+- Filing Date
+
+Allow sorting.
+
+Do not label reported value as current market value unless it genuinely is.
+
+E. Reported Holder Concentration
+
+Display:
+
+- Top holder %
+- Top 5 %
+- Top 10 %
+- classification
+
+Explicit denominator:
+
+“Share of mapped eligible 13F-reported shares.”
+
+F. Evidence Alignment
+
+Display:
+
+- Supports
+- Neutral
+- Weakens
+- Unavailable
+
+Include deterministic reasons.
+
+Do not show stars or predictive confidence unless consistent with the existing Evidence
+Engine model.
+
+G. Source and Methodology
+
+Expandable section:
+
+- Form 13F explanation
+- included/excluded holding types
+- amendment treatment
+- mapping methodology
+- period versus filing date
+- limitations
+- links to SEC source material/filings
+
+====================================================================
+CLIENT — WORKSPACE SUMMARY
+====================================================================
+
+Add a compact Institutional summary to the AI Trading Workspace Evidence area.
+
+Display only:
+
+Institutional — 13F
+
+Trend: Increasing / Stable / Decreasing / Mixed / N/A
+Reported shares change: +X% / N/A
+Reporting managers: N / N/A
+Period: YYYY-QN
+Alignment: Supports / Neutral / Weakens / N/A
+
+CTA:
+
+Open Institutional Details
+
+Do not add another large card to the simplified Workspace.
+
+If data is unavailable:
+
+Institutional 13F data unavailable
+
+with a link to methodology or status.
+
+====================================================================
+OPTIONAL TWELVE DATA FUNDAMENTALS
+====================================================================
+
+Only implement supporting fundamental fields after the Phase 0 audit confirms the
+current subscription entitlement.
+
+Possible supporting fields:
+
+- company profile
+- sector
+- industry
+- shares outstanding
+- float
+- market capitalization
+
+Do not use Twelve Data to fabricate 13F manager data.
+
+Do not repeatedly fetch fundamentals on page load.
+
+If used:
+
+- ingest/cache them through an approved service;
+- preserve provider timestamp;
+- respect credits;
+- use a daily or lower-frequency refresh suitable for fundamentals;
+- do not consume live-quote credits;
+- handle entitlement errors honestly.
+
+If unavailable:
+
+- omit dependent metrics;
+- do not block core SEC 13F data.
+
+====================================================================
+ETF EXPOSURE — OUT OF SCOPE FOR MVP
+====================================================================
+
+Do not claim ETF exposure can be derived completely from Form 13F.
+
+ETF holdings composition requires reliable fund-level constituent data.
+
+For this sprint:
+
+- audit existing ETF-holdings coverage;
+- show ETF exposure only if an approved existing source already provides it;
+- otherwise retain it as a clearly labeled future capability;
+- do not scrape ETF-provider web pages.
+
+Do not delay the 13F MVP for ETF exposure.
+
+====================================================================
+“SMART MONEY SCORE” — OUT OF SCOPE
+====================================================================
+
+Do not build an overall “Smart Money Score” in this sprint.
+
+First establish reliable, traceable institutional data.
+
+The MVP may show deterministic Evidence Alignment, but no proprietary composite score.
+
+A score can be considered later after:
+
+- several quarters of validated data;
+- reliable identifier mapping;
+- coverage measurement;
+- user testing;
+- documented weighting.
+
+====================================================================
+CONTEXTUAL AI ASSISTANT
+====================================================================
+
+Extend the existing contextual assistant additively so it can answer:
+
+- What do the latest 13F filings show for COST?
+- Did reported institutional holdings increase?
+- Which reporting managers disclosed the largest positions?
+- What are the limitations of this institutional data?
+- Does the 13F evidence support the current research thesis?
+
+Preferred architecture:
+
+- client sends symbol + question + contextMode;
+- backend retrieves authoritative Institutional Intelligence by symbol;
+- do not send the entire holder table from the browser;
+- limit holder details included in AI context;
+- preserve source period and limitations;
+- AI must not call the data real-time;
+- AI must not infer transactions after quarter end;
+- AI must not treat holdings as a recommendation.
+
+If institutional data is unavailable, the assistant must say so.
+
+====================================================================
+FAILURE ISOLATION
+====================================================================
+
+Institutional data failure must not break:
+
+- Research Package
+- AI Trading Workspace
+- Opportunity Engine
+- Evidence Engine
+- Congress
+- News
+- Trade Planning
+- Live Contract Resolver
+- Ask AI generally
+
+Only the Institutional section should show:
+
+- unavailable
+- partial
+- stale
+- ingestion pending
+- mapping insufficient
+- configuration missing
+
+Preserve the current placeholder as a graceful fallback until a valid aggregate exists.
+
+====================================================================
+OBSERVABILITY
+====================================================================
+
+Add safe structured events:
+
+institutional_13f_ingestion_started
+institutional_13f_dataset_downloaded
+institutional_13f_filing_processed
+institutional_13f_amendment_applied
+institutional_13f_mapping_summary
+institutional_13f_aggregation_completed
+institutional_13f_ingestion_partial
+institutional_13f_ingestion_failed
+institutional_api_served
+institutional_api_unavailable
+
+Safe fields:
+
+- quarter
+- filing count
+- holding count
+- mapped count
+- unmapped count
+- duration
+- status
+- safe error code
+
+Never log:
+
+- environment secrets
+- full raw dataset
+- full HTTP headers
+- internal database URL
+- user account data
+
+====================================================================
+ADMIN AND READINESS TOOLS
+====================================================================
+
+Add a read-only readiness/audit script:
+
+scripts/audit-institutional-readiness.ts
+
+Report:
+
+- configured SEC User-Agent
+- available quarters
+- latest successful ingestion
+- filings ingested
+- eligible holdings
+- exact/reviewed mappings
+- unmapped/ambiguous holdings
+- tracked-universe coverage
+- symbols with two comparable quarters
+- amendment-processing status
+- stale/failed runs
+- API readiness
+
+Never print secrets or full raw filing rows.
+
+Verdicts:
+
+GO
+
+- latest two required quarters loaded;
+- tracked-universe mapping coverage meets documented threshold;
+- amendments processed;
+- no critical aggregation violations.
+
+CONDITIONAL_GO
+
+- data available for a subset;
+- partial mapping;
+- UI clearly labels partial coverage.
+
+NO_GO
+
+- no valid quarter;
+- amendment double-counting;
+- unreliable mapping;
+- invalid aggregates.
+
+====================================================================
+SECURITY
+====================================================================
+
+- public SEC data only;
+- authenticated product endpoint;
+- no user-specific SEC ingestion;
+- validate symbols;
+- safe pagination;
+- request-size limits;
+- admin authorization for manual ingestion;
+- prevent arbitrary URL fetching;
+- do not accept SEC source URLs from clients;
+- sanitize accession identifiers;
+- no SSRF;
+- no SQL string interpolation;
+- use parameterized queries/ORM;
+- prevent duplicate scheduled workers with advisory locks.
+
+====================================================================
+PERFORMANCE
+====================================================================
+
+- no SEC requests during normal user page loads;
+- serve institutional pages from PostgreSQL aggregates;
+- index symbol and quarter;
+- cache public API results appropriately;
+- lazy-load Institutional detail tab;
+- Workspace uses compact cached summary;
+- no repeated AI call on page load;
+- no large holder table embedded into the core Research Package;
+- paginate full holder results.
+
+====================================================================
+TESTING
+====================================================================
+
+Add comprehensive tests.
+
+A. SEC parsing
+
+- normal 13F information table
+- missing optional fields
+- put/call rows
+- shares versus principal amount
+- malformed row
+- invalid CUSIP
+- amendment metadata
+- duplicate filing
+
+B. Filing effectiveness
+
+- original only
+- original plus full amendment
+- partial amendment
+- late amendment
+- duplicate accession
+- included manager behavior
+- no double counting
+
+C. Identifier mapping
+
+- exact CUSIP
+- exact FIGI
+- reviewed mapping
+- ambiguous issuer name
+- unmapped security
+- lowercase/spacing normalization
+- only exact/reviewed included in production aggregate
+
+D. Aggregation
+
+- manager count
+- aggregate shares
+- aggregate value
+- current/prior quarter comparison
+- new position
+- increased
+- reduced
+- exit
+- unchanged
+- zero denominator
+- missing prior quarter
+- top holder concentration
+- top 5/top 10 concentration
+
+E. Trend/evidence
+
+- increasing
+- stable
+- decreasing
+- mixed
+- insufficient history
+- partial coverage
+- amendment uncertainty
+- supports/neutral/weakens/unavailable
+
+F. Percentage safeguards
+
+- shares-outstanding unavailable
+- incompatible denominator date
+- valid reported-13F-shares percentage
+- no estimate from market cap
+- label contains “Reported 13F”
+
+G. API
+
+- authentication
+- symbol validation
+- available
+- partial
+- unavailable
+- stale
+- source/freshness fields
+- holder limit
+- no raw payload
+- safe errors
+- no secrets
+
+H. Client
+
+- loading
+- available summary
+- partial coverage
+- unavailable
+- stale
+- trend chart
+- manager activity
+- holder table
+- concentration
+- methodology
+- disclaimer
+- Workspace compact summary
+- no predictive wording
+- mobile
+- keyboard/accessibility
+
+I. Ingestion
+
+- advisory lock
+- idempotent quarter
+- resumable failure
+- bounded retries
+- configuration missing
+- no request on ordinary page load
+- structured logs safe
+- scheduled cadence
+
+J. Readiness script
+
+- GO
+- CONDITIONAL_GO
+- NO_GO
+- safe output
+- no credentials
+- mapping threshold
+- comparable-quarter requirement
+
+Run:
+
+- all server tests
+- all client tests
+- typecheck
+- production build
+
+====================================================================
+DEPLOYMENT AND FEATURE FLAG
+====================================================================
+
+Introduce a feature flag:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+Default false until:
+
+- migration succeeds;
+- SEC User-Agent configured;
+- two quarters ingested;
+- readiness audit passes;
+- production UAT completed.
+
+Optional variables:
+
+SEC_USER_AGENT
+INSTITUTIONAL_13F_BACKFILL_QUARTERS=8
+INSTITUTIONAL_13F_INGESTION_ENABLED=true
+
+Validate and document each variable.
+
+When the feature flag is false:
+
+- existing Institutional placeholder remains;
+- no SEC scheduled job runs unless separately enabled for backfill;
+- no page regression.
+
+Provide a safe rollback:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+No code rollback required.
+
+====================================================================
+PRODUCTION UAT
+====================================================================
+
+Provide exact steps:
+
+1. Run migration.
+2. Configure SEC_USER_AGENT.
+3. Keep UI feature disabled.
+4. Run latest-two-quarter backfill.
+5. Run institutional readiness audit.
+6. Validate COST manually against source filings.
+7. Validate one symbol with increasing reported shares.
+8. Validate one with decreasing reported shares.
+9. Validate one unmapped/unavailable symbol.
+10. Validate an amended filing.
+11. Confirm filing date versus period date.
+12. Confirm no put/call rows enter common-share totals.
+13. Confirm holder concentration denominator.
+14. Confirm Workspace summary matches Institutional tab.
+15. Confirm assistant explains data lag.
+16. Enable feature flag.
+17. Test desktop/mobile/accessibility.
+18. Inspect browser console.
+19. Inspect Railway logs.
+20. Confirm no SEC requests occur on page load.
+21. Confirm other Research Package tabs remain healthy.
+
+====================================================================
+COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Existing architecture audit
+2. Twelve Data entitlement audit
+3. SEC source implementation
+4. Files changed
+5. Schema and migrations
+6. Tables and indexes
+7. Amendment policy
+8. Identifier-mapping strategy
+9. Included/excluded holdings policy
+10. Aggregation formulas
+11. Trend rules
+12. Evidence-alignment rules
+13. API contract
+14. Institutional tab
+15. Workspace summary
+16. AI assistant integration
+17. SEC access controls
+18. Scheduled ingestion
+19. Readiness script
+20. Observability
+21. Tests added
+22. Total passing tests
+23. Typecheck
+24. Build
+25. Environment variables
+26. Rate-limit and storage impact
+27. Known limitations
+28. Deployment order
+29. Rollback
+30. Production UAT
+31. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push or deploy automatically.
+
+Do not begin ETF holdings, sector fund flow or proprietary Smart Money scoring.
+
+Wait for review.

@@ -103,6 +103,12 @@ import {
   WorkspaceFooterCta,
 } from "@/components/research/workspace/workspace-simplified";
 
+// Sprint 2.2.5 — Institutional Intelligence
+import {
+  InstitutionalIntelligence,
+  InstitutionalWorkspaceCompact,
+} from "@/components/research/institutional";
+
 // ---------------------------------------------------------------------------
 // Sentiment types (for News Evidence tab)
 // ---------------------------------------------------------------------------
@@ -1841,52 +1847,12 @@ function NewsEvidenceTab({ symbol }: { symbol: string }) {
   );
 }
 
-// --- Institutional Evidence Tab ---
-
-function InstitutionalTab() {
-  return (
-    <Card className="border-border/40" data-testid="tab-institutional">
-      <CardHeader className="px-4 py-3">
-        <CardTitle className="text-[13px] font-medium flex items-center gap-1.5">
-          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-          Institutional Context
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-4 pb-6 pt-0 space-y-4">
-        <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Building2 className="h-8 w-8 text-muted-foreground/40" />
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Institutional ownership data is not available in this version.
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
-              When connected, this section would display institutional ownership percentage, recent
-              accumulation trends, major holder changes, ETF inclusion, and sector participation data
-              from public 13-F filings and fund flows.
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded border border-border/40 bg-muted/20 px-4 py-3 space-y-2">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-            What institutional context covers
-          </p>
-          {[
-            "Reported institutional ownership percentage (SEC 13-F filings)",
-            "Recent quarter-over-quarter accumulation or distribution",
-            "ETF index inclusion and fund-level exposure",
-            "Sector fund participation and rotation signals",
-            "Major holder concentration risk",
-          ].map((item) => (
-            <div key={item} className="flex items-start gap-2">
-              <MinusCircle className="h-3 w-3 text-muted-foreground/50 shrink-0 mt-0.5" />
-              <span className="text-[11px] text-muted-foreground">{item}</span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
+// --- Institutional Evidence Tab (Sprint 2.2.5) ---
+// Renders the full InstitutionalIntelligence component when feature is enabled.
+// When INSTITUTIONAL_INTELLIGENCE_ENABLED=false the component renders its own
+// "data not yet available" placeholder with methodology disclosure.
+function InstitutionalTab({ symbol }: { symbol: string }) {
+  return <InstitutionalIntelligence symbol={symbol} />;
 }
 
 // --- Catalysts Evidence Tab ---
@@ -2389,6 +2355,9 @@ export default function OpportunityResearchPage() {
                 onNavigateTab={handleTabChange}
               />
 
+              {/* VERIFY — Institutional Intelligence compact summary (Sprint 2.2.5) */}
+              <InstitutionalWorkspaceCompact symbol={symbol} />
+
               {/* VERIFY — Market context (4 rows) */}
               <WorkspaceMarketContextCompact
                 pkg={pkg}
@@ -2481,7 +2450,7 @@ export default function OpportunityResearchPage() {
           {/* ─── Institutional ─── */}
           <TabsContent value="institutional" data-testid="tab-content-institutional">
             <div className="mt-3">
-              <InstitutionalTab />
+              <InstitutionalTab symbol={symbol} />
             </div>
           </TabsContent>
 

@@ -2874,3 +2874,248 @@ export const opportunityHistory = pgTable("opportunity_history", {
 
 export type OpportunityHistoryRecord = typeof opportunityHistory.$inferSelect;
 export type InsertOpportunityHistory = typeof opportunityHistory.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Institutional Intelligence — Sprint 2.2.5
+//
+// Five additive tables. None replaces existing tables.
+// All institutional data is 13F-reported holdings only — not total institutional
+// ownership. Terminology throughout must match the spec.
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per SEC Form 13F-HR (or 13F-HR/A) filing.
+ * accessionNumber is normalized without dashes and is the natural primary key.
+ * isEffective tracks which version of a filing is considered the authoritative
+ * version for a given filer+quarter after amendments are processed.
+ */
+export const institutional13fFilings = pgTable("institutional_13f_filings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Normalized accession number (no dashes), e.g. 0001364742240000078 */
+  accessionNumber: text("accession_number").notNull(),
+  /** CIK normalized with leading zeros to 10 digits */
+  filerCik: text("filer_cik").notNull(),
+  filerName: text("filer_name").notNull(),
+  /** 13F-HR | 13F-HR/A */
+  filingType: text("filing_type").notNull(),
+  filingDate: date("filing_date").notNull(),
+  /** Timestamp the filing was accepted by EDGAR, when available */
+  acceptedAt: timestamp("accepted_at"),
+  /** Quarter-end date reflected in the holdings */
+  periodOfReport: date("period_of_report").notNull(),
+  amendmentFlag: boolean("amendment_flag").notNull().default(false),
+  /** Numeric amendment sequence (0 = original) */
+  amendmentNumber: integer("amendment_number"),
+  /** RESTATEMENT | NEW_AMENDMENT | null */
+  amendmentType: text("amendment_type"),
+  /**
+   * true = this accession is the effective version for this filer+quarter.
+   * When a later amendment is ingested the original's isEffective is set false.
+   */
+  isEffective: boolean("is_effective").notNull().default(true),
+  /** Safe EDGAR accession reference URL, no credentials */
+  sourceUrl: text("source_url"),
+  ingestedAt: timestamp("ingested_at").defaultNow().notNull(),
+  /** MD5 of the downloaded document for change detection */
+  sourceChecksum: text("source_checksum"),
+}, (t) => ({
+  idxAccession: uniqueIndex("idx_13f_filings_accession").on(t.accessionNumber),
+  idxCikPeriod: index("idx_13f_filings_cik_period").on(t.filerCik, t.periodOfReport),
+  idxPeriodDate: index("idx_13f_filings_period_date").on(t.periodOfReport, t.filingDate),
+  idxFilingDate: index("idx_13f_filings_filing_date").on(t.filingDate),
+  idxEffective: index("idx_13f_filings_effective").on(t.isEffective, t.periodOfReport),
+}));
+
+export type Institutional13fFiling = typeof institutional13fFilings.$inferSelect;
+export type InsertInstitutional13fFiling = typeof institutional13fFilings.$inferInsert;
+
+/**
+ * One row per holding line in an InfoTable.
+ * The uniqueness key is (accessionNumber, cusip, classTitle, putCall) so that
+ * re-ingestion of the same accession is idempotent.
+ *
+ * Put/call rows MUST be kept separate — they must never be mixed into
+ * common-stock share totals.
+ *
+ * Never discard the original reported identifier fields.
+ * Never overwrite historical quarters.
+ */
+export const institutional13fHoldings = pgTable("institutional_13f_holdings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  accessionNumber: text("accession_number").notNull(),
+  filerCik: text("filer_cik").notNull(),
+  filerName: text("filer_name").notNull(),
+  /** As reported on the InfoTable — original whitespace normalized */
+  issuerName: text("issuer_name").notNull(),
+  classTitle: text("class_title").notNull(),
+  /** 9-character CUSIP, padded/normalized */
+  cusip: text("cusip").notNull(),
+  /** FIGI when supplied by the filer */
+  figi: text("figi"),
+  /** Reported value in thousands of USD */
+  reportedValue: bigint("reported_value", { mode: "number" }),
+  /** Reported share/principal amount */
+  reportedShares: bigint("reported_shares", { mode: "number" }),
+  /** SH = shares; PRN = principal amount */
+  sharesPrnType: text("shares_prn_type"),
+  /** Put | Call | null — never mixed into common-stock totals */
+  putCall: text("put_call"),
+  /** SOLE | SHARED | OTHER */
+  investmentDiscretion: text("investment_discretion"),
+  otherManager: text("other_manager"),
+  votingSole: bigint("voting_sole", { mode: "number" }),
+  votingShared: bigint("voting_shared", { mode: "number" }),
+  votingNone: bigint("voting_none", { mode: "number" }),
+  /** Quarter-end date from the parent filing */
+  periodOfReport: date("period_of_report").notNull(),
+  filingDate: date("filing_date").notNull(),
+  /** Internal VCP Trader symbol, or null when unmapped */
+  mappedSymbol: text("mapped_symbol"),
+  /** exact|reviewed|probable|ambiguous|unmapped|rejected */
+  mappingStatus: text("mapping_status").notNull().default("unmapped"),
+  ingestedAt: timestamp("ingested_at").defaultNow().notNull(),
+}, (t) => ({
+  idxHoldingUnique: uniqueIndex("idx_13f_holdings_unique").on(
+    t.accessionNumber, t.cusip, t.classTitle, t.putCall,
+  ),
+  idxCusipPeriod: index("idx_13f_holdings_cusip_period").on(t.cusip, t.periodOfReport),
+  idxSymbolPeriod: index("idx_13f_holdings_symbol_period").on(t.mappedSymbol, t.periodOfReport),
+  idxFilerPeriod: index("idx_13f_holdings_filer_period").on(t.filerCik, t.periodOfReport),
+  idxFilingDate: index("idx_13f_holdings_filing_date").on(t.filingDate),
+  idxMappingStatus: index("idx_13f_holdings_mapping").on(t.mappingStatus, t.periodOfReport),
+}));
+
+export type Institutional13fHolding = typeof institutional13fHoldings.$inferSelect;
+export type InsertInstitutional13fHolding = typeof institutional13fHoldings.$inferInsert;
+
+/**
+ * Durable CUSIP → VCP Trader symbol mappings.
+ * Production analytics may only use exact or reviewed status.
+ * probable and ambiguous are available in diagnostic views only.
+ *
+ * Every mapping records: method, symbol, status, created at, last verified, sources.
+ */
+export const institutionalSecurityMappings = pgTable("institutional_security_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Normalized 9-character CUSIP */
+  cusip: text("cusip").notNull(),
+  /** FIGI when available */
+  figi: text("figi"),
+  /** Normalized issuer name from 13F (for reference / audit) */
+  issuerName: text("issuer_name"),
+  classTitle: text("class_title"),
+  /** VCP Trader internal symbol, null when unmapped */
+  mappedSymbol: text("mapped_symbol"),
+  /** exact | reviewed | probable | ambiguous | unmapped | rejected */
+  mappingStatus: text("mapping_status").notNull(),
+  /** cusip_exact | figi_exact | reviewed | name_match | manual */
+  mappingMethod: text("mapping_method").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastVerifiedAt: timestamp("last_verified_at").defaultNow().notNull(),
+  /** Auditable notes for reviewed/manual mappings */
+  notes: text("notes"),
+}, (t) => ({
+  idxCusip: uniqueIndex("idx_sec_mappings_cusip").on(t.cusip),
+  idxMappedSymbol: index("idx_sec_mappings_symbol").on(t.mappedSymbol),
+  idxStatus: index("idx_sec_mappings_status").on(t.mappingStatus),
+}));
+
+export type InstitutionalSecurityMapping = typeof institutionalSecurityMappings.$inferSelect;
+export type InsertInstitutionalSecurityMapping = typeof institutionalSecurityMappings.$inferInsert;
+
+/**
+ * Pre-computed quarterly aggregates per (symbol, periodOfReport).
+ * Generated by the aggregation engine after holdings are ingested.
+ * The API reads from this table — never from the raw holdings at request time.
+ *
+ * All concentration fields refer to the reported 13F universe, not total ownership.
+ */
+export const institutionalQuarterlyAggregates = pgTable("institutional_quarterly_aggregates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  /** Quarter-end date, e.g. 2024-03-31 */
+  periodOfReport: date("period_of_report").notNull(),
+  /** Human-readable label, e.g. "2024-Q1" */
+  periodLabel: text("period_label").notNull(),
+  /** Count of 13F filing managers who reported an eligible position */
+  reportingManagerCount: integer("reporting_manager_count").notNull().default(0),
+  /** Aggregate eligible common-stock reported shares (excludes put/call, PRN) */
+  aggregateReportedShares: bigint("aggregate_reported_shares", { mode: "number" }),
+  /** Aggregate reported value in thousands USD */
+  aggregateReportedValue: bigint("aggregate_reported_value", { mode: "number" }),
+  /** Quarter-end date of the previous comparable quarter used for comparison */
+  prevPeriodOfReport: date("prev_period_of_report"),
+  previousQuarterShares: bigint("previous_quarter_shares", { mode: "number" }),
+  previousQuarterValue: bigint("previous_quarter_value", { mode: "number" }),
+  /** Signed share change: current − previous */
+  reportedSharesChange: bigint("reported_shares_change", { mode: "number" }),
+  /** Percent change; null when denominator is zero or unavailable */
+  reportedSharesChangePercent: real("reported_shares_change_percent"),
+  /** Managers with no prior-quarter position who have a current position */
+  newPositionCount: integer("new_position_count").notNull().default(0),
+  increasedPositionCount: integer("increased_position_count").notNull().default(0),
+  reducedPositionCount: integer("reduced_position_count").notNull().default(0),
+  exitedPositionCount: integer("exited_position_count").notNull().default(0),
+  unchangedCount: integer("unchanged_count").notNull().default(0),
+  /** Top single holder share of reported 13F shares (0–1), null when unavailable */
+  topHolderPercent: real("top_holder_percent"),
+  top5HolderPercent: real("top5_holder_percent"),
+  top10HolderPercent: real("top10_holder_percent"),
+  /** low | moderate | high | unavailable */
+  concentrationClassification: text("concentration_classification"),
+  /** increasing | stable | decreasing | mixed | insufficient_history | unavailable */
+  trend: text("trend").notNull().default("unavailable"),
+  /** JSON array of largest reported holders (bounded to top 20) */
+  largestHolders: jsonb("largest_holders").notNull().default([]),
+  /** Count of eligible holdings included in the aggregate */
+  eligibleHoldingCount: integer("eligible_holding_count").notNull().default(0),
+  /** Count of holdings excluded (put/call, PRN, unmapped, etc.) */
+  excludedHoldingCount: integer("excluded_holding_count").notNull().default(0),
+  /** complete | partial | insufficient */
+  coverageStatus: text("coverage_status").notNull().default("insufficient"),
+  /** clean | has_amendments | pending_amendments */
+  amendmentStatus: text("amendment_status").notNull().default("clean"),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+}, (t) => ({
+  idxSymbolPeriod: uniqueIndex("idx_iqa_symbol_period").on(t.symbol, t.periodOfReport),
+  idxPeriod: index("idx_iqa_period").on(t.periodOfReport),
+  idxSymbol: index("idx_iqa_symbol").on(t.symbol),
+  idxGenerated: index("idx_iqa_generated").on(t.generatedAt),
+}));
+
+export type InstitutionalQuarterlyAggregate = typeof institutionalQuarterlyAggregates.$inferSelect;
+export type InsertInstitutionalQuarterlyAggregate = typeof institutionalQuarterlyAggregates.$inferInsert;
+
+/**
+ * Tracks each ingestion run: one row per quarter per attempt.
+ * Used by the readiness audit and advisory-lock guard.
+ */
+export const institutionalIngestionRuns = pgTable("institutional_ingestion_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Quarter identifier, e.g. "2024-Q1" */
+  quarter: text("quarter").notNull(),
+  /** Quarter-end date */
+  periodOfReport: date("period_of_report").notNull(),
+  /** pending|running|completed|partial|failed|skipped_locked|skipped_disabled */
+  status: text("status").notNull(),
+  filingCount: integer("filing_count").notNull().default(0),
+  holdingCount: integer("holding_count").notNull().default(0),
+  mappedCount: integer("mapped_count").notNull().default(0),
+  unmappedCount: integer("unmapped_count").notNull().default(0),
+  /** Safe short error code (no stack, no credentials) */
+  errorCode: text("error_code"),
+  errorSummary: text("error_summary"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  durationMs: integer("duration_ms"),
+  /** scheduler | manual_admin | startup */
+  initiatedBy: text("initiated_by").notNull().default("scheduler"),
+}, (t) => ({
+  idxQuarterStatus: index("idx_iir_quarter_status").on(t.quarter, t.status),
+  idxStatus: index("idx_iir_status").on(t.status),
+  idxStarted: index("idx_iir_started").on(t.startedAt),
+  idxPeriod: index("idx_iir_period").on(t.periodOfReport),
+}));
+
+export type InstitutionalIngestionRun = typeof institutionalIngestionRuns.$inferSelect;
+export type InsertInstitutionalIngestionRun = typeof institutionalIngestionRuns.$inferInsert;

@@ -19,6 +19,7 @@ import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { isIngestionConfigured } from "../services/institutional/config";
 import { runInstitutionalIngestion } from "../services/institutional/ingestion-service";
+import { getPipelineStatus } from "../services/institutional/pipeline-status";
 
 const MAX_ADMIN_QUARTERS = 8;
 const MIN_ADMIN_QUARTERS = 1;
@@ -83,6 +84,36 @@ export function registerInstitutionalAdminRoutes(
         });
       } catch (err: any) {
         console.error("[InstitutionalAdmin] Route error:", err?.message);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
+
+  /**
+   * GET /api/admin/institutional/pipeline-status
+   *
+   * Returns full pipeline status for all priority quarters including state,
+   * progress percentage, stored counts, and next expected run time.
+   * Suitable for admin dashboards and monitoring alerts.
+   */
+  app.get(
+    "/api/admin/institutional/pipeline-status",
+    isAuthenticated,
+    isAdmin,
+    async (_req, res) => {
+      try {
+        const configured = isIngestionConfigured();
+        const schedulerEnabled = process.env.INSTITUTIONAL_13F_INGESTION_ENABLED !== "false";
+        const priorityQuarters = ["2026-Q1", "2025-Q4", "2025-Q3", "2025-Q2"];
+
+        const status = await getPipelineStatus(priorityQuarters, {
+          schedulerEnabled,
+          ingestionConfigured: configured,
+        });
+
+        return res.json(status);
+      } catch (err: any) {
+        console.error("[InstitutionalAdmin] Pipeline-status route error:", err?.message);
         return res.status(500).json({ error: "Internal server error" });
       }
     },

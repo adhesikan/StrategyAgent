@@ -74,6 +74,48 @@ export function isIngestionConfigured(): boolean {
 }
 
 /**
+ * Number of new (non-skipped) accessions to persist per scheduled invocation.
+ *
+ * Controls INSTITUTIONAL_ACCESSIONS_PER_RUN (default: 300, range: 50–2000).
+ *
+ * At current throughput (~195 holdings/sec, ~355 avg holdings/accession),
+ * 300 new accessions ≈ 9 minutes of persistence work — safely within the
+ * 10–15 minute target per daily run.
+ *
+ * Increase this value (up to 2000) as throughput improves (e.g. after Task #97
+ * implements batch existence checks).
+ *
+ * Environment variable: INSTITUTIONAL_ACCESSIONS_PER_RUN
+ * Default:              300
+ * Range:                50–2000  (values outside range fall back to 300)
+ */
+export function getAccessionsPerRun(): number {
+  const raw = process.env.INSTITUTIONAL_ACCESSIONS_PER_RUN;
+  if (!raw) return 300;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 50 || n > 2_000) return 300;
+  return n;
+}
+
+/**
+ * Stale-run threshold in minutes.
+ *
+ * Runs whose last_heartbeat_at (or started_at if no heartbeat) is older than
+ * this threshold are considered stale and marked partial at daily-job startup.
+ *
+ * Environment variable: INSTITUTIONAL_STALE_RUN_THRESHOLD_MINUTES
+ * Default:              30
+ * Range:                10–120
+ */
+export function getStaleRunThresholdMinutes(): number {
+  const raw = process.env.INSTITUTIONAL_STALE_RUN_THRESHOLD_MINUTES;
+  if (!raw) return 30;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 10 || n > 120) return 30;
+  return n;
+}
+
+/**
  * Parse a quarter label string into its components.
  * Accepts both "2026-Q2" (internal) and "2026Q2" (CLI shorthand).
  * Returns null for invalid inputs.

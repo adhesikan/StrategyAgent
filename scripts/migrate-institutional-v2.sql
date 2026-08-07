@@ -1,0 +1,13 @@
+-- THIS FILE IS SUPERSEDED.
+--
+-- Sprint 2.2.5 consolidated v1 + v2 into a single comprehensive migration.
+-- Run scripts/migrate-institutional.sql instead.
+--
+-- That file:
+--   - Handles fresh installs (no institutional tables)
+--   - Handles upgrades from old v1 SERIAL-id schema (drops and recreates if empty)
+--   - Handles upgrades from any intermediate schema (ADD COLUMN IF NOT EXISTS)
+--   - Includes all three Sprint 2.2.5 checkpoint columns:
+--       total_accessions, processed_accessions, last_heartbeat_at
+--
+-- See docs/railway-institutional-cron.md for deployment instructions.

@@ -3108,8 +3108,15 @@ export const institutionalIngestionRuns = pgTable("institutional_ingestion_runs"
   startedAt: timestamp("started_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
   durationMs: integer("duration_ms"),
-  /** scheduler | manual_admin | startup */
+  /** scheduler | manual_admin | startup | daily_job */
   initiatedBy: text("initiated_by").notNull().default("scheduler"),
+  // ── Accession-level checkpoint fields (Sprint 2.2.5 background ops) ──────
+  /** Total accessions in the parsed dataset (NULL until first parse completes). */
+  totalAccessions: integer("total_accessions"),
+  /** Accessions processed in all runs to date (both new and skipped). */
+  processedAccessions: integer("processed_accessions"),
+  /** Last time the ingestion loop wrote a progress heartbeat. */
+  lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
 }, (t) => ({
   idxQuarterStatus: index("idx_iir_quarter_status").on(t.quarter, t.status),
   idxStatus: index("idx_iir_status").on(t.status),

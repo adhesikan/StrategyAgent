@@ -22,7 +22,7 @@
 //   - Advisory lock prevents concurrent runs across Railway instances.
 
 import { db } from "../../db";
-import { sql, eq, and, gt, inArray, desc, gte } from "drizzle-orm";
+import { sql, eq, and, gt, inArray, desc, gte, or, lt } from "drizzle-orm";
 import {
   institutional13fFilings,
   institutional13fHoldings,
@@ -42,6 +42,8 @@ import {
   recentQuarters,
   quarterFromPeriodDate,
   INSTITUTIONAL_ADVISORY_LOCK_KEY,
+  getAccessionsPerRun,
+  getStaleRunThresholdMinutes,
 } from "./config";
 import {
   parseBulkQuarter,
@@ -107,12 +109,120 @@ async function updateRun(
     errorSummary: string;
     completedAt: Date;
     durationMs: number;
+    totalAccessions: number;
+    processedAccessions: number;
+    lastHeartbeatAt: Date;
   }>,
 ): Promise<void> {
   await db
     .update(institutionalIngestionRuns)
     .set(update as any)
     .where(eq(institutionalIngestionRuns.id, id));
+}
+
+/**
+ * Write a lightweight heartbeat to the run record.
+ * Called every HEARTBEAT_INTERVAL accessions and at persistence start.
+ * Never throws — failures are swallowed to avoid disrupting ingestion.
+ */
+async function heartbeatRun(
+  id: string,
+  processedAccessions: number,
+  totalAccessions: number,
+): Promise<void> {
+  await db
+    .update(institutionalIngestionRuns)
+    .set({
+      processedAccessions,
+      totalAccessions,
+      lastHeartbeatAt: new Date(),
+    } as any)
+    .where(eq(institutionalIngestionRuns.id, id));
+}
+
+/**
+ * Mark stale "running" ingestion runs as partial.
+ *
+ * A run is stale when its last_heartbeat_at (or started_at if no heartbeat)
+ * is older than staleThresholdMinutes. This prevents permanently-stuck "running"
+ * entries after a Railway restart or SIGKILL.
+ *
+ * Advisory-lock safety: if another process currently holds the institutional
+ * advisory lock (i.e. an active ingestion is running), cleanup is skipped
+ * entirely. This prevents a second cron invocation from marking an active
+ * run as stale mid-flight. The lock is acquired and immediately released —
+ * it is only used as a "is-anyone-ingesting?" check, not held for ingestion.
+ *
+ * Safe to call at daily-job startup. Returns the number of runs cleaned up,
+ * or -1 if cleanup was skipped because ingestion is actively locked.
+ */
+export async function cleanStalePendingRuns(
+  staleThresholdMinutes = getStaleRunThresholdMinutes(),
+): Promise<number> {
+  // Check advisory lock: if held by another process, an active ingestion is
+  // in progress and we must not touch its run record.
+  const lockResult = await db.execute(
+    sql`SELECT pg_try_advisory_lock(${INSTITUTIONAL_ADVISORY_LOCK_KEY}::bigint) AS acquired`,
+  );
+  const lockAcquired = (lockResult.rows[0] as any)?.acquired === true;
+  if (!lockAcquired) {
+    log("institutional_stale_cleanup_skipped", {
+      reason: "advisory_lock_held",
+      hint: "Another ingestion process is actively running — cleanup deferred.",
+    });
+    return -1; // -1 = skipped (not an error)
+  }
+  // Release immediately: we only needed it to confirm no active ingestion exists.
+  await db.execute(
+    sql`SELECT pg_advisory_unlock(${INSTITUTIONAL_ADVISORY_LOCK_KEY}::bigint)`,
+  );
+
+  const threshold = new Date(Date.now() - staleThresholdMinutes * 60 * 1_000);
+
+  // Find stale running runs
+  const staleRows = await db
+    .select({ id: institutionalIngestionRuns.id, quarter: institutionalIngestionRuns.quarter })
+    .from(institutionalIngestionRuns)
+    .where(
+      and(
+        eq(institutionalIngestionRuns.status, "running"),
+        or(
+          // Has heartbeat but it's stale
+          and(
+            sql`${institutionalIngestionRuns.lastHeartbeatAt} IS NOT NULL`,
+            lt(institutionalIngestionRuns.lastHeartbeatAt as any, threshold),
+          ),
+          // No heartbeat and started_at is stale
+          and(
+            sql`${institutionalIngestionRuns.lastHeartbeatAt} IS NULL`,
+            lt(institutionalIngestionRuns.startedAt, threshold),
+          ),
+        ),
+      ),
+    );
+
+  if (staleRows.length === 0) return 0;
+
+  const ids = staleRows.map((r) => r.id);
+  await db
+    .update(institutionalIngestionRuns)
+    .set({
+      status: "partial",
+      errorCode: "STALE_RUN_INTERRUPTED",
+      errorSummary: `Run interrupted — no heartbeat for ${staleThresholdMinutes}+ minutes`,
+      completedAt: new Date(),
+    } as any)
+    .where(inArray(institutionalIngestionRuns.id, ids));
+
+  for (const r of staleRows) {
+    log("institutional_13f_stale_run_cleaned", {
+      runId: r.id,
+      quarter: r.quarter,
+      staleThresholdMinutes,
+    });
+  }
+
+  return staleRows.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,10 +479,16 @@ interface QuarterIngestionResult {
   status: "completed" | "partial" | "empty_not_published" | "empty_parse_failure" | "failed";
   /** Set when status="partial" due to AbortSignal timeout. */
   abortedByTimeout?: boolean;
+  /** Set when status="partial" due to bounded chunk limit (clean stop, not a timeout). */
+  chunkLimitReached?: boolean;
   /** Set when eligible rows > threshold but persistedHoldings = 0 despite no abort. */
   persistenceCountMismatch?: boolean;
   /** Error code to store in the run record when status is a failure variant. */
   errorCode?: string;
+  /** Total accessions in the parsed dataset (for run record storage). */
+  totalAccessions?: number;
+  /** Accessions processed (checked) in this invocation (both new and skipped). */
+  processedAccessions?: number;
 }
 
 /** Minimum number of eligible common-stock rows below which PERSISTENCE_COUNT_MISMATCH is not raised. */
@@ -408,12 +524,14 @@ function logPersistenceProgress(
 }
 
 const PROGRESS_LOG_INTERVAL = 100; // log every N accessions
+const HEARTBEAT_INTERVAL = 50;    // write heartbeat to DB every N accessions
 
 async function ingestQuarter(
   year: number,
   q: 1 | 2 | 3 | 4,
   periodEnd: string,
   signal: AbortSignal,
+  opts?: { chunkSize?: number; runId?: string },
 ): Promise<QuarterIngestionResult> {
   const quarter = `${year}-Q${q}`;
 
@@ -543,9 +661,17 @@ async function ingestQuarter(
   let unmappedCount = 0;
   let skippedExistingFilings = 0;
   let abortedEarly = false;
+  let chunkLimitReached = false;
+  let newAccessions = 0;
   let processedAccessions = 0;
+  const chunkSize = opts?.chunkSize ?? Infinity;
   const sourceUrl = bulkDatasetUrl(year, q);
   const persistenceStartMs = Date.now();
+
+  // Record totalAccessions in the run record immediately (fire-and-forget)
+  if (opts?.runId) {
+    heartbeatRun(opts.runId, 0, totalAccessions).catch(() => {});
+  }
 
   for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
     if (signal.aborted) { abortedEarly = true; break; }
@@ -561,6 +687,10 @@ async function ingestQuarter(
 
     if (existing.length > 0) {
       skippedExistingFilings++;
+      // Heartbeat for skipped accessions too (progress tracking)
+      if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
+        heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
+      }
       continue;
     }
 
@@ -623,12 +753,24 @@ async function ingestQuarter(
     holdingCount += holdingRows.length;
     mappedCount += mc;
     unmappedCount += uc;
+    newAccessions++;
 
     if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {
       logPersistenceProgress(
         quarter, "holdings", processedAccessions, totalAccessions,
         filingCount, skippedExistingFilings, holdingCount, persistenceStartMs,
       );
+    }
+
+    // Heartbeat: write progress to DB for stale-run detection and resumability
+    if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
+      heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
+    }
+
+    // Chunk limit: exit cleanly after processing N new accessions this invocation
+    if (chunkSize !== Infinity && newAccessions >= chunkSize) {
+      chunkLimitReached = true;
+      break;
     }
   }
 
@@ -642,7 +784,35 @@ async function ingestQuarter(
     mappedCount,
     unmappedCount,
     abortedEarly,
+    chunkLimitReached,
   });
+
+  // Chunk limit reached: clean partial stop (not a timeout).
+  // Aggregation is deferred until persistence is complete.
+  if (chunkLimitReached) {
+    log("institutional_13f_chunk_complete", {
+      quarter,
+      newAccessions,
+      processedAccessions,
+      totalAccessions,
+      remainingAccessions: totalAccessions - processedAccessions,
+      filingCount,
+      holdingCount,
+    });
+    return {
+      quarter,
+      periodOfReport: periodEnd,
+      filingCount,
+      holdingCount,
+      mappedCount,
+      unmappedCount,
+      skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
+      status: "partial",
+      chunkLimitReached: true,
+    };
+  }
 
   // AbortSignal fired: run is partial, not completed.
   // The next re-run will safely resume via skippedExistingFilings logic.
@@ -663,6 +833,8 @@ async function ingestQuarter(
       mappedCount,
       unmappedCount,
       skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
       status: "partial",
       abortedByTimeout: true,
     };
@@ -679,6 +851,8 @@ async function ingestQuarter(
       mappedCount: 0,
       unmappedCount: 0,
       skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
       status: "completed",
     };
   }
@@ -702,13 +876,15 @@ async function ingestQuarter(
       mappedCount,
       unmappedCount,
       skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
       status: "partial",
       persistenceCountMismatch: true,
       errorCode: "PERSISTENCE_COUNT_MISMATCH",
     };
   }
 
-  // Recompute aggregates for all mapped symbols
+  // Persistence complete — recompute aggregates for all mapped symbols
   log("institutional_13f_aggregation_started", { quarter });
   const mappedSymbols = await getMappedSymbols();
   for (const symbol of mappedSymbols) {
@@ -733,6 +909,7 @@ async function ingestQuarter(
     holdingCount,
     mappedCount,
     unmappedCount,
+    totalAccessions,
     status: finalStatus,
   });
 
@@ -744,6 +921,8 @@ async function ingestQuarter(
     mappedCount,
     unmappedCount,
     skippedExistingFilings,
+    totalAccessions,
+    processedAccessions,
     status: finalStatus,
   };
 }
@@ -766,6 +945,7 @@ async function ingestQuarter(
 async function ingestFromDescriptor(
   descriptor: DatasetDescriptor,
   signal: AbortSignal,
+  opts?: { chunkSize?: number; runId?: string },
 ): Promise<QuarterIngestionResult> {
   const quarter = `${descriptor.year}-Q${descriptor.q}`;
   const sourceUrl = descriptor.downloadUrl;
@@ -901,8 +1081,16 @@ async function ingestFromDescriptor(
   let unmappedCount = 0;
   let skippedExistingFilings = 0;
   let abortedEarly = false;
+  let chunkLimitReached = false;
+  let newAccessions = 0;
   let processedAccessions = 0;
+  const chunkSize = opts?.chunkSize ?? Infinity;
   const persistenceStartMs = Date.now();
+
+  // Record totalAccessions in the run record immediately (fire-and-forget)
+  if (opts?.runId) {
+    heartbeatRun(opts.runId, 0, totalAccessions).catch(() => {});
+  }
 
   for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
     if (signal.aborted) { abortedEarly = true; break; }
@@ -917,6 +1105,10 @@ async function ingestFromDescriptor(
 
     if (existing.length > 0) {
       skippedExistingFilings++;
+      // Heartbeat for skipped accessions too (progress tracking)
+      if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
+        heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
+      }
       continue;
     }
 
@@ -983,12 +1175,24 @@ async function ingestFromDescriptor(
     holdingCount += holdingRows.length;
     mappedCount += mc;
     unmappedCount += uc;
+    newAccessions++;
 
     if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {
       logPersistenceProgress(
         quarter, "holdings", processedAccessions, totalAccessions,
         filingCount, skippedExistingFilings, holdingCount, persistenceStartMs,
       );
+    }
+
+    // Heartbeat: write progress to DB for stale-run detection and resumability
+    if (processedAccessions % HEARTBEAT_INTERVAL === 0 && opts?.runId) {
+      heartbeatRun(opts.runId, processedAccessions, totalAccessions).catch(() => {});
+    }
+
+    // Chunk limit: exit cleanly after processing N new accessions this invocation
+    if (chunkSize !== Infinity && newAccessions >= chunkSize) {
+      chunkLimitReached = true;
+      break;
     }
   }
 
@@ -1003,7 +1207,36 @@ async function ingestFromDescriptor(
     mappedCount,
     unmappedCount,
     abortedEarly,
+    chunkLimitReached,
   });
+
+  // Chunk limit reached: clean partial stop (not a timeout).
+  // Aggregation is deferred until persistence is complete.
+  if (chunkLimitReached) {
+    log("institutional_13f_chunk_complete", {
+      quarter,
+      fileName: descriptor.fileName,
+      newAccessions,
+      processedAccessions,
+      totalAccessions,
+      remainingAccessions: totalAccessions - processedAccessions,
+      filingCount,
+      holdingCount,
+    });
+    return {
+      quarter,
+      periodOfReport: descriptor.expectedPeriodOfReport,
+      filingCount,
+      holdingCount,
+      mappedCount,
+      unmappedCount,
+      skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
+      status: "partial",
+      chunkLimitReached: true,
+    };
+  }
 
   // AbortSignal fired: run is partial, not completed.
   // The next re-run will safely resume via skippedExistingFilings logic.
@@ -1025,6 +1258,8 @@ async function ingestFromDescriptor(
       mappedCount,
       unmappedCount,
       skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
       status: "partial",
       abortedByTimeout: true,
     };
@@ -1041,6 +1276,8 @@ async function ingestFromDescriptor(
       mappedCount: 0,
       unmappedCount: 0,
       skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
       status: "completed",
     };
   }
@@ -1065,13 +1302,15 @@ async function ingestFromDescriptor(
       mappedCount,
       unmappedCount,
       skippedExistingFilings,
+      totalAccessions,
+      processedAccessions,
       status: "partial",
       persistenceCountMismatch: true,
       errorCode: "PERSISTENCE_COUNT_MISMATCH",
     };
   }
 
-  // Recompute aggregates for all mapped symbols
+  // Persistence complete — recompute aggregates for all mapped symbols
   log("institutional_13f_aggregation_started", { quarter, fileName: descriptor.fileName });
   const mappedSymbols = await getMappedSymbols();
   for (const symbol of mappedSymbols) {
@@ -1097,6 +1336,7 @@ async function ingestFromDescriptor(
     holdingCount,
     mappedCount,
     unmappedCount,
+    totalAccessions,
     status: finalStatus,
   });
 
@@ -1108,6 +1348,8 @@ async function ingestFromDescriptor(
     mappedCount,
     unmappedCount,
     skippedExistingFilings,
+    totalAccessions,
+    processedAccessions,
     status: finalStatus,
   };
 }
@@ -1157,8 +1399,16 @@ export async function runInstitutionalIngestion(
      * When true, skip the already-completed-quarter check and re-ingest even if a
      * prior completed run exists with filingCount > 0 and holdingCount > 0.
      * Useful for reprocessing after a mapping update or schema migration.
+     * The daily job passes force=true for PARTIAL quarters (detected by state machine).
      */
     force?: boolean;
+    /**
+     * Maximum number of NEW (non-skipped) accessions to persist this invocation.
+     * Defaults to INSTITUTIONAL_ACCESSIONS_PER_RUN env var (default 300).
+     * Set to Infinity (or omit) to process all accessions (backfill/manual mode).
+     * The daily scheduler uses this to bound each run to < 10-15 minutes.
+     */
+    chunkSize?: number;
   } = {},
 ): Promise<{ status: "completed" | "partial" | "skipped_disabled" | "skipped_locked" | "failed"; quartersProcessed: number }> {
   const cfg = getInstitutionalConfig();
@@ -1180,6 +1430,8 @@ export async function runInstitutionalIngestion(
   const timeoutMs = 20 * 60 * 1000; // 20 min max
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const initiatedBy = options.initiatedBy ?? "scheduler";
+  // Resolve chunkSize: explicit option → env var default → Infinity for unlimited backfill
+  const chunkSize = options.chunkSize !== undefined ? options.chunkSize : getAccessionsPerRun();
 
   try {
     let quartersProcessed = 0;
@@ -1227,7 +1479,7 @@ export async function runInstitutionalIngestion(
         const start = Date.now();
 
         try {
-          const result = await ingestFromDescriptor(descriptor, controller.signal);
+          const result = await ingestFromDescriptor(descriptor, controller.signal, { chunkSize, runId });
           const durationMs = Date.now() - start;
 
           if (result.status === "empty_not_published") {
@@ -1236,6 +1488,7 @@ export async function runInstitutionalIngestion(
               errorCode: "EMPTY_NOT_PUBLISHED",
               errorSummary: `Dataset ${descriptor.fileName} not yet available (HTTP 404)`,
               completedAt: new Date(),
+              lastHeartbeatAt: new Date(),
               durationMs,
             });
             log("institutional_13f_quarter_not_published", { quarter: runQuarter, fileName: descriptor.fileName });
@@ -1247,6 +1500,7 @@ export async function runInstitutionalIngestion(
               filingCount: 0,
               holdingCount: 0,
               completedAt: new Date(),
+              lastHeartbeatAt: new Date(),
               durationMs,
             });
             // Note: institutional_13f_empty_parse_failure is already emitted
@@ -1275,7 +1529,10 @@ export async function runInstitutionalIngestion(
               unmappedCount: result.unmappedCount,
               ...(errorCode ? { errorCode } : {}),
               ...(errorSummary ? { errorSummary } : {}),
+              ...(result.totalAccessions !== undefined ? { totalAccessions: result.totalAccessions } : {}),
+              ...(result.processedAccessions !== undefined ? { processedAccessions: result.processedAccessions } : {}),
               completedAt: new Date(),
+              lastHeartbeatAt: new Date(),
               durationMs,
             });
             quartersProcessed++;
@@ -1289,6 +1546,7 @@ export async function runInstitutionalIngestion(
             errorCode: err.name ?? "INGESTION_ERROR",
             errorSummary: errMsg,
             completedAt: new Date(),
+            lastHeartbeatAt: new Date(),
             durationMs,
           });
           log("institutional_13f_ingestion_failed", { errorCode: err.name, quarter: runQuarter });
@@ -1320,7 +1578,7 @@ export async function runInstitutionalIngestion(
       const start = Date.now();
 
       try {
-        const result = await ingestQuarter(q.year, q.q, q.periodEnd, controller.signal);
+        const result = await ingestQuarter(q.year, q.q, q.periodEnd, controller.signal, { chunkSize, runId });
         const durationMs = Date.now() - start;
 
         if (result.status === "empty_not_published") {
@@ -1329,6 +1587,7 @@ export async function runInstitutionalIngestion(
             errorCode: "EMPTY_NOT_PUBLISHED",
             errorSummary: "Quarterly bulk dataset not yet published by SEC",
             completedAt: new Date(),
+            lastHeartbeatAt: new Date(),
             durationMs,
           });
           log("institutional_13f_quarter_not_published", { quarter: q.label });
@@ -1340,6 +1599,7 @@ export async function runInstitutionalIngestion(
             filingCount: 0,
             holdingCount: 0,
             completedAt: new Date(),
+            lastHeartbeatAt: new Date(),
             durationMs,
           });
           log("institutional_13f_empty_parse_failure", { quarter: q.label });
@@ -1352,7 +1612,10 @@ export async function runInstitutionalIngestion(
             holdingCount: result.holdingCount,
             mappedCount: result.mappedCount,
             unmappedCount: result.unmappedCount,
+            ...(result.totalAccessions !== undefined ? { totalAccessions: result.totalAccessions } : {}),
+            ...(result.processedAccessions !== undefined ? { processedAccessions: result.processedAccessions } : {}),
             completedAt: new Date(),
+            lastHeartbeatAt: new Date(),
             durationMs,
           });
           quartersProcessed++;
@@ -1366,6 +1629,7 @@ export async function runInstitutionalIngestion(
           errorCode: err.name ?? "INGESTION_ERROR",
           errorSummary: errMsg,
           completedAt: new Date(),
+          lastHeartbeatAt: new Date(),
           durationMs,
         });
         log("institutional_13f_ingestion_failed", { errorCode: err.name, quarter: q.label });
@@ -1395,9 +1659,11 @@ export function scheduleInstitutionalIngestion(): void {
     return;
   }
 
-  // Non-blocking startup run
+  // Non-blocking startup run — uses unlimited chunk size so it does not consume
+  // the Railway cron job's daily bounded-chunk budget. The startup run is an
+  // opportunistic backfill/recovery path, not the scheduled daily increment.
   setTimeout(() => {
-    runInstitutionalIngestion({ initiatedBy: "startup" }).catch((err: any) =>
+    runInstitutionalIngestion({ initiatedBy: "startup", chunkSize: Infinity }).catch((err: any) =>
       log("institutional_ingestion_startup_error", { errorCode: err?.name ?? "ERROR" }),
     );
   }, 30_000); // 30s delay after startup to avoid contending with other init

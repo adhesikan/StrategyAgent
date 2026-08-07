@@ -3,22 +3,42 @@
 //
 // Usage:
 //   npx tsx scripts/inspect-submission-types.ts
+//   npx tsx scripts/inspect-submission-types.ts --quarters 1
 //
 // Requirements:
 //   SEC_USER_AGENT  — descriptive User-Agent for SEC EDGAR
 //
 // Output: safe structured log — distinct SUBMISSIONTYPE values and counts only.
-// Never logs raw filing rows or credentials.
+// Never logs raw filing rows, SEC_USER_AGENT value, DATABASE_URL, or credentials.
 
 import {
   fetchDatasetCatalog,
   selectDatasetWindows,
   toDatasetDescriptor,
+  type InstitutionalDatasetCatalogEntry,
 } from "../server/services/institutional/sec-dataset-catalog";
+import { normalizeSubmissionType } from "../server/services/institutional/sec-13f-bulk-parser";
 import { secFetchBuffer } from "../server/services/institutional/sec-client";
 import AdmZip from "adm-zip";
 
 const MAX_DISTINCT = 30;
+
+// ---------------------------------------------------------------------------
+// Pure helper — shared by the script and tests to resolve catalog entries.
+// The canonical return shape of fetchDatasetCatalog / getCachedCatalog is
+// InstitutionalDatasetCatalogEntry[] (a plain array). This helper makes that
+// expectation explicit and fails fast if the shape ever regresses.
+// ---------------------------------------------------------------------------
+export function resolveCatalogEntries(
+  result: InstitutionalDatasetCatalogEntry[],
+): InstitutionalDatasetCatalogEntry[] {
+  if (!Array.isArray(result)) {
+    throw new TypeError(
+      `catalog is not iterable: expected InstitutionalDatasetCatalogEntry[] but received ${typeof result}`,
+    );
+  }
+  return result;
+}
 
 async function main(): Promise<void> {
   const userAgent = process.env.SEC_USER_AGENT;
@@ -27,28 +47,45 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Parse optional --quarters N argument (default 1)
+  const quartersArg = process.argv.indexOf("--quarters");
+  const quarters =
+    quartersArg !== -1 ? parseInt(process.argv[quartersArg + 1] ?? "1", 10) : 1;
+  if (isNaN(quarters) || quarters < 1) {
+    console.error("[inspect] ERROR: --quarters must be a positive integer");
+    process.exit(1);
+  }
+
   console.log("[inspect] Fetching SEC 13F dataset catalog…");
-  const catalog = await fetchDatasetCatalog(userAgent);
+  const raw = await fetchDatasetCatalog(userAgent);
+  const catalog = resolveCatalogEntries(raw);
+
+  console.log(`[inspect] Catalog returned ${catalog.length} recognised dataset(s).`);
   if (catalog.length === 0) {
     console.error("[inspect] ERROR: catalog is empty");
     process.exit(1);
   }
 
-  // Select the most recent available dataset
-  const windows = selectDatasetWindows(catalog, 1);
+  // Reuse the same selection logic as run-institutional-backfill.ts.
+  // selectDatasetWindows(n, catalog) — n is FIRST, catalog is SECOND.
+  const windows = selectDatasetWindows(quarters, catalog);
   if (windows.length === 0) {
     console.error("[inspect] ERROR: no dataset windows found");
     process.exit(1);
   }
 
-  const entry = windows[0];
-  const descriptor = toDatasetDescriptor(entry);
+  console.log("[inspect] Selected:");
+  for (const w of windows) {
+    console.log(`[inspect]   ${w.entry.fileName}  (${w.canonicalPeriodLabel})`);
+  }
 
-  console.log("[inspect] Downloading:", descriptor.fileName, "(this may take 30–90 s)");
+  // Inspect only the most recent window (first in the list)
+  const window = windows[0];
+  const descriptor = toDatasetDescriptor(window);
+
+  console.log(`[inspect] Resolving SUBMISSION.tsv…`);
   const ac = new AbortController();
   const buffer = await secFetchBuffer(descriptor.downloadUrl, userAgent, ac.signal);
-
-  console.log("[inspect] Archive size:", buffer.length, "bytes");
 
   let zip: AdmZip;
   try {
@@ -70,21 +107,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log("[inspect] Found:", subEntry.entryName);
-
   const text = subEntry.getData().toString("utf8").replace(/^\uFEFF/, "");
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 
-  if (lines.length === 0) {
-    console.error("[inspect] ERROR: SUBMISSION.tsv is empty");
+  if (lines.length < 2) {
+    console.error("[inspect] ERROR: SUBMISSION.tsv is empty or header-only");
     process.exit(1);
   }
 
   // Parse header to find SUBMISSIONTYPE column index
   const headers = lines[0].split("\t").map((h) => h.trim().toUpperCase());
-  console.log("[inspect] SUBMISSION.tsv headers:", headers);
 
-  // Find the column regardless of exact name (check for SUBMISSIONTYPE, FORM-TYPE, FORMTYPE)
   const formTypeIdx = headers.findIndex((h) => {
     const n = h.replace(/[-_]/g, "");
     return n === "SUBMISSIONTYPE" || n === "FORMTYPE";
@@ -95,6 +128,7 @@ async function main(): Promise<void> {
   }
 
   const rawCounts = new Map<string, number>();
+  const normalizedCounts = new Map<string, number>();
   let totalRows = 0;
 
   for (let i = 1; i < lines.length; i++) {
@@ -106,33 +140,53 @@ async function main(): Promise<void> {
       const cells = lines[i].split("\t");
       const val = (cells[formTypeIdx] ?? "").trim();
       rawCounts.set(val, (rawCounts.get(val) ?? 0) + 1);
+
+      const norm = normalizeSubmissionType(val) ?? "null";
+      normalizedCounts.set(norm, (normalizedCounts.get(norm) ?? 0) + 1);
     }
   }
 
-  // Build result (bounded to MAX_DISTINCT)
-  const submissionTypeCounts: Record<string, number> = {};
-  let distinctCount = 0;
-  for (const [val, count] of [...rawCounts.entries()].sort((a, b) => b[1] - a[1])) {
-    if (distinctCount >= MAX_DISTINCT) {
-      submissionTypeCounts["[OTHER]"] = (submissionTypeCounts["[OTHER]"] ?? 0) + count;
-    } else {
-      submissionTypeCounts[val] = count;
-      distinctCount++;
+  // Build bounded result maps (sorted by count desc)
+  function buildBoundedRecord(map: Map<string, number>): Record<string, number> {
+    const out: Record<string, number> = {};
+    let n = 0;
+    for (const [val, count] of [...map.entries()].sort((a, b) => b[1] - a[1])) {
+      if (n >= MAX_DISTINCT) {
+        out["[OTHER]"] = (out["[OTHER]"] ?? 0) + count;
+      } else {
+        out[val] = count;
+        n++;
+      }
     }
+    return out;
   }
 
-  console.log("\n[inspect] ============================================================");
-  console.log("[inspect] RESULTS");
-  console.log("[inspect] ============================================================");
-  console.log("[inspect] Dataset:   ", descriptor.fileName);
-  console.log("[inspect] totalRows: ", totalRows);
-  console.log("[inspect] formTypeColumnIndex:", formTypeIdx);
-  console.log("[inspect] formTypeHeader:", formTypeIdx !== -1 ? headers[formTypeIdx] : "NOT FOUND");
-  console.log("[inspect] submissionTypeCounts:", JSON.stringify(submissionTypeCounts, null, 2));
-  console.log("[inspect] ============================================================\n");
+  const submissionTypeCounts = buildBoundedRecord(rawCounts);
+  const normalizedSubmissionTypeCounts = buildBoundedRecord(normalizedCounts);
+
+  // Safe output — print in the expected format, never print credentials
+  console.log(`[inspect] Submission rows: ${totalRows}`);
+  console.log("");
+  console.log("[inspect] Raw SUBMISSIONTYPE values:");
+  for (const [val, count] of Object.entries(submissionTypeCounts)) {
+    console.log(`[inspect]   ${val.padEnd(20)} ${count}`);
+  }
+  console.log("");
+  console.log("[inspect] Normalized values:");
+  for (const [val, count] of Object.entries(normalizedSubmissionTypeCounts)) {
+    console.log(`[inspect]   ${val.padEnd(20)} ${count}`);
+  }
 }
 
-main().catch((err) => {
-  console.error("[inspect] FATAL:", err?.message ?? err);
-  process.exit(1);
-});
+// Only execute when run directly (not when imported by tests)
+const isMain =
+  process.argv[1] &&
+  (process.argv[1].endsWith("inspect-submission-types.ts") ||
+    process.argv[1].endsWith("inspect-submission-types.js"));
+
+if (isMain) {
+  main().catch((err) => {
+    console.error("[inspect] FATAL:", err?.message ?? err);
+    process.exit(1);
+  });
+}

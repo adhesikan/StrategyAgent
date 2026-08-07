@@ -1,0 +1,249 @@
+INSTITUTIONAL 13F — FIX inspect-submission-types.ts CATALOG RETURN SHAPE
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION FAILURE
+
+Command:
+
+npx tsx scripts/inspect-submission-types.ts
+
+fails immediately with:
+
+[inspect] Fetching SEC 13F dataset catalog…
+[inspect] FATAL: catalog is not iterable
+
+IMPORTANT CONTEXT
+
+The production backfill command already proves the SEC catalog implementation works:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2 --dry-run
+
+successfully reports:
+
+Catalog returned 53 recognised dataset(s)
+
+and selects:
+
+01mar2026-31may2026_form13f.zip
+01dec2025-28feb2026_form13f.zip
+
+Therefore do not modify the working catalog fetch/parser unless a real defect is found.
+
+This task is to fix the diagnostic script's use of the catalog API.
+
+Do not modify:
+
+- SEC catalog discovery logic
+- dataset parsing
+- backfill selection
+- bulk parser
+- database schema
+- ingestion service
+- feature flags
+- Institutional UI
+
+============================================================
+1. IDENTIFY EXACT RETURN TYPE
+============================================================
+
+Inspect:
+
+server/services/institutional/sec-dataset-catalog.ts
+
+Specifically:
+
+- fetchDatasetCatalog()
+- getCachedCatalog()
+- parseCatalogHtml()
+- selectDatasetWindows()
+
+Report the exact TypeScript return type of the function currently called by:
+
+scripts/inspect-submission-types.ts
+
+Determine whether it returns:
+
+- InstitutionalDatasetCatalogEntry[]
+- { entries: InstitutionalDatasetCatalogEntry[] }
+- { catalog: ... }
+- another structured object
+
+Do not guess.
+
+============================================================
+2. FIX THE DIAGNOSTIC SCRIPT
+============================================================
+
+Update:
+
+scripts/inspect-submission-types.ts
+
+to consume the actual catalog return type correctly.
+
+Preferred pattern:
+
+const result = await fetchDatasetCatalog(userAgent);
+const entries = result.entries ?? result;
+
+but only if that matches the actual type.
+
+Prefer compile-time typed access instead of runtime guessing.
+
+If the catalog function returns a structured object, use its explicit property.
+
+Do not duplicate catalog parsing logic inside the script.
+
+============================================================
+3. REUSE EXISTING SELECTION LOGIC
+============================================================
+
+The diagnostic should reuse:
+
+selectDatasetWindows(...)
+
+or the same selection helper used by run-institutional-backfill.ts.
+
+Do not manually iterate and sort catalog entries differently.
+
+Default behavior:
+
+inspect the most recent published dataset window.
+
+Optional supported arguments:
+
+--quarters 1
+--quarter 2026Q1
+--file <catalog filename>
+
+Only implement arguments already simple to support.
+
+The main production command must remain:
+
+npx tsx scripts/inspect-submission-types.ts
+
+============================================================
+4. DIAGNOSTIC PURPOSE
+============================================================
+
+The script should:
+
+1. fetch official SEC catalog
+2. select the latest published dataset
+3. download the ZIP
+4. resolve SUBMISSION.tsv
+5. parse only the SUBMISSIONTYPE column
+6. print distinct raw values and counts
+7. print normalized values and counts
+8. exit 0
+
+It must NOT:
+
+- ingest filings
+- write to PostgreSQL
+- parse INFOTABLE.tsv
+- seed mappings
+- build aggregates
+- enable the feature
+
+============================================================
+5. SAFE OUTPUT
+============================================================
+
+Expected output:
+
+[inspect] Fetching SEC 13F dataset catalog…
+[inspect] Catalog returned 53 recognised dataset(s).
+[inspect] Selected:
+[inspect]   01mar2026-31may2026_form13f.zip
+[inspect] Resolving SUBMISSION.tsv…
+[inspect] Submission rows: 11761
+
+[inspect] Raw SUBMISSIONTYPE values:
+[inspect]   13F-HR       10800
+[inspect]   13F-HR/A       250
+[inspect]   13F-NT         700
+...
+
+[inspect] Normalized values:
+[inspect]   13F-HR       10800
+[inspect]   13F-HR/A       250
+[inspect]   13F-NT         700
+[inspect]   UNKNOWN          11
+
+Use actual values.
+
+Never print:
+
+- full filing rows
+- SEC_USER_AGENT value
+- DATABASE_URL
+- raw ZIP contents
+- credentials
+
+============================================================
+6. HANDLE API SHAPE REGRESSION
+============================================================
+
+Add a test specifically proving:
+
+inspect-submission-types.ts consumes the same catalog result shape as
+run-institutional-backfill.ts.
+
+Prefer extracting a pure helper from the script if needed:
+
+resolveCatalogEntries(result)
+
+but do not create a second incompatible catalog abstraction.
+
+The backfill and diagnostic must rely on one shared canonical return shape.
+
+============================================================
+7. TESTS
+============================================================
+
+Add focused tests:
+
+A. Current catalog return shape works
+B. Latest dataset is selected correctly
+C. Catalog with zero entries fails safely
+D. Catalog object is never directly iterated if it is not an array
+E. SUBMISSION.tsv resolves
+F. Raw SUBMISSIONTYPE counts computed correctly
+G. Normalized counts computed correctly
+H. UNKNOWN values counted
+I. Script performs no DB writes
+J. Script does not parse INFOTABLE
+K. Safe output contains no secrets
+L. Existing catalog/backfill tests remain green
+
+Run:
+
+- diagnostic tests
+- institutional tests
+- server tests
+- client tests
+- typecheck
+
+============================================================
+8. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact catalog return type
+2. Exact cause of "catalog is not iterable"
+3. File changed
+4. Before/after code path
+5. Whether selection logic is shared with backfill
+6. Tests added
+7. Total passing tests
+8. Typecheck
+9. Exact production command
+10. Expected production output shape
+11. GO / NO_GO
+
+Do not commit, push, deploy, run ingestion, seed mappings, or enable the public feature automatically.
+
+Wait for review.

@@ -148,17 +148,36 @@ export default function AdminInstitutionalMappingsPage() {
     },
   });
 
+  const [pipelineResult, setPipelineResult] = useState<Record<string, number> | null>(null);
+
   const pipelineMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/institutional/mapping-pipeline", { limitCusips: 5000 }).then((r) => r.json()),
     onSuccess: (data) => {
-      toast({
-        title: "Mapping pipeline complete",
-        description: `Discovered ${data.result?.discovered ?? 0} CUSIPs, ${data.result?.unmapped ?? 0} unmapped.`,
-      });
+      const r = data.result ?? {};
+      setPipelineResult(r);
+      if ((r.discovered ?? 0) === 0) {
+        toast({
+          title: "No CUSIPs discovered",
+          description: "The holdings table may be empty or the schema migration has not been applied. Check /api/admin/institutional/mapping-diagnostics.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Mapping pipeline complete",
+          description: `Discovered ${r.discovered ?? 0} CUSIPs — ${r.unmapped ?? 0} unmapped, ${r.resolvedViaExisting ?? 0} exact, ${r.resolvedViaFigi ?? 0} FIGI, ${r.resolvedViaName ?? 0} name, ${r.skippedReviewed ?? 0} reviewed preserved.`,
+        });
+      }
       invalidateAll();
     },
-    onError: () => toast({ title: "Pipeline failed", variant: "destructive" }),
+    onError: (err: any) => {
+      setPipelineResult(null);
+      toast({
+        title: "Pipeline failed",
+        description: err?.message?.includes("migration") ? "Schema migration required — run migrate-security-master.sql and migrate-institutional.sql on production." : "Check server logs for details.",
+        variant: "destructive",
+      });
+    },
   });
 
   const reviewMutation = useMutation({
@@ -261,6 +280,44 @@ export default function AdminInstitutionalMappingsPage() {
           Run Mapping Pipeline
         </Button>
       </div>
+
+      {/* Pipeline result summary */}
+      {pipelineResult !== null && (
+        <Card className={`border ${(pipelineResult.discovered ?? 0) === 0 ? "bg-red-950/20 border-red-800/40" : "bg-zinc-900 border-zinc-800"}`}>
+          <CardContent className="p-4">
+            {(pipelineResult.discovered ?? 0) === 0 ? (
+              <div className="flex items-center gap-2 text-red-400">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-sm">No CUSIPs discovered</p>
+                  <p className="text-xs text-red-400/80 mt-0.5">
+                    The holdings table may be empty, or the <code className="font-mono">figi</code> column may be missing (run <code className="font-mono">migrate-institutional.sql</code>).
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wide">Last Pipeline Run</p>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                  {[
+                    { label: "Discovered", value: pipelineResult.discovered ?? 0, color: "text-white" },
+                    { label: "Unmapped", value: pipelineResult.unmapped ?? 0, color: "text-zinc-400" },
+                    { label: "Exact Match", value: pipelineResult.resolvedViaExisting ?? 0, color: "text-blue-400" },
+                    { label: "FIGI Match", value: pipelineResult.resolvedViaFigi ?? 0, color: "text-blue-400" },
+                    { label: "Name Match", value: pipelineResult.resolvedViaName ?? 0, color: "text-amber-400" },
+                    { label: "Preserved", value: pipelineResult.skippedReviewed ?? 0, color: "text-emerald-400" },
+                  ].map((item) => (
+                    <div key={item.label} className="text-center">
+                      <p className={`text-lg font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
+                      <p className="text-xs text-zinc-600">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

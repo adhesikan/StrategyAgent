@@ -101,7 +101,9 @@ export interface MappingQueuePage {
 }
 
 export interface PipelineRunResult {
+  /** Number of distinct CUSIPs found in institutional_13f_holdings */
   discovered: number;
+  /** Rows actually inserted or updated in security_master */
   newEntries: number;
   resolvedViaExisting: number;
   resolvedViaFigi: number;
@@ -145,29 +147,36 @@ export async function runMappingPipeline(opts: {
 } = {}): Promise<PipelineRunResult> {
   const start = Date.now();
 
-  // ── Step 1: Discover CUSIPs from holdings ───────────────────────────────
-  let holdingsQuery = db
-    .select({
-      cusip: institutional13fHoldings.cusip,
-      figi: institutional13fHoldings.figi,
-      issuerName: institutional13fHoldings.issuerName,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(institutional13fHoldings)
-    .groupBy(
-      institutional13fHoldings.cusip,
-      institutional13fHoldings.figi,
-      institutional13fHoldings.issuerName,
-    )
-    .orderBy(desc(sql`count(*)`));
+  // ── Step 1: Discover distinct CUSIPs from holdings ──────────────────────
+  //
+  // Group by CUSIP only (not figi+issuerName) so each CUSIP produces exactly
+  // one row regardless of how many filers spell the issuer name differently.
+  // MAX(figi) picks any non-null FIGI when available; NULL when none exist.
+  //
+  // This query is robust even when the figi column was added after initial
+  // deploy — the column simply returns all NULLs until backfilled.
+  const limitSql = opts.limitCusips ? sql` LIMIT ${opts.limitCusips}` : sql``;
+  const holdingGroups: Array<{
+    cusip: string;
+    figi: string | null;
+    issuerName: string | null;
+    count: number;
+  }> = await db.execute(sql`
+    SELECT
+      cusip,
+      MAX(figi)        AS figi,
+      MAX(issuer_name) AS "issuerName",
+      COUNT(*)::int    AS count
+    FROM institutional_13f_holdings
+    GROUP BY cusip
+    ORDER BY count DESC
+    ${limitSql}
+  `).then((r: any) => r.rows ?? r);
 
-  if (opts.limitCusips) {
-    holdingsQuery = (holdingsQuery as any).limit(opts.limitCusips);
-  }
-
-  const holdingGroups = await holdingsQuery;
+  console.log(`[mapping-pipeline] step1: ${holdingGroups.length} distinct CUSIPs discovered from holdings`);
 
   if (holdingGroups.length === 0) {
+    console.warn("[mapping-pipeline] No CUSIPs discovered — holdings table may be empty or unpopulated");
     return {
       discovered: 0,
       newEntries: 0,
@@ -181,7 +190,7 @@ export async function runMappingPipeline(opts: {
   }
 
   // ── Step 2: Load existing security_master entries ──────────────────────
-  const allCusips = Array.from(new Set(holdingGroups.map((h) => h.cusip)));
+  const allCusips = holdingGroups.map((h) => h.cusip);
   const existingRows = await db
     .select()
     .from(securityMaster)
@@ -240,6 +249,7 @@ export async function runMappingPipeline(opts: {
   }
 
   // ── Step 4: Resolve each CUSIP ─────────────────────────────────────────
+  // holdingGroups is already one row per distinct CUSIP (GROUP BY cusip above)
   const stats = {
     discovered: holdingGroups.length,
     newEntries: 0,
@@ -252,16 +262,12 @@ export async function runMappingPipeline(opts: {
 
   const upserts: InsertSecurityMaster[] = [];
 
-  // Group by CUSIP (take first issuerName and figi seen, use max count)
-  const cusipGroups = new Map<string, { figi: string | null; issuerName: string | null; count: number }>();
-  for (const h of holdingGroups) {
-    const existing = cusipGroups.get(h.cusip);
-    if (!existing || h.count > existing.count) {
-      cusipGroups.set(h.cusip, { figi: h.figi, issuerName: h.issuerName, count: h.count });
-    }
-  }
+  console.log(`[mapping-pipeline] step2: ${existingRows.length} existing security_master rows loaded`);
+  console.log(`[mapping-pipeline] step3: ${legacyRows.length} legacy exact/reviewed mappings loaded`);
+  console.log(`[mapping-pipeline] step4: resolving ${holdingGroups.length} CUSIPs…`);
 
-  for (const [cusip, info] of Array.from(cusipGroups)) {
+  for (const info of holdingGroups) {
+    const cusip = info.cusip;
     const existing = existingMap.get(cusip);
 
     // Never overwrite reviewed entries via automation
@@ -357,37 +363,60 @@ export async function runMappingPipeline(opts: {
     });
   }
 
-  // ── Step 5: Batch upsert ───────────────────────────────────────────────
-  const BATCH = 500;
+  console.log(`[mapping-pipeline] step4 done: ${upserts.length} upserts prepared ` +
+    `(existing:${stats.resolvedViaExisting} figi:${stats.resolvedViaFigi} ` +
+    `name:${stats.resolvedViaName} unmapped:${stats.unmapped} reviewed:${stats.skippedReviewed})`);
+
+  // ── Step 5: Batch upsert into security_master ──────────────────────────
+  // Uses raw SQL INSERT ... ON CONFLICT for clarity and reliability.
+  // The WHERE clause on the ON CONFLICT branch protects reviewed entries.
+  const BATCH = 200;
   let newCount = 0;
   for (let i = 0; i < upserts.length; i += BATCH) {
     const batch = upserts.slice(i, i + BATCH);
-    // Use INSERT ... ON CONFLICT to never overwrite reviewed entries' ticker/status
     for (const entry of batch) {
-      const result = await db
-        .insert(securityMaster)
-        .values(entry)
-        .onConflictDoUpdate({
-          target: securityMaster.cusip,
-          // Never overwrite reviewed mappings — guard with a WHERE clause
-          setWhere: ne(securityMaster.reviewStatus, "reviewed"),
-          set: {
-            ticker: sql`CASE WHEN ${securityMaster.reviewStatus} = 'reviewed' THEN ${securityMaster.ticker} ELSE EXCLUDED.ticker END`,
-            issuerName: sql`COALESCE(EXCLUDED.issuer_name, ${securityMaster.issuerName})`,
-            figi: sql`COALESCE(EXCLUDED.figi, ${securityMaster.figi})`,
-            confidence: sql`CASE WHEN ${securityMaster.reviewStatus} = 'reviewed' THEN ${securityMaster.confidence} ELSE EXCLUDED.confidence END`,
-            mappingMethod: sql`CASE WHEN ${securityMaster.reviewStatus} = 'reviewed' THEN ${securityMaster.mappingMethod} ELSE EXCLUDED.mapping_method END`,
-            reviewStatus: sql`CASE WHEN ${securityMaster.reviewStatus} = 'reviewed' THEN ${securityMaster.reviewStatus} ELSE EXCLUDED.review_status END`,
-            holdingCount: sql`EXCLUDED.holding_count`,
-            lastVerified: sql`now()`,
-            notes: sql`CASE WHEN ${securityMaster.reviewStatus} = 'reviewed' THEN ${securityMaster.notes} ELSE EXCLUDED.notes END`,
-          },
-        })
-        .returning({ id: securityMaster.id });
-      if (result.length > 0) newCount++;
+      const result = await db.execute(sql`
+        INSERT INTO security_master
+          (cusip, ticker, issuer_name, figi, confidence, mapping_method,
+           review_status, holding_count, notes, last_verified)
+        VALUES (
+          ${entry.cusip},
+          ${entry.ticker ?? null},
+          ${entry.issuerName ?? null},
+          ${entry.figi ?? null},
+          ${entry.confidence},
+          ${entry.mappingMethod},
+          ${entry.reviewStatus},
+          ${entry.holdingCount},
+          ${entry.notes ?? null},
+          NOW()
+        )
+        ON CONFLICT (cusip) DO UPDATE SET
+          ticker          = CASE WHEN security_master.review_status = 'reviewed'
+                                 THEN security_master.ticker ELSE EXCLUDED.ticker END,
+          issuer_name     = COALESCE(EXCLUDED.issuer_name, security_master.issuer_name),
+          figi            = COALESCE(EXCLUDED.figi, security_master.figi),
+          confidence      = CASE WHEN security_master.review_status = 'reviewed'
+                                 THEN security_master.confidence ELSE EXCLUDED.confidence END,
+          mapping_method  = CASE WHEN security_master.review_status = 'reviewed'
+                                 THEN security_master.mapping_method ELSE EXCLUDED.mapping_method END,
+          review_status   = CASE WHEN security_master.review_status = 'reviewed'
+                                 THEN security_master.review_status ELSE EXCLUDED.review_status END,
+          holding_count   = EXCLUDED.holding_count,
+          last_verified   = NOW(),
+          notes           = CASE WHEN security_master.review_status = 'reviewed'
+                                 THEN security_master.notes ELSE EXCLUDED.notes END
+        WHERE security_master.review_status != 'reviewed'
+           OR security_master.cusip IS NULL
+        RETURNING id
+      `);
+      const rows = (result as any).rows ?? result;
+      if (rows.length > 0) newCount++;
     }
   }
   stats.newEntries = newCount;
+
+  console.log(`[mapping-pipeline] step5 done: ${newCount}/${upserts.length} rows written to security_master`);
 
   return {
     ...stats,

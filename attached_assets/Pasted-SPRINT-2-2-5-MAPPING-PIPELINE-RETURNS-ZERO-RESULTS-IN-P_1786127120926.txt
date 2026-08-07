@@ -1,0 +1,244 @@
+SPRINT 2.2.5 — MAPPING PIPELINE RETURNS ZERO RESULTS IN PRODUCTION
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION UAT RESULT
+
+/admin/institutional-mappings now loads successfully.
+
+Clicking:
+
+Run Mapping Pipeline
+
+completes without visible error, but the page remains empty:
+
+Unmapped → No entries found
+Needs Review → empty
+Probable → empty
+Reviewed → empty
+
+The production institutional pipeline already has persisted holdings.
+
+Recent status showed examples such as:
+
+2026-Q1:
+hundreds of filings
+hundreds of thousands of holdings
+
+2025-Q4:
+hundreds of filings
+hundreds of thousands of holdings
+
+Therefore the mapping pipeline should discover CUSIPs unless it is querying the wrong
+table/source, filtering them out, or failing silently.
+
+DO NOT redesign the mapping engine.
+
+Find the exact root cause.
+
+============================================================
+1. TRACE runMappingPipeline() END TO END
+============================================================
+
+Trace:
+
+POST /api/institutional/mapping-pipeline
+→ route handler
+→ runMappingPipeline()
+→ holdings query
+→ distinct CUSIP extraction
+→ mapping resolution
+→ security_master upsert
+→ API result
+
+Return exact counts at each stage:
+
+holdingsRowsScanned
+distinctCusipsFound
+validCusips
+existingSecurityMasterRows
+reviewedPreserved
+legacyExactMatches
+figiMatches
+nameMatches
+probableMatches
+unmappedCreated
+rowsUpserted
+
+No silent zero-count stages.
+
+============================================================
+2. VERIFY ACTUAL HOLDINGS TABLE / CUSIP FIELD
+============================================================
+
+Inspect the schema and confirm which production table currently contains persisted 13F holdings.
+
+Report:
+
+table name
+CUSIP column name
+number of rows
+number of non-null CUSIPs
+number of distinct CUSIPs
+
+Do not assume the new service is querying the same table used by ingestion.
+
+If the mapping pipeline points at the wrong table/model, fix it.
+
+============================================================
+3. VERIFY CUSIP FILTERING
+============================================================
+
+Check all validation applied before insertion into security_master.
+
+Report counts for:
+
+blank CUSIPs
+invalid-length CUSIPs
+non-alphanumeric CUSIPs
+normalized 9-char CUSIPs
+excluded asset rows
+
+Do not accidentally reject valid SEC CUSIPs.
+
+============================================================
+4. VERIFY PARTIAL INGESTION IS ALLOWED
+============================================================
+
+The mapping pipeline must be able to discover CUSIPs from currently persisted partial holdings.
+
+Do NOT require a quarter to be READY before mapping discovery.
+
+Rule:
+
+if persisted institutional holdings exist,
+their valid CUSIPs may populate security_master.
+
+Readiness affects signal generation later, not mapping discovery.
+
+============================================================
+5. VERIFY security_master WRITES
+============================================================
+
+After discovery, verify actual row count in security_master.
+
+Add a read-only diagnostic helper if needed.
+
+Return:
+
+beforeCount
+afterCount
+insertedCount
+updatedCount
+
+If rows are being written but UI remains empty, then trace queue filtering separately.
+
+============================================================
+6. VERIFY QUEUE QUERY
+============================================================
+
+Trace:
+
+GET /api/institutional/mappings?status=unmapped
+
+Confirm review-status values used in DB match values expected by UI.
+
+Check for vocabulary mismatches such as:
+
+unmapped
+UNMAPPED
+needs_review
+needsReview
+probable
+reviewed
+
+Report actual distinct reviewStatus values in security_master.
+
+Fix contract mismatch if present.
+
+============================================================
+7. VERIFY UI REFRESH AFTER PIPELINE
+============================================================
+
+After POST /api/institutional/mapping-pipeline succeeds:
+
+invalidate/refetch:
+
+/api/institutional/mappings
+/api/institutional/unmapped
+/api/institutional/mapping-audit
+
+Do not require full page reload.
+
+============================================================
+8. ADD OPERATOR DIAGNOSTICS
+============================================================
+
+The Run Mapping Pipeline action should return and display a concise result:
+
+Discovered CUSIPs: X
+Created: X
+Exact matched: X
+Probable: X
+Unmapped: X
+Reviewed preserved: X
+
+If all counts are zero, show:
+
+"No persisted CUSIPs were discovered. Check institutional holdings ingestion."
+
+Do not silently show success.
+
+============================================================
+9. TESTS
+============================================================
+
+Add regression tests for:
+
+persisted holdings → distinct CUSIPs discovered
+partial quarter holdings still discoverable
+valid 9-char CUSIP accepted
+invalid CUSIP excluded with count
+security_master upsert count
+reviewed mapping preserved
+unmapped row appears in queue
+status-vocabulary consistency
+pipeline result with zero rows
+React Query invalidation after run
+UI result summary
+
+Run:
+
+institutional tests
+server tests
+client tests
+typecheck/build
+
+============================================================
+10. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact production root cause
+2. Actual holdings table queried
+3. Actual persisted holdings count
+4. Actual distinct valid CUSIP count
+5. Why runMappingPipeline returned zero visible entries
+6. Files changed
+7. Pipeline count waterfall
+8. security_master before/after row counts
+9. Queue status values
+10. UI refresh behavior
+11. Tests
+12. Typecheck/build
+13. Production UAT steps
+14. GO / NO_GO
+
+Do not change ingestion.
+Do not start Institutional Signal Engine.
+Do not enable Institutional Intelligence.
+Do not deploy automatically.
+
+Wait for review.

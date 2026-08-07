@@ -17,6 +17,8 @@
 
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
+import { db } from "../db";
 import {
   getMappingQueue,
   getMappingStats,
@@ -212,7 +214,7 @@ export function registerInstitutionalMappingRoutes(
 
   /**
    * POST /api/institutional/mapping-pipeline
-   * Run the CUSIP → ticker mapping pipeline. Admin-only, fire-and-forget style.
+   * Run the CUSIP → ticker mapping pipeline. Admin-only.
    */
   app.post("/api/institutional/mapping-pipeline", isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -221,12 +223,90 @@ export function registerInstitutionalMappingRoutes(
         return res.status(400).json({ error: "Invalid request", details: parsed.error.flatten().fieldErrors });
       }
 
-      // Run synchronously (typically < 5s for discovery pass); long runs use limitCusips
       const result = await runMappingPipeline(parsed.data);
       return res.json({ status: "complete", result });
     } catch (err: any) {
+      if (isTableMissingError(err)) {
+        console.warn("[mapping-pipeline] security_master or holdings table missing — run migration first");
+        return res.status(503).json({
+          error: "Schema migration required",
+          detail: "Run scripts/migrate-security-master.sql and scripts/migrate-institutional.sql on the production database before using the mapping pipeline.",
+        });
+      }
       console.error("[mapping-pipeline]", err?.message);
-      return res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: "Internal server error", detail: err?.message });
     }
+  });
+
+  /**
+   * GET /api/admin/institutional/mapping-diagnostics
+   * Read-only table health check — counts rows in holdings + security_master.
+   * Used by operators to verify migration status and pipeline readiness.
+   */
+  app.get("/api/admin/institutional/mapping-diagnostics", isAuthenticated, isAdmin, async (_req, res) => {
+    const result: Record<string, any> = {};
+
+    // Check institutional_13f_holdings
+    try {
+      const holdingsCount = await db.execute(sql`
+        SELECT
+          COUNT(*)::int              AS total_rows,
+          COUNT(DISTINCT cusip)::int AS distinct_cusips,
+          COUNT(figi)::int           AS non_null_figi
+        FROM institutional_13f_holdings
+      `);
+      const hRow = ((holdingsCount as any).rows ?? holdingsCount)[0] ?? {};
+      result.holdings = {
+        tableExists: true,
+        totalRows: Number(hRow.total_rows ?? 0),
+        distinctCusips: Number(hRow.distinct_cusips ?? 0),
+        nonNullFigi: Number(hRow.non_null_figi ?? 0),
+      };
+    } catch (err: any) {
+      result.holdings = { tableExists: false, error: err?.message };
+    }
+
+    // Check security_master
+    try {
+      const smCount = await db.execute(sql`
+        SELECT
+          COUNT(*)::int                                                    AS total_rows,
+          COUNT(*) FILTER (WHERE review_status = 'reviewed')::int         AS reviewed,
+          COUNT(*) FILTER (WHERE review_status = 'probable')::int         AS probable,
+          COUNT(*) FILTER (WHERE review_status = 'needs_review')::int     AS needs_review,
+          COUNT(*) FILTER (WHERE review_status = 'unmapped')::int         AS unmapped,
+          COUNT(*) FILTER (WHERE review_status = 'rejected')::int         AS rejected,
+          ARRAY_AGG(DISTINCT review_status ORDER BY review_status)        AS distinct_statuses
+        FROM security_master
+      `);
+      const sRow = ((smCount as any).rows ?? smCount)[0] ?? {};
+      result.securityMaster = {
+        tableExists: true,
+        totalRows: Number(sRow.total_rows ?? 0),
+        reviewed: Number(sRow.reviewed ?? 0),
+        probable: Number(sRow.probable ?? 0),
+        needsReview: Number(sRow.needs_review ?? 0),
+        unmapped: Number(sRow.unmapped ?? 0),
+        rejected: Number(sRow.rejected ?? 0),
+        distinctStatuses: sRow.distinct_statuses ?? [],
+      };
+    } catch (err: any) {
+      result.securityMaster = { tableExists: false, error: err?.message };
+    }
+
+    result.migrationStatus = {
+      holdingsReady: result.holdings?.tableExists && result.holdings?.totalRows > 0,
+      securityMasterReady: result.securityMaster?.tableExists,
+      pipelineCanRun: result.holdings?.tableExists && result.securityMaster?.tableExists,
+      recommendation: (() => {
+        if (!result.holdings?.tableExists) return "Run migrate-institutional.sql";
+        if (!result.securityMaster?.tableExists) return "Run migrate-security-master.sql";
+        if (result.holdings?.totalRows === 0) return "Holdings table is empty — ingest 13F data first";
+        if (result.securityMaster?.totalRows === 0) return "Run Mapping Pipeline to populate security_master";
+        return "Ready";
+      })(),
+    };
+
+    return res.json(result);
   });
 }

@@ -272,6 +272,11 @@ CREATE INDEX IF NOT EXISTS idx_iir_heartbeat
 
 DO $$
 BEGIN
+  -- institutional_13f_holdings: figi column (added after initial deploy)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='institutional_13f_holdings' AND column_name='figi') THEN
+    ALTER TABLE institutional_13f_holdings ADD COLUMN figi TEXT;
+  END IF;
+
   -- institutional_ingestion_runs: Sprint 2.2.5 checkpoint columns
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='institutional_ingestion_runs' AND column_name='total_accessions') THEN
     ALTER TABLE institutional_ingestion_runs ADD COLUMN total_accessions INTEGER;

@@ -1,0 +1,218 @@
+SPRINT 2.2.5 — ROUTE COLLISION FIX
+
+PRODUCTION ROOT CAUSE CONFIRMED
+
+GET:
+
+/api/institutional/mappings
+
+is returning the generic Institutional Intelligence response:
+
+{
+  "status": "unavailable",
+  "symbol": "!MAPPINGS",
+  ...
+}
+
+instead of the mapping queue payload:
+
+{
+  "entries": [...],
+  "total": ...
+}
+
+Production diagnostics already prove:
+
+security_master table exists
+securityMaster.totalRows = 3827
+securityMaster.unmapped = 3827
+holdings.distinctCusips = 17256
+
+Therefore the mapping pipeline is populated correctly.
+
+The remaining defect is API route collision / registration order.
+
+============================================================
+1. FIND THE COLLIDING ROUTE
+============================================================
+
+Search all institutional routes.
+
+Identify the dynamic route consuming:
+
+/api/institutional/mappings
+
+Likely examples:
+
+GET /api/institutional/:symbol
+GET /api/institutional/:ticker
+GET /api/institutional/*
+
+Report the exact route and registration file/order.
+
+============================================================
+2. FIX ROUTE PRECEDENCE
+============================================================
+
+Static administrative/resource routes must be registered BEFORE dynamic symbol routes.
+
+Ensure these resolve explicitly:
+
+GET  /api/institutional/mappings
+GET  /api/institutional/unmapped
+GET  /api/institutional/mapping-audit
+POST /api/institutional/review
+POST /api/institutional/mapping-pipeline
+
+GET  /api/admin/institutional/mapping-diagnostics
+
+Only after those routes should generic routes such as:
+
+GET /api/institutional/:symbol
+
+be registered.
+
+Do not rename public endpoints unless absolutely necessary.
+
+============================================================
+3. HARDEN DYNAMIC TICKER ROUTE
+============================================================
+
+Add ticker validation to the dynamic institutional symbol endpoint.
+
+It should reject reserved route words such as:
+
+mappings
+unmapped
+mapping-audit
+review
+mapping-pipeline
+
+More generally, validate symbol syntax before treating a path segment as a ticker.
+
+Do not transform an arbitrary route word into something like "!MAPPINGS".
+
+============================================================
+4. VERIFY EXACT RESPONSE CONTRACT
+============================================================
+
+After the fix:
+
+GET /api/institutional/mappings?page=1&pageSize=10
+
+must return:
+
+{
+  "entries": [...],
+  "total": 3827 or current total,
+  "page": 1,
+  "pageSize": 10
+}
+
+The first response must NOT contain:
+
+status
+symbol
+managerActivity
+largestReportedHolders
+sourceLinks
+
+Those belong to the Institutional Intelligence symbol endpoint.
+
+============================================================
+5. ADMIN PAGE VERIFICATION
+============================================================
+
+/admin/institutional-mappings
+
+must populate the Unmapped tab automatically.
+
+Expected:
+
+approximately 3827 current security_master rows,
+subject to page filters/pagination.
+
+Do not require rerunning the mapping pipeline.
+
+The data already exists.
+
+============================================================
+6. TEST ROUTE PRECEDENCE
+============================================================
+
+Add regression tests proving:
+
+/api/institutional/mappings
+→ mapping queue route
+
+/api/institutional/unmapped
+→ unmapped route
+
+/api/institutional/mapping-audit
+→ mapping audit route
+
+/api/institutional/COST
+→ symbol intelligence route
+
+/api/institutional/NVDA
+→ symbol intelligence route
+
+The word "mappings" must never be interpreted as a ticker.
+
+Add a route-registration-order regression test if possible.
+
+============================================================
+7. COMPLETE UAT
+============================================================
+
+After deployment verify:
+
+A.
+Open:
+
+/api/institutional/mappings?page=1&pageSize=10
+
+Response contains entries array.
+
+B.
+Open:
+
+/admin/institutional-mappings
+
+Unmapped queue contains rows.
+
+C.
+Search for:
+
+22160K105
+
+or COST.
+
+D.
+Approve one mapping.
+
+E.
+Refresh.
+
+Approved mapping remains Reviewed.
+
+============================================================
+8. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact colliding route
+2. Exact registration order before
+3. Registration order after
+4. Files changed
+5. API response before/after
+6. Dynamic ticker validation added
+7. Tests
+8. Production UAT
+9. GO / NO_GO
+
+Do not change ingestion.
+Do not rerun mapping pipeline unnecessarily.
+Do not start Sprint 2.2.6 yet.
+Do not deploy automatically.

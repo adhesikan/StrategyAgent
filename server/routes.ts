@@ -219,9 +219,12 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerInternalPortfolioRoutes(app);
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
-  registerInstitutionalRoute(app, isAuthenticated);
+  // Static named institutional routes MUST be registered before the dynamic
+  // /api/institutional/:symbol route, otherwise Express matches the dynamic
+  // segment first and treats "mappings", "unmapped", etc. as ticker symbols.
   registerInstitutionalAdminRoutes(app, isAuthenticated, isAdmin);
   registerInstitutionalMappingRoutes(app, isAuthenticated, isAdmin);
+  registerInstitutionalRoute(app, isAuthenticated); // dynamic :symbol — always last
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;
     const user = await authStorage.getUser(req.session.userId);

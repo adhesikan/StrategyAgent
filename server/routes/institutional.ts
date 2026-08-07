@@ -15,6 +15,21 @@ import { getInstitutionalData } from "../services/institutional/institutional-se
 const SYMBOL_RE = /^[A-Z]{1,10}$/;
 const MAX_HOLDER_LIMIT = 50;
 
+/**
+ * Route segments that are registered as their own static endpoints under
+ * /api/institutional/*. Rejecting them here is a belt-and-suspenders guard
+ * so even if the registration order is ever disturbed, a route word never
+ * gets silently treated as a ticker symbol.
+ */
+const RESERVED_SEGMENTS = new Set([
+  "mappings",
+  "unmapped",
+  "mapping-audit",
+  "mapping-pipeline",
+  "review",
+]);
+
+
 export function registerInstitutionalRoute(
   app: Express,
   isAuthenticated: RequestHandler,
@@ -25,6 +40,11 @@ export function registerInstitutionalRoute(
     async (req, res) => {
       try {
         const raw = String(req.params.symbol ?? "").toUpperCase().trim();
+        // Reject known static route segments before regex — belt-and-suspenders
+        // guard in case registration order is ever disturbed.
+        if (RESERVED_SEGMENTS.has(raw.toLowerCase())) {
+          return res.status(400).json({ error: "Invalid symbol" });
+        }
         if (!SYMBOL_RE.test(raw)) {
           return res.status(400).json({ error: "Invalid symbol" });
         }

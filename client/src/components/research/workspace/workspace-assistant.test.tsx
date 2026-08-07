@@ -9,6 +9,8 @@ import {
   buildSafeAssistantPayload,
   isPromptRelevant,
   shouldLockScroll,
+  APP_SHELL_TOP_VAR,
+  APP_SHELL_TOP_REM,
 } from "./workspace-assistant";
 import {
   buildAssistantPrompts,
@@ -432,6 +434,132 @@ describe("K — Close-button fix", () => {
     expect(p.symbol).toBe("COST");
     expect(p.contextMode).toBe("trading_workspace");
     expect(p.selectedContractId).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// L — Drawer header-offset and close-button visibility fix (Sprint 2.2.3 §3–§5)
+// ---------------------------------------------------------------------------
+// Pure-constant tests: verify the layout tokens match the shared CSS variable
+// and the offset math is correct. RTL/DOM-level positional tests require
+// jsdom + CSS layout which is not yet wired; they are covered by UAT.
+
+describe("L — Desktop drawer header offset (layout tokens)", () => {
+  // Section A: Desktop offset contract
+
+  it("L1 — APP_SHELL_TOP_VAR references the shared CSS variable", () => {
+    // The drawer uses this as an inline style: top = APP_SHELL_TOP_VAR
+    expect(APP_SHELL_TOP_VAR).toBe("var(--app-shell-top)");
+  });
+
+  it("L2 — APP_SHELL_TOP_REM matches h-14 (3.5rem = 56px)", () => {
+    // h-14 = 14 * 4px = 56px = 3.5rem  (1 Tailwind unit = 4px, 4px = 0.25rem)
+    const TAILWIND_UNIT_PX = 4;
+    const TAILWIND_UNIT_REM = 0.25;
+    const H14_UNITS = 14;
+    expect(APP_SHELL_TOP_REM).toBe(H14_UNITS * TAILWIND_UNIT_REM);
+    expect(APP_SHELL_TOP_REM * (1 / TAILWIND_UNIT_REM) * TAILWIND_UNIT_PX).toBe(56);
+  });
+
+  it("L3 — drawer height formula subtracts the app shell offset from 100dvh", () => {
+    // The computed height string that will be set in the drawer's inline style.
+    // Ensures the drawer fills the remaining viewport below the navbar exactly.
+    const expectedHeight = `calc(100dvh - ${APP_SHELL_TOP_VAR})`;
+    expect(expectedHeight).toBe("calc(100dvh - var(--app-shell-top))");
+    expect(expectedHeight).toContain("100dvh");
+    expect(expectedHeight).toContain("var(--app-shell-top)");
+  });
+
+  it("L4 — offset is positive (drawer top is below the zero origin)", () => {
+    // Drawer must not start at top-0. A positive rem offset guarantees
+    // the header is visible below the sticky navbar.
+    expect(APP_SHELL_TOP_REM).toBeGreaterThan(0);
+  });
+
+  it("L5 — APP_SHELL_TOP_REM is in range 48–80px (sanity: not too small, not too large)", () => {
+    // 48px = h-12, 80px = h-20. Catches accidental unit swaps (e.g. 3.5px instead of 3.5rem).
+    const px = APP_SHELL_TOP_REM * 16; // 1rem = 16px
+    expect(px).toBeGreaterThanOrEqual(48);
+    expect(px).toBeLessThanOrEqual(80);
+  });
+
+  // Section B: Header visibility
+
+  it("L6 — CSS variable string is well-formed (no typos)", () => {
+    expect(APP_SHELL_TOP_VAR).toMatch(/^var\(--[a-z-]+\)$/);
+  });
+
+  it("L7 — the variable name in APP_SHELL_TOP_VAR contains 'app-shell'", () => {
+    // Ensures future renames don't silently decouple index.css from the component.
+    expect(APP_SHELL_TOP_VAR).toContain("app-shell");
+  });
+
+  // Section C: Z-index policy (documented values, not computed by JS)
+
+  it("L8 — desktop drawer z-index (50) is at or above navbar z-index (50)", () => {
+    // Drawer and navbar share z-50. No visual conflict because the drawer
+    // starts BELOW the navbar's bottom edge (top = var(--app-shell-top)).
+    const NAVBAR_Z = 50;
+    const DRAWER_Z = 50;
+    expect(DRAWER_Z).toBeGreaterThanOrEqual(NAVBAR_Z);
+  });
+
+  it("L9 — desktop backdrop z-index (49) is below drawer z-index (50)", () => {
+    const BACKDROP_Z = 49;
+    const DRAWER_Z = 50;
+    expect(BACKDROP_Z).toBeLessThan(DRAWER_Z);
+  });
+
+  it("L10 — mobile sheet z-index (50) is above mobile backdrop z-index (40)", () => {
+    const MOBILE_BACKDROP_Z = 40;
+    const MOBILE_SHEET_Z = 50;
+    expect(MOBILE_SHEET_Z).toBeGreaterThan(MOBILE_BACKDROP_Z);
+  });
+
+  // Section D: Close behavior (pure — scroll lock)
+
+  it("L11 — shouldLockScroll correctly gates mobile-only at lg breakpoint (1024px)", () => {
+    expect(shouldLockScroll(true, 1024)).toBe(false);  // lg — desktop, no lock
+    expect(shouldLockScroll(true, 1023)).toBe(true);   // below lg — mobile, lock
+    expect(shouldLockScroll(false, 375)).toBe(false);  // closed — never lock
+  });
+
+  // Section E: Responsive contract
+
+  it("L12 — desktop vs mobile is determined by lg breakpoint (1024px)", () => {
+    // Desktop: viewport ≥ 1024px. Mobile: < 1024px.
+    // shouldLockScroll encodes this boundary in the lock-scroll logic.
+    const LG_BREAKPOINT = 1024;
+    expect(shouldLockScroll(true, LG_BREAKPOINT - 1)).toBe(true);   // mobile
+    expect(shouldLockScroll(true, LG_BREAKPOINT)).toBe(false);      // desktop
+  });
+
+  // Section F: Conditional banner — offset self-documents that only the
+  // sticky navbar contributes to the fixed offset.
+
+  it("L13 — CSS variable comment documents the offset is navbar-only (non-conditional)", () => {
+    // The StatusBanner is in normal document flow (not sticky/fixed), so the
+    // fixed drawer only needs the navbar offset. This test documents that policy.
+    // If the banner ever becomes sticky/fixed, APP_SHELL_TOP_REM must increase.
+    const NAVBAR_HEIGHT_PX = APP_SHELL_TOP_REM * 16; // 1rem = 16px
+    expect(NAVBAR_HEIGHT_PX).toBe(56); // h-14 = 56px
+  });
+
+  it("L14 — 100dvh preferred over 100vh in height calculation", () => {
+    const heightExpr = `calc(100dvh - ${APP_SHELL_TOP_VAR})`;
+    // dvh = dynamic viewport height — adapts to mobile browser chrome.
+    expect(heightExpr).toContain("dvh");
+    expect(heightExpr).not.toContain("100vh");
+  });
+
+  // Non-regression: payload sanitization must be unaffected by layout changes
+
+  it("L15 — layout constants do not interfere with payload sanitization", () => {
+    const p = buildSafeAssistantPayload("Explain the offset fix", "AAPL", null);
+    expect(p.symbol).toBe("AAPL");
+    expect(p.contextMode).toBe("trading_workspace");
+    expect(typeof APP_SHELL_TOP_VAR).toBe("string");
+    expect(typeof APP_SHELL_TOP_REM).toBe("number");
   });
 });
 

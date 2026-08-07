@@ -4,6 +4,15 @@
 
 /* LIGHT MODE */
 :root {
+  /* ─── App shell layout tokens ───────────────────────────────────────────
+   * --app-shell-top: Combined height of the sticky global navbar (h-14 = 56px = 3.5rem).
+   * The StatusBanner renders in normal document flow (not fixed/sticky), so
+   * fixed-positioned elements only need to account for the navbar.
+   * Desktop assistant drawer uses this to start below the navbar.
+   * Update this value if the global navbar height changes.
+   * ─────────────────────────────────────────────────────────────────────── */
+  --app-shell-top: 3.5rem; /* h-14 = 56px — sticky TopNav height */
+
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: -8;

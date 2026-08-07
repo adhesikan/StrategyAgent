@@ -1,0 +1,353 @@
+SPRINT 2.2.3 — ASSISTANT DRAWER HEADER OFFSET AND CLOSE BUTTON VISIBILITY FIX
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION DEFECT
+
+The Contextual AI Research Assistant opens on the right side, but its top section is
+hidden behind the fixed global navigation and market-data banner.
+
+The screenshot indicates:
+
+- the drawer begins at the top of the viewport;
+- the global navbar and data-source banner render above it;
+- the assistant title/header area is clipped;
+- the X close button is likely present in the hidden header region;
+- only the research-question list is visible below the banners.
+
+This is a focused layout and accessibility fix only.
+
+Do not add features.
+Do not change /api/ask.
+Do not change assistant logic, prompts, backend context, broker logic, Workspace
+sections, database, MCP, or business logic.
+
+====================================================================
+1. CONFIRM THE EXACT LAYOUT ROOT CAUSE
+====================================================================
+
+Inspect:
+
+- WorkspaceAssistantDrawer
+- Sheet/Dialog/Drawer content primitives
+- application header
+- global navbar
+- market-data banner
+- portal root
+- z-index values
+- top/right/bottom positioning
+- height/max-height calculations
+- safe-area handling
+- assistant header positioning
+
+Search for:
+
+- fixed inset-y-0 right-0
+- fixed inset-0
+- top-0
+- h-screen
+- min-h-screen
+- max-h-screen
+- height: 100vh
+- z-40 / z-50 / z-[...]
+- pt-* used as compensation
+- overflow-hidden
+- portal content mounted outside the application layout
+
+Determine whether:
+
+A. the drawer header exists but is behind the navbar;
+B. the drawer content itself begins behind the navbar;
+C. the close button is clipped by overflow;
+D. the drawer z-index is below the global navigation;
+E. the header is missing entirely.
+
+Report the exact root cause before changing code.
+
+====================================================================
+2. DEFINE ONE SHARED TOP OFFSET
+====================================================================
+
+Determine the combined visible height of:
+
+- global application navbar;
+- market-data/status banner.
+
+Do not scatter hardcoded offsets across components.
+
+Prefer one shared CSS variable or layout token, for example:
+
+--app-shell-top-offset
+
+Example only:
+
+:root {
+  --app-shell-header-height: 40px;
+  --app-shell-banner-height: 44px;
+  --app-shell-top-offset:
+    calc(var(--app-shell-header-height) + var(--app-shell-banner-height));
+}
+
+Use the actual current layout values.
+
+If the banner is conditional, derive the offset from the real rendered layout or expose
+an existing layout variable rather than assuming it is always present.
+
+====================================================================
+3. POSITION THE DESKTOP DRAWER BELOW THE HEADER
+====================================================================
+
+Desktop assistant drawer should use:
+
+position: fixed;
+top: var(--app-shell-top-offset);
+right: 0;
+bottom: 0;
+
+or equivalent Tailwind/CSS.
+
+Its height should be:
+
+calc(100dvh - var(--app-shell-top-offset))
+
+Prefer 100dvh over 100vh where supported.
+
+Do not use:
+
+top: 0;
+height: 100vh;
+
+for the desktop drawer when a fixed global header exists.
+
+Requirements:
+
+- assistant title and close button fully visible;
+- drawer does not overlap the navbar;
+- drawer does not overlap the market-data banner;
+- drawer body scrolls internally;
+- input composer remains visible at the bottom;
+- Workspace behind it remains positioned correctly.
+
+====================================================================
+4. Z-INDEX POLICY
+====================================================================
+
+Establish a deliberate stacking order.
+
+Suggested conceptual order:
+
+Workspace content
+<
+Workspace sticky nav
+<
+Global application header
+<
+Assistant backdrop
+<
+Assistant drawer
+<
+Assistant close button/header
+
+The drawer should be visually above page content, but its top edge should begin below the
+global header rather than covering it.
+
+Do not solve this only by raising z-index if the top offset remains wrong.
+
+Document the final z-index values.
+
+====================================================================
+5. VISIBLE STICKY ASSISTANT HEADER
+====================================================================
+
+Add or preserve an explicit assistant header inside the drawer.
+
+It must show:
+
+Ask VCP AI
+
+Research questions for COST
+
+[ X ]
+
+Requirements:
+
+- header is the first visible drawer content;
+- position: sticky;
+- top: 0 within the drawer;
+- close button at top-right;
+- solid background matching drawer;
+- bottom border or subtle divider;
+- sufficiently high internal z-index;
+- never scrolls out of view;
+- close button minimum 40 × 40 px;
+- visible hover and focus states;
+- sufficient dark-mode contrast.
+
+Do not use the blue question-mark/help icon as the only close control.
+
+====================================================================
+6. BACKDROP POSITION
+====================================================================
+
+Audit the backdrop.
+
+Desktop options:
+
+A. Backdrop begins below the global app header, matching the drawer offset; or
+B. Backdrop may cover the full viewport, but must not visually hide or intercept the
+   fixed app header unless that behavior is intentional.
+
+Preferred for this product:
+
+- preserve global navbar visibility;
+- backdrop covers Workspace content below the header;
+- global header remains usable or visibly separate.
+
+Ensure the backdrop does not cover the close button or intercept clicks inside the
+drawer.
+
+====================================================================
+7. MOBILE BOTTOM SHEET
+====================================================================
+
+Do not apply the desktop top offset blindly to mobile.
+
+Mobile should remain a bottom sheet or full-height sheet according to the existing
+design.
+
+Requirements:
+
+- safe-area inset at top;
+- visible title and X;
+- no clipping behind mobile browser chrome;
+- close button remains reachable;
+- body scroll locked while open;
+- scrolling restored on close.
+
+Use CSS media queries or existing responsive variants.
+
+====================================================================
+8. CLOSE BEHAVIOR
+====================================================================
+
+Verify all close methods:
+
+- visible X button;
+- Escape key;
+- backdrop click where supported;
+- clicking the open button again if toggle behavior exists;
+- route change;
+- component unmount.
+
+After closing:
+
+- drawer unmounts or becomes non-interactive;
+- backdrop disappears;
+- body scroll restores;
+- focus returns to the opener;
+- no invisible overlay remains.
+
+====================================================================
+9. TESTS
+====================================================================
+
+Add focused regression tests:
+
+A. Desktop offset
+
+- drawer top is below global header offset;
+- drawer height subtracts the offset;
+- header is visible;
+- close button is visible.
+
+B. Header
+
+- title renders;
+- symbol renders;
+- close button has aria-label;
+- header remains sticky;
+- close button remains present with long content.
+
+C. Z-index
+
+- drawer above Workspace content;
+- header/close button above drawer body;
+- no clipping class hides the header.
+
+D. Close behavior
+
+- click X closes;
+- Escape closes;
+- focus returns;
+- body scroll restores;
+- backdrop removed.
+
+E. Responsive
+
+- desktop uses right drawer with top offset;
+- tablet header visible;
+- mobile bottom sheet header visible;
+- mobile safe-area respected.
+
+F. Conditional banner
+
+- banner visible: drawer uses full combined offset;
+- banner absent: drawer does not leave excessive blank space.
+
+Run:
+
+- all client tests;
+- all server tests;
+- typecheck;
+- production build.
+
+====================================================================
+10. PRODUCTION UAT
+====================================================================
+
+Provide exact UAT:
+
+1. Open /research/COST.
+2. Open Ask VCP AI.
+3. Confirm the drawer starts immediately below the market-data banner.
+4. Confirm “Ask VCP AI” title is visible.
+5. Confirm “Research questions for COST” is visible.
+6. Confirm X is visible at top-right.
+7. Scroll assistant content; confirm header and X remain visible.
+8. Click X; confirm drawer closes.
+9. Reopen and press Escape.
+10. Confirm Workspace scrolling restores.
+11. Test with the market-data banner present.
+12. Test a state where the banner is absent, if supported.
+13. Test desktop, tablet and mobile.
+14. Confirm no browser-console errors.
+15. Confirm no API request occurs merely from opening or closing the drawer.
+
+====================================================================
+11. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact root cause
+2. Whether X existed but was hidden
+3. Global header height
+4. Banner height
+5. Final shared top-offset approach
+6. Files changed
+7. Drawer positioning before and after
+8. Z-index policy
+9. Header structure
+10. Close behavior
+11. Mobile behavior
+12. Tests added
+13. Total passing tests
+14. Typecheck
+15. Build
+16. Production UAT
+17. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push or deploy automatically.
+
+Wait for review.

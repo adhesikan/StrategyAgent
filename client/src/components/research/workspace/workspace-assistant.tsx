@@ -15,6 +15,21 @@
 // - Clearly distinguishes factual values from explanation in prompts
 // - Preserves existing disclaimers
 // - No personalized investment advice
+//
+// Layout tokens (Sprint 2.2.3 header-offset fix):
+// - APP_SHELL_TOP_VAR  — CSS variable reference (var(--app-shell-top))
+// - APP_SHELL_TOP_REM  — numeric value in rem for tests (must match --app-shell-top in index.css)
+// - Desktop drawer: top = var(--app-shell-top), height = calc(100dvh - var(--app-shell-top))
+// - Desktop backdrop: top = var(--app-shell-top), covers workspace below the navbar
+//
+// Z-index policy:
+// - Workspace content / sticky workspace nav: z-10 / z-30 (internal)
+// - Global application navbar (TopNav): z-50 (sticky)
+// - Desktop backdrop: z-[49]  — above page content, below navbar and drawer
+// - Desktop drawer:   z-[50]  — same stacking layer as navbar, but top edge
+//                               is below navbar so no visual conflict
+// - Mobile backdrop:  z-40    — below mobile sheet
+// - Mobile sheet:     z-50    — full-width bottom sheet
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
@@ -57,6 +72,22 @@ export interface AssistantResponse {
   source?: string;
   suggestions?: Array<{ label: string; href: string }>;
 }
+
+// ---------------------------------------------------------------------------
+// Layout tokens — exported for testing (must match index.css :root values)
+// ---------------------------------------------------------------------------
+
+/**
+ * CSS variable reference used as inline style for the desktop drawer and backdrop.
+ * Matches --app-shell-top defined in index.css.
+ */
+export const APP_SHELL_TOP_VAR = "var(--app-shell-top)";
+
+/**
+ * Numeric value in rem (exported for pure-function tests).
+ * Must equal --app-shell-top in index.css: h-14 = 3.5rem = 56px.
+ */
+export const APP_SHELL_TOP_REM = 3.5;
 
 // ---------------------------------------------------------------------------
 // Pure helpers — exported for testing
@@ -487,14 +518,24 @@ export function WorkspaceAssistantDrawer({
 
   return (
     <>
-      {/* Desktop: fixed right panel */}
+      {/* ─── Desktop: fixed right panel below sticky navbar ─────────────────────
+           Positioning: top = var(--app-shell-top) so the drawer begins below the
+           sticky TopNav (h-14 = 56px). Height = calc(100dvh - offset) so the
+           drawer fills the remaining viewport without overlapping the nav.
+           z-index 50: same stacking layer as the navbar, but the top edge is
+           below it so there is no visual conflict. The navbar is NOT covered.
+           ──────────────────────────────────────────────────────────────────── */}
       <div
         className={cn(
           "hidden lg:flex flex-col",
-          "fixed right-0 top-0 bottom-0 z-40",
+          "fixed right-0 z-50",
           "w-[380px] border-l border-border/40 bg-background shadow-xl",
           "animate-in slide-in-from-right-5 duration-200",
         )}
+        style={{
+          top: APP_SHELL_TOP_VAR,
+          height: `calc(100dvh - ${APP_SHELL_TOP_VAR})`,
+        }}
         data-testid="assistant-drawer-desktop"
       >
         <WorkspaceAssistantPanel
@@ -506,9 +547,22 @@ export function WorkspaceAssistantDrawer({
         />
       </div>
 
+      {/* ─── Desktop backdrop (below drawer, above page content) ────────────────
+           Begins at the same top offset so the sticky navbar remains visible
+           and interactive. Click to close. z-[49] sits below the drawer (z-50)
+           but above page content.
+           ──────────────────────────────────────────────────────────────────── */}
+      <div
+        className="hidden lg:block fixed inset-x-0 bottom-0 z-[49] bg-background/60 backdrop-blur-sm"
+        style={{ top: APP_SHELL_TOP_VAR }}
+        onClick={onClose}
+        aria-hidden="true"
+        data-testid="assistant-backdrop-desktop"
+      />
+
       {/* Mobile/tablet: bottom sheet with backdrop */}
       <div className="lg:hidden" data-testid="assistant-drawer-mobile">
-        {/* Backdrop */}
+        {/* Backdrop — full screen on mobile (nav scrolls away on mobile) */}
         <div
           className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
           onClick={onClose}

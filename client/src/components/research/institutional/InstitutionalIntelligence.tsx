@@ -661,20 +661,27 @@ function UnavailableState({ symbol, reasons }: { symbol: string; reasons: string
           </p>
         </div>
 
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          EDGAR searches Form 13F filings submitted by reporting investment managers.
+          Searching an underlying company may not identify every manager holding that security.
+          VCP Trader's Institutional Intelligence aggregates mapped 13F holdings internally
+          when the feature is enabled.
+        </p>
+
         <div className="flex flex-col gap-1.5">
-          {/* Primary: human-readable EDGAR filing search — NOT the raw EFTS/search-index JSON API */}
+          {/* Primary: official SEC EDGAR full-text search UI (human-readable, not the raw EFTS API) */}
           <a
-            href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=13F-HR&dateb=&owner=include&count=40"
+            href="https://www.sec.gov/edgar/search/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-[11px] text-primary hover:underline"
             data-testid="institutional-sec-search-link"
           >
-            Search 13F filings on SEC EDGAR <ExternalLink className="h-2.5 w-2.5" />
+            Search SEC EDGAR <ExternalLink className="h-2.5 w-2.5" />
           </a>
-          {/* Secondary: Form 13F Data Sets page */}
+          {/* Secondary: current official Form 13F Data Sets page (not the obsolete /financial-data-sets/ path) */}
           <a
-            href="https://www.sec.gov/data-research/financial-data-sets/form-13f-data-sets"
+            href="https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-[11px] text-primary hover:underline"

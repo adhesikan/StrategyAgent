@@ -1,0 +1,419 @@
+INSTITUTIONAL INTELLIGENCE — FIX SEC LINKS AND ACTIVATE PRODUCTION DATA
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION ISSUES
+
+1. The Institutional tab says:
+
+“13F institutional data is not available for COST because Institutional
+Intelligence is not enabled on this deployment.”
+
+2. “Search 13F filings on SEC EDGAR” opens an old-style latest-filings page listing
+all recent 13F-HR filings. It is not meaningfully scoped to COST and is not a good
+user workflow.
+
+3. “View SEC Form 13F data sets” opens this obsolete path and returns 404:
+
+https://www.sec.gov/data-research/financial-data-sets/form-13f-data-sets
+
+The current official SEC page is:
+
+https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets
+
+The official human-readable EDGAR Full Text Search page is:
+
+https://www.sec.gov/edgar/search/
+
+This task has two phases:
+
+A. Fix user-facing SEC links immediately.
+B. Determine and complete the exact production activation process for Institutional
+   Intelligence.
+
+Do not fabricate institutional data.
+Do not enable the UI until the production data pipeline is ready.
+Do not add another data vendor.
+Do not scrape SEC HTML.
+Do not modify Opportunity Engine, MCP, scanner, brokers, options, or trade planning.
+
+====================================================================
+PHASE A — FIX USER-FACING SEC LINKS
+====================================================================
+
+1. Locate the Institutional unavailable-state component.
+
+2. Replace the obsolete Form 13F dataset URL:
+
+OLD:
+https://www.sec.gov/data-research/financial-data-sets/form-13f-data-sets
+
+NEW:
+https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets
+
+3. Replace the current generic latest-filings link with the official human-readable
+EDGAR Full Text Search experience:
+
+https://www.sec.gov/edgar/search/
+
+Do not link users to:
+
+- efts.sec.gov/LATEST/search-index
+- raw JSON
+- raw XML
+- bulk ZIP files
+- generic latest-filing lists that are not useful for researching the symbol
+
+4. Use these labels:
+
+- Search SEC EDGAR
+- View SEC Form 13F data sets
+
+5. Add supporting text:
+
+“EDGAR searches Form 13F filings submitted by reporting investment managers.
+Searching an underlying company may not identify every manager holding that security.
+VCP Trader’s Institutional Intelligence aggregates mapped 13F holdings internally
+when the feature is enabled.”
+
+6. External links must use:
+
+target="_blank"
+rel="noopener noreferrer"
+
+7. Add tests proving:
+
+- no rendered link contains the obsolete `/financial-data-sets/` path;
+- no rendered link uses `efts.sec.gov/LATEST/search-index`;
+- EDGAR search link uses `https://www.sec.gov/edgar/search/`;
+- dataset link uses the current `/sec-markets-data/form-13f-data-sets` path;
+- both external links use noopener and noreferrer;
+- the 13F delay/coverage disclaimer remains visible.
+
+====================================================================
+PHASE B — IDENTIFY WHY THE FEATURE IS DISABLED
+====================================================================
+
+Inspect the implementation and report the exact gate that produced:
+
+“Institutional Intelligence is not enabled on this deployment.”
+
+Find:
+
+- feature-flag declaration;
+- default value;
+- environment-variable parser;
+- endpoint gate;
+- client unavailable-state mapping;
+- scheduled-ingestion gate;
+- any separate UI and ingestion flags.
+
+Likely variables from the implementation prompt included:
+
+- INSTITUTIONAL_INTELLIGENCE_ENABLED
+- INSTITUTIONAL_13F_INGESTION_ENABLED
+- INSTITUTIONAL_13F_BACKFILL_QUARTERS
+- SEC_USER_AGENT
+
+Do not assume these names exist. Verify the exact names in the repository.
+
+Report:
+
+1. Exact variable producing the current disabled message.
+2. Current default.
+3. Whether the variable is absent in Railway.
+4. Whether enabling it without data is safe.
+5. Whether ingestion has been enabled.
+6. Whether SEC_USER_AGENT is configured.
+7. Whether migrations have run.
+8. Whether any 13F rows exist.
+9. Whether COST has an exact/reviewed security mapping.
+10. Whether two comparable quarters exist for COST.
+11. Whether aggregates have been generated.
+12. Whether the readiness script exists and passes.
+
+====================================================================
+DATABASE AND MIGRATION READINESS
+====================================================================
+
+Inspect the implemented migration and tables.
+
+Report exact table names and row counts for:
+
+- 13F filings;
+- 13F holdings;
+- security mappings;
+- quarterly aggregates;
+- ingestion runs.
+
+Use safe diagnostic queries.
+
+Do not print DATABASE_URL or credentials.
+
+Verify:
+
+- migrations exist;
+- migrations have run in production;
+- unique constraints exist;
+- amendment handling is implemented;
+- holdings are not double-counted;
+- common-stock totals exclude put/call rows;
+- only exact/reviewed mappings feed user-visible aggregates.
+
+If migrations have not run, provide the exact repository-supported Railway command.
+
+Do not invent a migration command.
+
+====================================================================
+SEC CONFIGURATION
+====================================================================
+
+Verify the required SEC User-Agent implementation.
+
+The configured value should identify the application and provide a contact address,
+for example:
+
+SEC_USER_AGENT="VCP Trader AI institutional-data-contact@yourdomain.com"
+
+Do not hardcode a personal email in source.
+
+Report whether the application:
+
+- blocks ingestion when SEC_USER_AGENT is absent;
+- uses bounded request rates;
+- uses retries/backoff;
+- caches downloaded quarterly files;
+- avoids SEC calls during ordinary page loads.
+
+Do not expose the User-Agent email in the client UI unless intentionally required.
+
+====================================================================
+BACKFILL AND INGESTION
+====================================================================
+
+Find the exact implemented ingestion entry points:
+
+- CLI script;
+- admin endpoint;
+- scheduled job;
+- service function.
+
+Report the exact safe production command for:
+
+1. Backfilling the latest two quarters.
+2. Optionally backfilling the configured historical range.
+3. Rebuilding aggregates.
+4. Running the readiness audit.
+
+Do not guess command names from the original design prompt.
+
+Verify that ingestion:
+
+- runs asynchronously;
+- uses the institutional advisory lock;
+- is idempotent;
+- processes amendments safely;
+- can resume after partial failure;
+- does not block application startup;
+- emits safe structured logs.
+
+====================================================================
+COST MAPPING READINESS
+====================================================================
+
+Institutional 13F data is keyed primarily by reported security identifiers, not simply
+by ticker.
+
+Verify COST has an exact or reviewed mapping.
+
+Report:
+
+- ticker;
+- issuer;
+- CUSIP;
+- FIGI if available;
+- mapping method;
+- mapping status;
+- last verified date.
+
+Do not create a guessed mapping from issuer-name similarity.
+
+If COST is unmapped:
+
+- return CONDITIONAL_GO;
+- provide the exact reviewed-mapping workflow;
+- do not enable COST institutional analytics until mapping is verified.
+
+====================================================================
+READINESS AUDIT
+====================================================================
+
+Run the implemented institutional readiness audit against the current environment.
+
+Prefer the repository’s actual command, likely similar to:
+
+npx tsx scripts/audit-institutional-readiness.ts
+
+but verify the exact path first.
+
+The audit must report safely:
+
+- available quarters;
+- filings ingested;
+- eligible holdings;
+- exact/reviewed mappings;
+- unmapped holdings;
+- tracked-universe coverage;
+- symbols with at least two comparable quarters;
+- amendment-processing status;
+- aggregate readiness;
+- COST readiness;
+- feature-flag states.
+
+Return:
+
+GO
+CONDITIONAL_GO
+NO_GO
+
+Do not enable the user-facing feature unless the audit is GO, or CONDITIONAL_GO with
+clearly scoped partial coverage that the UI already labels honestly.
+
+====================================================================
+ACTIVATION SEQUENCE
+====================================================================
+
+Provide and, only when explicitly asked, execute this order:
+
+1. Deploy corrected SEC links while Institutional Intelligence remains disabled.
+2. Run production migrations.
+3. Configure SEC_USER_AGENT.
+4. Enable ingestion only:
+   INSTITUTIONAL_13F_INGESTION_ENABLED=true
+   Use actual verified variable name.
+5. Keep user-facing feature disabled.
+6. Run latest-two-quarter backfill.
+7. Rebuild quarterly aggregates if separately required.
+8. Run the readiness audit.
+9. Validate COST against source filings and mapping.
+10. Set the verified user-facing feature flag true:
+    INSTITUTIONAL_INTELLIGENCE_ENABLED=true
+11. Redeploy/restart if required.
+12. Run production UAT.
+
+Do not automatically set Railway variables in this task.
+
+====================================================================
+CLIENT ERROR STATES
+====================================================================
+
+Differentiate these states accurately:
+
+Feature disabled:
+“Institutional Intelligence is not enabled.”
+
+Configuration missing:
+“SEC institutional-data ingestion is not configured.”
+
+Ingestion pending:
+“Institutional data is being prepared.”
+
+No mapped data:
+“No mapped 13F holdings are available for COST.”
+
+One quarter only:
+“Current-quarter data is available, but comparable prior-quarter data is not yet
+available.”
+
+Partial coverage:
+“Partial 13F coverage is available.”
+
+Stale:
+“The latest available 13F reporting period may be stale.”
+
+Error:
+“Institutional Intelligence is temporarily unavailable.”
+
+Do not use “not enabled” for every failure condition.
+
+====================================================================
+PRODUCTION UAT
+====================================================================
+
+After the feature is safely enabled, verify:
+
+1. Institutional tab no longer says the feature is disabled.
+2. COST displays a factual period-of-report date.
+3. Filing date and period-of-report date are distinct.
+4. Reported manager count is sourced from stored SEC data.
+5. Current and previous quarters are comparable.
+6. QoQ change uses reported shares, not current market prices.
+7. Put/call rows are excluded from common-share totals.
+8. Largest holders use actual mapped filings.
+9. Source links open human-readable filing pages.
+10. No raw JSON endpoint is exposed.
+11. The dataset link no longer returns 404.
+12. The Workspace summary matches the Institutional tab.
+13. The assistant states that 13F data is delayed.
+14. No SEC request occurs when an ordinary user opens the page.
+15. Feature can be disabled immediately using the verified feature flag.
+
+====================================================================
+TESTS
+====================================================================
+
+Add focused tests for:
+
+- corrected SEC links;
+- disabled state;
+- configuration-missing state;
+- ingestion-pending state;
+- no-mapping state;
+- one-quarter state;
+- partial state;
+- available state;
+- stale state;
+- source links;
+- feature-flag gate;
+- no raw endpoint in the rendered UI.
+
+Run:
+
+- all client tests;
+- all server tests;
+- typecheck;
+- production build.
+
+====================================================================
+COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact reason production says “not enabled”
+2. Exact feature flag and current default
+3. SEC link fixes
+4. Files changed
+5. Migration status
+6. Tables and production row counts
+7. SEC_USER_AGENT status
+8. Ingestion status
+9. Available quarters
+10. COST mapping status
+11. COST comparable-quarter status
+12. Readiness-audit result
+13. Exact Railway variables required
+14. Exact commands required
+15. Safe activation sequence
+16. Rollback procedure
+17. Tests added
+18. Total passing tests
+19. Typecheck
+20. Build
+21. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run production migrations, start production backfill, or
+change Railway variables automatically.
+
+Wait for review.

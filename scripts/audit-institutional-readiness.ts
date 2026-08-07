@@ -1,20 +1,26 @@
 #!/usr/bin/env tsx
-// Institutional Intelligence Readiness Audit — Sprint 2.2.5.
+// Institutional Intelligence Readiness Audit — updated for gate separation.
 //
 // Read-only audit script. Never prints secrets or full filing rows.
+// Works correctly while INSTITUTIONAL_INTELLIGENCE_ENABLED=false.
 //
 // Usage:
 //   npx tsx scripts/audit-institutional-readiness.ts
 //
-// Output:
-//   - SEC User-Agent configured
-//   - Available quarters
-//   - Latest successful ingestion
-//   - Filings and holdings counts
-//   - Exact/reviewed mappings
-//   - Tracked-universe coverage
-//   - Amendment status
-//   - API readiness
+// Reports:
+//   - schemaReady
+//   - secConfigured
+//   - ingestionEnabled
+//   - publicFeatureEnabled
+//   - availableQuarters
+//   - completedIngestionRuns
+//   - exactReviewedMappingCount
+//   - trackedUniverseCoverage
+//   - comparableQuarterSymbolCount
+//   - COST mapping status
+//   - COST quarter availability
+//   - aggregate status
+//   - amendment status
 //
 // Verdicts: GO | CONDITIONAL_GO | NO_GO
 
@@ -29,20 +35,60 @@ import {
 } from "../shared/schema";
 
 const MAPPING_THRESHOLD = 0.6; // 60% of tracked universe must have exact/reviewed mapping
+const COST_CUSIP = "22160K105";
+const COST_TICKER = "COST";
+
+// ---------------------------------------------------------------------------
+// Schema preflight — catch missing tables gracefully
+// ---------------------------------------------------------------------------
+
+async function checkSchema(): Promise<boolean> {
+  try {
+    await db.execute(sql`SELECT 1 FROM institutional_ingestion_runs LIMIT 0`);
+    return true;
+  } catch (err: any) {
+    const msg: string = err?.message ?? "";
+    if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("42P01")) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main audit
+// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   console.log("\n=== Institutional Intelligence Readiness Audit ===\n");
 
   // --- Configuration check ---
   const secUserAgent = (process.env.SEC_USER_AGENT ?? "").trim();
-  const featureEnabled = process.env.INSTITUTIONAL_INTELLIGENCE_ENABLED === "true";
+  const publicFeatureEnabled = process.env.INSTITUTIONAL_INTELLIGENCE_ENABLED === "true";
   const ingestionEnabled = process.env.INSTITUTIONAL_13F_INGESTION_ENABLED !== "false";
 
   console.log("CONFIGURATION:");
-  console.log(`  INSTITUTIONAL_INTELLIGENCE_ENABLED: ${featureEnabled}`);
-  console.log(`  INSTITUTIONAL_13F_INGESTION_ENABLED: ${ingestionEnabled}`);
-  console.log(`  SEC_USER_AGENT: ${secUserAgent ? "[configured]" : "[MISSING — ingestion disabled]"}`);
-  console.log(`  INSTITUTIONAL_13F_BACKFILL_QUARTERS: ${process.env.INSTITUTIONAL_13F_BACKFILL_QUARTERS ?? "8 (default)"}`);
+  console.log(`  schemaReady:            [checking…]`);
+  console.log(`  publicFeatureEnabled:   ${publicFeatureEnabled}  (INSTITUTIONAL_INTELLIGENCE_ENABLED)`);
+  console.log(`  ingestionEnabled:       ${ingestionEnabled}  (INSTITUTIONAL_13F_INGESTION_ENABLED)`);
+  console.log(`  secConfigured:          ${secUserAgent ? "true" : "false [MISSING — ingestion disabled]"}  (SEC_USER_AGENT)`);
+  console.log(`  backfillQuarters:       ${process.env.INSTITUTIONAL_13F_BACKFILL_QUARTERS ?? "8 (default)"}`);
+  console.log();
+
+  // --- Schema check ---
+  const schemaReady = await checkSchema();
+  if (!schemaReady) {
+    console.log("  schemaReady:            FALSE");
+    console.log();
+    console.log("❌ INSTITUTIONAL_SCHEMA_MISSING");
+    console.log("   Database tables have not been created yet.");
+    console.log("   Run the migration to proceed:");
+    console.log('   psql "$DATABASE_URL" -f scripts/migrate-institutional.sql');
+    console.log();
+    console.log("=== Audit complete — NO_GO (schema missing) ===\n");
+    process.exit(1);
+  }
+  console.log("SCHEMA:                   ready ✓");
   console.log();
 
   // --- Ingestion runs ---
@@ -55,7 +101,8 @@ async function main(): Promise<void> {
   const completedRuns = runs.filter((r) => r.status === "completed" || r.status === "partial");
   const failedRuns = runs.filter((r) => r.status === "failed");
 
-  console.log("INGESTION RUNS (last 10):");
+  console.log(`INGESTION RUNS (last 10):`);
+  console.log(`  completedIngestionRuns: ${completedRuns.length}`);
   if (runs.length === 0) {
     console.log("  No ingestion runs found.");
   } else {
@@ -84,6 +131,7 @@ async function main(): Promise<void> {
     .limit(8);
 
   console.log("AVAILABLE QUARTERS IN AGGREGATES:");
+  console.log(`  availableQuarters:      ${quarters.length}`);
   if (quarters.length === 0) {
     console.log("  No aggregate quarters found.");
   } else {
@@ -95,74 +143,136 @@ async function main(): Promise<void> {
   }
   console.log();
 
+  // --- Symbols with at least two comparable quarters ---
+  const comparableResult = await db.execute(sql`
+    SELECT COUNT(*) AS symbol_count
+    FROM (
+      SELECT symbol
+      FROM ${institutionalQuarterlyAggregates}
+      GROUP BY symbol
+      HAVING COUNT(DISTINCT period_of_report) >= 2
+    ) sub
+  `);
+  const comparableQuarterSymbolCount = Number((comparableResult as any).rows?.[0]?.symbol_count ?? 0);
+  console.log(`COMPARABLE QUARTER COVERAGE:`);
+  console.log(`  comparableQuarterSymbolCount: ${comparableQuarterSymbolCount}`);
+  console.log();
+
   // --- Holdings counts ---
   const holdingTotals = await db.execute(sql`
     SELECT
       COUNT(*) AS total_holdings,
       COUNT(*) FILTER (WHERE mapping_status IN ('exact','reviewed')) AS mapped_holdings,
-      COUNT(*) FILTER (WHERE mapping_status = 'unmapped') AS unmapped_holdings,
-      COUNT(*) FILTER (WHERE put_call IS NOT NULL) AS put_call_holdings,
-      COUNT(DISTINCT period_of_report) AS quarters
+      COUNT(*) FILTER (WHERE mapping_status = 'unmapped') AS unmapped_holdings
     FROM institutional_13f_holdings
   `);
   const ht = (holdingTotals as any).rows?.[0] ?? {};
+  const totalHoldings = Number(ht.total_holdings ?? 0);
+  const mappedHoldings = Number(ht.mapped_holdings ?? 0);
+  const unmappedHoldings = Number(ht.unmapped_holdings ?? 0);
+
   console.log("HOLDINGS:");
-  console.log(`  Total rows: ${ht.total_holdings ?? 0}`);
-  console.log(`  Mapped (exact/reviewed): ${ht.mapped_holdings ?? 0}`);
-  console.log(`  Unmapped: ${ht.unmapped_holdings ?? 0}`);
-  console.log(`  Put/call (excluded from totals): ${ht.put_call_holdings ?? 0}`);
-  console.log(`  Quarters covered: ${ht.quarters ?? 0}`);
+  console.log(`  totalHoldings:          ${totalHoldings}`);
+  console.log(`  mappedHoldings:         ${mappedHoldings}`);
+  console.log(`  unmappedHoldings:       ${unmappedHoldings}`);
   console.log();
 
-  // --- Mapping quality ---
-  const mappingStats = await db.execute(sql`
-    SELECT mapping_status, COUNT(*)::int AS cnt
+  // --- Security mappings ---
+  const mappingTotals = await db.execute(sql`
+    SELECT
+      COUNT(*) AS total_mappings,
+      COUNT(*) FILTER (WHERE mapping_status IN ('exact', 'reviewed')) AS exact_reviewed,
+      COUNT(*) FILTER (WHERE mapping_status = 'probable') AS probable,
+      COUNT(*) FILTER (WHERE mapping_status = 'ambiguous') AS ambiguous,
+      COUNT(*) FILTER (WHERE mapping_status = 'unmapped') AS unmapped
     FROM institutional_security_mappings
-    GROUP BY mapping_status
   `);
-  const ms = Object.fromEntries(
-    ((mappingStats as any).rows ?? []).map((r: any) => [r.mapping_status, r.cnt]),
-  );
-  const exactCount = (ms.exact ?? 0) + (ms.reviewed ?? 0);
-  const totalMappings = Object.values(ms).reduce((a: any, b: any) => a + b, 0);
+  const mt = (mappingTotals as any).rows?.[0] ?? {};
+  const totalMappings = Number(mt.total_mappings ?? 0);
+  const exactCount = Number(mt.exact_reviewed ?? 0);
 
   console.log("SECURITY MAPPINGS:");
-  console.log(`  exact: ${ms.exact ?? 0}`);
-  console.log(`  reviewed: ${ms.reviewed ?? 0}`);
-  console.log(`  probable: ${ms.probable ?? 0}`);
-  console.log(`  ambiguous: ${ms.ambiguous ?? 0}`);
-  console.log(`  unmapped: ${ms.unmapped ?? 0}`);
-  console.log(`  rejected: ${ms.rejected ?? 0}`);
-  console.log(`  Total: ${totalMappings}`);
+  console.log(`  exactReviewedMappingCount: ${exactCount}`);
+  console.log(`  probable:               ${Number(mt.probable ?? 0)}`);
+  console.log(`  ambiguous:              ${Number(mt.ambiguous ?? 0)}`);
+  console.log(`  unmapped:               ${Number(mt.unmapped ?? 0)}`);
+  const coveragePct = totalMappings > 0 ? ((exactCount / totalMappings) * 100).toFixed(1) : "N/A";
+  console.log(`  trackedUniverseCoverage: ${coveragePct}% exact/reviewed`);
   console.log();
 
-  // --- Symbols with two comparable quarters ---
-  const twoQtrs = await db.execute(sql`
-    SELECT symbol, COUNT(DISTINCT period_of_report) AS quarter_count
-    FROM institutional_quarterly_aggregates
-    GROUP BY symbol
-    HAVING COUNT(DISTINCT period_of_report) >= 2
-  `);
-  const symbolsWith2Q = ((twoQtrs as any).rows ?? []).length;
+  // --- COST mapping status ---
+  const costMappings = await db
+    .select()
+    .from(institutionalSecurityMappings)
+    .where(
+      and(
+        eq(institutionalSecurityMappings.cusip, COST_CUSIP),
+        eq(institutionalSecurityMappings.mappedSymbol, COST_TICKER),
+      ),
+    );
 
-  console.log("SYMBOLS WITH ≥2 COMPARABLE QUARTERS: " + symbolsWith2Q);
+  console.log("COST MAPPING STATUS:");
+  if (costMappings.length === 0) {
+    console.log(`  ❌ COST (${COST_CUSIP}) has no reviewed mapping.`);
+    console.log(`  Run: npx tsx scripts/seed-institutional-mappings.ts \\`);
+    console.log(`       --cusip ${COST_CUSIP} --ticker COST \\`);
+    console.log(`       --issuer "Costco Wholesale Corporation" --method manual_reviewed`);
+  } else {
+    const cm = costMappings[0];
+    console.log(`  ✓ Mapped: cusip=${cm.cusip} ticker=${cm.mappedSymbol} status=${cm.mappingStatus} method=${cm.mappingMethod}`);
+    if (cm.lastVerifiedAt) {
+      console.log(`    lastVerifiedAt: ${new Date(cm.lastVerifiedAt).toISOString().slice(0, 10)}`);
+    }
+  }
+  console.log();
+
+  // --- COST quarter availability ---
+  const costQuarters = await db
+    .select({
+      periodLabel: institutionalQuarterlyAggregates.periodLabel,
+      periodOfReport: institutionalQuarterlyAggregates.periodOfReport,
+      reportingManagerCount: institutionalQuarterlyAggregates.reportingManagerCount,
+    })
+    .from(institutionalQuarterlyAggregates)
+    .where(eq(institutionalQuarterlyAggregates.symbol, COST_TICKER))
+    .orderBy(desc(institutionalQuarterlyAggregates.periodOfReport))
+    .limit(4);
+
+  console.log("COST QUARTER AVAILABILITY:");
+  if (costQuarters.length === 0) {
+    console.log("  No aggregate data for COST.");
+  } else {
+    for (const cq of costQuarters) {
+      console.log(`  ${cq.periodLabel} | period=${cq.periodOfReport} | managers=${cq.reportingManagerCount}`);
+    }
+  }
+  const costHasComparableQuarters = costQuarters.length >= 2;
+  console.log(`  COST comparableQuarters: ${costHasComparableQuarters ? "✓" : "❌ (need ≥2)"}`);
   console.log();
 
   // --- Amendment status ---
   const amendments = await db
     .select({
       accessionNumber: institutional13fFilings.accessionNumber,
-      amendmentStatus: sql<boolean>`${institutional13fFilings.amendmentFlag}`,
       isEffective: institutional13fFilings.isEffective,
     })
     .from(institutional13fFilings)
     .where(eq(institutional13fFilings.amendmentFlag, true))
-    .limit(5);
+    .limit(10);
 
-  console.log(`AMENDMENT PROCESSING: ${amendments.length} amendment filings found (up to 5 shown)`);
+  console.log("AMENDMENT HANDLING:");
+  console.log(`  amendmentStatus:        ${amendments.length === 0 ? "no amendments found (OK if no data)" : `${amendments.length} amendment(s) processed"}`}`);
   for (const a of amendments) {
     console.log(`  ${a.accessionNumber} | effective: ${a.isEffective}`);
   }
+  console.log();
+
+  // --- Aggregate status ---
+  const aggCount = await db.execute(sql`SELECT COUNT(*) AS cnt FROM institutional_quarterly_aggregates`);
+  const aggTotal = Number((aggCount as any).rows?.[0]?.cnt ?? 0);
+  console.log("AGGREGATE STATUS:");
+  console.log(`  totalAggregateRows:     ${aggTotal}`);
+  console.log(`  aggregateReady:         ${aggTotal > 0 ? "✓" : "❌ (run ingestion first)"}`);
   console.log();
 
   // --- Verdict ---
@@ -171,35 +281,60 @@ async function main(): Promise<void> {
   const hasMappingThreshold = totalMappings === 0 || (exactCount / totalMappings >= MAPPING_THRESHOLD);
   const noFailedRuns = failedRuns.length === 0;
   const hasSecAgent = secUserAgent.length > 0;
+  const hasCostMapping = costMappings.length > 0;
 
   console.log("=== VERDICT ===\n");
+
+  // Always report gate states separately
+  console.log(`  schemaReady:            ✓`);
+  console.log(`  secConfigured:          ${hasSecAgent ? "✓" : "❌"}`);
+  console.log(`  ingestionEnabled:       ${ingestionEnabled ? "✓" : "❌"}`);
+  console.log(`  publicFeatureEnabled:   ${publicFeatureEnabled ? "✓" : "❌ (expected while preparing data)"}`);
+  console.log(`  exactReviewedMappings:  ${exactCount} (threshold: ≥60% of tracked universe)`);
+  console.log(`  availableQuarters:      ${quarters.length}`);
+  console.log(`  comparableSymbols:      ${comparableQuarterSymbolCount}`);
+  console.log(`  COSTMapped:             ${hasCostMapping ? "✓" : "❌"}`);
+  console.log(`  COSTComparable:         ${costHasComparableQuarters ? "✓" : "❌"}`);
+  console.log();
 
   if (hasMinQuarters && hasMappings && hasMappingThreshold && noFailedRuns) {
     console.log("✅ GO");
     console.log("   - Two or more quarters loaded with sufficient mapping coverage.");
     console.log("   - No critical ingestion failures.");
     console.log("   - Ready for production UAT.");
-  } else if (!hasMinQuarters && hasMappings) {
+    console.log("   - Set INSTITUTIONAL_INTELLIGENCE_ENABLED=true to enable the public tab.");
+  } else if (quarters.length === 1 && hasMappings) {
     console.log("⚠️  CONDITIONAL_GO");
-    console.log("   - Data available for fewer than 2 comparable quarters.");
+    console.log("   - Data available for exactly 1 quarter.");
     console.log("   - Trend classification will show 'Insufficient History'.");
     console.log("   - UI labels partial coverage clearly.");
+    console.log("   - Ingest a second quarter before enabling the public tab for full value.");
   } else if (!hasMappings) {
-    console.log("❌ NO_GO");
-    console.log("   - No exact or reviewed security mappings found.");
-    console.log("   - 13F data cannot be linked to VCP Trader symbols.");
-    console.log("   - Seed reviewed mappings before enabling the feature.");
+    console.log("❌ NO_GO — No exact or reviewed security mappings found.");
+    console.log("   - Seed reviewed mappings:");
+    console.log("   - npx tsx scripts/seed-institutional-mappings.ts --cusip <CUSIP> --ticker <TICKER> --issuer \"<Name>\"");
   } else if (!noFailedRuns) {
-    console.log("❌ NO_GO");
-    console.log("   - Recent ingestion failures detected. Review error codes above.");
+    console.log("❌ NO_GO — Recent ingestion failures detected. Review error codes above.");
   } else {
-    console.log("❌ NO_GO");
-    console.log("   - No valid quarterly data found. Run ingestion first.");
+    console.log("❌ NO_GO — No valid quarterly data found.");
+    console.log("   Activation sequence:");
+    console.log("   1. psql \"$DATABASE_URL\" -f scripts/migrate-institutional.sql");
+    console.log("   2. Set SEC_USER_AGENT and INSTITUTIONAL_13F_INGESTION_ENABLED=true");
+    console.log("   3. npx tsx scripts/run-institutional-backfill.ts --quarters 2");
+    console.log("   4. npx tsx scripts/seed-institutional-mappings.ts --cusip 22160K105 --ticker COST --issuer \"Costco Wholesale Corporation\"");
+    console.log("   5. npx tsx scripts/audit-institutional-readiness.ts");
+    console.log("   6. When GO: set INSTITUTIONAL_INTELLIGENCE_ENABLED=true");
   }
 
   if (!hasSecAgent) {
-    console.log("\n⚠️  WARNING: SEC_USER_AGENT is not configured — ingestion is disabled.");
-    console.log("   Configure it to enable 13F data fetching from SEC EDGAR.");
+    console.log("\n⚠️  WARNING: SEC_USER_AGENT is not configured — ingestion is blocked.");
+    console.log("   Set SEC_USER_AGENT='VCP Trader AI <contact-email-you-own>'");
+  }
+
+  if (!publicFeatureEnabled) {
+    console.log("\nℹ️  NOTE: INSTITUTIONAL_INTELLIGENCE_ENABLED=false");
+    console.log("   This audit ran correctly while the public feature is disabled.");
+    console.log("   Ingestion and mapping preparation can proceed in this state.");
   }
 
   console.log("\n=== Audit complete ===\n");

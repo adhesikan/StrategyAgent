@@ -72,6 +72,7 @@ import { registerHelpRoutes } from "./routes/help";
 import { registerMarketDataAdminRoutes } from "./routes/market-data-admin";
 import { registerDailyAnalysisRoutes } from "./routes/daily-analysis";
 import { registerInstitutionalRoute } from "./routes/institutional";
+import { registerInstitutionalAdminRoutes } from "./routes/institutional-admin";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -218,6 +219,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerHelpRoutes(app, isAuthenticated);
   registerMarketDataAdminRoutes(app, isAdmin);
   registerInstitutionalRoute(app, isAuthenticated);
+  registerInstitutionalAdminRoutes(app, isAuthenticated, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;
     const user = await authStorage.getUser(req.session.userId);

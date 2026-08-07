@@ -1,15 +1,25 @@
 // Institutional Intelligence — configuration and feature flags.
 //
-// Sprint 2.2.5: All env vars that control institutional behaviour.
-// When INSTITUTIONAL_INTELLIGENCE_ENABLED is false (default):
-//   - No SEC scheduled job runs.
-//   - The existing Institutional tab placeholder is preserved.
-//   - No SEC HTTP requests are issued.
+// Sprint 2.2.5 (updated: separate UI and ingestion gates).
 //
-// When INSTITUTIONAL_INTELLIGENCE_ENABLED=true:
-//   - Feature is live and the UI shows real 13F data.
-//   - SEC ingestion may run if INSTITUTIONAL_13F_INGESTION_ENABLED=true.
-//   - SEC_USER_AGENT must be present or ingestion is disabled with a clear error.
+// ── Variable responsibilities ────────────────────────────────────────────────
+// INSTITUTIONAL_INTELLIGENCE_ENABLED (default: false)
+//   Controls only the user-facing API and UI.
+//   When false: /api/institutional/:symbol returns { status: "unavailable" }.
+//   Does NOT gate ingestion — data can be backfilled while the tab is disabled.
+//
+// INSTITUTIONAL_13F_INGESTION_ENABLED (default: true)
+//   Controls scheduled and manual 13F ingestion.
+//   Can run independently of the public feature flag.
+//
+// SEC_USER_AGENT (required for any SEC HTTP request)
+//   Must be set to a descriptive value per SEC fair-access guidelines.
+//   Ingestion is hard-blocked when absent.
+//
+// ── Safe ingestion gate (isIngestionConfigured) ──────────────────────────────
+//   INSTITUTIONAL_13F_INGESTION_ENABLED=true
+//   AND SEC_USER_AGENT is configured
+//   (Does NOT require INSTITUTIONAL_INTELLIGENCE_ENABLED=true)
 //
 // Advisory lock key: 774_412_003 (distinct from opportunity engine 774_412_002).
 
@@ -41,16 +51,44 @@ export function getInstitutionalConfig(): InstitutionalConfig {
   return { enabled, ingestionEnabled, secUserAgent, backfillQuarters };
 }
 
-/** True only when feature flag is enabled AND a User-Agent is configured. */
+/** True when the user-facing institutional API should serve real 13F data. */
 export function isInstitutionalEnabled(): boolean {
   const cfg = getInstitutionalConfig();
   return cfg.enabled;
 }
 
-/** True only when ingestion is fully configured and not suppressed. */
+/**
+ * True when 13F ingestion can run.
+ *
+ * Intentionally does NOT require INSTITUTIONAL_INTELLIGENCE_ENABLED=true.
+ * This allows an operator to backfill data while the public tab is still
+ * disabled, completing the full activation sequence before exposing the UI.
+ *
+ * Gate:
+ *   INSTITUTIONAL_13F_INGESTION_ENABLED=true (default)
+ *   AND SEC_USER_AGENT is configured
+ */
 export function isIngestionConfigured(): boolean {
   const cfg = getInstitutionalConfig();
-  return cfg.enabled && cfg.ingestionEnabled && cfg.secUserAgent !== null;
+  return cfg.ingestionEnabled && cfg.secUserAgent !== null;
+}
+
+/**
+ * Parse a quarter label string into its components.
+ * Accepts both "2026-Q2" (internal) and "2026Q2" (CLI shorthand).
+ * Returns null for invalid inputs.
+ */
+export function parseQuarterLabel(
+  label: string,
+): { year: number; q: 1 | 2 | 3 | 4; periodEnd: string; label: string } | null {
+  // Normalise: strip whitespace, accept "2026Q2" or "2026-Q2"
+  const normalised = label.trim().replace(/^(\d{4})-?Q(\d)$/i, "$1-Q$2");
+  const match = normalised.match(/^(\d{4})-Q([1-4])$/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const q = parseInt(match[2], 10) as 1 | 2 | 3 | 4;
+  if (year < 2013 || year > 2035) return null; // sanity: 13F mandate since 1978, future cap
+  return { year, q, periodEnd: periodEndDate(year, q), label: `${year}-Q${q}` };
 }
 
 /**

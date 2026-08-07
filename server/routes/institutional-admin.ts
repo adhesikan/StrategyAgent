@@ -1,0 +1,122 @@
+// POST /api/admin/institutional/run — Institutional Intelligence admin trigger.
+//
+// Admin-only endpoint to fire a manual backfill without SSH/CLI access.
+// Follows the established admin-route pattern used by market-data-admin.ts,
+// scan/run, scheduled-scan/run, etc.
+//
+// Security:
+//   - isAuthenticated + isAdmin middleware required (caller must pass both).
+//   - Accepts only a bounded quarter count — no arbitrary URL or label injection.
+//   - Returns immediately with an acknowledgement; does not hold the HTTP request.
+//   - Advisory lock in runInstitutionalIngestion prevents duplicate concurrent runs.
+//   - Does NOT require INSTITUTIONAL_INTELLIGENCE_ENABLED=true.
+//   - Blocked by INSTITUTIONAL_13F_INGESTION_ENABLED=false or missing SEC_USER_AGENT.
+//
+// Does NOT expose: DATABASE_URL, SEC_USER_AGENT value, raw filing content, or
+// any user credentials.
+
+import type { Express, RequestHandler } from "express";
+import { z } from "zod";
+import { isIngestionConfigured } from "../services/institutional/config";
+import { runInstitutionalIngestion } from "../services/institutional/ingestion-service";
+
+const MAX_ADMIN_QUARTERS = 8;
+const MIN_ADMIN_QUARTERS = 1;
+
+const runBodySchema = z.object({
+  /** Number of most-recent quarters to ingest. Must be 1–8. */
+  quarters: z.number().int().min(MIN_ADMIN_QUARTERS).max(MAX_ADMIN_QUARTERS).default(2),
+});
+
+export function registerInstitutionalAdminRoutes(
+  app: Express,
+  isAuthenticated: RequestHandler,
+  isAdmin: RequestHandler,
+): void {
+  /**
+   * POST /api/admin/institutional/run
+   * Body: { quarters?: number }  (default 2)
+   *
+   * Fires a non-blocking ingestion run and returns an acknowledgement.
+   * The advisory lock inside runInstitutionalIngestion prevents concurrent runs.
+   */
+  app.post(
+    "/api/admin/institutional/run",
+    isAuthenticated,
+    isAdmin,
+    async (req, res) => {
+      try {
+        // Validate body
+        const bodyParse = runBodySchema.safeParse(req.body ?? {});
+        if (!bodyParse.success) {
+          return res.status(400).json({
+            error: "Invalid request",
+            details: bodyParse.error.flatten().fieldErrors,
+          });
+        }
+        const { quarters } = bodyParse.data;
+
+        // Preflight — fail early if ingestion is not configured
+        if (!isIngestionConfigured()) {
+          return res.status(503).json({
+            error: "Ingestion not configured",
+            detail:
+              "SEC_USER_AGENT is not set or INSTITUTIONAL_13F_INGESTION_ENABLED=false. " +
+              "Configure both before triggering a manual backfill.",
+          });
+        }
+
+        // Fire-and-forget — do not await; advisory lock prevents duplicates
+        runInstitutionalIngestion({
+          initiatedBy: "admin_manual",
+          quartersOverride: quarters,
+        }).catch((err: any) => {
+          console.error("[InstitutionalAdmin] Background ingestion error:", err?.message);
+        });
+
+        // Return immediately with acknowledgement
+        return res.status(202).json({
+          status: "accepted",
+          message: `Institutional 13F backfill started for ${quarters} quarter(s). Check server logs for progress.`,
+          quarters,
+          note: "Advisory lock prevents duplicate concurrent runs. The public Institutional tab is controlled separately by INSTITUTIONAL_INTELLIGENCE_ENABLED.",
+        });
+      } catch (err: any) {
+        console.error("[InstitutionalAdmin] Route error:", err?.message);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
+
+  /**
+   * GET /api/admin/institutional/status
+   * Returns current ingestion configuration state (no secrets).
+   */
+  app.get(
+    "/api/admin/institutional/status",
+    isAuthenticated,
+    isAdmin,
+    async (_req, res) => {
+      try {
+        const configured = isIngestionConfigured();
+        const publicEnabled = process.env.INSTITUTIONAL_INTELLIGENCE_ENABLED === "true";
+        const ingestionEnabled = process.env.INSTITUTIONAL_13F_INGESTION_ENABLED !== "false";
+        const hasUserAgent = !!(process.env.SEC_USER_AGENT ?? "").trim();
+
+        return res.json({
+          ingestionConfigured: configured,
+          publicFeatureEnabled: publicEnabled,
+          ingestionEnabled,
+          secUserAgentConfigured: hasUserAgent,
+          // Safe message — does not expose the actual value
+          note: hasUserAgent
+            ? "SEC_USER_AGENT is configured."
+            : "SEC_USER_AGENT is not set. Ingestion is blocked until this is configured.",
+        });
+      } catch (err: any) {
+        console.error("[InstitutionalAdmin] Status route error:", err?.message);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
+}

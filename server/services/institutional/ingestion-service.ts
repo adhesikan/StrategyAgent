@@ -14,8 +14,10 @@
 //   - NEVER performs bulk ingestion during ordinary page requests.
 //   - Does NOT block application startup (called fire-and-forget).
 //   - Does NOT issue any SEC requests if SEC_USER_AGENT is not configured.
-//   - Does NOT run when INSTITUTIONAL_INTELLIGENCE_ENABLED=false
-//     OR INSTITUTIONAL_13F_INGESTION_ENABLED=false.
+//   - Does NOT require INSTITUTIONAL_INTELLIGENCE_ENABLED=true — ingestion can
+//     run while the public UI tab is disabled (pre-activation backfill flow).
+//   - DOES require INSTITUTIONAL_13F_INGESTION_ENABLED=true (default) AND
+//     SEC_USER_AGENT to be set.
 //   - FAILED status never replaces a completed/partial ingestion run.
 //   - Advisory lock prevents concurrent runs across Railway instances.
 
@@ -35,6 +37,7 @@ import type {
 } from "@shared/schema";
 import {
   getInstitutionalConfig,
+  parseQuarterLabel,
   isIngestionConfigured,
   recentQuarters,
   quarterFromPeriodDate,
@@ -593,23 +596,36 @@ async function ingestQuarter(
  *
  * Called:
  *   - By the daily scheduler (once per day during filing season)
- *   - By the admin manual trigger
+ *   - By the admin manual trigger (POST /api/admin/institutional/run)
+ *   - By the CLI backfill script (scripts/run-institutional-backfill.ts)
  *   - On startup (fire-and-forget, non-blocking)
  *
  * Will no-op if:
- *   - Feature is disabled
- *   - Ingestion is disabled
+ *   - INSTITUTIONAL_13F_INGESTION_ENABLED=false
  *   - SEC_USER_AGENT is not configured
  *   - Advisory lock is already held
+ *
+ * Does NOT require INSTITUTIONAL_INTELLIGENCE_ENABLED=true.
+ * The public UI gate is separate from the ingestion gate.
  */
 export async function runInstitutionalIngestion(
-  options: { initiatedBy?: string; quartersOverride?: number } = {},
+  options: {
+    initiatedBy?: string;
+    /** Ingest the N most-recent quarters (ignored when specificQuarterLabels is set). */
+    quartersOverride?: number;
+    /**
+     * Ingest exactly these quarter labels (e.g. ["2026-Q1", "2025-Q4"]).
+     * Overrides quartersOverride and the default backfillQuarters config.
+     * Each label must be parseable by parseQuarterLabel().
+     */
+    specificQuarterLabels?: string[];
+  } = {},
 ): Promise<{ status: "completed" | "partial" | "skipped_disabled" | "skipped_locked" | "failed"; quartersProcessed: number }> {
   const cfg = getInstitutionalConfig();
 
   if (!isIngestionConfigured()) {
     log("institutional_13f_ingestion_skipped", {
-      reason: !cfg.enabled ? "feature_disabled" : !cfg.ingestionEnabled ? "ingestion_disabled" : "no_user_agent",
+      reason: !cfg.ingestionEnabled ? "ingestion_disabled" : "no_user_agent",
     });
     return { status: "skipped_disabled", quartersProcessed: 0 };
   }
@@ -626,8 +642,19 @@ export async function runInstitutionalIngestion(
   const initiatedBy = options.initiatedBy ?? "scheduler";
 
   try {
-    const n = options.quartersOverride ?? cfg.backfillQuarters;
-    const quarters = recentQuarters(n);
+    // Determine quarter list — specific labels take precedence over count override
+    let quarters: Array<{ year: number; q: 1 | 2 | 3 | 4; periodEnd: string; label: string }>;
+    if (options.specificQuarterLabels && options.specificQuarterLabels.length > 0) {
+      const parsed = options.specificQuarterLabels.map((lbl) => {
+        const p = parseQuarterLabel(lbl);
+        if (!p) throw new Error(`Invalid quarter label: ${lbl}. Use format YYYY-QN or YYYYqN.`);
+        return p;
+      });
+      quarters = parsed;
+    } else {
+      const n = options.quartersOverride ?? cfg.backfillQuarters;
+      quarters = recentQuarters(n);
+    }
     let quartersProcessed = 0;
     let overallStatus: "completed" | "partial" | "failed" = "completed";
 

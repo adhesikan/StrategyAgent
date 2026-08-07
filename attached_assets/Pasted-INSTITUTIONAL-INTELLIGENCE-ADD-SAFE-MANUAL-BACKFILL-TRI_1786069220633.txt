@@ -1,0 +1,331 @@
+INSTITUTIONAL INTELLIGENCE — ADD SAFE MANUAL BACKFILL TRIGGER
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT STATUS
+
+The Institutional Intelligence readiness review found:
+
+- INSTITUTIONAL_INTELLIGENCE_ENABLED defaults to false
+- SEC_USER_AGENT is missing
+- institutional database tables do not yet exist
+- no 13F quarters have been ingested
+- COST has no reviewed mapping
+- readiness verdict is NO_GO
+
+It also found an activation contradiction:
+
+- the institutional ingestion outer gate requires
+  INSTITUTIONAL_INTELLIGENCE_ENABLED=true
+- but the safe deployment plan requires keeping the user-facing feature disabled
+  until migrations, ingestion, mappings and readiness checks pass
+
+Do not solve this by turning on the public feature early.
+
+OBJECTIVE
+
+Create a safe operational path that allows an administrator to:
+
+1. run institutional migrations;
+2. ingest selected 13F quarters;
+3. rebuild aggregates;
+4. inspect readiness;
+
+while:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+The user-facing Institutional tab must remain disabled until readiness passes.
+
+Do not change institutional analytics, aggregation formulas, mapping rules,
+SEC parsing, Opportunity Engine, MCP, scanner, brokers or research logic.
+
+============================================================
+1. SEPARATE UI AND INGESTION GATES
+============================================================
+
+Audit the current configuration functions:
+
+- isInstitutionalEnabled()
+- isIngestionConfigured()
+- scheduleInstitutionalIngestion()
+- any feature-flag or environment parser
+
+Establish independent responsibilities:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED
+- controls user-facing API/UI availability only
+
+INSTITUTIONAL_13F_INGESTION_ENABLED
+- controls scheduled and manual ingestion
+
+SEC_USER_AGENT
+- required for any SEC HTTP request
+
+The ingestion service must not require
+INSTITUTIONAL_INTELLIGENCE_ENABLED=true.
+
+Safe ingestion gate:
+
+INSTITUTIONAL_13F_INGESTION_ENABLED === true
+AND SEC_USER_AGENT is configured
+AND database schema exists
+
+The public Institutional API remains unavailable while
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false.
+
+Add tests proving ingestion can run with:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+INSTITUTIONAL_13F_INGESTION_ENABLED=true
+
+while the public API still returns the disabled state.
+
+============================================================
+2. ADD A MANUAL CLI BACKFILL COMMAND
+============================================================
+
+Create a production-safe CLI script, for example:
+
+scripts/run-institutional-backfill.ts
+
+Use the repository’s existing conventions.
+
+Supported arguments:
+
+--quarters 2
+--quarter 2026Q2
+--dry-run
+--rebuild-aggregates
+--symbol COST, optional only if the ingestion architecture safely supports it
+
+Minimum required command:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+Requirements:
+
+- requires DATABASE_URL
+- requires SEC_USER_AGENT
+- respects INSTITUTIONAL_13F_INGESTION_ENABLED
+- does not require INSTITUTIONAL_INTELLIGENCE_ENABLED
+- uses the existing advisory lock
+- uses existing SEC client, parser, amendment and aggregation services
+- idempotent
+- bounded retries and concurrency
+- safe progress logs
+- exits non-zero on failure
+- never prints DATABASE_URL, credentials, raw filing payloads or full headers
+- supports re-running safely
+- does not start the web server
+- does not modify the public feature flag
+
+Do not create duplicate ingestion logic inside the script.
+The script must call the existing institutional ingestion service.
+
+============================================================
+3. OPTIONAL ADMIN ENDPOINT
+============================================================
+
+A CLI command is required.
+
+Only add an admin endpoint if the repository already has a secure admin-job pattern.
+
+If added:
+
+POST /api/admin/institutional/run
+
+Requirements:
+
+- authenticated admin only
+- CSRF and existing admin protections
+- accepts bounded quarter count
+- returns job-start acknowledgement
+- does not hold the HTTP request through the full backfill
+- advisory lock prevents duplicate runs
+- no public-user access
+- no arbitrary URL or quarter injection
+
+Do not add this endpoint if there is no established secure admin pattern.
+
+============================================================
+4. MIGRATION READINESS
+============================================================
+
+Verify:
+
+scripts/migrate-institutional.sql
+
+remains idempotent.
+
+Provide exact production command:
+
+psql "$DATABASE_URL" -f scripts/migrate-institutional.sql
+
+Add a schema preflight to the backfill script.
+
+If tables are missing, fail with:
+
+INSTITUTIONAL_SCHEMA_MISSING
+
+and instruct the operator to run the migration.
+
+Do not auto-create tables silently inside the ingestion script.
+
+============================================================
+5. COST REVIEWED MAPPING
+============================================================
+
+Do not blindly seed COST from a hardcoded prompt value.
+
+Create a controlled mapping seed mechanism.
+
+Preferred:
+
+scripts/seed-institutional-mappings.ts
+
+Input should come from a reviewed mapping file or explicit CLI arguments.
+
+Example reviewed seed record:
+
+{
+  "cusip": "22160K105",
+  "ticker": "COST",
+  "issuerName": "Costco Wholesale Corporation",
+  "mappingMethod": "manual_reviewed",
+  "mappingStatus": "reviewed"
+}
+
+Before accepting a mapping:
+
+- normalize CUSIP
+- validate ticker
+- require issuer name
+- reject probable/ambiguous mappings for production aggregates
+- log the reviewed mapping without secrets
+- idempotent upsert
+
+Provide a dry-run mode.
+
+Do not use issuer-name fuzzy matching to create reviewed mappings.
+
+============================================================
+6. READINESS AUDIT IMPROVEMENTS
+============================================================
+
+Update scripts/audit-institutional-readiness.ts if necessary to report separately:
+
+- schemaReady
+- secConfigured
+- ingestionEnabled
+- publicFeatureEnabled
+- availableQuarters
+- completedIngestionRuns
+- exactReviewedMappingCount
+- trackedUniverseCoverage
+- comparableQuarterSymbolCount
+- COST mapping status
+- COST quarter availability
+- aggregate status
+- amendment status
+
+The audit must be able to run while the public feature is disabled.
+
+Expected progression:
+
+After migration only:
+NO_GO — schema ready, no data
+
+After two-quarter ingestion:
+CONDITIONAL_GO or NO_GO depending on mappings
+
+After COST reviewed mapping and aggregate build:
+CONDITIONAL_GO or GO
+
+Only after GO or explicitly acceptable partial coverage should the public feature be
+enabled.
+
+============================================================
+7. CORRECT PRODUCTION ACTIVATION SEQUENCE
+============================================================
+
+Document this exact operational sequence using actual implemented commands:
+
+1. Deploy SEC link fixes.
+2. Keep:
+   INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+3. Run:
+   psql "$DATABASE_URL" -f scripts/migrate-institutional.sql
+4. Set:
+   SEC_USER_AGENT=VCP Trader AI <owned-contact-email>
+5. Set:
+   INSTITUTIONAL_13F_INGESTION_ENABLED=true
+6. Run:
+   npx tsx scripts/run-institutional-backfill.ts --quarters 2
+7. Seed verified COST mapping using the reviewed mapping tool.
+8. Rebuild aggregates if the backfill does not do so automatically.
+9. Run:
+   npx tsx scripts/audit-institutional-readiness.ts
+10. Validate COST against SEC source filings.
+11. Only then set:
+    INSTITUTIONAL_INTELLIGENCE_ENABLED=true
+12. Restart/deploy as required.
+13. Run production UAT.
+
+============================================================
+8. TESTS
+============================================================
+
+Add tests proving:
+
+- ingestion can run when public feature is false
+- public endpoint remains disabled while ingestion runs
+- missing SEC_USER_AGENT blocks before HTTP request
+- missing schema returns safe error
+- CLI validates quarter bounds
+- CLI dry-run performs no writes
+- advisory lock prevents duplicate backfills
+- retry is idempotent
+- aggregate rebuild occurs once
+- reviewed mapping upsert works
+- ambiguous mapping is rejected
+- readiness audit works while UI flag is false
+- no secret leakage in CLI output
+
+Run:
+
+- all server tests
+- all client tests
+- typecheck
+- production build
+
+============================================================
+9. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact gate contradiction confirmed
+2. Files changed
+3. Configuration behavior before and after
+4. Manual backfill command
+5. Admin endpoint decision
+6. Mapping-seed workflow
+7. Schema preflight behavior
+8. Readiness-audit changes
+9. Exact production commands
+10. Tests added
+11. Total passing tests
+12. Typecheck
+13. Build
+14. Migration requirement
+15. Environment variables
+16. Rollback
+17. Corrected activation sequence
+18. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run migrations, set Railway variables or start a
+production backfill automatically.
+
+Wait for review.

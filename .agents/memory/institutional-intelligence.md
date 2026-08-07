@@ -1,15 +1,18 @@
 ---
 name: Institutional Intelligence MVP
-description: Sprint 2.2.5 — SEC 13F ingestion, aggregation, trend classification, and Research Package tab integration.
+description: Sprint 2.2.5 + activation tooling — 5 DB tables, SEC 13F ingestion, aggregation/trend/evidence, Research Package tab + workspace compact; lock key 774_412_003; INSTITUTIONAL_INTELLIGENCE_ENABLED=false default; ingestion gate is independent of UI gate.
 ---
 
 ## Architecture
 
-- **Feature flag:** `INSTITUTIONAL_INTELLIGENCE_ENABLED=false` (default). All ingestion and UI data calls are no-ops when false.
+- **Feature flag (UI):** `INSTITUTIONAL_INTELLIGENCE_ENABLED=false` (default). Controls only the public API/tab. Does NOT gate ingestion.
+- **Ingestion gate (separate):** `INSTITUTIONAL_13F_INGESTION_ENABLED=true` (default) + `SEC_USER_AGENT` set. Ingestion runs when both are true regardless of the UI flag.
+- **isIngestionConfigured():** `ingestionEnabled && secUserAgent !== null` — no UI flag dependency.
 - **Advisory lock key:** `774_412_003` (distinct from Opportunity Engine `774_412_002`).
-- **SEC User-Agent env var:** `SEC_USER_AGENT` — ingestion is disabled unless this is set (EDGAR rate-limit compliance).
-- **Ingestion schedule:** weekly, Sunday nights, via `scheduleInstitutionalIngestion()` in `server/services/institutional/ingestion-service.ts`.
-- **API route:** `GET /api/institutional/:symbol` — registered via `registerInstitutionalRoute` from `server/routes/institutional.ts`.
+- **SEC User-Agent env var:** `SEC_USER_AGENT` — ingestion is hard-blocked unless this is set (EDGAR fair-access).
+- **Ingestion schedule:** weekly, via `scheduleInstitutionalIngestion()` in `server/services/institutional/ingestion-service.ts`.
+- **API route:** `GET /api/institutional/:symbol` — `registerInstitutionalRoute` from `server/routes/institutional.ts`.
+- **Admin routes:** `POST /api/admin/institutional/run` + `GET /api/admin/institutional/status` — `registerInstitutionalAdminRoutes` in `server/routes/institutional-admin.ts`.
 
 ## Database tables (5 new, in shared/schema.ts)
 
@@ -19,7 +22,7 @@ description: Sprint 2.2.5 — SEC 13F ingestion, aggregation, trend classificati
 4. `institutional_quarterly_aggregates` — pre-computed per `(symbol, periodOfReport)` — trend, concentration, activity counts
 5. `institutional_ingestion_runs` — run tracking with status/counts/error_code
 
-Migration SQL: `scripts/migrate-institutional.sql`
+Migration SQL: `scripts/migrate-institutional.sql` (idempotent, `IF NOT EXISTS`)
 
 ## Key rules
 
@@ -29,25 +32,41 @@ Migration SQL: `scripts/migrate-institutional.sql`
 - **Put/call rows excluded from aggregate shares** — stored for completeness but not counted in totals.
 - **PRN rows excluded from aggregate** — same.
 - **Unmapped holdings excluded** in production mode (only exact + reviewed mapping statuses count).
-- **Single-use `maxHolders` param** capped at 50 in the API route.
+- **COST CUSIP:** `22160K105` — must be seeded as a manual_reviewed mapping before COST analytics display.
+- **ambiguous/probable mappings are rejected** by the seed script — they must not feed production aggregates.
 
 ## TypeScript gotchas
 
 - All `Map.values()`, `Map.keys()`, `Set` iteration must use `Array.from()` — the server tsconfig targets an older iteration protocol.
-- `EvidenceStars.institutional` widened from literal `0` to `0 | 1 | 2 | 3 | 4 | 5`; existing tests that assert `institutional: 0` still pass (0 is valid in the union).
-- Trend classifier: after the early-return guard for `coverageStatus === "insufficient"`, TS narrows the type — do NOT re-check `current.coverageStatus === "insufficient"` again in the same function body.
-- Config quarter decrement: `q = (q - 1) as ... ` followed by `if (q === 0)` is flagged by TS; use `if (q === 1) { q = 4; year -= 1; } else { q = (q-1) as ... }` instead.
+- `EvidenceStars.institutional` widened from literal `0` to `0 | 2 | 3 | 4 | 5`; 0 is valid in the union.
+- Trend classifier: after the early-return guard for `coverageStatus === "insufficient"`, TS narrows the type — do NOT re-check it again.
+- Config quarter decrement: use `if (q === 1) { q = 4; year -= 1; } else { q = (q-1) as ... }` pattern.
+- Script files imported by tests must guard `main()` with `if (!process.env.VITEST)` to prevent auto-execution.
 
-## Test counts (Sprint 2.2.5)
+## Operational scripts
 
-- Server new: 77 (parser.test.ts: 30, aggregation.test.ts: 47)
-- Client new: 44 (InstitutionalIntelligence.test.tsx)
-- Total project: 3,234 (client 1,546 + server 1,688), 0 failures
+- `scripts/run-institutional-backfill.ts` — CLI backfill; supports `--quarters N`, `--quarter YYYYQN`, `--dry-run`
+- `scripts/seed-institutional-mappings.ts` — reviewed mapping seed; supports `--file` or `--cusip/--ticker/--issuer`; rejects probable/ambiguous
+- `scripts/audit-institutional-readiness.ts` — full readiness audit; works while UI disabled; schema preflight; GO/CONDITIONAL_GO/NO_GO
+- `parseQuarterLabel()` in `config.ts` — parses "2026-Q2" or "2026Q2" CLI shorthands; returns null for invalid input.
+- `runInstitutionalIngestion()` accepts `specificQuarterLabels?: string[]` to target exact quarters.
 
-## Readiness script
+## Correct activation sequence
 
-`scripts/audit-institutional-readiness.ts` — run with `npx tsx scripts/audit-institutional-readiness.ts`.
-Verdicts: GO | CONDITIONAL_GO | NO_GO based on quarters available, mapping coverage, and ingestion failures.
+1. Deploy (SEC link fix + script additions)
+2. Keep `INSTITUTIONAL_INTELLIGENCE_ENABLED=false`
+3. `psql "$DATABASE_URL" -f scripts/migrate-institutional.sql`
+4. Set `SEC_USER_AGENT="VCP Trader AI <owned-contact-email>"` on Railway
+5. Set `INSTITUTIONAL_13F_INGESTION_ENABLED=true` on Railway
+6. `npx tsx scripts/run-institutional-backfill.ts --quarters 2`
+7. `npx tsx scripts/seed-institutional-mappings.ts --cusip 22160K105 --ticker COST --issuer "Costco Wholesale Corporation"`
+8. `npx tsx scripts/audit-institutional-readiness.ts`
+9. When GO or CONDITIONAL_GO: set `INSTITUTIONAL_INTELLIGENCE_ENABLED=true`, restart
+10. Run production UAT
+
+## Rollback
+
+Set `INSTITUTIONAL_INTELLIGENCE_ENABLED=false` on Railway — takes effect on next request with no code deploy.
 
 **Why:**
-Without fully validated share count denominators, we cannot report "% ownership". The component deliberately omits ownership percentage and uses "Reported Holder Concentration" language to avoid misleading traders.
+The original `isIngestionConfigured()` required `cfg.enabled`, creating a contradiction: data couldn't be prepared before the UI was enabled, but the UI shouldn't be enabled before data is ready. Separating the gates resolves this cleanly.

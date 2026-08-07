@@ -1,0 +1,319 @@
+LANDING PAGE HERO — TRADER-FOCUSED MESSAGING REFINEMENT
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+OBJECTIVE
+
+The revised landing page currently leads with the word “Research”:
+
+“Research, Plan, and Verify Stock & Options Opportunities”
+
+This is accurate, but it may feel too academic and passive for active traders who are
+primarily looking for qualified opportunities, actionable setups, trade structures,
+risk levels, and broker verification.
+
+Update the public landing-page messaging so it feels more opportunity-driven and
+trader-oriented while preserving compliance.
+
+This is a focused marketing-copy and presentation refinement only.
+
+Do not modify:
+
+- product logic
+- scanner
+- Opportunity Engine
+- AI Trading Workspace
+- broker integrations
+- Live Contract Resolver
+- InstaTrade™ functionality
+- pricing
+- authentication
+- database
+- APIs
+- feature flags
+
+====================================================================
+1. HERO HEADLINE
+====================================================================
+
+Replace the current hero headline:
+
+“Research, Plan, and Verify Stock & Options Opportunities”
+
+with:
+
+“Find, Evaluate, and Plan Stock & Options Opportunities”
+
+Keep “Stock & Options Opportunities” visually emphasized using the existing blue
+treatment.
+
+Alternative permitted only if it fits the layout better:
+
+“Turn Market Opportunities Into Structured Trade Plans”
+
+Use the first option by default.
+
+====================================================================
+2. HERO EYEBROW
+====================================================================
+
+Replace:
+
+“AI-Powered Research and Trade Planning for Self-Directed Traders”
+
+with:
+
+“AI-Powered Opportunity Intelligence for Self-Directed Traders”
+
+Do not use:
+
+- AI Trade Recommendations
+- AI Stock Picks
+- Winning Opportunities
+- High-Probability Trades
+- Predictive Trading Signals
+
+====================================================================
+3. HERO SUPPORTING COPY
+====================================================================
+
+Use:
+
+“Discover qualified setups, understand the evidence and risks, compare stock and
+options structures, verify live contracts through supported brokerages, and prepare
+trades for review with InstaTrade™.”
+
+The copy should communicate:
+
+Discover
+→ Understand
+→ Compare
+→ Verify
+→ Review
+
+Do not describe VCP Trader AI as providing personalized recommendations.
+
+====================================================================
+4. PRODUCT VISUAL TERMINOLOGY
+====================================================================
+
+In the hero product mockup, replace trader-facing uses of:
+
+- Research Candidate
+- Research Thesis
+- Qualified Research Candidate
+
+with:
+
+- Qualified Opportunity
+- Opportunity Thesis
+- Qualified Setup
+
+Preferred labels:
+
+MU · Qualified Opportunity
+
+OPPORTUNITY THESIS
+
+Opportunity Qualified
+
+Do not change authenticated application terminology globally in this task.
+
+Only change landing-page mockup and marketing copy.
+
+====================================================================
+5. GOAL-SECTION INTRODUCTION
+====================================================================
+
+Current language may say:
+
+“VCP Trader AI adapts the research view…”
+
+Replace with:
+
+“VCP Trader AI adapts the opportunity view, evidence, planning framework, and risk
+context to your objective.”
+
+====================================================================
+6. SITE-WIDE LANDING COPY AUDIT
+====================================================================
+
+Audit the public landing page for repeated trader-facing uses of “research.”
+
+Use the following replacement guidance:
+
+“qualified research candidates”
+→ “qualified market opportunities”
+
+“research opportunity”
+→ “market opportunity” or “qualified setup”
+
+“research view”
+→ “opportunity view”
+
+“research thesis”
+→ “opportunity thesis”
+
+“research workflow”
+→ “opportunity evaluation workflow”
+
+“research planning”
+→ “trade planning”
+
+Do not remove “research” where it supports accuracy or compliance, including:
+
+- My Research
+- Saved Research
+- Research Package
+- Educational Research
+- Independent Research
+- Research methodology
+- Research disclaimer
+
+The goal is not to eliminate the word “research.”
+The goal is to stop leading trader-facing marketing copy with it.
+
+====================================================================
+7. FEATURE SECTION COPY
+====================================================================
+
+Opportunity Engine:
+
+Use:
+
+“Surfaces qualified growth, income, active-trading, watchlist, and
+approaching-qualification opportunities using deterministic rules.”
+
+AI Trading Workspace:
+
+Use:
+
+“Brings the opportunity thesis, evidence, lifecycle changes, trade planning, risks,
+and contextual AI into one workspace.”
+
+Decision Engine:
+
+Use:
+
+“Explains why a setup qualified, what supports it, what weakens it, and what would
+invalidate it.”
+
+Trade Structure Engine:
+
+Use:
+
+“Compares possible stock and illustrative options structures based on the setup,
+market regime, holding period, and risk characteristics.”
+
+====================================================================
+8. CTA LANGUAGE
+====================================================================
+
+Keep:
+
+- Start Free Trial
+- See How It Works
+- Prepare with InstaTrade™
+
+Preferred opportunity CTAs:
+
+- Explore Current Opportunities
+- View Qualified Setups
+- Evaluate This Opportunity
+- See the Trade Plan
+
+Avoid:
+
+- Get Recommendations
+- See Picks
+- Buy Now
+- Trade Now
+- Find Winners
+
+====================================================================
+9. COMPLIANCE
+====================================================================
+
+The stronger opportunity language must remain clearly non-advisory.
+
+Retain contextual wording such as:
+
+- qualified by deterministic rules
+- illustrative structure
+- educational analysis
+- user-directed planning
+- supported broker verification
+- explicit user confirmation
+- not a live recommendation
+
+Do not claim:
+
+- opportunities are suitable for the user
+- qualification predicts returns
+- a setup is actionable without verification
+- AI determines what the user should buy or sell
+
+====================================================================
+10. SEO
+====================================================================
+
+Update the title only if needed:
+
+VCP Trader AI — Stock and Options Opportunity Intelligence
+
+Recommended meta description:
+
+Discover qualified stock and options opportunities, evaluate evidence and risk,
+compare trade structures, verify live contracts through supported brokerages, and
+prepare trades for review with InstaTrade™.
+
+Avoid overusing “AI research platform” in metadata.
+
+====================================================================
+11. TESTS
+====================================================================
+
+Update or add tests confirming:
+
+- hero headline uses “Find, Evaluate, and Plan”
+- eyebrow uses “Opportunity Intelligence”
+- hero supporting copy mentions qualified setups
+- no hero use of “Research, Plan, and Verify”
+- product mockup says Qualified Opportunity
+- product mockup says Opportunity Thesis
+- landing page retains research terminology where compliance requires it
+- no recommendation, stock-pick, winning-trade, or guaranteed language
+- existing CTA routes remain unchanged
+- layout remains responsive
+- no authenticated API calls are introduced
+
+Run:
+
+- landing-page tests
+- full client tests
+- full server tests
+- typecheck
+- production build
+
+====================================================================
+12. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Files changed
+2. Hero copy before and after
+3. All landing-page terminology changes
+4. Terms intentionally retained
+5. SEO changes
+6. Tests added or updated
+7. Total passing tests
+8. Typecheck
+9. Build
+10. Screenshots
+11. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, or deploy automatically.
+
+Wait for review.

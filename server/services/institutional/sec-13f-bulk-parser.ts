@@ -30,6 +30,7 @@
 
 import AdmZip from "adm-zip";
 import { secFetchBuffer, SecHttpError } from "./sec-client";
+import type { DatasetDescriptor } from "./sec-dataset-catalog";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -103,7 +104,16 @@ export interface BulkParseResult {
 
 /**
  * URL for the SEC Form 13F bulk dataset ZIP for a given year/quarter.
- * Example: https://…/data/form-13f-data-sets/2026q1_form13f.zip
+ *
+ * NOTE: This function constructs a legacy-format URL (YYYYqN_form13f.zip)
+ * and only works reliably for datasets through 2023Q4. Post-2023 datasets
+ * use a three-month date-range filename (e.g. 01mar2026-31may2026_form13f.zip)
+ * that cannot be constructed without the official catalog.
+ *
+ * For post-2023 datasets, use getCachedCatalog() in sec-dataset-catalog.ts
+ * to obtain the authoritative download URL.
+ *
+ * @deprecated Prefer DatasetDescriptor.downloadUrl from the catalog for new code.
  */
 export function bulkDatasetUrl(year: number, q: 1 | 2 | 3 | 4): string {
   return `${BULK_DATASET_BASE}/${year}q${q}_form13f.zip`;
@@ -115,6 +125,21 @@ export function bulkDatasetUrl(year: number, q: 1 | 2 | 3 | 4): string {
  */
 export function entryPrefix(year: number, q: 1 | 2 | 3 | 4): string {
   return `${year}Q${q}`;
+}
+
+/**
+ * Auto-detect the entry prefix inside a ZIP by scanning for *_SUBMISSION.TSV.
+ * Returns the detected prefix (e.g. "2026Q1") or null if not found.
+ * Used as a fallback when the expected prefix is not present in the archive.
+ */
+export function detectEntryPrefix(zip: AdmZip): string | null {
+  for (const entry of zip.getEntries()) {
+    const name = entry.entryName.toUpperCase().replace(/\\/g, "/");
+    const base = name.includes("/") ? name.split("/").pop()! : name;
+    const m = base.match(/^(\d{4}Q[1-4])_SUBMISSION\.TSV$/);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -417,14 +442,29 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
 /**
  * Parse a pre-downloaded bulk quarter ZIP buffer.
  * Exported for testing — does not make any HTTP requests.
+ *
+ * @param buffer             ZIP archive buffer
+ * @param year               Holdings period year (used to derive entry prefix)
+ * @param q                  Holdings period quarter (used to derive entry prefix)
+ * @param startMs            Timestamp of download start for durationMs diagnostic
+ * @param entryPrefixOverride  Optional explicit entry prefix (e.g. "2026Q1").
+ *                             When provided it is tried first. If no matching
+ *                             entry is found, auto-detection from archive entries
+ *                             is attempted before falling back to year+q.
  */
 export function parseBulkQuarterFromBuffer(
   buffer: Buffer,
   year: number,
   q: 1 | 2 | 3 | 4,
   startMs = 0,
+  entryPrefixOverride?: string,
 ): BulkParseResult {
-  const prefix = entryPrefix(year, q);
+  // Determine the entry prefix to use:
+  //   1. Caller-supplied override (first attempt)
+  //   2. Year+quarter derived (fallback)
+  // Auto-detect from archive entries when neither resolves.
+  const derivedPrefix = entryPrefix(year, q);
+  const preferredPrefix = entryPrefixOverride ?? derivedPrefix;
 
   // Open ZIP
   let zip: AdmZip;
@@ -446,14 +486,35 @@ export function parseBulkQuarterFromBuffer(
   const allEntries = zip.getEntries().map((e) => e.entryName);
   const baseDiag = { archiveBytes: buffer.length, archiveEntries: allEntries };
 
-  // Locate required files (case-insensitive, handles directory prefix)
-  const submissionEntry = findZipEntry(zip, `${prefix}_SUBMISSION.TSV`);
-  const infoTableEntry = findZipEntry(zip, `${prefix}_INFOTABLE.TSV`);
+  // Resolve the actual entry prefix to look up:
+  //   1. Try preferredPrefix (override or derived from year+q)
+  //   2. If not found, auto-detect from archive entries
+  //   3. Fall back to derivedPrefix for error messages
+  let resolvedPrefix = preferredPrefix;
+  let submissionEntry = findZipEntry(zip, `${resolvedPrefix}_SUBMISSION.TSV`);
+  let infoTableEntry  = findZipEntry(zip, `${resolvedPrefix}_INFOTABLE.TSV`);
+
+  if ((!submissionEntry || !infoTableEntry) && resolvedPrefix !== derivedPrefix) {
+    // Try the year+q derived prefix if override didn't match
+    submissionEntry = findZipEntry(zip, `${derivedPrefix}_SUBMISSION.TSV`);
+    infoTableEntry  = findZipEntry(zip, `${derivedPrefix}_INFOTABLE.TSV`);
+    if (submissionEntry || infoTableEntry) resolvedPrefix = derivedPrefix;
+  }
+
+  if (!submissionEntry || !infoTableEntry) {
+    // Last resort: auto-detect prefix from archive entries
+    const autoPrefix = detectEntryPrefix(zip);
+    if (autoPrefix) {
+      submissionEntry = findZipEntry(zip, `${autoPrefix}_SUBMISSION.TSV`);
+      infoTableEntry  = findZipEntry(zip, `${autoPrefix}_INFOTABLE.TSV`);
+      if (submissionEntry && infoTableEntry) resolvedPrefix = autoPrefix;
+    }
+  }
 
   if (!submissionEntry || !infoTableEntry) {
     const missing = [
-      !submissionEntry ? `${prefix}_SUBMISSION.TSV` : null,
-      !infoTableEntry ? `${prefix}_INFOTABLE.TSV` : null,
+      !submissionEntry ? `${resolvedPrefix}_SUBMISSION.TSV` : null,
+      !infoTableEntry ? `${resolvedPrefix}_INFOTABLE.TSV` : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -608,12 +669,16 @@ export function parseBulkQuarterFromBuffer(
 }
 
 // ---------------------------------------------------------------------------
-// Async entry point — downloads and parses
+// Async entry point — downloads and parses (legacy year+quarter interface)
 // ---------------------------------------------------------------------------
 
 /**
  * Download and parse the SEC Form 13F bulk dataset ZIP for a quarter.
  * Returns EMPTY_NOT_PUBLISHED on HTTP 404 (SEC has not yet published the dataset).
+ *
+ * NOTE: Uses the legacy YYYYqN URL construction, which only works reliably for
+ * datasets through 2023Q4. For post-2023 datasets, use parseBulkFromDescriptor()
+ * with a catalog-resolved DatasetDescriptor.
  */
 export async function parseBulkQuarter(
   year: number,
@@ -640,6 +705,45 @@ export async function parseBulkQuarter(
   return parseBulkQuarterFromBuffer(buffer, year, q, startMs);
 }
 
+/**
+ * Download and parse a SEC Form 13F bulk dataset ZIP from a catalog-resolved
+ * DatasetDescriptor.
+ *
+ * The descriptor's downloadUrl is used verbatim — no URL reconstruction.
+ * The descriptor's year+q identify the primary holdings period and guide the
+ * ZIP entry prefix lookup. Auto-detection fallback is used when the expected
+ * entry prefix is not found.
+ *
+ * Returns EMPTY_NOT_PUBLISHED on HTTP 404.
+ */
+export async function parseBulkFromDescriptor(
+  descriptor: DatasetDescriptor,
+  signal?: AbortSignal,
+): Promise<BulkParseResult> {
+  const startMs = Date.now();
+  const label = descriptor.fileName;
+
+  let buffer: Buffer;
+  try {
+    buffer = await secFetchBuffer(descriptor.downloadUrl, signal);
+  } catch (err: any) {
+    const is404 = err instanceof SecHttpError && err.status === 404;
+    return {
+      status: is404 ? "empty_not_published" : "failed",
+      holdings: [],
+      diagnostics: { ...EMPTY_DIAGNOSTICS, durationMs: Date.now() - startMs },
+      reason: is404
+        ? `Dataset ${label} not available (HTTP 404) — URL may be stale; refresh catalog`
+        : `Download failed: ${err.name ?? "NETWORK_ERROR"}`,
+    };
+  }
+
+  // Pass the holdings year+q so the expected entry prefix (e.g. "2026Q1") is
+  // tried first. Auto-detect fallback handles cases where the SEC uses a
+  // different internal naming convention inside post-2023 ZIPs.
+  return parseBulkQuarterFromBuffer(buffer, descriptor.year, descriptor.q, startMs);
+}
+
 // ---------------------------------------------------------------------------
 // Quarter availability probe
 // ---------------------------------------------------------------------------
@@ -649,6 +753,9 @@ export async function parseBulkQuarter(
  * Returns { available: true } for 2xx, { available: false } for 404 or errors.
  *
  * @param userAgent SEC_USER_AGENT string (passed explicitly — no config import needed)
+ *
+ * NOTE: Uses the legacy YYYYqN URL construction. For post-2023 datasets,
+ * use probeDescriptorAvailability() with a catalog-resolved DatasetDescriptor.
  */
 export async function probeQuarterAvailability(
   year: number,
@@ -657,6 +764,28 @@ export async function probeQuarterAvailability(
 ): Promise<{ available: boolean; statusCode: number | null }> {
   try {
     const res = await fetch(bulkDatasetUrl(year, q), {
+      method: "HEAD",
+      headers: { "User-Agent": userAgent, Accept: "*/*" },
+    });
+    return { available: res.ok, statusCode: res.status };
+  } catch {
+    return { available: false, statusCode: null };
+  }
+}
+
+/**
+ * Probe whether a catalog-resolved dataset is available, using a HEAD request
+ * on the descriptor's exact download URL.
+ *
+ * @param descriptor  DatasetDescriptor from the official catalog
+ * @param userAgent   SEC_USER_AGENT string
+ */
+export async function probeDescriptorAvailability(
+  descriptor: DatasetDescriptor,
+  userAgent: string,
+): Promise<{ available: boolean; statusCode: number | null }> {
+  try {
+    const res = await fetch(descriptor.downloadUrl, {
       method: "HEAD",
       headers: { "User-Agent": userAgent, Accept: "*/*" },
     });

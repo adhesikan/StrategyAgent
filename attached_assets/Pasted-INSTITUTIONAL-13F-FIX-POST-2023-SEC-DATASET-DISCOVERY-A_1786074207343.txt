@@ -1,0 +1,447 @@
+INSTITUTIONAL 13F — FIX POST-2023 SEC DATASET DISCOVERY AND PERIOD MAPPING
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION OBSERVATION
+
+Command:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2 --dry-run
+
+reported every dataset from 2024Q1 through 2026Q3 as “not yet published” and selected
+only 2023Q4.
+
+This is incorrect.
+
+The official SEC Form 13F Data Sets page currently lists post-2023 downloads using
+three-month date-range filenames rather than YYYYqN filenames.
+
+Examples verified from the official SEC page:
+
+01mar2026-31may2026_form13f.zip
+01dec2025-28feb2026_form13f.zip
+01sep2025-30nov2025_form13f.zip
+01jun2025-31aug2025_form13f.zip
+01mar2025-31may2025_form13f.zip
+
+Older datasets continue to use names such as:
+
+2023q4_form13f.zip
+
+The availability probe currently appears to construct:
+
+YYYYqN_form13f.zip
+
+for all years, causing valid post-2023 datasets to return HTTP 404 and be mislabeled
+as unpublished.
+
+This is a focused dataset-discovery and reporting-period mapping fix.
+
+Do not modify:
+
+- TSV parsing
+- database schema
+- amendment handling
+- aggregation formulas
+- mapping policy
+- UI
+- Opportunity Engine
+- MCP
+- scanner
+- brokers
+- Institutional feature flag
+
+Do not enable the public feature.
+
+====================================================================
+1. CONFIRM THE EXACT ROOT CAUSE
+====================================================================
+
+Trace:
+
+run-institutional-backfill.ts
+→ availability probing
+→ SEC bulk dataset URL builder
+→ quarter selection
+→ ingestion download URL
+→ period-of-report mapping
+
+Identify exactly where the code assumes:
+
+${year}q${quarter}_form13f.zip
+
+for datasets after 2023.
+
+Report the exact files and functions involved.
+
+====================================================================
+2. USE THE OFFICIAL SEC DATASET INDEX AS SOURCE OF TRUTH
+====================================================================
+
+Preferred implementation:
+
+Fetch and parse the official human-readable dataset index:
+
+https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets
+
+Extract the official ZIP links from that page.
+
+Do not guess publication availability solely from constructed URLs.
+
+Build a normalized dataset catalog from official links.
+
+Suggested normalized type:
+
+InstitutionalDatasetCatalogEntry {
+  downloadUrl: string;
+  fileName: string;
+  displayLabel: string;
+  windowStart: string;
+  windowEnd: string;
+  publicationModel: "legacy_quarter" | "three_month_window";
+  canonicalPeriodLabel: string;
+  expectedPeriodOfReport: string;
+}
+
+Requirements:
+
+- only accept HTTPS links hosted on sec.gov;
+- only accept filenames ending in _form13f.zip;
+- reject arbitrary/external URLs;
+- use SEC_USER_AGENT;
+- bounded request rate;
+- cache the catalog;
+- do not fetch the catalog on ordinary user page requests;
+- safe retry/backoff;
+- no HTML scraping outside the official SEC dataset page.
+
+If parsing the official index is unsuitable, implement a documented deterministic
+filename mapping based on the SEC’s published convention—but index parsing is
+preferred because it remains resilient to future naming changes.
+
+====================================================================
+3. SUPPORT BOTH NAMING CONVENTIONS
+====================================================================
+
+Legacy convention:
+
+2013Q2 through 2023Q4, where available:
+
+YYYYqN_form13f.zip
+
+Post-2023 convention:
+
+three-month window filenames, including:
+
+01marYYYY-31mayYYYY_form13f.zip
+01junYYYY-31augYYYY_form13f.zip
+01sepYYYY-30novYYYY_form13f.zip
+01decYYYY-28febYYYY+1_form13f.zip
+
+Handle leap-year February correctly when constructing or validating filenames:
+
+28feb or 29feb as applicable.
+
+Do not assume all future filenames follow exactly the same day strings when the
+official index supplies the actual URL.
+
+====================================================================
+4. CORRECT PERIOD SEMANTICS
+====================================================================
+
+The SEC datasets now group filings by filing-submission window, not by the holdings
+quarter in the filename.
+
+For example:
+
+01mar2026-31may2026_form13f.zip
+
+primarily contains filings submitted during March–May 2026, many of which report
+holdings as of:
+
+2026-03-31
+
+The application must distinguish:
+
+A. SEC dataset window
+
+Example:
+2026 March–May dataset
+
+B. Holdings period of report
+
+Example:
+2026-03-31 / 2026Q1
+
+Do not label the dataset window itself as the holdings quarter without inspecting
+SUBMISSION.TSV period-of-report fields.
+
+During ingestion:
+
+- parse every filing’s actual CONFORMED-PERIOD-OF-REPORT;
+- persist the real period-of-report;
+- aggregate by actual period-of-report;
+- do not force every row in one ZIP into a single assumed quarter;
+- allow amendments or late filings with a different report period;
+- record the source dataset filename/window separately.
+
+====================================================================
+5. REDEFINE --quarters N
+====================================================================
+
+The user/operator meaning of:
+
+--quarters 2
+
+should be:
+
+Ingest enough published SEC bulk datasets to obtain the two most recent distinct
+13F holdings periods of report.
+
+It should not simply mean:
+
+Download two ZIP files.
+
+Preferred workflow:
+
+1. Load published dataset catalog.
+2. Select newest dataset windows.
+3. Inspect or ingest them newest-first.
+4. Determine distinct period-of-report dates represented.
+5. Continue backward until at least N recent comparable holdings quarters are covered.
+6. Print the selected dataset windows and expected holdings periods clearly.
+
+Dry-run example:
+
+Published dataset windows selected:
+- Mar 1–May 31, 2026
+  Expected primary holdings period: 2026-03-31
+- Dec 1, 2025–Feb 28, 2026
+  Expected primary holdings period: 2025-12-31
+
+Target holdings quarters:
+- 2026Q1
+- 2025Q4
+
+Do not print:
+
+2026Q2 unpublished
+
+when the actual question is whether the March–May publication window exists.
+
+====================================================================
+6. CLI OUTPUT TERMINOLOGY
+====================================================================
+
+Update dry-run output to distinguish:
+
+- dataset window;
+- ZIP filename;
+- primary expected holdings period;
+- publication availability.
+
+Example:
+
+[backfill] Published SEC datasets selected:
+
+[backfill]   Dataset window: Mar 1–May 31, 2026
+[backfill]   File: 01mar2026-31may2026_form13f.zip
+[backfill]   Expected primary report period: 2026Q1
+
+[backfill]   Dataset window: Dec 1, 2025–Feb 28, 2026
+[backfill]   File: 01dec2025-28feb2026_form13f.zip
+[backfill]   Expected primary report period: 2025Q4
+
+Avoid calling a date-range dataset itself “2026Q1” unless describing the expected
+primary period of report.
+
+====================================================================
+7. INGESTION API INPUT
+====================================================================
+
+Change the ingestion boundary to accept a resolved dataset descriptor rather than
+reconstructing a URL from year + quarter.
+
+Preferred input:
+
+{
+  downloadUrl,
+  fileName,
+  windowStart,
+  windowEnd,
+  expectedPrimaryPeriodOfReport
+}
+
+Do not let the parser rebuild the URL independently.
+
+The same catalog entry must drive:
+
+- availability;
+- download;
+- logging;
+- ingestion-run metadata;
+- diagnostics.
+
+This avoids probe/download disagreement.
+
+====================================================================
+8. DATABASE AUDIT FIELDS
+====================================================================
+
+If the existing schema can store it, persist or record in run metadata:
+
+- source dataset filename;
+- source dataset window start;
+- source dataset window end;
+- source URL;
+- actual distinct period-of-report values found.
+
+Prefer no migration.
+
+If the schema lacks these fields and they are necessary for auditability, add an
+additive migration only after documenting why.
+
+Do not overwrite the real holdings period with the dataset window.
+
+====================================================================
+9. TESTS
+====================================================================
+
+Add focused tests.
+
+A. Official catalog parsing
+
+- extracts current date-range ZIP links;
+- extracts legacy quarter ZIP links;
+- ignores non-ZIP links;
+- ignores external hosts;
+- resolves relative SEC links;
+- handles labels containing month names;
+- handles duplicate links.
+
+B. Filename parsing
+
+- 2023q4_form13f.zip
+- 01mar2025-31may2025_form13f.zip
+- 01dec2025-28feb2026_form13f.zip
+- leap-year February filename
+- malformed filename rejected.
+
+C. Catalog normalization
+
+- legacy quarter maps correctly;
+- March–May window expects Q1 period;
+- June–August expects Q2;
+- September–November expects Q3;
+- December–February expects Q4;
+- cross-year date range handled.
+
+D. Quarter selection
+
+- --quarters 2 selects latest two applicable published datasets;
+- no fallback to 2023Q4 when newer date-range files exist;
+- dataset window and holdings period remain distinct;
+- duplicate report periods do not satisfy two-quarter target twice;
+- late amendments do not corrupt selection.
+
+E. Download contract
+
+- exact URL from catalog is used;
+- no reconstructed URL;
+- SEC User-Agent applied;
+- 404 catalog entry handled safely;
+- downloaded filename logged.
+
+F. Ingestion
+
+- actual SUBMISSION period-of-report drives persisted filings;
+- multiple period-of-report values in one dataset are preserved;
+- aggregates group by actual period;
+- dataset filename does not overwrite holdings period.
+
+G. CLI
+
+- dry-run prints dataset windows;
+- dry-run prints expected holdings quarters;
+- no misleading “dataset not yet published” for valid post-2023 files;
+- no DB writes in dry-run;
+- --quarter compatibility is documented or safely redefined.
+
+H. Regression
+
+- 2023Q4 legacy ZIP still works;
+- EMPTY_PARSE_FAILURE behavior unchanged;
+- EMPTY_NOT_PUBLISHED behavior unchanged for genuinely missing URLs;
+- TSV parser tests remain green.
+
+====================================================================
+10. PRODUCTION RE-RUN PLAN
+====================================================================
+
+After the fix:
+
+1. Deploy while:
+   INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+2. Run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2 --dry-run
+
+3. Confirm the dry run selects recent SEC date-window datasets, not only 2023Q4.
+
+Expected current selections should correspond to the latest official SEC catalog,
+for example:
+
+- 01mar2026-31may2026_form13f.zip
+- 01dec2025-28feb2026_form13f.zip
+
+Use the live official catalog as source of truth rather than hardcoding those examples.
+
+4. Run one dataset explicitly if the CLI supports a safe filename/catalog ID selector.
+
+5. Run the two-quarter backfill.
+
+6. Confirm:
+
+- submissionRows > 0
+- informationTableRows > 0
+- joinedHoldingRows > 0
+- filingCount > 0
+- holdingCount > 0
+- actual period-of-report values include recent quarters
+
+7. Run readiness audit.
+
+8. Only then seed verified COST mapping.
+
+9. Rebuild aggregates if required.
+
+10. Keep public feature disabled until final GO/CONDITIONAL_GO.
+
+====================================================================
+11. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact URL-generation root cause
+2. SEC naming convention before and after 2024
+3. Official catalog parsing approach
+4. Dataset-window versus holdings-period model
+5. Files changed
+6. --quarters behavior before and after
+7. URL selection before and after
+8. Schema impact
+9. Tests added
+10. Total passing tests
+11. Typecheck
+12. Build
+13. Exact production dry-run command
+14. Expected output shape
+15. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run production backfill, seed mappings, change Railway
+variables, or enable the public feature automatically.
+
+Wait for review.

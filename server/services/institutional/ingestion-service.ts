@@ -43,8 +43,13 @@ import {
   quarterFromPeriodDate,
   INSTITUTIONAL_ADVISORY_LOCK_KEY,
 } from "./config";
-import { parseBulkQuarter, bulkDatasetUrl } from "./sec-13f-bulk-parser";
+import {
+  parseBulkQuarter,
+  parseBulkFromDescriptor,
+  bulkDatasetUrl,
+} from "./sec-13f-bulk-parser";
 import type { ParsedBulkHolding } from "./sec-13f-bulk-parser";
+import type { DatasetDescriptor } from "./sec-dataset-catalog";
 import { resolveMappingsBatch, applyMappingsToHoldings, getMappedSymbols } from "./mapping-service";
 import { computeQuarterlyAggregate, derivePeriodLabel, type AggregationInput } from "./aggregation-engine";
 import { classifyTrend } from "./trend-classifier";
@@ -372,8 +377,10 @@ async function ingestQuarter(
 
   log("institutional_13f_ingestion_started", { quarter, year, q });
 
-  // Download and parse the bulk archive (replaces the prior per-filing XML approach which
-  // produced zero results because company.idx is fixed-width, not pipe-delimited).
+  // Download and parse the bulk archive.
+  // NOTE: parseBulkQuarter uses the legacy YYYYqN URL construction, which
+  // only works for datasets through 2023Q4. For post-2023 datasets, the
+  // runInstitutionalIngestion path now uses ingestFromDescriptor instead.
   const parseResult = await parseBulkQuarter(year, q, signal);
 
   log("institutional_13f_archive_inspected", {
@@ -566,6 +573,231 @@ async function ingestQuarter(
 }
 
 // ---------------------------------------------------------------------------
+// Descriptor-based ingestion (catalog-driven, post-2023 safe)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest a single SEC 13F bulk dataset identified by a catalog DatasetDescriptor.
+ *
+ * Uses parseBulkFromDescriptor() to download via the descriptor's exact URL,
+ * then persists filings + holdings using the actual CONFORMED-PERIOD-OF-REPORT
+ * from each filing row (not the descriptor's expected period).
+ *
+ * The descriptor's expectedPeriodOfReport is used as the run-record period
+ * and return value period (for aggregation scheduling). Individual filing rows
+ * carry their own periodOfReport as parsed from SUBMISSION.TSV.
+ */
+async function ingestFromDescriptor(
+  descriptor: DatasetDescriptor,
+  signal: AbortSignal,
+): Promise<QuarterIngestionResult> {
+  const quarter = `${descriptor.year}-Q${descriptor.q}`;
+  const sourceUrl = descriptor.downloadUrl;
+
+  log("institutional_13f_ingestion_started", {
+    quarter,
+    fileName: descriptor.fileName,
+    windowStart: descriptor.windowStart,
+    windowEnd: descriptor.windowEnd,
+    expectedPeriodOfReport: descriptor.expectedPeriodOfReport,
+  });
+
+  const parseResult = await parseBulkFromDescriptor(descriptor, signal);
+
+  log("institutional_13f_archive_inspected", {
+    quarter,
+    fileName: descriptor.fileName,
+    archiveBytes: parseResult.diagnostics.archiveBytes,
+    entryCount: parseResult.diagnostics.archiveEntries.length,
+    entryNames: parseResult.diagnostics.archiveEntries.slice(0, 8),
+    status: parseResult.status,
+  });
+
+  if (parseResult.status === "empty_not_published") {
+    log("institutional_13f_quarter_not_published", { quarter, fileName: descriptor.fileName });
+    return {
+      quarter,
+      periodOfReport: descriptor.expectedPeriodOfReport,
+      filingCount: 0,
+      holdingCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      status: "empty_not_published",
+    };
+  }
+
+  if (parseResult.status === "failed" || parseResult.status === "empty_parse_failure") {
+    log("institutional_13f_empty_parse_failure", {
+      quarter,
+      fileName: descriptor.fileName,
+      reason: parseResult.reason,
+      submissionRows: parseResult.diagnostics.submissionRows,
+      informationTableRows: parseResult.diagnostics.informationTableRows,
+      joinedHoldingRows: parseResult.diagnostics.joinedHoldingRows,
+      rejectedRows: parseResult.diagnostics.rejectedRows,
+    });
+    return {
+      quarter,
+      periodOfReport: descriptor.expectedPeriodOfReport,
+      filingCount: 0,
+      holdingCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      status: parseResult.status,
+    };
+  }
+
+  log("institutional_13f_rows_parsed", {
+    quarter,
+    fileName: descriptor.fileName,
+    submissionRows: parseResult.diagnostics.submissionRows,
+    informationTableRows: parseResult.diagnostics.informationTableRows,
+    joinedHoldingRows: parseResult.diagnostics.joinedHoldingRows,
+    rejectedRows: parseResult.diagnostics.rejectedRows,
+    eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
+    putCallExcludedRows: parseResult.diagnostics.putCallExcludedRows,
+    prnExcludedRows: parseResult.diagnostics.prnExcludedRows,
+    durationMs: parseResult.diagnostics.durationMs,
+  });
+
+  const holdingsByAccession = new Map<string, ParsedBulkHolding[]>();
+  for (const h of parseResult.holdings) {
+    if (!holdingsByAccession.has(h.accessionNumber)) {
+      holdingsByAccession.set(h.accessionNumber, []);
+    }
+    holdingsByAccession.get(h.accessionNumber)!.push(h);
+  }
+
+  let filingCount = 0;
+  let holdingCount = 0;
+  let mappedCount = 0;
+  let unmappedCount = 0;
+
+  for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
+    if (signal.aborted) break;
+
+    const existing = await db
+      .select({ id: institutional13fFilings.id })
+      .from(institutional13fFilings)
+      .where(eq(institutional13fFilings.accessionNumber, accession))
+      .limit(1);
+
+    if (existing.length > 0) continue;
+
+    const first = holdings[0];
+
+    await upsertFiling({
+      accessionNumber: accession,
+      filerCik: first.filerCik,
+      filerName: first.filerName,
+      filingType: first.filingType,
+      filingDate: first.filingDate,
+      acceptedAt: null,
+      // Use actual parsed periodOfReport from SUBMISSION.TSV, not descriptor's expected period.
+      // This preserves correct holdings dates for late filers and amendments.
+      periodOfReport: first.periodOfReport,
+      amendmentFlag: first.isAmendment,
+      amendmentNumber: null,
+      amendmentType: null,
+      isEffective: true,
+      // Record the catalog-resolved URL and dataset metadata for auditability.
+      sourceUrl,
+      sourceChecksum: null,
+    });
+
+    if (first.isAmendment) {
+      await updateEffectivenessForFiler(
+        first.filerCik,
+        first.periodOfReport,
+        accession,
+        first.filingDate,
+      );
+    }
+
+    const holdingRows: InsertInstitutional13fHolding[] = holdings.map((h) => ({
+      accessionNumber: h.accessionNumber,
+      filerCik: h.filerCik,
+      filerName: h.filerName,
+      issuerName: h.issuerName,
+      classTitle: h.classTitle,
+      cusip: h.cusip,
+      figi: h.figi,
+      reportedValue: h.reportedValue,
+      reportedShares: h.reportedShares,
+      sharesPrnType: h.sharesPrnType,
+      putCall: h.putCall,
+      investmentDiscretion: h.investmentDiscretion,
+      otherManager: h.otherManager,
+      votingSole: h.votingSole,
+      votingShared: h.votingShared,
+      votingNone: h.votingNone,
+      // Actual periodOfReport from each filing row — may differ from descriptor's expected period.
+      periodOfReport: h.periodOfReport,
+      filingDate: h.filingDate,
+      mappedSymbol: null,
+      mappingStatus: "unmapped",
+    }));
+
+    await upsertHoldings(holdingRows);
+
+    const { mappedCount: mc, unmappedCount: uc } =
+      await applyMappingsToHoldings(accession);
+
+    filingCount++;
+    holdingCount += holdingRows.length;
+    mappedCount += mc;
+    unmappedCount += uc;
+  }
+
+  log("institutional_13f_join_summary", {
+    quarter,
+    fileName: descriptor.fileName,
+    filingCount,
+    holdingCount,
+    mappedCount,
+    unmappedCount,
+  });
+
+  if (filingCount === 0 && parseResult.holdings.length > 0) {
+    return {
+      quarter,
+      periodOfReport: descriptor.expectedPeriodOfReport,
+      filingCount: 0,
+      holdingCount: 0,
+      mappedCount: 0,
+      unmappedCount: 0,
+      status: "completed",
+    };
+  }
+
+  // Recompute aggregates for all mapped symbols
+  const mappedSymbols = await getMappedSymbols();
+  for (const symbol of mappedSymbols) {
+    if (signal.aborted) break;
+    try {
+      await recomputeAggregateForSymbol(symbol, descriptor.expectedPeriodOfReport, null);
+    } catch (err: any) {
+      log("institutional_aggregate_error", { symbol, errorCode: err.name ?? "ERROR" });
+    }
+  }
+
+  log("institutional_13f_aggregation_completed", {
+    quarter,
+    symbolCount: mappedSymbols.length,
+  });
+
+  return {
+    quarter,
+    periodOfReport: descriptor.expectedPeriodOfReport,
+    filingCount,
+    holdingCount,
+    mappedCount,
+    unmappedCount,
+    status: parseResult.status === "partial_success" ? "partial" : "completed",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 
@@ -589,14 +821,23 @@ async function ingestQuarter(
 export async function runInstitutionalIngestion(
   options: {
     initiatedBy?: string;
-    /** Ingest the N most-recent quarters (ignored when specificQuarterLabels is set). */
+    /** Ingest the N most-recent quarters (ignored when specificQuarterLabels/specificDescriptors are set). */
     quartersOverride?: number;
     /**
      * Ingest exactly these quarter labels (e.g. ["2026-Q1", "2025-Q4"]).
      * Overrides quartersOverride and the default backfillQuarters config.
      * Each label must be parseable by parseQuarterLabel().
+     * Uses legacy URL construction — only reliable through 2023Q4.
      */
     specificQuarterLabels?: string[];
+    /**
+     * Ingest exactly these catalog-resolved dataset descriptors.
+     * Takes precedence over specificQuarterLabels and quartersOverride.
+     * Each descriptor carries the authoritative download URL from the
+     * official SEC catalog — no URL reconstruction occurs.
+     * Preferred for post-2023 datasets.
+     */
+    specificDescriptors?: DatasetDescriptor[];
   } = {},
 ): Promise<{ status: "completed" | "partial" | "skipped_disabled" | "skipped_locked" | "failed"; quartersProcessed: number }> {
   const cfg = getInstitutionalConfig();
@@ -620,7 +861,76 @@ export async function runInstitutionalIngestion(
   const initiatedBy = options.initiatedBy ?? "scheduler";
 
   try {
-    // Determine quarter list — specific labels take precedence over count override
+    let quartersProcessed = 0;
+    let overallStatus: "completed" | "partial" | "failed" = "completed";
+
+    // ── Descriptor path (catalog-driven, post-2023 safe) ────────────────────
+    if (options.specificDescriptors && options.specificDescriptors.length > 0) {
+      for (const descriptor of options.specificDescriptors) {
+        if (controller.signal.aborted) break;
+
+        const runQuarter = `${descriptor.year}-Q${descriptor.q}`;
+        const runId = await createRun(runQuarter, descriptor.expectedPeriodOfReport, initiatedBy);
+        const start = Date.now();
+
+        try {
+          const result = await ingestFromDescriptor(descriptor, controller.signal);
+          const durationMs = Date.now() - start;
+
+          if (result.status === "empty_not_published") {
+            await updateRun(runId, {
+              status: "empty_not_published",
+              errorCode: "EMPTY_NOT_PUBLISHED",
+              errorSummary: `Dataset ${descriptor.fileName} not yet available (HTTP 404)`,
+              completedAt: new Date(),
+              durationMs,
+            });
+            log("institutional_13f_quarter_not_published", { quarter: runQuarter, fileName: descriptor.fileName });
+          } else if (result.status === "empty_parse_failure") {
+            await updateRun(runId, {
+              status: "failed",
+              errorCode: "EMPTY_PARSE_FAILURE",
+              errorSummary: "Archive downloaded but zero 13F-HR holdings parsed",
+              filingCount: 0,
+              holdingCount: 0,
+              completedAt: new Date(),
+              durationMs,
+            });
+            log("institutional_13f_empty_parse_failure", { quarter: runQuarter, fileName: descriptor.fileName });
+            quartersProcessed++;
+            overallStatus = "partial";
+          } else {
+            await updateRun(runId, {
+              status: result.status === "partial" ? "partial" : "completed",
+              filingCount: result.filingCount,
+              holdingCount: result.holdingCount,
+              mappedCount: result.mappedCount,
+              unmappedCount: result.unmappedCount,
+              completedAt: new Date(),
+              durationMs,
+            });
+            quartersProcessed++;
+            if (result.status !== "completed") overallStatus = "partial";
+          }
+        } catch (err: any) {
+          const durationMs = Date.now() - start;
+          const errMsg = String(err?.message ?? "").slice(0, 200);
+          await updateRun(runId, {
+            status: "failed",
+            errorCode: err.name ?? "INGESTION_ERROR",
+            errorSummary: errMsg,
+            completedAt: new Date(),
+            durationMs,
+          });
+          log("institutional_13f_ingestion_failed", { errorCode: err.name, quarter: runQuarter });
+          overallStatus = "partial";
+        }
+      }
+
+      return { status: overallStatus, quartersProcessed };
+    }
+
+    // ── Legacy label/count path (uses YYYYqN URL construction) ──────────────
     let quarters: Array<{ year: number; q: 1 | 2 | 3 | 4; periodEnd: string; label: string }>;
     if (options.specificQuarterLabels && options.specificQuarterLabels.length > 0) {
       const parsed = options.specificQuarterLabels.map((lbl) => {
@@ -633,8 +943,6 @@ export async function runInstitutionalIngestion(
       const n = options.quartersOverride ?? cfg.backfillQuarters;
       quarters = recentQuarters(n);
     }
-    let quartersProcessed = 0;
-    let overallStatus: "completed" | "partial" | "failed" = "completed";
 
     for (const q of quarters) {
       if (controller.signal.aborted) break;
@@ -647,7 +955,6 @@ export async function runInstitutionalIngestion(
         const durationMs = Date.now() - start;
 
         if (result.status === "empty_not_published") {
-          // Quarter not yet released by SEC — record for audit, do not count as processed
           await updateRun(runId, {
             status: "empty_not_published",
             errorCode: "EMPTY_NOT_PUBLISHED",
@@ -656,9 +963,7 @@ export async function runInstitutionalIngestion(
             durationMs,
           });
           log("institutional_13f_quarter_not_published", { quarter: q.label });
-          // quartersProcessed intentionally NOT incremented — retry later
         } else if (result.status === "empty_parse_failure") {
-          // Archive downloaded but zero 13F-HR filings parsed — parser failure
           await updateRun(runId, {
             status: "failed",
             errorCode: "EMPTY_PARSE_FAILURE",

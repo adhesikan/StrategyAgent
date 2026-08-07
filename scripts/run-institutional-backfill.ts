@@ -6,9 +6,19 @@
 //
 // Usage:
 //   npx tsx scripts/run-institutional-backfill.ts --quarters 2
-//   npx tsx scripts/run-institutional-backfill.ts --quarter 2026Q2
 //   npx tsx scripts/run-institutional-backfill.ts --quarters 4 --dry-run
+//   npx tsx scripts/run-institutional-backfill.ts --quarter 2023Q4
 //   npx tsx scripts/run-institutional-backfill.ts --quarter 2025Q4 --rebuild-aggregates
+//
+// --quarters N
+//   Fetch the official SEC dataset catalog and select enough published datasets
+//   to cover N distinct 13F holdings periods of report.
+//   Uses the catalog URL as source of truth — no URL guessing.
+//   Works for all post-2023 date-range filenames as well as legacy YYYYqN datasets.
+//
+// --quarter YYYYQN
+//   Ingest a specific quarter using the legacy URL construction.
+//   Reliable for datasets through 2023Q4. Use --quarters for post-2023 datasets.
 //
 // Requirements (hard-fail if missing):
 //   DATABASE_URL         — PostgreSQL connection string
@@ -32,9 +42,10 @@ import {
   isIngestionConfigured,
 } from "../server/services/institutional/config";
 import {
-  probeQuarterAvailability,
-  selectAvailableQuarters,
-} from "../server/services/institutional/sec-13f-bulk-parser";
+  fetchDatasetCatalog,
+  selectDatasetWindows,
+  toDatasetDescriptor,
+} from "../server/services/institutional/sec-dataset-catalog";
 import { runInstitutionalIngestion } from "../server/services/institutional/ingestion-service";
 
 // ---------------------------------------------------------------------------
@@ -81,7 +92,6 @@ async function checkSchemaExists(): Promise<void> {
         `  psql "$DATABASE_URL" -f scripts/migrate-institutional.sql`,
       );
     }
-    // Re-throw unexpected DB errors
     throw err;
   }
 }
@@ -136,15 +146,14 @@ function parseCliArgs(): {
   }
 
   if (rawQuarter !== undefined) {
-    // Normalise: accept "2026Q2" or "2026-Q2"
-    const parsed = parseQuarterLabel(rawQuarter);
-    if (!parsed) {
+    const p = parseQuarterLabel(rawQuarter);
+    if (!p) {
       fail(
         "INVALID_ARGS",
         `--quarter value "${rawQuarter}" is not a valid quarter. Use format YYYYQN or YYYY-QN (e.g. 2026Q2 or 2026-Q2).`,
       );
     }
-    specificQuarter = parsed!.label;
+    specificQuarter = p!.label;
   }
 
   return { quarters, specificQuarter, dryRun, rebuildAggregates };
@@ -196,64 +205,130 @@ async function main(): Promise<void> {
   await checkSchemaExists();
   info("✓ Schema exists.");
 
-  // 4. Determine target quarters
-  //    For --quarters N: probe SEC availability and skip any quarter not yet published.
-  //    For --quarter SPECIFIC: use exactly as requested (user takes responsibility).
-  const targetLabels: string[] = [];
+  // 4. Determine target datasets
   if (specificQuarter) {
-    targetLabels.push(specificQuarter);
-    info(`Target quarter: ${specificQuarter}`);
-  } else {
-    info(`Probing SEC availability for ${quarters} most-recent quarters…`);
-    const { available, skipped } = await selectAvailableQuarters(
-      quarters!,
-      new Date(),
-      (y, q) => probeQuarterAvailability(y, q, cfg.secUserAgent!),
-    );
-    if (skipped.length > 0) {
-      info("Skipped:");
-      for (const s of skipped) info(`  ${s.label} — ${s.reason}`);
+    // ── Legacy single-quarter path ──────────────────────────────────────────
+    // Uses YYYYqN URL construction. Reliable through 2023Q4.
+    // For post-2023 quarters, prefer --quarters N to use the catalog.
+    info(`Target quarter (legacy URL mode): ${specificQuarter}`);
+
+    if (dryRun) {
+      info("─── DRY RUN ─── No data will be written.");
+      info("Would ingest the following quarter (legacy URL construction):");
+      info(`  Quarter label: ${specificQuarter}`);
+      info("  Note: --quarter uses YYYYqN URL construction, which may return 404 for post-2023 datasets.");
+      info("  Use --quarters N to select from the official SEC catalog for post-2023 data.");
+      info("Dry run complete. No changes were made.");
+      process.exit(0);
     }
-    if (available.length === 0) {
+
+    const result = await runInstitutionalIngestion({
+      initiatedBy: "cli_backfill",
+      specificQuarterLabels: [specificQuarter],
+    });
+
+    reportResult(result, rebuildAggregates);
+
+  } else {
+    // ── Catalog-driven path (--quarters N) ──────────────────────────────────
+    // Fetches the official SEC Form 13F dataset index and selects the N most
+    // recent distinct holdings periods.
+
+    info(`Fetching official SEC dataset catalog to select ${quarters} most-recent holdings period(s)…`);
+    info(`  Catalog source: https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets`);
+
+    let catalog;
+    try {
+      catalog = await fetchDatasetCatalog(cfg.secUserAgent!);
+    } catch (err: any) {
       fail(
-        "NO_AVAILABLE_QUARTERS",
-        "No published quarters found. " +
-        "The SEC may not have released the dataset for recent quarters yet. " +
-        "Try again later or use --quarter YYYYQN to specify an exact quarter.",
+        "CATALOG_FETCH_FAILED",
+        `Failed to fetch the official SEC dataset catalog: ${err?.message ?? "network error"}. ` +
+        "Check SEC_USER_AGENT and network connectivity.",
       );
     }
-    for (const q of available) targetLabels.push(q.label);
-    info(`Requested available quarters: ${targetLabels.join(", ")}`);
-  }
 
-  // 5. Dry-run mode — list what would be ingested and exit
-  if (dryRun) {
-    info("─── DRY RUN ─── No data will be written.");
-    info("Would ingest the following quarters:");
-    for (const label of targetLabels) {
-      info(`  · ${label}`);
+    if (catalog.length === 0) {
+      fail(
+        "CATALOG_EMPTY",
+        "The official SEC dataset catalog returned no recognised _form13f.zip entries. " +
+        "The catalog page structure may have changed. Check the SEC page manually.",
+      );
     }
-    if (rebuildAggregates) {
-      info("Would rebuild quarterly aggregates after ingestion.");
+
+    info(`Catalog returned ${catalog.length} recognised dataset(s).`);
+
+    // Select N windows covering N distinct holdings periods
+    const selected = selectDatasetWindows(quarters!, catalog);
+
+    if (selected.length === 0) {
+      fail(
+        "NO_AVAILABLE_QUARTERS",
+        "No published datasets found in the catalog. " +
+        "The SEC may not have released any datasets yet. Try again later.",
+      );
     }
-    info("Dry run complete. No changes were made.");
-    process.exit(0);
+
+    if (selected.length < quarters!) {
+      warn(
+        `Requested ${quarters} holdings period(s) but catalog only covers ${selected.length}. ` +
+        "Proceeding with available datasets.",
+      );
+    }
+
+    // Print dataset window summary
+    info(`\n[backfill] Published SEC datasets selected:\n`);
+    for (const w of selected) {
+      info(`  Dataset window: ${w.entry.displayLabel}`);
+      info(`  File:           ${w.entry.fileName}`);
+      info(`  Expected primary report period: ${w.canonicalPeriodLabel}`);
+      info(`  Publication model: ${w.entry.publicationModel}`);
+      info("");
+    }
+
+    info("Target holdings quarters:");
+    for (const w of selected) {
+      info(`  · ${w.canonicalPeriodLabel} (period of report: ${w.expectedPeriodOfReport})`);
+    }
+    info("");
+
+    // Dry-run mode
+    if (dryRun) {
+      info("─── DRY RUN ─── No data will be written.");
+      info(`Would ingest ${selected.length} dataset(s) from the official SEC catalog.`);
+      if (rebuildAggregates) {
+        info("Would rebuild quarterly aggregates after ingestion.");
+      }
+      info("Dry run complete. No changes were made.");
+      process.exit(0);
+    }
+
+    // Convert to descriptors and ingest
+    const descriptors = selected.map(toDatasetDescriptor);
+
+    info(`Starting ingestion for ${descriptors.length} dataset(s)…`);
+    const result = await runInstitutionalIngestion({
+      initiatedBy: "cli_backfill",
+      specificDescriptors: descriptors,
+    });
+
+    reportResult(result, rebuildAggregates);
   }
+}
 
-  // 6. Run ingestion via existing service (advisory lock, idempotent upserts)
-  info(`Starting ingestion for ${targetLabels.length} quarter(s)…`);
-  const result = await runInstitutionalIngestion({
-    initiatedBy: "cli_backfill",
-    specificQuarterLabels: targetLabels,
-  });
+// ---------------------------------------------------------------------------
+// Result reporting
+// ---------------------------------------------------------------------------
 
-  // 7. Report results
+function reportResult(
+  result: { status: string; quartersProcessed: number },
+  rebuildAggregates: boolean,
+): never {
   switch (result.status) {
     case "completed":
       info(`✓ Ingestion completed. Quarters processed: ${result.quartersProcessed}`);
       break;
     case "partial":
-      // Partial includes EMPTY_PARSE_FAILURE cases — exit non-zero so CI/operator is alerted.
       fail(
         "INGESTION_PARTIAL",
         `Ingestion partially completed. Quarters processed: ${result.quartersProcessed}. ` +

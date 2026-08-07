@@ -192,7 +192,7 @@ describe("B. Hero section", () => {
   it("home.tsx workspace mock card labels values as 'Illustrative'", () => {
     const src = loadSource();
     // The three data cells in the mock should say "Illustrative"
-    const illustrativeMatches = [...src.matchAll(/Illustrative/g)];
+    const illustrativeMatches = Array.from(src.matchAll(/Illustrative/g));
     expect(illustrativeMatches.length).toBeGreaterThan(3);
   });
 });
@@ -212,7 +212,7 @@ describe("B+. Prohibited claim guard (source scan)", () => {
   }
 
   it("'recommendation' only appears as 'not a live recommendation'", () => {
-    const recs = [...src.matchAll(/\brecommendation\b/gi)];
+    const recs = Array.from(src.matchAll(/\brecommendation\b/gi));
     for (const match of recs) {
       const ctx = src.slice(
         Math.max(0, match.index! - 40),
@@ -223,7 +223,7 @@ describe("B+. Prohibited claim guard (source scan)", () => {
   });
 
   it("'trade automatically' only appears in FAQ denial context", () => {
-    const matches = [...src.matchAll(/trade automatically/gi)];
+    const matches = Array.from(src.matchAll(/trade automatically/gi));
     for (const match of matches) {
       const ctx = src.slice(
         Math.max(0, match.index! - 100),
@@ -248,7 +248,7 @@ describe("B+. Prohibited claim guard (source scan)", () => {
 
   it("does not say 'Live options chains and Greeks' without qualification", () => {
     // Must be qualified with 'through supported broker connections' or similar
-    const matches = [...src.matchAll(/Live options chains and Greeks(?! through)/gi)];
+    const matches = Array.from(src.matchAll(/Live options chains and Greeks(?! through)/gi));
     expect(matches).toHaveLength(0);
   });
 });
@@ -804,7 +804,7 @@ describe("K. Navigation", () => {
 describe("L. Accessibility", () => {
   it("home.tsx has exactly one h1 element", () => {
     const src = loadSource();
-    const h1s = [...src.matchAll(/<h1\b/g)];
+    const h1s = Array.from(src.matchAll(/<h1\b/g));
     expect(h1s).toHaveLength(1);
   });
 
@@ -829,7 +829,7 @@ describe("L. Accessibility", () => {
 
   it("home.tsx logo images have alt text", () => {
     const src = loadSource();
-    const logoMatches = [...src.matchAll(/alt="VCP Trader AI"/g)];
+    const logoMatches = Array.from(src.matchAll(/alt="VCP Trader AI"/g));
     expect(logoMatches.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -928,7 +928,7 @@ describe("N. Performance — static landing page", () => {
   it("home.tsx only makes /api/audit/page-view and lets usePricing handle pricing", () => {
     const src = loadSource();
     // Count direct fetch calls (not via hooks)
-    const fetchCalls = [...src.matchAll(/fetch\(['"](\/api\/[^'"]+)['"]/g)].map(
+    const fetchCalls = Array.from(src.matchAll(/fetch\(['"](\/api\/[^'"]+)['"]/g)).map(
       (m) => m[1],
     );
     for (const call of fetchCalls) {

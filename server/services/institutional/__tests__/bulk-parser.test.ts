@@ -213,11 +213,14 @@ describe("P3 — parseSubmissionTsv", () => {
   });
 
   it("reports missing required headers using canonical labels", () => {
-    const sub = "FORM-TYPE\tCIK\n13F-HR\t0001234567"; // missing accession and manager name
+    // FORM-TYPE + CIK only — missing accession and period of report.
+    // manager name is NOT required in SUBMISSION (current SEC schema uses COVERPAGE).
+    const sub = "FORM-TYPE\tCIK\n13F-HR\t0001234567";
     const { missingHeaders } = parseSubmissionTsv(sub);
-    // missingHeaders now reports canonical labels, not raw column names
+    // missingHeaders reports canonical labels, not raw column names
     expect(missingHeaders).toContain("accession");
-    expect(missingHeaders).toContain("manager name");
+    expect(missingHeaders).toContain("period of report");
+    expect(missingHeaders).not.toContain("manager name");  // optional in SUBMISSION
     expect(missingHeaders).not.toContain("ACCESSION-NUMBER"); // raw name never reported
     expect(missingHeaders).not.toContain("NAME");
   });

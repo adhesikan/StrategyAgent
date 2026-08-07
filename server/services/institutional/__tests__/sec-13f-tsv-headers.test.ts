@@ -350,11 +350,16 @@ describe("G. Missing canonical accession", () => {
 // ---------------------------------------------------------------------------
 
 describe("H. Missing manager name", () => {
-  it("H01: SUBMISSION with no name alias fails with canonical label", () => {
-    const tsv = `ACCESSION_NUMBER\tCIK\tFORM_TYPE\tFILING_DATE\tPERIODOFREPORT\n` +
+  it("H01: SUBMISSION without manager-name column succeeds (manager name is optional in SUBMISSION; current schema uses COVERPAGE)", () => {
+    // Current SEC SUBMISSION.tsv has no manager-name column — it lives in COVERPAGE.
+    // parseSubmissionTsv must NOT report manager name as missing.
+    const tsv = `ACCESSION_NUMBER\tCIK\tSUBMISSIONTYPE\tFILING_DATE\tPERIODOFREPORT\n` +
       `${ACC_HYPHEN}\t0001234567\t13F-HR\t2026-02-15\t20251231`;
     const r = parseSubmissionTsv(tsv);
-    expect(r.missingHeaders).toContain("manager name");
+    expect(r.missingHeaders).not.toContain("manager name"); // optional
+    expect(r.missingHeaders).toHaveLength(0);              // all required fields present
+    expect(r.rows).toHaveLength(1);                        // row parsed successfully
+    expect(r.rows[0].name).toBe("");                       // empty — provided by COVERPAGE
   });
 
   it("H02: parsedRows count is still 0 when required fields missing", () => {
@@ -621,30 +626,36 @@ describe("O. Memory and performance — linear pass over large INFOTABLE", () =>
 // ---------------------------------------------------------------------------
 
 describe("P. Genuinely incompatible schema → EMPTY_PARSE_FAILURE", () => {
-  it("P01: completely unknown header names fail with missing canonical fields", () => {
+  it("P01: completely unknown SUBMISSION header names fail with required canonical fields", () => {
+    // manager name is no longer required in SUBMISSION — only accession, CIK, period of report.
     const tsv = `UNKNOWN_FIELD_A\tUNKNOWN_FIELD_B\tUNKNOWN_FIELD_C\n` +
       `val1\tval2\tval3`;
     const r = parseSubmissionTsv(tsv);
     expect(r.missingHeaders.length).toBeGreaterThan(0);
     expect(r.missingHeaders).toContain("accession");
-    expect(r.missingHeaders).toContain("manager name");
+    expect(r.missingHeaders).toContain("CIK");
+    expect(r.missingHeaders).toContain("period of report");
+    expect(r.missingHeaders).not.toContain("manager name"); // optional in SUBMISSION
   });
 
   it("P02: parseBulkQuarterFromBuffer returns empty_parse_failure for unknown schema", () => {
+    // With completely unknown SUBMISSION headers, the parse should fail on required fields.
     const subUnknown = `FIELD_A\tFIELD_B\tFIELD_C\nval1\tval2\tval3`;
     const infoUnknown = `FIELD_X\tFIELD_Y\tFIELD_Z\nval4\tval5\tval6`;
     const buf = makeZipBuffer({ "SUBMISSION.tsv": subUnknown, "INFOTABLE.tsv": infoUnknown });
     const r = parseBulkQuarterFromBuffer(buf, 2026, 1);
     expect(r.status).toBe("empty_parse_failure");
-    expect(r.reason).toContain("Required headers missing");
+    // New error message format: "Required SUBMISSION headers missing" or similar failure
+    expect(r.reason).toMatch(/required.*missing|SUBMISSION.*missing|zero|0 parsed/i);
   });
 
-  it("P03: partially-known schema (has accession but nothing else) also fails gracefully", () => {
-    // SUBMISSION has only ACCESSION_NUMBER — missing CIK, manager name, period
+  it("P03: partially-known SUBMISSION schema (only accession) fails with missing required fields", () => {
+    // SUBMISSION has only ACCESSION_NUMBER — missing CIK and period of report.
+    // manager name is optional so it is NOT reported as missing.
     const tsv = `ACCESSION_NUMBER\tSOME_OTHER_FIELD\n${ACC_HYPHEN}\tvalue`;
     const r = parseSubmissionTsv(tsv);
     expect(r.missingHeaders).toContain("CIK");
-    expect(r.missingHeaders).toContain("manager name");
+    expect(r.missingHeaders).not.toContain("manager name"); // optional in SUBMISSION
     expect(r.missingHeaders).toContain("period of report");
   });
 

@@ -1,0 +1,590 @@
+INSTITUTIONAL 13F — JOIN COVERPAGE.TSV FOR FILING-MANAGER IDENTITY
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION FAILURE
+
+The latest production backfill successfully:
+
+- fetched the official SEC catalog;
+- downloaded the two newest 13F bulk archives;
+- resolved SUBMISSION.tsv and INFOTABLE.tsv;
+- recognized current SEC underscore-style headers;
+- parsed nonzero source rows.
+
+Observed counts:
+
+2026-Q1:
+- submissionRows: 11,761
+- informationTableRows: 3,822,885
+
+2025-Q4:
+- submissionRows: 11,372
+- informationTableRows: 3,473,209
+
+The only remaining required-header failure is:
+
+SUBMISSION: [manager name]
+INFOTABLE: []
+
+The archives also contain:
+
+COVERPAGE.tsv
+
+The parser currently assumes manager name belongs in SUBMISSION.tsv. In the current
+SEC flattened bulk schema, manager identity appears to be stored in COVERPAGE.tsv and
+must be joined to SUBMISSION by normalized accession number.
+
+This is a focused relational-schema correction.
+
+Do not modify:
+
+- official SEC catalog discovery
+- dataset-window mapping
+- archive entry resolver
+- INFOTABLE field parsing
+- database schema unless demonstrated necessary
+- aggregation formulas
+- amendment policy
+- security mapping policy
+- Institutional UI
+- feature flags
+- Opportunity Engine
+- MCP
+- scanner
+- broker integrations
+
+Do not enable Institutional Intelligence.
+
+====================================================================
+1. INSPECT ACTUAL HEADERS SAFELY
+====================================================================
+
+Read and report only the header names from:
+
+- SUBMISSION.tsv
+- COVERPAGE.tsv
+- INFOTABLE.tsv
+
+Do not log data rows.
+
+Confirm exactly:
+
+- which SUBMISSION field identifies the filing;
+- which COVERPAGE field contains filing-manager name;
+- which COVERPAGE field contains manager CIK, if present;
+- the shared accession field;
+- whether one accession can have multiple COVERPAGE rows.
+
+Use the actual production archive as source of truth.
+
+Do not assume FILINGMANAGER_NAME is present in SUBMISSION.tsv.
+
+====================================================================
+2. CORRECT THE TABLE RESPONSIBILITIES
+====================================================================
+
+Model the three files according to their actual responsibilities.
+
+SUBMISSION.tsv should supply filing-level data such as:
+
+- accession number
+- filing/submission type
+- filing date
+- period of report
+- amendment information where available
+
+COVERPAGE.tsv should supply manager identity such as:
+
+- accession number
+- filing-manager name
+- manager CIK, if present
+- address or report metadata only if needed
+
+INFOTABLE.tsv should supply holding-level data such as:
+
+- accession number
+- issuer
+- class
+- CUSIP
+- FIGI
+- reported value
+- reported shares
+- share/principal type
+- put/call
+- investment discretion
+- voting authority
+
+Do not require manager name in SUBMISSION.tsv.
+
+====================================================================
+3. RESOLVE COVERPAGE.TSV
+====================================================================
+
+Add COVERPAGE.tsv to archive resolution.
+
+It is required for current date-window archives if manager identity cannot otherwise
+be resolved.
+
+Use the existing robust entry resolver:
+
+- bare root exact match
+- case-insensitive
+- nested basename
+- legacy-prefixed fallback
+- ambiguity detection
+
+Expected production resolution:
+
+resolvedCoverPageEntry: "COVERPAGE.tsv"
+
+Add to BulkParseDiagnostics:
+
+- resolvedCoverPageEntry
+- coverPageRows
+- parsedCoverPageRows
+- coverPageHeaderMapping
+- coverPageJoinCount
+- coverPageUnmatchedSubmissionCount
+- duplicateCoverPageAccessionCount
+
+Preserve original archive entry names for diagnostics.
+
+====================================================================
+4. ADD A COVERPAGE PARSER
+====================================================================
+
+Create a pure function such as:
+
+parseCoverPageTsv(text)
+
+Use the same normalized canonical-header alias framework.
+
+Required canonical fields:
+
+- accession
+- manager name
+
+Manager CIK should be required from either:
+
+A. COVERPAGE, or
+B. SUBMISSION
+
+Define a deterministic precedence if present in both.
+
+Suggested manager-name aliases, based only on observed headers:
+
+- FILINGMANAGER_NAME
+- FILING_MANAGER_NAME
+- NAME
+- COMPANY_NAME
+- COMPANY-NAME
+
+Do not finalize aliases until actual COVERPAGE headers are inspected.
+
+Suggested accession aliases:
+
+- ACCESSION_NUMBER
+- ACCESSION-NUMBER
+- ACCESSIONNUMBER
+
+Return a map keyed by normalized accession:
+
+Map<string, {
+  managerName: string;
+  managerCik?: string | null;
+}>
+
+Do not silently choose between conflicting duplicate records.
+
+====================================================================
+5. JOIN ORDER
+====================================================================
+
+The correct relational flow should be:
+
+SUBMISSION.tsv
+    ↓ normalized accession
+COVERPAGE.tsv
+    ↓ manager identity
+INFOTABLE.tsv
+    ↓ holding rows
+Normalized institutional holding
+
+Build:
+
+submissionByAccession
+coverPageByAccession
+
+Then make a filing record only when the required filing and manager data can be
+resolved.
+
+For every INFOTABLE row:
+
+1. normalize accession;
+2. locate SUBMISSION;
+3. locate COVERPAGE manager identity;
+4. combine filing fields + manager fields + holding fields.
+
+Do not use issuer name as manager name.
+
+Do not use CIK as a display name.
+
+====================================================================
+6. CIK PRECEDENCE
+====================================================================
+
+Determine where the manager CIK actually exists.
+
+Possible cases:
+
+- SUBMISSION has CIK and COVERPAGE has manager name;
+- COVERPAGE has both manager name and CIK;
+- both contain CIK.
+
+Use a documented precedence:
+
+1. matching nonempty filing-manager CIK from COVERPAGE, if this is the authoritative
+   current schema field;
+2. otherwise SUBMISSION CIK;
+3. reject or flag if both are present and conflict.
+
+Do not merge records with conflicting CIKs without a warning.
+
+Add diagnostics:
+
+- managerCikConflictCount
+- missingManagerCikCount
+
+====================================================================
+7. REQUIRED-FIELD POLICY
+====================================================================
+
+Update validation.
+
+SUBMISSION required:
+
+- accession
+- period of report
+- CIK only if not supplied by COVERPAGE
+
+SUBMISSION optional:
+
+- manager name
+- form type
+- filing date
+
+COVERPAGE required:
+
+- accession
+- manager name
+- manager CIK only if not supplied by SUBMISSION
+
+INFOTABLE required:
+
+- accession
+- issuer name
+- class title
+- CUSIP
+
+Do not fail the entire archive merely because manager name is not a SUBMISSION column.
+
+Fail safely if manager identity cannot be obtained from either supported source.
+
+Use a precise error:
+
+MANAGER_IDENTITY_SOURCE_MISSING
+
+not:
+
+SUBMISSION manager name missing
+
+====================================================================
+8. JOIN-QUALITY VALIDATION
+====================================================================
+
+Before database writes, require reasonable relational join quality.
+
+Report:
+
+- raw submission rows
+- parsed submission rows
+- raw cover-page rows
+- parsed cover-page rows
+- raw information-table rows
+- parsed information-table rows
+- submission-to-cover-page matches
+- information-table-to-submission matches
+- complete holding joins
+- missing manager identity count
+- accession conflicts
+- rejected holding rows
+
+Suggested safeguards:
+
+- submission-to-cover-page join must be materially nonzero;
+- complete joined holdings must be nonzero;
+- implausibly low join rates must return EMPTY_PARSE_FAILURE;
+- unmatched rows should be counted, not silently discarded.
+
+Do not require 100% because amendments and form variants may produce legitimate
+differences.
+
+Document the accepted thresholds.
+
+====================================================================
+9. FORM-TYPE HANDLING
+====================================================================
+
+Audit the actual current submission-type header and values.
+
+Include only intended holding-report filing types:
+
+- 13F-HR
+- 13F-HR/A
+
+Exclude notice-only filings when they do not have an information table:
+
+- 13F-NT
+- 13F-NT/A
+
+Do not default every row to 13F-HR if an actual current form-type column exists.
+
+If form type is absent, establish a safe dataset-specific rule rather than blindly
+assuming all submissions are holding reports.
+
+====================================================================
+10. MEMORY AND PERFORMANCE
+====================================================================
+
+Production files contain:
+
+- approximately 11,000 submission rows;
+- approximately 11,000 cover-page rows;
+- approximately 3.5–3.8 million information-table rows.
+
+Use:
+
+- one Map for submissions;
+- one Map for cover-page manager identity;
+- one linear INFOTABLE pass.
+
+Avoid:
+
+- nested scans;
+- repeated array.find across millions of rows;
+- duplicate full INFOTABLE arrays beyond the existing parser requirements;
+- per-row database lookups.
+
+If the existing parser materializes all 3.8 million rows and creates excessive memory
+pressure, document it, but do not redesign into streaming unless needed to complete
+production safely.
+
+====================================================================
+11. SAFE OBSERVABILITY
+====================================================================
+
+Update:
+
+institutional_13f_archive_inspected
+
+with:
+
+- resolvedSubmissionEntry
+- resolvedCoverPageEntry
+- resolvedInfoTableEntry
+- resolutionMode
+
+Update:
+
+institutional_13f_rows_parsed
+
+with:
+
+- submissionRows
+- parsedSubmissionRows
+- coverPageRows
+- parsedCoverPageRows
+- informationTableRows
+- parsedInformationRows
+- coverPageJoinCount
+- joinedHoldingRows
+- missingManagerIdentityCount
+- managerCikConflictCount
+- header mappings
+
+Never log manager addresses, raw rows, full holder arrays, or credentials.
+
+====================================================================
+12. TEST FIXTURES
+====================================================================
+
+Add realistic minimal three-table fixtures.
+
+Required tests:
+
+A. Current schema:
+- SUBMISSION has no manager-name column
+- COVERPAGE has manager name
+- successful complete join
+
+B. Current underscore-style headers
+
+C. Legacy hyphenated headers
+
+D. Manager name present only in COVERPAGE
+
+E. CIK present only in SUBMISSION
+
+F. CIK present only in COVERPAGE
+
+G. Matching CIK in both
+
+H. Conflicting CIK in both:
+- count conflict
+- apply documented safe precedence or reject
+
+I. Missing COVERPAGE entry:
+- filing counted as unresolved
+- no fabricated manager identity
+
+J. Duplicate identical COVERPAGE rows:
+- deterministic deduplication
+
+K. Conflicting duplicate COVERPAGE rows:
+- AMBIGUOUS_MANAGER_IDENTITY
+
+L. Hyphenated versus unhyphenated accession across all three files
+
+M. Nested/bare/case-varied COVERPAGE archive resolution
+
+N. 13F-HR included
+
+O. 13F-HR/A included
+
+P. 13F-NT excluded
+
+Q. 13F-NT/A excluded
+
+R. Complete three-table join produces joinedHoldingRows > 0
+
+S. Missing manager source returns precise failure
+
+T. Large-row path remains linear
+
+U. Existing INFOTABLE put/call and PRN handling remains unchanged
+
+V. EMPTY_PARSE_FAILURE remains for genuinely incompatible archive schema
+
+====================================================================
+13. OLD FAILED RUNS
+====================================================================
+
+The production database now contains several failed or partial zero-row attempts.
+
+Do not delete them automatically.
+
+Ensure the corrected rerun:
+
+- creates a new attempt or safely supersedes the prior failed attempt;
+- is not blocked by a uniqueness constraint;
+- does not classify prior zero-row attempts as completed readiness evidence.
+
+The readiness audit should count only genuine successful runs with:
+
+filingCount > 0
+AND holdingCount > 0
+
+====================================================================
+14. PRODUCTION RERUN
+====================================================================
+
+After the fix:
+
+1. Deploy with:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+2. Run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+3. Confirm:
+
+resolvedSubmissionEntry: SUBMISSION.tsv
+resolvedCoverPageEntry: COVERPAGE.tsv
+resolvedInfoTableEntry: INFOTABLE.tsv
+
+submissionRows: > 0
+parsedSubmissionRows: > 0
+coverPageRows: > 0
+parsedCoverPageRows: > 0
+informationTableRows: > 0
+parsedInformationRows: > 0
+coverPageJoinCount: > 0
+joinedHoldingRows: > 0
+filingCount: > 0
+holdingCount: > 0
+
+4. Confirm there is no:
+
+REQUIRED_HEADERS_MISSING
+MANAGER_IDENTITY_SOURCE_MISSING
+EMPTY_PARSE_FAILURE
+
+5. Run:
+
+npx tsx scripts/audit-institutional-readiness.ts
+
+6. Only after real holdings exist, verify COST CUSIP and seed its reviewed mapping.
+
+7. Keep public feature disabled until final readiness GO.
+
+====================================================================
+15. TESTS AND BUILD
+====================================================================
+
+Run:
+
+- cover-page parser tests;
+- three-table join tests;
+- bulk-parser tests;
+- ingestion-service tests;
+- CLI tests;
+- full institutional tests;
+- full server tests;
+- full client tests;
+- typecheck;
+- production build.
+
+====================================================================
+16. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Actual SUBMISSION headers
+2. Actual COVERPAGE headers
+3. Exact manager-name location
+4. Exact manager-CIK location
+5. Root cause
+6. Files changed
+7. Three-table relational model
+8. CIK precedence
+9. Required and optional fields
+10. Join-quality thresholds
+11. Form-type rules
+12. Performance impact
+13. Tests added
+14. Total passing tests
+15. Typecheck
+16. Build
+17. Exact production rerun command
+18. Expected successful log fields
+19. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run production ingestion, seed mappings, change Railway
+variables, or enable the public feature automatically.
+
+Wait for review.

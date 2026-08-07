@@ -71,6 +71,8 @@ export interface BulkParseDiagnostics {
   /** Original entry name as found in the archive (null if not resolved) */
   resolvedSubmissionEntry: string | null;
   /** Original entry name as found in the archive (null if not resolved) */
+  resolvedCoverPageEntry: string | null;
+  /** Original entry name as found in the archive (null if not resolved) */
   resolvedInfoTableEntry: string | null;
   /** How the entries were located */
   resolutionMode: ArchiveResolutionMode | null;
@@ -78,11 +80,27 @@ export interface BulkParseDiagnostics {
   submissionRows: number;
   /** 13F-HR/A rows actually parsed from SUBMISSION.tsv */
   parsedSubmissionRows: number;
+  /** Total raw rows in COVERPAGE.tsv */
+  coverPageRows: number;
+  /** Rows successfully parsed from COVERPAGE.tsv */
+  parsedCoverPageRows: number;
+  /** SUBMISSION rows matched to a COVERPAGE row */
+  coverPageJoinCount: number;
+  /** SUBMISSION rows with no matching COVERPAGE row */
+  coverPageUnmatchedSubmissionCount: number;
+  /** COVERPAGE rows that share an accession number (duplicate or conflicting) */
+  duplicateCoverPageAccessionCount: number;
   /** Total rows in INFOTABLE.tsv */
   informationTableRows: number;
   /** Rows parsed (not rejected) from INFOTABLE.tsv */
   parsedInformationRows: number;
   joinedHoldingRows: number;
+  /** INFOTABLE rows skipped due to unresolvable manager identity */
+  missingManagerIdentityCount: number;
+  /** Accessions where CIK was present in both tables but conflicted */
+  managerCikConflictCount: number;
+  /** Accessions where CIK could not be found in any source */
+  missingManagerCikCount: number;
   rejectedRows: number;
   eligibleCommonStockRows: number;
   putCallExcludedRows: number;
@@ -90,6 +108,8 @@ export interface BulkParseDiagnostics {
   durationMs: number;
   /** Canonical field → actual header found in SUBMISSION.tsv (null = not present) */
   submissionHeaderMapping: Record<string, string | null>;
+  /** Canonical field → actual header found in COVERPAGE.tsv (null = not present) */
+  coverPageHeaderMapping: Record<string, string | null>;
   /** Canonical field → actual header found in INFOTABLE.tsv (null = not present) */
   infoTableHeaderMapping: Record<string, string | null>;
 }
@@ -264,6 +284,8 @@ function buildCanonicalMapping(
 // SUBMISSION.tsv
 const SUB_ACCESSION_ALIASES  = ["ACCESSION-NUMBER", "ACCESSIONNUMBER"] as const;
 const SUB_CIK_ALIASES        = ["CIK", "FILER-CIK", "FILERCIK", "CIKNO"] as const;
+// Manager name is OPTIONAL in SUBMISSION (current SEC schema stores it in COVERPAGE).
+// These aliases remain for legacy archive support.
 const SUB_NAME_ALIASES       = [
   "NAME",                  // legacy
   "FILINGMANAGER-NAME",    // → FILINGMANAGERNAME (covers FILINGMANAGER_NAME)
@@ -278,7 +300,12 @@ const SUB_PERIOD_ALIASES     = [
   "REPORT-DATE",                 // → REPORTDATE (covers REPORT_DATE)
   "REPORTDATE",
 ] as const;
-const SUB_FORMTYPE_ALIASES   = ["FORM-TYPE", "FORMTYPE"] as const; // covers FORM_TYPE
+// Current schema: SUBMISSIONTYPE (not FORM-TYPE / FORM_TYPE)
+const SUB_FORMTYPE_ALIASES   = [
+  "SUBMISSIONTYPE",  // current (bare, no separator)
+  "FORM-TYPE",       // → FORMTYPE (covers FORM_TYPE)
+  "FORMTYPE",
+] as const;
 const SUB_FILINGDATE_ALIASES = [
   "FILING-DATE",               // → FILINGDATE (covers FILING_DATE)
   "FILINGDATE",
@@ -288,44 +315,102 @@ const SUB_FILINGDATE_ALIASES = [
   "DATEFILED",
 ] as const;
 
+// COVERPAGE.tsv — current schema manager identity table
+// Joined to SUBMISSION by ACCESSION_NUMBER.
+// Contains FILINGMANAGER_NAME (manager identity), ISAMENDMENT, AMENDMENTNO,
+// AMENDMENTTYPE (amendment metadata), and REPORTTYPE.
+// NOTE: CIK is NOT present in COVERPAGE; it lives only in SUBMISSION.
+const CP_ACCESSION_ALIASES   = ["ACCESSION-NUMBER", "ACCESSIONNUMBER"] as const;
+const CP_NAME_ALIASES        = [
+  "FILINGMANAGER-NAME",  // → FILINGMANAGERNAME (covers FILINGMANAGER_NAME)
+  "FILINGMANAGERNAME",
+  "NAME",                // legacy SUBMISSION manager name (supported for compat)
+  "COMPANY-NAME",        // → COMPANYNAME (covers COMPANY_NAME)
+  "COMPANYNAME",
+] as const;
+const CP_ISAMENDMENT_ALIASES      = ["ISAMENDMENT", "IS-AMENDMENT"] as const;
+const CP_AMENDMENTNO_ALIASES      = ["AMENDMENTNO", "AMENDMENT-NO"] as const;
+const CP_AMENDMENTTYPE_ALIASES    = ["AMENDMENTTYPE", "AMENDMENT-TYPE"] as const;
+const CP_REPORTTYPE_ALIASES       = ["REPORTTYPE", "REPORT-TYPE"] as const;
+const CP_REPORTCALQ_ALIASES       = ["REPORTCALENDARORQUARTER", "REPORT-CALENDAR-OR-QUARTER"] as const;
+
 // INFOTABLE.tsv
 const INFO_ACCESSION_ALIASES  = ["ACCESSION-NUMBER", "ACCESSIONNUMBER"] as const;
 const INFO_ISSUER_ALIASES     = [
-  "NAMEOFISSUER",              // legacy (covers NAME-OF-ISSUER, NAME_OF_ISSUER via norm)
+  "NAMEOFISSUER",              // current + legacy (covers NAME-OF-ISSUER, NAME_OF_ISSUER)
   "ISSUER-NAME",               // → ISSUERNAME (covers ISSUER_NAME)
   "ISSUERNAME",
 ] as const;
 const INFO_CLASS_ALIASES      = [
-  "TITLEOFCLASS",              // legacy (covers TITLE-OF-CLASS, TITLE_OF_CLASS via norm)
+  "TITLEOFCLASS",              // current + legacy (covers TITLE-OF-CLASS, TITLE_OF_CLASS)
   "CLASS-TITLE",               // → CLASSTITLE (covers CLASS_TITLE)
   "CLASSTITLE",
 ] as const;
 const INFO_CUSIP_ALIASES      = ["CUSIP"] as const;
 const INFO_VALUE_ALIASES      = ["VALUE"] as const;
-const INFO_SHARES_ALIASES     = ["SSHPRNAMT", "SSH-PRN-AMT"] as const; // covers SSHPRNAMT
+const INFO_SHARES_ALIASES     = ["SSHPRNAMT", "SSH-PRN-AMT"] as const;
 const INFO_SHARESTYPE_ALIASES = ["SSHPRNAMTTYPE", "SSHPRNTYPE", "SHARES-TYPE", "SHARESTYPE"] as const;
 const INFO_PUTCALL_ALIASES    = ["PUTCALL", "PUT-CALL", "PUTCALLINDICATOR"] as const;
 const INFO_DISCRETION_ALIASES = ["INVESTMENTDISCRETION", "INVESTMENT-DISCRETION"] as const;
 const INFO_OTHERMGR_ALIASES   = ["OTHERMANAGER", "OTHER-MANAGER"] as const;
 const INFO_FIGI_ALIASES       = ["FIGI"] as const;
-const INFO_VSOLE_ALIASES      = ["VOTINGAUTHORITY-SOLE", "VOTINGAUTHORITYSOLE", "VOTING-AUTHORITY-SOLE"] as const;
-const INFO_VSHARED_ALIASES    = ["VOTINGAUTHORITY-SHARED", "VOTINGAUTHORITYSHARED"] as const;
-const INFO_VNONE_ALIASES      = ["VOTINGAUTHORITY-NONE", "VOTINGAUTHORITYNONE"] as const;
+// Current schema: VOTING_AUTH_SOLE/SHARED/NONE (not VOTINGAUTHORITY_*)
+// VOTING_AUTH_SOLE → normalized: VOTINGAUTHSOLE
+// VOTINGAUTHORITY-SOLE → normalized: VOTINGAUTHORITYSOLE  (different!)
+// Both alias families are listed so all schema generations are covered.
+const INFO_VSOLE_ALIASES      = [
+  "VOTING-AUTH-SOLE",          // → VOTINGAUTHSOLE (covers VOTING_AUTH_SOLE)
+  "VOTINGAUTHSOLE",
+  "VOTINGAUTHORITY-SOLE",      // → VOTINGAUTHORITYSOLE (covers VOTINGAUTHORITY_SOLE)
+  "VOTINGAUTHORITYSOLE",
+  "VOTING-AUTHORITY-SOLE",
+] as const;
+const INFO_VSHARED_ALIASES    = [
+  "VOTING-AUTH-SHARED",
+  "VOTINGAUTHSHARED",
+  "VOTINGAUTHORITY-SHARED",
+  "VOTINGAUTHORITYSHARED",
+] as const;
+const INFO_VNONE_ALIASES      = [
+  "VOTING-AUTH-NONE",
+  "VOTINGAUTHNONE",
+  "VOTINGAUTHORITY-NONE",
+  "VOTINGAUTHORITYNONE",
+] as const;
 
 // Required and full field declarations for validation and diagnostic mapping
 interface CanonicalField { canonical: string; aliases: readonly string[] }
 
+// SUBMISSION required: accession, CIK, period of report.
+// manager name is intentionally NOT required here — current SEC schema stores it in
+// COVERPAGE.tsv. We fall back to COVERPAGE; see parseBulkQuarterFromBuffer().
 const REQUIRED_SUBMISSION_FIELDS: CanonicalField[] = [
   { canonical: "accession",        aliases: SUB_ACCESSION_ALIASES },
   { canonical: "CIK",              aliases: SUB_CIK_ALIASES },
-  { canonical: "manager name",     aliases: SUB_NAME_ALIASES },
   { canonical: "period of report", aliases: SUB_PERIOD_ALIASES },
 ];
 
 const ALL_SUBMISSION_FIELDS: CanonicalField[] = [
   ...REQUIRED_SUBMISSION_FIELDS,
-  { canonical: "form type",  aliases: SUB_FORMTYPE_ALIASES },
-  { canonical: "filing date", aliases: SUB_FILINGDATE_ALIASES },
+  { canonical: "manager name", aliases: SUB_NAME_ALIASES },
+  { canonical: "form type",    aliases: SUB_FORMTYPE_ALIASES },
+  { canonical: "filing date",  aliases: SUB_FILINGDATE_ALIASES },
+];
+
+// COVERPAGE required: accession, manager name.
+// CIK is NOT present in current COVERPAGE schema; it comes from SUBMISSION only.
+const REQUIRED_COVERPAGE_FIELDS: CanonicalField[] = [
+  { canonical: "accession",    aliases: CP_ACCESSION_ALIASES },
+  { canonical: "manager name", aliases: CP_NAME_ALIASES },
+];
+
+const ALL_COVERPAGE_FIELDS: CanonicalField[] = [
+  ...REQUIRED_COVERPAGE_FIELDS,
+  { canonical: "is amendment",           aliases: CP_ISAMENDMENT_ALIASES },
+  { canonical: "amendment no",           aliases: CP_AMENDMENTNO_ALIASES },
+  { canonical: "amendment type",         aliases: CP_AMENDMENTTYPE_ALIASES },
+  { canonical: "report type",            aliases: CP_REPORTTYPE_ALIASES },
+  { canonical: "report calendar/quarter", aliases: CP_REPORTCALQ_ALIASES },
 ];
 
 const REQUIRED_INFOTABLE_FIELDS: CanonicalField[] = [
@@ -448,6 +533,7 @@ function normalizeDateField(raw: string): string | null {
 export interface SubmissionRow {
   accessionNumber: string; // dashed format
   cik: string;             // 10-digit padded
+  /** Manager name if present in SUBMISSION (legacy). Empty string for current schema. */
   name: string;
   formType: string;        // "13F-HR" | "13F-HR/A"
   filingDate: string;      // YYYY-MM-DD
@@ -457,14 +543,16 @@ export interface SubmissionRow {
 
 /**
  * Parse SUBMISSION.tsv. Returns 13F-HR and 13F-HR/A rows only.
+ * Excludes 13F-NT and 13F-NT/A (notice-only, no information table).
  *
  * Supports all SEC bulk TSV schema generations via canonical alias resolution:
  *   Legacy (pre-2024):  ACCESSION-NUMBER, NAME, CONFORMED-PERIOD-OF-REPORT, FILING-DATE
- *   Current (post-2023): ACCESSION_NUMBER, FILINGMANAGER_NAME, PERIODOFREPORT, FILING_DATE
+ *   Current (post-2023): ACCESSION_NUMBER, SUBMISSIONTYPE, PERIODOFREPORT, FILING_DATE
  *   And any future hyphen/underscore variant
  *
- * Required canonical fields: accession, CIK, manager name, period of report.
- * missingHeaders reports canonical labels (e.g. "manager name"), not raw column names.
+ * Required canonical fields: accession, CIK, period of report.
+ * Manager name is OPTIONAL — current SEC schema stores it in COVERPAGE.tsv.
+ * missingHeaders reports canonical labels (not raw column names).
  */
 export function parseSubmissionTsv(text: string): {
   rows: SubmissionRow[];
@@ -476,8 +564,7 @@ export function parseSubmissionTsv(text: string): {
   const { headers, rows: rawRows } = parseTsv(text);
   const lookup = buildHeaderLookup(headers);
 
-  // Validate required fields using alias groups — not literal header names.
-  // A field is "present" if ANY of its aliases resolves to a header in the file.
+  // Validate required fields (manager name is deliberately excluded).
   const missingHeaders = REQUIRED_SUBMISSION_FIELDS
     .filter((f) => !hasAnyAlias(lookup, f.aliases))
     .map((f) => f.canonical);
@@ -492,14 +579,15 @@ export function parseSubmissionTsv(text: string): {
     totalRows++;
 
     const formTypeRaw = getField(raw, lookup, SUB_FORMTYPE_ALIASES).trim().toUpperCase();
-    // The 13F bulk dataset contains only 13F forms, but filter for safety.
-    // If form-type column is absent, accept all rows.
+    // Exclude notice-only filings (13F-NT / 13F-NT/A) — they have no information table.
+    // If form-type column is absent, accept all rows (dataset is exclusively 13F forms).
+    if (formTypeRaw === "13F-NT" || formTypeRaw === "13F-NT/A") continue;
     if (formTypeRaw && formTypeRaw !== "13F-HR" && formTypeRaw !== "13F-HR/A") continue;
 
-    const accRaw     = getField(raw, lookup, SUB_ACCESSION_ALIASES);
-    const cikRaw     = getField(raw, lookup, SUB_CIK_ALIASES);
-    const name       = getField(raw, lookup, SUB_NAME_ALIASES).trim();
-    const periodRaw  = getField(raw, lookup, SUB_PERIOD_ALIASES);
+    const accRaw        = getField(raw, lookup, SUB_ACCESSION_ALIASES);
+    const cikRaw        = getField(raw, lookup, SUB_CIK_ALIASES);
+    const name          = getField(raw, lookup, SUB_NAME_ALIASES).trim(); // empty for current schema
+    const periodRaw     = getField(raw, lookup, SUB_PERIOD_ALIASES);
     const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
 
     const accession = normalizeAccession(accRaw);
@@ -513,7 +601,7 @@ export function parseSubmissionTsv(text: string): {
       accessionNumber: accession,
       cik,
       name,
-      formType: getField(raw, lookup, SUB_FORMTYPE_ALIASES) || "13F-HR",
+      formType: formTypeRaw || "13F-HR",
       filingDate,
       periodOfReport,
       isAmendment: formTypeRaw === "13F-HR/A",
@@ -521,6 +609,122 @@ export function parseSubmissionTsv(text: string): {
   }
 
   return { rows, totalRows, parsedRows: rows.length, missingHeaders, canonicalMapping };
+}
+
+// ---------------------------------------------------------------------------
+// COVERPAGE.tsv parser
+// ---------------------------------------------------------------------------
+
+/** A parsed row from COVERPAGE.tsv, keyed by accession number. */
+export interface CoverPageRow {
+  accessionNumber: string; // dashed format
+  managerName: string;
+  /** Amendment flag from ISAMENDMENT column ("Y"/"N"), if present */
+  isAmendment: boolean;
+  amendmentNo: string | null;
+  amendmentType: string | null;
+  /** REPORTTYPE field (e.g. "13F-HR", "13F-NT"), if present */
+  reportType: string | null;
+  reportCalendarOrQuarter: string | null;
+}
+
+/**
+ * Parse COVERPAGE.tsv. Returns a Map<accessionNumber, CoverPageRow> for O(1) joins.
+ *
+ * Current SEC schema (post-2023 date-range archives):
+ *   ACCESSION_NUMBER, FILINGMANAGER_NAME, ISAMENDMENT, AMENDMENTNO, AMENDMENTTYPE,
+ *   REPORTTYPE, REPORTCALENDARORQUARTER, + address/admin fields
+ *
+ * Required canonical fields: accession, manager name.
+ *
+ * Duplicate accession handling:
+ *   - Identical rows: first occurrence wins, counted in duplicateAccessionCount.
+ *   - Conflicting manager name: accession marked AMBIGUOUS; excluded from result map;
+ *     counted in conflictingAccessionCount.
+ */
+export function parseCoverPageTsv(text: string): {
+  byAccession: Map<string, CoverPageRow>;
+  totalRows: number;
+  parsedRows: number;
+  duplicateAccessionCount: number;
+  conflictingAccessionCount: number;
+  missingHeaders: string[];
+  canonicalMapping: Record<string, string | null>;
+} {
+  const { headers, rows: rawRows } = parseTsv(text);
+  const lookup = buildHeaderLookup(headers);
+
+  const missingHeaders = REQUIRED_COVERPAGE_FIELDS
+    .filter((f) => !hasAnyAlias(lookup, f.aliases))
+    .map((f) => f.canonical);
+
+  const canonicalMapping = buildCanonicalMapping(lookup, ALL_COVERPAGE_FIELDS);
+
+  const byAccession = new Map<string, CoverPageRow>();
+  // Tracks accessions that have conflicting manager names — excluded from map.
+  const ambiguous = new Set<string>();
+
+  let totalRows = 0;
+  let parsedRows = 0;
+  let duplicateAccessionCount = 0;
+  let conflictingAccessionCount = 0;
+
+  for (const raw of rawRows) {
+    totalRows++;
+
+    const accRaw    = getField(raw, lookup, CP_ACCESSION_ALIASES);
+    const nameRaw   = getField(raw, lookup, CP_NAME_ALIASES).trim();
+    if (!accRaw || !nameRaw) continue;
+
+    const accession    = normalizeAccession(accRaw);
+    const isAmend      = getField(raw, lookup, CP_ISAMENDMENT_ALIASES).trim().toUpperCase() === "Y";
+    const amendNo      = getField(raw, lookup, CP_AMENDMENTNO_ALIASES).trim() || null;
+    const amendType    = getField(raw, lookup, CP_AMENDMENTTYPE_ALIASES).trim() || null;
+    const reportType   = getField(raw, lookup, CP_REPORTTYPE_ALIASES).trim() || null;
+    const reportCalQ   = getField(raw, lookup, CP_REPORTCALQ_ALIASES).trim() || null;
+
+    if (ambiguous.has(accession)) {
+      // Already marked ambiguous — skip without re-counting
+      duplicateAccessionCount++;
+      continue;
+    }
+
+    const existing = byAccession.get(accession);
+    if (existing) {
+      if (existing.managerName === nameRaw) {
+        // Benign duplicate — same manager name, skip
+        duplicateAccessionCount++;
+      } else {
+        // Conflicting manager names — mark ambiguous and remove from map
+        byAccession.delete(accession);
+        ambiguous.add(accession);
+        conflictingAccessionCount++;
+        duplicateAccessionCount++;
+      }
+      continue;
+    }
+
+    byAccession.set(accession, {
+      accessionNumber: accession,
+      managerName: nameRaw,
+      isAmendment: isAmend,
+      amendmentNo: amendNo,
+      amendmentType: amendType,
+      reportType,
+      reportCalendarOrQuarter: reportCalQ,
+    });
+    parsedRows++;
+  }
+
+  return {
+    byAccession,
+    totalRows,
+    parsedRows,
+    duplicateAccessionCount,
+    conflictingAccessionCount,
+    missingHeaders,
+    canonicalMapping,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -722,19 +926,29 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   archiveBytes: 0,
   archiveEntries: [],
   resolvedSubmissionEntry: null,
+  resolvedCoverPageEntry: null,
   resolvedInfoTableEntry: null,
   resolutionMode: null,
   submissionRows: 0,
   parsedSubmissionRows: 0,
+  coverPageRows: 0,
+  parsedCoverPageRows: 0,
+  coverPageJoinCount: 0,
+  coverPageUnmatchedSubmissionCount: 0,
+  duplicateCoverPageAccessionCount: 0,
   informationTableRows: 0,
   parsedInformationRows: 0,
   joinedHoldingRows: 0,
+  missingManagerIdentityCount: 0,
+  managerCikConflictCount: 0,
+  missingManagerCikCount: 0,
   rejectedRows: 0,
   eligibleCommonStockRows: 0,
   putCallExcludedRows: 0,
   prnExcludedRows: 0,
   durationMs: 0,
   submissionHeaderMapping: {},
+  coverPageHeaderMapping: {},
   infoTableHeaderMapping: {},
 };
 
@@ -786,22 +1000,37 @@ export function parseBulkQuarterFromBuffer(
   const allEntryNames = zipEntries.map((e) => e.entryName);
   const baseDiag = { archiveBytes: buffer.length, archiveEntries: allEntryNames };
 
-  // Resolve SUBMISSION.tsv and INFOTABLE.tsv using the robust basename resolver.
-  // Works for all archive generations:
-  //   - Post-2023 bare filenames: SUBMISSION.tsv, INFOTABLE.tsv
-  //   - Pre-2024 quarter-prefixed: 2023Q4_SUBMISSION.TSV, 2023Q4_INFOTABLE.TSV
-  //   - Nested paths, case variants, any combination
-  // Does NOT depend on year/q or entryPrefixOverride to construct expected names.
+  // ── STEP 1: Resolve required archive entries ─────────────────────────────
+  //
+  // Three tables are needed:
+  //   SUBMISSION.tsv  — filing metadata (accession, CIK, dates, form type)
+  //   COVERPAGE.tsv   — manager identity (name; joined by accession)
+  //   INFOTABLE.tsv   — holding rows (issuer, CUSIP, value, shares…)
+  //
+  // COVERPAGE is resolved conditionally: if SUBMISSION contains a manager-name
+  // column (legacy archives), COVERPAGE is optional. For current archives where
+  // SUBMISSION lacks the name column, COVERPAGE is required.
+  //
+  // All three resolvers use the robust basename resolver — works for post-2023
+  // bare filenames and pre-2024 quarter-prefixed entries without year/q hints.
   const subResolve  = resolveRequiredArchiveEntry(zipEntries, "SUBMISSION.tsv");
   const infoResolve = resolveRequiredArchiveEntry(zipEntries, "INFOTABLE.tsv");
+  const cpResolve   = resolveRequiredArchiveEntry(zipEntries, "COVERPAGE.tsv");
 
   const resolvedSubmissionEntry = subResolve.found  ? subResolve.entry.entryName  : null;
+  const resolvedCoverPageEntry  = cpResolve.found   ? cpResolve.entry.entryName   : null;
   const resolvedInfoTableEntry  = infoResolve.found ? infoResolve.entry.entryName : null;
   const resolutionMode: ArchiveResolutionMode | null =
     subResolve.found  ? subResolve.mode  :
+    cpResolve.found   ? cpResolve.mode   :
     infoResolve.found ? infoResolve.mode : null;
 
-  const resolutionDiag = { resolvedSubmissionEntry, resolvedInfoTableEntry, resolutionMode };
+  const resolutionDiag = {
+    resolvedSubmissionEntry,
+    resolvedCoverPageEntry,
+    resolvedInfoTableEntry,
+    resolutionMode,
+  };
 
   // Ambiguity — multiple equally-valid candidates at the same tier
   const ambiguous = [subResolve, infoResolve].some(
@@ -810,7 +1039,7 @@ export function parseBulkQuarterFromBuffer(
   if (ambiguous) {
     const ambigNames = [
       !subResolve.found  && subResolve.error  === "AMBIGUOUS_ARCHIVE_ENTRY" ? "SUBMISSION.tsv"  : null,
-      !infoResolve.found && infoResolve.error === "AMBIGUOUS_ARCHIVE_ENTRY" ? "INFOTABLE.tsv" : null,
+      !infoResolve.found && infoResolve.error === "AMBIGUOUS_ARCHIVE_ENTRY" ? "INFOTABLE.tsv"   : null,
     ].filter(Boolean).join(", ");
     return {
       status: "empty_parse_failure",
@@ -820,11 +1049,11 @@ export function parseBulkQuarterFromBuffer(
     };
   }
 
-  // Required entries missing
+  // SUBMISSION and INFOTABLE are always required
   if (!subResolve.found || !infoResolve.found) {
     const missing = [
       !subResolve.found  ? "SUBMISSION.tsv"  : null,
-      !infoResolve.found ? "INFOTABLE.tsv" : null,
+      !infoResolve.found ? "INFOTABLE.tsv"   : null,
     ].filter(Boolean).join(", ");
     return {
       status: "empty_parse_failure",
@@ -839,7 +1068,7 @@ export function parseBulkQuarterFromBuffer(
   const submissionEntry = subResolve.entry;
   const infoTableEntry  = infoResolve.entry;
 
-  // Parse SUBMISSION.tsv
+  // ── STEP 2: Parse SUBMISSION.tsv ─────────────────────────────────────────
   const subText = submissionEntry.getData().toString("utf8");
   const {
     rows: subRows,
@@ -849,7 +1078,120 @@ export function parseBulkQuarterFromBuffer(
     canonicalMapping: subHeaderMapping,
   } = parseSubmissionTsv(subText);
 
-  // Parse INFOTABLE.tsv
+  if (missingSubH.length > 0) {
+    return {
+      status: "empty_parse_failure",
+      holdings: [],
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS,
+        ...baseDiag,
+        ...resolutionDiag,
+        submissionHeaderMapping: subHeaderMapping,
+        coverPageHeaderMapping: {},
+        infoTableHeaderMapping: {},
+        submissionRows: totalSubRows,
+        parsedSubmissionRows: parsedSubRows,
+        durationMs: Date.now() - startMs,
+      },
+      reason: `Required SUBMISSION headers missing: [${missingSubH.join(", ")}]`,
+    };
+  }
+
+  if (subRows.length === 0) {
+    return {
+      status: "empty_parse_failure",
+      holdings: [],
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS,
+        ...baseDiag,
+        ...resolutionDiag,
+        submissionHeaderMapping: subHeaderMapping,
+        coverPageHeaderMapping: {},
+        infoTableHeaderMapping: {},
+        submissionRows: totalSubRows,
+        parsedSubmissionRows: parsedSubRows,
+        durationMs: Date.now() - startMs,
+      },
+      reason: `SUBMISSION.tsv has ${totalSubRows} rows but 0 parsed as 13F-HR/A form type`,
+    };
+  }
+
+  // ── STEP 3: Resolve manager identity source ───────────────────────────────
+  //
+  // Current SEC schema: manager name is in COVERPAGE.tsv, not SUBMISSION.tsv.
+  // Legacy archives: manager name is in SUBMISSION.tsv.
+  //
+  // Determine which source supplies manager identity:
+  //   - If SUBMISSION has a manager-name column → legacy mode (COVERPAGE not required).
+  //   - Else → current mode: COVERPAGE is required.
+  //
+  // CIK precedence: CIK comes from SUBMISSION only (COVERPAGE has no CIK field in the
+  // current schema). managerCikConflictCount will be 0 when a single source supplies it.
+
+  const subHasManagerName = hasAnyAlias(buildHeaderLookup(parseTsv(subText).headers), SUB_NAME_ALIASES);
+
+  // COVERPAGE fields used even in legacy mode when available (for amendment metadata).
+  let coverPageByAccession = new Map<string, CoverPageRow>();
+  let coverPageTotalRows    = 0;
+  let coverPageParsedRows   = 0;
+  let dupCoverPageCount     = 0;
+  let cpHeaderMapping: Record<string, string | null> = {};
+
+  if (cpResolve.found) {
+    const cpText = cpResolve.entry.getData().toString("utf8");
+    const cpResult = parseCoverPageTsv(cpText);
+    coverPageByAccession = cpResult.byAccession;
+    coverPageTotalRows   = cpResult.totalRows;
+    coverPageParsedRows  = cpResult.parsedRows;
+    dupCoverPageCount    = cpResult.duplicateAccessionCount;
+    cpHeaderMapping      = cpResult.canonicalMapping;
+
+    if (cpResult.missingHeaders.length > 0 && !subHasManagerName) {
+      // COVERPAGE exists but lacks required manager-name field; SUBMISSION also lacks it.
+      return {
+        status: "empty_parse_failure",
+        holdings: [],
+        diagnostics: {
+          ...EMPTY_DIAGNOSTICS,
+          ...baseDiag,
+          ...resolutionDiag,
+          submissionHeaderMapping: subHeaderMapping,
+          coverPageHeaderMapping: cpHeaderMapping,
+          infoTableHeaderMapping: {},
+          submissionRows: totalSubRows,
+          parsedSubmissionRows: parsedSubRows,
+          coverPageRows: coverPageTotalRows,
+          parsedCoverPageRows: coverPageParsedRows,
+          durationMs: Date.now() - startMs,
+        },
+        reason:
+          `MANAGER_IDENTITY_SOURCE_MISSING: COVERPAGE required headers missing ` +
+          `[${cpResult.missingHeaders.join(", ")}] and SUBMISSION has no manager-name column`,
+      };
+    }
+  } else if (!subHasManagerName) {
+    // COVERPAGE not in archive AND SUBMISSION has no manager-name column
+    return {
+      status: "empty_parse_failure",
+      holdings: [],
+      diagnostics: {
+        ...EMPTY_DIAGNOSTICS,
+        ...baseDiag,
+        ...resolutionDiag,
+        submissionHeaderMapping: subHeaderMapping,
+        coverPageHeaderMapping: {},
+        infoTableHeaderMapping: {},
+        submissionRows: totalSubRows,
+        parsedSubmissionRows: parsedSubRows,
+        durationMs: Date.now() - startMs,
+      },
+      reason:
+        `MANAGER_IDENTITY_SOURCE_MISSING: COVERPAGE.tsv not found in archive and ` +
+        `SUBMISSION.tsv has no manager-name column — cannot identify filing managers`,
+    };
+  }
+
+  // ── STEP 4: Parse INFOTABLE.tsv ──────────────────────────────────────────
   const infoText = infoTableEntry.getData().toString("utf8");
   const {
     rows: infoRows,
@@ -862,13 +1204,11 @@ export function parseBulkQuarterFromBuffer(
 
   const headerDiag = {
     submissionHeaderMapping: subHeaderMapping,
+    coverPageHeaderMapping: cpHeaderMapping,
     infoTableHeaderMapping: infoHeaderMapping,
   };
 
-  // Missing required canonical fields → can't parse.
-  // missingSubH / missingInfoH now report canonical labels (e.g. "manager name")
-  // not literal column names, so "manager name" means none of its aliases were found.
-  if (missingSubH.length > 0 || missingInfoH.length > 0) {
+  if (missingInfoH.length > 0) {
     return {
       status: "empty_parse_failure",
       holdings: [],
@@ -879,55 +1219,79 @@ export function parseBulkQuarterFromBuffer(
         ...headerDiag,
         submissionRows: totalSubRows,
         parsedSubmissionRows: parsedSubRows,
+        coverPageRows: coverPageTotalRows,
+        parsedCoverPageRows: coverPageParsedRows,
         informationTableRows: totalInfoRows,
         parsedInformationRows: parsedInfoRows,
         durationMs: Date.now() - startMs,
       },
-      reason:
-        `Required headers missing — SUBMISSION: [${missingSubH.join(", ")}], ` +
-        `INFOTABLE: [${missingInfoH.join(", ")}]`,
+      reason: `Required INFOTABLE headers missing: [${missingInfoH.join(", ")}]`,
     };
   }
 
-  // Zero 13F-HR rows in SUBMISSION
-  if (subRows.length === 0) {
-    return {
-      status: "empty_parse_failure",
-      holdings: [],
-      diagnostics: {
-        ...EMPTY_DIAGNOSTICS,
-        ...baseDiag,
-        ...resolutionDiag,
-        ...headerDiag,
-        submissionRows: totalSubRows,
-        parsedSubmissionRows: parsedSubRows,
-        informationTableRows: totalInfoRows,
-        parsedInformationRows: parsedInfoRows,
-        rejectedRows,
-        durationMs: Date.now() - startMs,
-      },
-      reason: `SUBMISSION.tsv has ${totalSubRows} rows but 0 parsed as 13F-HR/A form type`,
-    };
-  }
+  // ── STEP 5: Three-table join ──────────────────────────────────────────────
+  //
+  //   SUBMISSION.tsv (subMap)
+  //       ↓ accession
+  //   COVERPAGE.tsv (coverPageByAccession)
+  //       ↓ manager identity (name; CIK from SUBMISSION)
+  //   INFOTABLE.tsv
+  //       ↓ holding rows
+  //   ParsedBulkHolding[]
+  //
+  // For each INFOTABLE row:
+  //   1. Normalize accession
+  //   2. Locate SUBMISSION row (provides CIK, dates, form type)
+  //   3. Locate manager identity:
+  //      - COVERPAGE if present for this accession
+  //      - SUBMISSION name field as fallback (legacy archives)
+  //   4. Fail row (missingManagerIdentityCount) if neither source yields a name
 
-  // Build accession → submission map for join
   const subMap = new Map<string, SubmissionRow>();
   for (const s of subRows) subMap.set(s.accessionNumber, s);
 
-  // Join INFOTABLE to SUBMISSION
+  // CIK conflict tracking: only possible if future schema puts CIK in COVERPAGE.
+  // Currently CIK is SUBMISSION-only → managerCikConflictCount is always 0.
+  let managerCikConflictCount = 0;
+  let missingManagerCikCount  = 0;
+
+  // Submission → coverpage join diagnostics
+  let coverPageJoinCount               = 0;
+  let coverPageUnmatchedSubmissionCount = 0;
+  for (const s of subRows) {
+    if (coverPageByAccession.has(s.accessionNumber)) coverPageJoinCount++;
+    else coverPageUnmatchedSubmissionCount++;
+  }
+
+  // Main INFOTABLE join
   const holdings: ParsedBulkHolding[] = [];
-  let joinedHoldingRows = 0;
-  let putCallExcludedRows = 0;
-  let prnExcludedRows = 0;
-  let eligibleCommonStockRows = 0;
+  let joinedHoldingRows            = 0;
+  let missingManagerIdentityCount  = 0;
+  let putCallExcludedRows          = 0;
+  let prnExcludedRows              = 0;
+  let eligibleCommonStockRows      = 0;
 
   for (const row of infoRows) {
     const sub = subMap.get(row.accessionNumber);
     if (!sub) continue; // not a 13F-HR row, or accession format mismatch
 
+    // Resolve manager identity
+    const cpRow  = coverPageByAccession.get(row.accessionNumber);
+    const filerName = cpRow?.managerName || sub.name;
+    if (!filerName) {
+      missingManagerIdentityCount++;
+      continue;
+    }
+
+    // CIK tracking (from SUBMISSION only in current schema)
+    if (!sub.cik) missingManagerCikCount++;
+
+    // Amendment: SUBMISSION formType takes precedence; fall back to COVERPAGE.ISAMENDMENT
+    const isAmendment = sub.isAmendment || (cpRow?.isAmendment ?? false);
+
     joinedHoldingRows++;
 
-    // Track diagnostic categories (rows are always included)
+    // Track diagnostic categories (rows are always included in output)
     if (row.putCall !== null) putCallExcludedRows++;
     else if (row.sharesPrnType === "PRN") prnExcludedRows++;
     else eligibleCommonStockRows++;
@@ -935,11 +1299,11 @@ export function parseBulkQuarterFromBuffer(
     holdings.push({
       accessionNumber: row.accessionNumber,
       filerCik: sub.cik,
-      filerName: sub.name,
+      filerName,
       filingType: sub.formType,
       filingDate: sub.filingDate,
       periodOfReport: sub.periodOfReport,
-      isAmendment: sub.isAmendment,
+      isAmendment,
       issuerName: row.issuerName,
       classTitle: row.classTitle,
       cusip: row.cusip,
@@ -963,9 +1327,17 @@ export function parseBulkQuarterFromBuffer(
     ...headerDiag,
     submissionRows: totalSubRows,
     parsedSubmissionRows: parsedSubRows,
+    coverPageRows: coverPageTotalRows,
+    parsedCoverPageRows: coverPageParsedRows,
+    coverPageJoinCount,
+    coverPageUnmatchedSubmissionCount,
+    duplicateCoverPageAccessionCount: dupCoverPageCount,
     informationTableRows: totalInfoRows,
     parsedInformationRows: parsedInfoRows,
     joinedHoldingRows,
+    missingManagerIdentityCount,
+    managerCikConflictCount,
+    missingManagerCikCount,
     rejectedRows,
     eligibleCommonStockRows,
     putCallExcludedRows,

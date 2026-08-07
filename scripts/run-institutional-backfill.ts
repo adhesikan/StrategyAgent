@@ -20,6 +20,12 @@
 //   Ingest a specific quarter using the legacy URL construction.
 //   Reliable for datasets through 2023Q4. Use --quarters for post-2023 datasets.
 //
+// --force
+//   Re-ingest even if a prior completed run exists with real data.
+//   Without --force, quarters that already have status=completed AND filingCount>0
+//   AND holdingCount>0 are skipped automatically (safe to re-run).
+//   Use --force after a mapping update, schema migration, or to reprocess holdings.
+//
 // Requirements (hard-fail if missing):
 //   DATABASE_URL         — PostgreSQL connection string
 //   SEC_USER_AGENT       — descriptive User-Agent for SEC EDGAR (e.g. "App contact@email.com")
@@ -105,6 +111,7 @@ function parseCliArgs(): {
   specificQuarter: string | null;
   dryRun: boolean;
   rebuildAggregates: boolean;
+  force: boolean;
 } {
   let parsed: ReturnType<typeof parseArgs>;
   try {
@@ -115,6 +122,7 @@ function parseCliArgs(): {
         quarter: { type: "string", short: "q" },
         "dry-run": { type: "boolean", default: false },
         "rebuild-aggregates": { type: "boolean", default: false },
+        force: { type: "boolean", default: false },
       },
       strict: true,
     });
@@ -124,6 +132,7 @@ function parseCliArgs(): {
 
   const dryRun = Boolean((parsed.values as any)["dry-run"]);
   const rebuildAggregates = Boolean((parsed.values as any)["rebuild-aggregates"]);
+  const force = Boolean((parsed.values as any).force);
   const rawQuarters = (parsed.values as any).quarters as string | undefined;
   const rawQuarter = (parsed.values as any).quarter as string | undefined;
 
@@ -156,7 +165,7 @@ function parseCliArgs(): {
     specificQuarter = p!.label;
   }
 
-  return { quarters, specificQuarter, dryRun, rebuildAggregates };
+  return { quarters, specificQuarter, dryRun, rebuildAggregates, force };
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +176,10 @@ async function main(): Promise<void> {
   info("=== Institutional 13F Backfill ===");
 
   // 1. Parse arguments
-  const { quarters, specificQuarter, dryRun, rebuildAggregates } = parseCliArgs();
+  const { quarters, specificQuarter, dryRun, rebuildAggregates, force } = parseCliArgs();
+  if (force) {
+    info("⚠️  --force: skipping the already-completed-quarter check. All datasets will be re-ingested.");
+  }
 
   // 2. Validate environment
   if (!process.env.DATABASE_URL) {
@@ -225,6 +237,7 @@ async function main(): Promise<void> {
     const result = await runInstitutionalIngestion({
       initiatedBy: "cli_backfill",
       specificQuarterLabels: [specificQuarter],
+      force,
     });
 
     reportResult(result, rebuildAggregates);
@@ -310,6 +323,7 @@ async function main(): Promise<void> {
     const result = await runInstitutionalIngestion({
       initiatedBy: "cli_backfill",
       specificDescriptors: descriptors,
+      force,
     });
 
     reportResult(result, rebuildAggregates);

@@ -22,7 +22,7 @@
 //   - Advisory lock prevents concurrent runs across Railway instances.
 
 import { db } from "../../db";
-import { sql, eq, and, inArray, desc, gte } from "drizzle-orm";
+import { sql, eq, and, gt, inArray, desc, gte } from "drizzle-orm";
 import {
   institutional13fFilings,
   institutional13fHoldings,
@@ -364,8 +364,50 @@ interface QuarterIngestionResult {
   holdingCount: number;
   mappedCount: number;
   unmappedCount: number;
+  /** Filings that already existed in DB and were skipped (idempotent re-run). */
+  skippedExistingFilings: number;
   status: "completed" | "partial" | "empty_not_published" | "empty_parse_failure" | "failed";
+  /** Set when status="partial" due to AbortSignal timeout. */
+  abortedByTimeout?: boolean;
+  /** Set when eligible rows > threshold but persistedHoldings = 0 despite no abort. */
+  persistenceCountMismatch?: boolean;
+  /** Error code to store in the run record when status is a failure variant. */
+  errorCode?: string;
 }
+
+/** Minimum number of eligible common-stock rows below which PERSISTENCE_COUNT_MISMATCH is not raised. */
+const MIN_ELIGIBLE_FOR_MISMATCH_CHECK = 1_000;
+
+/**
+ * Log a structured progress event during the persistence phase.
+ * Emitted every PROGRESS_LOG_INTERVAL accessions to prevent silent 20-minute gaps.
+ */
+function logPersistenceProgress(
+  quarter: string,
+  phase: "holdings",
+  processedAccessions: number,
+  totalAccessions: number,
+  insertedFilings: number,
+  skippedFilings: number,
+  insertedHoldings: number,
+  startMs: number,
+): void {
+  const elapsedSeconds = Math.round((Date.now() - startMs) / 1000);
+  const rowsPerSecond = elapsedSeconds > 0 ? Math.round(insertedHoldings / elapsedSeconds) : 0;
+  log("institutional_13f_persistence_progress", {
+    quarter,
+    phase,
+    processedAccessions,
+    totalAccessions,
+    insertedFilings,
+    skippedFilings,
+    insertedHoldings,
+    elapsedSeconds,
+    rowsPerSecond,
+  });
+}
+
+const PROGRESS_LOG_INTERVAL = 100; // log every N accessions
 
 async function ingestQuarter(
   year: number,
@@ -404,6 +446,7 @@ async function ingestQuarter(
       holdingCount: 0,
       mappedCount: 0,
       unmappedCount: 0,
+      skippedExistingFilings: 0,
       status: "empty_not_published",
     };
   }
@@ -424,6 +467,7 @@ async function ingestQuarter(
       holdingCount: 0,
       mappedCount: 0,
       unmappedCount: 0,
+      skippedExistingFilings: 0,
       status: parseResult.status,
     };
   }
@@ -485,14 +529,26 @@ async function ingestQuarter(
     holdingsByAccession.get(h.accessionNumber)!.push(h);
   }
 
+  const totalAccessions = holdingsByAccession.size;
+  log("institutional_13f_persistence_started", {
+    quarter,
+    totalAccessions,
+    totalHoldings: parseResult.holdings.length,
+    eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
+  });
+
   let filingCount = 0;
   let holdingCount = 0;
   let mappedCount = 0;
   let unmappedCount = 0;
+  let skippedExistingFilings = 0;
+  let abortedEarly = false;
+  let processedAccessions = 0;
   const sourceUrl = bulkDatasetUrl(year, q);
+  const persistenceStartMs = Date.now();
 
   for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
-    if (signal.aborted) break;
+    if (signal.aborted) { abortedEarly = true; break; }
 
     // Idempotent: skip accessions already in the database
     const existing = await db
@@ -501,7 +557,12 @@ async function ingestQuarter(
       .where(eq(institutional13fFilings.accessionNumber, accession))
       .limit(1);
 
-    if (existing.length > 0) continue;
+    processedAccessions++;
+
+    if (existing.length > 0) {
+      skippedExistingFilings++;
+      continue;
+    }
 
     const first = holdings[0];
 
@@ -562,18 +623,54 @@ async function ingestQuarter(
     holdingCount += holdingRows.length;
     mappedCount += mc;
     unmappedCount += uc;
+
+    if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {
+      logPersistenceProgress(
+        quarter, "holdings", processedAccessions, totalAccessions,
+        filingCount, skippedExistingFilings, holdingCount, persistenceStartMs,
+      );
+    }
   }
 
   log("institutional_13f_join_summary", {
     quarter,
+    totalAccessions,
+    processedAccessions,
     filingCount,
+    skippedExistingFilings,
     holdingCount,
     mappedCount,
     unmappedCount,
+    abortedEarly,
   });
 
-  // All filings were already in the DB (idempotent re-run)
-  if (filingCount === 0 && parseResult.holdings.length > 0) {
+  // AbortSignal fired: run is partial, not completed.
+  // The next re-run will safely resume via skippedExistingFilings logic.
+  if (abortedEarly) {
+    log("institutional_13f_ingestion_aborted", {
+      quarter,
+      reason: "timeout_or_signal",
+      processedAccessions,
+      remainingAccessions: totalAccessions - processedAccessions,
+      filingCount,
+      holdingCount,
+    });
+    return {
+      quarter,
+      periodOfReport: periodEnd,
+      filingCount,
+      holdingCount,
+      mappedCount,
+      unmappedCount,
+      skippedExistingFilings,
+      status: "partial",
+      abortedByTimeout: true,
+    };
+  }
+
+  // All filings were already in the DB (idempotent re-run) — completed with 0 new rows
+  if (filingCount === 0 && skippedExistingFilings === totalAccessions && totalAccessions > 0) {
+    log("institutional_13f_idempotent_rerun", { quarter, skippedExistingFilings });
     return {
       quarter,
       periodOfReport: periodEnd,
@@ -581,11 +678,38 @@ async function ingestQuarter(
       holdingCount: 0,
       mappedCount: 0,
       unmappedCount: 0,
+      skippedExistingFilings,
       status: "completed",
     };
   }
 
+  // PERSISTENCE_COUNT_MISMATCH: eligible rows present but nothing was persisted
+  const eligibleRows = parseResult.diagnostics.eligibleCommonStockRows;
+  if (holdingCount === 0 && eligibleRows > MIN_ELIGIBLE_FOR_MISMATCH_CHECK && totalAccessions > 0) {
+    log("institutional_13f_persistence_count_mismatch", {
+      quarter,
+      eligibleCommonStockRows: eligibleRows,
+      holdingCount,
+      filingCount,
+      totalAccessions,
+      skippedExistingFilings,
+    });
+    return {
+      quarter,
+      periodOfReport: periodEnd,
+      filingCount,
+      holdingCount,
+      mappedCount,
+      unmappedCount,
+      skippedExistingFilings,
+      status: "partial",
+      persistenceCountMismatch: true,
+      errorCode: "PERSISTENCE_COUNT_MISMATCH",
+    };
+  }
+
   // Recompute aggregates for all mapped symbols
+  log("institutional_13f_aggregation_started", { quarter });
   const mappedSymbols = await getMappedSymbols();
   for (const symbol of mappedSymbols) {
     if (signal.aborted) break;
@@ -601,6 +725,17 @@ async function ingestQuarter(
     symbolCount: mappedSymbols.length,
   });
 
+  const finalStatus = parseResult.status === "partial_success" ? "partial" : "completed";
+  log("institutional_13f_dataset_completed", {
+    quarter,
+    filingCount,
+    skippedExistingFilings,
+    holdingCount,
+    mappedCount,
+    unmappedCount,
+    status: finalStatus,
+  });
+
   return {
     quarter,
     periodOfReport: periodEnd,
@@ -608,7 +743,8 @@ async function ingestQuarter(
     holdingCount,
     mappedCount,
     unmappedCount,
-    status: parseResult.status === "partial_success" ? "partial" : "completed",
+    skippedExistingFilings,
+    status: finalStatus,
   };
 }
 
@@ -666,6 +802,7 @@ async function ingestFromDescriptor(
       holdingCount: 0,
       mappedCount: 0,
       unmappedCount: 0,
+      skippedExistingFilings: 0,
       status: "empty_not_published",
     };
   }
@@ -687,6 +824,7 @@ async function ingestFromDescriptor(
       holdingCount: 0,
       mappedCount: 0,
       unmappedCount: 0,
+      skippedExistingFilings: 0,
       status: parseResult.status,
     };
   }
@@ -748,13 +886,26 @@ async function ingestFromDescriptor(
     holdingsByAccession.get(h.accessionNumber)!.push(h);
   }
 
+  const totalAccessions = holdingsByAccession.size;
+  log("institutional_13f_persistence_started", {
+    quarter,
+    fileName: descriptor.fileName,
+    totalAccessions,
+    totalHoldings: parseResult.holdings.length,
+    eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
+  });
+
   let filingCount = 0;
   let holdingCount = 0;
   let mappedCount = 0;
   let unmappedCount = 0;
+  let skippedExistingFilings = 0;
+  let abortedEarly = false;
+  let processedAccessions = 0;
+  const persistenceStartMs = Date.now();
 
   for (const [accession, holdings] of Array.from(holdingsByAccession.entries())) {
-    if (signal.aborted) break;
+    if (signal.aborted) { abortedEarly = true; break; }
 
     const existing = await db
       .select({ id: institutional13fFilings.id })
@@ -762,7 +913,12 @@ async function ingestFromDescriptor(
       .where(eq(institutional13fFilings.accessionNumber, accession))
       .limit(1);
 
-    if (existing.length > 0) continue;
+    processedAccessions++;
+
+    if (existing.length > 0) {
+      skippedExistingFilings++;
+      continue;
+    }
 
     const first = holdings[0];
 
@@ -827,18 +983,56 @@ async function ingestFromDescriptor(
     holdingCount += holdingRows.length;
     mappedCount += mc;
     unmappedCount += uc;
+
+    if (processedAccessions % PROGRESS_LOG_INTERVAL === 0) {
+      logPersistenceProgress(
+        quarter, "holdings", processedAccessions, totalAccessions,
+        filingCount, skippedExistingFilings, holdingCount, persistenceStartMs,
+      );
+    }
   }
 
   log("institutional_13f_join_summary", {
     quarter,
     fileName: descriptor.fileName,
+    totalAccessions,
+    processedAccessions,
     filingCount,
+    skippedExistingFilings,
     holdingCount,
     mappedCount,
     unmappedCount,
+    abortedEarly,
   });
 
-  if (filingCount === 0 && parseResult.holdings.length > 0) {
+  // AbortSignal fired: run is partial, not completed.
+  // The next re-run will safely resume via skippedExistingFilings logic.
+  if (abortedEarly) {
+    log("institutional_13f_ingestion_aborted", {
+      quarter,
+      fileName: descriptor.fileName,
+      reason: "timeout_or_signal",
+      processedAccessions,
+      remainingAccessions: totalAccessions - processedAccessions,
+      filingCount,
+      holdingCount,
+    });
+    return {
+      quarter,
+      periodOfReport: descriptor.expectedPeriodOfReport,
+      filingCount,
+      holdingCount,
+      mappedCount,
+      unmappedCount,
+      skippedExistingFilings,
+      status: "partial",
+      abortedByTimeout: true,
+    };
+  }
+
+  // All filings were already in the DB (idempotent re-run) — completed with 0 new rows
+  if (filingCount === 0 && skippedExistingFilings === totalAccessions && totalAccessions > 0) {
+    log("institutional_13f_idempotent_rerun", { quarter, fileName: descriptor.fileName, skippedExistingFilings });
     return {
       quarter,
       periodOfReport: descriptor.expectedPeriodOfReport,
@@ -846,11 +1040,39 @@ async function ingestFromDescriptor(
       holdingCount: 0,
       mappedCount: 0,
       unmappedCount: 0,
+      skippedExistingFilings,
       status: "completed",
     };
   }
 
+  // PERSISTENCE_COUNT_MISMATCH: eligible rows present but nothing was persisted
+  const eligibleRows = parseResult.diagnostics.eligibleCommonStockRows;
+  if (holdingCount === 0 && eligibleRows > MIN_ELIGIBLE_FOR_MISMATCH_CHECK && totalAccessions > 0) {
+    log("institutional_13f_persistence_count_mismatch", {
+      quarter,
+      fileName: descriptor.fileName,
+      eligibleCommonStockRows: eligibleRows,
+      holdingCount,
+      filingCount,
+      totalAccessions,
+      skippedExistingFilings,
+    });
+    return {
+      quarter,
+      periodOfReport: descriptor.expectedPeriodOfReport,
+      filingCount,
+      holdingCount,
+      mappedCount,
+      unmappedCount,
+      skippedExistingFilings,
+      status: "partial",
+      persistenceCountMismatch: true,
+      errorCode: "PERSISTENCE_COUNT_MISMATCH",
+    };
+  }
+
   // Recompute aggregates for all mapped symbols
+  log("institutional_13f_aggregation_started", { quarter, fileName: descriptor.fileName });
   const mappedSymbols = await getMappedSymbols();
   for (const symbol of mappedSymbols) {
     if (signal.aborted) break;
@@ -866,6 +1088,18 @@ async function ingestFromDescriptor(
     symbolCount: mappedSymbols.length,
   });
 
+  const finalStatus = parseResult.status === "partial_success" ? "partial" : "completed";
+  log("institutional_13f_dataset_completed", {
+    quarter,
+    fileName: descriptor.fileName,
+    filingCount,
+    skippedExistingFilings,
+    holdingCount,
+    mappedCount,
+    unmappedCount,
+    status: finalStatus,
+  });
+
   return {
     quarter,
     periodOfReport: descriptor.expectedPeriodOfReport,
@@ -873,7 +1107,8 @@ async function ingestFromDescriptor(
     holdingCount,
     mappedCount,
     unmappedCount,
-    status: parseResult.status === "partial_success" ? "partial" : "completed",
+    skippedExistingFilings,
+    status: finalStatus,
   };
 }
 
@@ -918,6 +1153,12 @@ export async function runInstitutionalIngestion(
      * Preferred for post-2023 datasets.
      */
     specificDescriptors?: DatasetDescriptor[];
+    /**
+     * When true, skip the already-completed-quarter check and re-ingest even if a
+     * prior completed run exists with filingCount > 0 and holdingCount > 0.
+     * Useful for reprocessing after a mapping update or schema migration.
+     */
+    force?: boolean;
   } = {},
 ): Promise<{ status: "completed" | "partial" | "skipped_disabled" | "skipped_locked" | "failed"; quartersProcessed: number }> {
   const cfg = getInstitutionalConfig();
@@ -950,6 +1191,38 @@ export async function runInstitutionalIngestion(
         if (controller.signal.aborted) break;
 
         const runQuarter = `${descriptor.year}-Q${descriptor.q}`;
+
+        // ── Resumable skip ──────────────────────────────────────────────────
+        // If a prior run already completed with real data, skip re-ingesting.
+        // Pass force=true to override (e.g. after a mapping refresh).
+        if (!options.force) {
+          const existingCompleted = await db
+            .select({ id: institutionalIngestionRuns.id, filingCount: institutionalIngestionRuns.filingCount, holdingCount: institutionalIngestionRuns.holdingCount })
+            .from(institutionalIngestionRuns)
+            .where(
+              and(
+                eq(institutionalIngestionRuns.quarter, runQuarter),
+                eq(institutionalIngestionRuns.status, "completed"),
+                gt(institutionalIngestionRuns.filingCount, 0),
+                gt(institutionalIngestionRuns.holdingCount, 0),
+              ),
+            )
+            .limit(1);
+
+          if (existingCompleted.length > 0) {
+            const prior = existingCompleted[0];
+            log("institutional_13f_quarter_skipped_completed", {
+              quarter: runQuarter,
+              priorRunId: prior.id,
+              filingCount: prior.filingCount,
+              holdingCount: prior.holdingCount,
+              reason: "prior_completed_run_exists",
+            });
+            quartersProcessed++;
+            continue;
+          }
+        }
+
         const runId = await createRun(runQuarter, descriptor.expectedPeriodOfReport, initiatedBy);
         const start = Date.now();
 
@@ -982,12 +1255,26 @@ export async function runInstitutionalIngestion(
             quartersProcessed++;
             overallStatus = "partial";
           } else {
+            // Surface PERSISTENCE_COUNT_MISMATCH or INGESTION_ABORTED in run record
+            const errorCode = result.persistenceCountMismatch
+              ? "PERSISTENCE_COUNT_MISMATCH"
+              : result.abortedByTimeout
+                ? "INGESTION_ABORTED_TIMEOUT"
+                : result.errorCode;
+            const errorSummary = result.abortedByTimeout
+              ? `Ingestion aborted by timeout — persisted ${result.filingCount} of available filings`
+              : result.persistenceCountMismatch
+                ? "Holdings count 0 despite eligible rows; re-run required"
+                : undefined;
+
             await updateRun(runId, {
               status: result.status === "partial" ? "partial" : "completed",
               filingCount: result.filingCount,
               holdingCount: result.holdingCount,
               mappedCount: result.mappedCount,
               unmappedCount: result.unmappedCount,
+              ...(errorCode ? { errorCode } : {}),
+              ...(errorSummary ? { errorSummary } : {}),
               completedAt: new Date(),
               durationMs,
             });

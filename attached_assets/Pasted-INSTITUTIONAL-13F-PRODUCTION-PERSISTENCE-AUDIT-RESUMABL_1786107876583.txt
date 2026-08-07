@@ -1,0 +1,432 @@
+INSTITUTIONAL 13F — PRODUCTION PERSISTENCE AUDIT + RESUMABLE BACKFILL
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCTION STATE
+
+The SEC parser is now working successfully.
+
+For 2026-Q1 the production logs showed:
+
+submissionRows:          11,761
+parsedSubmissionRows:     9,716
+parsedCoverPageRows:     11,761
+informationTableRows: 3,822,885
+parsedInformationRows: 3,822,885
+joinedHoldingRows:     3,822,885
+eligibleCommonStockRows: 3,661,651
+putCallExcludedRows:     140,165
+prnExcludedRows:          21,069
+rejectedRows:                  0
+
+The readiness audit after the job ended reports:
+
+2026-Q1 | completed | 570 filings | 297097 holdings | 0 mapped | 1232s
+
+HOLDINGS:
+totalHoldings: 296820
+
+Only one quarter completed.
+
+2025-Q4 did not complete.
+
+This means parsing works, but there is a major difference between:
+
+3,661,651 eligible parsed holding rows
+
+and:
+
+~297,000 persisted holdings
+
+and between:
+
+9,716 parsed holdings-bearing submissions
+
+and:
+
+570 persisted filings.
+
+Before mappings or public activation, determine exactly whether this reduction is:
+
+A. intentional filtering/deduplication/amendment supersession;
+B. period-of-report filtering;
+C. database uniqueness behavior;
+D. persistence truncation;
+E. batching failure;
+F. job/runtime termination;
+G. another documented rule.
+
+Do not assume it is a bug until traced.
+Do not classify the run as healthy merely because status="completed".
+
+Keep:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+Do not modify mappings, aggregates, UI, or public feature flags.
+
+====================================================================
+1. TRACE PARSED → ELIGIBLE → PERSISTED COUNTS
+====================================================================
+
+Trace the exact code path:
+
+parseBulkFromDescriptor
+→ parsed holdings
+→ common-stock eligibility
+→ period filtering
+→ amendment supersession
+→ deduplication
+→ database persistence
+→ final holdingCount
+→ ingestion run status
+
+Create a count waterfall for one dataset:
+
+rawInformationTableRows
+parsedInformationRows
+joinedHoldingRows
+eligibleCommonStockRows
+periodEligibleRows
+effectiveFilingRows
+deduplicatedHoldingRows
+attemptedInsertRows
+insertedHoldingRows
+updatedHoldingRows
+conflictSkippedRows
+rejectedPersistenceRows
+finalStoredHoldingRows
+
+Do the equivalent for filings:
+
+parsedSubmissionRows
+periodEligibleFilings
+effectiveFilings
+attemptedFilingInserts
+insertedFilings
+updatedFilings
+finalStoredFilings
+
+Every reduction must have an explicit named reason.
+
+No silent filtering.
+
+====================================================================
+2. VERIFY PERIOD-OF-REPORT POLICY
+====================================================================
+
+The March–May 2026 SEC dataset contains filings for many historical periods.
+
+Observed SUBMISSION period distribution included:
+
+2026-03-31: 8868
+2025-12-31: 293
+2025-09-30: 60
+plus older periods.
+
+Determine whether ingestion intentionally persists only:
+
+expectedPrimaryPeriodOfReport = 2026-03-31
+
+or all actual periods.
+
+Document the policy.
+
+If only the target holdings quarter is persisted, report:
+
+targetPeriodRows
+nonTargetPeriodRowsExcluded
+
+But even then explain whether 570 filings / 297K holdings is plausible relative to
+the 8,868 submissions reporting 2026-03-31.
+
+Do not change policy yet.
+
+====================================================================
+3. VERIFY AMENDMENT SUPERSESSION
+====================================================================
+
+The audit reports amendment processing.
+
+Determine how:
+
+original filing
++ amendment
++ multiple amendments
+
+are collapsed to effective filings.
+
+Report counts:
+
+originalFilings
+amendmentFilings
+supersededFilings
+effectiveFilings
+
+Then report holdings removed by supersession.
+
+Confirm the algorithm cannot accidentally reduce thousands of unrelated managers to
+only 570 effective filings.
+
+====================================================================
+4. VERIFY DATABASE CONFLICT / UNIQUE KEYS
+====================================================================
+
+Inspect all unique indexes and ON CONFLICT clauses affecting:
+
+institutional filings
+institutional holdings
+
+Report the actual uniqueness key.
+
+Determine whether a key is too broad, for example accidentally deduplicating holdings
+across:
+
+manager
+accession
+CUSIP
+period
+
+when it should retain distinct records.
+
+Report:
+
+attempted rows
+inserted rows
+conflict/update rows
+
+Do not change indexes until the root cause is proven.
+
+====================================================================
+5. DETERMINE WHY 2025-Q4 DID NOT COMPLETE
+====================================================================
+
+The backfill requested:
+
+2026Q1
+2025Q4
+
+but the audit contains only one successful recent run:
+
+2026-Q1 completed
+
+Determine whether the process:
+
+- exited normally after Q1;
+- was killed;
+- hit timeout;
+- threw during Q2;
+- encountered memory pressure;
+- was interrupted by shell/process lifecycle;
+- skipped Q2 because of state logic.
+
+Use ingestion-run records and existing logs where available.
+
+Do not rely on the closed terminal output.
+
+Return the exact last known state for 2025-Q4.
+
+====================================================================
+6. ADD PROGRESS LOGGING
+====================================================================
+
+Long persistence currently appears frozen for ~20 minutes.
+
+Add bounded structured progress events, for example:
+
+institutional_13f_persistence_progress
+
+{
+  quarter,
+  phase: "filings" | "holdings" | "aggregates",
+  processedRows,
+  totalRows,
+  insertedRows,
+  updatedRows,
+  skippedRows,
+  elapsedSeconds,
+  rowsPerSecond
+}
+
+Log every reasonable batch interval, not every row.
+
+Also emit explicit phase transitions:
+
+parsing_complete
+persistence_started
+filings_persisted
+holdings_persistence_started
+holdings_persisted
+aggregation_started
+dataset_completed
+
+====================================================================
+7. MAKE DATASET EXECUTION RESUMABLE
+====================================================================
+
+A disconnected Railway shell must not force operators to restart already completed
+datasets.
+
+Before processing each selected catalog descriptor:
+
+- inspect existing ingestion status;
+- if same dataset URL/checksum is genuinely completed and verified, skip it;
+- if failed/partial, safely rerun or resume according to existing transaction model;
+- never duplicate persisted rows;
+- continue with the next requested dataset.
+
+The command:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+should be safe to rerun.
+
+Expected behavior now should be conceptually:
+
+2026Q1 — already completed, verified → skip
+2025Q4 — missing → process
+
+ONLY implement automatic skip if completion is validated by meaningful row counts,
+not merely status="completed".
+
+====================================================================
+8. STRENGTHEN COMPLETION CRITERIA
+====================================================================
+
+A dataset must not receive status="completed" simply because no exception was thrown.
+
+Require consistency checks such as:
+
+parsedSubmissionRows > 0
+eligibleCommonStockRows > 0
+effectiveFilings > 0
+finalStoredFilings > 0
+finalStoredHoldings > 0
+
+and count reconciliation.
+
+If persistence produces an implausibly low ratio relative to eligible rows without a
+documented filter explanation, classify:
+
+PERSISTENCE_COUNT_MISMATCH
+
+and do not mark the dataset verified/completed.
+
+Use thresholds based on explicit business logic, not arbitrary percentages.
+
+====================================================================
+9. ADD READ-ONLY VERIFICATION SCRIPT
+====================================================================
+
+Create:
+
+scripts/verify-institutional-ingestion.ts
+
+Usage:
+
+npx tsx scripts/verify-institutional-ingestion.ts --quarter 2026Q1
+
+Output:
+
+Parsed source counts
+Eligibility counts
+Effective filing counts
+Persistence counts
+DB counts
+Reduction waterfall
+Amendment counts
+Period distribution
+Final reconciliation
+
+Verdict:
+
+PASS
+WARNING
+FAIL
+
+No writes.
+
+====================================================================
+10. PERFORMANCE AUDIT
+====================================================================
+
+The Node process used roughly 4 GB RSS and took approximately 20 minutes.
+
+Report:
+
+- persistence batch size;
+- number of DB round trips;
+- whether inserts are row-by-row;
+- whether Drizzle creates huge values statements;
+- whether COPY is used;
+- whether all 3.8M records are retained in memory.
+
+Do not implement a streaming/COPY rewrite in this task unless required to correct the
+persistence defect.
+
+Give a separate recommendation for:
+
+STREAMING/BATCHED INGESTION HARDENING
+
+after correctness is proven.
+
+====================================================================
+11. TESTS
+====================================================================
+
+Add tests for:
+
+- full count waterfall reconciliation
+- period filtering
+- amendment supersession
+- duplicate filing handling
+- holding uniqueness
+- DB conflict counting
+- completed dataset skip
+- partial dataset retry
+- failed dataset retry
+- second dataset continues after first completes
+- progress events
+- no false completed status
+- PERSISTENCE_COUNT_MISMATCH
+- idempotent rerun
+- verification script read-only behavior
+
+Run:
+
+institutional tests
+server tests
+client tests
+typecheck
+
+====================================================================
+12. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact reason 3.66M eligible rows became ~297K persisted holdings
+2. Exact reason 9,716 parsed submissions became 570 stored filings
+3. Whether reductions are correct or defective
+4. Why 2025-Q4 did not complete
+5. Files changed
+6. Count waterfall
+7. Amendment effect
+8. Period-filter effect
+9. Database uniqueness effect
+10. Resume/idempotency behavior
+11. Progress logging
+12. Tests
+13. Total passing tests
+14. Typecheck
+15. Performance findings
+16. Exact safe production rerun command
+17. GO / CONDITIONAL_GO / NO_GO
+
+Do not seed mappings.
+Do not build public aggregates.
+Do not enable Institutional Intelligence.
+Do not commit/push/deploy automatically.
+
+Wait for review.

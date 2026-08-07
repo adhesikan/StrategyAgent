@@ -1,0 +1,850 @@
+SPRINT 2.2.6 — INSTITUTIONAL SIGNAL ENGINE
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE
+
+Institutional Intelligence → Product Integration
+
+CURRENT STATE
+
+Sprint 2.2.5 is complete.
+
+Production now has:
+
+- institutional 13F ingestion
+- scheduled/resumable background processing
+- institutional_13f_filings
+- institutional_13f_holdings
+- security_master
+- CUSIP → ticker mapping queue
+- manual review workflow
+- mapping diagnostics
+- approximately 3,827 currently discovered security_master rows
+- mapping coverage currently incomplete
+
+IMPORTANT ROADMAP DECISION
+
+Do NOT expand mapping automation in this sprint.
+
+The following is intentionally deferred to backlog:
+
+"INSTITUTIONAL MAPPING AUTOMATION"
+
+Future scope:
+- trusted-source auto-verification
+- CUSIP/FIGI/ticker enrichment
+- confidence-based auto-approval
+- bulk approval
+- exception-only human review
+
+Sprint 2.2.6 must work correctly with PARTIAL mapping coverage.
+
+Missing mappings must reduce data-quality/confidence or return unavailable status.
+They must never block the rest of VCP Trader AI.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Create a deterministic Institutional Signal Engine that transforms available,
+mapped public SEC Form 13F holdings into concise, explainable institutional
+research evidence for a ticker.
+
+This engine will eventually feed:
+
+- Opportunity Ranking Engine
+- AI Trading Workspace
+- Dashboard
+- VCP AI
+
+But DO NOT integrate those consumers during this sprint.
+
+This sprint builds ONLY the canonical Institutional Signal Engine and its API.
+
+No LLM scoring.
+No predictions.
+No personalized investment advice.
+No "smart money" terminology.
+
+======================================================================
+1. START WITH AN ARCHITECTURE AUDIT
+======================================================================
+
+Before coding, inspect the existing institutional subsystem.
+
+Identify and report:
+
+- raw holdings table
+- filing table
+- security_master
+- legacy institutional_security_mappings
+- quarterly aggregate tables
+- effective/amendment filing logic
+- quarter readiness/state logic
+- existing /api/institutional/:symbol endpoint
+- current Institutional tab components
+- existing mapping/status contracts
+
+Reuse existing services rather than duplicating them.
+
+Determine whether existing institutional_quarterly_aggregates can support the
+new signal engine.
+
+Prefer extending/reusing existing deterministic aggregation infrastructure.
+
+Do not create another parallel institutional data model unnecessarily.
+
+======================================================================
+2. CANONICAL SIGNAL CONTRACT
+======================================================================
+
+Create one canonical type such as:
+
+InstitutionalSignal
+
+Suggested shape:
+
+{
+  symbol: string,
+
+  status:
+    | "available"
+    | "insufficient_history"
+    | "mapping_incomplete"
+    | "processing"
+    | "unavailable",
+
+  latestQuarter: string | null,
+  previousQuarter: string | null,
+  periodEndDate: string | null,
+
+  score: number | null,
+  label: InstitutionalSignalLabel | null,
+
+  summary: string | null,
+
+  metrics: {
+    managerCountLatest: number | null,
+    managerCountPrevious: number | null,
+
+    totalSharesLatest: number | null,
+    totalSharesPrevious: number | null,
+
+    totalValueLatest: number | null,
+    totalValuePrevious: number | null,
+
+    shareChange: number | null,
+    shareChangePct: number | null,
+
+    valueChange: number | null,
+    valueChangePct: number | null,
+
+    newManagerCount: number,
+    exitedManagerCount: number,
+    increasedManagerCount: number,
+    reducedManagerCount: number,
+    unchangedManagerCount: number
+  },
+
+  concentration: {
+    holderCount: number,
+    topHolderSharePct: number | null,
+    top5HolderSharePct: number | null,
+    trend:
+      | "increasing_concentration"
+      | "stable_concentration"
+      | "broadening_ownership"
+      | "insufficient_data"
+  },
+
+  topBuyers: InstitutionalManagerChange[],
+  topSellers: InstitutionalManagerChange[],
+  newPositions: InstitutionalManagerChange[],
+  exitedPositions: InstitutionalManagerChange[],
+
+  scoreComponents: {
+    breadth: number | null,
+    accumulation: number | null,
+    entrantsVsExits: number | null,
+    concentration: number | null,
+    dataQuality: number | null
+  },
+
+  dataQuality: {
+    mappingCoverage: number | null,
+    comparableManagerCount: number,
+    latestQuarterCoverage: number | null,
+    previousQuarterCoverage: number | null,
+    confidence:
+      | "high"
+      | "moderate"
+      | "limited"
+      | "insufficient"
+  },
+
+  freshness: {
+    source: "SEC Form 13F",
+    delayed: true,
+    periodEndDate: string | null,
+    calculatedAt: string | null
+  }
+}
+
+Use repository naming conventions if equivalents already exist.
+
+======================================================================
+3. QUARTER SELECTION
+======================================================================
+
+This is critical.
+
+Do NOT compare SEC ZIP publication windows.
+
+Compare actual period-of-report quarters.
+
+Determine:
+
+latest usable comparable holdings quarter
+
+versus
+
+previous usable comparable holdings quarter.
+
+Example:
+
+2026-Q1
+vs
+2025-Q4
+
+Only use quarters whose persisted data passes the existing readiness/reconciliation
+requirements.
+
+If only one usable quarter exists:
+
+status = "insufficient_history"
+score = null
+
+Still return whatever single-quarter descriptive evidence is safe to expose.
+
+======================================================================
+4. SECURITY MAPPING RULES
+======================================================================
+
+Use mappings from security_master / canonical mapping layer.
+
+Do not require 100% global mapping coverage.
+
+For ticker X:
+
+calculate signal from reliably mapped holdings belonging to ticker X.
+
+Track mapping coverage separately.
+
+Do NOT guess ticker mappings inside this signal engine.
+
+Do NOT perform fuzzy issuer matching here.
+
+Mapping belongs to Sprint 2.2.5 / future mapping automation backlog.
+
+If mapping quality is insufficient for the requested ticker:
+
+status = "mapping_incomplete"
+score = null
+
+Return useful diagnostics but no false precision.
+
+======================================================================
+5. EFFECTIVE FILINGS / AMENDMENTS
+======================================================================
+
+Reuse the existing amendment supersession model.
+
+For a manager + reporting period:
+
+only the effective filing should contribute.
+
+Never double-count:
+
+original filing
++ amendment
++ later amendment.
+
+Add explicit tests for this.
+
+======================================================================
+6. MANAGER-LEVEL CHANGE CLASSIFICATION
+======================================================================
+
+Compare each manager between previous and latest comparable quarters.
+
+Deterministic rules:
+
+previous = 0 AND latest > 0
+→ NEW
+
+previous > 0 AND latest = 0
+→ EXITED
+
+latest > previous
+→ INCREASED
+
+latest < previous
+→ REDUCED
+
+latest = previous
+→ UNCHANGED
+
+Create a reusable type:
+
+InstitutionalManagerChange
+
+Suggested fields:
+
+managerName
+previousShares
+latestShares
+shareChange
+shareChangePct
+previousValue
+latestValue
+valueChange
+changeType
+
+Do not expose internal implementation IDs in public API unless needed.
+
+======================================================================
+7. SYMBOL-LEVEL METRICS
+======================================================================
+
+For every mapped ticker calculate:
+
+managerCountLatest
+managerCountPrevious
+
+totalSharesLatest
+totalSharesPrevious
+
+totalValueLatest
+totalValuePrevious
+
+shareChange
+shareChangePct
+
+valueChange
+valueChangePct
+
+newManagerCount
+exitedManagerCount
+increasedManagerCount
+reducedManagerCount
+unchangedManagerCount
+
+Be careful with corporate actions / share-count discontinuities.
+
+Do not make an investment conclusion solely from raw share-change percentage.
+
+Document known limitations.
+
+======================================================================
+8. TOP BUYERS / TOP SELLERS
+======================================================================
+
+Return bounded lists.
+
+Maximum:
+
+topBuyers = 5
+topSellers = 5
+newPositions = 5
+exitedPositions = 5
+
+Rank primarily by absolute reported position-value change when reliable.
+
+Fallback to share change if value is unavailable.
+
+Document ranking rule.
+
+Avoid duplicate manager entries.
+
+======================================================================
+9. CONCENTRATION
+======================================================================
+
+Calculate:
+
+holderCount
+topHolderSharePct
+top5HolderSharePct
+
+Compare latest vs previous quarter.
+
+Possible trend:
+
+increasing_concentration
+stable_concentration
+broadening_ownership
+insufficient_data
+
+Concentration is contextual.
+
+Do NOT automatically score higher concentration as positive.
+
+======================================================================
+10. DETERMINISTIC INSTITUTIONAL SCORE
+======================================================================
+
+Create an explainable 0–100 Institutional Evidence Score.
+
+IMPORTANT:
+
+The score represents strength/direction of reported institutional ownership activity.
+
+It does NOT represent:
+
+stock quality
+expected return
+probability of price appreciation
+buy/sell recommendation.
+
+No AI.
+
+Build score from transparent components.
+
+Suggested conceptual components:
+
+A. Breadth
+- increasing managers vs reducing managers
+
+B. Accumulation
+- aggregate reported position/share change
+
+C. Entrants vs exits
+- new managers relative to exited managers
+
+D. Concentration context
+- broadening vs highly concentrated activity
+
+E. Data quality
+- mapping/comparable coverage
+
+Choose final weights only after inspecting available data.
+
+Requirements:
+
+- total score 0–100
+- every component individually exposed
+- deterministic
+- bounded
+- unit tested
+- missing evidence must not silently become neutral evidence
+- insufficient quality → score = null
+
+Do not let the data-quality component manufacture a directional signal.
+
+======================================================================
+11. LABELS
+======================================================================
+
+Convert score/direction into research labels.
+
+Use terms such as:
+
+Strong Accumulation
+Accumulation
+Stable
+Distribution
+Strong Distribution
+Insufficient Data
+
+Do NOT use:
+
+Buy
+Sell
+Bullish
+Bearish
+Strong Buy
+Smart Money Buy
+Smart Money Sell
+
+Document exact thresholds.
+
+======================================================================
+12. DETERMINISTIC SUMMARY
+======================================================================
+
+Generate a short deterministic summary from the metrics.
+
+Examples of acceptable language:
+
+"Reported institutional ownership increased in the latest comparable quarter,
+with more managers increasing positions than reducing them."
+
+"Reported ownership was broadly stable across the two latest comparable quarters."
+
+"Comparable 13F history is not yet sufficient to calculate an institutional trend."
+
+No LLM call.
+
+No predictive statement.
+
+No recommendation.
+
+======================================================================
+13. DATA QUALITY GATES
+======================================================================
+
+Define explicit quality gates.
+
+Consider:
+
+mapping coverage
+comparable quarter availability
+manager count
+effective filing completeness
+quarter readiness
+aggregate reconciliation
+
+Return:
+
+high
+moderate
+limited
+insufficient
+
+If insufficient:
+
+score = null
+
+The API should explain why.
+
+Do not use arbitrary global 60% coverage if symbol-level coverage provides a more
+accurate measure.
+
+Document the decision.
+
+======================================================================
+14. FRESHNESS / 13F DELAY
+======================================================================
+
+Every signal response must make clear that Form 13F data is delayed.
+
+Expose:
+
+latestQuarter
+periodEndDate
+calculatedAt
+source = "SEC Form 13F"
+delayed = true
+
+Do not describe these holdings as real-time institutional flows.
+
+======================================================================
+15. PRECOMPUTATION
+======================================================================
+
+Do NOT scan millions of raw holding rows every time a user opens a stock.
+
+Prefer precomputed signal/aggregate storage.
+
+First determine if institutional_quarterly_aggregates can be reused.
+
+If not sufficient, create an additive table such as:
+
+institutional_symbol_signals
+
+Possible fields:
+
+symbol
+latestQuarter
+previousQuarter
+score
+label
+managerCountLatest
+managerCountPrevious
+totalSharesLatest
+totalSharesPrevious
+totalValueLatest
+totalValuePrevious
+newManagerCount
+exitedManagerCount
+increasedManagerCount
+reducedManagerCount
+topHolderPct
+top5HolderPct
+mappingCoverage
+dataQuality
+calculatedAt
+
+Do not duplicate raw holdings.
+
+Migration must be additive/idempotent.
+
+======================================================================
+16. REBUILD SERVICE
+======================================================================
+
+Create:
+
+rebuildInstitutionalSignals()
+
+and optionally:
+
+rebuildInstitutionalSignalForSymbol(symbol)
+
+Requirements:
+
+- idempotent
+- deterministic
+- safe to rerun
+- does not depend on AI
+- does not block normal app behavior
+
+Do not rebuild all signals on every page request.
+
+Future scheduled institutional jobs should eventually trigger rebuild after a
+quarter becomes usable.
+
+Do not redesign scheduler during this sprint.
+
+======================================================================
+17. API
+======================================================================
+
+Extend/replace the canonical symbol endpoint carefully.
+
+Current route exists:
+
+GET /api/institutional/:symbol
+
+Preserve backward compatibility where practical.
+
+Provide signal data via either:
+
+GET /api/institutional/:symbol
+
+or a clearly namespaced endpoint such as:
+
+GET /api/institutional/signals/:symbol
+
+Choose based on current architecture.
+
+Do not reintroduce static/dynamic route collisions.
+
+Add route-precedence tests.
+
+Optional admin rebuild:
+
+POST /api/admin/institutional/signals/rebuild
+
+Admin-only.
+
+======================================================================
+18. COST UAT
+======================================================================
+
+Use COST as primary production/UAT symbol once its reviewed mapping exists.
+
+Also test where available:
+
+AAPL
+MSFT
+NVDA
+META
+AMZN
+
+For each test symbol verify:
+
+latest quarter
+previous quarter
+manager counts
+total position changes
+new managers
+exited managers
+top buyers
+top sellers
+score
+label
+data quality
+freshness
+
+Do NOT fabricate results when mappings/history are unavailable.
+
+======================================================================
+19. FUTURE CONSUMER CONTRACTS
+======================================================================
+
+Do NOT integrate consumers yet.
+
+But expose a small contract for Sprint 2.2.7:
+
+institutionalEvidence = {
+  available,
+  score,
+  label,
+  evidenceStrength,
+  dataQuality,
+  summary
+}
+
+Opportunity Ranking Engine must eventually treat this evidence as OPTIONAL.
+
+No institutional data must never cause an opportunity to disappear solely because
+the evidence source is unavailable.
+
+Also define a compact Workspace contract:
+
+{
+  status,
+  score,
+  label,
+  latestQuarter,
+  summary,
+  topEvidence
+}
+
+Do not modify Workspace now.
+
+======================================================================
+20. PERFORMANCE
+======================================================================
+
+Measure:
+
+single-symbol read latency
+batch read latency
+rebuild time
+DB queries per symbol
+
+The user-facing read path should query derived aggregates/signals rather than
+millions of raw rows.
+
+Report benchmarks.
+
+======================================================================
+21. TESTS
+======================================================================
+
+Add tests covering at minimum:
+
+quarter selection
+only one quarter
+no quarter
+NEW manager
+EXITED manager
+INCREASED manager
+REDUCED manager
+UNCHANGED manager
+effective amendment handling
+multiple amendments
+share totals
+value totals
+percentage changes
+top buyer ranking
+top seller ranking
+new position ranking
+exit ranking
+concentration calculations
+score formula
+score component reconciliation
+0 boundary
+100 boundary
+label thresholds
+mapping incomplete
+partial mapping
+missing symbol mapping
+data quality gate
+freshness metadata
+delayed-source indicator
+deterministic summary
+idempotent rebuild
+API available
+API unavailable
+API insufficient history
+route precedence
+batch symbol retrieval
+no LLM dependency
+
+Run:
+
+institutional tests
+server tests
+client tests
+typecheck
+build
+
+======================================================================
+22. ACCEPTANCE CRITERIA
+======================================================================
+
+Sprint is GO only if:
+
+A. A mapped ticker with two valid quarters produces deterministic metrics.
+
+B. Missing/incomplete data returns an explicit status rather than fabricated values.
+
+C. Score can be reproduced exactly from exposed components.
+
+D. Amendments are not double counted.
+
+E. Signal is derived from stored/precomputed aggregates for normal reads.
+
+F. API clearly exposes 13F delay/freshness.
+
+G. No opportunity ranking behavior changes yet.
+
+H. No Workspace behavior changes yet.
+
+I. No AI calls are introduced.
+
+J. Existing institutional/mapping APIs continue to work.
+
+======================================================================
+23. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Current institutional architecture discovered
+2. Files changed
+3. Schema changes
+4. Canonical signal contract
+5. Quarter-selection policy
+6. Manager-change rules
+7. Amendment handling
+8. Metric formulas
+9. Concentration methodology
+10. Institutional score formula
+11. Component weights
+12. Label thresholds
+13. Data-quality thresholds
+14. Mapping-incomplete behavior
+15. Freshness representation
+16. Precomputation/rebuild architecture
+17. API changes
+18. Performance results
+19. COST UAT
+20. Additional symbol UAT
+21. Tests added
+22. Total passing tests
+23. Typecheck/build
+24. Known limitations
+25. Deferred backlog items
+26. GO / CONDITIONAL_GO / NO_GO
+
+DEFERRED BACKLOG — DO NOT IMPLEMENT:
+
+- automated CUSIP → ticker verification
+- confidence-based auto approval
+- bulk mapping approval
+- external reference-provider enrichment
+- exception-only mapping review
+- Opportunity Ranking Engine integration
+- Dashboard integration
+- Workspace redesign
+- agents / loops / graphs
+
+Do not commit, push, deploy, or enable Institutional Intelligence automatically.
+
+Wait for review.

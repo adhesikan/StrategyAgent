@@ -74,6 +74,7 @@ import { registerDailyAnalysisRoutes } from "./routes/daily-analysis";
 import { registerInstitutionalRoute } from "./routes/institutional";
 import { registerInstitutionalAdminRoutes } from "./routes/institutional-admin";
 import { registerInstitutionalMappingRoutes } from "./routes/institutional-mappings";
+import { registerInstitutionalSignalRoutes } from "./routes/institutional-signals";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -224,6 +225,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // segment first and treats "mappings", "unmapped", etc. as ticker symbols.
   registerInstitutionalAdminRoutes(app, isAuthenticated, isAdmin);
   registerInstitutionalMappingRoutes(app, isAuthenticated, isAdmin);
+  // Signal routes (/api/institutional/signals/*) must come before the dynamic
+  // /api/institutional/:symbol route to avoid the path segment "signals" being
+  // interpreted as a ticker symbol.
+  registerInstitutionalSignalRoutes(app, isAuthenticated, isAdmin);
   registerInstitutionalRoute(app, isAuthenticated); // dynamic :symbol — always last
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;

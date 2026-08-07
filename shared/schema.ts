@@ -3181,3 +3181,86 @@ export const securityMaster = pgTable("security_master", {
 
 export type SecurityMaster = typeof securityMaster.$inferSelect;
 export type InsertSecurityMaster = typeof securityMaster.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Institutional Symbol Signals — Sprint 2.2.6
+// ---------------------------------------------------------------------------
+
+/**
+ * Pre-computed Institutional Signal per ticker symbol.
+ *
+ * Populated by rebuildInstitutionalSignals() / rebuildInstitutionalSignalForSymbol().
+ * The /api/institutional/signals/:symbol endpoint reads from this table.
+ * Never reads raw holdings at request time — all inputs come from
+ * institutional_quarterly_aggregates.
+ *
+ * One row per symbol; upserted on every rebuild run.
+ */
+export const institutionalSymbolSignals = pgTable("institutional_symbol_signals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** VCP Trader internal symbol (e.g. "AAPL") */
+  symbol: text("symbol").notNull(),
+
+  // Signal envelope
+  /** available | insufficient_history | mapping_incomplete | processing | unavailable */
+  status: text("status").notNull().default("unavailable"),
+  /** Human-readable quarter label for latest quarter (e.g. "2026-Q1") */
+  latestQuarter: text("latest_quarter"),
+  /** Human-readable quarter label for previous quarter */
+  previousQuarter: text("previous_quarter"),
+  /** ISO date of the latest quarter's period-of-report */
+  periodEndDate: date("period_end_date"),
+
+  // Score and label
+  /** 0–100 institutional evidence score; null when insufficient data */
+  score: integer("score"),
+  /** Strong Accumulation | Accumulation | Stable | Distribution | Strong Distribution | Insufficient Data */
+  label: text("label"),
+  /** Deterministic plain-language summary */
+  summary: text("summary"),
+
+  // Manager activity counts
+  managerCountLatest: integer("manager_count_latest"),
+  managerCountPrevious: integer("manager_count_previous"),
+  totalSharesLatest: bigint("total_shares_latest", { mode: "number" }),
+  totalSharesPrevious: bigint("total_shares_previous", { mode: "number" }),
+  totalValueLatest: bigint("total_value_latest", { mode: "number" }),
+  totalValuePrevious: bigint("total_value_previous", { mode: "number" }),
+  newManagerCount: integer("new_manager_count").notNull().default(0),
+  exitedManagerCount: integer("exited_manager_count").notNull().default(0),
+  increasedManagerCount: integer("increased_manager_count").notNull().default(0),
+  reducedManagerCount: integer("reduced_manager_count").notNull().default(0),
+  unchangedManagerCount: integer("unchanged_manager_count").notNull().default(0),
+
+  // Concentration
+  topHolderPct: real("top_holder_pct"),
+  top5HolderPct: real("top5_holder_pct"),
+  /** increasing_concentration | stable_concentration | broadening_ownership | insufficient_data */
+  concentrationTrend: text("concentration_trend"),
+
+  // Data quality
+  /** Symbol-level mapping coverage: eligible / (eligible + excluded) */
+  mappingCoverage: real("mapping_coverage"),
+  /** high | moderate | limited | insufficient */
+  dataQualityConfidence: text("data_quality_confidence"),
+
+  // Bounded change lists — JSON arrays of InstitutionalManagerChange
+  topBuyers: jsonb("top_buyers").notNull().default([]),
+  topSellers: jsonb("top_sellers").notNull().default([]),
+  newPositions: jsonb("new_positions").notNull().default([]),
+  exitedPositions: jsonb("exited_positions").notNull().default([]),
+
+  /** Score components JSON object */
+  scoreComponents: jsonb("score_components"),
+
+  calculatedAt: timestamp("calculated_at").defaultNow().notNull(),
+}, (t) => ({
+  idxSymbol:     uniqueIndex("idx_iss_symbol").on(t.symbol),
+  idxScore:      index("idx_iss_score").on(t.score),
+  idxStatus:     index("idx_iss_status").on(t.status),
+  idxCalculated: index("idx_iss_calculated").on(t.calculatedAt),
+  idxLabel:      index("idx_iss_label").on(t.label),
+}));
+
+export type InstitutionalSymbolSignal = typeof institutionalSymbolSignals.$inferSelect;
+export type InsertInstitutionalSymbolSignal = typeof institutionalSymbolSignals.$inferInsert;

@@ -1,0 +1,374 @@
+SPRINT 2.2.5 — PRODUCTION GAP FIX
+INSTITUTIONAL MAPPING ADMIN UI + API ROUTES
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION VERIFICATION FOUND A GAP
+
+The prior completion report claimed that Sprint 2.2.5 added:
+
+- security_master service
+- institutional mappings API routes
+- /admin/institutional-mappings UI
+- admin navigation entry
+
+But production inspection shows:
+
+find client -iname "*mapping*"
+→ no results
+
+find server -iname "*mapping*"
+→ only:
+  server/services/institutional/mapping-service.ts
+  server/services/institutional/__tests__/seed-mappings.test.ts
+
+grep -R "institutional-mappings" client server
+→ no frontend/API route references
+
+Production route:
+
+/admin/institutional-mappings
+
+returns:
+
+404 Page Not Found
+
+Therefore this task is to finish the missing production-facing pieces of Sprint 2.2.5.
+
+Do not claim completion unless every production acceptance criterion below is implemented and testable.
+
+============================================================
+1. AUDIT EXISTING BACKEND FIRST
+============================================================
+
+Before creating anything, inspect:
+
+server/services/institutional/mapping-service.ts
+shared/schema.ts
+institutional security mapping tables
+security_master table if already present
+existing admin route conventions
+existing admin page conventions
+existing RBAC/isAdmin middleware
+
+Reuse existing logic wherever possible.
+
+Do NOT duplicate mapping engines unnecessarily.
+
+Return in completion report:
+
+- what already existed
+- what was missing
+- what was added
+
+============================================================
+2. BUILD / COMPLETE SECURITY MASTER SERVICE
+============================================================
+
+If a dedicated service is missing, create:
+
+server/services/institutional/security-master-service.ts
+
+It should wrap/reuse existing mapping-service.ts where appropriate.
+
+Required capabilities:
+
+getMappingQueue()
+getMappingStats()
+getTopUnmapped()
+getMappingAudit()
+runMappingPipeline()
+approveMapping()
+rejectMapping()
+mergeMapping()
+
+Do not overwrite reviewed mappings.
+
+Reviewed mappings must remain highest priority.
+
+============================================================
+3. BUILD API ROUTES
+============================================================
+
+Create:
+
+server/routes/institutional-mappings.ts
+
+Required endpoints:
+
+GET /api/institutional/mappings
+GET /api/institutional/unmapped
+GET /api/institutional/mapping-audit
+
+POST /api/institutional/review
+POST /api/institutional/mapping-pipeline
+
+POST routes must be admin-only.
+
+Use existing isAdmin middleware pattern.
+
+Register the route in the main server route composition.
+
+Do not leave the route file unregistered.
+
+============================================================
+4. BUILD ADMIN PAGE
+============================================================
+
+Create:
+
+client/src/pages/admin/institutional-mappings.tsx
+
+Page requirements:
+
+Header:
+Institutional Security Mapping
+
+Summary cards:
+Mapped / Reviewed
+Probable
+Unmapped
+Coverage %
+
+Tabs:
+Unmapped
+Needs Review
+Probable
+Reviewed
+All
+
+Search input
+
+Sortable mapping table
+
+Columns:
+CUSIP
+Ticker
+Issuer
+Method
+Confidence
+Review Status
+Holding Count
+Last Verified
+Actions
+
+Actions:
+Approve
+Reject
+Merge
+
+Top Unmapped Issuers card
+
+"Run Mapping Pipeline" button
+
+Loading state
+Empty state
+Error state
+Success feedback
+
+Do not expose raw sensitive system data.
+
+============================================================
+5. REGISTER FRONTEND ROUTE
+============================================================
+
+Find the actual React/Wouter routing file.
+
+Register:
+
+/admin/institutional-mappings
+
+to render the new page.
+
+This is mandatory.
+
+Add a test that fails if the route is missing.
+
+============================================================
+6. ADD ADMIN NAVIGATION
+============================================================
+
+Find the existing admin home/navigation surface.
+
+Add:
+
+Institutional Mappings
+
+with link to:
+
+/admin/institutional-mappings
+
+Do not add this to normal trader navigation.
+
+Admin only.
+
+============================================================
+7. RUN MAPPING PIPELINE FROM UI
+============================================================
+
+The "Run Mapping Pipeline" button must call:
+
+POST /api/institutional/mapping-pipeline
+
+Show:
+
+running
+completed
+error
+
+After completion:
+
+refresh mapping stats
+refresh queue
+refresh unmapped list
+
+No page reload required.
+
+============================================================
+8. REVIEW WORKFLOW
+============================================================
+
+Approve:
+
+CUSIP
+ticker
+issuer
+method = manual_reviewed or existing reviewed vocabulary
+confidence = 100
+reviewStatus = reviewed
+
+Reject:
+
+mark rejected
+do not delete audit history
+
+Merge:
+
+merge duplicate/alternate CUSIP record into selected canonical security mapping safely
+
+Validate ticker/CUSIP inputs.
+
+============================================================
+9. PRODUCTION-SAFE MAPPING DISCOVERY
+============================================================
+
+runMappingPipeline() must discover CUSIPs from currently persisted institutional holdings.
+
+It should:
+
+- be idempotent
+- never overwrite reviewed mappings
+- preserve confidence ordering
+- batch database writes
+- report counts
+
+Return:
+
+discovered
+mapped
+probable
+unmapped
+reviewedPreserved
+
+============================================================
+10. TESTS
+============================================================
+
+Add tests covering:
+
+API registration
+GET mappings
+GET unmapped
+GET mapping audit
+admin authorization for POST
+mapping pipeline action
+approve
+reject
+merge
+reviewed mapping protection
+queue filtering
+search
+pagination
+frontend route existence
+admin nav link
+loading/error/empty UI states
+run mapping pipeline UI action
+
+Run:
+
+institutional tests
+server tests
+client tests
+typecheck/build
+
+============================================================
+11. PRODUCTION ACCEPTANCE CHECKLIST
+============================================================
+
+Do not declare GO until ALL of these are true:
+
+A.
+Production URL loads:
+
+/admin/institutional-mappings
+
+No 404.
+
+B.
+Page shows mapping statistics.
+
+C.
+Run Mapping Pipeline button works.
+
+D.
+Coverage changes from 0% when resolvable mappings exist.
+
+E.
+Unmapped CUSIPs appear in queue.
+
+F.
+Approve action works for a test mapping.
+
+G.
+Approved mapping appears under Reviewed.
+
+H.
+Reloading page preserves mapping.
+
+I.
+API endpoint responds:
+
+GET /api/institutional/mapping-audit
+
+J.
+Normal non-admin user cannot perform review/mapping mutations.
+
+============================================================
+12. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Existing code found
+2. Missing pieces confirmed
+3. Files changed
+4. API routes added
+5. Route registration location
+6. Admin page location
+7. Admin navigation location
+8. Mapping pipeline behavior
+9. Review workflow
+10. Tests added
+11. Total passing tests
+12. Typecheck/build
+13. Exact production URL
+14. Production UAT checklist
+15. GO / NO_GO
+
+Do not deploy automatically.
+Do not start Sprint 2.2.6.
+Do not modify Institutional ingestion.
+Do not enable Institutional Intelligence.
+
+Wait for review.

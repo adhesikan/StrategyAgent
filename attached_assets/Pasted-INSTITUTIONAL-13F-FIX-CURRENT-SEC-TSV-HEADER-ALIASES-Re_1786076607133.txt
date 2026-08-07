@@ -1,0 +1,321 @@
+INSTITUTIONAL 13F — FIX CURRENT SEC TSV HEADER ALIASES
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION FAILURE
+
+The catalog resolver, ZIP download, and archive-entry resolver now work correctly.
+
+For both recent datasets, logs show:
+
+resolvedSubmissionEntry: SUBMISSION.tsv
+resolvedInfoTableEntry: INFOTABLE.tsv
+resolutionMode: bare_exact
+
+Parsed source row counts are nonzero:
+
+2026-Q1:
+- submissionRows: 11,761
+- informationTableRows: 3,822,885
+
+2025-Q4:
+- submissionRows: 11,372
+- informationTableRows: 3,473,209
+
+But parsing fails with:
+
+Required headers missing —
+SUBMISSION: [ACCESSION-NUMBER, NAME]
+INFOTABLE: [ACCESSION-NUMBER]
+
+This means the parser's expected header names do not match the actual SEC bulk TSV
+schema.
+
+This is a focused header-schema compatibility fix.
+
+Do not modify:
+
+- SEC catalog discovery
+- ZIP entry resolution
+- dataset-window mapping
+- database schema
+- aggregation formulas
+- amendment logic
+- identifier mapping policy
+- Institutional UI
+- feature flags
+- Opportunity Engine
+- MCP
+- scanner
+- broker integrations
+
+Do not enable Institutional Intelligence.
+
+============================================================
+1. INSPECT ACTUAL HEADERS SAFELY
+============================================================
+
+Add a bounded diagnostic that logs only the header names from:
+
+- SUBMISSION.tsv
+- INFOTABLE.tsv
+
+Do not log data rows.
+
+Capture the exact production headers from the current SEC datasets.
+
+Likely current fields may use underscore-style names such as:
+
+ACCESSION_NUMBER
+FILINGMANAGER_NAME
+PERIODOFREPORT
+FILING_DATE
+
+but do not assume. Use the actual archive headers as source of truth.
+
+Return the complete header lists, bounded to a safe reasonable count.
+
+============================================================
+2. CREATE CANONICAL HEADER ALIAS RESOLUTION
+============================================================
+
+Replace direct one-name lookups with canonical alias helpers.
+
+Example:
+
+getField(row, [
+  "ACCESSION-NUMBER",
+  "ACCESSION_NUMBER",
+  "ACCESSIONNUMBER"
+])
+
+Canonical fields required for SUBMISSION:
+
+- accession number
+- filer CIK
+- filer/manager name
+- form type
+- filing date
+- period of report
+- amendment indicator where available
+
+Canonical fields required for INFOTABLE:
+
+- accession number
+- issuer name
+- class title
+- CUSIP
+- value
+- share/principal amount
+- share/principal type
+- put/call
+- investment discretion
+- FIGI where available
+- voting authority fields where available
+
+Normalize header names for matching by:
+
+- trimming whitespace;
+- removing UTF-8 BOM;
+- uppercasing;
+- treating hyphen and underscore variants as equivalent;
+- optionally removing non-alphanumeric separators for canonical comparison.
+
+Do not mutate source values.
+
+============================================================
+3. RELAX REQUIRED HEADER VALIDATION CORRECTLY
+============================================================
+
+Required-header validation must use alias groups, not literal historical names.
+
+For example, accession is present if any recognized accession alias exists.
+
+Do not report:
+
+ACCESSION-NUMBER missing
+
+when ACCESSION_NUMBER is present.
+
+Required SUBMISSION canonical fields:
+
+- accession
+- CIK
+- manager name
+- period of report
+
+Form type and filing date may be required only if actually necessary and consistently
+present; otherwise define safe fallback rules.
+
+Required INFOTABLE canonical fields:
+
+- accession
+- issuer name
+- class title
+- CUSIP
+
+All optional fields must remain nullable.
+
+============================================================
+4. CURRENT SEC SCHEMA MAPPING
+============================================================
+
+Document the exact current mappings found in production.
+
+Return a table like:
+
+Canonical field | Actual current header | Legacy aliases supported
+
+Examples only:
+
+accession | ACCESSION_NUMBER | ACCESSION-NUMBER
+manager name | FILINGMANAGER_NAME | NAME, COMPANY-NAME
+period | PERIODOFREPORT | CONFORMED-PERIOD-OF-REPORT
+issuer | NAMEOFISSUER | NAME_OF_ISSUER
+
+Use actual observed names.
+
+============================================================
+5. ACCESSION NORMALIZATION
+============================================================
+
+Ensure SUBMISSION and INFOTABLE accession values normalize identically.
+
+Support:
+
+- hyphenated SEC accession numbers;
+- 18-digit unhyphenated forms;
+- whitespace;
+- leading zeros.
+
+Add a test proving the two files join when one uses hyphenated and the other
+unhyphenated accession values.
+
+============================================================
+6. TSV PARSER VALIDATION
+============================================================
+
+After alias resolution, require:
+
+- parsed submission records > 0;
+- parsed information-table records > 0;
+- joinedHoldingRows > 0;
+- join rate above the existing safety threshold.
+
+Log safely:
+
+- detected canonical header mapping;
+- submissionRows;
+- parsedSubmissionRows;
+- informationTableRows;
+- parsedInformationRows;
+- joinedHoldingRows;
+- rejectedRows.
+
+Do not log raw rows.
+
+============================================================
+7. MEMORY AND PERFORMANCE
+============================================================
+
+The files contain approximately 3.5–3.8 million INFOTABLE rows.
+
+Audit the parser for memory safety.
+
+Avoid unnecessary duplicate full-file arrays where practical.
+
+Do not introduce repeated row scans or quadratic joins.
+
+Use:
+
+- a Map keyed by normalized accession for submissions;
+- one linear pass over INFOTABLE;
+- batched persistence as already implemented.
+
+Do not redesign the whole ingestion pipeline unless required.
+
+============================================================
+8. TEST FIXTURES
+============================================================
+
+Add realistic minimal TSV fixtures using the actual current SEC header names.
+
+Required tests:
+
+A. Current SUBMISSION headers parse successfully
+B. Current INFOTABLE headers parse successfully
+C. Legacy hyphenated headers still parse
+D. Underscore and hyphen aliases normalize equivalently
+E. BOM on first header is handled
+F. Mixed-case headers are handled
+G. Missing canonical accession fails safely
+H. Missing manager name fails safely
+I. Missing issuer/CUSIP fails safely
+J. Hyphenated vs unhyphenated accession joins
+K. Current production-style rows produce joined holdings > 0
+L. Put/call rows preserved for later exclusion
+M. Optional FIGI absent remains null
+N. Optional voting fields absent remain null
+O. Millions-row path remains linear in complexity
+P. EMPTY_PARSE_FAILURE still occurs for genuinely incompatible schema
+
+============================================================
+9. PRODUCTION RERUN
+============================================================
+
+After the fix:
+
+1. Deploy with:
+   INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+2. Run:
+   npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+3. Confirm logs show:
+
+resolvedSubmissionEntry: SUBMISSION.tsv
+resolvedInfoTableEntry: INFOTABLE.tsv
+submissionRows: > 0
+informationTableRows: > 0
+parsedSubmissionRows: > 0
+parsedInformationRows: > 0
+joinedHoldingRows: > 0
+filingCount: > 0
+holdingCount: > 0
+
+4. Confirm no REQUIRED_HEADERS_MISSING or EMPTY_PARSE_FAILURE.
+
+5. Run:
+   npx tsx scripts/audit-institutional-readiness.ts
+
+6. Only after holdings exist, verify and seed COST mapping.
+
+7. Keep public feature disabled until final GO.
+
+============================================================
+10. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact actual SEC headers observed
+2. Exact header mismatch root cause
+3. Files changed
+4. Canonical alias strategy
+5. Current-to-legacy mapping table
+6. Required versus optional fields
+7. Accession normalization behavior
+8. Performance impact
+9. Tests added
+10. Total passing tests
+11. Typecheck
+12. Build
+13. Exact production rerun command
+14. Expected successful log fields
+15. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run production ingestion, seed mappings, change Railway
+variables, or enable the public feature automatically.
+
+Wait for review.

@@ -212,11 +212,14 @@ describe("P3 — parseSubmissionTsv", () => {
     expect(rows[0].periodOfReport).toBe("2025-12-31");
   });
 
-  it("reports missing required headers", () => {
-    const sub = "FORM-TYPE\tCIK\n13F-HR\t0001234567"; // missing ACCESSION-NUMBER and NAME
+  it("reports missing required headers using canonical labels", () => {
+    const sub = "FORM-TYPE\tCIK\n13F-HR\t0001234567"; // missing accession and manager name
     const { missingHeaders } = parseSubmissionTsv(sub);
-    expect(missingHeaders).toContain("ACCESSION-NUMBER");
-    expect(missingHeaders).toContain("NAME");
+    // missingHeaders now reports canonical labels, not raw column names
+    expect(missingHeaders).toContain("accession");
+    expect(missingHeaders).toContain("manager name");
+    expect(missingHeaders).not.toContain("ACCESSION-NUMBER"); // raw name never reported
+    expect(missingHeaders).not.toContain("NAME");
   });
 
   it("accepts all rows when FORM-TYPE column is absent (pure 13F data set)", () => {
@@ -295,10 +298,12 @@ describe("P4 — parseInfoTableTsv", () => {
     expect(rows[0].cusip).toBe("037833100"); // padded to 9
   });
 
-  it("reports missing required headers", () => {
+  it("reports missing required headers using canonical labels", () => {
     const { missingHeaders } = parseInfoTableTsv("NAMEOFISSUER\tTITLEOFCLASS\nFoo\tBar");
-    expect(missingHeaders).toContain("ACCESSION-NUMBER");
+    // missingHeaders now reports canonical labels, not raw column names
+    expect(missingHeaders).toContain("accession");
     expect(missingHeaders).toContain("CUSIP");
+    expect(missingHeaders).not.toContain("ACCESSION-NUMBER"); // raw name never reported
   });
 });
 

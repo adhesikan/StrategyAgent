@@ -430,12 +430,16 @@ async function ingestQuarter(
   log("institutional_13f_rows_parsed", {
     quarter,
     submissionRows: parseResult.diagnostics.submissionRows,
+    parsedSubmissionRows: parseResult.diagnostics.parsedSubmissionRows,
     informationTableRows: parseResult.diagnostics.informationTableRows,
+    parsedInformationRows: parseResult.diagnostics.parsedInformationRows,
     joinedHoldingRows: parseResult.diagnostics.joinedHoldingRows,
     rejectedRows: parseResult.diagnostics.rejectedRows,
     eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
     putCallExcludedRows: parseResult.diagnostics.putCallExcludedRows,
     prnExcludedRows: parseResult.diagnostics.prnExcludedRows,
+    submissionHeaderMapping: parseResult.diagnostics.submissionHeaderMapping,
+    infoTableHeaderMapping: parseResult.diagnostics.infoTableHeaderMapping,
     durationMs: parseResult.diagnostics.durationMs,
   });
 
@@ -657,12 +661,16 @@ async function ingestFromDescriptor(
     quarter,
     fileName: descriptor.fileName,
     submissionRows: parseResult.diagnostics.submissionRows,
+    parsedSubmissionRows: parseResult.diagnostics.parsedSubmissionRows,
     informationTableRows: parseResult.diagnostics.informationTableRows,
+    parsedInformationRows: parseResult.diagnostics.parsedInformationRows,
     joinedHoldingRows: parseResult.diagnostics.joinedHoldingRows,
     rejectedRows: parseResult.diagnostics.rejectedRows,
     eligibleCommonStockRows: parseResult.diagnostics.eligibleCommonStockRows,
     putCallExcludedRows: parseResult.diagnostics.putCallExcludedRows,
     prnExcludedRows: parseResult.diagnostics.prnExcludedRows,
+    submissionHeaderMapping: parseResult.diagnostics.submissionHeaderMapping,
+    infoTableHeaderMapping: parseResult.diagnostics.infoTableHeaderMapping,
     durationMs: parseResult.diagnostics.durationMs,
   });
 

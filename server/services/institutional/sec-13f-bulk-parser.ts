@@ -74,14 +74,24 @@ export interface BulkParseDiagnostics {
   resolvedInfoTableEntry: string | null;
   /** How the entries were located */
   resolutionMode: ArchiveResolutionMode | null;
+  /** Total rows in SUBMISSION.tsv (including non-13F) */
   submissionRows: number;
+  /** 13F-HR/A rows actually parsed from SUBMISSION.tsv */
+  parsedSubmissionRows: number;
+  /** Total rows in INFOTABLE.tsv */
   informationTableRows: number;
+  /** Rows parsed (not rejected) from INFOTABLE.tsv */
+  parsedInformationRows: number;
   joinedHoldingRows: number;
   rejectedRows: number;
   eligibleCommonStockRows: number;
   putCallExcludedRows: number;
   prnExcludedRows: number;
   durationMs: number;
+  /** Canonical field → actual header found in SUBMISSION.tsv (null = not present) */
+  submissionHeaderMapping: Record<string, string | null>;
+  /** Canonical field → actual header found in INFOTABLE.tsv (null = not present) */
+  infoTableHeaderMapping: Record<string, string | null>;
 }
 
 export interface ParsedBulkHolding {
@@ -158,6 +168,186 @@ export function detectEntryPrefix(zip: AdmZip): string | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Header alias resolution
+// ---------------------------------------------------------------------------
+//
+// SEC bulk TSV schema has changed between release generations:
+//   Legacy (pre-2024 ZIPs):  ACCESSION-NUMBER, NAME, CONFORMED-PERIOD-OF-REPORT, FILING-DATE
+//   Current (post-2023 bare): ACCESSION_NUMBER, FILINGMANAGER_NAME, PERIODOFREPORT, FILING_DATE
+//
+// normalizeHeaderKey() removes hyphens and underscores so all variants of a
+// field name compare equal. buildHeaderLookup() pre-computes this mapping once
+// per file. getField() uses the lookup for O(1) per-row field access.
+
+/**
+ * Normalize a header token for alias comparison.
+ * Strips UTF-8 BOM, trims whitespace, uppercases, then removes all hyphens and
+ * underscores so that "ACCESSION-NUMBER", "ACCESSION_NUMBER", and
+ * "ACCESSIONNUMBER" all compare equal.
+ */
+export function normalizeHeaderKey(s: string): string {
+  return s
+    .replace(/^\uFEFF/, "") // BOM guard (extra safety — parseTsv already stripBom's the file)
+    .trim()
+    .toUpperCase()
+    .replace(/[-_]/g, "");  // hyphens and underscores are equivalent separators
+}
+
+/**
+ * Build a normalized-key → raw-header lookup from a parseTsv() header array.
+ * The "raw header" is the exact key used in row objects (uppercased but otherwise
+ * verbatim). Only the first occurrence of each normalized key is kept.
+ */
+export function buildHeaderLookup(headers: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const h of headers) {
+    const norm = normalizeHeaderKey(h);
+    if (!map.has(norm)) map.set(norm, h);
+  }
+  return map;
+}
+
+/**
+ * Return the row value for the first alias that resolves in the lookup, or ""
+ * if none. Aliases are normalized before lookup so hyphen/underscore variants
+ * are treated equivalently.
+ */
+function getField(
+  row: Record<string, string>,
+  lookup: Map<string, string>,
+  aliases: readonly string[],
+): string {
+  for (const alias of aliases) {
+    const rawKey = lookup.get(normalizeHeaderKey(alias));
+    if (rawKey !== undefined) {
+      const val = row[rawKey];
+      if (val !== undefined) return val;
+    }
+  }
+  return "";
+}
+
+/** Return true if any alias resolves to a header present in the lookup. */
+function hasAnyAlias(lookup: Map<string, string>, aliases: readonly string[]): boolean {
+  return aliases.some((a) => lookup.has(normalizeHeaderKey(a)));
+}
+
+/** Build a canonical-label → actual-header mapping for diagnostics. */
+function buildCanonicalMapping(
+  lookup: Map<string, string>,
+  groups: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>,
+): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const { canonical, aliases } of groups) {
+    let found: string | null = null;
+    for (const a of aliases) {
+      const raw = lookup.get(normalizeHeaderKey(a));
+      if (raw !== undefined) { found = raw; break; }
+    }
+    out[canonical] = found;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Canonical field alias groups
+// ---------------------------------------------------------------------------
+//
+// Each group covers the full family of header names that have appeared across
+// SEC bulk TSV release generations. normalizeHeaderKey() removes hyphens and
+// underscores, so only aliases that differ *after* normalization need to be
+// listed separately. For example, "ACCESSION-NUMBER", "ACCESSION_NUMBER", and
+// "ACCESSIONNUMBER" all normalize to "ACCESSIONNUMBER" — listing one covers all.
+
+// SUBMISSION.tsv
+const SUB_ACCESSION_ALIASES  = ["ACCESSION-NUMBER", "ACCESSIONNUMBER"] as const;
+const SUB_CIK_ALIASES        = ["CIK", "FILER-CIK", "FILERCIK", "CIKNO"] as const;
+const SUB_NAME_ALIASES       = [
+  "NAME",                  // legacy
+  "FILINGMANAGER-NAME",    // → FILINGMANAGERNAME (covers FILINGMANAGER_NAME)
+  "FILINGMANAGERNAME",
+  "COMPANY-NAME",          // → COMPANYNAME (covers COMPANY_NAME)
+  "COMPANYNAME",
+] as const;
+const SUB_PERIOD_ALIASES     = [
+  "CONFORMED-PERIOD-OF-REPORT", // → CONFORMEDPERIODOFREPORT
+  "CONFORMEDPERIODOFREPORT",
+  "PERIODOFREPORT",              // current: no separator (covers PERIOD-OF-REPORT too)
+  "REPORT-DATE",                 // → REPORTDATE (covers REPORT_DATE)
+  "REPORTDATE",
+] as const;
+const SUB_FORMTYPE_ALIASES   = ["FORM-TYPE", "FORMTYPE"] as const; // covers FORM_TYPE
+const SUB_FILINGDATE_ALIASES = [
+  "FILING-DATE",               // → FILINGDATE (covers FILING_DATE)
+  "FILINGDATE",
+  "FILED-AS-OF-DATE",          // → FILEDASOFDATE
+  "FILEDASOFDATE",
+  "DATE-FILED",                // → DATEFILED
+  "DATEFILED",
+] as const;
+
+// INFOTABLE.tsv
+const INFO_ACCESSION_ALIASES  = ["ACCESSION-NUMBER", "ACCESSIONNUMBER"] as const;
+const INFO_ISSUER_ALIASES     = [
+  "NAMEOFISSUER",              // legacy (covers NAME-OF-ISSUER, NAME_OF_ISSUER via norm)
+  "ISSUER-NAME",               // → ISSUERNAME (covers ISSUER_NAME)
+  "ISSUERNAME",
+] as const;
+const INFO_CLASS_ALIASES      = [
+  "TITLEOFCLASS",              // legacy (covers TITLE-OF-CLASS, TITLE_OF_CLASS via norm)
+  "CLASS-TITLE",               // → CLASSTITLE (covers CLASS_TITLE)
+  "CLASSTITLE",
+] as const;
+const INFO_CUSIP_ALIASES      = ["CUSIP"] as const;
+const INFO_VALUE_ALIASES      = ["VALUE"] as const;
+const INFO_SHARES_ALIASES     = ["SSHPRNAMT", "SSH-PRN-AMT"] as const; // covers SSHPRNAMT
+const INFO_SHARESTYPE_ALIASES = ["SSHPRNAMTTYPE", "SSHPRNTYPE", "SHARES-TYPE", "SHARESTYPE"] as const;
+const INFO_PUTCALL_ALIASES    = ["PUTCALL", "PUT-CALL", "PUTCALLINDICATOR"] as const;
+const INFO_DISCRETION_ALIASES = ["INVESTMENTDISCRETION", "INVESTMENT-DISCRETION"] as const;
+const INFO_OTHERMGR_ALIASES   = ["OTHERMANAGER", "OTHER-MANAGER"] as const;
+const INFO_FIGI_ALIASES       = ["FIGI"] as const;
+const INFO_VSOLE_ALIASES      = ["VOTINGAUTHORITY-SOLE", "VOTINGAUTHORITYSOLE", "VOTING-AUTHORITY-SOLE"] as const;
+const INFO_VSHARED_ALIASES    = ["VOTINGAUTHORITY-SHARED", "VOTINGAUTHORITYSHARED"] as const;
+const INFO_VNONE_ALIASES      = ["VOTINGAUTHORITY-NONE", "VOTINGAUTHORITYNONE"] as const;
+
+// Required and full field declarations for validation and diagnostic mapping
+interface CanonicalField { canonical: string; aliases: readonly string[] }
+
+const REQUIRED_SUBMISSION_FIELDS: CanonicalField[] = [
+  { canonical: "accession",        aliases: SUB_ACCESSION_ALIASES },
+  { canonical: "CIK",              aliases: SUB_CIK_ALIASES },
+  { canonical: "manager name",     aliases: SUB_NAME_ALIASES },
+  { canonical: "period of report", aliases: SUB_PERIOD_ALIASES },
+];
+
+const ALL_SUBMISSION_FIELDS: CanonicalField[] = [
+  ...REQUIRED_SUBMISSION_FIELDS,
+  { canonical: "form type",  aliases: SUB_FORMTYPE_ALIASES },
+  { canonical: "filing date", aliases: SUB_FILINGDATE_ALIASES },
+];
+
+const REQUIRED_INFOTABLE_FIELDS: CanonicalField[] = [
+  { canonical: "accession",   aliases: INFO_ACCESSION_ALIASES },
+  { canonical: "issuer name", aliases: INFO_ISSUER_ALIASES },
+  { canonical: "class title", aliases: INFO_CLASS_ALIASES },
+  { canonical: "CUSIP",       aliases: INFO_CUSIP_ALIASES },
+];
+
+const ALL_INFOTABLE_FIELDS: CanonicalField[] = [
+  ...REQUIRED_INFOTABLE_FIELDS,
+  { canonical: "value",                aliases: INFO_VALUE_ALIASES },
+  { canonical: "shares/principal",     aliases: INFO_SHARES_ALIASES },
+  { canonical: "shares type",          aliases: INFO_SHARESTYPE_ALIASES },
+  { canonical: "put/call",             aliases: INFO_PUTCALL_ALIASES },
+  { canonical: "investment discretion", aliases: INFO_DISCRETION_ALIASES },
+  { canonical: "other manager",        aliases: INFO_OTHERMGR_ALIASES },
+  { canonical: "FIGI",                 aliases: INFO_FIGI_ALIASES },
+  { canonical: "voting sole",          aliases: INFO_VSOLE_ALIASES },
+  { canonical: "voting shared",        aliases: INFO_VSHARED_ALIASES },
+  { canonical: "voting none",          aliases: INFO_VNONE_ALIASES },
+];
 
 // ---------------------------------------------------------------------------
 // TSV parsing
@@ -265,21 +455,35 @@ export interface SubmissionRow {
   isAmendment: boolean;
 }
 
-const REQUIRED_SUBMISSION_HEADERS = ["ACCESSION-NUMBER", "CIK", "NAME"];
-
 /**
  * Parse SUBMISSION.tsv. Returns 13F-HR and 13F-HR/A rows only.
- * Supports column-name aliases that have appeared in different SEC release years.
+ *
+ * Supports all SEC bulk TSV schema generations via canonical alias resolution:
+ *   Legacy (pre-2024):  ACCESSION-NUMBER, NAME, CONFORMED-PERIOD-OF-REPORT, FILING-DATE
+ *   Current (post-2023): ACCESSION_NUMBER, FILINGMANAGER_NAME, PERIODOFREPORT, FILING_DATE
+ *   And any future hyphen/underscore variant
+ *
+ * Required canonical fields: accession, CIK, manager name, period of report.
+ * missingHeaders reports canonical labels (e.g. "manager name"), not raw column names.
  */
 export function parseSubmissionTsv(text: string): {
   rows: SubmissionRow[];
   totalRows: number;
+  parsedRows: number;
   missingHeaders: string[];
+  canonicalMapping: Record<string, string | null>;
 } {
   const { headers, rows: rawRows } = parseTsv(text);
-  const missingHeaders = REQUIRED_SUBMISSION_HEADERS.filter(
-    (h) => !headers.includes(h),
-  );
+  const lookup = buildHeaderLookup(headers);
+
+  // Validate required fields using alias groups — not literal header names.
+  // A field is "present" if ANY of its aliases resolves to a header in the file.
+  const missingHeaders = REQUIRED_SUBMISSION_FIELDS
+    .filter((f) => !hasAnyAlias(lookup, f.aliases))
+    .map((f) => f.canonical);
+
+  // Diagnostic mapping: canonical label → actual header found (null if absent)
+  const canonicalMapping = buildCanonicalMapping(lookup, ALL_SUBMISSION_FIELDS);
 
   const rows: SubmissionRow[] = [];
   let totalRows = 0;
@@ -287,28 +491,16 @@ export function parseSubmissionTsv(text: string): {
   for (const raw of rawRows) {
     totalRows++;
 
-    const formTypeRaw = (raw["FORM-TYPE"] ?? "").trim().toUpperCase();
-    // The 13F data set contains only 13F forms, but filter for safety.
-    // If FORM-TYPE column is absent, accept all rows (they are all 13F).
+    const formTypeRaw = getField(raw, lookup, SUB_FORMTYPE_ALIASES).trim().toUpperCase();
+    // The 13F bulk dataset contains only 13F forms, but filter for safety.
+    // If form-type column is absent, accept all rows.
     if (formTypeRaw && formTypeRaw !== "13F-HR" && formTypeRaw !== "13F-HR/A") continue;
 
-    const accRaw = raw["ACCESSION-NUMBER"] ?? raw["ACCESSION_NUMBER"] ?? "";
-    const cikRaw = raw["CIK"] ?? "";
-    const name = (raw["NAME"] ?? raw["COMPANY-NAME"] ?? "").trim();
-
-    // Period of report: try each alias in priority order
-    const periodRaw =
-      raw["CONFORMED-PERIOD-OF-REPORT"] ??
-      raw["PERIOD-OF-REPORT"] ??
-      raw["REPORT-DATE"] ??
-      "";
-
-    // Filing date: try each alias
-    const filingDateRaw =
-      raw["FILING-DATE"] ??
-      raw["FILED-AS-OF-DATE"] ??
-      raw["DATE-FILED"] ??
-      "";
+    const accRaw     = getField(raw, lookup, SUB_ACCESSION_ALIASES);
+    const cikRaw     = getField(raw, lookup, SUB_CIK_ALIASES);
+    const name       = getField(raw, lookup, SUB_NAME_ALIASES).trim();
+    const periodRaw  = getField(raw, lookup, SUB_PERIOD_ALIASES);
+    const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
 
     const accession = normalizeAccession(accRaw);
     const cik = cikRaw.replace(/^0+/, "").padStart(10, "0") || cikRaw;
@@ -321,14 +513,14 @@ export function parseSubmissionTsv(text: string): {
       accessionNumber: accession,
       cik,
       name,
-      formType: raw["FORM-TYPE"] ?? "13F-HR",
+      formType: getField(raw, lookup, SUB_FORMTYPE_ALIASES) || "13F-HR",
       filingDate,
       periodOfReport,
       isAmendment: formTypeRaw === "13F-HR/A",
     });
   }
 
-  return { rows, totalRows, missingHeaders };
+  return { rows, totalRows, parsedRows: rows.length, missingHeaders, canonicalMapping };
 }
 
 // ---------------------------------------------------------------------------
@@ -352,26 +544,32 @@ export interface InfoTableRow {
   votingNone: number | null;
 }
 
-const REQUIRED_INFOTABLE_HEADERS = [
-  "ACCESSION-NUMBER",
-  "NAMEOFISSUER",
-  "TITLEOFCLASS",
-  "CUSIP",
-];
-
 /**
  * Parse INFOTABLE.tsv. Returns all holding rows including put/call and PRN.
+ *
+ * Supports all SEC bulk TSV schema generations via canonical alias resolution.
+ * Required canonical fields: accession, issuer name, class title, CUSIP.
+ * All other fields are optional and remain null when absent.
+ *
+ * Memory: processes ~3.5–3.8 M rows per quarter. Uses a single linear pass;
+ * no duplicate arrays. The header lookup map is built once; per-row access is O(1).
  */
 export function parseInfoTableTsv(text: string): {
   rows: InfoTableRow[];
   totalRows: number;
+  parsedRows: number;
   rejectedRows: number;
   missingHeaders: string[];
+  canonicalMapping: Record<string, string | null>;
 } {
   const { headers, rows: rawRows } = parseTsv(text);
-  const missingHeaders = REQUIRED_INFOTABLE_HEADERS.filter(
-    (h) => !headers.includes(h),
-  );
+  const lookup = buildHeaderLookup(headers);
+
+  const missingHeaders = REQUIRED_INFOTABLE_FIELDS
+    .filter((f) => !hasAnyAlias(lookup, f.aliases))
+    .map((f) => f.canonical);
+
+  const canonicalMapping = buildCanonicalMapping(lookup, ALL_INFOTABLE_FIELDS);
 
   const rows: InfoTableRow[] = [];
   let totalRows = 0;
@@ -380,10 +578,10 @@ export function parseInfoTableTsv(text: string): {
   for (const raw of rawRows) {
     totalRows++;
 
-    const accRaw = raw["ACCESSION-NUMBER"] ?? raw["ACCESSION_NUMBER"] ?? "";
-    const issuerName = (raw["NAMEOFISSUER"] ?? "").trim();
-    const classTitle = (raw["TITLEOFCLASS"] ?? "").trim();
-    const cusipRaw = (raw["CUSIP"] ?? "").trim();
+    const accRaw     = getField(raw, lookup, INFO_ACCESSION_ALIASES);
+    const issuerName = getField(raw, lookup, INFO_ISSUER_ALIASES).trim();
+    const classTitle = getField(raw, lookup, INFO_CLASS_ALIASES).trim();
+    const cusipRaw   = getField(raw, lookup, INFO_CUSIP_ALIASES).trim();
 
     if (!accRaw || !issuerName || !classTitle || !cusipRaw) {
       rejectedRows++;
@@ -396,27 +594,25 @@ export function parseInfoTableTsv(text: string): {
       continue;
     }
 
-    const figiRaw = (raw["FIGI"] ?? "").trim();
-
     rows.push({
       accessionNumber: normalizeAccession(accRaw),
       issuerName: issuerName.replace(/\s+/g, " "),
       classTitle: classTitle.replace(/\s+/g, " "),
       cusip,
-      figi: figiRaw || null,
-      reportedValue: parseFiniteInt(raw["VALUE"] ?? ""),
-      reportedShares: parseFiniteInt(raw["SSHPRNAMT"] ?? ""),
-      sharesPrnType: normalizeSharesPrnType(raw["SSHPRNAMTTYPE"] ?? ""),
-      putCall: normalizePutCall(raw["PUTCALL"] ?? ""),
-      investmentDiscretion: (raw["INVESTMENTDISCRETION"] ?? "").trim() || null,
-      otherManager: (raw["OTHERMANAGER"] ?? "").trim() || null,
-      votingSole: parseFiniteInt(raw["VOTINGAUTHORITY-SOLE"] ?? ""),
-      votingShared: parseFiniteInt(raw["VOTINGAUTHORITY-SHARED"] ?? ""),
-      votingNone: parseFiniteInt(raw["VOTINGAUTHORITY-NONE"] ?? ""),
+      figi: getField(raw, lookup, INFO_FIGI_ALIASES).trim() || null,
+      reportedValue:        parseFiniteInt(getField(raw, lookup, INFO_VALUE_ALIASES)),
+      reportedShares:       parseFiniteInt(getField(raw, lookup, INFO_SHARES_ALIASES)),
+      sharesPrnType:        normalizeSharesPrnType(getField(raw, lookup, INFO_SHARESTYPE_ALIASES)),
+      putCall:              normalizePutCall(getField(raw, lookup, INFO_PUTCALL_ALIASES)),
+      investmentDiscretion: getField(raw, lookup, INFO_DISCRETION_ALIASES).trim() || null,
+      otherManager:         getField(raw, lookup, INFO_OTHERMGR_ALIASES).trim() || null,
+      votingSole:           parseFiniteInt(getField(raw, lookup, INFO_VSOLE_ALIASES)),
+      votingShared:         parseFiniteInt(getField(raw, lookup, INFO_VSHARED_ALIASES)),
+      votingNone:           parseFiniteInt(getField(raw, lookup, INFO_VNONE_ALIASES)),
     });
   }
 
-  return { rows, totalRows, rejectedRows, missingHeaders };
+  return { rows, totalRows, parsedRows: rows.length, rejectedRows, missingHeaders, canonicalMapping };
 }
 
 // ---------------------------------------------------------------------------
@@ -529,13 +725,17 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   resolvedInfoTableEntry: null,
   resolutionMode: null,
   submissionRows: 0,
+  parsedSubmissionRows: 0,
   informationTableRows: 0,
+  parsedInformationRows: 0,
   joinedHoldingRows: 0,
   rejectedRows: 0,
   eligibleCommonStockRows: 0,
   putCallExcludedRows: 0,
   prnExcludedRows: 0,
   durationMs: 0,
+  submissionHeaderMapping: {},
+  infoTableHeaderMapping: {},
 };
 
 /**
@@ -644,7 +844,9 @@ export function parseBulkQuarterFromBuffer(
   const {
     rows: subRows,
     totalRows: totalSubRows,
+    parsedRows: parsedSubRows,
     missingHeaders: missingSubH,
+    canonicalMapping: subHeaderMapping,
   } = parseSubmissionTsv(subText);
 
   // Parse INFOTABLE.tsv
@@ -652,11 +854,20 @@ export function parseBulkQuarterFromBuffer(
   const {
     rows: infoRows,
     totalRows: totalInfoRows,
+    parsedRows: parsedInfoRows,
     rejectedRows,
     missingHeaders: missingInfoH,
+    canonicalMapping: infoHeaderMapping,
   } = parseInfoTableTsv(infoText);
 
-  // Missing required headers → can't parse
+  const headerDiag = {
+    submissionHeaderMapping: subHeaderMapping,
+    infoTableHeaderMapping: infoHeaderMapping,
+  };
+
+  // Missing required canonical fields → can't parse.
+  // missingSubH / missingInfoH now report canonical labels (e.g. "manager name")
+  // not literal column names, so "manager name" means none of its aliases were found.
   if (missingSubH.length > 0 || missingInfoH.length > 0) {
     return {
       status: "empty_parse_failure",
@@ -665,8 +876,11 @@ export function parseBulkQuarterFromBuffer(
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
         ...resolutionDiag,
+        ...headerDiag,
         submissionRows: totalSubRows,
+        parsedSubmissionRows: parsedSubRows,
         informationTableRows: totalInfoRows,
+        parsedInformationRows: parsedInfoRows,
         durationMs: Date.now() - startMs,
       },
       reason:
@@ -684,8 +898,11 @@ export function parseBulkQuarterFromBuffer(
         ...EMPTY_DIAGNOSTICS,
         ...baseDiag,
         ...resolutionDiag,
+        ...headerDiag,
         submissionRows: totalSubRows,
+        parsedSubmissionRows: parsedSubRows,
         informationTableRows: totalInfoRows,
+        parsedInformationRows: parsedInfoRows,
         rejectedRows,
         durationMs: Date.now() - startMs,
       },
@@ -743,8 +960,11 @@ export function parseBulkQuarterFromBuffer(
     archiveBytes: buffer.length,
     archiveEntries: allEntryNames,
     ...resolutionDiag,
+    ...headerDiag,
     submissionRows: totalSubRows,
+    parsedSubmissionRows: parsedSubRows,
     informationTableRows: totalInfoRows,
+    parsedInformationRows: parsedInfoRows,
     joinedHoldingRows,
     rejectedRows,
     eligibleCommonStockRows,

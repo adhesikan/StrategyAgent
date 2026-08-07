@@ -638,7 +638,8 @@ function UnavailableState({ symbol, reasons }: { symbol: string; reasons: string
         <Building2 className="h-8 w-8 text-muted-foreground/40" />
         <div>
           <p className="text-sm font-medium text-muted-foreground">
-            13F institutional data is not available for {symbol}.
+            13F institutional data is not available for {symbol} because Institutional
+            Intelligence is not enabled on this deployment.
           </p>
           {reasons.map((r, i) => (
             <p key={i} className="text-[11px] text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
@@ -648,23 +649,40 @@ function UnavailableState({ symbol, reasons }: { symbol: string; reasons: string
         </div>
       </div>
 
-      <div className="rounded border border-border/40 bg-muted/20 px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2">
-          About 13F Reported Holdings
-        </p>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          SEC Form 13F requires institutional investment managers with over $100 million in qualifying
-          securities to report their long positions quarterly. Holdings reflect the quarter-end date
-          and are not real-time or complete.
-        </p>
-        <a
-          href="https://efts.sec.gov/LATEST/search-index?q=%2213F-HR%22&forms=13F-HR"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 mt-2 text-[11px] text-primary hover:underline"
-        >
-          Search 13F filings on SEC EDGAR <ExternalLink className="h-2.5 w-2.5" />
-        </a>
+      <div className="rounded border border-border/40 bg-muted/20 px-4 py-3 space-y-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1">
+            About SEC Form 13F
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed" data-testid="institutional-unavailable-disclaimer">
+            SEC Form 13F filings are public, quarterly disclosures from qualifying
+            institutional investment managers. They are delayed and do not represent
+            real-time or complete institutional activity.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          {/* Primary: human-readable EDGAR filing search — NOT the raw EFTS/search-index JSON API */}
+          <a
+            href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=13F-HR&dateb=&owner=include&count=40"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] text-primary hover:underline"
+            data-testid="institutional-sec-search-link"
+          >
+            Search 13F filings on SEC EDGAR <ExternalLink className="h-2.5 w-2.5" />
+          </a>
+          {/* Secondary: Form 13F Data Sets page */}
+          <a
+            href="https://www.sec.gov/data-research/financial-data-sets/form-13f-data-sets"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] text-primary hover:underline"
+            data-testid="institutional-sec-datasets-link"
+          >
+            View SEC Form 13F data sets <ExternalLink className="h-2.5 w-2.5" />
+          </a>
+        </div>
       </div>
     </div>
   );

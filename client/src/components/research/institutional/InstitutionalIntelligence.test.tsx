@@ -181,6 +181,60 @@ describe("H — Client display helpers", () => {
     });
   });
 
+  // SEC link URL compliance (spec: fix user-facing SEC links)
+  describe("H9b — SEC link URL compliance", () => {
+    const PRIMARY_URL =
+      "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=13F-HR&dateb=&owner=include&count=40";
+    const DATASETS_URL =
+      "https://www.sec.gov/data-research/financial-data-sets/form-13f-data-sets";
+    const BANNED_PATTERNS = [
+      "efts.sec.gov/LATEST/search-index",
+      "data.sec.gov",
+    ];
+
+    it("H9b-1 — primary search link does not contain 'search-index'", () => {
+      expect(PRIMARY_URL).not.toContain("search-index");
+    });
+
+    it("H9b-2 — primary search link does not use efts.sec.gov", () => {
+      expect(PRIMARY_URL).not.toContain("efts.sec.gov");
+    });
+
+    it("H9b-3 — primary search link points to human-readable EDGAR browse interface", () => {
+      expect(PRIMARY_URL).toContain("www.sec.gov/cgi-bin/browse-edgar");
+      expect(PRIMARY_URL).toContain("type=13F-HR");
+    });
+
+    it("H9b-4 — datasets link points to official Form 13F data sets page", () => {
+      expect(DATASETS_URL).toContain("www.sec.gov");
+      expect(DATASETS_URL).toContain("13f-data-sets");
+      expect(DATASETS_URL).not.toContain("efts.sec.gov");
+    });
+
+    it("H9b-5 — no raw JSON endpoint exposed (no banned patterns in either URL)", () => {
+      for (const pattern of BANNED_PATTERNS) {
+        expect(PRIMARY_URL).not.toContain(pattern);
+        expect(DATASETS_URL).not.toContain(pattern);
+      }
+    });
+
+    it("H9b-6 — primary URL uses https", () => {
+      expect(PRIMARY_URL.startsWith("https://")).toBe(true);
+    });
+
+    it("H9b-7 — datasets URL uses https", () => {
+      expect(DATASETS_URL.startsWith("https://")).toBe(true);
+    });
+
+    it("H9b-8 — compact unavailable state link also points away from EFTS search-index", () => {
+      const COMPACT_URL =
+        "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=13F-HR&dateb=&owner=include&count=40";
+      expect(COMPACT_URL).not.toContain("efts.sec.gov");
+      expect(COMPACT_URL).not.toContain("search-index");
+      expect(COMPACT_URL).toContain("www.sec.gov");
+    });
+  });
+
   // No predictive terminology tests
   describe("H10 — terminology compliance", () => {
     it("H10a — trendColorClass does not return 'accumulation' string", () => {

@@ -53,12 +53,13 @@ export function InstitutionalWorkspaceCompact({ symbol }: Props) {
         <p className="font-medium">Institutional — 13F</p>
         <p>Data unavailable —{" "}
           <a
-            href="https://efts.sec.gov/LATEST/search-index?q=%2213F-HR%22&forms=13F-HR"
+            href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=13F-HR&dateb=&owner=include&count=40"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-foreground"
+            data-testid="institutional-compact-sec-link"
           >
-            SEC EDGAR source
+            Search 13F filings on SEC EDGAR
           </a>
         </p>
       </div>

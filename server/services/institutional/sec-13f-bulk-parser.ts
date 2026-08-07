@@ -155,6 +155,12 @@ export interface BulkParseDiagnostics {
   amendmentSubmissionCount: number;
   /** Accessions where SUBMISSION and COVERPAGE disagreed on amendment status */
   amendmentFlagConflictCount: number;
+  /**
+   * Syntactic date-format distribution of PERIODOFREPORT values in holdings-bearing rows.
+   * Populated regardless of whether normalizeDateField() succeeds, so a full-UNKNOWN
+   * distribution means the date format is not yet supported.
+   */
+  detectedPeriodFormats: Record<DateFormatLabel, number>;
 }
 
 export interface ParsedBulkHolding {
@@ -572,6 +578,35 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
 }
 
 /**
+ * Detected syntactic format categories for date strings.
+ * Used by detectDateFormat() for diagnostic / sampling purposes.
+ * normalizeDateField() is always the canonical parser — never use this for conversion.
+ */
+export type DateFormatLabel =
+  | "ISO_DASH"     // YYYY-MM-DD
+  | "ISO_COMPACT"  // YYYYMMDD (8 digits)
+  | "US_SLASH"     // MM/DD/YYYY
+  | "US_DASH"      // MM-DD-YYYY
+  | "ISO_SLASH"    // YYYY/MM/DD
+  | "UNKNOWN";     // no supported pattern matched
+
+/**
+ * Classify the syntactic format of a raw date string.
+ * Diagnostic only — does NOT validate calendar correctness.
+ * normalizeDateField() is the canonical normalization path.
+ */
+export function detectDateFormat(raw: string): DateFormatLabel {
+  const s = raw.trim();
+  if (!s) return "UNKNOWN";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return "ISO_DASH";
+  if (/^\d{8}$/.test(s))             return "ISO_COMPACT";
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) return "US_SLASH";
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s))   return "US_DASH";
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(s))     return "ISO_SLASH";
+  return "UNKNOWN";
+}
+
+/**
  * Normalize a date string to ISO 8601 (YYYY-MM-DD) with strict calendar validation.
  *
  * Accepted input formats:
@@ -584,7 +619,7 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
  * Rejects impossible dates, partial dates, and unrecognised formats.
  * Never uses JavaScript Date loose-parsing.
  */
-function normalizeDateField(raw: string): string | null {
+export function normalizeDateField(raw: string): string | null {
   const s = raw.trim();
   if (!s) return null;
 
@@ -797,6 +832,10 @@ export function parseSubmissionTsv(text: string): {
   excludedNoticeCount: number;
   excludedUnknownCount: number;
   amendmentCount: number;
+  /** Syntactic format distribution of PERIODOFREPORT in holdings-bearing rows */
+  detectedPeriodFormats: Record<DateFormatLabel, number>;
+  /** Up to 10 distinct raw PERIODOFREPORT values from holdings-bearing rows (for diagnostics) */
+  rawPeriodSamples: string[];
 } {
   const { headers, rows: rawRows } = parseTsv(text);
   const lookup = buildHeaderLookup(headers);
@@ -835,6 +874,13 @@ export function parseSubmissionTsv(text: string): {
   let rejectedOtherSubmissionValidation = 0;
 
   let amendmentCount = 0;
+
+  // Period-of-report diagnostic collection (holdings-bearing rows only)
+  const periodFormatCounts: Record<DateFormatLabel, number> = {
+    ISO_DASH: 0, ISO_COMPACT: 0, US_SLASH: 0, US_DASH: 0, ISO_SLASH: 0, UNKNOWN: 0,
+  };
+  const rawPeriodSampleSet = new Set<string>(); // distinct values, capped at 10
+  const MAX_PERIOD_SAMPLES = 10;
 
   for (const raw of rawRows) {
     totalRows++;
@@ -911,6 +957,17 @@ export function parseSubmissionTsv(text: string): {
     const periodRaw     = getField(raw, lookup, SUB_PERIOD_ALIASES);
     const filingDateRaw = getField(raw, lookup, SUB_FILINGDATE_ALIASES);
 
+    // ── Period-of-report format sampling (done before any rejection) ─────
+    // Collect the syntactic format and up to MAX_PERIOD_SAMPLES distinct raw values
+    // regardless of whether the value is valid — this is purely diagnostic.
+    if (periodRaw.trim()) {
+      const fmt = detectDateFormat(periodRaw);
+      periodFormatCounts[fmt]++;
+      if (rawPeriodSampleSet.size < MAX_PERIOD_SAMPLES) {
+        rawPeriodSampleSet.add(periodRaw.trim());
+      }
+    }
+
     // Accession: missing check first; unknown format passes through
     if (!accRaw.trim()) { rejectedMissingAccession++; continue; }
     const accession = normalizeAccession(accRaw);
@@ -980,6 +1037,8 @@ export function parseSubmissionTsv(text: string): {
     excludedNoticeCount: excludedNoticeRows,
     excludedUnknownCount: excludedUnknownTypeRows,
     amendmentCount,
+    detectedPeriodFormats: periodFormatCounts,
+    rawPeriodSamples: [...rawPeriodSampleSet],
   };
 }
 
@@ -1345,6 +1404,9 @@ const EMPTY_DIAGNOSTICS: BulkParseDiagnostics = {
   excludedUnknownSubmissionTypeCount: 0, // alias for excludedUnknownTypeRows
   amendmentSubmissionCount: 0,
   amendmentFlagConflictCount: 0,
+  detectedPeriodFormats: {
+    ISO_DASH: 0, ISO_COMPACT: 0, US_SLASH: 0, US_DASH: 0, ISO_SLASH: 0, UNKNOWN: 0,
+  },
 };
 
 /**
@@ -1491,6 +1553,8 @@ export function parseBulkQuarterFromBuffer(
     excludedNoticeCount,
     excludedUnknownCount,
     amendmentCount: amendmentSubmissionCount,
+    detectedPeriodFormats,
+    rawPeriodSamples,
   } = parseSubmissionTsv(subText);
 
   /** Submission type diagnostics — shared into every early-return below. */
@@ -1514,6 +1578,8 @@ export function parseBulkQuarterFromBuffer(
     excludedNoticeCount,
     excludedUnknownSubmissionTypeCount: excludedUnknownCount,
     amendmentSubmissionCount,
+    detectedPeriodFormats,
+    rawPeriodSamples,
   };
 
   if (missingSubH.length > 0) {
@@ -1689,7 +1755,8 @@ export function parseBulkQuarterFromBuffer(
           `rejectedMissingPeriodOfReport=${rejectedMissingPeriodOfReport} ` +
           `rejectedInvalidPeriodOfReport=${rejectedInvalidPeriodOfReport} ` +
           `rejectedInvalidFilingDate=${rejectedInvalidFilingDate} ` +
-          `rejectedOtherSubmissionValidation=${rejectedOtherSubmissionValidation}`,
+          `rejectedOtherSubmissionValidation=${rejectedOtherSubmissionValidation} ` +
+          `detectedPeriodFormats=${JSON.stringify(detectedPeriodFormats)}`,
       };
     }
     return {
@@ -1733,7 +1800,8 @@ export function parseBulkQuarterFromBuffer(
         `rejectedMissingPeriodOfReport=${rejectedMissingPeriodOfReport} ` +
         `rejectedInvalidPeriodOfReport=${rejectedInvalidPeriodOfReport} ` +
         `rejectedInvalidFilingDate=${rejectedInvalidFilingDate} ` +
-        `rejectedOtherSubmissionValidation=${rejectedOtherSubmissionValidation}`;
+        `rejectedOtherSubmissionValidation=${rejectedOtherSubmissionValidation} ` +
+        `detectedPeriodFormats=${JSON.stringify(detectedPeriodFormats)}`;
     void code; // code is embedded in reason string
     return {
       status: "empty_parse_failure",

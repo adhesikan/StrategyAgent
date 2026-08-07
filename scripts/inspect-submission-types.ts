@@ -129,15 +129,13 @@ async function main(): Promise<void> {
 
   console.log(`[inspect] Resolved: ${subEntry.entryName}`);
 
-  const text = subEntry.getData().toString("utf8").replace(/^\uFEFF/, "");
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const fullText = subEntry.getData().toString("utf8").replace(/^\uFEFF/, "");
+  const lines = fullText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 
   if (lines.length < 2) {
     console.error("[inspect] ERROR: SUBMISSION.tsv is empty or header-only");
     process.exit(1);
   }
-
-  const fullText = subEntry.getData().toString("utf8").replace(/^\uFEFF/, "");
 
   // Parse header to find SUBMISSIONTYPE column index (for lightweight type-only scan)
   const headers = lines[0].split("\t").map((h) => h.trim().toUpperCase());
@@ -229,6 +227,46 @@ async function main(): Promise<void> {
     console.log(`[inspect]   other validation:             ${parsed.rejectedOtherSubmissionValidation}`);
     console.log("");
 
+    // ── PERIODOFREPORT diagnostics ────────────────────────────────────────────
+    // Counts and raw samples are collected from holdings-bearing rows before any
+    // rejection gate fires, so they represent the actual production format.
+    // Raw samples are safe to log — they are date values only (no manager names,
+    // addresses, or other filing metadata).
+    const nonemptyPeriodTotal =
+      Object.values(parsed.detectedPeriodFormats).reduce((s, n) => s + n, 0);
+    const currentlyParseable =
+      (parsed.detectedPeriodFormats.ISO_DASH ?? 0) +
+      (parsed.detectedPeriodFormats.ISO_COMPACT ?? 0) +
+      (parsed.detectedPeriodFormats.US_SLASH ?? 0) +
+      (parsed.detectedPeriodFormats.US_DASH ?? 0) +
+      (parsed.detectedPeriodFormats.ISO_SLASH ?? 0);
+    const currentlyRejected = parsed.detectedPeriodFormats.UNKNOWN ?? 0;
+
+    console.log(`[inspect] PERIODOFREPORT diagnostics:`);
+    console.log(`[inspect]   nonempty values:            ${nonemptyPeriodTotal}`);
+    console.log(`[inspect]   currently parseable:        ${currentlyParseable}`);
+    console.log(`[inspect]   currently rejected:         ${currentlyRejected}`);
+    console.log("");
+
+    if (parsed.rawPeriodSamples.length > 0) {
+      console.log(`[inspect] Raw examples (up to 10 distinct):`);
+      for (const v of parsed.rawPeriodSamples) {
+        console.log(`[inspect]   "${v}"`);
+      }
+      console.log("");
+    }
+
+    console.log(`[inspect] Detected patterns:`);
+    for (const [label, count] of Object.entries(parsed.detectedPeriodFormats)) {
+      if (count > 0) {
+        console.log(`[inspect]   ${label.padEnd(16)} ${count}`);
+      }
+    }
+    if (nonemptyPeriodTotal === 0) {
+      console.log(`[inspect]   (no nonempty PERIODOFREPORT values found in holdings-bearing rows)`);
+    }
+    console.log("");
+
     // Invariant check
     const totalRejected =
       parsed.rejectedMissingAccession +
@@ -261,7 +299,13 @@ async function main(): Promise<void> {
     console.log("");
     if (parsed.parsedRows === 0 && parsed.recognizedHoldingsFormRows > 0) {
       console.log("[inspect] ⚠  DIAGNOSIS: Holdings forms recognized but all failed field validation.");
-      console.log("[inspect]    Check the rejection counters above to identify the blocking field.");
+      if (currentlyRejected > 0) {
+        console.log("[inspect]    PERIODOFREPORT is the blocking field.");
+        console.log("[inspect]    The raw examples above show the unsupported date format.");
+        console.log("[inspect]    Share the raw examples so normalizeDateField() can be extended.");
+      } else {
+        console.log("[inspect]    Check the rejection counters above to identify the blocking field.");
+      }
       console.log("[inspect]    Expected: ALL_HOLDINGS_SUBMISSIONS_INVALID failure code in bulk parser.");
     } else if (parsed.parsedRows === 0 && parsed.recognizedHoldingsFormRows === 0) {
       console.log("[inspect] ⚠  DIAGNOSIS: No holdings-bearing form types recognized at all.");

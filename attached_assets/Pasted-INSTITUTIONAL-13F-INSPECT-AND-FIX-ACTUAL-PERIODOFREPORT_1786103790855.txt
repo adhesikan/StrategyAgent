@@ -1,0 +1,372 @@
+INSTITUTIONAL 13F — INSPECT AND FIX ACTUAL PERIODOFREPORT DATE FORMAT
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PRODUCTION DIAGNOSIS IS NOW CONCLUSIVE
+
+Command:
+
+npx tsx scripts/inspect-submission-types.ts --validate
+
+returned:
+
+Submission rows: 11,761
+
+Type classification:
+13F-HR recognized:          9,312
+13F-HR/A recognized:          404
+13F-NT excluded:             2,045
+UNKNOWN type excluded:           0
+Recognized holdings total:   9,716
+
+Field validation:
+parsed successfully:              0
+missing accession:                0
+non-standard accession:           0
+missing CIK:                      0
+invalid CIK:                      0
+missing period of report:         0
+invalid period of report:     9,716
+invalid filing date:              0
+other validation:                 0
+
+Invariant passes:
+
+9716 === 0 + 9716
+
+Therefore the exact production blocker is:
+
+normalizeDateField() does not recognize the actual SEC PERIODOFREPORT representation
+used in the post-2023 bulk dataset.
+
+Do NOT modify:
+
+- normalizeSubmissionType
+- SUBMISSIONTYPE aliases
+- form inclusion/exclusion
+- accession handling
+- CIK handling
+- COVERPAGE join
+- INFOTABLE parsing
+- SEC catalog logic
+- ZIP resolution
+- database schema
+- aggregation
+- CUSIP mappings
+- feature flags
+- Institutional UI
+
+This task is only to identify the live PERIODOFREPORT representation and support it
+strictly.
+
+Keep:
+
+INSTITUTIONAL_INTELLIGENCE_ENABLED=false
+
+====================================================================
+1. INSPECT ACTUAL PERIODOFREPORT VALUES
+====================================================================
+
+Extend:
+
+scripts/inspect-submission-types.ts --validate
+
+to report a bounded sample of raw PERIODOFREPORT values for recognized holdings-bearing
+13F-HR / 13F-HR/A rows.
+
+Print:
+
+- up to 10 distinct raw values
+- count by detected syntactic format
+- total nonempty period values
+- total values currently accepted by normalizeDateField()
+- total currently rejected
+
+Example output shape:
+
+[inspect] PERIODOFREPORT diagnostics:
+[inspect]   nonempty values:            9716
+[inspect]   currently parseable:           0
+[inspect]   currently rejected:         9716
+[inspect]
+[inspect] Raw examples:
+[inspect]   "<actual value>"
+[inspect]   "<actual value>"
+...
+[inspect]
+[inspect] Detected patterns:
+[inspect]   <pattern>       9716
+
+Do not print full SUBMISSION rows.
+
+Do not print manager names, addresses, credentials, or unrelated fields.
+
+====================================================================
+2. DO NOT GUESS THE FORMAT
+====================================================================
+
+The current normalizeDateField() already supports:
+
+YYYY-MM-DD
+YYYYMMDD
+MM/DD/YYYY
+MM-DD-YYYY
+YYYY/MM/DD
+
+Since all 9,716 rows still fail, the production values clearly use a different
+representation.
+
+Inspect the exact raw value first.
+
+Do not add speculative formats until observed.
+
+Possible examples are irrelevant until verified.
+
+The actual archive is the source of truth.
+
+====================================================================
+3. ADD ONE STRICT NORMALIZATION RULE FOR THE OBSERVED FORMAT
+====================================================================
+
+Once the production value is known, extend normalizeDateField() with the smallest
+possible deterministic rule.
+
+Requirements:
+
+- exact syntactic recognition;
+- strict calendar validation;
+- normalize to YYYY-MM-DD;
+- reject malformed values;
+- reject impossible dates;
+- no loose `new Date(raw)` parsing;
+- no Date.parse(raw);
+- no locale-dependent interpretation.
+
+If the observed value contains a timestamp or timezone, separate the date component
+only if the SEC schema clearly defines the field that way.
+
+If the observed representation is numeric or epoch-like, document the SEC semantics
+before converting it.
+
+====================================================================
+4. DETECT FORMAT BEFORE NORMALIZATION
+====================================================================
+
+Add a pure helper if useful:
+
+detectDateFormat(raw)
+
+Possible return values should reflect only supported formats, such as:
+
+ISO_DASH
+ISO_COMPACT
+US_SLASH
+US_DASH
+ISO_SLASH
+<NEW_ACTUAL_SEC_FORMAT>
+UNKNOWN
+
+This is diagnostic only.
+
+normalizeDateField() remains the canonical parser.
+
+====================================================================
+5. UPDATE VALIDATION DIAGNOSTICS
+====================================================================
+
+After adding support, --validate should show:
+
+Recognized holdings total: 9716
+
+Field validation:
+  parsed successfully:          9716
+  missing accession:               0
+  invalid accession:               0
+  missing CIK:                     0
+  invalid CIK:                     0
+  missing period of report:        0
+  invalid period of report:        0
+  invalid filing date:             0
+
+Invariant:
+
+9716 === 9716 + 0 ✓
+
+Do not proceed to full INFOTABLE parsing unless:
+
+parsedSubmissionRows > 0
+
+Preferably for this dataset:
+
+parsedSubmissionRows == 9716
+
+or explain any legitimate rejected rows.
+
+====================================================================
+6. VERIFY PERIOD SEMANTICS
+====================================================================
+
+The selected dataset is:
+
+01mar2026-31may2026_form13f.zip
+
+Expected primary holdings period:
+
+2026-03-31
+
+After fixing date parsing, inspect parsed period distribution.
+
+Report bounded counts such as:
+
+2026-03-31     N
+2025-12-31     N
+other dates    N
+
+Do not assume every filing in the ZIP reports the primary quarter.
+
+The dataset is a filing-window dataset.
+
+Persist each filing's actual period of report.
+
+This is important for late filings and amendments.
+
+====================================================================
+7. FILING DATE REGRESSION CHECK
+====================================================================
+
+Although production currently shows:
+
+invalid filing date: 0
+
+add regression coverage proving the new period-date rule does not alter FILING_DATE
+parsing unexpectedly.
+
+PERIODOFREPORT and FILING_DATE both use normalizeDateField(), so ensure the new rule is
+safe for both.
+
+====================================================================
+8. FAILURE MESSAGE
+====================================================================
+
+Preserve:
+
+ALL_HOLDINGS_SUBMISSIONS_INVALID
+
+if recognized holdings-bearing submissions exist but all fail date validation.
+
+Improve the message to include:
+
+recognizedHoldingsFormRows
+rejectedInvalidPeriodOfReport
+detectedPeriodFormats
+
+Do not include every raw value in normal production logs.
+
+Full sample values should be emitted only by the explicit diagnostic script.
+
+====================================================================
+9. TESTS
+====================================================================
+
+Add tests covering:
+
+A. Exact production PERIODOFREPORT raw format
+→ normalized correctly
+
+B. Multiple production examples
+→ correct YYYY-MM-DD values
+
+C. Invalid variant of the new format
+→ rejected
+
+D. Impossible calendar date in new format
+→ rejected
+
+E. Existing YYYY-MM-DD still works
+
+F. Existing YYYYMMDD still works
+
+G. Existing MM/DD/YYYY still works
+
+H. Existing MM-DD-YYYY still works
+
+I. Existing YYYY/MM/DD still works
+
+J. New format does not create ambiguity with existing formats
+
+K. 9,716-row simulated production distribution
+→ parsedSubmissionRows = 9,716
+
+L. period distribution preserves actual filing periods
+
+M. filing-date parsing regression
+
+N. detectDateFormat identifies new format
+
+O. diagnostic prints maximum 10 sample values
+
+P. diagnostic performs no DB writes
+
+Q. failure remains ALL_HOLDINGS_SUBMISSIONS_INVALID if unsupported
+
+R. all counter invariants remain valid
+
+Run:
+
+- submission validation tests
+- institutional tests
+- TypeScript
+- client tests
+
+====================================================================
+10. PRODUCTION VERIFICATION ORDER
+====================================================================
+
+After deployment, DO NOT immediately run the two-quarter backfill.
+
+First run:
+
+npx tsx scripts/inspect-submission-types.ts --validate
+
+Confirm:
+
+recognized holdings total: 9716
+parsed successfully: > 0
+invalid period of report: 0
+
+Ideally:
+
+parsed successfully: 9716
+
+Then run:
+
+npx tsx scripts/run-institutional-backfill.ts --quarters 2
+
+Only after submission validation passes.
+
+====================================================================
+11. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Exact raw PERIODOFREPORT values observed
+2. Detected format
+3. Why previous five formats failed
+4. Files changed
+5. New normalization rule
+6. Strict calendar validation behavior
+7. Period distribution
+8. FILING_DATE regression result
+9. Tests added
+10. Total tests
+11. Typecheck
+12. Exact production validation command
+13. Expected successful validation output
+14. GO / CONDITIONAL_GO / NO_GO
+
+Do not commit, push, deploy, run full ingestion, seed mappings, change Railway
+variables, or enable Institutional Intelligence automatically.
+
+Wait for review.

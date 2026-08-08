@@ -1,0 +1,387 @@
+FINAL RELEASE VALIDATION — Sprints 2.3.4 + 2.3.5 + Railway Build Fix
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PURPOSE
+
+Sprints 2.3.4 and 2.3.5 plus the Railway production-build import fix are now
+present together in the current working tree.
+
+Do NOT add features.
+Do NOT refactor unrelated code.
+Do NOT modify product behavior.
+
+Perform a final release-candidate validation of the CURRENT TREE before it is pushed
+and deployed to Railway.
+
+============================================================
+1. VERIFY CURRENT TREE
+============================================================
+
+Report:
+
+- current branch
+- git status
+- changed files
+- untracked files
+- latest commit if available
+
+Confirm the current tree contains:
+
+Sprint 2.3.4:
+- Market Intelligence Dashboard
+- /api/intelligence/briefing
+- Intelligence navigation
+
+Sprint 2.3.5:
+- /research Market Research Hub
+- /research/library
+- Research nav update
+
+Build fix:
+- server/routes/intelligence.ts imports getLatestRanking from
+  opportunity-ranking-engine.ts
+
+Do not revert any of these changes.
+
+============================================================
+2. PRODUCTION BUILD — MANDATORY
+============================================================
+
+Run:
+
+npm run build
+
+This must PASS.
+
+Report:
+
+client build result
+server build result
+output artifacts
+all warnings
+all errors
+
+Any build ERROR = NO_GO.
+
+Warnings may be classified separately.
+
+============================================================
+3. APPLICATION TEST SUITE
+============================================================
+
+Run the full APPLICATION test suite.
+
+Important:
+
+Do NOT count third-party tests from:
+
+.cache
+node_modules
+Bun package caches
+generated vendor folders
+
+If Vitest currently discovers tests from .cache, do not treat those third-party
+failures as application failures.
+
+Prefer running the repository's configured application test scope.
+
+Report:
+
+application test files
+application assertions
+passed
+failed
+skipped
+
+Expected current baseline is approximately:
+
+109 application test files
+4865 application assertions
+0 application assertion failures
+
+If counts differ, explain why.
+
+Do not hide genuine workspace failures.
+
+============================================================
+4. THIRD-PARTY TEST DISCOVERY
+============================================================
+
+Inspect why react-day-picker tests under:
+
+.cache/.bun/install/cache/
+
+are being discovered.
+
+Do NOT make broad test configuration changes unless trivially safe.
+
+Report:
+
+- whether .cache is currently excluded from Vitest
+- whether these tests affect CI/build
+- recommended backlog fix if needed
+
+Do not block release solely because vendor tests outside our application fail.
+
+============================================================
+5. TYPESCRIPT VALIDATION
+============================================================
+
+Run the project's normal typecheck command.
+
+If the repository has known pre-existing TypeScript errors:
+
+- capture current errors
+- compare them with the known baseline
+- confirm no NEW errors were introduced by 2.3.4, 2.3.5, or the build fix
+
+Specifically inspect changed files.
+
+Do not claim "TypeScript clean" if the overall repository is not clean.
+
+Instead report:
+
+NEW TypeScript errors: X
+PRE-EXISTING TypeScript errors: Y
+
+Any new error in changed code = NO_GO.
+
+============================================================
+6. IMPORT / EXPORT VALIDATION
+============================================================
+
+Confirm:
+
+server/routes/intelligence.ts
+→ getLatestRanking imported from opportunity-ranking-engine.ts
+
+Also verify all imports introduced by 2.3.4–2.3.5 resolve successfully.
+
+Pay particular attention to:
+
+getLatestRanking
+runIntelligencePrecomputation
+getLatestSectorSnapshots
+getLatestThemeSnapshots
+registerIntelligenceRoutes
+MarketResearchHub routes/components
+
+No missing exports.
+
+============================================================
+7. ROUTE CONTRACT SMOKE TEST
+============================================================
+
+Verify route registration and contracts for:
+
+GET /api/opportunities/today
+
+GET /api/opportunities/changes/explained
+
+GET /api/intelligence/briefing
+
+GET /api/intelligence/sectors
+
+GET /api/intelligence/themes
+
+GET /api/institutional/funds
+
+GET /research
+GET /research/library
+GET /intelligence
+
+For API routes, use tests or safe local requests if the server can be started without
+production dependencies.
+
+Do not require live market data for release validation.
+
+Expected empty/unavailable states are acceptable.
+
+500 caused by code/import/route errors is not acceptable.
+
+============================================================
+8. CLIENT ROUTING VALIDATION
+============================================================
+
+Verify:
+
+/research
+→ Market Research Hub
+
+/research/library
+→ Research Library
+
+/research/:id
+→ Research Detail
+
+/intelligence
+→ Market Intelligence
+
+/intelligence/themes/:themeId
+→ Theme Detail
+
+/intelligence/sectors/:sector
+→ Sector Detail
+
+/opportunities/:symbol
+→ Opportunity Workspace
+
+Check route ordering so:
+
+/research/library
+
+is not swallowed by:
+
+/research/:id
+
+============================================================
+9. PARTIAL-DATA RESILIENCE
+============================================================
+
+Verify the new pages do not crash when:
+
+ranking unavailable
+intelligence snapshots unavailable
+institutional data unavailable
+funds API returns 401
+changes unavailable
+no second intelligence snapshot exists
+
+/research must remain usable if one module fails.
+
+/intelligence must render graceful empty states.
+
+============================================================
+10. COMPLIANCE LANGUAGE REGRESSION
+============================================================
+
+Verify newly added user-facing text does not introduce:
+
+recommendation
+you should buy
+you should sell
+smart money
+best stocks to buy
+guaranteed
+strong buy
+strong sell
+
+Institutional modules must retain delayed-13F disclosure.
+
+============================================================
+11. NO REGRESSION TO CORE ENGINES
+============================================================
+
+Confirm the release did NOT unintentionally modify:
+
+scanner qualification logic
+Opportunity Ranking weights
+Institutional Signal formula
+Opportunity Change formula
+broker execution
+InstaTrade behavior
+
+Report any unexpected diffs.
+
+============================================================
+12. RELEASE WARNINGS
+============================================================
+
+Classify warnings into:
+
+BLOCKING
+NON-BLOCKING
+BACKLOG
+
+Known likely backlog warnings include:
+
+- large Vite chunk (~3 MB)
+- import.meta warning in import-rithmic-api.ts
+- duplicate object keys in portfolio-intelligence-engine.ts
+- outdated Browserslist data
+- PostCSS "from" warning
+- third-party tests discovered under .cache
+
+Do not fix these unless they directly block this release.
+
+============================================================
+13. RAILWAY STARTUP CONTRACT
+============================================================
+
+Inspect the production start command:
+
+npx tsx script/migrate.ts && npm run start
+
+Confirm:
+
+- migration script exists
+- build output expected by npm run start exists
+- no new migration required by 2.3.5
+- intelligence snapshot tables from prior sprint are covered by startup migration
+  or already deployed as expected
+
+Do not mutate the production database during validation.
+
+============================================================
+14. FINAL RELEASE VERDICT
+============================================================
+
+Return exactly:
+
+A. Current tree summary
+
+B. npm run build
+PASS / FAIL
+
+C. Application tests
+files:
+assertions:
+failures:
+
+D. TypeScript
+new errors:
+pre-existing errors:
+
+E. Import/export validation
+PASS / FAIL
+
+F. Route validation
+PASS / FAIL
+
+G. Partial-data resilience
+PASS / FAIL
+
+H. Compliance regression
+PASS / FAIL
+
+I. Railway startup contract
+PASS / FAIL
+
+J. Blocking issues
+
+K. Non-blocking warnings
+
+L. Backlog items
+
+M. FINAL VERDICT:
+GO
+CONDITIONAL_GO
+or
+NO_GO
+
+GO requires:
+
+- npm run build passes
+- zero application test failures
+- zero new TypeScript errors in changed code
+- no missing exports
+- route contracts valid
+- no new runtime crash path identified
+
+Do NOT commit.
+Do NOT push.
+Do NOT deploy.
+
+Wait for review.

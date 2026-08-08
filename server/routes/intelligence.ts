@@ -59,6 +59,16 @@ function buildDashboardContracts(
 // Route registration
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Rebuild concurrency lock (in-memory, single-process)
+// ---------------------------------------------------------------------------
+
+let _rebuildRunning = false;
+
+export function isIntelligenceRebuildRunning(): boolean {
+  return _rebuildRunning;
+}
+
 export function registerIntelligenceRoutes(
   app: Express,
   isAuthenticated?: RequestHandler,
@@ -440,6 +450,26 @@ export function registerIntelligenceRoutes(
           diag.institutionalSignals = { rowCount: null };
         }
 
+        // ── Classification coverage ──────────────────────────────────────────
+        try {
+          const cov = await db.execute<{ total: string; with_sector: string }>(sql`
+            SELECT
+              COUNT(*)::text                                         AS total,
+              COUNT(*) FILTER (WHERE sector IS NOT NULL AND sector != '')::text AS with_sector
+            FROM market_data_symbols
+            WHERE enabled = true
+          `);
+          const total      = parseInt(cov.rows[0]?.total      ?? "0", 10);
+          const withSector = parseInt(cov.rows[0]?.with_sector ?? "0", 10);
+          diag.classificationCoverage = {
+            total,
+            withSector,
+            pct: total > 0 ? Math.round((withSector / total) * 100) : 0,
+          };
+        } catch {
+          diag.classificationCoverage = { total: null, withSector: null, pct: null };
+        }
+
         // ── Briefing build feasibility ────────────────────────────────────────
         const sSec = diag.sectorSnapshots as any;
         const sTh  = diag.themeSnapshots  as any;
@@ -460,11 +490,19 @@ export function registerIntelligenceRoutes(
     // ── POST /api/admin/intelligence/rebuild ────────────────────────────────
     // Admin-only. Rebuilds sector and theme intelligence snapshots from the
     // latest in-memory ranking. Does NOT re-run the scanner. Idempotent.
+    // Protected by a simple concurrency lock so parallel clicks don't queue.
     app.post(
       "/api/admin/intelligence/rebuild",
       isAuthenticated,
       isAdmin,
       async (_req: Request, res: Response) => {
+        if (_rebuildRunning) {
+          return res.status(409).json({
+            error: "Rebuild already in progress",
+            hint:  "Another rebuild is running — wait for it to complete before triggering a new one.",
+          });
+        }
+
         const ranking = getLatestRanking();
         if (!ranking) {
           return res.status(409).json({
@@ -472,6 +510,10 @@ export function registerIntelligenceRoutes(
             hint:  "Intelligence snapshots require a completed ranking cycle first.",
           });
         }
+
+        _rebuildRunning = true;
+        const startedAt = Date.now();
+        console.log(JSON.stringify({ event: "intelligence_rebuild_started" }));
 
         try {
           await runIntelligencePrecomputation();
@@ -481,15 +523,28 @@ export function registerIntelligenceRoutes(
             getLatestThemeSnapshots(),
           ]);
 
+          console.log(JSON.stringify({
+            event:       "intelligence_rebuild_completed",
+            sectorCount: sectors.length,
+            themeCount:  themes.length,
+            durationMs:  Date.now() - startedAt,
+          }));
+
           res.json({
-            ok:           true,
-            sectorCount:  sectors.length,
-            themeCount:   themes.length,
-            generatedAt:  themes[0]?.generatedAt ?? sectors[0]?.generatedAt ?? null,
+            ok:          true,
+            sectorCount: sectors.length,
+            themeCount:  themes.length,
+            generatedAt: themes[0]?.generatedAt ?? sectors[0]?.generatedAt ?? null,
           });
         } catch (err: any) {
-          console.error("[intelligence] admin rebuild failed:", err?.message);
+          console.error(JSON.stringify({
+            event:        "intelligence_rebuild_failed",
+            errorMessage: err?.message?.slice(0, 300),
+            durationMs:   Date.now() - startedAt,
+          }));
           res.status(500).json({ error: "Intelligence rebuild failed", detail: err?.message });
+        } finally {
+          _rebuildRunning = false;
         }
       },
     );

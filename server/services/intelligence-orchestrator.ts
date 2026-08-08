@@ -1,14 +1,19 @@
-// Intelligence Orchestrator — Sprint 2.3.3
+// Intelligence Orchestrator — Sprint 2.3.3 / updated 2.3.6
 //
 // Fetches all required data from the DB and in-memory ranking, then invokes
 // sector and theme intelligence engines, and persists the results.
 //
 // Called fire-and-forget from opportunity-engine.ts after ranking completes.
 // Never throws — failures are logged and skipped.
+//
+// Sprint 2.3.6 fix: loadSymbolSectors() now reads from market_data_symbols
+// (the active-symbol source of truth) joined with symbols for sector/industry,
+// replacing the old query that only read from symbols WHERE sector IS NOT NULL
+// (which returned 0 rows when the symbols table was empty).
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { symbols as symbolsTable, institutionalSymbolSignals } from "../../shared/schema";
+import { institutionalSymbolSignals } from "../../shared/schema";
 import { getLatestRanking } from "./opportunity-ranking-engine";
 import { getAllThemes } from "../config/theme-registry";
 import {
@@ -99,12 +104,37 @@ function buildRankedSummaries(ranking: ReturnType<typeof getLatestRanking>): Ran
 // ---------------------------------------------------------------------------
 
 async function loadSymbolSectors(): Promise<SymbolSectorInfo[]> {
-  const rows = await db.execute<{ ticker: string; sector: string | null; industry: string | null }>(
-    sql`SELECT ticker, sector, industry FROM symbols WHERE sector IS NOT NULL AND is_active = true`,
-  );
-  return rows.rows
-    .filter(r => r.sector)
-    .map(r => ({ symbol: r.ticker, sector: r.sector!, industry: r.industry ?? null }));
+  // Sprint 2.3.6: read from market_data_symbols (active-symbol source of truth)
+  // and LEFT JOIN symbols for sector/industry metadata.
+  // Also accepts sector directly on market_data_symbols (populated by symbol enrichment).
+  const rows = await db.execute<{ symbol: string; sector: string | null; industry: string | null }>(sql`
+    SELECT
+      m.symbol,
+      COALESCE(NULLIF(m.sector, ''), NULLIF(s.sector, ''))       AS sector,
+      COALESCE(NULLIF(s.industry, ''), NULL)                      AS industry
+    FROM market_data_symbols m
+    LEFT JOIN symbols s ON s.ticker = m.symbol
+    WHERE m.enabled = true
+      AND COALESCE(NULLIF(m.sector, ''), NULLIF(s.sector, '')) IS NOT NULL
+    ORDER BY m.symbol
+  `);
+
+  const result = rows.rows
+    .filter(r => r.sector && r.sector.trim() !== "")
+    .map(r => ({
+      symbol:   r.symbol,
+      sector:   r.sector!,
+      industry: r.industry ?? null,
+    }));
+
+  structuredLog("info", {
+    event:             "symbol_sectors_loaded",
+    count:             result.length,
+    withSector:        result.length,
+    withIndustry:      result.filter(r => r.industry).length,
+  });
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

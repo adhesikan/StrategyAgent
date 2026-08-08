@@ -90,10 +90,14 @@ export interface SectorIntelligence extends SectorMetrics {
 }
 
 export interface SectorSnapshot {
-  generatedAt: string;
-  sectors: SectorIntelligence[];
-  regime: string | null;
-  totalRankedSymbols: number;
+  generatedAt:         string;
+  sectors:             SectorIntelligence[];
+  regime:              string | null;
+  totalRankedSymbols:  number;
+  /** Ranked symbols that had no sector classification — diagnostics only */
+  unclassifiedCount:   number;
+  /** Symbols in classification DB that had no matching ranked entry */
+  classifiedButUnrankedCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -443,11 +447,12 @@ export function computeSectorSnapshot(input: SectorAggregationInput): SectorSnap
     if (info.industry) group.industries.push(info.industry);
   }
 
-  // Also add ranked symbols that might not be in the symbols table
-  for (const r of rankedSymbols) {
-    const info = symbolSectors.find(s => s.symbol === r.symbol);
-    if (!info?.sector) continue; // skip unclassified ranked symbols from sector grouping
-  }
+  // Count ranked symbols with no sector classification (diagnostics — not added to any sector)
+  const classifiedSymbolSet = new Set(symbolSectors.map(s => s.symbol));
+  const unclassifiedCount = rankedSymbols.filter(r => !classifiedSymbolSet.has(r.symbol)).length;
+
+  // Count classified-but-unranked symbols
+  const classifiedButUnrankedCount = symbolSectors.filter(s => !rankedMap.has(s.symbol)).length;
 
   // Compute intelligence for each sector
   const sectors: SectorIntelligence[] = [];
@@ -479,6 +484,8 @@ export function computeSectorSnapshot(input: SectorAggregationInput): SectorSnap
     generatedAt,
     sectors,
     regime,
-    totalRankedSymbols: rankedSymbols.length,
+    totalRankedSymbols:       rankedSymbols.length,
+    unclassifiedCount,
+    classifiedButUnrankedCount,
   };
 }

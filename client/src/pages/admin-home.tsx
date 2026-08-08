@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck, Database, Link2 } from "lucide-react";
+import { Users, Mail, Eye, Handshake, Shield, ArrowRight, ShieldAlert, Beaker, ShieldCheck, Database, Link2, Activity } from "lucide-react";
 
 interface AdminStats {
   totalUsers: number;
@@ -83,6 +83,13 @@ const tools = [
     href: "/admin/institutional-mappings",
     icon: Link2,
     testId: "card-admin-institutional-mappings",
+  },
+  {
+    title: "Platform Health",
+    description: "System status, job monitoring, intelligence rebuild & symbol enrichment",
+    href: "/admin/platform-health",
+    icon: Activity,
+    testId: "card-admin-platform-health",
   },
 ];
 

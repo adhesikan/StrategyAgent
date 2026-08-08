@@ -1,0 +1,159 @@
+# VCP Trader AI — System Manifest
+# Machine-readable catalog for operations, agents, and orchestration.
+# DO NOT include secret values — names only.
+
+version: "2.3.6"
+updated: "2026-08-08"
+
+services:
+  - name: api-server
+    type: express
+    port: 5000
+    entry: dist/index.cjs
+    dev_entry: server/index.ts
+
+  - name: vite-dev
+    type: vite
+    port: 5173
+    env: development_only
+
+databases:
+  - name: postgresql
+    provider: railway
+    connection_var: DATABASE_URL
+    orm: drizzle
+
+background_jobs:
+  - name: scanner
+    schedule: "every OPPORTUNITY_SCAN_INTERVAL_MINUTES minutes (default 240)"
+    advisory_lock: 774412002
+    trigger: automatic
+  - name: ranking
+    schedule: "after scanner completes"
+    trigger: automatic
+  - name: intelligence_precompute
+    schedule: "fire-and-forget after ranking"
+    trigger: automatic
+  - name: institutional_ingestion
+    schedule: quarterly
+    advisory_lock: 774412003
+    trigger: automatic + admin
+    requires: INSTITUTIONAL_13F_INGESTION_ENABLED=true
+  - name: mapping_pipeline
+    schedule: after ingestion
+    trigger: admin
+  - name: symbol_enrichment
+    schedule: on-demand
+    trigger: admin
+    requires: TWELVE_DATA_API_KEY
+
+feature_flags:
+  - name: MCP_ENABLED
+    type: boolean
+    default: "false"
+    description: Enable MCP tool layer
+  - name: INSTITUTIONAL_13F_INGESTION_ENABLED
+    type: boolean
+    default: "false"
+    description: Enable background 13F SEC ingestion
+  - name: INSTITUTIONAL_INTELLIGENCE_ENABLED
+    type: boolean
+    default: "true"
+    description: Show institutional signals in UI
+  - name: MARKET_HISTORY_DATABASE_FIRST
+    type: boolean
+    default: "true"
+    description: Use database-first for market history
+  - name: TRADER_BRAIN_ENABLED
+    type: boolean
+    default: "false"
+    description: Enable TraderBrain AI analysis mode
+  - name: OPPORTUNITY_SCAN_INTERVAL_MINUTES
+    type: integer
+    default: "240"
+    min: 30
+    max: 1440
+    description: Scanner interval in minutes
+
+admin_endpoints:
+  - path: /api/admin/platform-health
+    method: GET
+    auth: admin
+    description: Full platform health JSON
+    cache: 30s
+  - path: /api/admin/platform-health/refresh
+    method: POST
+    auth: admin
+    description: Invalidate cache and re-check health
+  - path: /api/admin/intelligence/diagnostics
+    method: GET
+    auth: admin
+    description: Intelligence snapshot diagnostics
+  - path: /api/admin/intelligence/rebuild
+    method: POST
+    auth: admin
+    description: Rebuild sector+theme snapshots from latest ranking
+    idempotent: true
+    concurrent: false
+  - path: /api/admin/symbols/enrich
+    method: POST
+    auth: admin
+    description: Populate sector/industry via Twelve Data /profile
+    idempotent: true
+  - path: /api/admin/users
+    method: GET
+    auth: admin
+    description: User management
+  - path: /api/admin/market-data
+    method: GET
+    auth: admin
+    description: Market data ingestion status
+  - path: /api/admin/institutional-mappings
+    method: GET
+    auth: admin
+    description: Security master mapping review
+
+public_apis:
+  - path: /api/intelligence/briefing
+    method: GET
+    auth: none
+    description: Daily intelligence briefing (returns hasData:false when empty)
+  - path: /api/intelligence/sectors
+    method: GET
+    auth: none
+    description: All sector intelligence snapshots
+  - path: /api/intelligence/themes
+    method: GET
+    auth: none
+    description: All theme intelligence snapshots
+  - path: /api/opportunities/today
+    method: GET
+    auth: none
+    description: Latest ranked opportunities
+  - path: /api/opportunities/latest
+    method: GET
+    auth: none
+    description: Latest opportunity scan snapshot
+
+health_checks:
+  - name: database
+    endpoint: SELECT 1
+    cache: 30s
+  - name: mcp
+    endpoint: GET $MCP_BASE_URL/health
+    timeout: 5s
+    cache: 30s
+  - name: twelve_data
+    check: credential presence
+    cache: 30s
+
+scheduled_jobs:
+  - name: opportunity_scan
+    env_var: OPPORTUNITY_SCAN_INTERVAL_MINUTES
+    default_minutes: 240
+  - name: thirteen_f_ingestion
+    schedule: quarterly
+    requires: INSTITUTIONAL_13F_INGESTION_ENABLED=true
+  - name: market_data_ingestion
+    schedule: daily
+    requires: TWELVE_DATA_API_KEY

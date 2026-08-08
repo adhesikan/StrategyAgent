@@ -80,6 +80,7 @@ import { registerInstitutionalMappingRoutes } from "./routes/institutional-mappi
 import { registerInstitutionalSignalRoutes } from "./routes/institutional-signals";
 import { registerInstitutionalFundsRoutes } from "./routes/institutional-funds";
 import { registerIntelligenceRoutes } from "./routes/intelligence";
+import { registerPlatformHealthRoutes } from "./routes/platform-health";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -243,6 +244,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerInstitutionalFundsRoutes(app, isAuthenticated);
   registerInstitutionalRoute(app, isAuthenticated); // dynamic :symbol — always last
   registerIntelligenceRoutes(app, isAuthenticated, isAdmin);
+  registerPlatformHealthRoutes(app, isAuthenticated, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;
     const user = await authStorage.getUser(req.session.userId);

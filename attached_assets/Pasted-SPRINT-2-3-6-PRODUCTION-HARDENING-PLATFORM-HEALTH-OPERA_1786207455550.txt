@@ -1,0 +1,1202 @@
+SPRINT 2.3.6 — PRODUCTION HARDENING, PLATFORM HEALTH & OPERATIONS HANDBOOK
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Production Hardening
+
+PURPOSE
+
+The major Trader Intelligence foundation is now built:
+
+- Market data
+- MCP tool layer
+- Scanner
+- Opportunity Ranking Engine
+- Opportunity Change Intelligence
+- Opportunity Research Workspace
+- SEC Form 13F ingestion
+- Institutional mapping
+- Institutional Signal Engine
+- Institutional Fund Explorer
+- Sector Intelligence
+- Theme Intelligence
+- Market Intelligence Dashboard
+- Market Research Hub
+
+Production is functioning, but recent UAT exposed several operational issues:
+
+- Railway production-build import mismatch
+- SEC field-format changes
+- SEC VALUE unit mismatch
+- long-running institutional ingestion
+- resumability/timeouts
+- route precedence collision
+- production-only Date/string timestamp behavior
+- intelligence snapshot diagnosis
+- missing sector snapshots
+- need for manual intelligence rebuild
+- raw admin JSON diagnostics
+
+This sprint does NOT add another trader feature.
+
+The goal is to make the existing platform:
+
+RELIABLE
+OBSERVABLE
+DIAGNOSABLE
+RECOVERABLE
+DOCUMENTED
+
+Do NOT start Portfolio Research Intelligence in this sprint.
+
+======================================================================
+1. PRIMARY PRODUCTION DEFECT — SECTOR SNAPSHOTS = 0
+======================================================================
+
+Current production diagnostics show approximately:
+
+ranking.exists = true
+ranking.rankedSymbolCount = 5
+
+themeSnapshots.tableExists = true
+themeSnapshots.rowCount = 48
+
+sectorSnapshots.tableExists = true
+sectorSnapshots.rowCount = 0
+
+institutionalSignals.rowCount = 0
+
+briefing.canBuild = true
+
+Theme Intelligence is working.
+
+Sector Intelligence is NOT generating snapshots.
+
+Find the exact root cause.
+
+Do not guess.
+
+Trace:
+
+latest opportunity ranking
+→ intelligence precomputation
+→ symbol metadata lookup
+→ sector grouping
+→ aggregateSector()
+→ sector snapshot writes
+→ sector_intelligence_snapshots
+
+Report the FIRST stage where sector data becomes empty.
+
+======================================================================
+2. AUDIT SYMBOL CLASSIFICATION COVERAGE
+======================================================================
+
+For every symbol in the latest production ranking report:
+
+symbol
+company name
+symbols.sector
+symbols.industry
+theme memberships
+
+Report totals:
+
+rankedSymbolCount
+withSector
+withoutSector
+withIndustry
+withoutIndustry
+inAnyTheme
+notInAnyTheme
+
+Also report global symbols-table coverage:
+
+total symbols
+sector populated
+industry populated
+sector coverage %
+industry coverage %
+
+The existing 2.3.3 implementation uses:
+
+symbols.sector
+
+as the canonical sector source.
+
+Do NOT hardcode sectors inside the Sector Intelligence engine.
+
+======================================================================
+3. FIX SECTOR METADATA PIPELINE IF REQUIRED
+======================================================================
+
+If symbols.sector / symbols.industry is the root cause:
+
+identify where company metadata currently enters the system.
+
+Inspect existing providers/services:
+
+Twelve Data
+broker APIs
+internal market-data endpoints
+symbol bootstrap/seed process
+company/profile services
+
+Choose the existing canonical source whenever possible.
+
+Create an idempotent enrichment path such as:
+
+enrichMissingSymbolClassifications()
+
+Requirements:
+
+- only fill missing values
+- never overwrite reviewed/non-empty classifications without explicit reason
+- batch processing
+- retry-safe
+- rate-limit aware
+- deterministic
+- logs coverage before/after
+
+Do NOT create a new expensive external data provider unless absolutely required.
+
+If existing data is already available elsewhere in the DB, synchronize it instead.
+
+======================================================================
+4. SECTOR FALLBACK POLICY
+======================================================================
+
+If a ranked symbol lacks sector metadata:
+
+do not silently discard it.
+
+Classify as:
+
+Unclassified
+
+for diagnostics/coverage purposes.
+
+BUT:
+
+Unclassified must NOT become a normal leading sector.
+
+Expose classification coverage.
+
+Example:
+
+Technology
+score 74
+coverage high
+
+Unclassified
+3 symbols
+not scored
+
+Do not produce false sector intelligence from unknown classifications.
+
+======================================================================
+5. REBUILD INTELLIGENCE
+======================================================================
+
+Existing admin endpoint:
+
+POST /api/admin/intelligence/rebuild
+
+Verify it:
+
+- uses latest in-memory ranking
+- rebuilds BOTH sector and theme snapshots
+- is idempotent
+- does not run scanner
+- returns sectorCount and themeCount
+- logs start/end/error
+- cannot run concurrently with itself
+
+Add a simple locking mechanism if necessary.
+
+Expected production result after classification fix:
+
+sectorCount > 0
+themeCount > 0
+
+======================================================================
+6. ADMIN PLATFORM HEALTH PAGE
+======================================================================
+
+Create:
+
+/admin/platform-health
+
+Admin-only.
+
+This becomes the single operational control center for VCP Trader AI.
+
+Do NOT expose secrets.
+
+Display health cards for:
+
+APPLICATION
+- server status
+- deployment/build version if available
+- environment
+- uptime
+
+DATABASE
+- reachable
+- migration/schema ready
+- connection health
+
+MARKET DATA
+- Twelve Data configured
+- latest successful daily-data retrieval
+- freshness
+
+MCP
+- MCP_ENABLED
+- MCP service reachable
+- latest tool success
+- provider
+
+SCANNER
+- latest scan
+- candidate count
+- qualified count
+- duration
+- status
+
+OPPORTUNITY RANKING
+- ranking exists
+- generatedAt
+- ranked symbol count
+
+CHANGE INTELLIGENCE
+- latest comparison available
+- generatedAt
+
+INTELLIGENCE
+- sector snapshot rows
+- theme snapshot rows
+- latest generatedAt
+- classification coverage
+
+INSTITUTIONAL 13F
+- ingestion enabled
+- latest run
+- current quarter
+- filings
+- holdings
+- partial/resumable state
+- next scheduled run
+
+SECURITY MASTER
+- total mappings
+- reviewed
+- probable
+- unmapped
+- coverage
+
+INSTITUTIONAL SIGNALS
+- signal row count
+- latest generatedAt
+
+BROKERS
+- Tradier configured/healthy
+- TradeStation configured/healthy
+- broker connection capability
+
+Do NOT display:
+
+tokens
+API keys
+connection strings
+passwords
+JWT secrets
+broker credentials
+
+======================================================================
+7. HEALTH STATUS MODEL
+======================================================================
+
+Use:
+
+HEALTHY
+DEGRADED
+UNAVAILABLE
+DISABLED
+UNKNOWN
+
+Avoid red errors for intentionally disabled optional components.
+
+Example:
+
+Institutional public feature disabled
+→ DISABLED
+
+not:
+
+ERROR
+
+Each health card should include:
+
+status
+short explanation
+lastSuccessAt
+lastAttemptAt if available
+freshness
+recommended operator action if degraded
+
+======================================================================
+8. ADMIN OPERATIONS CONTROLS
+======================================================================
+
+Add safe admin actions where existing backend operations already exist:
+
+Rebuild Intelligence
+
+Run Mapping Pipeline
+
+View Institutional Ingestion Status
+
+Resume Institutional Ingestion
+ONLY if existing safe resumable mechanism already exists
+
+Refresh Platform Health
+
+Do NOT add:
+
+arbitrary SQL
+shell execution
+deployment controls
+secret editing
+database destructive actions
+
+Each mutation requires confirmation.
+
+======================================================================
+9. ADMIN INTELLIGENCE DIAGNOSTICS UI
+======================================================================
+
+Instead of requiring operators to read raw JSON from:
+
+/api/admin/intelligence/diagnostics
+
+add a visual section on Platform Health showing:
+
+Ranking
+✓ exists
+5 ranked
+generated X minutes ago
+
+Sector Intelligence
+✓ table exists
+0 snapshots
+classification coverage X%
+DEGRADED
+
+Theme Intelligence
+✓ table exists
+48 snapshots
+latest X minutes ago
+HEALTHY
+
+Institutional Signals
+0 rows
+DEGRADED or NOT_READY depending pipeline state
+
+Briefing
+✓ buildable
+
+Include a link:
+
+View raw diagnostics
+
+for engineers.
+
+======================================================================
+10. PRODUCTION JOB STATUS
+======================================================================
+
+Create/reuse a canonical background-job status model.
+
+Track important jobs:
+
+institutional ingestion
+mapping pipeline
+scanner
+ranking
+intelligence precomputation
+institutional signal rebuild
+
+Fields:
+
+jobName
+status
+startedAt
+completedAt
+durationMs
+processed
+remaining
+lastSuccessAt
+lastErrorCode
+lastErrorMessage
+nextScheduledRun if applicable
+
+Do not redesign scheduling itself unless required.
+
+======================================================================
+11. STRUCTURED OPERATIONAL LOGGING
+======================================================================
+
+Standardize structured events for key pipelines.
+
+Examples:
+
+scanner_started
+scanner_completed
+scanner_failed
+
+ranking_started
+ranking_completed
+ranking_failed
+
+intelligence_precompute_started
+intelligence_precompute_completed
+intelligence_precompute_failed
+
+institutional_ingestion_started
+institutional_ingestion_progress
+institutional_ingestion_completed
+institutional_ingestion_partial
+institutional_ingestion_failed
+
+mapping_pipeline_started
+mapping_pipeline_completed
+mapping_pipeline_failed
+
+Use:
+
+event
+timestamp
+duration
+counts
+errorCode
+safe errorMessage
+
+Never log credentials or secrets.
+
+======================================================================
+12. STALE DATA DETECTION
+======================================================================
+
+Define freshness thresholds for operational visibility.
+
+Examples:
+
+Market daily data:
+DEGRADED if newer trading-day data should exist but does not.
+
+Ranking:
+DEGRADED if latest expected scan is missing.
+
+Theme/Sector snapshots:
+DEGRADED if ranking is newer than intelligence snapshots by more than expected window.
+
+Institutional:
+use quarter/reporting semantics, NOT daily freshness.
+
+13F data must not be marked stale simply because it is weeks old.
+
+======================================================================
+13. DEPENDENCY HEALTH
+======================================================================
+
+Create lightweight checks for:
+
+PostgreSQL
+MCP service
+market-data provider
+SEC configuration
+broker API configuration
+
+Do not make expensive external calls on every health-page refresh.
+
+Cache health checks briefly.
+
+======================================================================
+14. OPERATIONAL RUNBOOK / HANDBOOK
+======================================================================
+
+THIS IS REQUIRED.
+
+Create a documentation tree under:
+
+docs/operations/
+
+At minimum create:
+
+docs/operations/README.md
+
+docs/operations/01-system-architecture.md
+
+docs/operations/02-environments-and-deployment.md
+
+docs/operations/03-database-and-migrations.md
+
+docs/operations/04-market-data-and-mcp.md
+
+docs/operations/05-scanner-and-ranking.md
+
+docs/operations/06-institutional-13f-pipeline.md
+
+docs/operations/07-security-master-and-mappings.md
+
+docs/operations/08-sector-theme-intelligence.md
+
+docs/operations/09-background-jobs-and-scheduling.md
+
+docs/operations/10-monitoring-and-platform-health.md
+
+docs/operations/11-troubleshooting-runbook.md
+
+docs/operations/12-security-and-devsecops.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/14-disaster-recovery.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+======================================================================
+15. SYSTEM ARCHITECTURE DOCUMENT
+======================================================================
+
+Document the real architecture as implemented.
+
+Include Mermaid diagrams where useful.
+
+Cover:
+
+Browser
+→ Express API
+→ PostgreSQL
+
+Market Data
+→ VCP Trader internal APIs
+→ MCP service
+→ scanner
+→ ranking
+→ change intelligence
+→ sector/theme intelligence
+→ Research Hub
+
+SEC
+→ bulk 13F datasets
+→ parser
+→ filings
+→ holdings
+→ security mappings
+→ institutional signals
+→ fund explorer
+→ ranking evidence
+
+Broker integrations:
+
+Tradier
+TradeStation
+other configured integrations
+
+Clearly distinguish:
+
+synchronous request paths
+background jobs
+precomputed data
+cached/in-memory state
+
+======================================================================
+16. DEPLOYMENT GUIDE
+======================================================================
+
+Document:
+
+GitHub
+→ Railway build
+→ npm ci
+→ npm run build
+→ migration
+→ npm run start
+
+Document production start command.
+
+Document required environment-variable NAMES only.
+
+DO NOT put secret VALUES in documentation.
+
+Classify variables:
+
+required
+optional
+feature flags
+provider-specific
+
+Include:
+
+MCP_ENABLED
+MCP_BASE_URL
+MCP_SERVICE_TOKEN
+DATABASE_URL
+SEC_USER_AGENT
+INSTITUTIONAL_13F_INGESTION_ENABLED
+INSTITUTIONAL_INTELLIGENCE_ENABLED
+
+and all currently relevant production variables discovered from code.
+
+======================================================================
+17. DATABASE / MIGRATION GUIDE
+======================================================================
+
+Document:
+
+Drizzle schema ownership
+drizzle-kit push
+startup migration behavior
+when to use each
+
+Document the lesson learned:
+
+psql may not exist in Railway application shell.
+
+Preferred repository-supported migration procedure should be explicit.
+
+Explain:
+
+DO NOT manually alter production tables unless following an approved recovery runbook.
+
+Include verification steps.
+
+======================================================================
+18. MARKET DATA / MCP RUNBOOK
+======================================================================
+
+Document:
+
+VCP Trader MCP service purpose
+
+Tools currently available:
+
+get_quote
+get_market_history
+get_news
+scan_vcp
+get_positions
+
+HTTP production transport
+bearer authentication
+health endpoint
+provider selection
+MARKET_DATA_PROVIDER behavior
+VCP internal API adapter
+how to verify MCP is actually being used
+
+Include common failures:
+
+MCP_ENABLED=false
+bad MCP_BASE_URL
+401 Missing bearer token
+provider falls back to mock
+OHLCV unavailable
+Twelve Data limits
+
+======================================================================
+19. SCANNER / RANKING RUNBOOK
+======================================================================
+
+Document:
+
+scanner lifecycle
+candidate qualification
+ranking
+precomputation
+dashboard consumer
+change intelligence
+Opportunity Workspace
+
+Explain why repeated tickers can legitimately appear.
+
+Explain stale-data detection.
+
+Include troubleshooting:
+
+dashboard showing old opportunities
+ranking missing
+scanner unavailable
+MCP failure
+ranking cache lost after restart
+
+======================================================================
+20. INSTITUTIONAL 13F RUNBOOK
+======================================================================
+
+This section is especially important.
+
+Document the production lessons from implementation:
+
+SEC dataset catalog
+dataset-window vs holdings-quarter distinction
+SUBMISSION.tsv
+COVERPAGE.tsv
+INFOTABLE.tsv
+
+Header normalization
+
+Actual current fields including:
+
+ACCESSION_NUMBER
+SUBMISSIONTYPE
+PERIODOFREPORT
+FILINGMANAGER_NAME
+VOTING_AUTH_*
+
+PERIODOFREPORT format:
+
+DD-MMM-YYYY
+
+Submission types:
+
+13F-HR
+13F-HR/A
+13F-NT
+13F-NT/A
+
+Current three-table join
+
+Amendment handling
+
+effective filings
+
+resumable persistence
+
+timeout behavior
+
+scheduled ingestion
+
+progress diagnostics
+
+13F delay limitations
+
+VALUE UNIT POLICY:
+
+post-2023 SEC VALUE = US dollars
+
+Canonical internal institutional value unit = US dollars
+
+Fund service must NOT multiply by 1000.
+
+Document legacy/pre-2023 handling separately.
+
+======================================================================
+21. TROUBLESHOOTING RUNBOOK
+======================================================================
+
+Create symptom → diagnostic → cause → recovery sections.
+
+Include every major issue encountered so far.
+
+At minimum:
+
+RAILWAY BUILD:
+"No matching export getLatestRanking"
+
+RESEARCH HUB:
+permanent skeleton after failed API request
+
+INTELLIGENCE:
+Failed to load intelligence briefing
+
+TIMESTAMPS:
+toISOString is not a function
+
+SECTOR INTELLIGENCE:
+theme snapshots exist but sector snapshots = 0
+
+13F:
+Required headers missing
+
+13F:
+manager name missing from SUBMISSION
+
+13F:
+NO_HOLDINGS_BEARING_SUBMISSIONS
+
+13F:
+PERIODOFREPORT unsupported
+
+13F:
+DD-MMM-YYYY format
+
+13F:
+long-running persistence / timeout
+
+13F:
+stale "running" run after process dies
+
+13F:
+Railway shell closure terminates interactive job
+
+MAPPING:
+mapping page 404
+
+MAPPING:
+route collision /api/institutional/:symbol
+
+MAPPING:
+pipeline returns empty
+
+MAPPING:
+figi missing
+
+VALUE:
+fund portfolio values 1000× too large
+
+MCP:
+401 missing bearer token
+
+MCP:
+mock provider unexpectedly active
+
+DATABASE:
+psql not found in Railway shell
+
+For each incident include:
+
+Symptoms
+Relevant logs
+Diagnostic endpoint/command
+Likely root causes
+Safe remediation
+Verification
+Escalation conditions
+
+======================================================================
+22. SECURITY / DEVSECOPS GUIDE
+======================================================================
+
+Document:
+
+secret handling
+Railway variables
+bearer-token handling
+broker-token handling
+JWT/session secrets
+API key exposure prevention
+logging redaction
+admin endpoint authorization
+portfolio/user isolation
+dependency scanning
+production build checks
+least privilege principles
+
+Important:
+
+Do NOT copy actual production secret values into docs.
+
+Also address Railway/Nixpacks warnings about secrets in ARG/ENV.
+
+Classify whether they are real exposure vs generated-build warnings and provide a safe remediation roadmap.
+
+======================================================================
+23. RELEASE CHECKLIST
+======================================================================
+
+Create a reusable release gate.
+
+Required before production deploy:
+
+git status reviewed
+
+npm run build PASS
+
+application test suite PASS
+excluding vendor/.cache tests
+
+zero new TypeScript errors
+
+migration impact reviewed
+
+new routes smoke tested
+
+feature flags reviewed
+
+security/auth reviewed
+
+no hardcoded test symbols/data
+
+production environment variables verified
+
+backward compatibility considered
+
+rollback plan identified
+
+After deployment:
+
+health endpoint
+
+login
+
+dashboard
+
+/research
+
+/intelligence
+
+/opportunities/:symbol
+
+/institutional/funds
+
+API smoke tests
+
+logs checked
+
+no new 500s
+
+======================================================================
+24. DISASTER RECOVERY
+======================================================================
+
+Document safe responses to:
+
+bad deployment
+broken migration
+database unavailable
+MCP outage
+market data provider outage
+institutional ingestion corruption
+scheduled job stuck
+ranking unavailable
+intelligence snapshots corrupt
+
+Include:
+
+rollback deployment
+disable optional feature flags
+preserve DB
+avoid destructive cleanup
+rebuild derived tables
+re-run idempotent jobs
+
+Clearly distinguish:
+
+SOURCE DATA
+DERIVED DATA
+CACHE
+
+Derived data may be rebuilt.
+
+Source/user data must never be casually deleted.
+
+======================================================================
+25. DOCUMENT OWNERSHIP
+======================================================================
+
+At top of docs/operations/README.md include:
+
+Owner:
+VCP Trader AI Engineering
+
+Audience:
+Developer
+System Administrator
+DevOps
+DevSecOps
+Technical Support
+
+Rule:
+
+If code behavior changes, update the relevant runbook in the SAME sprint.
+
+Documentation is part of Definition of Done.
+
+======================================================================
+26. OPTIONAL MACHINE-READABLE SYSTEM MANIFEST
+======================================================================
+
+Create if useful:
+
+docs/operations/system-manifest.yaml
+
+List:
+
+services
+databases
+background jobs
+feature flags
+admin endpoints
+public APIs
+health checks
+scheduled jobs
+
+Do NOT include secrets.
+
+This will eventually be useful for agents/orchestration.
+
+======================================================================
+27. TESTS
+======================================================================
+
+Add tests for:
+
+sector classification fallback
+sector snapshot creation
+sector rebuild
+empty classification
+partial classification
+admin authorization
+health status
+health degradation
+diagnostic responses
+rebuild locking/idempotency
+no secret values returned
+job status model
+
+Run:
+
+relevant tests
+full application suite
+npm run build
+typecheck changed files
+
+======================================================================
+28. PRODUCTION UAT
+======================================================================
+
+After deployment verify:
+
+/admin/platform-health
+
+Expected:
+
+Ranking HEALTHY
+
+Theme Intelligence HEALTHY
+
+Sector Intelligence HEALTHY
+sector snapshot count > 0
+
+Institutional state accurately reflects current pipeline
+
+MCP state accurate
+
+No secret exposure
+
+Then verify:
+
+/api/admin/intelligence/diagnostics
+
+sectorSnapshots.rowCount > 0
+themeSnapshots.rowCount > 0
+briefing.canBuild = true
+
+Then:
+
+/intelligence
+
+must show:
+
+Leading Sectors
+Leading Themes
+
+Then:
+
+/research
+
+Market Intelligence must include sectors/themes.
+
+======================================================================
+29. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Root cause of sectorSnapshots=0 is proven.
+
+B. Sector snapshot generation works.
+
+C. Theme generation remains unaffected.
+
+D. /admin/platform-health works.
+
+E. Admin actions are authenticated/authorized.
+
+F. No secrets exposed.
+
+G. Operational job states are visible.
+
+H. Full operations handbook exists.
+
+I. Troubleshooting runbook includes historical production incidents.
+
+J. Release checklist exists.
+
+K. Disaster-recovery procedures exist.
+
+L. npm run build passes.
+
+M. Application tests pass.
+
+N. Zero new TypeScript errors in changed files.
+
+======================================================================
+30. DEFERRED — DO NOT IMPLEMENT
+======================================================================
+
+- Portfolio Research Intelligence
+- portfolio recommendations
+- AI Research Assistant
+- autonomous agents
+- loops/graphs orchestration
+- knowledge graph
+- mapping auto-approval
+- new brokerage providers
+- event provider
+- voice
+- dashboard redesign
+- large-scale code splitting except if essential
+
+======================================================================
+31. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Sector snapshot exact root cause
+2. Classification coverage before
+3. Classification coverage after
+4. Sector snapshots before/after
+5. Theme snapshots before/after
+6. Files changed
+7. Platform Health architecture
+8. Health checks implemented
+9. Admin operations implemented
+10. Job-status model
+11. Structured logging changes
+12. Stale-data rules
+13. Documentation files created
+14. Architecture documentation summary
+15. Deployment runbook summary
+16. Institutional runbook summary
+17. Troubleshooting incidents documented
+18. DevSecOps controls documented
+19. Release checklist
+20. Disaster-recovery strategy
+21. Tests
+22. Full test count
+23. npm run build
+24. Typecheck
+25. Production UAT
+26. Known limitations
+27. Deferred backlog
+28. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

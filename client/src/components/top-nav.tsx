@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, Sparkles, Pin, Check, BookOpen, LayoutDashboard, Wallet, GraduationCap, Settings as SettingsIcon } from "lucide-react";
+import { Bot, Lightbulb, Search as SearchIcon, Newspaper, Landmark, Loader2, LogOut, User, Bell, Sparkles, Pin, Check, BookOpen, LayoutDashboard, Wallet, GraduationCap, Settings as SettingsIcon, Globe2 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -59,6 +59,13 @@ const NAV_ITEMS: TopNavItem[] = [
     icon: Wallet,
     testId: "topnav-portfolio",
     matches: (p) => false, // settings tab — never shows as "active page"
+  },
+  {
+    label: "Intelligence",
+    href: "/intelligence",
+    icon: Globe2,
+    testId: "topnav-intelligence",
+    matches: (p) => p === "/intelligence" || p.startsWith("/intelligence/"),
   },
   {
     label: "Congress",

@@ -1,5 +1,6 @@
 // Intelligence API Routes — Sprint 2.3.3
 //
+// GET /api/intelligence/briefing          — daily command-center summary
 // GET /api/intelligence/sectors           — all sector summaries (precomputed)
 // GET /api/intelligence/sectors/:sector   — single sector detail
 // GET /api/intelligence/themes            — all theme summaries (precomputed)
@@ -18,6 +19,7 @@ import {
   getThemeHistory,
 } from "../services/intelligence-snapshot-store";
 import { getAllThemes, getTheme } from "../config/theme-registry";
+import { getLatestRanking } from "../services/opportunity-engine";
 
 // ---------------------------------------------------------------------------
 // Dashboard consumer contract (compact, for future dashboard wiring)
@@ -55,6 +57,135 @@ function buildDashboardContracts(
 // ---------------------------------------------------------------------------
 
 export function registerIntelligenceRoutes(app: Express): void {
+
+  // ── GET /api/intelligence/briefing ────────────────────────────────────────
+  // Daily command-center summary: regime, market health, leading themes/sectors,
+  // most improved stocks, institutional highlights.
+  app.get("/api/intelligence/briefing", async (_req: Request, res: Response) => {
+    try {
+      const [sectors, themes] = await Promise.all([
+        getLatestSectorSnapshots(),
+        getLatestThemeSnapshots(),
+      ]);
+
+      const hasData = sectors.length > 0 || themes.length > 0;
+
+      // Regime from in-memory latest ranking (set after each scan cycle)
+      const ranking = getLatestRanking();
+      const regime  = ranking?.regime ?? null;
+
+      // Leading themes — top 4 by score with direction
+      const sortedThemes = [...themes].sort((a, b) => b.score - a.score);
+      const leadingThemes = sortedThemes.slice(0, 4).map(t => {
+        const delta = (t.changes as Record<string, unknown>)?.scoreDelta as number | null ?? null;
+        const direction: "up" | "down" | "stable" =
+          delta != null && delta >= 3 ? "up" :
+          delta != null && delta <= -3 ? "down" : "stable";
+        return { themeId: t.themeId, themeName: t.themeName, score: t.score, direction };
+      });
+
+      // Leading sectors — top 3 names
+      const sortedSectors = [...sectors].sort((a, b) => b.score - a.score);
+      const leadingSectors = sortedSectors.slice(0, 3).map(s => s.sector);
+
+      // Most improved themes — by positive scoreDelta
+      const mostImprovedThemes = [...themes]
+        .map(t => ({
+          themeId:    t.themeId,
+          themeName:  t.themeName,
+          scoreDelta: ((t.changes as Record<string, unknown>)?.scoreDelta as number) ?? 0,
+        }))
+        .filter(t => t.scoreDelta > 0)
+        .sort((a, b) => b.scoreDelta - a.scoreDelta)
+        .slice(0, 2);
+
+      // Most improved stocks — strengthening symbols from improving themes, deduped
+      const symbolSet = new Set<string>();
+      const improvingThemes = [...themes]
+        .filter(t => ((t.changes as Record<string, unknown>)?.scoreDelta as number ?? 0) > 0)
+        .sort((a, b) =>
+          ((b.changes as Record<string, unknown>)?.scoreDelta as number ?? 0) -
+          ((a.changes as Record<string, unknown>)?.scoreDelta as number ?? 0),
+        );
+      for (const t of improvingThemes) {
+        const ch = t.changes as Record<string, unknown>;
+        const strengthening = (ch?.strengtheningSymbols as string[]) ?? [];
+        const newLeaders    = (ch?.newLeaders          as string[]) ?? [];
+        for (const sym of [...strengthening, ...newLeaders]) {
+          if (!symbolSet.has(sym)) symbolSet.add(sym);
+          if (symbolSet.size >= 5) break;
+        }
+        if (symbolSet.size >= 5) break;
+      }
+      // Fall back to top symbols from highest-scoring themes if no movement data
+      if (symbolSet.size === 0) {
+        for (const t of sortedThemes.slice(0, 3)) {
+          const tops = (t.topSymbols as Array<{ symbol: string }>) ?? [];
+          for (const ts of tops) {
+            if (!symbolSet.has(ts.symbol)) symbolSet.add(ts.symbol);
+            if (symbolSet.size >= 5) break;
+          }
+          if (symbolSet.size >= 5) break;
+        }
+      }
+      const mostImprovedStocks = Array.from(symbolSet);
+
+      // Market health — weighted avg of top-3 sector + theme scores
+      const sectorScores = sortedSectors.slice(0, 5).map(s => s.score).filter(Boolean) as number[];
+      const themeScores  = sortedThemes.slice(0, 5).map(t => t.score).filter(Boolean) as number[];
+      let marketHealth: number | null = null;
+      if (sectorScores.length > 0 || themeScores.length > 0) {
+        const avgSector = sectorScores.length > 0
+          ? sectorScores.reduce((a, b) => a + b, 0) / sectorScores.length
+          : null;
+        const avgTheme  = themeScores.length > 0
+          ? themeScores.reduce((a, b) => a + b, 0) / themeScores.length
+          : null;
+        if (avgSector != null && avgTheme != null) {
+          marketHealth = Math.round(avgSector * 0.4 + avgTheme * 0.6);
+        } else {
+          marketHealth = Math.round((avgSector ?? avgTheme)!);
+        }
+        marketHealth = Math.max(0, Math.min(100, marketHealth));
+      }
+
+      // Institutional highlights
+      const accumulationSignals = themes.reduce((sum, t) => {
+        return sum + (((t.metrics as Record<string, unknown>)?.institutionalAccumulationCount as number) ?? 0);
+      }, 0);
+      const newRankedOpportunities = themes.reduce((sum, t) => {
+        return sum + (((t.metrics as Record<string, unknown>)?.newOpportunityCount as number) ?? 0);
+      }, 0);
+      const themesStrengthened = themes.filter(t =>
+        ((t.changes as Record<string, unknown>)?.scoreDelta as number ?? 0) > 0
+      ).length;
+      const sectorsWeakened = sectors.filter(s =>
+        ((s.changes as Record<string, unknown>)?.scoreDelta as number ?? 0) < 0
+      ).length;
+
+      const generatedAt = themes[0]?.generatedAt ?? sectors[0]?.generatedAt ?? null;
+
+      res.json({
+        regime,
+        marketHealth,
+        hasData,
+        generatedAt,
+        leadingThemes,
+        leadingSectors,
+        mostImprovedThemes,
+        mostImprovedStocks,
+        institutionalHighlights: {
+          accumulationSignals,
+          newRankedOpportunities,
+          themesStrengthened,
+          sectorsWeakened,
+        },
+      });
+    } catch (err: any) {
+      console.error("[intelligence] briefing error:", err?.message);
+      res.status(500).json({ error: "Failed to load intelligence briefing" });
+    }
+  });
 
   // ── GET /api/intelligence/sectors ─────────────────────────────────────────
   app.get("/api/intelligence/sectors", async (_req: Request, res: Response) => {

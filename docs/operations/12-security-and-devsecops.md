@@ -12,6 +12,32 @@ See [02-environments-and-deployment.md](02-environments-and-deployment.md) for t
 
 ---
 
+## Opportunity Intelligence Engine — Security (Sprint 2.5.0)
+
+### Compliance language enforcement
+
+All routes and services must use "Research Candidate" / "Investment Candidate" / "Trade Candidate" language. Prohibited terms in any response key, label, or value: `recommendation`, `buy` (as directive), `sell` (as directive), `target price`, `strong buy`.
+
+Enforced by 8 structural tests in `server/routes/__tests__/opportunity-intelligence.test.ts`.
+
+### No new attack surface
+
+The engine is read-only (GET routes only). All routes require `isAuthenticated`. No POST, PUT, or DELETE routes.
+
+### No PII or financial credentials exposed
+
+The canonical opportunity model contains only: scanner-derived scores, company metadata (symbol, name, sector, industry from public market data), and curated theme memberships. No user data, broker tokens, account numbers, or portfolio information.
+
+### Evidence panels are deterministic
+
+`primaryEvidence[]` and `secondaryEvidence[]` are assembled deterministically from existing scanner reasons/warnings and company metadata. LLM is **not** invoked during assembly. Evidence panels never invent signals.
+
+### LLM consumption rules
+
+When the Opportunity Intelligence Engine output reaches Ask AI (via the `opportunitySearch` pathway in `server/routes/ask.ts`), the system prompt explicitly instructs the LLM: it may only summarize/explain ranked candidates; it cannot invent/add/remove/re-rank candidates, fabricate contracts/metrics, or call additional tools.
+
+---
+
 ## Broker Synchronization — Security (Sprint 2.4.2)
 
 ### Token handling

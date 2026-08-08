@@ -1,0 +1,361 @@
+Sprint 2.5.0 — Opportunity Intelligence Engine
+
+IMPORTANT
+
+Follow the existing roadmap.
+
+This sprint comes immediately after Sprint 2.4.2.
+
+Do NOT implement future Portfolio Intelligence, Portfolio Scoring, Rebalancing, Tax Planning, Goal Planning or AI Portfolio Conversations.
+
+Those remain in their planned future roadmap sprints.
+
+=========================================
+OBJECTIVE
+=========================================
+
+VCP Trader AI is a Research Intelligence platform.
+
+Its primary purpose is helping users discover, qualify, understand and monitor investment and trading opportunities.
+
+The Opportunity Intelligence Engine becomes the central research engine consumed by every major feature.
+
+Portfolio is NOT the center.
+
+Portfolio consumes this engine later.
+
+=========================================
+DESIGN GOALS
+=========================================
+
+Every user receives value immediately.
+
+No broker required.
+
+No portfolio required.
+
+No uploaded files required.
+
+Research-first.
+
+Evidence-first.
+
+Compliance-first.
+
+=========================================
+CREATE
+=========================================
+
+Build a reusable Opportunity Intelligence Engine.
+
+The engine should expose a normalized opportunity model consumed by:
+
+Dashboard
+
+Research
+
+Ask AI
+
+Intelligence
+
+Future Portfolio Intelligence
+
+Future Watchlists
+
+Future Alerts
+
+Future AI Agents
+
+Do NOT duplicate logic across pages.
+
+=========================================
+CANONICAL OPPORTUNITY MODEL
+=========================================
+
+Every opportunity should contain:
+
+id
+
+symbol
+
+companyName
+
+sector
+
+industry
+
+themes[]
+
+opportunityType
+
+researchScore (0-100)
+
+technicalScore
+
+fundamentalScore
+
+institutionalScore
+
+sentimentScore
+
+confidence
+
+marketRegime
+
+timeHorizon
+
+riskLevel
+
+lastUpdated
+
+primaryEvidence[]
+
+secondaryEvidence[]
+
+riskFactors[]
+
+invalidatesThesis[]
+
+=========================================
+SUPPORTED OPPORTUNITY TYPES
+=========================================
+
+Growth Candidates
+
+Long-Term Investment Candidates
+
+Income Candidates
+
+Covered Call Candidates
+
+Cash-Secured Put Candidates
+
+ETF Candidates
+
+Dividend Candidates
+
+Momentum Candidates
+
+Value Candidates
+
+Swing Candidates
+
+AI Infrastructure
+
+Semiconductors
+
+Memory
+
+Networking
+
+Cybersecurity
+
+Cloud
+
+Energy
+
+Healthcare
+
+Financials
+
+Consumer
+
+Industrials
+
+Custom Themes
+
+=========================================
+RESEARCH PANELS
+=========================================
+
+Each opportunity should explain:
+
+Why it appears
+
+Technical evidence
+
+Fundamental evidence
+
+Institutional evidence
+
+Theme leadership
+
+Sector leadership
+
+Recent changes
+
+Catalysts
+
+Risk factors
+
+What could invalidate the thesis
+
+Everything should be deterministic where possible.
+
+LLM explanations summarize evidence but never invent evidence.
+
+=========================================
+FILTERING
+=========================================
+
+Support filtering by:
+
+Sector
+
+Industry
+
+Theme
+
+Strategy
+
+Market Cap
+
+Research Score
+
+Technical Score
+
+Institutional Score
+
+Risk
+
+Income
+
+Growth
+
+ETF
+
+Market Regime
+
+=========================================
+SORTING
+=========================================
+
+Allow sorting by:
+
+Research Score
+
+Technical Score
+
+Institutional Activity
+
+Market Cap
+
+Alphabetical
+
+Recent Changes
+
+Opportunity Type
+
+=========================================
+ASK AI INTEGRATION
+=========================================
+
+Ask AI should consume Opportunity Intelligence.
+
+Examples:
+
+Show highest-qualified AI Infrastructure candidates.
+
+Show covered-call research.
+
+Find income opportunities.
+
+Find long-term compounders.
+
+Show memory companies with improving evidence.
+
+Never return recommendations.
+
+Always return research candidates.
+
+=========================================
+RESEARCH LANGUAGE
+=========================================
+
+Do NOT use:
+
+Recommendation
+
+Buy
+
+Sell
+
+Strong Buy
+
+Target Price
+
+Instead use:
+
+Qualified Opportunity
+
+Research Candidate
+
+Investment Candidate
+
+Trade Candidate
+
+Evidence
+
+Research Score
+
+Opportunity Strength
+
+=========================================
+ARCHITECTURE
+=========================================
+
+The Opportunity Intelligence Engine must be reusable.
+
+Future Portfolio Intelligence will consume it.
+
+Future Watchlists will consume it.
+
+Future Alerts will consume it.
+
+Future AI Agents will consume it.
+
+Avoid duplicate business logic.
+
+=========================================
+ADMIN
+=========================================
+
+Platform Health:
+
+Add Opportunity Engine Health.
+
+Operations Manual:
+
+Document architecture.
+
+Document APIs.
+
+Document troubleshooting.
+
+Document data flow.
+
+Document testing.
+
+Update Sprint Change Log.
+
+Update Definition of Done.
+
+=========================================
+TESTING
+=========================================
+
+Add comprehensive structural tests.
+
+Add service tests.
+
+No regression.
+
+Zero new TypeScript errors.
+
+Build clean.
+
+Operations Manual updated.
+
+Sprint report follows existing template.
+
+Do NOT pull future roadmap work into this sprint.

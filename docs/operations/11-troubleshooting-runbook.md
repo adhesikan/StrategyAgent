@@ -609,3 +609,55 @@ grep -c "package-firewall.replit.local" package-lock.json
 **Symptom:** Platform Health `Broker Sync` card shows `DEGRADED`.
 
 **Fix:** Expand details on `/admin/platform-health`; check `failedCount`/`needsReauthCount`; resolve affected portfolios.
+
+---
+
+## OPPORTUNITY INTELLIGENCE ENGINE (Sprint 2.5.0)
+
+### OPP_INTEL_NO_SNAPSHOT
+
+**Symptom:** `GET /api/intelligence/opportunities` returns `{ "available": false }`. Platform Health shows Opportunity Intelligence as `UNKNOWN`.
+
+**Cause:** No ranking snapshot has been generated yet (scanner has not run).
+
+**Fix:** Wait for the opportunity scanner to complete its first cycle. Check `/admin/platform-health` → Scanner card. If the scanner is not running, check the `Start application` workflow logs.
+
+---
+
+### OPP_INTEL_EMPTY_AFTER_FILTER
+
+**Symptom:** `GET /api/intelligence/opportunities?sector=Energy` returns `filteredCount: 0` even though opportunities exist.
+
+**Cause:** No opportunities in the current snapshot match the applied filter.
+
+**Fix:** Check `GET /api/intelligence/opportunities/meta` to see the available filter values for the current snapshot. Remove or adjust filters.
+
+---
+
+### OPP_INTEL_SYMBOL_NOT_FOUND
+
+**Symptom:** `GET /api/intelligence/opportunities/:symbol` returns 404 with message "not a current research candidate".
+
+**Cause:** Symbol is not in the current ranking snapshot (may have been excluded by scanner, or not scanned yet).
+
+**Fix:** Check `GET /api/intelligence/opportunities` (no filters) to see what symbols are currently ranked. The snapshot refreshes on the scanner's schedule (default every 240 minutes).
+
+---
+
+### OPP_INTEL_COMPANY_META_NULL
+
+**Symptom:** `companyName`, `sector`, `industry` are `null` for a symbol.
+
+**Cause:** Symbol is not yet in the `market_data_symbols` table (not yet ingested by the daily market data pipeline).
+
+**Fix:** Wait for the next daily ingestion run. Check Platform Health → Market Data card. The enrichment is non-fatal — opportunities are still returned without metadata.
+
+---
+
+### OPP_INTEL_HEALTH_DEGRADED
+
+**Symptom:** Platform Health shows Opportunity Intelligence as `DEGRADED`.
+
+**Cause:** Snapshot exists but contains zero opportunities.
+
+**Fix:** Check the scanner and ranking engine. Verify `GET /api/opportunities/latest` has a valid snapshot with qualified candidates.

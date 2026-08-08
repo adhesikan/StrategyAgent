@@ -647,6 +647,225 @@ open /portfolio/import
 
 ---
 
+## Sprint 2.5.0 — Opportunity Intelligence Engine
+
+### New Routes
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/api/intelligence/opportunities` | ✅ | Filtered & sorted canonical opportunity list |
+| GET | `/api/intelligence/opportunities/meta` | ✅ | Available filter options (lightweight) |
+| GET | `/api/intelligence/opportunities/:symbol` | ✅ | Single canonical opportunity by symbol |
+
+---
+
+### GET /api/intelligence/opportunities
+
+Returns filtered, sorted list of `CanonicalOpportunity` objects.
+
+**Query parameters (all optional):**
+
+| Param | Type | Example | Notes |
+|-------|------|---------|-------|
+| `sector` | string (comma-sep) | `Technology,Energy` | Filter by sector |
+| `industry` | string (comma-sep) | `Semiconductors` | Filter by industry |
+| `theme` | string (comma-sep) | `AI Infrastructure,Cloud` | Filter by theme name |
+| `opportunityType` | string (comma-sep) | `growth,income` | Filter by type |
+| `riskLevel` | string (comma-sep) | `low,medium` | `low` / `medium` / `high` |
+| `timeHorizon` | string (comma-sep) | `short,medium` | `short` / `medium` / `long` |
+| `minResearchScore` | integer 0–100 | `70` | Minimum research score |
+| `minTechnicalScore` | integer 0–100 | `65` | Minimum technical score |
+| `minInstitutionalScore` | integer 0–100 | `50` | Minimum institutional score |
+| `marketRegime` | string | `bull` | Filter by market regime |
+| `sortBy` | string | `researchScore` | Field to sort by |
+| `sortDirection` | `asc` \| `desc` | `desc` | Sort direction |
+
+**Valid `sortBy` values:** `researchScore`, `technicalScore`, `institutionalScore`, `symbol`, `lastUpdated`, `opportunityType`
+
+**Success (200) — snapshot available:**
+```json
+{
+  "available": true,
+  "generatedAt": "2026-08-08T12:00:00.000Z",
+  "marketRegime": "bull",
+  "totalCount": 24,
+  "filteredCount": 8,
+  "opportunities": [
+    {
+      "id": "NVDA-topGrowth",
+      "symbol": "NVDA",
+      "companyName": "NVIDIA Corporation",
+      "sector": "Technology",
+      "industry": "Semiconductors",
+      "themes": ["AI Infrastructure", "Semiconductors"],
+      "opportunityType": "growth",
+      "opportunityTypeLabel": "Growth Candidate",
+      "researchScore": 88,
+      "technicalScore": 85,
+      "fundamentalScore": 75,
+      "institutionalScore": 80,
+      "sentimentScore": 74,
+      "confidence": "high",
+      "marketRegime": "bull",
+      "timeHorizon": "medium",
+      "riskLevel": "low",
+      "lastUpdated": "2026-08-08T12:00:00.000Z",
+      "primaryEvidence": [
+        { "type": "technical", "label": "Technical Signal", "detail": "VCP breakout with volume confirmation", "strength": "strong" },
+        { "type": "institutional", "label": "Institutional Interest", "detail": "Strong institutional accumulation signal detected from 13F filings.", "strength": "strong" }
+      ],
+      "secondaryEvidence": [
+        { "type": "sector", "label": "Sector Context", "detail": "Operates in the Technology sector.", "strength": "moderate" },
+        { "type": "theme", "label": "Theme Membership", "detail": "Classified as a AI Infrastructure candidate.", "strength": "moderate" }
+      ],
+      "riskFactors": [],
+      "invalidatesThesis": [],
+      "_sourceCategory": "topGrowth",
+      "_rank": 1
+    }
+  ],
+  "meta": {
+    "sectors": ["Energy", "Healthcare", "Technology"],
+    "industries": ["Semiconductors", "Software"],
+    "themes": ["AI Infrastructure", "Cloud", "Cybersecurity"],
+    "opportunityTypes": ["growth", "income", "swing"],
+    "riskLevels": ["low", "medium", "high"],
+    "timeHorizons": ["short", "medium", "long"]
+  }
+}
+```
+
+**Success (200) — no snapshot yet:**
+```json
+{ "available": false, "message": "No opportunity snapshot is available yet. The scanner runs periodically — check back shortly.", "generatedAt": null }
+```
+
+---
+
+### GET /api/intelligence/opportunities/meta
+
+Lightweight endpoint for populating filter dropdowns. Returns filter options without the full opportunity list.
+
+```json
+{
+  "available": true,
+  "generatedAt": "2026-08-08T12:00:00.000Z",
+  "totalCount": 24,
+  "meta": {
+    "sectors": [...],
+    "industries": [...],
+    "themes": [...],
+    "opportunityTypes": [...],
+    "riskLevels": ["low", "medium", "high"],
+    "timeHorizons": ["short", "medium", "long"]
+  }
+}
+```
+
+---
+
+### GET /api/intelligence/opportunities/:symbol
+
+Returns a single canonical opportunity for the given symbol.
+
+**Success (200) — found:**
+```json
+{ "available": true, "found": true, "opportunity": { ... } }
+```
+
+**Not in current snapshot (200):**
+```json
+{ "available": true, "found": false, "symbol": "XYZ", "message": "XYZ is not a current research candidate in the active snapshot." }
+```
+
+**No snapshot yet (200):**
+```json
+{ "available": false, "message": "No opportunity snapshot available yet.", "symbol": "XYZ" }
+```
+
+**Invalid symbol (400):**
+```json
+{ "error": "Invalid symbol" }
+```
+
+---
+
+### Canonical Opportunity Type Reference
+
+| Type | Label | Time Horizon |
+|------|-------|-------------|
+| `growth` | Growth Candidate | Medium |
+| `long_term_investment` | Long-Term Investment Candidate | Long |
+| `income` | Income Candidate | Medium |
+| `covered_call` | Covered Call Candidate | Short |
+| `cash_secured_put` | Cash-Secured Put Candidate | Short |
+| `etf` | ETF Candidate | Medium |
+| `dividend` | Dividend Candidate | Medium |
+| `momentum` | Momentum Candidate | Short |
+| `value` | Value Candidate | Medium |
+| `swing` | Swing Candidate | Short |
+| `ai_infrastructure` | AI Infrastructure Candidate | Medium |
+| `semiconductors` | Semiconductors Candidate | Medium |
+| `memory` | Memory Candidate | Medium |
+| `networking` | Networking Candidate | Medium |
+| `cybersecurity` | Cybersecurity Candidate | Medium |
+| `cloud` | Cloud Candidate | Medium |
+| `energy` | Energy Candidate | Medium |
+| `healthcare` | Healthcare Candidate | Medium |
+| `financials` | Financials Candidate | Medium |
+| `consumer` | Consumer Candidate | Medium |
+| `industrials` | Industrials Candidate | Medium |
+| `custom_theme` | Custom Theme Candidate | Medium |
+
+---
+
+### Platform Health — Opportunity Intelligence Card
+
+Available at `GET /api/admin/platform-health` → `health.opportunityIntelligence`:
+
+```json
+{
+  "status": "HEALTHY | DEGRADED | UNKNOWN",
+  "summary": "24 opportunities — 10 growth, 6 income, 8 watch",
+  "lastSuccessAt": "2026-08-08T12:00:00.000Z",
+  "details": {
+    "hasSnapshot": true,
+    "totalOpportunities": 24,
+    "growthCount": 10,
+    "incomeCount": 6,
+    "watchlistCount": 6,
+    "approachingCount": 2,
+    "lastGeneratedAt": "2026-08-08T12:00:00.000Z",
+    "marketRegime": "bull"
+  }
+}
+```
+
+Status rules: `UNKNOWN` if no snapshot; `DEGRADED` if snapshot has 0 opportunities; `HEALTHY` otherwise.
+
+---
+
+### UAT Checklist — Opportunity Intelligence API
+
+```
+□ GET /api/intelligence/opportunities → 200 with available: true (after scanner runs)
+□ opportunities[] contains all canonical fields (id, symbol, companyName, sector, etc.)
+□ GET /api/intelligence/opportunities?sector=Technology → filteredCount < totalCount
+□ GET /api/intelligence/opportunities?minResearchScore=80 → all returned opps have researchScore ≥ 80
+□ GET /api/intelligence/opportunities?sortBy=symbol&sortDirection=asc → alphabetical order
+□ GET /api/intelligence/opportunities/meta → meta.sectors and meta.themes populated
+□ GET /api/intelligence/opportunities/NVDA → found: true (when NVDA is ranked)
+□ GET /api/intelligence/opportunities/FAKESYMBOL → found: false (symbol not in snapshot)
+□ opportunityTypeLabel uses "Candidate" language, never "recommendation"
+□ Platform Health → Opportunity Intelligence card shows HEALTHY with correct counts
+□ No companyName/sector/industry null if market_data_symbols has been populated
+□ primaryEvidence[] has ≤ 4 items; riskFactors[] has ≤ 3 items
+□ themes[] populated for NVDA (AI Infrastructure, Semiconductors)
+□ Unauthenticated request → 401
+```
+
+---
+
 ## Sprint 2.4.2 — Broker Synchronization
 
 ### New Routes

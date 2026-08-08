@@ -15,6 +15,7 @@ import { getTwelveDataConfig } from "../services/daily-market-data/config";
 import { getLatestRanking } from "../services/opportunity-ranking-engine";
 import { getAllJobStatuses } from "../services/job-status-store";
 import { getBrokerSyncHealth } from "../services/broker-sync-service";
+import { getOpportunityIntelligenceHealth } from "../services/opportunity-intelligence-service";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 
 // ---------------------------------------------------------------------------
@@ -500,6 +501,30 @@ function checkApplication(): HealthCard {
 // Aggregate health
 // ---------------------------------------------------------------------------
 
+function checkOpportunityIntelligence(): HealthCard {
+  const snap = getOpportunityIntelligenceHealth();
+  const status: HealthStatus = !snap.hasSnapshot ? "UNKNOWN"
+    : snap.totalOpportunities === 0              ? "DEGRADED"
+    : "HEALTHY";
+  return {
+    status,
+    summary: snap.hasSnapshot
+      ? `${snap.totalOpportunities} opportunities — ${snap.growthCount} growth, ${snap.incomeCount} income, ${snap.watchlistCount} watch`
+      : "No opportunity snapshot available yet",
+    lastSuccessAt: snap.lastGeneratedAt,
+    details: {
+      hasSnapshot:       snap.hasSnapshot,
+      totalOpportunities: snap.totalOpportunities,
+      growthCount:       snap.growthCount,
+      incomeCount:       snap.incomeCount,
+      watchlistCount:    snap.watchlistCount,
+      approachingCount:  snap.approachingCount,
+      lastGeneratedAt:   snap.lastGeneratedAt ?? "Never",
+      marketRegime:      snap.marketRegime     ?? "Unknown",
+    },
+  };
+}
+
 function checkBrokerSync(): HealthCard {
   const snap = getBrokerSyncHealth();
   const status: HealthStatus =
@@ -541,6 +566,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const app        = checkApplication();
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
+  const oppIntel   = checkOpportunityIntelligence();
   const jobs       = getAllJobStatuses();
 
   return {
@@ -550,11 +576,12 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     mcp,
     scanner,
     ranking,
-    intelligence:    intel,
+    intelligence:            intel,
     institutional,
-    securityMaster:  secMaster,
+    securityMaster:          secMaster,
     brokers,
     brokerSync,
+    opportunityIntelligence: oppIntel,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

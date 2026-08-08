@@ -4,6 +4,64 @@
 
 ---
 
+## Sprint 2.5.0 — Opportunity Intelligence Engine (2026-08-08)
+
+**Purpose:** Build a reusable Opportunity Intelligence Engine that produces a normalized `CanonicalOpportunity` model consumed by Dashboard, Research, Ask AI, Intelligence, and future Portfolio/Watchlist/Alert features. Eliminates logic duplication across consumer pages.
+
+### Design Goals
+- Every user receives value immediately. No broker, portfolio, or uploaded files required.
+- Research-first. Evidence-first. Compliance-first.
+- LLM explanations summarize evidence; they never invent evidence.
+
+### Key Files
+
+| Type | Path |
+|------|------|
+| Types | `shared/opportunity-intelligence-types.ts` |
+| Service | `server/services/opportunity-intelligence-service.ts` |
+| Routes | `server/routes/opportunity-intelligence.ts` |
+| Tests | `server/routes/__tests__/opportunity-intelligence.test.ts` |
+
+### New Routes
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/intelligence/opportunities` | Filtered & sorted canonical list |
+| GET | `/api/intelligence/opportunities/meta` | Available filter options (lightweight) |
+| GET | `/api/intelligence/opportunities/:symbol` | Single canonical opportunity |
+
+### Canonical Opportunity Model Fields
+`id`, `symbol`, `companyName`, `sector`, `industry`, `themes[]`, `opportunityType`, `opportunityTypeLabel`, `researchScore`, `technicalScore`, `fundamentalScore`, `institutionalScore`, `sentimentScore`, `confidence`, `marketRegime`, `timeHorizon`, `riskLevel`, `lastUpdated`, `primaryEvidence[]`, `secondaryEvidence[]`, `riskFactors[]`, `invalidatesThesis[]`
+
+### Supported Opportunity Types (22)
+growth, long_term_investment, income, covered_call, cash_secured_put, etf, dividend, momentum, value, swing, ai_infrastructure, semiconductors, memory, networking, cybersecurity, cloud, energy, healthcare, financials, consumer, industrials, custom_theme
+
+### Architecture
+Pure enrichment layer. Reads `getLatestRanking()` (in-memory, no new scanner). Single batch DB query for company metadata from `market_data_symbols`. Theme memberships from curated registry (no DB). No logic duplication.
+
+### Filtering
+Sector, industry, theme, opportunityType, riskLevel, timeHorizon, minResearchScore, minTechnicalScore, minInstitutionalScore, marketRegime
+
+### Sorting
+researchScore, technicalScore, institutionalScore, symbol, lastUpdated, opportunityType
+
+### Platform Health
+`checkOpportunityIntelligence()` added. `opportunityIntelligence` key in `buildPlatformHealth()`. Admin health page renders new "Opportunity Intelligence" card.
+
+### Compliance
+All language uses "Research Candidate" / "Investment Candidate" / "Trade Candidate". Never "recommendation", "buy", "sell", "target price", "strong buy".
+
+### Tests
+156 new structural + logic assertions covering: canonical model (21), opportunity types (24), score mapping (7), evidence panels (11), filtering (13), sorting (6), meta extraction (6), platform health (5), route registration (9), compliance (8), architecture (8), roadmap discipline (5).
+
+### No schema changes
+Engine is a pure enrichment layer. No new DB tables. Uses existing `market_data_symbols`, `getLatestRanking()`, and curated theme registry.
+
+### Deferred
+Ask AI deep integration (uses existing opportunitySearch path), Portfolio Intelligence, Watchlists, Alerts, AI Agents.
+
+---
+
 ## Sprint 2.4.2 — Broker Synchronization (2026-08-08)
 
 **Purpose:** Allow users to synchronize portfolio holdings directly from Tradier and TradeStation. Architecture supports adding Schwab, Fidelity, IBKR, Robinhood, Webull, E*Trade without schema redesign.

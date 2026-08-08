@@ -84,6 +84,7 @@ import { registerPlatformHealthRoutes } from "./routes/platform-health";
 import { registerOperationsManualRoutes } from "./routes/operations-manual";
 import { registerPortfolioRoutes } from "./routes/portfolio";
 import { registerBrokerSyncRoutes } from "./routes/broker-sync";
+import { registerOpportunityIntelligenceRoutes } from "./routes/opportunity-intelligence";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -251,6 +252,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerOperationsManualRoutes(app, isAuthenticated, isAdmin);
   registerPortfolioRoutes(app, isAuthenticated);
   registerBrokerSyncRoutes(app, isAuthenticated);
+  registerOpportunityIntelligenceRoutes(app, isAuthenticated);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;
     const user = await authStorage.getUser(req.session.userId);

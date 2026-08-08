@@ -257,3 +257,70 @@ Operations Manual Files Updated: [list]
 ```
 
 A sprint requiring documentation CANNOT be GO when `Operations Manual Updated = NO`.
+
+---
+
+## Sprint 2.4.0 — Portfolio Foundation & Flexible Intake
+
+**Date:** August 2026  
+**Phase:** Portfolio Research Intelligence (Phase 1 of N)
+
+### New Tables
+
+| Table | Purpose |
+|-------|---------|
+| `portfolios` | User portfolio container (id, userId, name, sourceType, sourceAccountId) |
+| `portfolio_positions` | Per-position rows (symbol, quantity, averageCost, costBasis, currency, sourceType) |
+
+New enum: `portfolio_source_type` → `manual | csv | xlsx | broker`
+
+### New Routes
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/portfolio` | List user portfolios |
+| POST | `/api/portfolio` | Create portfolio |
+| PATCH | `/api/portfolio/:id` | Rename portfolio |
+| DELETE | `/api/portfolio/:id` | Delete portfolio + cascade positions |
+| GET | `/api/portfolio/:id/positions` | List positions (enriched with stored market data) |
+| POST | `/api/portfolio/:id/positions` | Add manual position |
+| PATCH | `/api/portfolio/:id/positions/:positionId` | Edit position |
+| DELETE | `/api/portfolio/:id/positions/:positionId` | Remove position |
+| POST | `/api/portfolio/import/csv` | Parse CSV → preview (no write) |
+| POST | `/api/portfolio/import/xlsx` | Parse XLSX → preview (no write) |
+| POST | `/api/portfolio/import/confirm` | Confirm preview → write to DB |
+
+### New Services
+
+- `server/services/portfolio-normalization.ts` — pure, no-LLM normalization; flexible header synonyms; duplicate consolidation; 500-row cap
+- `server/services/portfolio-import.ts` — CSV and XLSX parsing via xlsx package; formula cell stripping; MIME guards; 5 MB limit
+
+### New Client Pages
+
+| Route | Page | Purpose |
+|-------|------|---------|
+| `/portfolio` | `portfolio.tsx` | Onboarding → holdings overview |
+| `/portfolio/import` | `portfolio-import.tsx` | 3-step upload → preview → confirm |
+
+### Security Notes
+
+- All portfolio routes: `isAuthenticated` middleware required
+- User isolation: `userId` always from `req.session.userId!`, never from request body
+- Ownership enforced at query level: `WHERE id = ? AND user_id = ?` (returns 404 for foreign resources)
+- Preview store: session-bound Map, single-use, 30-minute TTL
+- File upload: multer memoryStorage (no disk writes), 5 MB limit, MIME check, formula cells stripped
+- No broker credentials returned in any position response
+
+### Architecture Decisions
+
+- Market data: `getReferenceSnapshotsBulk(userId, symbols, {realtime:false})` — stored bars only; no new Twelve Data calls
+- No recommendations, no buy/sell advice, no AI commentary (deferred to future sprints)
+- Broker positions can be imported manually via CSV export from the broker's own download feature
+
+### Operations Manual Updated
+
+- `docs/operations/17-sprint-change-log.md` ← this file
+- `docs/operations/16-api-and-uat-reference.md` ← portfolio routes added
+- `docs/operations/11-troubleshooting-runbook.md` ← CSV/XLSX import incidents added
+- `docs/operations/12-security-and-devsecops.md` ← file upload and portfolio isolation section added
+

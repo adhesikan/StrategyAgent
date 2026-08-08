@@ -56,6 +56,8 @@ import DailyAnalysisPage from "@/pages/daily-analysis";
 import AdminPositionProtectionPage from "@/pages/admin-position-protection";
 import AdminAgentTestsPage from "@/pages/admin-agent-tests";
 import AdminInstitutionalMappingsPage from "@/pages/admin-institutional-mappings";
+import PortfolioPage from "@/pages/portfolio";
+import PortfolioImportPage from "@/pages/portfolio-import";
 import NotFound from "@/pages/not-found";
 import AgentPage from "@/pages/agent";
 import TradeSetupsPage from "@/pages/trade-setups";
@@ -132,6 +134,8 @@ function AppRouter() {
       <Route path="/home" component={CommandCenterPage} />
       <Route path="/ideas" component={HomeV2} />
       <Route path="/ask" component={AskPage} />
+      <Route path="/portfolio/import" component={PortfolioImportPage} />
+      <Route path="/portfolio" component={PortfolioPage} />
       <Route path="/research/library" component={ResearchLibraryPage} />
       <Route path="/research/:id" component={ResearchDetailPage} />
       <Route path="/research" component={MarketResearchHub} />

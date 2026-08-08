@@ -1,0 +1,533 @@
+SPRINT 2.4.0 — PORTFOLIO FOUNDATION & FLEXIBLE INTAKE
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Portfolio Research Intelligence
+
+ROADMAP DISCIPLINE
+
+This sprint is the FIRST sprint in Portfolio Research Intelligence.
+
+Do NOT implement:
+
+- screenshot ingestion
+- PDF statement ingestion
+- new broker integrations
+- portfolio recommendations
+- buy/sell instructions
+- rebalancing advice
+- agents / loops / graphs
+- AI portfolio commentary
+
+Those belong to later planned sprints.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Build the canonical Portfolio Research data model and allow users to create/import
+a portfolio WITHOUT requiring a brokerage connection.
+
+Supported in THIS sprint:
+
+1. CSV import
+2. XLSX import
+3. Manual position entry
+4. Existing broker positions only if already available in current architecture
+
+All input methods must normalize into ONE canonical portfolio model.
+
+============================================================
+1. ARCHITECTURE AUDIT FIRST
+============================================================
+
+Inspect current portfolio-related architecture.
+
+Identify:
+
+- existing portfolio tables
+- user/account ownership model
+- portfolio-intelligence-engine.ts
+- current broker position models
+- Tradier / TradeStation / SnapTrade position flows
+- current portfolio routes
+- current portfolio UI
+- security/user isolation
+- existing P&L / market-value calculations
+
+Reuse existing models where appropriate.
+
+Do NOT create duplicate portfolio storage unnecessarily.
+
+Report architecture before coding.
+
+============================================================
+2. CANONICAL PORTFOLIO MODEL
+============================================================
+
+Create or normalize one canonical model.
+
+Suggested entities:
+
+Portfolio
+
+id
+userId
+name
+sourceType
+sourceAccountId nullable
+createdAt
+updatedAt
+
+PortfolioPosition
+
+id
+portfolioId
+symbol
+quantity
+averageCost nullable
+costBasis nullable
+marketValue nullable
+currency
+sourceType
+sourceReference nullable
+importedAt
+updatedAt
+
+Possible sourceType values:
+
+manual
+csv
+xlsx
+broker
+
+Do NOT add screenshot/pdf source types yet.
+
+============================================================
+3. PORTFOLIO NORMALIZATION SERVICE
+============================================================
+
+Create a reusable service:
+
+normalizePortfolioPositions()
+
+Inputs from:
+
+manual
+CSV
+XLSX
+existing broker adapter
+
+Output:
+
+canonical PortfolioPosition[]
+
+Normalize:
+
+symbol
+quantity
+average cost
+cost basis
+currency
+
+Validation:
+
+symbol required
+quantity > 0
+numeric fields finite
+duplicate symbols consolidated deterministically
+
+Do NOT use LLM.
+
+============================================================
+4. CSV IMPORT
+============================================================
+
+Create:
+
+POST /api/portfolio/import/csv
+
+Authenticated user only.
+
+Accept flexible common headers:
+
+Ticker
+Symbol
+
+Shares
+Quantity
+Qty
+
+Average Cost
+Avg Cost
+Cost Basis Per Share
+
+Cost Basis
+
+Ignore unknown columns safely.
+
+Return preview BEFORE commit.
+
+Response should include:
+
+parsedRows
+validRows
+invalidRows
+warnings
+normalizedPositions
+
+Do not write until user confirms.
+
+============================================================
+5. XLSX IMPORT
+============================================================
+
+Create:
+
+POST /api/portfolio/import/xlsx
+
+Same normalization path as CSV.
+
+No separate business logic.
+
+Support first useful worksheet by default.
+
+If multiple sheets exist:
+
+return available sheet names and selected sheet.
+
+============================================================
+6. IMPORT PREVIEW + CONFIRM
+============================================================
+
+Two-step workflow:
+
+Upload
+→ Preview
+→ Confirm Import
+
+Preview page should show:
+
+Symbol
+Quantity
+Average Cost
+Cost Basis
+Warnings
+
+User can:
+
+edit
+remove
+confirm
+
+Create:
+
+POST /api/portfolio/import/confirm
+
+Must verify the preview belongs to current authenticated user/session.
+
+============================================================
+7. MANUAL ENTRY
+============================================================
+
+Allow user to:
+
+Create Portfolio
+
+Add Position
+
+Edit Position
+
+Delete Position
+
+Fields:
+
+Ticker
+Quantity
+Average Cost optional
+
+Keep it simple.
+
+============================================================
+8. PORTFOLIO PAGE
+============================================================
+
+Create or enhance:
+
+/portfolio
+
+If no portfolio:
+
+show onboarding:
+
+"Add your portfolio"
+
+Options:
+
+Upload Spreadsheet
+Enter Manually
+Connect Broker
+
+Connect Broker may link to existing connection workflow.
+
+Do NOT make broker mandatory.
+
+============================================================
+9. BASIC PORTFOLIO OVERVIEW
+============================================================
+
+After import/manual entry show:
+
+Portfolio name
+Position count
+Current market value if current prices available
+Cost basis if available
+Unrealized gain/loss if calculable
+
+Holdings table:
+
+Symbol
+Quantity
+Average Cost
+Current Price
+Market Value
+Gain/Loss
+
+Do NOT add intelligence scoring yet.
+
+That comes next.
+
+============================================================
+10. DATA REFRESH POLICY
+============================================================
+
+Follow the platform principle:
+
+EXTERNAL PROVIDERS ARE INGESTION SOURCES, NOT DEFAULT READ PATHS.
+
+For imported positions:
+
+do not call Twelve Data repeatedly for static portfolio fields.
+
+Use existing stored/cached market data.
+
+If latest quote must be fetched:
+
+reuse current market-data service/cache.
+
+Do not create a portfolio-specific Twelve Data path.
+
+============================================================
+11. USER ISOLATION
+============================================================
+
+Portfolio data is private.
+
+Require:
+
+authenticated user
+userId ownership on every portfolio read/write
+no cross-user access
+no predictable portfolio ID exposure without ownership check
+no broker credentials returned
+
+Add explicit authorization tests.
+
+============================================================
+12. IMPORT SAFETY
+============================================================
+
+Spreadsheet files may contain malformed content.
+
+Requirements:
+
+file size limit
+allowed MIME/type checks
+row limit
+formula cells treated safely
+no macro execution
+no arbitrary file execution
+no path traversal
+temporary uploads cleaned up
+
+============================================================
+13. PORTFOLIO SOURCE TRANSPARENCY
+============================================================
+
+Display source:
+
+Manual
+Spreadsheet
+Broker
+
+Show:
+
+Last Updated
+Imported At
+
+Do not imply live synchronization for uploaded portfolios.
+
+Example:
+
+Spreadsheet Portfolio
+Last imported Aug 8, 2026
+
+============================================================
+14. API
+============================================================
+
+Create/reuse:
+
+GET /api/portfolio
+POST /api/portfolio
+PATCH /api/portfolio/:id
+
+GET /api/portfolio/:id/positions
+POST /api/portfolio/:id/positions
+PATCH /api/portfolio/:id/positions/:positionId
+DELETE /api/portfolio/:id/positions/:positionId
+
+POST /api/portfolio/import/csv
+POST /api/portfolio/import/xlsx
+POST /api/portfolio/import/confirm
+
+Use existing API conventions.
+
+============================================================
+15. TESTS
+============================================================
+
+Add tests for:
+
+CSV standard headers
+CSV alternate headers
+XLSX standard sheet
+multiple sheets
+invalid numeric values
+missing ticker
+duplicate symbols
+quantity validation
+average cost optional
+preview
+confirm
+manual add
+manual edit
+manual delete
+user isolation
+cross-user denial
+file size rejection
+invalid file type
+empty file
+100+ position import
+deterministic normalization
+no LLM dependency
+
+Run:
+
+portfolio tests
+server tests
+client tests
+full application suite
+npm run build
+typecheck changed files
+
+============================================================
+16. OPERATIONS MANUAL UPDATE — REQUIRED
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md ALWAYS
+
+If routes added:
+update API/UAT reference
+
+Document:
+
+/portfolio
+
+portfolio import APIs
+
+file-upload operational constraints
+
+user-data/privacy model
+
+troubleshooting:
+
+CSV import failure
+XLSX import failure
+invalid headers
+partial import
+cross-user access denial
+
+Update security/devsecops manual for uploaded files and user portfolio isolation.
+
+Completion report must include:
+
+Operations Manual Updated: YES
+Files Updated: [...]
+
+============================================================
+17. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. Broker connection is NOT required.
+
+B. User can create portfolio manually.
+
+C. User can import CSV.
+
+D. User can import XLSX.
+
+E. All sources normalize into same canonical model.
+
+F. Preview/confirm flow works.
+
+G. Private user data is isolated correctly.
+
+H. No personalized recommendations exist.
+
+I. No new direct/redundant market-data calls are introduced.
+
+J. Full tests pass.
+
+K. npm run build passes.
+
+L. Operations Manual updated.
+
+============================================================
+18. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Existing portfolio architecture discovered
+2. Files changed
+3. Schema changes
+4. Canonical portfolio model
+5. Normalization rules
+6. CSV behavior
+7. XLSX behavior
+8. Manual-entry behavior
+9. User isolation model
+10. File safety
+11. APIs
+12. UI routes
+13. Performance
+14. Tests
+15. Full test count
+16. npm run build
+17. Typecheck
+18. Production UAT
+19. Known limitations
+20. Deferred backlog
+21. Operations Manual Updated: YES/NO
+22. Operations Manual Files Updated
+23. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

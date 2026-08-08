@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time, date, bigint, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, integer, real, boolean, timestamp, jsonb, numeric, time, date, bigint, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -3299,3 +3299,56 @@ export const themeIntelligenceSnapshots = pgTable("theme_intelligence_snapshots"
 }));
 
 export type ThemeIntelligenceSnapshot = typeof themeIntelligenceSnapshots.$inferSelect;
+
+// ============================================================
+// PORTFOLIO FOUNDATION (Sprint 2.4.0)
+// ============================================================
+
+export const portfolioSourceTypeEnum = pgEnum("portfolio_source_type", [
+  "manual",
+  "csv",
+  "xlsx",
+  "broker",
+]);
+
+export const portfolios = pgTable("portfolios", {
+  id:              varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:          varchar("user_id").notNull(),
+  name:            text("name").notNull(),
+  sourceType:      portfolioSourceTypeEnum("source_type").notNull().default("manual"),
+  sourceAccountId: text("source_account_id"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxUserId: index("idx_portfolios_user_id").on(t.userId),
+}));
+
+export type Portfolio = typeof portfolios.$inferSelect;
+export type InsertPortfolio = typeof portfolios.$inferInsert;
+export const insertPortfolioSchema = createInsertSchema(portfolios).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export const portfolioPositions = pgTable("portfolio_positions", {
+  id:              varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  portfolioId:     varchar("portfolio_id").notNull(),
+  symbol:          text("symbol").notNull(),
+  quantity:        numeric("quantity", { precision: 18, scale: 8 }).notNull(),
+  averageCost:     numeric("average_cost", { precision: 18, scale: 8 }),
+  costBasis:       numeric("cost_basis", { precision: 18, scale: 8 }),
+  marketValue:     numeric("market_value", { precision: 18, scale: 8 }),
+  currency:        text("currency").notNull().default("USD"),
+  sourceType:      portfolioSourceTypeEnum("source_type").notNull().default("manual"),
+  sourceReference: text("source_reference"),
+  importedAt:      timestamp("imported_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxPortfolioId:   index("idx_pp_portfolio_id").on(t.portfolioId),
+  idxPortfolioSym:  index("idx_pp_portfolio_symbol").on(t.portfolioId, t.symbol),
+}));
+
+export type PortfolioPosition = typeof portfolioPositions.$inferSelect;
+export type InsertPortfolioPosition = typeof portfolioPositions.$inferInsert;
+export const insertPortfolioPositionSchema = createInsertSchema(portfolioPositions).omit({
+  id: true, importedAt: true, updatedAt: true,
+});

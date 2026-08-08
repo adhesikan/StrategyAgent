@@ -275,3 +275,85 @@ GET /api/intelligence/briefing
 → leadingThemes array populated
 → leadingSectors array populated
 ```
+
+---
+
+## Portfolio API (Sprint 2.4.0)
+
+> All portfolio routes require an authenticated user session.
+> Portfolio data is private — no cross-user access.
+
+### Portfolio CRUD
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/portfolio` | List user's portfolios |
+| POST | `/api/portfolio` | Create portfolio; body: `{name, sourceType}` |
+| PATCH | `/api/portfolio/:id` | Rename; body: `{name}` |
+| DELETE | `/api/portfolio/:id` | Delete portfolio + all positions (cascade) |
+
+### Position CRUD
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/portfolio/:id/positions` | Returns positions + `currentPrice/marketValue/gainLoss` from stored bars |
+| POST | `/api/portfolio/:id/positions` | Add manual position; body: `{symbol, quantity, averageCost?}` |
+| PATCH | `/api/portfolio/:id/positions/:positionId` | Edit; body: `{quantity?, averageCost?}` |
+| DELETE | `/api/portfolio/:id/positions/:positionId` | Remove single position |
+
+### Import (Preview → Confirm)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| POST | `/api/portfolio/import/csv` | Multipart `file` field; returns `previewId + normalizedPositions` (no DB write) |
+| POST | `/api/portfolio/import/xlsx` | Multipart `file` field; optional body `sheetIndex`; returns same + `sheetInfo` |
+| POST | `/api/portfolio/import/confirm` | Body: `{previewId, portfolioName?, portfolioId?, editedPositions?}`; single-use |
+
+**⚠️ POST-only warning:** `/api/portfolio/import/*` endpoints are POST only — navigating to them in Chrome sends GET and returns 404. Use curl or the `/portfolio/import` UI.
+
+### Client Pages
+
+| URL | Page |
+|-----|------|
+| `https://vcptrader.com/portfolio` | Portfolio overview — onboarding or holdings |
+| `https://vcptrader.com/portfolio/import` | 3-step import wizard (upload → preview → confirm) |
+
+### Portfolio UAT Sequence
+
+```bash
+# 1. Create portfolio manually
+curl -s -b "$COOKIE" -X POST /api/portfolio \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test Portfolio","sourceType":"manual"}' | jq .id
+
+# 2. Add a position
+curl -s -b "$COOKIE" -X POST /api/portfolio/$PID/positions \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"AAPL","quantity":100,"averageCost":150}' | jq .id
+
+# 3. Read enriched positions (currentPrice from stored bars)
+curl -s -b "$COOKIE" /api/portfolio/$PID/positions | jq '.positions[0].currentPrice'
+
+# 4. CSV import preview (no DB write)
+curl -s -b "$COOKIE" -X POST /api/portfolio/import/csv \
+  -F "file=@my_holdings.csv" | jq '{previewId, validRows, invalidRows: (.invalidRows|length)}'
+
+# 5. Confirm import
+curl -s -b "$COOKIE" -X POST /api/portfolio/import/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"previewId":"<id from step 4>","portfolioName":"CSV Portfolio"}' | jq .importedCount
+```
+
+### File Safety Constraints
+
+| Constraint | Value |
+|-----------|-------|
+| Max file size | 5 MB |
+| Max rows processed | 500 |
+| Allowed CSV MIME | text/csv, text/plain, application/csv |
+| Allowed XLSX MIME | application/vnd.openxmlformats-officedocument.spreadsheetml.sheet |
+| Formula cells | Stripped (cells starting with = + - @) |
+| Macros | Not executed (cellFormula: false) |
+| Disk writes | None (multer memoryStorage) |
+| Preview TTL | 30 minutes, single-use |
+

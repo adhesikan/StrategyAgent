@@ -289,3 +289,113 @@ Then re-trigger ingestion.
 **Likely cause:** Railway's application runtime does not include `psql`.
 
 **Remediation:** Use a PostgreSQL client on your local machine. Connect using the `DATABASE_URL` from Railway environment variables. Or use the Railway "Query" tab if available.
+
+---
+
+## PORTFOLIO IMPORT
+
+### CSV import fails with "CSV parse error"
+
+**Classification:** csv parse error — file encoding or delimiter issue.
+
+**Symptom:** `POST /api/portfolio/import/csv` returns 400 with `"CSV parse error: ..."`.
+
+**Diagnostic:** Check file encoding (must be UTF-8). Check that the file has a header row as row 1.
+
+**Likely cause:** File is UTF-16/BOM-encoded, uses semicolons (European CSV), or has no header row.
+
+**Remediation:**
+1. Ask user to open in Excel and re-save as "CSV UTF-8 (comma delimited)"
+2. Verify the file has a first row with column names (Ticker, Symbol, Shares, etc.)
+3. Check that the file is under 5 MB
+
+**Verification:** `POST /api/portfolio/import/csv` returns `previewId` and `normalizedPositions`.
+
+---
+
+### XLSX import fails with "XLSX parse error"
+
+**Classification:** xlsx parse error — corrupted or password-protected file.
+
+**Symptom:** `POST /api/portfolio/import/xlsx` returns 400 with `"XLSX parse error: ..."`.
+
+**Diagnostic:** Try opening the file in Excel. Check if password-protected.
+
+**Likely cause:** File is corrupt, password-protected, or is an XLSb/XLSM macro file.
+
+**Remediation:**
+1. Ask user to re-save as `.xlsx` (not `.xlsm`, `.xlsb`, or `.xls` macro format)
+2. Remove password protection before uploading
+3. If only one sheet is needed, export that sheet as CSV
+
+**Verification:** `POST /api/portfolio/import/xlsx` returns `previewId` and `sheetInfo`.
+
+---
+
+### CSV headers not recognized — all rows invalid
+
+**Classification:** invalid headers — no column matched any known synonym.
+
+**Symptom:** Import preview returns `validRows: 0`, `invalidRows: N` with reason "Missing or invalid ticker symbol".
+
+**Diagnostic:** Check the header row. Log `parsedRows` vs `invalidRows`.
+
+**Likely cause:** Broker export uses proprietary column names not in the synonym list.
+
+**Remediation:**
+1. User should rename columns in the file before upload: `Symbol` (or `Ticker`), `Shares` (or `Quantity`), `Average Cost` (or `Avg Cost`)
+2. Supported headers are documented at `/portfolio/import` UI
+3. If a new synonym is needed permanently, add it to `SYMBOL_HEADERS` / `QUANTITY_HEADERS` / `AVG_COST_HEADERS` in `server/services/portfolio-normalization.ts`
+
+**Verification:** Re-upload with corrected headers. `validRows > 0`.
+
+---
+
+### Partial import — some rows skipped
+
+**Classification:** partial import — mixed valid/invalid rows.
+
+**Symptom:** `invalidRows` count > 0. Some symbols appear in the rejected list.
+
+**Diagnostic:** Inspect `invalidRows[].reason` in the preview response.
+
+**Likely cause:**
+- Row has quantity = 0 or negative (short position not yet supported)
+- Symbol field blank or contains non-symbol characters
+- Numeric field has text like "N/A" or "—"
+
+**Remediation:** User can remove or fix the offending rows in the preview UI before confirming.
+
+**Verification:** Preview shows `invalidRows: []` after user edits.
+
+---
+
+### Cross-user access denial — 400 "Preview not found"
+
+**Classification:** cross-user access denial — correct behavior, not a bug.
+
+**Symptom:** `POST /api/portfolio/import/confirm` returns 400 "Preview not found, expired, or belongs to a different user".
+
+**Likely cause:**
+1. User session changed between upload and confirm (re-login, different browser tab)
+2. Preview expired (TTL = 30 minutes)
+3. Confirm was called twice (preview is single-use)
+
+**Remediation:** User must re-upload the file to get a fresh preview ID.
+
+**Verification:** Upload again, confirm within 30 minutes using the same session.
+
+---
+
+### Portfolio positions return stale market prices
+
+**Classification:** stale stored bars — no realtime data available.
+
+**Symptom:** `currentPrice` in position list shows a price that is days old.
+
+**Likely cause:** `getReferenceSnapshotsBulk` uses stored daily bars (`allowExternalRefresh: false`). Prices update via the nightly market data ingestion job, not on-demand.
+
+**Remediation:** This is expected behavior. Prices are updated nightly. If the daily ingestion job is failing, check `/admin/platform-health` → Market Data card.
+
+**Note:** Portfolio does NOT call Twelve Data on-demand — this is by design (data policy).
+

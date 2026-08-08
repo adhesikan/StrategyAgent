@@ -324,3 +324,50 @@ New enum: `portfolio_source_type` → `manual | csv | xlsx | broker`
 - `docs/operations/11-troubleshooting-runbook.md` ← CSV/XLSX import incidents added
 - `docs/operations/12-security-and-devsecops.md` ← file upload and portfolio isolation section added
 
+---
+
+## Production Deployment Fix — Railway npm ci / tsx Missing
+
+**Date:** 2026-08-08
+
+### Problem
+
+Railway/Nixpacks builds failed with two compounding errors:
+1. `npm ci` → 403 Forbidden from Replit's security firewall, blocking `protobufjs@8.0.0` (Critical CVE)
+2. `npm run build` → `tsx: not found` (exit 127)
+
+Root causes:
+- `package-lock.json` entries for Sprint 2.4.0 packages (`multer`, `xlsx`, `@types/multer`) resolved to `http://package-firewall.replit.local/npm/...` — unreachable from Railway
+- Stale `protobufjs@8.0.0` in lockfile root (not in `package.json`), blocked by CVE policy
+- `tsx` was in `devDependencies` but required at production startup by `npx tsx script/migrate.ts`
+
+### Changes
+
+**`package.json`**
+- Moved `tsx` from `devDependencies` → `dependencies` (required at production startup)
+
+**`package-lock.json`**
+- Rewrote all 19 `http://package-firewall.replit.local/npm/` resolved URLs → `https://registry.npmjs.org/`
+- Upgraded `protobufjs` entry from `8.0.0` → `8.7.2` (no CVE; updated `resolved` + `integrity`)
+- Removed stale `protobufjs: ^8.0.0` from root `packages[""].dependencies` (not in `package.json`)
+- Removed `"dev": true` from `node_modules/tsx` entry (now a production dependency)
+
+### Validation
+
+| Check | Result |
+|-------|--------|
+| `npm ci` (clean) | ✅ Pass |
+| `npm run build` | ✅ Pass (`built in 12.86s`) |
+| `npx tsx script/migrate.ts` startup viability | ✅ tsx in `node_modules/.bin/tsx` |
+| 5111 tests | ✅ Pass |
+| Firewall URLs remaining | 0 |
+
+### Security Warning Note
+
+Railway/Nixpacks reported Docker ARG/ENV warnings for sensitive variable names (`AUTH_JWT_SECRET`, `SESSION_SECRET`, etc.). These are Nixpacks-generated warnings about build-arg naming — secret **values** are not written into source or the Dockerfile. All secrets are injected at runtime via Railway environment variables. No secrets are in source. This is a cosmetic Nixpacks warning; no code change required.
+
+### Operations Manual Updated
+
+- `docs/operations/11-troubleshooting-runbook.md` ← "Railway build: tsx not found after npm ci" incident added
+- `docs/operations/17-sprint-change-log.md` ← this entry
+

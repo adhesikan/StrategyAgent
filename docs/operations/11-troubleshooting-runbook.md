@@ -387,6 +387,42 @@ Then re-trigger ingestion.
 
 ---
 
+### Railway build: tsx not found after npm ci
+
+**Classification:** production build failure — dependency misconfiguration.
+
+**Symptom:** Railway/Nixpacks build log shows `npm ci` failing with a 403 blocked-by-security-policy error, followed by `sh: 1: tsx: not found` and build exit code 127.
+
+**Actual npm ci root cause:** Two compounding issues:
+1. `package-lock.json` entries for recently-installed packages (`multer`, `xlsx`, `@types/multer`) resolved to `http://package-firewall.replit.local/npm/...` — the Replit-internal npm proxy, which is unreachable from Railway's build environment.
+2. A stale `protobufjs@8.0.0` entry remained in the lockfile root (not in `package.json`). That version is blocked by Replit's socket security policy (Critical CVE). Railway's Nixpacks routes all npm downloads through the Replit firewall proxy, so even a correctly-resolved `registry.npmjs.org` URL is checked against the policy.
+
+**Why tsx was missing:** `tsx` was declared in `devDependencies`, not `dependencies`. The Railway start command (`npx tsx script/migrate.ts && npm run start`) runs at container startup, where devDependencies may not be present in all deployment configurations.
+
+**Remediation:**
+1. Rewrite all `http://package-firewall.replit.local/npm/` URLs in `package-lock.json` to `https://registry.npmjs.org/` using sed.
+2. Upgrade the blocked `protobufjs` entry in the lockfile from `8.0.0` to `8.7.2` (latest, no CVE) — update `version`, `resolved`, and `integrity` fields directly in `packages["node_modules/protobufjs"]`.
+3. Remove `protobufjs` from `packages[""].dependencies` in the lockfile (it is a stale artifact; it is not listed in `package.json`).
+4. Move `tsx` from `devDependencies` to `dependencies` in `package.json`. Remove the `"dev": true` flag from `packages["node_modules/tsx"]` in the lockfile.
+
+**Validation:**
+```bash
+rm -rf node_modules
+npm ci            # must exit 0
+npm run build     # must exit 0, "built in Xs"
+ls node_modules/.bin/tsx  # must exist (production dep)
+```
+
+**Railway startup verification:** `startCommand = "npx tsx script/migrate.ts && npm run start"` is viable once tsx is in `dependencies`.
+
+**Prevention:** After any `npm install` inside the Replit workspace, scan `package-lock.json` for `package-firewall.replit.local` entries before committing:
+```bash
+grep -c "package-firewall.replit.local" package-lock.json
+# must be 0
+```
+
+---
+
 ### Portfolio positions return stale market prices
 
 **Classification:** stale stored bars — no realtime data available.

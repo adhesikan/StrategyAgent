@@ -1,0 +1,300 @@
+PRODUCTION DEPLOYMENT FIX — Railway npm ci / tsx Missing
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT RAILWAY FAILURE
+
+Nixpacks detected:
+
+install:
+npm ci
+
+build:
+npm run build
+
+start:
+npx tsx script/migrate.ts && npm run start
+
+Railway log then showed:
+
+RUN npm ci
+→ npm error
+
+followed by:
+
+npm run build
+> tsx script/build.ts
+
+sh: 1: tsx: not found
+
+Build exits 127.
+
+DO NOT modify Portfolio Intelligence functionality.
+DO NOT change database schema.
+DO NOT start another sprint.
+
+============================================================
+1. TRACE EXACT DEPENDENCY STATE
+============================================================
+
+Inspect:
+
+package.json
+package-lock.json
+
+Report:
+
+- where tsx is declared
+- dependencies vs devDependencies
+- installed tsx version
+- whether package-lock is synchronized with package.json
+- whether npm ci succeeds locally from a clean install
+
+Run:
+
+rm -rf node_modules
+npm ci
+
+Do not modify lockfile until root cause is known.
+
+============================================================
+2. IDENTIFY WHY npm ci FAILED
+============================================================
+
+The Railway log only surfaced:
+
+"npm error A complete log ..."
+
+Find/reproduce the actual npm ci failure.
+
+Check for:
+
+- package-lock mismatch
+- dependency resolution failure
+- production-mode dev dependency omission
+- postinstall failure
+- engine incompatibility
+- corrupted lock state
+
+Return the EXACT npm error.
+
+Do not assume tsx alone is the root cause until npm ci is understood.
+
+============================================================
+3. AUDIT PRODUCTION/BUILD CONFIG
+============================================================
+
+Inspect whether any of these are set/configured:
+
+NODE_ENV=production
+NPM_CONFIG_PRODUCTION
+NPM_CONFIG_OMIT
+npm config production
+.npmrc
+Railway/Nixpacks config
+
+The Railway log includes:
+
+npm warn config production Use `--omit=dev` instead.
+
+Determine why npm considers production mode active during build.
+
+============================================================
+4. TSX RUNTIME CONTRACT
+============================================================
+
+tsx is currently required by:
+
+BUILD:
+tsx script/build.ts
+
+STARTUP MIGRATION:
+npx tsx script/migrate.ts
+
+Therefore determine the architecturally correct solution.
+
+Preferred options, in order:
+
+A. Make the production build/install explicitly install the build tooling required by
+   npm run build, while keeping runtime dependencies clean.
+
+OR
+
+B. If tsx is intentionally required at production startup because migrate.ts executes
+   before npm run start, move tsx into dependencies.
+
+OR
+
+C. Better long-term option:
+   eliminate runtime tsx dependency by compiling the migration runner to JavaScript
+   as part of the build and execute Node against built JS.
+
+Choose the smallest safe fix for THIS release.
+
+Do not introduce a complex build-system redesign.
+
+============================================================
+5. VERIFY BUILD SCRIPT
+============================================================
+
+Inspect:
+
+script/build.ts
+
+Confirm it legitimately requires tsx.
+
+Do not replace it blindly.
+
+Run:
+
+npm run build
+
+from a clean npm ci install.
+
+Must PASS.
+
+============================================================
+6. VERIFY STARTUP MIGRATION
+============================================================
+
+Inspect:
+
+script/migrate.ts
+
+Confirm the production startup command will work in the final dependency layout.
+
+Current production command:
+
+npx tsx script/migrate.ts && npm run start
+
+If tsx will not exist in production runtime, change this safely before GO.
+
+Do not leave a deployment that builds successfully but fails on startup.
+
+============================================================
+7. PORTFOLIO MIGRATION CHECK
+============================================================
+
+Confirm Sprint 2.4.0 schema remains present:
+
+portfolio_source_type
+portfolios
+portfolio_positions
+
+Confirm the startup migration mechanism will create them.
+
+NO destructive migration operations.
+
+============================================================
+8. SECURITY WARNINGS
+============================================================
+
+Railway/Nixpacks also reported Docker build warnings that sensitive variable names
+are being passed through ARG/ENV.
+
+Examples include:
+
+AUTH_JWT_SECRET
+BROKER_TOKEN_KEY
+MCP_SERVICE_TOKEN
+OPENAI_API_KEY
+SESSION_SECRET
+TWELVE_DATA_API_KEY
+broker secrets
+Stripe secrets
+
+DO NOT expose secret values.
+
+Do not expand this release fix into a full DevSecOps redesign.
+
+However:
+
+- determine whether these are Nixpacks-generated warnings only
+- confirm secret VALUES are not written into source/Dockerfile
+- add/update the Operations Manual backlog entry if needed
+
+============================================================
+9. CLEAN RELEASE VALIDATION
+============================================================
+
+After fixing:
+
+rm -rf node_modules
+npm ci
+npm run build
+
+Then run application tests excluding vendor/.cache tests.
+
+Verify:
+
+- npm ci PASS
+- npm run build PASS
+- tsx/build tooling available when needed
+- startup command viable
+- zero new TypeScript errors in changed files
+
+============================================================
+10. OPERATIONS MANUAL UPDATE
+============================================================
+
+Required.
+
+Update:
+
+docs/operations/11-troubleshooting-runbook.md
+
+Add incident:
+
+"Railway build: tsx not found after npm ci"
+
+Document:
+
+symptom
+actual npm ci root cause
+tsx dependency/build relationship
+safe remediation
+validation
+Railway startup verification
+
+Also update:
+
+docs/operations/17-sprint-change-log.md
+
+if implementation changes production build/start behavior.
+
+If deployment procedure changes:
+
+update deployment runbook.
+
+Completion report:
+
+Operations Manual Updated: YES
+
+============================================================
+11. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact npm ci failure
+2. Why tsx was missing
+3. tsx location before
+4. Production npm configuration discovered
+5. Fix selected
+6. package.json changes
+7. package-lock changes
+8. Build/start command changes
+9. clean npm ci result
+10. npm run build result
+11. startup migration viability
+12. portfolio schema migration viability
+13. secret-warning assessment
+14. tests
+15. TypeScript
+16. Operations Manual Updated
+17. Files updated
+18. GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

@@ -79,6 +79,7 @@ import { registerInstitutionalAdminRoutes } from "./routes/institutional-admin";
 import { registerInstitutionalMappingRoutes } from "./routes/institutional-mappings";
 import { registerInstitutionalSignalRoutes } from "./routes/institutional-signals";
 import { registerInstitutionalFundsRoutes } from "./routes/institutional-funds";
+import { registerIntelligenceRoutes } from "./routes/intelligence";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -241,6 +242,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // must be registered before the dynamic /api/institutional/:symbol route.
   registerInstitutionalFundsRoutes(app, isAuthenticated);
   registerInstitutionalRoute(app, isAuthenticated); // dynamic :symbol — always last
+  registerIntelligenceRoutes(app);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;
     const user = await authStorage.getUser(req.session.userId);

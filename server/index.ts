@@ -264,6 +264,49 @@ async function runStartupMigrations() {
       END $$;
     `);
     
+    // Sector & Theme Intelligence snapshot tables (Sprint 2.3.3)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sector_intelligence_snapshots (
+        id          VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        sector      TEXT    NOT NULL,
+        score       INTEGER NOT NULL,
+        label       TEXT    NOT NULL,
+        metrics     JSONB   NOT NULL DEFAULT '{}',
+        top_symbols JSONB   NOT NULL DEFAULT '[]',
+        changes     JSONB   NOT NULL DEFAULT '{}',
+        generated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_sis_sector
+        ON sector_intelligence_snapshots(sector)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_sis_generated_at
+        ON sector_intelligence_snapshots(generated_at)
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS theme_intelligence_snapshots (
+        id           VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        theme_id     TEXT    NOT NULL,
+        theme_name   TEXT    NOT NULL,
+        score        INTEGER NOT NULL,
+        label        TEXT    NOT NULL,
+        metrics      JSONB   NOT NULL DEFAULT '{}',
+        top_symbols  JSONB   NOT NULL DEFAULT '[]',
+        changes      JSONB   NOT NULL DEFAULT '{}',
+        generated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_tis_theme_id
+        ON theme_intelligence_snapshots(theme_id)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_tis_generated_at
+        ON theme_intelligence_snapshots(generated_at)
+    `);
+
     const skipCleanup = await db.execute(sql`
       DELETE FROM agent_decisions WHERE action = 'SKIP'
     `);

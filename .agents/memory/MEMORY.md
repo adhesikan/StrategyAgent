@@ -45,3 +45,4 @@
 - [Opportunity Research Workspace](opportunity-workspace-sprint230.md) — Sprint 2.3.0: /opportunities/:symbol; 2-call contract (today + workspace/:symbol); 5 tabs; compare from cached ranking; 49 pure tests.
 - [Institutional Fund Explorer](institutional-fund-explorer.md) — Sprint 2.3.2: manager-level 13F Fund Explorer; 5 endpoints, 2 pages, 79 pure tests; managerId = CIK; reportedValue × 1000 = USD.
 - [Opportunity Change Intelligence](opportunity-change-intelligence.md) — Sprint 2.3.1: deterministic engine explaining WHY ranked opportunities changed; dashboard EnrichedRankingChangesPanel + workspace WhyItChangedPanel.
+- [Sector & Theme Intelligence](sector-theme-intelligence.md) — Sprint 2.3.3: curated theme registry + deterministic sector/theme engines; precomputed snapshots; 5 API routes; 3 client pages; 90 pure tests.

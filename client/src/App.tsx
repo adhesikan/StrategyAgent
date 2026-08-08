@@ -80,6 +80,9 @@ import OpportunityResearchPage from "@/pages/opportunity-research";
 import OpportunityWorkspacePage from "@/pages/opportunity-workspace";
 import InstitutionalFundsPage from "@/pages/institutional-funds";
 import InstitutionalFundDetailPage from "@/pages/institutional-fund-detail";
+import IntelligencePage from "@/pages/intelligence";
+import IntelligenceThemeDetailPage from "@/pages/intelligence-theme-detail";
+import IntelligenceSectorDetailPage from "@/pages/intelligence-sector-detail";
 import DashboardPage from "@/pages/dashboard";
 import { resolveLandingPage } from "@/lib/landing-page";
 import { Redirect } from "wouter";
@@ -132,6 +135,9 @@ function AppRouter() {
       <Route path="/opportunities/:symbol" component={OpportunityWorkspacePage} />
       <Route path="/institutional/funds" component={InstitutionalFundsPage} />
       <Route path="/institutional/funds/:managerId" component={InstitutionalFundDetailPage} />
+      <Route path="/intelligence" component={IntelligencePage} />
+      <Route path="/intelligence/themes/:themeId" component={IntelligenceThemeDetailPage} />
+      <Route path="/intelligence/sectors/:sector" component={IntelligenceSectorDetailPage} />
       <Route path="/scanner" component={StrategyScannerPage} />
       <Route path="/trade/:ticker" component={TradeDetailPage} />
       <Route path="/instatrade" component={InstaTradePage} />

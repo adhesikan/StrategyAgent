@@ -46,6 +46,7 @@ import {
   getLatestRanking,
   setLatestRanking,
 } from "./opportunity-ranking-engine";
+import { runIntelligencePrecomputation } from "./intelligence-orchestrator";
 
 // ---------------------------------------------------------------------------
 // Re-export the canonical snapshot type used by routes
@@ -591,6 +592,10 @@ async function _runOpportunityEngineInner(
             watchlist: ranking.watchlist.length,
             regime: ranking.regime,
           });
+          // ── Intelligence Precomputation (Sprint 2.3.3) ──────────────────
+          // Fire-and-forget: compute sector/theme intelligence after ranking.
+          // Never throws — failures are logged in runIntelligencePrecomputation.
+          void runIntelligencePrecomputation();
         })
         .catch((err: any) => {
           structuredLog("warn", {

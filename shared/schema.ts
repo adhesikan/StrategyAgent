@@ -3264,3 +3264,38 @@ export const institutionalSymbolSignals = pgTable("institutional_symbol_signals"
 
 export type InstitutionalSymbolSignal = typeof institutionalSymbolSignals.$inferSelect;
 export type InsertInstitutionalSymbolSignal = typeof institutionalSymbolSignals.$inferInsert;
+
+// ── Sector & Theme Intelligence Snapshots (Sprint 2.3.3) ─────────────────────
+
+export const sectorIntelligenceSnapshots = pgTable("sector_intelligence_snapshots", {
+  id:          varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sector:      text("sector").notNull(),
+  score:       integer("score").notNull(),
+  label:       text("label").notNull(),
+  metrics:     jsonb("metrics").notNull().default({}),
+  topSymbols:  jsonb("top_symbols").notNull().default([]),
+  changes:     jsonb("changes").notNull().default({}),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxSector:  index("idx_sis_sector").on(t.sector),
+  idxGenAt:   index("idx_sis_generated_at").on(t.generatedAt),
+}));
+
+export type SectorIntelligenceSnapshot = typeof sectorIntelligenceSnapshots.$inferSelect;
+
+export const themeIntelligenceSnapshots = pgTable("theme_intelligence_snapshots", {
+  id:          varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  themeId:     text("theme_id").notNull(),
+  themeName:   text("theme_name").notNull(),
+  score:       integer("score").notNull(),
+  label:       text("label").notNull(),
+  metrics:     jsonb("metrics").notNull().default({}),
+  topSymbols:  jsonb("top_symbols").notNull().default([]),
+  changes:     jsonb("changes").notNull().default({}),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxThemeId: index("idx_tis_theme_id").on(t.themeId),
+  idxGenAt:   index("idx_tis_generated_at").on(t.generatedAt),
+}));
+
+export type ThemeIntelligenceSnapshot = typeof themeIntelligenceSnapshots.$inferSelect;

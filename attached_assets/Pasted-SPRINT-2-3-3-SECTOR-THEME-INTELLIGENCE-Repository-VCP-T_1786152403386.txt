@@ -1,0 +1,592 @@
+SPRINT 2.3.3 — SECTOR & THEME INTELLIGENCE
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Trader Intelligence
+
+CURRENT STATE
+
+Completed:
+
+- Opportunity Ranking Engine
+- Dashboard ranking integration
+- Opportunity Research Workspace
+- Opportunity Change Intelligence
+- Institutional Signal Engine
+- Institutional Fund Explorer
+
+OBJECTIVE
+
+Build a deterministic Sector & Theme Intelligence layer that aggregates existing stock-level
+evidence into sector- and theme-level research intelligence.
+
+The user should be able to answer:
+
+- Which sectors are strengthening?
+- Which themes have the highest-quality opportunities?
+- Which themes are seeing broader institutional accumulation?
+- Which themes are weakening?
+- Which individual stocks are driving a theme?
+- What changed since the previous scan?
+
+This is a research feature.
+
+Do NOT provide investment recommendations.
+Do NOT modify scanner logic.
+Do NOT modify Opportunity Ranking weights.
+Do NOT introduce LLM-generated scores.
+
+============================================================
+1. ARCHITECTURE AUDIT FIRST
+============================================================
+
+Inspect existing data sources.
+
+Identify:
+
+- opportunity ranking output
+- opportunity history
+- institutional_symbol_signals
+- opportunity change intelligence
+- any existing sector / industry metadata
+- any existing theme tags
+- current symbol universe metadata
+- company profile / classification services
+
+Report:
+
+what sector/industry information already exists
+what theme metadata already exists
+where it is sourced from
+what is missing
+
+Do not create duplicate classification systems unnecessarily.
+
+============================================================
+2. CANONICAL CLASSIFICATION MODEL
+============================================================
+
+Create/reuse canonical symbol classification:
+
+symbol
+sector
+industry
+subIndustry
+themes[]
+
+Themes should be many-to-many.
+
+Initial themes may include:
+
+AI Infrastructure
+Semiconductors
+Memory
+Cloud
+Cybersecurity
+Robotics
+Quantum Computing
+Nuclear / Power Infrastructure
+Data Centers
+Defense
+Fintech
+Biotechnology
+
+Do not hardcode symbols inside scoring logic.
+
+Theme membership may be configuration-backed.
+
+Keep classification deterministic and auditable.
+
+============================================================
+3. THEME REGISTRY
+============================================================
+
+Create a theme registry with:
+
+themeId
+name
+description
+active
+symbolCount
+classificationMethod
+lastUpdated
+
+Support explicit curated membership.
+
+Do NOT use AI to automatically classify symbols in this sprint.
+
+Future AI-assisted classification can remain backlog.
+
+============================================================
+4. SECTOR INTELLIGENCE ENGINE
+============================================================
+
+Create:
+
+server/services/sector-intelligence-engine.ts
+
+For each sector calculate:
+
+eligibleSymbolCount
+rankedSymbolCount
+averageOpportunityScore
+medianOpportunityScore
+topOpportunityScore
+highConfidenceCount
+newOpportunityCount
+upgradedCount
+downgradedCount
+institutionalAccumulationCount
+institutionalDistributionCount
+averageInstitutionalScore
+strengtheningCount
+weakeningCount
+
+Create:
+
+sectorScore 0–100
+
+Deterministic.
+
+Score should represent strength of CURRENT RESEARCH EVIDENCE across the sector,
+not expected sector performance.
+
+============================================================
+5. THEME INTELLIGENCE ENGINE
+============================================================
+
+Create:
+
+server/services/theme-intelligence-engine.ts
+
+For each theme calculate:
+
+memberCount
+rankedMemberCount
+averageOpportunityScore
+topOpportunityScore
+technicalBreadth
+institutionalBreadth
+newOpportunityCount
+upgradedCount
+downgradedCount
+strengtheningCount
+weakeningCount
+topSymbols[]
+
+Produce:
+
+themeScore 0–100
+
+label such as:
+
+Strong
+Improving
+Mixed
+Weakening
+Weak
+
+Do NOT use:
+
+Buy
+Sell
+Bullish
+Bearish
+Hot Sector
+Best Theme
+
+============================================================
+6. BREADTH
+============================================================
+
+Create deterministic breadth measures.
+
+Examples:
+
+technicalBreadth =
+percentage of ranked theme members with technicalScore >= threshold
+
+institutionalBreadth =
+percentage of mapped theme members with institutional accumulation evidence
+
+opportunityBreadth =
+percentage of members currently ranked Top Growth / Income / Watch as appropriate
+
+Expose numerator and denominator.
+
+Never hide missing-data denominator effects.
+
+============================================================
+7. CHANGE INTELLIGENCE
+============================================================
+
+Compare current sector/theme snapshot with previous snapshot.
+
+Return:
+
+scoreDelta
+rankDelta
+newLeaders
+lostLeaders
+strengtheningSymbols
+weakeningSymbols
+
+Generate deterministic summary.
+
+Examples:
+
+"AI Infrastructure strengthened as 5 members improved and 2 entered the ranked opportunity set."
+
+"Cybersecurity weakened as average opportunity score declined and three members were downgraded."
+
+No LLM.
+
+============================================================
+8. PRECOMPUTATION
+============================================================
+
+Do not calculate theme/sector analytics on every page request.
+
+Create precomputed snapshots.
+
+Suggested:
+
+sector_intelligence_snapshots
+
+theme_intelligence_snapshots
+
+Fields:
+
+id
+generatedAt
+sector/theme
+score
+label
+metrics JSONB
+topSymbols JSONB
+changes JSONB
+
+Compute after Opportunity Ranking completes.
+
+Do not block scanner completion.
+
+============================================================
+9. API
+============================================================
+
+Create:
+
+GET /api/intelligence/sectors
+
+GET /api/intelligence/sectors/:sector
+
+GET /api/intelligence/themes
+
+GET /api/intelligence/themes/:themeId
+
+Optional:
+
+GET /api/intelligence/themes/:themeId/history
+
+Responses must use precomputed data.
+
+============================================================
+10. SECTOR & THEME PAGE
+============================================================
+
+Create:
+
+/intelligence
+
+Trader-facing page.
+
+Top sections:
+
+Market Regime
+Leading Sectors
+Leading Themes
+Improving
+Weakening
+New Leadership
+
+Keep the initial view compact.
+
+============================================================
+11. THEME DETAIL PAGE
+============================================================
+
+Create:
+
+/intelligence/themes/:themeId
+
+Display:
+
+theme name
+theme score
+label
+score change
+member count
+ranked members
+technical breadth
+institutional breadth
+opportunity breadth
+
+Sections:
+
+Top Opportunities
+Strengthening
+Weakening
+Institutional Activity
+Recent Changes
+All Members
+
+============================================================
+12. SECTOR DETAIL PAGE
+============================================================
+
+Create:
+
+/intelligence/sectors/:sector
+
+Display equivalent sector metrics.
+
+Show:
+
+industries
+top symbols
+strengthening symbols
+weakening symbols
+institutional evidence
+recent changes
+
+============================================================
+13. TOP SYMBOLS
+============================================================
+
+Rank top symbols using the existing Opportunity Ranking output.
+
+Do NOT create a second stock ranking formula.
+
+The Sector/Theme engine aggregates existing stock-level scores.
+
+Top symbol cards:
+
+symbol
+overallScore
+category
+confidence
+technicalScore
+institutionalScore
+scoreDelta
+
+Click:
+
+/opportunities/:symbol
+
+============================================================
+14. DASHBOARD CONSUMER CONTRACT
+============================================================
+
+Do NOT redesign dashboard in this sprint.
+
+Expose compact contracts for future dashboard use:
+
+leadingSectors[]
+leadingThemes[]
+improvingThemes[]
+weakeningThemes[]
+
+Do not wire them into the dashboard yet unless trivial and non-disruptive.
+
+============================================================
+15. INSTITUTIONAL INTEGRATION
+============================================================
+
+Use institutional_symbol_signals as optional evidence.
+
+Missing institutional signal:
+
+must NOT penalize a theme automatically.
+
+Track:
+
+institutionalDataAvailableCount
+institutionalAccumulationCount
+institutionalDistributionCount
+institutionalBreadth
+
+No false precision.
+
+============================================================
+16. DATA QUALITY
+============================================================
+
+Every sector/theme response should include:
+
+memberCount
+rankedMemberCount
+technicalCoverage
+institutionalCoverage
+classificationCoverage
+
+If coverage is insufficient:
+
+score may still be computed from available deterministic dimensions,
+but confidence must be reduced.
+
+Never fabricate missing members or signals.
+
+============================================================
+17. PERFORMANCE
+============================================================
+
+Target:
+
+list endpoint < 50ms from precomputed snapshot
+detail endpoint < 100ms
+no raw 13F scans on request
+no repeated scanner computation
+
+Report actual benchmark.
+
+============================================================
+18. COMPLIANCE LANGUAGE
+============================================================
+
+Use:
+
+Sector Strength
+Theme Strength
+Research Evidence
+Breadth
+Institutional Activity
+Opportunity Concentration
+Improving
+Weakening
+
+Avoid:
+
+Best Sector to Buy
+Hot Stocks
+Guaranteed Theme
+Buy This Theme
+Sector Recommendation
+
+============================================================
+19. TESTS
+============================================================
+
+Add tests for:
+
+classification lookup
+multi-theme membership
+sector aggregation
+theme aggregation
+technical breadth
+institutional breadth
+missing institutional data
+opportunity breadth
+theme score
+sector score
+score bounds
+label thresholds
+change detection
+new leader
+lost leader
+strengthening member
+weakening member
+coverage
+confidence
+empty theme
+single-member theme
+tie breaking
+precomputation
+API list
+API detail
+history
+route registration
+deterministic summary
+no LLM dependency
+
+Run:
+
+sector/theme tests
+server tests
+client tests
+full suite
+typecheck
+build
+
+============================================================
+20. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. Real ranked symbols aggregate into sectors.
+
+B. Curated themes aggregate correctly.
+
+C. Theme/sector scores are deterministic.
+
+D. Top symbols come from existing Opportunity Ranking.
+
+E. Institutional evidence is optional and correctly weighted.
+
+F. Missing data does not become false negative evidence.
+
+G. Change intelligence works between snapshots.
+
+H. User-facing pages clearly show breadth and drivers.
+
+I. No stock ranking formula is duplicated.
+
+J. Full suite passes.
+
+============================================================
+21. DEFERRED — DO NOT IMPLEMENT
+============================================================
+
+- Personal Portfolio Intelligence
+- Portfolio recommendations
+- AI theme classification
+- automated CUSIP approval
+- external FIGI enrichment
+- Opportunity Ranking weight tuning
+- AI commentary
+- agents / loops / graphs
+- dashboard redesign
+- voice assistant
+
+============================================================
+22. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Existing classification architecture found
+2. Files changed
+3. Schema changes
+4. Theme registry design
+5. Sector aggregation formula
+6. Theme aggregation formula
+7. Score formulas
+8. Breadth formulas
+9. Change detection
+10. Institutional integration
+11. Coverage/confidence behavior
+12. APIs
+13. Pages created
+14. Performance
+15. Tests added
+16. Full-suite test count
+17. Typecheck/build
+18. Production UAT
+19. Known limitations
+20. Deferred backlog
+21. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

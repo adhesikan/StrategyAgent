@@ -27,6 +27,9 @@ const RESERVED_SEGMENTS = new Set([
   "mapping-audit",
   "mapping-pipeline",
   "review",
+  "funds",    // Fund Explorer — /api/institutional/funds/*
+  "symbols",  // Symbol holders — /api/institutional/symbols/*
+  "signals",  // Signal routes — /api/institutional/signals/*
 ]);
 
 

@@ -1,0 +1,553 @@
+SPRINT 2.3.2 — INSTITUTIONAL FUND EXPLORER
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Trader Intelligence
+
+CURRENT STATE:
+
+Completed:
+- Institutional 13F ingestion
+- Institutional mapping engine
+- Institutional signal engine
+- Opportunity Ranking Engine
+- Dashboard ranking integration
+- Opportunity Research Workspace
+- Opportunity Change Intelligence
+
+OBJECTIVE:
+
+Build an Institutional Fund Explorer that lets traders research publicly reported
+13F activity by institutional manager.
+
+This is a research feature.
+
+Do NOT provide investment recommendations.
+Do NOT modify Opportunity Ranking Engine.
+Do NOT modify scanner logic.
+Do NOT modify Change Intelligence.
+Do NOT introduce AI-generated scores.
+
+============================================================
+1. ARCHITECTURE AUDIT FIRST
+============================================================
+
+Inspect existing institutional tables and services.
+
+Identify:
+
+- institutional_13f_filings
+- institutional_13f_holdings
+- institutional_quarterly_aggregates
+- institutional_symbol_signals
+- effective amendment logic
+- manager/filer identifiers
+- available quarter history
+- existing largestHolders structures
+- mapping availability
+
+Reuse existing data.
+
+Do not create duplicate raw holdings tables.
+
+============================================================
+2. NEW FUND DIRECTORY
+============================================================
+
+Create:
+
+GET /api/institutional/funds
+
+Return paginated institutional managers.
+
+Fields:
+
+managerId
+managerName
+latestQuarter
+reportedPortfolioValue
+reportedPositionCount
+quarterChangePositionCount
+newPositionsCount
+exitedPositionsCount
+increasedPositionsCount
+reducedPositionsCount
+lastFiledAt
+
+Support:
+
+search
+sort
+pagination
+
+Sort options:
+
+reportedPortfolioValue
+positionCount
+newPositions
+largestChanges
+managerName
+
+============================================================
+3. FUND DETAIL ENDPOINT
+============================================================
+
+Create:
+
+GET /api/institutional/funds/:managerId
+
+Return:
+
+manager identity
+
+latest comparable quarter
+
+previous comparable quarter
+
+reported portfolio value
+
+position count
+
+quarter-over-quarter change
+
+top holdings
+
+new positions
+
+exited positions
+
+increased positions
+
+reduced positions
+
+sector exposure if current data supports it
+
+filing freshness
+
+source filing links
+
+Use only effective filings.
+
+Never double-count superseded amendments.
+
+============================================================
+4. FUND HOLDINGS ENDPOINT
+============================================================
+
+Create:
+
+GET /api/institutional/funds/:managerId/holdings
+
+Support:
+
+quarter
+search
+sort
+page
+pageSize
+
+Fields:
+
+ticker
+issuerName
+cusip
+reportedShares
+reportedValue
+portfolioWeight
+previousShares
+shareChange
+shareChangePct
+changeType
+
+changeType:
+
+NEW
+INCREASED
+UNCHANGED
+REDUCED
+EXITED
+
+Only expose ticker where mapping is reliable.
+
+Otherwise show issuer + CUSIP with mapping-unavailable status.
+
+============================================================
+5. FUND HISTORY
+============================================================
+
+Create:
+
+GET /api/institutional/funds/:managerId/history
+
+Return available quarters with:
+
+quarter
+periodEndDate
+reportedPortfolioValue
+positionCount
+newPositions
+exitedPositions
+
+Keep it bounded.
+
+Do not query millions of rows repeatedly if precomputation can be used.
+
+============================================================
+6. NEW CLIENT PAGE
+============================================================
+
+Create:
+
+/institutional/funds
+
+Trader-facing research page.
+
+Header:
+
+Institutional Fund Explorer
+
+Supporting text:
+
+"Explore publicly reported SEC Form 13F holdings and quarter-over-quarter changes."
+
+Clearly state:
+
+"13F filings are delayed and do not represent real-time institutional activity."
+
+============================================================
+7. FUND DIRECTORY UI
+============================================================
+
+Display:
+
+Search institutions
+
+Sortable table/cards:
+
+Manager
+Reported Portfolio Value
+Positions
+New
+Exited
+Latest Quarter
+Filed
+
+Allow click-through to manager detail.
+
+Avoid excessive visual density.
+
+============================================================
+8. FUND DETAIL PAGE
+============================================================
+
+Create:
+
+/institutional/funds/:managerId
+
+Header:
+
+Manager name
+Latest reporting quarter
+Reported portfolio value
+Position count
+Last filed
+13F delayed-data badge
+
+Sections:
+
+Overview
+Top Holdings
+New Positions
+Increased
+Reduced
+Exited
+History
+
+============================================================
+9. TOP HOLDINGS
+============================================================
+
+Show maximum initial 20.
+
+Columns:
+
+Ticker
+Issuer
+Reported Value
+Portfolio Weight
+Shares
+QoQ Change
+Change Type
+
+Allow search/filter.
+
+Do not call them recommendations or convictions.
+
+============================================================
+10. NEW POSITIONS
+============================================================
+
+Show managers' newly reported positions.
+
+Rank by reported value.
+
+Use wording:
+
+"Newly Reported Position"
+
+NOT:
+
+"New Buy"
+
+============================================================
+11. INCREASED / REDUCED POSITIONS
+============================================================
+
+Show:
+
+previous shares
+latest shares
+change
+change %
+
+Use:
+
+"Increased Reported Position"
+"Reduced Reported Position"
+
+Avoid:
+
+Bought
+Sold
+
+unless describing literal filing differences in an educational context.
+
+============================================================
+12. EXITED POSITIONS
+============================================================
+
+Show positions present in previous comparable quarter but absent in latest effective filing.
+
+Use:
+
+"No Longer Reported"
+
+or:
+
+"Exited Reported Position"
+
+Clearly state this reflects Form 13F reporting and may not represent current holdings.
+
+============================================================
+13. STOCK → FUND CROSS-LINK
+============================================================
+
+On an institutional fund holding row, ticker should link to:
+
+/opportunities/:symbol
+
+when that symbol is currently ranked.
+
+Otherwise link to existing stock research route if appropriate.
+
+Do NOT add new opportunity-ranking logic.
+
+============================================================
+14. SYMBOL → FUND CONTRACT
+============================================================
+
+Expose a reusable helper/API that future stock pages can use:
+
+GET /api/institutional/symbols/:symbol/holders
+
+Return:
+
+top reported holders
+new holders
+increased holders
+reduced holders
+exited holders
+
+Do not integrate it into the Workspace yet unless it can be done without changing current UX.
+
+This is primarily a future consumer contract.
+
+============================================================
+15. DATA QUALITY
+============================================================
+
+Handle:
+
+unmapped CUSIP
+partial mapping
+missing previous quarter
+stale filing
+amendments
+duplicate managers
+manager-name variations
+
+Do not fabricate ticker mappings.
+
+If data is incomplete:
+
+show explicit status.
+
+============================================================
+16. PERFORMANCE
+============================================================
+
+Do not scan the full 13F holdings table on every page load if avoidable.
+
+Use:
+
+precomputed aggregates
+bounded queries
+indexes
+
+Add indexes only if proven necessary.
+
+Report:
+
+fund directory latency
+fund detail latency
+holdings pagination latency
+
+============================================================
+17. COMPLIANCE / PRODUCT LANGUAGE
+============================================================
+
+This is research based on delayed public SEC filings.
+
+Every fund detail page should include:
+
+"Form 13F data is reported quarterly and may be filed up to 45 days after quarter-end.
+It does not represent real-time institutional positions."
+
+Avoid:
+
+Smart Money
+Best Funds
+Top Funds to Follow
+Buy What They Buy
+Conviction Buy
+Recommended Fund Trades
+
+Use:
+
+Reported Holdings
+Institutional Activity
+Quarter-over-Quarter Changes
+Public Filing Research
+
+============================================================
+18. TESTS
+============================================================
+
+Add tests for:
+
+fund directory pagination
+search
+sorting
+fund identity
+effective filing selection
+amendment supersession
+top holdings
+portfolio weight
+new position
+increased position
+reduced position
+unchanged position
+exited position
+missing previous quarter
+unmapped security
+partial mapping
+history ordering
+delayed-data metadata
+source filing links
+symbol-holder lookup
+route registration
+invalid manager ID
+empty states
+pagination boundaries
+deterministic results
+no LLM dependency
+
+Run:
+
+institutional tests
+server tests
+client tests
+full test suite
+typecheck
+build
+
+============================================================
+19. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. Fund directory loads real institutional managers.
+
+B. Selecting a manager shows real reported holdings.
+
+C. Latest vs previous quarter changes are deterministic.
+
+D. Amendments are not double counted.
+
+E. Unmapped securities are handled safely.
+
+F. Delayed 13F disclosure is visible.
+
+G. No recommendation language exists.
+
+H. Existing ranking/scanner/change engines are untouched.
+
+I. Normal reads are performant.
+
+J. Full test suite passes.
+
+============================================================
+20. DEFERRED — DO NOT IMPLEMENT
+============================================================
+
+- automated mapping approval
+- external FIGI enrichment
+- portfolio intelligence
+- sector/theme intelligence
+- AI fund commentary
+- fund ranking/recommendation
+- copying institutional portfolios
+- Opportunity Ranking weight changes
+- Workspace redesign
+- agents / loops / graphs
+
+============================================================
+21. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Architecture discovered
+2. Files changed
+3. APIs
+4. Manager identity model
+5. Amendment handling
+6. Quarter comparison
+7. Holdings change rules
+8. Mapping behavior
+9. Pages/routes created
+10. Delayed-data disclosures
+11. Performance
+12. Tests added
+13. Full-suite test count
+14. Typecheck/build
+15. Production UAT
+16. Known limitations
+17. Deferred backlog
+18. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

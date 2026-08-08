@@ -43,4 +43,5 @@
 - [Opportunity Ranking Engine](opportunity-ranking-engine.md) — Sprint 2.2.7: pure composite scorer (Tech×40+Inst×20+Fund×15+Risk×15+Regime×10); fire-and-forget hook in opportunity-engine.ts; GET /api/opportunities/today.
 - [Opportunity Ranking Dashboard](opportunity-ranking-dashboard.md) — Sprint 2.2.8: dashboard switched to /api/opportunities/today; helpers module + 70 tests; formatRelativeTime aliased (conflict with day-based local fn).
 - [Opportunity Research Workspace](opportunity-workspace-sprint230.md) — Sprint 2.3.0: /opportunities/:symbol; 2-call contract (today + workspace/:symbol); 5 tabs; compare from cached ranking; 49 pure tests.
+- [Institutional Fund Explorer](institutional-fund-explorer.md) — Sprint 2.3.2: manager-level 13F Fund Explorer; 5 endpoints, 2 pages, 79 pure tests; managerId = CIK; reportedValue × 1000 = USD.
 - [Opportunity Change Intelligence](opportunity-change-intelligence.md) — Sprint 2.3.1: deterministic engine explaining WHY ranked opportunities changed; dashboard EnrichedRankingChangesPanel + workspace WhyItChangedPanel.

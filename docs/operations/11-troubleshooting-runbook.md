@@ -543,3 +543,69 @@ grep -c "package-firewall.replit.local" package-lock.json
 
 **Note:** Portfolio does NOT call Twelve Data on-demand — this is by design (data policy).
 
+
+---
+
+## BROKER SYNCHRONIZATION (Sprint 2.4.2)
+
+### BROKER_SYNC_OAUTH_NOT_CONNECTED
+
+**Symptom:** `POST /api/portfolio/broker/connect` returns 400 with `requiresAuth: true`.
+
+**Cause:** User has not completed OAuth for the requested broker, or the connection was revoked.
+
+**Fix:** Navigate user to `/settings?tab=broker` to complete the OAuth flow, then retry connect.
+
+---
+
+### BROKER_SYNC_DUPLICATE_PORTFOLIO
+
+**Symptom:** `POST /api/portfolio/broker/connect` returns 409 `"A portfolio linked to tradier already exists"`.
+
+**Fix:** Use the existing portfolio shown on `/portfolio/connect`. Disconnect first if re-linking is required.
+
+---
+
+### BROKER_SYNC_RUNNING_409
+
+**Symptom:** `POST /api/portfolio/broker/sync/:portfolioId` returns 409.
+
+**Cause:** Concurrent sync already running. Expected behavior — poll status and retry.
+
+---
+
+### BROKER_SYNC_FAILED
+
+**Symptom:** Sync state `status: "failed"`. Structured log shows `broker_sync_failed` event.
+
+**Diagnostic steps:**
+1. `GET /api/portfolio/broker/sync/:portfolioId/status` → `sync.lastError`
+2. Check logs for `broker_sync_failed` JSON event
+3. `GET /api/broker/ping` to verify broker connectivity
+4. If `needsReauth: true` → see BROKER_SYNC_NEEDS_REAUTH
+
+---
+
+### BROKER_SYNC_NEEDS_REAUTH
+
+**Symptom:** Sync state `status: "needs_reauth"`. Client shows "Reconnection required" banner.
+
+**Fix:** User re-authenticates via `/settings?tab=broker`, then retries sync.
+
+---
+
+### BROKER_SYNC_EMPTY_HOLDINGS
+
+**Symptom:** Sync completes with `importedCount: 0`.
+
+**Causes:** Account has no open positions; wrong account selected; broker API returned empty array.
+
+**Diagnostic:** Check `GET /api/broker/status` for accountId; verify positions in broker's UI.
+
+---
+
+### BROKER_SYNC_HEALTH_DEGRADED
+
+**Symptom:** Platform Health `Broker Sync` card shows `DEGRADED`.
+
+**Fix:** Expand details on `/admin/platform-health`; check `failedCount`/`needsReauthCount`; resolve affected portfolios.

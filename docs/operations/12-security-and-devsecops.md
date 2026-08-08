@@ -12,6 +12,36 @@ See [02-environments-and-deployment.md](02-environments-and-deployment.md) for t
 
 ---
 
+## Broker Synchronization — Security (Sprint 2.4.2)
+
+### Token handling
+
+- Broker OAuth tokens stored encrypted (AES-256-GCM via `server/crypto.ts`).
+- `server/routes/broker-sync.ts` uses `safeConnectionInfo()` — never returns `accessToken`, `refreshToken`, or `sandboxAccessToken` to the client.
+- All broker API calls go through `getBrokerPositions()` (centralized token refresh + caching). No direct API calls in the sync service.
+
+### Structured log rules (Part 9 enforcement)
+
+Every `broker_sync_*` log event is a JSON object. Fields permitted: `event`, `portfolioId`, `provider`, `importedCount`, `updatedCount`, `deletedCount`, `durationMs`, `errorCode`, `timestamp`. Fields **never** logged: `accessToken`, `refreshToken`, `accountId` (account number), `userId` (redacted to `"[redacted]"`).
+
+### Concurrent sync guard
+
+`runningSyncs` Set prevents parallel syncs per portfolio. Routes return 409 Conflict if sync already running. `runningSyncs.delete()` is in `finally` block — guaranteed cleanup even on error.
+
+### Ownership verification
+
+All sync routes verify `portfolios.userId === req.session.userId` before any DB mutation. Routes return 404 (not 403) to avoid leaking portfolio existence to non-owners.
+
+### Disconnect behavior
+
+`DELETE /api/portfolio/broker/disconnect/:portfolioId` converts the portfolio to `"manual"` type (keeps all positions). Does NOT revoke the broker OAuth token — that remains the user's separate choice.
+
+### No admin details exposed to users
+
+`/portfolio/connect` page shows only: sync status, last sync time, imported count, duration. No account numbers, tokens, or internal provider IDs are rendered.
+
+---
+
 ## Portfolio Upload Disclosures — User-Facing (Sprint 2.4.1A)
 
 ### What users see (disclosure inventory)

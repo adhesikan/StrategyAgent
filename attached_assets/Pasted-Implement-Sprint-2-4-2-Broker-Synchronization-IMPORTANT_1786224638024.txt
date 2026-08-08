@@ -1,0 +1,469 @@
+Implement Sprint 2.4.2 — Broker Synchronization.
+
+IMPORTANT
+
+This sprint MUST follow the existing roadmap.
+
+DO NOT implement any future roadmap items.
+
+Specifically DO NOT implement:
+
+- Portfolio Intelligence
+- Portfolio scoring
+- AI portfolio analysis
+- Portfolio recommendations
+- Rebalancing
+- Tax optimization
+- Goal planning
+- Watchlists
+- Research Workspace
+- Alerts
+- Screenshot/PDF improvements
+- AI portfolio conversations
+
+Those belong to later roadmap sprints.
+
+This sprint is ONLY about synchronizing holdings from supported brokers.
+
+----------------------------------------------------
+OBJECTIVE
+----------------------------------------------------
+
+Allow users to synchronize portfolio holdings directly from supported brokers.
+
+Supported TODAY
+
+- Tradier
+- TradeStation
+
+Architecture must support adding later:
+
+- Schwab
+- Fidelity
+- IBKR
+- Robinhood
+- Webull
+- E*Trade
+
+without schema redesign.
+
+----------------------------------------------------
+PART 1
+Portfolio Source Model
+----------------------------------------------------
+
+Every portfolio shall have
+
+Source
+
+- Manual
+- CSV
+- XLSX
+- Tradier
+- TradeStation
+
+Display source badge everywhere.
+
+Examples
+
+Manual
+
+CSV Import
+
+TradeStation
+
+Tradier
+
+----------------------------------------------------
+PART 2
+Broker Connection Center
+----------------------------------------------------
+
+Create
+
+/portfolio/connect
+
+Show cards
+
+Tradier
+
+TradeStation
+
+Each card displays
+
+logo
+
+status
+
+Connect
+
+Disconnect
+
+Last Sync
+
+Connection Health
+
+Holdings Imported
+
+No API credentials displayed.
+
+----------------------------------------------------
+PART 3
+Synchronization
+----------------------------------------------------
+
+Create synchronization service.
+
+Responsibilities
+
+Retrieve holdings
+
+Normalize holdings
+
+Reuse existing portfolio normalization engine
+
+Update portfolio_positions
+
+Never duplicate positions
+
+Update changed quantities
+
+Remove deleted holdings
+
+Maintain imported timestamp
+
+Maintain updated timestamp
+
+Idempotent.
+
+Running synchronization twice must not duplicate records.
+
+----------------------------------------------------
+PART 4
+Sync Status
+----------------------------------------------------
+
+Display
+
+Connected
+
+Disconnected
+
+Synchronizing
+
+Failed
+
+Needs Reauthentication
+
+Last Sync
+
+Next Sync
+
+Imported Holdings
+
+Updated Holdings
+
+Deleted Holdings
+
+Duration
+
+----------------------------------------------------
+PART 5
+Refresh
+----------------------------------------------------
+
+User can click
+
+Refresh Portfolio
+
+Runs synchronization immediately.
+
+Prevent concurrent sync.
+
+Return
+
+409
+
+if sync already running.
+
+----------------------------------------------------
+PART 6
+Background Sync
+----------------------------------------------------
+
+Prepare architecture.
+
+Do NOT enable scheduled sync yet.
+
+Create interface
+
+runBrokerSync()
+
+that later scheduler can call.
+
+----------------------------------------------------
+PART 7
+Admin Platform Health
+----------------------------------------------------
+
+Extend Platform Health.
+
+New card
+
+Broker Synchronization
+
+Show
+
+Connections
+
+Healthy
+
+Failed
+
+Last Sync
+
+Average Duration
+
+Pending Jobs
+
+Last Error
+
+Link
+
+Show Details
+
+----------------------------------------------------
+PART 8
+Background Jobs
+----------------------------------------------------
+
+Extend Job Status Store.
+
+New job
+
+broker_sync
+
+Track
+
+Idle
+
+Running
+
+Completed
+
+Failed
+
+Started
+
+Completed
+
+Duration
+
+Last Error
+
+----------------------------------------------------
+PART 9
+Structured Logging
+----------------------------------------------------
+
+Every synchronization emits
+
+broker_sync_started
+
+broker_sync_completed
+
+broker_sync_failed
+
+Never log
+
+tokens
+
+credentials
+
+account numbers
+
+PII
+
+Reuse structured logging.
+
+----------------------------------------------------
+PART 10
+Compliance
+----------------------------------------------------
+
+Display before connecting
+
+"Broker synchronization imports portfolio holdings for research purposes."
+
+"It does not authorize trading."
+
+"You may disconnect your broker at any time."
+
+"Broker data is used only for portfolio research features."
+
+Reuse existing compliance styling.
+
+----------------------------------------------------
+PART 11
+Operations Manual
+----------------------------------------------------
+
+Update
+
+17-sprint-change-log.md
+
+16-api-and-uat-reference.md
+
+11-troubleshooting-runbook.md
+
+12-security-and-devsecops.md
+
+Add
+
+Broker onboarding
+
+OAuth flow
+
+Token lifecycle
+
+Reconnect flow
+
+Expected errors
+
+Retry behavior
+
+Health indicators
+
+UAT checklist
+
+API endpoints
+
+Production validation
+
+Background job
+
+----------------------------------------------------
+PART 12
+Developer Search Index
+----------------------------------------------------
+
+Update Operations Manual search index.
+
+Searching for
+
+broker
+
+tradier
+
+tradestation
+
+sync
+
+oauth
+
+refresh
+
+token
+
+must locate documentation.
+
+----------------------------------------------------
+PART 13
+Testing
+----------------------------------------------------
+
+Add comprehensive structural tests covering
+
+Broker connection
+
+Sync service
+
+Duplicate prevention
+
+Ownership
+
+Status model
+
+Logging
+
+Health card
+
+Operations Manual updates
+
+Authorization
+
+Compliance disclosures
+
+Target
+
+100+ new assertions
+
+Zero regressions.
+
+----------------------------------------------------
+PART 14
+Build
+----------------------------------------------------
+
+npm run build
+
+must succeed.
+
+Zero new TypeScript errors.
+
+----------------------------------------------------
+PART 15
+Deliverables
+----------------------------------------------------
+
+Provide full completion report including
+
+Files changed
+
+API additions
+
+Schema changes (if any)
+
+Tests added
+
+Operations Manual updates
+
+Platform Health updates
+
+Background job updates
+
+UAT checklist
+
+Known limitations
+
+Deferred roadmap items
+
+GO / NO-GO
+
+----------------------------------------------------
+ROADMAP DISCIPLINE
+----------------------------------------------------
+
+At the end of the report include
+
+Current Phase
+
+Current Sprint
+
+Next Planned Sprint
+
+Deferred Work
+
+Acceptance Criteria
+
+and explicitly confirm
+
+"No future roadmap work was pulled into Sprint 2.4.2."
+
+If additional ideas are identified during implementation, document them under
+
+"Future Roadmap Suggestions"
+
+ONLY.
+
+Do NOT implement them.

@@ -4,6 +4,61 @@
 
 ---
 
+## Sprint 2.4.2 — Broker Synchronization (2026-08-08)
+
+**Purpose:** Allow users to synchronize portfolio holdings directly from Tradier and TradeStation. Architecture supports adding Schwab, Fidelity, IBKR, Robinhood, Webull, E*Trade without schema redesign.
+
+### Key Services & Routes
+
+| Type | Path / Name |
+|------|-------------|
+| Service | `server/services/broker-sync-service.ts` |
+| Routes | `server/routes/broker-sync.ts` |
+| Page | `client/src/pages/portfolio-connect.tsx` |
+| GET | `/api/portfolio/broker/connections` |
+| POST | `/api/portfolio/broker/connect` |
+| POST | `/api/portfolio/broker/sync/:portfolioId` (409 if running) |
+| GET | `/api/portfolio/broker/sync/:portfolioId/status` |
+| DELETE | `/api/portfolio/broker/disconnect/:portfolioId` |
+
+### Schema Changes
+
+No new tables. `portfolios.sourceAccountId` stores the broker provider name ("tradier"/"tradestation"). `portfolioSourceTypeEnum` already included `"broker"`.
+
+### Jobs
+
+`"broker_sync"` added to `JobName` union in `job-status-store.ts`. Emits `markJobStarted / markJobCompleted / markJobFailed`.
+
+### Platform Health
+
+New `checkBrokerSync()` function + `brokerSync` key added to `buildPlatformHealth()`. Admin health page renders new "Broker Sync" card.
+
+### Structured Logging (Part 9)
+
+Every sync emits `broker_sync_started`, `broker_sync_completed`, `broker_sync_failed`. UserId redacted. No tokens, credentials, account numbers, or PII logged.
+
+### Compliance Disclosures (Part 10)
+
+Shown before connecting:
+- "Broker synchronization imports portfolio holdings for research purposes."
+- "It does not authorize trading."
+- "You may disconnect your broker at any time."
+- "Broker data is used only for portfolio research features."
+
+### Tests
+
+110 new structural assertions in `server/routes/__tests__/broker-sync.test.ts`.
+
+### Deferred
+
+Background sync scheduling (cron not yet wired — `runBrokerSync()` interface ready). Portfolio Intelligence, scoring, recommendations, rebalancing, tax, goals, alerts, research workspace.
+
+### Next Sprint
+
+2.4.3 — Portfolio History / Change Intelligence
+
+---
+
 ## Sprint 2.3.6 — Production Hardening (2026-08-08)
 
 **Purpose:** Close the gap between working scanner/ranking and working intelligence. Fix sector snapshot root cause, add ops tooling.

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { getTwelveDataConfig } from "../services/daily-market-data/config";
 import { getLatestRanking } from "../services/opportunity-ranking-engine";
 import { getAllJobStatuses } from "../services/job-status-store";
+import { getBrokerSyncHealth } from "../services/broker-sync-service";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 
 // ---------------------------------------------------------------------------
@@ -499,6 +500,32 @@ function checkApplication(): HealthCard {
 // Aggregate health
 // ---------------------------------------------------------------------------
 
+function checkBrokerSync(): HealthCard {
+  const snap = getBrokerSyncHealth();
+  const status: HealthStatus =
+    snap.failedCount > 0 || snap.needsReauthCount > 0 ? "DEGRADED"
+    : snap.totalConnections === 0                      ? "DISABLED"
+    : "HEALTHY";
+  return {
+    status,
+    summary: snap.totalConnections === 0
+      ? "No broker portfolios linked"
+      : `${snap.healthyCount} healthy, ${snap.failedCount} failed, ${snap.needsReauthCount} needs reauth`,
+    lastSuccessAt: snap.lastSyncAt,
+    details: {
+      connections:    snap.totalConnections,
+      healthy:        snap.healthyCount,
+      failed:         snap.failedCount,
+      needsReauth:    snap.needsReauthCount,
+      running:        snap.runningCount,
+      lastSyncAt:     snap.lastSyncAt ?? "Never",
+      avgDurationMs:  snap.avgDurationMs ?? "—",
+      pendingJobs:    snap.pendingJobs,
+      lastError:      snap.lastError ?? null,
+    },
+  };
+}
+
 async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const [db_, marketData, mcp, scanner, intel, institutional, secMaster, brokers] = await Promise.all([
     checkDatabase(),
@@ -511,9 +538,10 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     checkBrokers(),
   ]);
 
-  const app     = checkApplication();
-  const ranking = checkRanking();
-  const jobs    = getAllJobStatuses();
+  const app        = checkApplication();
+  const ranking    = checkRanking();
+  const brokerSync = checkBrokerSync();
+  const jobs       = getAllJobStatuses();
 
   return {
     application: app,
@@ -526,6 +554,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     institutional,
     securityMaster:  secMaster,
     brokers,
+    brokerSync,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

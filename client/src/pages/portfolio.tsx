@@ -206,7 +206,7 @@ function PortfolioOnboarding() {
           <Button
             variant="outline"
             className="w-full h-12 text-base"
-            onClick={() => setLocation("/settings?tab=broker")}
+            onClick={() => setLocation("/portfolio/connect")}
             data-testid="btn-connect-broker"
           >
             <Link2 className="h-4 w-4 mr-2" aria-hidden="true" />

@@ -59,6 +59,7 @@ import AdminInstitutionalMappingsPage from "@/pages/admin-institutional-mappings
 import PortfolioPage from "@/pages/portfolio";
 import PortfolioImportPage from "@/pages/portfolio-import";
 import PortfolioImportDocumentPage from "@/pages/portfolio-import-document";
+import PortfolioConnectPage from "@/pages/portfolio-connect";
 import NotFound from "@/pages/not-found";
 import AgentPage from "@/pages/agent";
 import TradeSetupsPage from "@/pages/trade-setups";
@@ -135,6 +136,7 @@ function AppRouter() {
       <Route path="/home" component={CommandCenterPage} />
       <Route path="/ideas" component={HomeV2} />
       <Route path="/ask" component={AskPage} />
+      <Route path="/portfolio/connect" component={PortfolioConnectPage} />
       <Route path="/portfolio/import/document" component={PortfolioImportDocumentPage} />
       <Route path="/portfolio/import" component={PortfolioImportPage} />
       <Route path="/portfolio" component={PortfolioPage} />

@@ -31,7 +31,8 @@ export type JobName =
   | "institutional_ingestion"
   | "mapping_pipeline"
   | "institutional_signal_rebuild"
-  | "symbol_enrichment";
+  | "symbol_enrichment"
+  | "broker_sync";
 
 // ---------------------------------------------------------------------------
 // Store — module-level singleton
@@ -70,6 +71,7 @@ export function getAllJobStatuses(): Record<JobName, JobState> {
     "mapping_pipeline",
     "institutional_signal_rebuild",
     "symbol_enrichment",
+    "broker_sync",
   ];
   for (const name of allNames) {
     all[name] = getJobStatus(name);

@@ -247,6 +247,12 @@ export default function AdminPlatformHealthPage() {
               <SectionCard title="Application"    icon={Server}     card={h.application as HealthCard} />
               <SectionCard title="Database"       icon={Database}   card={h.database    as HealthCard} />
               <SectionCard title="Brokers"        icon={Link2}      card={h.brokers     as HealthCard} />
+              <SectionCard title="Broker Sync"   icon={Activity}   card={h.brokerSync  as HealthCard}
+                manualLinks={[
+                  { label: "Broker Sync Runbook",  docId: "11-troubleshooting-runbook" },
+                  { label: "Broker Sync API/UAT",  docId: "16-api-and-uat-reference" },
+                ]}
+              />
             </div>
           </section>
 

@@ -647,6 +647,213 @@ open /portfolio/import
 
 ---
 
+## Sprint 2.4.2 — Broker Synchronization
+
+### New Routes
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/api/portfolio/broker/connections` | ✅ | OAuth + linked portfolio status per broker |
+| POST | `/api/portfolio/broker/connect` | ✅ | Create broker-linked portfolio, trigger initial sync |
+| POST | `/api/portfolio/broker/sync/:portfolioId` | ✅ | Manual sync; 409 if already running |
+| GET | `/api/portfolio/broker/sync/:portfolioId/status` | ✅ | Per-portfolio sync state |
+| DELETE | `/api/portfolio/broker/disconnect/:portfolioId` | ✅ | Convert to manual, keep positions |
+
+### GET /api/portfolio/broker/connections
+
+Returns broker OAuth status and linked portfolios. No tokens exposed.
+
+```json
+{
+  "connections": {
+    "tradier": { "connected": true, "provider": "tradier", "accountId": "DISP-ONLY", "connectedAt": null },
+    "tradestation": { "connected": false }
+  },
+  "portfolios": [
+    {
+      "id": "uuid",
+      "name": "Tradier Portfolio",
+      "provider": "tradier",
+      "updatedAt": "2026-08-08T...",
+      "syncState": {
+        "portfolioId": "uuid",
+        "status": "completed",
+        "startedAt": "...",
+        "completedAt": "...",
+        "durationMs": 1800,
+        "importedCount": 12,
+        "updatedCount": 8,
+        "deletedCount": 2,
+        "lastError": null,
+        "nextScheduledAt": null
+      }
+    }
+  ]
+}
+```
+
+### POST /api/portfolio/broker/connect
+
+**Body:** `{ "provider": "tradier" | "tradestation", "portfolioName"?: string }`
+
+**Success (201):**
+```json
+{ "portfolioId": "uuid", "portfolioName": "Tradier Portfolio", "provider": "tradier", "syncing": true }
+```
+
+**Error responses:**
+| Code | Cause |
+|------|-------|
+| 400 | Provider not supported |
+| 400 + `requiresAuth: true` | OAuth not completed for this broker |
+| 409 | Portfolio for this broker already exists |
+
+### POST /api/portfolio/broker/sync/:portfolioId
+
+Triggers immediate sync. Returns immediately; client polls status.
+
+**Success (200):** `{ "portfolioId": "uuid", "status": "running" }`  
+**409:** `{ "error": "Synchronization already in progress.", "status": "running" }`
+
+### GET /api/portfolio/broker/sync/:portfolioId/status
+
+```json
+{
+  "portfolioId": "uuid",
+  "portfolioName": "Tradier Portfolio",
+  "provider": "tradier",
+  "lastUpdatedAt": "2026-08-08T...",
+  "currentPositionCount": 12,
+  "sync": { "status": "completed", "importedCount": 12, "durationMs": 1800, ... }
+}
+```
+
+### DELETE /api/portfolio/broker/disconnect/:portfolioId
+
+Converts portfolio `sourceType` from `"broker"` to `"manual"`, clears `sourceAccountId`. Positions are **retained**. Does not revoke OAuth token.
+
+**Success (200):** `{ "portfolioId": "uuid", "message": "Broker disconnected. Portfolio converted to manual. Existing positions retained." }`
+
+---
+
+### Sync Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `idle` | No sync has run this session |
+| `running` | Sync in progress |
+| `completed` | Last sync succeeded |
+| `failed` | Last sync failed — see `lastError` |
+| `needs_reauth` | Token expired; user must re-authenticate |
+
+---
+
+### UAT Checklist — Broker Connection Center (`/portfolio/connect`)
+
+**Pre-connect flow:**
+```
+□ Navigate to /portfolio → click "Connect Broker" → lands on /portfolio/connect
+□ Compliance disclosures visible before any broker card
+□ "imports portfolio holdings for research purposes" — visible
+□ "does not authorize trading" — visible
+□ "You may disconnect your broker at any time" — visible
+□ "Broker data is used only for portfolio research features" — visible
+```
+
+**Tradier connect flow:**
+```
+□ Tradier card shows "Disconnected" badge before OAuth
+□ "Go to Broker Settings" link present when not OAuth-connected
+□ After completing Tradier OAuth: card shows "Connected" badge
+□ "Import Holdings" button appears
+□ Click "Import Holdings" → POST /api/portfolio/broker/connect body: { provider: "tradier" }
+□ Response: 201, portfolioName set, syncing: true
+□ Card switches to show sync metrics (Last Sync, Holdings Imported, Duration)
+□ Sync status badge shows "Synchronizing…" during active sync
+□ After sync: badge shows "Synced", importedCount displayed
+□ Navigate to /portfolio → new "Tradier Portfolio" visible with "Broker" source badge
+```
+
+**Manual sync:**
+```
+□ Click "Refresh Portfolio" → POST /api/portfolio/broker/sync/:portfolioId
+□ While syncing: button shows "Syncing…" with spinner
+□ If second click during sync → 409 returned, no duplicate sync started
+□ After sync completes: counts update
+```
+
+**Disconnect flow:**
+```
+□ Click "Disconnect" → DELETE /api/portfolio/broker/disconnect/:portfolioId
+□ Toast: "Portfolio converted to manual. Existing holdings retained."
+□ Card reverts to "Import Holdings" state
+□ Navigate to /portfolio → portfolio still exists with all positions, now shows "Manual" source badge
+□ Positions are not deleted
+```
+
+**TradeStation connect flow:**
+```
+□ Same as Tradier — uses /api/tradestation/oauth for OAuth
+□ Duplicate-broker guard: attempting to connect a second Tradier portfolio returns 409
+```
+
+**Needs-reauth state:**
+```
+□ When sync returns needsReauth: true → card shows amber "Reconnection required" banner
+□ Banner instructs user to go to Broker Settings
+□ After re-auth: sync can be retried
+```
+
+**Coming-soon brokers:**
+```
+□ Charles Schwab card visible but aria-disabled
+□ Fidelity, IBKR, Robinhood cards visible but aria-disabled
+□ No connect/import buttons on coming-soon cards
+```
+
+---
+
+### Structured Logs (Part 9)
+
+Every sync emits JSON events to stdout:
+
+```json
+{ "event": "broker_sync_started",   "portfolioId": "...", "provider": "tradier",  "userId": "[redacted]", "timestamp": "..." }
+{ "event": "broker_sync_completed", "portfolioId": "...", "provider": "tradier",  "importedCount": 12, "durationMs": 1800, "timestamp": "..." }
+{ "event": "broker_sync_failed",    "portfolioId": "...", "provider": "tradier",  "errorCode": "SYNC_ERROR", "durationMs": 300, "timestamp": "..." }
+```
+
+Fields **never** present in logs: `accessToken`, `refreshToken`, `accountId` (account number), raw `userId`.
+
+---
+
+### Platform Health — Broker Sync Card
+
+Available at `GET /api/admin/platform-health` → `health.brokerSync`:
+
+```json
+{
+  "status": "HEALTHY | DEGRADED | DISABLED | UNKNOWN",
+  "summary": "2 healthy, 0 failed, 0 needs reauth",
+  "lastSuccessAt": "2026-08-08T...",
+  "details": {
+    "connections": 2,
+    "healthy": 2,
+    "failed": 0,
+    "needsReauth": 0,
+    "running": 0,
+    "lastSyncAt": "2026-08-08T...",
+    "avgDurationMs": 1800,
+    "pendingJobs": 0,
+    "lastError": null
+  }
+}
+```
+
+Status rules: `DEGRADED` if `failedCount > 0` or `needsReauthCount > 0`; `DISABLED` if no portfolios linked; `HEALTHY` otherwise.
+
+---
+
 ## Sprint 2.4.1A — Portfolio Upload Privacy & Compliance Disclosures
 
 ### Disclosure Inventory

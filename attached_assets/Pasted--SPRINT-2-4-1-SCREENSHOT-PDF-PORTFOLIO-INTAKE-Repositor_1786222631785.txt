@@ -1,0 +1,906 @@
+# SPRINT 2.4.1 — SCREENSHOT & PDF PORTFOLIO INTAKE
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Portfolio Research Intelligence — Flexible Intake
+
+ROADMAP POSITION:
+
+Completed:
+- 2.4.0 Portfolio Foundation & Flexible Intake
+- 2.4.0A Portfolio UX Polish
+
+CURRENT SPRINT:
+- 2.4.1 Screenshot + PDF Portfolio Intake
+
+FUTURE — DO NOT IMPLEMENT:
+- 2.4.2 Broker Synchronization
+- 2.4.3 Portfolio History / Change Intelligence
+- Portfolio Intelligence Engine
+- Portfolio scoring
+- Recommendations
+- Rebalancing
+- Goal planning
+- Tax lots
+- Options portfolio intelligence
+- Agents / loops / graphs
+
+IMPORTANT:
+
+Do not deviate from the established roadmap.
+
+This sprint extends ONLY portfolio intake.
+
+All imported holdings MUST continue flowing into the canonical Portfolio /
+PortfolioPosition model created in Sprint 2.4.0.
+
+Do NOT create a parallel portfolio model.
+
+============================================================
+1. ARCHITECTURE AUDIT FIRST
+============================================================
+
+Before coding, inspect:
+
+shared/schema.ts
+
+server/services/portfolio-normalization.ts
+server/services/portfolio-import.ts
+server/routes/portfolio.ts
+
+client/src/pages/portfolio.tsx
+client/src/pages/portfolio-import.tsx
+
+existing file upload infrastructure
+
+existing OpenAI / vision infrastructure if any
+
+existing PDF parsing libraries
+
+existing image handling libraries
+
+existing authentication/session system
+
+Operations Manual:
+docs/operations/
+
+Report what can be reused.
+
+Do not add a new provider/library if the existing stack already supports the task.
+
+============================================================
+2. OBJECTIVE
+============================================================
+
+Allow an authenticated user to create/import a portfolio from:
+
+A. Screenshot / image
+B. PDF brokerage statement
+
+Examples:
+
+- screenshot from Fidelity
+- screenshot from Schwab
+- screenshot from Robinhood
+- screenshot from TradeStation
+- screenshot from Interactive Brokers
+- mobile portfolio screenshot
+- brokerage account statement PDF
+
+The system should extract candidate positions, normalize them, show a preview,
+allow correction, and only then persist them.
+
+Workflow:
+
+Upload
+→ Extract
+→ Normalize
+→ Validate
+→ Preview
+→ User Corrects
+→ Confirm
+→ Canonical PortfolioPosition rows
+
+No database write before confirmation.
+
+============================================================
+3. ONE CANONICAL NORMALIZATION PIPELINE
+============================================================
+
+Reuse:
+
+normalizePortfolioPositions()
+
+All extracted data MUST flow through the same normalization service used by:
+
+CSV
+XLSX
+Manual Entry
+
+Do NOT implement separate business rules for screenshot/PDF imports.
+
+Canonical fields:
+
+symbol
+quantity
+averageCost nullable
+costBasis nullable
+marketValue nullable
+currency
+
+Source type may need extension.
+
+If schema currently supports only:
+
+manual
+csv
+xlsx
+broker
+
+then add appropriate values:
+
+image
+pdf
+
+ONLY if necessary.
+
+If schema change is required:
+
+- make it additive
+- migration must be idempotent
+- no destructive changes
+- document migration impact
+
+============================================================
+4. SCREENSHOT / IMAGE IMPORT
+============================================================
+
+Create support for:
+
+PNG
+JPG
+JPEG
+WEBP
+
+Suggested route:
+
+POST /api/portfolio/import/image
+
+Authenticated user only.
+
+File restrictions:
+
+max 10 MB
+image MIME validation
+no arbitrary file types
+memory-safe processing
+
+Do not expose the image publicly.
+
+Extract holdings information such as:
+
+ticker/symbol
+quantity/shares
+average cost if visible
+cost basis if visible
+market value if visible
+
+Not every field is required.
+
+Minimum usable extracted position:
+
+symbol
+quantity
+
+============================================================
+5. IMAGE EXTRACTION STRATEGY
+============================================================
+
+Use the existing AI/vision capability available in the application if present.
+
+AI is allowed HERE because this is unstructured data extraction.
+
+AI is NOT allowed to determine:
+
+portfolio quality
+investment rating
+buy/sell decisions
+position sizing
+recommendations
+
+Use AI only to transform:
+
+unstructured image
+→ structured candidate rows
+
+Request strict structured JSON.
+
+Example:
+
+{
+  "positions": [
+    {
+      "symbol": "NVDA",
+      "quantity": 100,
+      "averageCost": 132.50,
+      "costBasis": 13250,
+      "marketValue": 18000,
+      "confidence": 0.98
+    }
+  ],
+  "warnings": []
+}
+
+Never trust the AI extraction directly.
+
+Pass results through deterministic normalization and validation.
+
+============================================================
+6. EXTRACTION CONFIDENCE
+============================================================
+
+Track confidence per extracted field where feasible.
+
+Example:
+
+NVDA
+Symbol confidence: High
+
+100 shares
+Quantity confidence: High
+
+Average Cost $132.50
+Confidence: Medium
+
+Display low-confidence fields prominently in preview.
+
+Possible UI:
+
+High confidence
+Needs review
+Could not determine
+
+Do NOT automatically commit questionable values.
+
+============================================================
+7. PDF IMPORT
+============================================================
+
+Create:
+
+POST /api/portfolio/import/pdf
+
+Authenticated user only.
+
+Support normal brokerage statement PDFs.
+
+Preferred extraction sequence:
+
+1. Parse embedded PDF text when available.
+2. Identify portfolio/holdings table.
+3. Extract candidate holdings.
+4. If PDF has no usable text and current architecture supports safe visual-page
+   processing, process only necessary pages.
+5. Normalize.
+6. Preview.
+
+Do not blindly send an entire large PDF to an AI model.
+
+============================================================
+8. PDF SAFETY
+============================================================
+
+Requirements:
+
+PDF only
+max file size — choose sensible limit, e.g. 15 MB
+max page count
+no embedded JavaScript execution
+no attachment execution
+no macro/script execution
+no arbitrary path writes
+temporary content cleaned up
+no public object URLs
+no portfolio statement retained unnecessarily
+
+If original uploaded files are not needed after extraction:
+
+do not permanently store them.
+
+Document actual retention behavior.
+
+============================================================
+9. BROKER STATEMENT DETECTION
+============================================================
+
+If possible deterministically identify:
+
+Fidelity
+Schwab
+Robinhood
+Interactive Brokers
+TradeStation
+Tradier
+E*TRADE
+generic statement
+
+Store detection only as extraction metadata.
+
+Do not build broker-specific portfolio models.
+
+Broker-specific parsers are allowed only as adapters into the canonical normalization layer.
+
+============================================================
+10. EXTRACTION PREVIEW
+============================================================
+
+Reuse/enhance the Sprint 2.4.0 preview experience.
+
+Show:
+
+Source:
+Screenshot / PDF
+
+Detected Institution if available
+
+Positions Detected
+
+Unique Symbols
+
+Duplicates
+
+Missing Quantity
+
+Missing Average Cost
+
+Missing Cost Basis
+
+Unknown Symbols
+
+Low Confidence Fields
+
+Warnings
+
+Then table:
+
+Symbol
+Quantity
+Average Cost
+Cost Basis
+Market Value
+Confidence
+Warnings
+
+Users must be able to:
+
+edit values
+delete rows
+resolve warnings
+confirm
+
+============================================================
+11. NEVER GUESS MISSING VALUES
+============================================================
+
+Critical rule:
+
+Do NOT fabricate:
+
+ticker
+quantity
+average cost
+cost basis
+market value
+
+If missing:
+
+return null / unknown.
+
+Example:
+
+Average Cost
+—
+
+User can enter it manually.
+
+============================================================
+12. SYMBOL VALIDATION
+============================================================
+
+Validate extracted symbols against the existing market/security universe where possible.
+
+Classification:
+
+recognized
+unknown
+ambiguous
+
+Do not reject the entire import because one symbol is unknown.
+
+Allow user correction.
+
+Do not make a fresh Twelve Data call for each preview row if symbol data already exists locally.
+
+DATABASE-FIRST principle remains in force.
+
+============================================================
+13. PREVIEW SECURITY
+============================================================
+
+Reuse the existing preview-session security model.
+
+Preview must be:
+
+bound to authenticated user
+UUID identified
+TTL limited
+single-use on confirm
+
+Do not allow another user to claim an extraction preview.
+
+============================================================
+14. CONFIRM IMPORT
+============================================================
+
+Prefer reusing:
+
+POST /api/portfolio/import/confirm
+
+rather than creating a separate confirmation implementation.
+
+If the existing confirm route can support the new source type safely, reuse it.
+
+Import source should be recorded accurately:
+
+image
+pdf
+
+or corresponding canonical value.
+
+============================================================
+15. CLIENT EXPERIENCE
+============================================================
+
+Activate the Sprint 2.4.0A Coming Soon cards:
+
+Import from Screenshot
+Import from PDF Statement
+
+Only after backend functionality is working.
+
+Portfolio landing options become:
+
+Upload Spreadsheet
+Upload Screenshot
+Upload PDF Statement
+Connect Broker
+Enter Holdings Manually
+
+Do NOT advertise unsupported functionality.
+
+============================================================
+16. SCREENSHOT UX
+============================================================
+
+Create a polished upload experience.
+
+Possible copy:
+
+Import Portfolio Screenshot
+
+Upload a screenshot of your brokerage holdings.
+
+Supported:
+PNG
+JPG
+WEBP
+
+Then:
+
+Analyzing screenshot...
+
+followed by preview.
+
+Explain:
+
+"Review extracted holdings before importing."
+
+Do not imply extraction is guaranteed to be perfect.
+
+============================================================
+17. PDF UX
+============================================================
+
+Create:
+
+Import Brokerage Statement
+
+Upload a PDF statement containing your holdings.
+
+Show:
+
+Detected broker
+Detected statement period
+Detected positions
+
+when available.
+
+Warn users:
+
+"Always review extracted holdings before confirming."
+
+============================================================
+18. PRIVACY
+============================================================
+
+Brokerage statements and screenshots are highly sensitive.
+
+Requirements:
+
+authenticated endpoint
+no public file access
+no logging uploaded contents
+no logging account numbers
+no logging full statement text
+redact account identifiers if discovered
+do not persist original files unless explicitly required
+
+AI extraction requests should contain only the minimum data necessary.
+
+Document the exact privacy behavior.
+
+============================================================
+19. SENSITIVE FIELD REDACTION
+============================================================
+
+Before any extracted metadata is logged or retained, redact:
+
+account number
+routing number
+email
+address
+phone
+SSN
+tax ID
+broker account ID
+
+Portfolio position information may be retained after confirmation because it is required
+for Portfolio functionality.
+
+============================================================
+20. NO RECOMMENDATIONS
+============================================================
+
+This sprint is DATA INTAKE ONLY.
+
+Do not produce:
+
+buy
+sell
+hold
+trim
+add
+replace
+rebalance
+recommended allocation
+portfolio rating
+personalized investment advice
+
+Extraction must remain factual.
+
+============================================================
+21. DATABASE-FIRST DATA POLICY
+============================================================
+
+Continue the architectural rule established previously:
+
+External providers are ingestion sources, not the default application read path.
+
+Do not introduce repeated Twelve Data calls.
+
+Static symbol metadata:
+read DB first.
+
+Historical data:
+read stored history first.
+
+Market prices:
+reuse existing stored/bulk market-data service.
+
+AI/vision is used only for extracting the uploaded document/image.
+
+============================================================
+22. FAILURE STATES
+============================================================
+
+Handle:
+
+unsupported image type
+image too large
+PDF too large
+too many PDF pages
+corrupt file
+no holdings detected
+low-confidence extraction
+partial extraction
+unknown symbol
+missing quantity
+provider timeout
+AI extraction failure
+PDF parsing failure
+preview expiration
+unauthorized preview confirmation
+
+Do not crash the page.
+
+============================================================
+23. EXTRACTION TELEMETRY
+============================================================
+
+Add safe operational metrics:
+
+sourceType
+processingDurationMs
+rowsDetected
+rowsValid
+rowsInvalid
+lowConfidenceCount
+resultStatus
+
+Do NOT log:
+
+portfolio values
+symbols if not necessary
+account numbers
+raw document contents
+secret data
+
+============================================================
+24. PLATFORM HEALTH
+============================================================
+
+Do not create a new operations sprint.
+
+If this feature adds a new external AI/file-processing dependency, extend existing
+Platform Health only where appropriate.
+
+Possible status:
+
+Portfolio Document Extraction
+Healthy / Degraded / Unavailable
+
+Only add if operationally useful.
+
+Do not clutter Platform Health unnecessarily.
+
+============================================================
+25. TESTS
+============================================================
+
+Add comprehensive tests for:
+
+image MIME validation
+image size limit
+PNG
+JPEG
+WEBP
+
+PDF MIME validation
+PDF size limit
+PDF page limit
+
+structured extraction parsing
+malformed extraction JSON
+empty extraction
+partial extraction
+missing quantity
+missing cost basis
+unknown ticker
+duplicate positions
+confidence classification
+manual correction
+preview user ownership
+preview expiration
+confirm single-use
+redaction of sensitive metadata
+no raw file persistence
+no LLM scoring/recommendation logic
+no buy/sell language
+same normalization pipeline as CSV/XLSX
+
+Add representative synthetic broker fixtures where useful.
+
+DO NOT include actual user brokerage statements.
+
+============================================================
+26. PRODUCTION BUILD GATE
+============================================================
+
+Mandatory:
+
+clean application tests
+
+npm run build
+
+zero new TypeScript errors in changed files
+
+Do not declare GO on a dev-server-only result.
+
+============================================================
+27. OPERATIONS MANUAL UPDATE — REQUIRED
+============================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+Update API/UAT reference with:
+
+/portfolio screenshot workflow
+
+/portfolio PDF workflow
+
+POST /api/portfolio/import/image
+
+POST /api/portfolio/import/pdf
+
+POST /api/portfolio/import/confirm
+
+Document:
+
+authentication
+file limits
+expected responses
+failure states
+privacy behavior
+
+Update Security/DevSecOps documentation for:
+
+sensitive statement uploads
+file handling
+AI extraction
+PII redaction
+retention policy
+
+Update Troubleshooting Runbook for:
+
+image extraction failure
+PDF extraction failure
+no holdings detected
+low-confidence extraction
+provider failure
+preview expiration
+
+============================================================
+28. ROADMAP ALIGNMENT — REQUIRED
+============================================================
+
+Update Sprint Change Log.
+
+Explicitly state:
+
+Sprint 2.4.1:
+Screenshot & PDF Portfolio Intake
+
+NO work pulled forward from:
+
+2.4.2 Broker Synchronization
+
+2.4.3 Portfolio History / Change Intelligence
+
+future Portfolio Intelligence
+
+recommendations
+
+rebalancing
+
+tax
+
+goal planning
+
+agents
+
+============================================================
+29. IMPROVEMENT CAPTURE RULE
+============================================================
+
+During implementation/UAT, if you discover desirable improvements:
+
+DO NOT automatically implement unrelated enhancements.
+
+Classify each as:
+
+Critical production fix
+Current sprint acceptance requirement
+Future planned sprint enhancement
+Backlog
+
+Completion report must contain:
+
+Improvement Suggestions Captured
+
+For every suggestion list:
+
+suggestion
+assigned sprint/backlog
+priority
+reason
+
+This prevents roadmap drift.
+
+============================================================
+30. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. Screenshot import works.
+
+B. PDF statement import works.
+
+C. Both flow through canonical normalization.
+
+D. Preview before commit works.
+
+E. User correction works.
+
+F. Missing values are never fabricated.
+
+G. User isolation works.
+
+H. Sensitive information is protected.
+
+I. Original uploaded files are not unnecessarily persisted.
+
+J. No investment recommendations are generated.
+
+K. No duplicated market-data retrieval architecture is introduced.
+
+L. Full tests pass.
+
+M. npm run build passes.
+
+N. Operations Manual updated.
+
+O. Roadmap alignment confirmed.
+
+============================================================
+31. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Architecture discovered
+2. Files changed
+3. Schema changes
+4. Screenshot extraction architecture
+5. PDF extraction architecture
+6. AI/vision usage
+7. Deterministic normalization path
+8. Confidence handling
+9. Preview/correction workflow
+10. Privacy/PII handling
+11. File retention behavior
+12. APIs
+13. Client UX
+14. Failure handling
+15. Performance
+16. Operational telemetry
+17. Tests
+18. Full test count
+19. npm run build
+20. Typecheck
+21. Production UAT
+22. Known limitations
+23. Improvement Suggestions Captured
+24. Deferred backlog
+25. Roadmap Alignment
+26. Operations Manual Updated: YES/NO
+27. Operations Manual Files Updated
+28. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

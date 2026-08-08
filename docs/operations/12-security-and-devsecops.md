@@ -12,6 +12,61 @@ See [02-environments-and-deployment.md](02-environments-and-deployment.md) for t
 
 ---
 
+## Portfolio Document Intake — Privacy & Security (Sprint 2.4.1)
+
+### Upload Endpoints
+
+| Endpoint | Accepts | Auth |
+|----------|---------|------|
+| `POST /api/portfolio/import/image` | PNG, JPG, WEBP (≤10 MB) | Required |
+| `POST /api/portfolio/import/pdf` | application/pdf (≤15 MB, ≤50 pages) | Required |
+
+### File Handling
+
+- **No disk writes.** Both endpoints use multer `memoryStorage`. The file buffer never touches the filesystem.
+- **Buffer discarded after extraction.** After `extractFromImage()` or `extractFromPdf()` returns, `req.file.buffer = Buffer.alloc(0)` is set explicitly.
+- **Original files are NOT retained.** After extraction the buffer goes out of scope and is garbage-collected. No persistent storage of uploaded content.
+
+### AI Extraction Scope
+
+- AI (GPT-4o) is used **only** to transform unstructured image/text into structured candidate rows.
+- AI is **not** used to make investment decisions, rate positions, or generate recommendations.
+- The AI prompt explicitly states: "Do NOT produce buy/sell/hold recommendations. Extract data only."
+- AI responses are treated as untrusted candidate input — all rows pass through deterministic `normalizePortfolioPositions()` before any use.
+
+### Logging Rules
+
+- **Only safe telemetry** is logged: `sourceType`, `processingDurationMs`, `rowsDetected`, `rowsValid`, `rowsInvalid`, `lowConfidenceCount`, `resultStatus`, `detectedInstitution`.
+- **Never logged:** raw file content, extracted text, portfolio position values (averageCost, costBasis, quantity), account numbers, user identifiers beyond those needed for routing.
+
+### PII Redaction
+
+`redactSensitiveText()` in `portfolio-document-extractor.ts` strips:
+- 9-digit account numbers (`\b\d{9}\b`)
+- `account: XXXXX` patterns
+- SSN format (`\d{3}-\d{2}-\d{4}`)
+- Long numeric IDs (9–12 digits)
+- Email addresses
+- IP addresses
+
+Redaction is applied before any text passes through a log statement.
+
+### User Isolation
+
+- Preview sessions are UUID-identified, bound to `userId`, and have a 30-minute TTL.
+- `claimPreview()` enforces: `session.userId !== userId → reject`.
+- Preview entries are deleted on claim (single-use). A second confirm attempt on the same `previewId` returns 400.
+
+### Sensitive Statement Classification
+
+Brokerage statements contain highly sensitive personal financial data. Additional rules:
+- Never log full statement text
+- Never log account identifiers or routing numbers
+- Do not persist the original uploaded file after extraction
+- All extraction requests to GPT-4o contain only the minimum text necessary (holdings table area, not the full statement)
+
+---
+
 ## Railway/Nixpacks ARG/ENV Warnings
 
 Railway's Nixpacks build system may generate warnings like:

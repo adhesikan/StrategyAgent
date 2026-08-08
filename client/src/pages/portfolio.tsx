@@ -76,6 +76,8 @@ function sourceLabel(t: string): string {
     csv:    "Spreadsheet",
     xlsx:   "Spreadsheet",
     broker: "Broker",
+    image:  "Screenshot",
+    pdf:    "PDF Statement",
   };
   return map[t] ?? t;
 }
@@ -222,22 +224,35 @@ function PortfolioOnboarding() {
             Enter Holdings Manually
           </Button>
 
-          {/* Coming soon — informational only */}
-          <div className="grid grid-cols-2 gap-3 pt-1" data-testid="coming-soon-cards">
+          {/* Document import options */}
+          <div className="grid grid-cols-2 gap-3 pt-1" data-testid="document-import-cards">
             {[
-              { icon: Camera,   label: "Import from Screenshot"   },
-              { icon: FileText, label: "Import from PDF Statement" },
-            ].map(({ icon: Icon, label }) => (
-              <div
+              {
+                icon:    Camera,
+                label:   "Upload Screenshot",
+                route:   "/portfolio/import/document?type=image",
+                testId:  "btn-screenshot",
+                ariaLbl: "Import portfolio from a screenshot",
+              },
+              {
+                icon:    FileText,
+                label:   "Upload PDF Statement",
+                route:   "/portfolio/import/document?type=pdf",
+                testId:  "btn-pdf",
+                ariaLbl: "Import portfolio from a PDF brokerage statement",
+              },
+            ].map(({ icon: Icon, label, route, testId, ariaLbl }) => (
+              <Button
                 key={label}
-                className="relative flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-muted-foreground/20 rounded-xl p-4 text-center opacity-50 cursor-not-allowed select-none"
-                aria-disabled="true"
-                aria-label={`${label} — coming soon`}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-4 border-dashed"
+                onClick={() => setLocation(route)}
+                data-testid={testId}
+                aria-label={ariaLbl}
               >
                 <Icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground font-medium">{label}</span>
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Coming Soon</Badge>
-              </div>
+                <span className="text-xs font-medium">{label}</span>
+              </Button>
             ))}
           </div>
         </div>
@@ -260,9 +275,9 @@ function PortfolioOnboarding() {
             </div>
             <Separator />
             <div className="flex flex-wrap gap-2">
-              {["Screenshot Import", "PDF Statement Import"].map(label => (
-                <Badge key={label} variant="secondary" className="text-xs opacity-60">
-                  {label} — Coming Soon
+              {["Screenshots (PNG/JPG/WEBP)", "PDF Brokerage Statements"].map(label => (
+                <Badge key={label} variant="outline" className="text-xs">
+                  {label}
                 </Badge>
               ))}
             </div>

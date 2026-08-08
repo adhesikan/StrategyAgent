@@ -6,7 +6,7 @@
  * CSV/XLSX imports, manual entry, and broker adapter output.
  */
 
-export type PortfolioSourceType = "manual" | "csv" | "xlsx" | "broker";
+export type PortfolioSourceType = "manual" | "csv" | "xlsx" | "broker" | "image" | "pdf";
 
 export interface RawRow {
   [key: string]: string | number | null | undefined;

@@ -24,15 +24,35 @@ import {
   MAX_FILE_BYTES,
 } from "../services/portfolio-import";
 import { normalizePortfolioPositions, type NormalizedPortfolioPosition, type PortfolioSourceType } from "../services/portfolio-normalization";
+import {
+  extractFromImage,
+  extractFromPdf,
+  annotateWithConfidence,
+  ALLOWED_IMAGE_MIMES,
+  ALLOWED_PDF_MIMES,
+  MAX_IMAGE_BYTES,
+  MAX_PDF_BYTES,
+  MAX_PDF_PAGES,
+} from "../services/portfolio-document-extractor";
 import { getReferenceSnapshotsBulk } from "../services/daily-market-data/reference-snapshot";
 
 // ---------------------------------------------------------------------------
-// Multer — memory storage, 5 MB limit
+// Multer instances — memory storage only (no disk writes)
 // ---------------------------------------------------------------------------
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits:  { fileSize: MAX_FILE_BYTES },
+});
+
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: MAX_IMAGE_BYTES },
+});
+
+const uploadPdf = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: MAX_PDF_BYTES },
 });
 
 // ---------------------------------------------------------------------------
@@ -46,6 +66,13 @@ interface PreviewSession {
   warnings:     string[];
   invalidCount: number;
   sheetInfo?:   { availableSheets: string[]; selectedSheet: string };
+  // Document extraction metadata (image / pdf only) — never persisted to DB
+  extractionMetadata?: {
+    detectedInstitution?: string | null;
+    detectedPeriod?:      string | null;
+    extractionWarnings:   string[];
+    lowConfidenceCount:   number;
+  };
   expiresAt:    number; // ms epoch
 }
 
@@ -171,7 +198,7 @@ export function registerPortfolioRoutes(
       if (!name || !name.trim()) {
         return res.status(400).json({ error: "Portfolio name is required" });
       }
-      const allowed: PortfolioSourceType[] = ["manual", "csv", "xlsx", "broker"];
+      const allowed: PortfolioSourceType[] = ["manual", "csv", "xlsx", "broker", "image", "pdf"];
       if (!allowed.includes(sourceType as PortfolioSourceType)) {
         return res.status(400).json({ error: "Invalid sourceType" });
       }
@@ -475,6 +502,173 @@ export function registerPortfolioRoutes(
       } catch (err) {
         console.error("[portfolio] xlsx import error:", err);
         res.status(500).json({ error: "XLSX import failed" });
+      }
+    },
+  );
+
+  // ── Image import (preview only) ───────────────────────────────────────────
+  //
+  // POST /api/portfolio/import/image
+  // Accepts: PNG, JPG, JPEG, WEBP — max 10 MB
+  // Processing: GPT-4o vision → structured JSON → normalizePortfolioPositions()
+  // Privacy: file buffer processed in memory only, never written to disk or logged.
+
+  app.post(
+    "/api/portfolio/import/image",
+    isAuthenticated,
+    uploadImage.single("file"),
+    async (req, res) => {
+      const start = Date.now();
+      try {
+        const userId = req.session.userId!;
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (req.file.size === 0) return res.status(400).json({ error: "Uploaded file is empty" });
+
+        const mime = req.file.mimetype.toLowerCase();
+        if (!ALLOWED_IMAGE_MIMES.has(mime)) {
+          return res.status(400).json({
+            error: "File must be an image (PNG, JPG, JPEG, or WEBP)",
+          });
+        }
+
+        // Extract holdings via GPT-4o vision — AI transforms unstructured image into candidate rows
+        let result: Awaited<ReturnType<typeof extractFromImage>>;
+        try {
+          result = await extractFromImage(req.file.buffer, mime);
+        } catch (e) {
+          return res.status(502).json({ error: "Image extraction service unavailable. Please try again." });
+        }
+
+        // Discard buffer reference — it is not needed after extraction
+        req.file.buffer = Buffer.alloc(0);
+
+        if (result.telemetry.resultStatus === "provider_unavailable") {
+          return res.status(503).json({ error: "AI extraction service is currently unavailable. Please try again later." });
+        }
+
+        if (result.telemetry.resultStatus === "no_holdings" || result.normalizedPositions.length === 0) {
+          return res.status(422).json({
+            error:    "No holdings detected in the screenshot.",
+            warnings: result.warnings,
+            metadata: result.metadata,
+            telemetry: { durationMs: Date.now() - start },
+          });
+        }
+
+        // Annotate positions with confidence for preview UI (not persisted)
+        const annotatedPositions = annotateWithConfidence(result.normalizedPositions, []);
+
+        const previewId = storePreview({
+          userId,
+          sourceType:          "image",
+          positions:           result.normalizedPositions,
+          warnings:            result.warnings,
+          invalidCount:        result.invalidRows.length,
+          extractionMetadata:  result.metadata,
+          expiresAt:           Date.now() + PREVIEW_TTL_MS,
+        });
+
+        res.json({
+          previewId,
+          parsedRows:          result.parsedCount,
+          validRows:           result.normalizedPositions.length,
+          invalidRows:         result.invalidRows,
+          warnings:            result.warnings,
+          normalizedPositions: annotatedPositions,
+          metadata:            result.metadata,
+          telemetry:           result.telemetry,
+          expiresInSeconds:    PREVIEW_TTL_MS / 1000,
+        });
+      } catch (err) {
+        console.error("[portfolio] image import error:", { durationMs: Date.now() - start, error: err instanceof Error ? err.message : "unknown" });
+        res.status(500).json({ error: "Image import failed" });
+      }
+    },
+  );
+
+  // ── PDF import (preview only) ─────────────────────────────────────────────
+  //
+  // POST /api/portfolio/import/pdf
+  // Accepts: application/pdf — max 15 MB, max 50 pages
+  // Processing: pdf-parse text extraction → GPT-4 → normalizePortfolioPositions()
+  // Privacy: file buffer processed in memory only, never written to disk or logged.
+
+  app.post(
+    "/api/portfolio/import/pdf",
+    isAuthenticated,
+    uploadPdf.single("file"),
+    async (req, res) => {
+      const start = Date.now();
+      try {
+        const userId = req.session.userId!;
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (req.file.size === 0) return res.status(400).json({ error: "Uploaded file is empty" });
+
+        const mime = req.file.mimetype.toLowerCase();
+        if (!ALLOWED_PDF_MIMES.has(mime) && mime !== "application/pdf") {
+          return res.status(400).json({ error: "File must be a PDF (application/pdf)" });
+        }
+
+        // Quick page count check before expensive extraction
+        // pdf-parse will also enforce MAX_PDF_PAGES but we can pre-check file header
+        // Note: proper page count enforcement happens inside extractFromPdf via pdf-parse max option.
+
+        let result: Awaited<ReturnType<typeof extractFromPdf>>;
+        try {
+          result = await extractFromPdf(req.file.buffer);
+        } catch (e) {
+          return res.status(502).json({ error: "PDF extraction service unavailable. Please try again." });
+        }
+
+        // Discard buffer reference — not needed after extraction
+        req.file.buffer = Buffer.alloc(0);
+
+        if (result.telemetry.resultStatus === "provider_unavailable") {
+          return res.status(503).json({ error: "AI extraction service is currently unavailable. Please try again later." });
+        }
+
+        if (result.telemetry.resultStatus === "extraction_failed") {
+          return res.status(422).json({
+            error:    "Could not parse this PDF. The file may be corrupted or use an unsupported format.",
+            warnings: result.warnings,
+            metadata: result.metadata,
+          });
+        }
+
+        if (result.telemetry.resultStatus === "no_holdings" || result.normalizedPositions.length === 0) {
+          return res.status(422).json({
+            error:    "No holdings detected in the PDF. The document may not contain a readable holdings table, or it may be a scanned PDF without embedded text.",
+            warnings: result.warnings,
+            metadata: result.metadata,
+          });
+        }
+
+        const annotatedPositions = annotateWithConfidence(result.normalizedPositions, []);
+
+        const previewId = storePreview({
+          userId,
+          sourceType:          "pdf",
+          positions:           result.normalizedPositions,
+          warnings:            result.warnings,
+          invalidCount:        result.invalidRows.length,
+          extractionMetadata:  result.metadata,
+          expiresAt:           Date.now() + PREVIEW_TTL_MS,
+        });
+
+        res.json({
+          previewId,
+          parsedRows:          result.parsedCount,
+          validRows:           result.normalizedPositions.length,
+          invalidRows:         result.invalidRows,
+          warnings:            result.warnings,
+          normalizedPositions: annotatedPositions,
+          metadata:            result.metadata,
+          telemetry:           result.telemetry,
+          expiresInSeconds:    PREVIEW_TTL_MS / 1000,
+        });
+      } catch (err) {
+        console.error("[portfolio] pdf import error:", { durationMs: Date.now() - start, error: err instanceof Error ? err.message : "unknown" });
+        res.status(500).json({ error: "PDF import failed" });
       }
     },
   );

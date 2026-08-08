@@ -52,3 +52,4 @@
 - [Sprint 2.3.6A — Ops Manual Completion](sprint-236a-ops-manual.md) — /admin/operations-manual page + search API; docs 16/17; precomputation status tracking; enhanced diagnostics with per-symbol breakdown; check-operations-docs.ts.
 - [Portfolio Foundation](portfolio-foundation.md) — Sprint 2.4.0: portfolios + portfolio_positions tables; normalization service; CSV/XLSX import; preview-confirm flow; multer + xlsx packages; getReferenceSnapshotsBulk for prices.
 - [Portfolio UX Polish (Sprint 2.4.0A)](portfolio-ux-sprint240a.md) — UI only; coming-soon cards aria-disabled; "Analysis" (capital A) required for test §5; TooltipProvider at component level; drop zone keyboard (Enter+Space).
+- [Portfolio Document Intake (Sprint 2.4.1)](portfolio-document-intake.md) — GPT-4o vision (image) + pdf-parse→GPT-4o (PDF); scanned PDFs unsupported; buffer discarded post-extraction; stale test update protocol documented.

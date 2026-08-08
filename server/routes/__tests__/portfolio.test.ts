@@ -579,14 +579,15 @@ describe("shared/schema.ts — portfolio tables", () => {
   it("portfolioSourceTypeEnum has correct values", async () => {
     const schema = await import("../../../shared/schema");
     expect(schema.portfolioSourceTypeEnum).toBeDefined();
-    // The enum definition includes the valid values
+    // The enum definition includes the valid values (Sprint 2.4.1 added image + pdf)
     const src = await (await import("node:fs/promises")).readFile("shared/schema.ts", "utf8");
     expect(src).toContain('"manual"');
     expect(src).toContain('"csv"');
     expect(src).toContain('"xlsx"');
     expect(src).toContain('"broker"');
-    expect(src).not.toContain('"screenshot"');
-    expect(src).not.toContain('"pdf"');
+    expect(src).toContain('"image"');   // Sprint 2.4.1: screenshot/image intake
+    expect(src).toContain('"pdf"');     // Sprint 2.4.1: PDF statement intake
+    expect(src).not.toContain('"screenshot"'); // stored as "image", not "screenshot"
   });
 });
 

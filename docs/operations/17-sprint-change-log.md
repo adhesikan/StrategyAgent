@@ -326,6 +326,109 @@ New enum: `portfolio_source_type` → `manual | csv | xlsx | broker`
 
 ---
 
+## Sprint 2.4.1 — Screenshot & PDF Portfolio Intake
+
+**Date:** 2026-08-08
+**Type:** New feature — portfolio intake from images and PDF brokerage statements.
+
+### Objective
+
+Enable authenticated users to import portfolio holdings from:
+- **A. Screenshot / Image** — PNG, JPG, JPEG, WEBP (max 10 MB)
+- **B. PDF Brokerage Statement** — application/pdf (max 15 MB, max 50 pages)
+
+All extracted holdings flow through the **same canonical `normalizePortfolioPositions()` pipeline** as CSV, XLSX, and manual entry. No separate business rules.
+
+### Architecture
+
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Image extraction | GPT-4o vision | Base64 buffer → structured JSON → normalization |
+| PDF extraction | `pdf-parse` (text) → GPT-4o | Text extracted first; AI parses the text into JSON |
+| Normalization | `normalizePortfolioPositions()` | Unchanged; `"image"` and `"pdf"` added as valid sourceTypes |
+| File handling | multer memoryStorage | Never written to disk |
+| Preview store | Existing in-memory UUID/TTL store | Unchanged; TTL=30min, single-use, user-bound |
+| Confirm | `POST /api/portfolio/import/confirm` | Unchanged; reused as-is |
+
+### Schema Changes
+
+| Object | Change | Type |
+|--------|--------|------|
+| `portfolioSourceTypeEnum` | Added `"image"`, `"pdf"` | Additive only — no destructive change |
+| `PortfolioSourceType` (TypeScript) | Extended with `"image" \| "pdf"` | Type-only |
+
+**Migration:** `drizzle-kit push` on next startup adds the two enum values via `ALTER TYPE ... ADD VALUE`. Fully idempotent; no data loss risk.
+
+### New Service: `server/services/portfolio-document-extractor.ts`
+
+| Export | Purpose |
+|--------|---------|
+| `extractFromImage(buffer, mime)` | GPT-4o vision → candidate rows → `normalizePortfolioPositions("image")` |
+| `extractFromPdf(buffer)` | `pdf-parse` text → GPT-4o text → `normalizePortfolioPositions("pdf")` |
+| `annotateWithConfidence(normalized, aiPositions)` | Attaches confidence + marketValue for preview UI (not persisted) |
+| `classifyConfidence(0–1)` | `≥0.8 → high`, `0.5–0.79 → medium`, `<0.5 → low` |
+| `redactSensitiveText(text)` | Redacts account#, SSN, email, IP before any logging |
+
+### Routes Added
+
+| Method | Path | Auth | Limit | Purpose |
+|--------|------|------|-------|---------|
+| POST | `/api/portfolio/import/image` | ✅ Required | 10 MB | Image extraction preview |
+| POST | `/api/portfolio/import/pdf` | ✅ Required | 15 MB | PDF extraction preview |
+| POST | `/api/portfolio/import/confirm` | ✅ Required | — | **Reused unchanged** |
+
+### Client Changes
+
+| File | Change |
+|------|--------|
+| `client/src/pages/portfolio.tsx` | Activated the two coming-soon cards as real buttons navigating to `/portfolio/import/document?type=image` and `?type=pdf` |
+| `client/src/pages/portfolio-import-document.tsx` | **NEW** — 3-step flow: Upload → Review → Complete. Handles both `?type=image` and `?type=pdf`. Confidence badges, extraction summary, position editing, portfolio targeting. |
+| `client/src/App.tsx` | Added `/portfolio/import/document` route |
+
+### Privacy / Security
+
+| Rule | Implementation |
+|------|--------------|
+| No disk writes | multer memoryStorage; buffer discarded after extraction |
+| No raw content logged | Only telemetry counters (rowsDetected, processingDurationMs, resultStatus) |
+| PII redaction | `redactSensitiveText()` strips account#/SSN/email/IP before any log statement |
+| User isolation | Same preview store: userId check + single-use + TTL expiry |
+| No raw file stored | Original file buffer cleared (`Buffer.alloc(0)`) after extraction |
+
+### Tests Added
+
+| File | Count |
+|------|-------|
+| `server/routes/__tests__/portfolio-document-intake.test.ts` | **74 new tests** |
+
+Updated stale tests:
+- `portfolio-ux-sprint240a.test.ts` — 7 coming-soon assertions updated to reflect activated buttons (Sprint 2.4.1 activation)
+- `portfolio.test.ts` — schema enum test updated to include `"image"` and `"pdf"`
+
+### Operations Manual Updated
+
+- `docs/operations/17-sprint-change-log.md` ← this entry
+- `docs/operations/16-api-and-uat-reference.md` ← image/PDF workflow + API reference
+- `docs/operations/12-security-and-devsecops.md` ← document intake privacy section
+- `docs/operations/11-troubleshooting-runbook.md` ← extraction failure runbook entries
+
+### Known Limitations
+
+1. **Scanned PDFs** (image-only, no embedded text) are not supported. pdf-parse extracts only embedded text; a scanned PDF will return "no holdings detected". Users should use the screenshot import path instead.
+2. **AI extraction accuracy** varies by screenshot quality and PDF layout. Always review before confirming.
+3. **Confidence is advisory** — it reflects AI self-reported certainty, not validation against a security master.
+4. **GPT-4o dependency** — extraction unavailable if `OPENAI_API_KEY` is not set.
+
+### Roadmap Alignment
+
+This sprint implements ONLY what was specified. The following future items were **NOT** pulled forward:
+- 2.4.2 Broker Synchronization
+- 2.4.3 Portfolio History / Change Intelligence
+- Portfolio Intelligence Engine
+- Portfolio scoring, recommendations, rebalancing, goal planning, tax lots, options intelligence
+
+---
+
 ## Sprint 2.4.0A — Portfolio UX Polish
 
 **Date:** 2026-08-08

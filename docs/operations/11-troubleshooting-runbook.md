@@ -26,6 +26,114 @@ Format: **Symptom → Diagnostic → Likely Cause → Safe Remediation → Verif
 
 ---
 
+## PORTFOLIO DOCUMENT INTAKE
+
+### "No holdings detected in the screenshot"
+
+**Symptom:** `POST /api/portfolio/import/image` returns HTTP 422 with `"No holdings detected in the screenshot."`
+
+**Diagnostic:**
+1. Was the screenshot of the holdings/positions table?
+2. Does the screenshot include column headers (Symbol, Quantity, etc.)?
+3. Is the image resolution sufficient (≥800px wide)?
+
+**Likely causes:**
+- Screenshot only shows charts, account summary, or cash balance (no positions table)
+- Very low resolution or heavy compression artifacts
+- Screenshot shows a loading state or empty portfolio
+
+**Remediation:**
+1. Re-capture the screenshot showing the full holdings table
+2. Ensure column headers are visible in the screenshot
+3. Try a higher resolution PNG instead of compressed JPEG
+
+**Verification:** Re-upload; response should include `validRows ≥ 1` and `normalizedPositions` with at least one entry.
+
+---
+
+### "No holdings detected in the PDF" / "Could not parse this PDF"
+
+**Symptom:** `POST /api/portfolio/import/pdf` returns HTTP 422.
+
+**Diagnostic:**
+1. Is the PDF a native/text-based PDF (vs. a scanned image PDF)?
+2. Does the PDF contain embedded text? Open in a text editor and copy-paste — if no text copies, it is a scanned PDF.
+3. Does the PDF exceed 50 pages or 15 MB?
+
+**Likely causes:**
+- **Scanned PDF** (image-only, no embedded text) — `pdf-parse` returns <100 characters of text
+- Corrupted PDF or encrypted PDF with access restrictions
+- File exceeds size/page limits
+
+**Remediation for scanned PDFs:**
+1. Take a screenshot of the holdings table from the PDF viewer
+2. Upload the screenshot via the Screenshot Import path instead
+
+**Remediation for text PDFs with no detection:**
+1. Check the extracted text: enable debug logging temporarily to see what text was passed to AI
+2. Verify the PDF has a recognizable holdings table section with ticker symbols and quantities
+
+**Verification:** Re-upload a native PDF; response should include detected positions.
+
+---
+
+### Low-confidence extraction — fields showing "Needs review"
+
+**Symptom:** Preview shows yellow "Needs review" badges on many fields.
+
+**Diagnostic:** Check the `metadata.lowConfidenceCount` field in the API response.
+
+**Likely causes:**
+- Poor screenshot quality (low resolution, glare, partial crop)
+- Non-standard broker UI that AI has not seen before
+- Column headers not visible in the image
+
+**Remediation:**
+1. User reviews and corrects all medium/low confidence values before confirming
+2. Or: re-upload a higher quality screenshot
+3. Or: export from broker as CSV/XLSX instead
+
+**Verification:** User manually edits questionable values in the preview table and confirms.
+
+---
+
+### AI extraction failure / "Extraction failed"
+
+**Symptom:** `POST /api/portfolio/import/image` or `/pdf` returns HTTP 502 or 503.
+
+**Diagnostic:**
+1. Is `OPENAI_API_KEY` set in the environment?
+2. Is the OpenAI API returning errors? Check platform health dashboard.
+
+**Likely causes:**
+- `OPENAI_API_KEY` not configured → 503 "provider unavailable"
+- OpenAI API quota exhausted → 503
+- Network timeout to OpenAI API → 502
+
+**Remediation:**
+1. Verify `OPENAI_API_KEY` in Railway variables (production) or Replit Secrets (dev)
+2. Check OpenAI API status at status.openai.com
+3. If quota, check OpenAI usage dashboard
+
+**Verification:** Platform Health dashboard → "Portfolio Document Extraction" shows Healthy after key is restored.
+
+---
+
+### Preview expired or "belongs to a different user"
+
+**Symptom:** `POST /api/portfolio/import/confirm` returns 400 "Preview not found, expired, or belongs to a different user."
+
+**Likely causes:**
+- Preview TTL (30 minutes) elapsed between extraction and confirm
+- User tried to confirm from a different session/tab
+- Preview already consumed (single-use — can only be confirmed once)
+
+**Remediation:**
+1. Re-upload the file to generate a fresh preview
+2. Complete the confirm step within 30 minutes of extraction
+
+---
+
 ## RESEARCH HUB
 
 ### Permanent skeleton after failed API request

@@ -3309,6 +3309,8 @@ export const portfolioSourceTypeEnum = pgEnum("portfolio_source_type", [
   "csv",
   "xlsx",
   "broker",
+  "image",
+  "pdf",
 ]);
 
 export const portfolios = pgTable("portfolios", {

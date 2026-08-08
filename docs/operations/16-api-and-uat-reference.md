@@ -493,6 +493,155 @@ open /portfolio/import
 
 - Market value in preview summary always shows "—" (not available until after import and nightly bar refresh)
 - Intelligence placeholder cards are static; no computation occurs
-- Screenshot and PDF import are UI stubs only — no backend capability
 - Broker "Connect" navigates to `/settings?tab=broker`; only Tradier and TradeStation are functional
+- Screenshot and PDF import (Sprint 2.4.1) are now functional — see section below
+
+---
+
+## Sprint 2.4.1 — Screenshot & PDF Portfolio Intake
+
+### New Routes
+
+#### `POST /api/portfolio/import/image`
+
+**Auth:** Required (session cookie)  
+**Content-Type:** `multipart/form-data` — field name: `file`  
+**Accepted:** `image/png`, `image/jpg`, `image/jpeg`, `image/webp`  
+**Max size:** 10 MB  
+
+**Success response (200):**
+```json
+{
+  "previewId": "uuid",
+  "parsedRows": 5,
+  "validRows": 4,
+  "invalidRows": [],
+  "warnings": [],
+  "normalizedPositions": [
+    { "symbol": "NVDA", "quantity": 100, "averageCost": 132.50, "costBasis": 13250, "currency": "USD", "warnings": [], "confidence": "high", "marketValue": 18000 }
+  ],
+  "metadata": {
+    "detectedInstitution": "Fidelity",
+    "detectedPeriod": null,
+    "extractionWarnings": [],
+    "lowConfidenceCount": 0
+  },
+  "telemetry": {
+    "sourceType": "image",
+    "processingDurationMs": 3200,
+    "rowsDetected": 5,
+    "rowsValid": 4,
+    "rowsInvalid": 1,
+    "lowConfidenceCount": 0,
+    "resultStatus": "success"
+  },
+  "expiresInSeconds": 1800
+}
+```
+
+**Error responses:**
+| Code | Meaning |
+|------|---------|
+| 400 | No file / empty file / unsupported MIME |
+| 422 | No holdings detected |
+| 503 | AI service unavailable (OPENAI_API_KEY missing or quota) |
+| 502 | AI service call failed (timeout) |
+| 500 | Internal error |
+
+---
+
+#### `POST /api/portfolio/import/pdf`
+
+**Auth:** Required  
+**Content-Type:** `multipart/form-data` — field name: `file`  
+**Accepted:** `application/pdf`  
+**Max size:** 15 MB · Max pages: 50  
+
+**Success response (200):** Same shape as image endpoint with `"sourceType": "pdf"`.
+
+**Additional 422 causes:**
+- PDF is a scanned image (no embedded text → less than 100 chars extracted)
+- Corrupt or encrypted PDF
+
+---
+
+#### `POST /api/portfolio/import/confirm`
+
+**Unchanged from Sprint 2.4.0.** Reused for image and PDF imports.
+
+```json
+{
+  "previewId": "uuid",
+  "portfolioName": "My Fidelity Portfolio",
+  "editedPositions": [
+    { "symbol": "NVDA", "quantity": 100, "averageCost": 132.50 }
+  ]
+}
+```
+
+---
+
+### Client Pages
+
+| Path | Purpose |
+|------|---------|
+| `/portfolio/import/document?type=image` | Screenshot import — 3-step: Upload → Review → Complete |
+| `/portfolio/import/document?type=pdf` | PDF statement import — same 3-step flow |
+
+---
+
+### UAT Sequence — Screenshot Import
+
+```
+1. Navigate to /portfolio
+2. Click "Upload Screenshot" (btn-screenshot)
+3. Confirm navigation to /portfolio/import/document?type=image
+4. Select a PNG/JPG/WEBP screenshot (max 10 MB)
+5. Click "Extract Holdings"
+6. Observe "Analyzing screenshot with AI…" loading state
+7. Preview screen: Extraction Summary card shows detected institution if any
+8. Positions table shows Symbol / Quantity / Avg Cost / Cost Basis / Confidence
+9. "Needs review" badge visible on low-confidence fields
+10. Remove a row → row disappears from table
+11. Enter new portfolio name → confirm
+12. Success screen: "Import complete. Your screenshot was processed in memory and is no longer retained."
+13. Navigate to /portfolio → new portfolio visible with imported holdings
+```
+
+### UAT Sequence — PDF Import
+
+```
+1. Navigate to /portfolio
+2. Click "Upload PDF Statement" (btn-pdf)
+3. Confirm navigation to /portfolio/import/document?type=pdf
+4. Select a native PDF (not scanned) — max 15 MB, 50 pages
+5. Click "Extract Holdings"
+6. Observe "Extracting holdings from PDF…" loading state
+7. Preview screen: shows detected institution and period (if found)
+8. Review all positions — verify quantities and costs match the PDF
+9. Edit any "Needs review" fields manually
+10. Confirm import
+11. Success screen confirms file not retained
+```
+
+### UAT Sequence — Scanned PDF (Expected Failure)
+
+```
+1. Upload a scanned (image-only) PDF
+2. Expect HTTP 422 with message: "No holdings detected in the PDF. The document may not contain a readable holdings table, or it may be a scanned PDF without embedded text."
+3. User directed to use Screenshot Import instead
+```
+
+### Privacy Verification
+
+- After import confirmation, no uploaded file persists anywhere in the system
+- Network tab should show file upload only to `/api/portfolio/import/image` or `/api/portfolio/import/pdf` (not stored)
+- Server logs show only: sourceType, processingDurationMs, rowsDetected, rowsValid, rowsInvalid, lowConfidenceCount, resultStatus, detectedInstitution
+
+### Known Limitations (Sprint 2.4.1)
+
+- Scanned PDFs (image-only, no embedded text) are not supported → use Screenshot Import instead
+- AI extraction accuracy depends on screenshot quality and PDF readability
+- GPT-4o must be available (`OPENAI_API_KEY` set); otherwise 503
+- Confidence is AI self-reported; always review before confirming
 

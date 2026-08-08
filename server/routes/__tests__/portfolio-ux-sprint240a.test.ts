@@ -104,26 +104,31 @@ describe("§2 — Primary action button order", () => {
     expect(cbIdx).toBeLessThan(mIdx);
   });
 
-  it("shows 'Import from Screenshot' coming-soon card", () => {
-    expect(portfolioSrc).toContain("Import from Screenshot");
+  it("shows 'Upload Screenshot' button (activated in Sprint 2.4.1)", () => {
+    // Sprint 2.4.1: screenshot import is now a real button, not a coming-soon card
+    expect(portfolioSrc).toContain("Upload Screenshot");
   });
 
-  it("shows 'Import from PDF Statement' coming-soon card", () => {
-    expect(portfolioSrc).toContain("Import from PDF Statement");
+  it("shows 'Upload PDF Statement' button (activated in Sprint 2.4.1)", () => {
+    // Sprint 2.4.1: PDF import is now a real button, not a coming-soon card
+    expect(portfolioSrc).toContain("Upload PDF Statement");
   });
 
-  it("coming-soon cards are aria-disabled", () => {
-    expect(portfolioSrc).toContain('aria-disabled="true"');
+  it("screenshot and PDF buttons are NOT aria-disabled (fully functional in Sprint 2.4.1)", () => {
+    // Sprint 2.4.1: these were aria-disabled coming-soon cards; now activated
+    // The document-import-cards section must not have aria-disabled
+    const documentImportSection = portfolioSrc.match(/document-import-cards[\s\S]{0,2000}/)?.[0] ?? "";
+    expect(documentImportSection).not.toContain('aria-disabled="true"');
   });
 
-  it("coming-soon cards show Coming Soon badge", () => {
-    const comingSoonCount = (portfolioSrc.match(/Coming Soon/g) || []).length;
-    expect(comingSoonCount).toBeGreaterThanOrEqual(2);
+  it("screenshot button navigates to /portfolio/import/document?type=image", () => {
+    // Sprint 2.4.1: real routes activated
+    expect(portfolioSrc).toContain("/portfolio/import/document?type=image");
   });
 
-  it("no routes are created for screenshot or PDF import", () => {
-    expect(portfolioSrc).not.toContain("/portfolio/import/screenshot");
-    expect(portfolioSrc).not.toContain("/portfolio/import/pdf");
+  it("pdf button navigates to /portfolio/import/document?type=pdf", () => {
+    // Sprint 2.4.1: real routes activated
+    expect(portfolioSrc).toContain("/portfolio/import/document?type=pdf");
   });
 });
 
@@ -145,12 +150,14 @@ describe("§3 — Supported imports card", () => {
     expect(portfolioSrc).toContain('data-testid="supported-imports-card"');
   });
 
-  it("shows Screenshot Import as coming soon", () => {
-    expect(portfolioSrc).toContain("Screenshot Import");
+  it("shows screenshot import format in supported imports card (Sprint 2.4.1)", () => {
+    // Sprint 2.4.1: screenshot now shows as a supported import format, not coming soon
+    expect(portfolioSrc).toContain("Screenshots (PNG/JPG/WEBP)");
   });
 
-  it("shows PDF Statement Import as coming soon", () => {
-    expect(portfolioSrc).toContain("PDF Statement Import");
+  it("shows PDF statement import format in supported imports card (Sprint 2.4.1)", () => {
+    // Sprint 2.4.1: PDF now shows as a supported import format, not coming soon
+    expect(portfolioSrc).toContain("PDF Brokerage Statements");
   });
 });
 

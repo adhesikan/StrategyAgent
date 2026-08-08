@@ -1,0 +1,678 @@
+SPRINT 2.4.0 — PORTFOLIO RESEARCH INTELLIGENCE
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Personal Research Intelligence
+
+CURRENT PLATFORM
+
+Completed:
+
+- Deterministic Market Scanner
+- Opportunity Ranking Engine
+- Dashboard Rankings
+- Opportunity Research Workspace
+- Opportunity Change Intelligence
+- Institutional Signal Engine
+- Institutional Fund Explorer
+- Sector Intelligence
+- Theme Intelligence
+- Market Intelligence Dashboard
+- Market Research Hub
+
+OBJECTIVE
+
+Build a compliance-conscious Portfolio Research Intelligence layer.
+
+The system should help a self-directed investor understand:
+
+- What do I own?
+- Where is my portfolio concentrated?
+- Which holdings currently have strong or weak research evidence?
+- What changed in my holdings?
+- What sectors and themes dominate my portfolio?
+- Which events require research attention?
+
+It must NOT tell the user:
+
+- what to buy
+- what to sell
+- how much to buy/sell
+- what position to replace
+- what allocation they "should" have
+- what is suitable for their age/income/risk tolerance
+
+This is research and analytics, not personalized investment advice.
+
+====================================================================
+1. ARCHITECTURE AUDIT
+====================================================================
+
+First inspect all existing portfolio functionality.
+
+Identify:
+
+- brokerage position tables
+- Tradier / TradeStation / SnapTrade integrations
+- current portfolio endpoints
+- portfolio-intelligence-engine.ts
+- any portfolio context/signing mechanisms
+- existing holdings models
+- existing P&L calculations
+- current portfolio UI
+- broker connection state
+- account identifiers
+- security boundaries between users/accounts
+
+Do NOT create duplicate portfolio storage if reliable holdings infrastructure exists.
+
+Report what is reusable before coding.
+
+====================================================================
+2. CANONICAL PORTFOLIO RESEARCH MODEL
+====================================================================
+
+Create a deterministic research representation for each portfolio holding:
+
+{
+  symbol,
+  quantity,
+  marketValue,
+  portfolioWeight,
+
+  opportunity: {
+    score,
+    category,
+    confidence,
+    technicalScore,
+    institutionalScore,
+    fundamentalScore,
+    riskScore
+  },
+
+  change: {
+    scoreDelta,
+    categoryChange,
+    primaryDrivers[]
+  },
+
+  classification: {
+    sector,
+    industry,
+    themes[]
+  },
+
+  events: {
+    earningsDate,
+    eventRisk
+  },
+
+  researchStatus:
+    "strong_evidence" |
+    "constructive" |
+    "mixed" |
+    "weakening" |
+    "limited_data",
+
+  dataFreshness
+}
+
+Do not create buy/sell status.
+
+====================================================================
+3. PORTFOLIO-LEVEL METRICS
+====================================================================
+
+Calculate deterministic portfolio analytics:
+
+totalMarketValue
+
+numberOfPositions
+
+largestPositionWeight
+
+top5Concentration
+
+sectorExposure
+
+themeExposure
+
+industryExposure
+
+rankedHoldingsCount
+
+unrankedHoldingsCount
+
+highResearchEvidenceCount
+
+weakeningEvidenceCount
+
+upcomingEarningsCount
+
+institutionalDataCoverage
+
+opportunityDataCoverage
+
+Do NOT assign an "ideal" allocation.
+
+Do NOT tell users whether concentration is appropriate.
+
+Describe it factually.
+
+Example:
+
+"Semiconductors represent 38% of current portfolio market value."
+
+NOT:
+
+"You have too much semiconductor exposure."
+
+====================================================================
+4. PORTFOLIO RESEARCH HEALTH
+====================================================================
+
+Create a research-health indicator derived only from available evidence.
+
+Call it:
+
+Portfolio Research Health
+
+NOT:
+
+Portfolio Score
+Portfolio Rating
+Portfolio Recommendation
+
+Possible statuses:
+
+Strong Evidence
+Constructive
+Mixed
+Weakening
+Limited Data
+
+Expose underlying components.
+
+Example components:
+
+current opportunity evidence
+technical breadth
+institutional evidence coverage
+risk/event exposure
+research freshness
+
+Do NOT convert this into a recommendation.
+
+====================================================================
+5. HOLDINGS INTELLIGENCE
+====================================================================
+
+For each holding display:
+
+Symbol
+Market value
+Portfolio weight
+Opportunity Score
+Technical
+Institutional
+Risk
+Sector
+Themes
+Recent change
+
+Allow sorting by:
+
+portfolio weight
+opportunity score
+score change
+technical evidence
+institutional evidence
+risk evidence
+
+Do NOT default-sort as "what to sell".
+
+====================================================================
+6. PORTFOLIO CHANGE INTELLIGENCE
+====================================================================
+
+Reuse Opportunity Change Intelligence.
+
+Create sections:
+
+Improving Research Evidence
+Weakening Research Evidence
+New Research Signals
+Upcoming Events
+Changed Institutional Evidence
+
+Language examples:
+
+"NVDA Opportunity Score increased 8 points."
+
+"MU technical evidence weakened since the previous scan."
+
+"AMZN has earnings in 4 days."
+
+Avoid:
+
+"Consider selling"
+"Trim"
+"Add"
+"Rotate"
+"Replace"
+
+====================================================================
+7. SECTOR & THEME EXPOSURE
+====================================================================
+
+Reuse the existing sector/theme classification.
+
+Display:
+
+Sector Exposure
+
+Theme Exposure
+
+Top concentrations
+
+Examples:
+
+AI Infrastructure — 31%
+Semiconductors — 27%
+Cloud — 15%
+
+Show portfolio exposure beside current theme research state.
+
+Example:
+
+AI Infrastructure
+Portfolio Exposure: 31%
+Theme Research State: Improving
+
+This is descriptive context.
+
+Do NOT say:
+
+Overweight
+Underweight
+
+unless those terms are purely relative to an explicitly selected benchmark in a
+future benchmark-analysis feature.
+
+====================================================================
+8. PORTFOLIO VS MARKET RESEARCH
+====================================================================
+
+Add a research comparison section.
+
+Examples:
+
+"6 of 12 portfolio holdings are currently ranked opportunities."
+
+"3 portfolio holdings belong to themes currently classified as Improving."
+
+"2 holdings have weakening opportunity evidence."
+
+"Today's ranked universe contains 7 symbols in sectors already represented in your portfolio."
+
+DO NOT say:
+
+"Replace holding X with stock Y."
+
+DO NOT rank external opportunities specifically as substitutes for holdings.
+
+====================================================================
+9. INSTITUTIONAL EVIDENCE
+====================================================================
+
+For holdings with available institutional signals show:
+
+Institutional label
+Institutional score
+Latest quarter
+Manager breadth
+New managers
+Exited managers
+Data confidence
+
+Always display:
+
+SEC Form 13F · Delayed Data
+
+Missing institutional evidence must not penalize the holding.
+
+====================================================================
+10. EVENTS / RESEARCH ATTENTION
+====================================================================
+
+Create:
+
+Research Attention
+
+This may surface factual triggers such as:
+
+earnings approaching
+large score change
+technical state change
+institutional evidence changed
+theme state changed
+market regime changed
+
+Use:
+
+"Research attention"
+
+NOT:
+
+"Action required"
+
+No trade instruction.
+
+====================================================================
+11. NEW PAGE
+====================================================================
+
+Create or enhance:
+
+/portfolio
+
+Primary sections:
+
+Portfolio Overview
+Research Health
+Holdings
+What Changed
+Sector Exposure
+Theme Exposure
+Research Attention
+
+Keep the page compact.
+
+Use progressive disclosure.
+
+====================================================================
+12. BROKER CONNECTION
+====================================================================
+
+If brokerage holdings already exist:
+
+reuse them.
+
+If broker disconnected:
+
+show:
+
+"Connect a brokerage account to analyze your current holdings."
+
+Do NOT implement new brokerage providers in this sprint.
+
+Allow an existing manual/demo portfolio path only if already supported.
+
+Do not create fake production holdings.
+
+====================================================================
+13. PRIVACY / MULTI-USER SAFETY
+====================================================================
+
+Portfolio data is user-specific.
+
+Verify:
+
+user/account ownership filters
+no cross-user portfolio leakage
+no account ID enumeration
+no raw broker tokens exposed
+no portfolio data in public APIs
+authentication required
+
+Add explicit authorization tests.
+
+====================================================================
+14. API
+====================================================================
+
+Prefer:
+
+GET /api/portfolio/research
+
+Thin composition over existing precomputed services.
+
+Response:
+
+{
+  generatedAt,
+  portfolioSummary,
+  researchHealth,
+  holdings[],
+  changes,
+  sectorExposure[],
+  themeExposure[],
+  researchAttention[],
+  coverage
+}
+
+Do not recompute market engines here.
+
+Use:
+
+Opportunity Ranking
+Change Intelligence
+Institutional Signals
+Sector Intelligence
+Theme Intelligence
+
+as existing evidence sources.
+
+====================================================================
+15. PERFORMANCE
+====================================================================
+
+Avoid N+1 queries.
+
+Batch lookup symbols.
+
+Target:
+
+portfolio research endpoint < 250ms for 100 holdings
+
+after existing caches/precomputed intelligence are warm.
+
+Report actual query count and benchmark.
+
+====================================================================
+16. COMPLIANCE GUARDRAIL MODULE
+====================================================================
+
+Add a reusable portfolio-language guard.
+
+Reject/flag generated deterministic strings containing phrases such as:
+
+you should buy
+you should sell
+sell this
+buy this
+reduce your position
+increase your position
+replace
+recommended allocation
+best for you
+suitable for you
+
+Prefer factual language:
+
+increased
+decreased
+strengthened
+weakened
+concentration
+exposure
+research evidence
+reported activity
+upcoming event
+
+Add tests around these constraints.
+
+====================================================================
+17. NO PERSONAL SUITABILITY ENGINE
+====================================================================
+
+Do NOT ask for or use:
+
+age
+income
+net worth
+investment objective
+risk tolerance
+retirement horizon
+
+to generate investment conclusions.
+
+Those would materially change the compliance profile.
+
+Outside this sprint.
+
+====================================================================
+18. TESTS
+====================================================================
+
+Add tests for:
+
+user isolation
+portfolio ownership authorization
+portfolio weights
+top5 concentration
+sector exposure
+theme exposure
+ranked/unranked holdings
+opportunity evidence
+missing opportunity data
+institutional evidence
+missing institutional data
+13F delayed disclosure
+change intelligence
+earnings attention
+research-health calculation
+research-health component reconciliation
+no buy/sell language
+no suitability language
+empty portfolio
+single holding
+100-holding portfolio
+batch queries
+mobile rendering
+broker disconnected state
+partial API failures
+determinism
+no LLM dependency
+
+Run:
+
+portfolio tests
+server tests
+client tests
+FULL test suite
+npm run build
+typecheck
+
+====================================================================
+19. PRODUCTION BUILD GATE
+====================================================================
+
+This is mandatory.
+
+Before declaring completion:
+
+npm run build
+
+must succeed.
+
+A clean dev server is NOT sufficient.
+
+Also report:
+
+npm run build result
+full test count
+typecheck status
+
+Do not declare GO if the production build fails.
+
+====================================================================
+20. ACCEPTANCE CRITERIA
+====================================================================
+
+GO only if:
+
+A. Authenticated user's real holdings are isolated correctly.
+
+B. Portfolio analytics are deterministic.
+
+C. Existing market intelligence engines are reused.
+
+D. Portfolio concentration is described factually.
+
+E. Improving/weakening evidence is displayed without trade instructions.
+
+F. Institutional delay is explicit.
+
+G. No personalized recommendations are generated.
+
+H. No suitability analysis exists.
+
+I. Performance is acceptable.
+
+J. Full tests pass.
+
+K. npm run build succeeds.
+
+====================================================================
+21. DEFERRED — DO NOT IMPLEMENT
+====================================================================
+
+- portfolio recommendations
+- buy/sell instructions
+- rebalancing recommendations
+- recommended allocations
+- personalized suitability
+- retirement planning
+- tax advice
+- AI portfolio recommendations
+- autonomous trading
+- agents / loops / graphs
+- knowledge graph
+- mapping auto-approval
+- new broker providers
+
+====================================================================
+22. COMPLETION REPORT
+====================================================================
+
+Return:
+
+1. Existing portfolio architecture discovered
+2. Files changed
+3. Portfolio research model
+4. Portfolio-level formulas
+5. Research Health methodology
+6. Holdings intelligence
+7. Change intelligence integration
+8. Sector exposure
+9. Theme exposure
+10. Institutional integration
+11. Research Attention logic
+12. Authentication/user isolation
+13. API
+14. Performance/query count
+15. Compliance guardrails
+16. Tests
+17. FULL application test count
+18. npm run build result
+19. Typecheck
+20. Production UAT
+21. Known limitations
+22. Deferred backlog
+23. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

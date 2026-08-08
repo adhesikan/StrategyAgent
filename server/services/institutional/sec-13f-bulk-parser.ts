@@ -181,7 +181,7 @@ export interface ParsedBulkHolding {
   classTitle: string;
   cusip: string;           // 9-char normalized
   figi: string | null;
-  reportedValue: number | null;    // thousands USD as filed
+  reportedValue: number | null;    // USD as filed — post-2023 SEC bulk VALUE is in dollars (not thousands)
   reportedShares: number | null;
   sharesPrnType: "SH" | "PRN" | null;
   putCall: "Put" | "Call" | null;

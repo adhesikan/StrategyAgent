@@ -4,7 +4,9 @@
 //
 // KEY PRINCIPLES:
 //   - Only effective filings (is_effective = true). Never double-counts amendments.
-//   - All "value" fields stored in USD thousands in DB; returned as USD here.
+//   - All "value" fields in DB are in CANONICAL US DOLLARS (post-2023 SEC bulk data
+//     reports VALUE in dollars, not thousands). The ×1000 multiplier that was here
+//     previously was removed — do NOT re-add it. formatPortfolioValue() handles display.
 //   - Amendment supersession is handled upstream in the ingestion pipeline; this
 //     layer simply filters is_effective = true.
 //   - No AI scores, no recommendations, no conviction language.
@@ -452,7 +454,7 @@ export async function getFundDirectory(
       managerId:                parseStr(r.manager_id),
       managerName:              parseStr(r.manager_name),
       latestQuarter:            dateToQuarterLabel(parseStr(r.latest_period)),
-      reportedPortfolioValue:   parseNum(r.portfolio_value) * 1000,
+      reportedPortfolioValue:   parseNum(r.portfolio_value),
       reportedPositionCount:    parseNum(r.position_count),
       newPositionsCount:        newC,
       exitedPositionsCount:     exitC,
@@ -551,7 +553,7 @@ export async function getFundDetail(managerId: string): Promise<FundDetail | nul
       issuerName:      parseStr(h.issuer_name),
       cusip:           parseStr(h.cusip),
       reportedShares:  latShares,
-      reportedValue:   latValue * 1000,
+      reportedValue:   latValue,
       portfolioWeight: computePortfolioWeight(latValue, totalValue),
       previousShares:  prevShares,
       shareChange,
@@ -605,7 +607,7 @@ export async function getFundDetail(managerId: string): Promise<FundDetail | nul
     lastFiledAt:            latest.filing_date,
     accessionNumber:        latest.accession_number,
     sourceUrl:              latest.source_url ?? null,
-    reportedPortfolioValue: totalValue * 1000,
+    reportedPortfolioValue: totalValue,
     reportedPositionCount:  holdingRows.length,
     newPositionsCount:      newPositions.length,
     exitedPositionsCount:   exitedRows.length,
@@ -772,7 +774,7 @@ export async function getFundHoldings(
       issuerName:      parseStr(h.issuer_name),
       cusip:           parseStr(h.cusip),
       reportedShares:  latShares,
-      reportedValue:   latValue * 1000,
+      reportedValue:   latValue,
       portfolioWeight: computePortfolioWeight(latValue, totalValue),
       previousShares:  prevShares,
       shareChange,
@@ -880,7 +882,7 @@ export async function getFundHistory(managerId: string): Promise<HistoryEntry[]>
     result.push({
       quarter:               dateToQuarterLabel(curr.period_of_report),
       periodEndDate:         curr.period_of_report,
-      reportedPortfolioValue: parseNum(agg?.portfolio_value) * 1000,
+      reportedPortfolioValue: parseNum(agg?.portfolio_value),
       positionCount:         parseNum(agg?.position_count),
       newPositions,
       exitedPositions,
@@ -1010,7 +1012,7 @@ export async function getSymbolHolders(symbol: string): Promise<SymbolHolderRepo
       managerId:    parseStr(r.filer_cik),
       managerName:  parseStr(r.filer_name),
       reportedShares: latShares ?? 0,
-      reportedValue:  latValue * 1000,
+      reportedValue:  latValue,
       portfolioWeight: managerTotal > 0 ? computePortfolioWeight(latValue, managerTotal) : null,
       changeType:   classifyChangeType(latShares, prevShares),
       previousShares: prevShares,

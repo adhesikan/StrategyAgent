@@ -1,0 +1,276 @@
+PRODUCTION UAT FIX — Research Hub Loading + 13F Value Units
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+Two production defects were observed after deployment.
+
+DO NOT start Portfolio Intelligence yet.
+DO NOT redesign the Research Hub.
+DO NOT change ranking formulas.
+
+============================================================
+DEFECT A — RESEARCH HUB CARDS STUCK LOADING
+============================================================
+
+On:
+
+/research
+
+Opportunities renders.
+Changes renders.
+Funds renders.
+Events correctly shows unavailable.
+
+But the two right-side modules corresponding to Market Intelligence /
+Institutional Activity remain skeletons for an excessive period.
+
+Both are expected to consume:
+
+GET /api/intelligence/briefing
+
+1. Trace the production path:
+
+Research Hub
+→ briefing useQuery
+→ /api/intelligence/briefing
+→ intelligence route
+→ snapshot reads / getLatestRanking
+
+2. Determine whether:
+
+A. endpoint is slow/hanging
+B. endpoint returns hasData:false but UI remains loading
+C. query error has no error state
+D. response contract differs from client type
+E. one null/undefined field prevents rendering
+
+3. Add explicit states:
+
+loading
+success with data
+success with hasData=false
+error
+partial data
+
+Skeletons must appear ONLY while request is genuinely pending.
+
+A completed 200 response must never leave a permanent skeleton.
+
+4. Add timeout-safe/error rendering:
+
+"Market intelligence is not available yet."
+
+instead of indefinite skeleton.
+
+5. Report actual production/query latency.
+
+============================================================
+DEFECT B — FUND VALUES APPEAR 1000× TOO LARGE
+============================================================
+
+Production UI currently shows examples:
+
+MORGAN STANLEY       $1,674,971.4B
+BANK OF AMERICA      $1,367,983.6B
+INVESCO              $652,195.1B
+CITADEL               $399,187.2B
+BARCLAYS              $391,578.9B
+
+These imply implausible quadrillion-dollar 13F portfolios.
+
+SEC Form 13F changed the Information Table VALUE convention beginning in 2023
+from values reported in thousands of dollars to values reported to the nearest dollar.
+
+The current SEC bulk datasets being ingested are post-2023 datasets.
+
+AUDIT THE ENTIRE VALUE PATH:
+
+SEC INFOTABLE.tsv VALUE
+→ sec-13f-bulk-parser
+→ ParsedBulkHolding
+→ institutional_13f_holdings
+→ fund-service
+→ reportedPortfolioValue
+→ formatPortfolioValue()
+→ UI
+
+============================================================
+1. OBSERVE RAW DATA FIRST
+============================================================
+
+Do not guess.
+
+Inspect representative raw VALUE entries from the currently ingested SEC archive.
+
+Also inspect the persisted DB values for representative holdings/managers.
+
+Determine:
+
+raw SEC unit
+parser normalized unit
+stored DB unit
+fund-service expected unit
+UI formatter expected unit
+
+Document each explicitly.
+
+============================================================
+2. FIND THE EXACT 1000× CONVERSION
+============================================================
+
+Search for code such as:
+
+value * 1000
+value / 1000
+valueThousands
+valueInThousands
+reportedValue * 1000
+
+Identify exactly where the inflation occurs.
+
+============================================================
+3. ESTABLISH ONE CANONICAL UNIT
+============================================================
+
+Use:
+
+CANONICAL INTERNAL VALUE UNIT = US DOLLARS
+
+All newly ingested post-2023 SEC VALUE fields should be normalized to dollars exactly once.
+
+Fund-service and UI should assume canonical dollars.
+
+formatPortfolioValue() should only FORMAT.
+
+It must not repair ingestion units.
+
+Example:
+
+1674971400000 dollars
+
+should render approximately:
+
+$1.67T
+
+or
+
+$1,674.97B
+
+not:
+
+$1,674,971.4B
+
+============================================================
+4. HANDLE LEGACY DATA SAFELY
+============================================================
+
+This platform may eventually ingest pre-2023 Form 13F data where VALUE used a
+different reporting convention.
+
+Do not blindly remove legacy conversion globally.
+
+Make normalization source/version aware.
+
+Document policy for:
+
+pre-2023 datasets
+post-2023 datasets
+existing persisted rows
+
+============================================================
+5. EXISTING PRODUCTION DATA
+============================================================
+
+Determine whether the currently persisted 13F holding values are already inflated by 1000.
+
+If yes:
+
+DO NOT silently leave corrupted values in production.
+
+Provide an idempotent repair/backfill strategy.
+
+Prefer a targeted repair based on dataset/source/period provenance.
+
+Do not divide arbitrary historical rows by 1000 without proving they are affected.
+
+============================================================
+6. DOWNSTREAM IMPACT AUDIT
+============================================================
+
+Identify every downstream use of institutional holding VALUE.
+
+At minimum inspect:
+
+fund reportedPortfolioValue
+institutional_symbol_signals
+quarterly aggregates
+top holders
+top buyers/sellers
+institutional change calculations
+sector/theme institutional metrics
+
+Determine which derived data needs rebuild after repair.
+
+============================================================
+7. REGRESSION TESTS
+============================================================
+
+Add tests proving:
+
+post-2023 VALUE=150000000
+→ canonical $150,000,000
+
+UI:
+150000000 → $150M
+
+1674971400000 → approximately $1.67T
+
+No 1000× inflation.
+
+Legacy-value normalization remains correct.
+
+Research Hub briefing:
+loading → completed empty state
+loading → completed data state
+loading → error state
+never permanent skeleton after settled query
+
+============================================================
+8. PRODUCTION BUILD GATE
+============================================================
+
+Run:
+
+npm run build
+
+full application tests
+
+typecheck changed files
+
+Must pass before GO.
+
+============================================================
+9. COMPLETION REPORT
+============================================================
+
+Return:
+
+A. Research Hub loading root cause
+B. /api/intelligence/briefing measured latency
+C. UI loading-state fix
+D. Actual SEC raw VALUE examples
+E. Exact VALUE unit at every pipeline stage
+F. Exact 1000× root cause
+G. Files changed
+H. Existing production rows affected?
+I. Repair/backfill plan
+J. Derived data requiring rebuild
+K. Correct expected values for the five example managers
+L. Tests
+M. npm run build
+N. Production UAT steps
+O. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

@@ -203,6 +203,7 @@ export function formatFreshness(isoStr: string | null | undefined): string {
 
 export function formatPortfolioValue(v: number | null): string {
   if (v == null) return "—";
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
   if (v >= 1e9)  return `$${(v / 1e9).toFixed(1)}B`;
   if (v >= 1e6)  return `$${(v / 1e6).toFixed(0)}M`;
   return `$${v.toLocaleString()}`;
@@ -354,14 +355,26 @@ function OpportunitiesModule({ data, onItemClick }: {
 // Module: Market Intelligence
 // ---------------------------------------------------------------------------
 
-function MarketIntelligenceModule({ data, onItemClick }: {
+function MarketIntelligenceModule({ data, isPending, isError, onItemClick }: {
   data:        BriefingResponse | undefined;
+  isPending:   boolean;
+  isError:     boolean;
   onItemClick: (item: Omit<RecentItem, "viewedAt">) => void;
 }) {
-  if (!data) return (
+  if (isPending) return (
     <Card>
       <CardHeader className="pb-2"><Skeleton className="h-4 w-36" /></CardHeader>
       <CardContent className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-7 rounded" />)}</CardContent>
+    </Card>
+  );
+
+  if (isError || !data) return (
+    <Card className="border-dashed">
+      <CardContent className="py-8 text-center">
+        <Activity className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
+        <p className="text-xs text-muted-foreground">Market intelligence is not available yet.</p>
+        <p className="text-xs text-muted-foreground/60 mt-0.5">{isError ? "Will retry automatically" : "Computed after each scan cycle"}</p>
+      </CardContent>
     </Card>
   );
 
@@ -544,11 +557,25 @@ function ChangesModule({ data }: { data: ChangesResponse | undefined }) {
 // Module: Institutional Activity
 // ---------------------------------------------------------------------------
 
-function InstitutionalActivityModule({ briefing }: { briefing: BriefingResponse | undefined }) {
-  if (!briefing) return (
+function InstitutionalActivityModule({ briefing, isPending, isError }: {
+  briefing:  BriefingResponse | undefined;
+  isPending: boolean;
+  isError:   boolean;
+}) {
+  if (isPending) return (
     <Card>
       <CardHeader className="pb-2"><Skeleton className="h-4 w-40" /></CardHeader>
       <CardContent className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 rounded" />)}</CardContent>
+    </Card>
+  );
+
+  if (isError || !briefing) return (
+    <Card className="border-dashed">
+      <CardContent className="py-8 text-center">
+        <Building2 className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
+        <p className="text-xs text-muted-foreground">Institutional activity is not available yet.</p>
+        <p className="text-xs text-muted-foreground/60 mt-0.5">{isError ? "Will retry automatically" : "Computed after each scan cycle"}</p>
+      </CardContent>
     </Card>
   );
 
@@ -965,12 +992,18 @@ export default function MarketResearchHub() {
         />
         <MarketIntelligenceModule
           data={briefingQuery.data}
+          isPending={briefingQuery.isPending}
+          isError={briefingQuery.isError}
           onItemClick={handleItemClick}
         />
 
         {/* Row 2: Changes + Institutional Activity */}
         <ChangesModule data={changesQuery.data} />
-        <InstitutionalActivityModule briefing={briefingQuery.data} />
+        <InstitutionalActivityModule
+          briefing={briefingQuery.data}
+          isPending={briefingQuery.isPending}
+          isError={briefingQuery.isError}
+        />
 
         {/* Row 3: Funds + Events */}
         <FundsModule data={fundsQuery.data} onItemClick={handleItemClick} />

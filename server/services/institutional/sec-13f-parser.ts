@@ -23,7 +23,8 @@ export interface ParsedHolding {
   classTitle: string;
   cusip: string;
   figi: string | null;
-  /** Reported value in thousands of USD (as filed) */
+  /** Reported value in USD as filed. Post-2023 SEC bulk data uses dollars; pre-2023 used thousands.
+   *  Canonical unit stored in DB = USD (dollars). The ×1000 factor was removed from fund-service. */
   reportedValue: number | null;
   reportedShares: number | null;
   /** SH = common shares | PRN = principal amount */

@@ -48,6 +48,20 @@ describe("formatFreshness", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatPortfolioValue", () => {
+  it("formats trillions correctly (post-2023 DB values in dollars)", () => {
+    // Morgan Stanley example: 1,674,971 × $1000 was the old inflated value.
+    // Correct dollar value: ~$1.67T
+    expect(formatPortfolioValue(1_674_971_400_000)).toMatch(/^\$1\.67T$/);
+  });
+  it("formats $150M correctly — no 1000× inflation", () => {
+    // post-2023 SEC raw VALUE=150000000 → stored as 150000000 in DB → returns $150M
+    expect(formatPortfolioValue(150_000_000)).toBe("$150M");
+  });
+  it("does NOT return a value in billions for a true trillion-scale portfolio", () => {
+    const v = formatPortfolioValue(1_674_971_400_000);
+    expect(v).not.toContain("B");
+    expect(v).toContain("T");
+  });
   it("returns dash for null", () => {
     expect(formatPortfolioValue(null)).toBe("—");
   });

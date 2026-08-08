@@ -1,0 +1,249 @@
+PRODUCTION UAT — Intelligence Briefing Has No Data
+
+Current production state:
+
+/research now behaves correctly.
+
+Working:
+- Opportunities module has real ranked data
+- Changes module has real data
+- Funds module has real corrected values
+
+Not populated:
+- Market Intelligence
+- Institutional Activity
+
+Both now correctly render:
+"not available yet"
+
+The UI loading-state bug is fixed.
+
+Do NOT modify the Research Hub UI.
+Do NOT modify Opportunity Ranking.
+Do NOT redesign intelligence.
+
+Find why GET /api/intelligence/briefing returns no usable intelligence data
+even though /api/opportunities/today already has a current ranking.
+
+============================================================
+1. INSPECT CURRENT PRODUCTION DATA PATH
+============================================================
+
+Trace:
+
+Opportunity ranking completes
+→ runIntelligencePrecomputation()
+→ intelligence-orchestrator
+→ sector/theme engines
+→ sector_intelligence_snapshots
+→ theme_intelligence_snapshots
+→ GET /api/intelligence/briefing
+
+Identify the first stage with zero/no data.
+
+============================================================
+2. ADD / RUN READ-ONLY DIAGNOSTICS
+============================================================
+
+Report:
+
+latestRankingExists
+latestRankingGeneratedAt
+rankedSymbolCount
+
+runIntelligencePrecomputationHookPresent
+lastPrecomputationAttempt
+lastPrecomputationSuccess
+lastPrecomputationError
+
+sectorSnapshotCount
+latestSectorSnapshotGeneratedAt
+
+themeSnapshotCount
+latestThemeSnapshotGeneratedAt
+
+rankedSymbolsWithSector
+rankedSymbolsWithoutSector
+
+rankedSymbolsInAnyTheme
+rankedSymbolsInNoTheme
+
+institutionalSignalsAvailable
+
+============================================================
+3. VERIFY HOOK ACTUALLY RUNS
+============================================================
+
+The opportunity engine previously added:
+
+runIntelligencePrecomputation()
+
+after ranking.
+
+Confirm it executes in the exact production ranking path currently generating
+the ranking shown on the dashboard.
+
+Do not assume that because the hook exists in source it is executed by the active path.
+
+If multiple ranking paths exist, identify which one production uses.
+
+============================================================
+4. VERIFY SNAPSHOT TABLES
+============================================================
+
+Confirm:
+
+sector_intelligence_snapshots exists
+theme_intelligence_snapshots exists
+
+Count rows.
+
+If tables exist but contain zero rows, explain why.
+
+If writes fail, expose the exact database error.
+
+Do not swallow precomputation errors.
+
+============================================================
+5. VERIFY SYMBOL CLASSIFICATION
+============================================================
+
+The 2.3.3 completion report identified symbols.sector population as a dependency.
+
+For every currently ranked ticker, report:
+
+symbol
+sector
+industry
+themes
+
+Summarize:
+
+ranked total
+sector classified
+sector unclassified
+theme classified
+theme unclassified
+
+If sector metadata is missing, do NOT manually hardcode sectors inside the intelligence engine.
+
+Identify the existing canonical source and propose the smallest reliable population fix.
+
+============================================================
+6. VERIFY THEME OVERLAP
+============================================================
+
+Using the curated theme registry, report which current ranking symbols map into themes.
+
+Example output:
+
+NVDA → AI Infrastructure, Semiconductors, Data Centers
+MU → Memory, Semiconductors
+...
+
+If current opportunities happen not to belong to any curated theme, that must produce
+a legitimate limited-data state rather than a failure.
+
+============================================================
+7. VERIFY INSTITUTIONAL INPUT
+============================================================
+
+Report current count of institutional_symbol_signals.
+
+Confirm whether briefing Institutional Activity requires:
+
+sector/theme snapshots
+
+or can be generated independently.
+
+Do not fabricate institutional activity.
+
+============================================================
+8. ADD MANUAL ADMIN REBUILD ONLY IF USEFUL
+============================================================
+
+If no safe rebuild endpoint exists, consider:
+
+POST /api/admin/intelligence/rebuild
+
+Admin-only.
+
+It should:
+
+- reuse latest ranking
+- run intelligence precomputation
+- report sectors/themes created
+- be idempotent
+- not trigger a new market scan
+
+Only add this if useful for production recovery/operations.
+
+============================================================
+9. REQUIRED RESULT
+============================================================
+
+After repair/rebuild:
+
+GET /api/intelligence/briefing
+
+should return:
+
+hasData: true
+
+plus:
+
+regime
+marketHealth
+leadingThemes
+leadingSectors
+institutionalHighlights
+
+with real generatedAt timestamp.
+
+Then:
+
+/research
+
+must populate both:
+
+Market Intelligence
+Institutional Activity
+
+without page reload beyond normal refetch.
+
+============================================================
+10. TESTS + BUILD
+============================================================
+
+Run:
+
+relevant intelligence tests
+full application tests
+npm run build
+
+No new TypeScript errors in changed files.
+
+============================================================
+11. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact first stage with missing data
+2. Whether ranking hook executed
+3. Sector snapshot row count
+4. Theme snapshot row count
+5. Ranked sector coverage
+6. Ranked theme coverage
+7. Institutional signal count
+8. Root cause
+9. Files changed
+10. Whether manual rebuild endpoint was added
+11. Briefing response before/after
+12. Tests
+13. npm run build
+14. Production UAT commands
+15. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

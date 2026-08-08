@@ -1,0 +1,649 @@
+SPRINT 2.3.6A — OPERATIONS MANUAL COMPLETION
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PURPOSE
+
+Sprint 2.3.6 production hardening is substantially complete.
+
+Do NOT add product features.
+Do NOT change scanner/ranking/intelligence formulas.
+Do NOT begin Portfolio Intelligence.
+
+Close the remaining Operations Manual requirements from Sprint 2.3.6.
+
+============================================================
+1. AUDIT WHAT ALREADY EXISTS
+============================================================
+
+Inspect:
+
+docs/operations/
+
+and report every document currently present.
+
+Also inspect whether these exist:
+
+/admin/operations-manual
+
+GET /api/admin/operations-manual/search
+
+documentation update checker
+
+Do not recreate working functionality.
+
+============================================================
+2. ADMIN-ONLY OPERATIONS MANUAL
+============================================================
+
+Create:
+
+/admin/operations-manual
+
+if it does not already exist.
+
+Requirements:
+
+authenticated ADMIN only
+
+Server-side authorization required.
+
+Anonymous:
+deny
+
+Authenticated non-admin:
+deny
+
+Admin:
+allow
+
+The manual must NOT be exposed through a public /docs path.
+
+============================================================
+3. SEARCH
+============================================================
+
+Add deterministic search across docs/operations.
+
+Search must support:
+
+title
+heading
+body text
+API route
+production URL
+error message
+script
+environment variable
+table name
+service
+job/event name
+
+Examples that MUST find useful results:
+
+getLatestRanking
+
+toISOString is not a function
+
+PERIODOFREPORT
+
+DD-MMM-YYYY
+
+/api/intelligence/briefing
+
+/api/admin/intelligence/rebuild
+
+MCP_SERVICE_TOKEN
+
+psql not found
+
+sectorSnapshots
+
+FILINGMANAGER_NAME
+
+NO_HOLDINGS_BEARING_SUBMISSIONS
+
+Search result:
+
+document
+section
+short excerpt
+jump link
+
+No LLM.
+
+============================================================
+4. API / UAT REFERENCE
+============================================================
+
+Create if missing:
+
+docs/operations/15-api-and-uat-reference.md
+
+Document production domain:
+
+https://vcptrader.com
+
+At minimum include:
+
+USER ROUTES
+
+https://vcptrader.com/
+
+https://vcptrader.com/research
+
+https://vcptrader.com/research/library
+
+https://vcptrader.com/intelligence
+
+https://vcptrader.com/intelligence/themes/:themeId
+
+https://vcptrader.com/intelligence/sectors/:sector
+
+https://vcptrader.com/opportunities/:symbol
+
+https://vcptrader.com/institutional/funds
+
+https://vcptrader.com/institutional/funds/:managerId
+
+ADMIN ROUTES
+
+https://vcptrader.com/admin/platform-health
+
+https://vcptrader.com/admin/operations-manual
+
+https://vcptrader.com/api/admin/intelligence/diagnostics
+
+IMPORTANT ADMIN ACTIONS
+
+POST /api/admin/intelligence/rebuild
+
+POST /api/admin/symbols/enrich
+
+Document clearly:
+
+Typing a POST endpoint into Chrome sends GET.
+
+Therefore:
+
+GET /api/admin/intelligence/rebuild
+→ 404 may be completely correct.
+
+Correct invocation is an authenticated POST or the admin UI button.
+
+API SMOKE TESTS
+
+GET /api/intelligence/briefing
+
+GET /api/intelligence/themes
+
+GET /api/intelligence/sectors
+
+GET /api/opportunities/today
+
+GET /api/opportunities/changes/explained
+
+GET /api/institutional/funds
+
+For EVERY route document:
+
+purpose
+HTTP method
+authentication
+expected status
+healthy data response
+healthy empty response
+common failures
+relevant runbook section
+
+============================================================
+5. CAPTURE ACTUAL UAT PROCEDURES
+============================================================
+
+Document the UAT sequences we have actually used.
+
+RELEASE SMOKE TEST
+
+1. Login
+2. /
+3. /research
+4. /intelligence
+5. /opportunities/NVDA
+6. /institutional/funds
+7. /research/library
+
+Validate:
+
+no unexpected HTTP 500
+no React crash
+no blank page
+no permanent skeleton
+freshness labels present
+links work
+13F delayed disclosure present
+
+INTELLIGENCE UAT
+
+GET /api/intelligence/briefing
+
+Healthy/data:
+HTTP 200
+hasData=true
+
+Healthy/empty:
+HTTP 200
+hasData=false
+
+Infrastructure failure:
+HTTP 500
+
+GET /api/admin/intelligence/diagnostics
+
+Inspect:
+
+ranking.exists
+ranking.rankedSymbolCount
+
+sectorSnapshots.rowCount
+themeSnapshots.rowCount
+
+classificationCoverage
+
+institutionalSignals.rowCount
+
+briefing.canBuild
+
+Then:
+
+POST /api/admin/symbols/enrich
+
+POST /api/admin/intelligence/rebuild
+
+Verify:
+
+sectorSnapshots.rowCount > 0
+themeSnapshots.rowCount > 0
+
+============================================================
+6. TROUBLESHOOTING INCIDENTS
+============================================================
+
+Ensure docs/operations/11-troubleshooting-runbook.md contains the historical
+production incidents encountered.
+
+Include:
+
+Railway:
+No matching export getLatestRanking
+
+Research Hub:
+permanent skeleton on settled API error
+
+Intelligence:
+Failed to load intelligence briefing
+
+Timestamp:
+toISOString is not a function
+
+Sector Intelligence:
+theme snapshots populated while sectorSnapshots = 0
+
+Sector classification root cause:
+symbols table empty while market_data_symbols contains active universe
+
+13F:
+Required headers missing
+
+13F manager identity:
+FILINGMANAGER_NAME in COVERPAGE.tsv
+
+13F form classification:
+NO_HOLDINGS_BEARING_SUBMISSIONS
+
+13F date:
+PERIODOFREPORT DD-MMM-YYYY
+
+13F persistence:
+timeout / partial ingestion
+
+Railway shell:
+interactive process terminates when shell closes
+
+13F:
+stale running status after process dies
+
+Mapping:
+admin mapping page 404
+
+Mapping:
+dynamic /api/institutional/:symbol route collision
+
+Mapping:
+pipeline zero results / FIGI schema gap
+
+13F VALUE:
+portfolio values displayed 1000× too large
+
+MCP:
+401 Missing bearer token
+
+MCP:
+mock provider unexpectedly active
+
+Database:
+psql command not found in Railway application shell
+
+For every incident:
+
+symptom
+exact root cause
+diagnostic
+safe remediation
+verification
+relevant URL/script/log event
+
+============================================================
+7. SPRINT CHANGE LOG
+============================================================
+
+Create if missing:
+
+docs/operations/17-sprint-change-log.md
+
+Document:
+
+2.2.x Institutional pipeline / mapping
+2.3.0 Opportunity Workspace
+2.3.1 Change Intelligence
+2.3.2 Institutional Fund Explorer
+2.3.3 Sector & Theme Intelligence
+2.3.4 Market Intelligence
+2.3.5 Market Research Hub
+2.3.6 Production Hardening
+
+For each include where verifiable:
+
+purpose
+important services
+routes
+tables
+jobs
+environment/config impact
+UAT additions
+troubleshooting additions
+known limitations
+
+Sprint 2.3.6 should specifically document:
+
+market_data_symbols classification fix
+symbol enrichment
+job status store
+structured logging
+platform health
+intelligence rebuild lock
+operations handbook
+
+============================================================
+8. ROLE-BASED MANUAL NAVIGATION
+============================================================
+
+Operations Manual landing page should provide:
+
+Developer
+System Administrator
+DevOps
+DevSecOps
+Technical Support
+
+Recommended sections:
+
+Developer:
+architecture
+services
+APIs
+data model
+tests
+
+System Administrator:
+platform health
+background jobs
+diagnostics
+recovery
+
+DevOps:
+Railway
+build
+deploy
+migrations
+rollback
+scheduling
+
+DevSecOps:
+auth
+admin APIs
+secrets
+logging
+dependencies
+data isolation
+
+Technical Support:
+symptoms
+UAT
+health
+troubleshooting
+
+============================================================
+9. PLATFORM HEALTH CROSS-LINKS
+============================================================
+
+Add links from health cards where applicable.
+
+Example:
+
+Sector Intelligence DEGRADED
+
+links:
+
+Troubleshoot Sector Intelligence
+
+Open Intelligence Diagnostics
+
+View Intelligence API/UAT
+
+Institutional 13F DEGRADED
+
+links:
+
+13F Runbook
+
+Institutional Status
+
+Troubleshooting
+
+Manual pages should link back to:
+
+/admin/platform-health
+
+============================================================
+10. FUTURE SPRINT DEFINITION OF DONE
+============================================================
+
+Add permanently to:
+
+docs/operations/README.md
+
+OPERATIONS MANUAL DEFINITION OF DONE
+
+Every sprint affecting production behavior MUST review/update Operations Manual.
+
+ALWAYS update:
+
+17-sprint-change-log.md
+
+If routes changed:
+
+15-api-and-uat-reference.md
+
+If new failures/recovery paths:
+
+11-troubleshooting-runbook.md
+
+If schema/migrations:
+
+03-database-and-migrations.md
+
+If deployment/env:
+
+02-environments-and-deployment.md
+
+If security/auth:
+
+12-security-and-devsecops.md
+
+If scheduled/background processing:
+
+09-background-jobs-and-scheduling.md
+
+If architecture changed:
+
+01-system-architecture.md
+
+Every completion report must include:
+
+Operations Manual Updated: YES/NO
+
+Operations Manual Files Updated:
+[...]
+
+A sprint requiring documentation cannot be GO when:
+
+Operations Manual Updated = NO
+
+============================================================
+11. DOCUMENTATION UPDATE CHECKER
+============================================================
+
+Add:
+
+scripts/check-operations-docs.ts
+
+Initial behavior should be advisory, not excessively strict.
+
+If operational code changes under:
+
+server/routes/
+server/services/
+shared/schema.ts
+script/
+scripts/
+Railway/configuration files
+
+and NO docs/operations file changed:
+
+print warning:
+
+Operational code changed but Operations Manual was not updated.
+
+Exit behavior may remain warning-only initially.
+
+Document eventual CI enforcement as backlog.
+
+============================================================
+12. SECURITY
+============================================================
+
+Verify:
+
+manual admin-only
+
+search API admin-only
+
+no public Markdown route
+
+not included in sitemap
+
+no secrets rendered
+
+no actual environment values
+
+no DATABASE_URL values
+
+no tokens
+
+no broker credentials
+
+no session/JWT secrets
+
+Environment-variable NAMES are acceptable.
+
+============================================================
+13. TESTS
+============================================================
+
+Add tests for:
+
+admin manual access
+anonymous rejection
+non-admin rejection
+admin search access
+
+search by title
+search by heading
+search exact error message
+search API URL
+search env variable
+search script
+search table
+
+API/UAT reference contains canonical vcptrader.com routes
+
+rebuild documented as POST
+
+symbol enrichment documented as POST
+
+documentation checker warns appropriately
+
+Platform Health links to manual
+
+no secret values
+
+no publicly available docs route
+
+Run:
+
+full application suite
+npm run build
+typecheck changed files
+
+============================================================
+14. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Existing documentation audit
+2. Missing requirements found
+3. /admin/operations-manual implementation
+4. Authorization
+5. Search architecture
+6. Search examples verified
+7. API/UAT reference
+8. Production URLs documented
+9. Historical troubleshooting incidents
+10. Sprint Change Log
+11. Role navigation
+12. Platform Health cross-links
+13. Documentation update checker
+14. Future Definition of Done
+15. Security validation
+16. Tests
+17. Full test count
+18. npm run build
+19. Typecheck
+20. Operations Manual Updated: YES/NO
+21. Operations Manual Files Updated
+22. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

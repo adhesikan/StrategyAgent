@@ -47,6 +47,7 @@ import AdminDisclaimerLogs from "@/pages/admin-disclaimer-logs";
 import AdminUsersPage from "@/pages/admin-users";
 import AdminHomePage from "@/pages/admin-home";
 import AdminPlatformHealthPage from "@/pages/admin-platform-health";
+import AdminOperationsManualPage from "@/pages/admin-operations-manual";
 import AdminEmailsPage from "@/pages/admin-emails";
 import AdminSupportPage from "@/pages/admin-support";
 import AdminSessionsPage from "@/pages/admin-sessions";
@@ -212,6 +213,7 @@ function AppRouter() {
       <Route path="/admin/agent-tests">{() => <AdminOnly><AdminAgentTestsPage /></AdminOnly>}</Route>
       <Route path="/admin/institutional-mappings">{() => <AdminOnly><AdminInstitutionalMappingsPage /></AdminOnly>}</Route>
       <Route path="/admin/platform-health">{() => <AdminOnly><AdminPlatformHealthPage /></AdminOnly>}</Route>
+      <Route path="/admin/operations-manual">{() => <AdminOnly><AdminOperationsManualPage /></AdminOnly>}</Route>
       <Route path="/app/automation">{() => <AdminOnly><Redirect to="/automation" /></AdminOnly>}</Route>
       <Route path="/learn/news">{() => <Redirect to="/news" />}</Route>
       <Route path="/strategy-guide">{() => <Redirect to="/help" />}</Route>

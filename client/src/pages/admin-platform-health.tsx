@@ -9,7 +9,9 @@ import {
   Activity, Database, Server, Globe, BarChart2, Brain,
   Building2, ShieldCheck, Link2, RefreshCw, Wrench, CheckCircle2,
   AlertTriangle, XCircle, MinusCircle, HelpCircle, ExternalLink, Loader2,
+  BookOpen,
 } from "lucide-react";
+import { Link } from "wouter";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,16 +68,24 @@ function freshness(sec: number | null | undefined): string {
 // Health section card
 // ---------------------------------------------------------------------------
 
-interface SectionCardProps {
-  title: string;
-  icon:  React.ElementType;
-  card:  HealthCard | undefined;
+interface ManualLink {
+  label:  string;
+  docId:  string;
+  anchor?: string;
 }
 
-function SectionCard({ title, icon: Icon, card }: SectionCardProps) {
+interface SectionCardProps {
+  title:        string;
+  icon:         React.ElementType;
+  card:         HealthCard | undefined;
+  manualLinks?: ManualLink[];
+}
+
+function SectionCard({ title, icon: Icon, card, manualLinks }: SectionCardProps) {
   const [expanded, setExpanded] = useState(false);
   if (!card) return null;
   const m = STATUS_META[card.status] ?? STATUS_META.UNKNOWN;
+  const showLinks = manualLinks && manualLinks.length > 0 && (card.status === "DEGRADED" || card.status === "UNAVAILABLE");
 
   return (
     <Card className={`border ${card.status === "HEALTHY" ? "" : card.status === "DEGRADED" ? "border-yellow-500/30" : card.status === "UNAVAILABLE" ? "border-red-500/30" : ""}`}>
@@ -100,6 +110,22 @@ function SectionCard({ title, icon: Icon, card }: SectionCardProps) {
         {card.action && (
           <div className="rounded border border-yellow-500/20 bg-yellow-500/5 px-2 py-1">
             <p className="text-xs text-yellow-700 dark:text-yellow-400">{card.action}</p>
+          </div>
+        )}
+
+        {showLinks && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {manualLinks!.map(link => (
+              <Link
+                key={link.docId + (link.anchor ?? "")}
+                href={`/admin/operations-manual`}
+              >
+                <a className="flex items-center gap-1 text-xs text-primary underline underline-offset-2">
+                  <BookOpen className="h-2.5 w-2.5" />
+                  {link.label}
+                </a>
+              </Link>
+            ))}
           </div>
         )}
 
@@ -241,9 +267,25 @@ export default function AdminPlatformHealthPage() {
           <section className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Scanner & Intelligence</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              <SectionCard title="Scanner"              icon={Activity}  card={h.scanner     as HealthCard} />
-              <SectionCard title="Opportunity Ranking"  icon={BarChart2} card={h.ranking      as HealthCard} />
-              <SectionCard title="Intelligence"         icon={Brain}     card={h.intelligence as HealthCard} />
+              <SectionCard title="Scanner"             icon={Activity}  card={h.scanner     as HealthCard}
+                manualLinks={[
+                  { label: "Scanner Runbook", docId: "05-scanner-and-ranking" },
+                  { label: "Troubleshooting", docId: "11-troubleshooting-runbook" },
+                ]}
+              />
+              <SectionCard title="Opportunity Ranking" icon={BarChart2} card={h.ranking      as HealthCard}
+                manualLinks={[
+                  { label: "Ranking Runbook", docId: "05-scanner-and-ranking" },
+                  { label: "Disaster Recovery", docId: "14-disaster-recovery" },
+                ]}
+              />
+              <SectionCard title="Intelligence"        icon={Brain}     card={h.intelligence as HealthCard}
+                manualLinks={[
+                  { label: "Troubleshoot Sector Intelligence", docId: "08-sector-theme-intelligence" },
+                  { label: "Intelligence API/UAT", docId: "16-api-and-uat-reference" },
+                  { label: "Open Intelligence Diagnostics", docId: "10-monitoring-and-platform-health" },
+                ]}
+              />
             </div>
           </section>
 
@@ -253,8 +295,17 @@ export default function AdminPlatformHealthPage() {
           <section className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Institutional 13F</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <SectionCard title="13F Ingestion & Signals" icon={Building2}  card={h.institutional as HealthCard} />
-              <SectionCard title="Security Master"          icon={ShieldCheck} card={h.securityMaster as HealthCard} />
+              <SectionCard title="13F Ingestion & Signals" icon={Building2}   card={h.institutional as HealthCard}
+                manualLinks={[
+                  { label: "13F Pipeline Runbook", docId: "06-institutional-13f-pipeline" },
+                  { label: "Troubleshooting", docId: "11-troubleshooting-runbook" },
+                ]}
+              />
+              <SectionCard title="Security Master"          icon={ShieldCheck} card={h.securityMaster as HealthCard}
+                manualLinks={[
+                  { label: "Security Master Runbook", docId: "07-security-master-and-mappings" },
+                ]}
+              />
             </div>
           </section>
 
@@ -360,6 +411,12 @@ export default function AdminPlatformHealthPage() {
                       <ExternalLink className="h-3 w-3 ml-1.5" />
                     </Button>
                   </a>
+                  <Link href="/admin/operations-manual">
+                    <a className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1">
+                      <BookOpen className="h-3 w-3" />
+                      Operations Manual
+                    </a>
+                  </Link>
                 </CardContent>
               </Card>
             </div>

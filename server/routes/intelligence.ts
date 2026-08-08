@@ -22,7 +22,8 @@ import {
 } from "../services/intelligence-snapshot-store";
 import { getAllThemes, getTheme } from "../config/theme-registry";
 import { getLatestRanking } from "../services/opportunity-ranking-engine";
-import { runIntelligencePrecomputation } from "../services/intelligence-orchestrator";
+import { runIntelligencePrecomputation, getPrecomputationStatus } from "../services/intelligence-orchestrator";
+import { getThemesForSymbol } from "../config/theme-registry";
 
 // ---------------------------------------------------------------------------
 // Dashboard consumer contract (compact, for future dashboard wiring)
@@ -468,6 +469,74 @@ export function registerIntelligenceRoutes(
           };
         } catch {
           diag.classificationCoverage = { total: null, withSector: null, pct: null };
+        }
+
+        // ── Precomputation status ──────────────────────────────────────────────
+        // In-memory — resets on restart. Useful to diagnose why snapshots
+        // are empty: did precomputation run at all? Did it error?
+        diag.precomputation = {
+          hookPresent:      true,  // static fact: runIntelligencePrecomputation is wired post-ranking
+          ...getPrecomputationStatus(),
+        };
+
+        // ── Per-symbol breakdown ────────────────────────────────────────────
+        // For each ranked symbol: sector, industry, and theme membership.
+        // Helps diagnose: "which symbols are classified?" + "which themes match?"
+        try {
+          const ranking = getLatestRanking();
+          if (ranking) {
+            const rankedAll = [
+              ...(ranking.topGrowth   ?? []),
+              ...(ranking.topIncome   ?? []),
+              ...(ranking.watchlist   ?? []),
+              ...(ranking.approaching ?? []),
+            ];
+            const uniqueSymbols = Array.from(new Set(rankedAll.map(c => (c as any).symbol as string)));
+
+            // Fetch sector/industry from market_data_symbols (joined with symbols)
+            const symbolRows = uniqueSymbols.length > 0
+              ? await db.execute<{ symbol: string; sector: string | null; industry: string | null }>(sql`
+                  SELECT
+                    m.symbol,
+                    COALESCE(m.sector, s.sector)     AS sector,
+                    COALESCE(m.industry, s.industry) AS industry
+                  FROM market_data_symbols m
+                  LEFT JOIN symbols s ON s.ticker = m.symbol
+                  WHERE m.symbol = ANY(ARRAY[${sql.raw(
+                    uniqueSymbols.map(s => `'${s.replace(/'/g, "''")}'`).join(",")
+                  )}])
+                `)
+              : { rows: [] };
+
+            const sectorMap = new Map<string, { sector: string | null; industry: string | null }>();
+            for (const row of symbolRows.rows) {
+              sectorMap.set(row.symbol, { sector: row.sector ?? null, industry: row.industry ?? null });
+            }
+
+            const symbolBreakdown = uniqueSymbols.map(sym => {
+              const meta   = sectorMap.get(sym) ?? { sector: null, industry: null };
+              const themes = getThemesForSymbol(sym);
+              return { symbol: sym, sector: meta.sector, industry: meta.industry, themes };
+            });
+
+            const rankedWithSector    = symbolBreakdown.filter(r => r.sector).length;
+            const rankedWithoutSector = symbolBreakdown.filter(r => !r.sector).length;
+            const rankedInAnyTheme    = symbolBreakdown.filter(r => r.themes.length > 0).length;
+            const rankedInNoTheme     = symbolBreakdown.filter(r => r.themes.length === 0).length;
+
+            diag.symbolBreakdown = {
+              rankedTotal:          uniqueSymbols.length,
+              rankedWithSector,
+              rankedWithoutSector,
+              rankedInAnyTheme,
+              rankedInNoTheme,
+              symbols: symbolBreakdown,
+            };
+          } else {
+            diag.symbolBreakdown = { rankedTotal: 0, rankedWithSector: 0, rankedWithoutSector: 0, rankedInAnyTheme: 0, rankedInNoTheme: 0, symbols: [] };
+          }
+        } catch (e: any) {
+          diag.symbolBreakdown = { error: e?.message ?? "unknown" };
         }
 
         // ── Briefing build feasibility ────────────────────────────────────────

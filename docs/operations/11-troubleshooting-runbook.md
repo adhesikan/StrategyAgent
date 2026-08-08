@@ -30,6 +30,8 @@ Format: **Symptom → Diagnostic → Likely Cause → Safe Remediation → Verif
 
 ### Permanent skeleton after failed API request
 
+**Classification:** permanent skeleton — UI stuck in loading state, does not transition to error or empty.
+
 **Symptom:** `/research` page shows loading skeleton indefinitely after page load. Network tab shows the API returned an error.
 
 **Diagnostic:** Check browser network tab. Check server logs for the failing API route.
@@ -100,9 +102,11 @@ GET /api/admin/platform-health
 → health.marketData.details.withSector == 0
 ```
 
-**Likely cause:** `market_data_symbols.sector` is NULL for all active symbols. The orchestrator reads `WHERE COALESCE(m.sector, s.sector) IS NOT NULL` and gets 0 rows → `symbolSectors = []` → no sector groups → `sectors = []` → no rows written to `sector_intelligence_snapshots`.
+**Likely cause:** The symbols table (`market_data_symbols`) has no sector classification. The orchestrator reads `WHERE COALESCE(m.sector, s.sector) IS NOT NULL` and gets 0 rows → `symbolSectors = []` → no sector groups → `sectors = []` → no rows written to `sector_intelligence_snapshots`.
 
 Theme intelligence uses `config/theme-registry.ts` (hardcoded) — unaffected.
+
+**Root cause detail:** The `symbols table` (legacy `symbols`) was empty; the orchestrator was previously querying only that table. Fixed in Sprint 2.3.6 to LEFT JOIN `market_data_symbols` (active symbol universe). If the `symbols table` and `market_data_symbols` both lack sector data, enrichment must be run.
 
 **Remediation:**
 1. `POST /api/admin/symbols/enrich` — populates `market_data_symbols.sector` via Twelve Data `/profile`
@@ -213,7 +217,9 @@ Then re-trigger ingestion.
 
 ---
 
-### Route collision `/api/institutional/:symbol`
+### Route collision: `/api/institutional/:symbol`
+
+**Classification:** route collision — dynamic Express route shadows a static route registered after it.
 
 **Symptom:** Static routes like `/api/institutional/mappings` or `/api/institutional/signals` return data for the dynamic `:symbol` handler instead of the intended route.
 
@@ -260,6 +266,8 @@ Then re-trigger ingestion.
 ---
 
 ### Mock provider unexpectedly active
+
+**Classification:** mock provider active when live data is expected.
 
 **Symptom:** Market data responses include `source: "mock"`. Prices are clearly not real.
 

@@ -158,11 +158,43 @@ async function loadInstitutionalSignals(): Promise<InstitutionalSignalSummary[]>
 }
 
 // ---------------------------------------------------------------------------
+// In-memory precomputation status — exported for diagnostics
+// ---------------------------------------------------------------------------
+
+interface PrecomputationStatus {
+  lastAttemptAt:    string | null;
+  lastSuccessAt:    string | null;
+  lastErrorMessage: string | null;
+  lastSectorCount:  number | null;
+  lastThemeCount:   number | null;
+  lastRankedCount:  number | null;
+  running:          boolean;
+}
+
+const _precomputeStatus: PrecomputationStatus = {
+  lastAttemptAt:    null,
+  lastSuccessAt:    null,
+  lastErrorMessage: null,
+  lastSectorCount:  null,
+  lastThemeCount:   null,
+  lastRankedCount:  null,
+  running:          false,
+};
+
+/** Read-only snapshot of precomputation status — safe to expose in admin diagnostics. */
+export function getPrecomputationStatus(): Readonly<PrecomputationStatus> {
+  return { ..._precomputeStatus };
+}
+
+// ---------------------------------------------------------------------------
 // Main orchestration entry point
 // ---------------------------------------------------------------------------
 
 export async function runIntelligencePrecomputation(): Promise<void> {
   const startedAt = Date.now();
+  _precomputeStatus.lastAttemptAt = new Date().toISOString();
+  _precomputeStatus.running       = true;
+  _precomputeStatus.lastErrorMessage = null;
 
   structuredLog("info", { event: "intelligence_precomputation_started" });
 
@@ -173,6 +205,7 @@ export async function runIntelligencePrecomputation(): Promise<void> {
         event: "intelligence_precomputation_skipped",
         reason: "no_ranking_available",
       });
+      _precomputeStatus.running = false;
       return;
     }
 
@@ -208,11 +241,16 @@ export async function runIntelligencePrecomputation(): Promise<void> {
       generatedAt,
     });
 
-    // Persist both (non-blocking — failures are caught below)
+    // Persist both
     await Promise.all([
       saveSectorSnapshot(sectorSnapshot),
       saveThemeSnapshot(themeSnapshot),
     ]);
+
+    _precomputeStatus.lastSuccessAt   = new Date().toISOString();
+    _precomputeStatus.lastSectorCount = sectorSnapshot.sectors.length;
+    _precomputeStatus.lastThemeCount  = themeSnapshot.themes.length;
+    _precomputeStatus.lastRankedCount = rankedSymbols.length;
 
     structuredLog("info", {
       event:        "intelligence_precomputation_completed",
@@ -222,10 +260,14 @@ export async function runIntelligencePrecomputation(): Promise<void> {
       durationMs:   Date.now() - startedAt,
     });
   } catch (err: any) {
+    const msg = String(err?.message ?? err).slice(0, 300);
+    _precomputeStatus.lastErrorMessage = msg;
     structuredLog("warn", {
-      event:   "intelligence_precomputation_failed",
-      error:   String(err?.message ?? err).slice(0, 300),
+      event:      "intelligence_precomputation_failed",
+      error:      msg,
       durationMs: Date.now() - startedAt,
     });
+  } finally {
+    _precomputeStatus.running = false;
   }
 }

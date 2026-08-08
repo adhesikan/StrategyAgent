@@ -32,6 +32,8 @@
 | [13](13-production-release-checklist.md) | Production Release Checklist | Pre-deploy and post-deploy gates |
 | [14](14-disaster-recovery.md) | Disaster Recovery | Rollback, data preservation, rebuild procedures |
 | [15](15-known-issues-and-backlog.md) | Known Issues & Backlog | Active issues, deferred work |
+| [16](16-api-and-uat-reference.md) | API & UAT Reference | Production URLs, smoke tests, UAT sequences, POST/GET caveat |
+| [17](17-sprint-change-log.md) | Sprint Change Log | Per-sprint inventory of routes, tables, jobs, incidents |
 | [manifest](system-manifest.yaml) | System Manifest | Machine-readable service/job/flag catalog |
 
 ---
@@ -69,3 +71,56 @@ INSTITUTIONAL_13F_INGESTION_ENABLED=   # unset = disabled
 INSTITUTIONAL_INTELLIGENCE_ENABLED=false
 MARKET_HISTORY_DATABASE_FIRST=false    # emergency rollback for market history
 ```
+
+### Operations Manual
+```
+GET /admin/operations-manual           # visual manual (admin login required)
+GET /api/admin/operations-manual/search?q=<term>  # full-text search (admin only)
+GET /api/admin/operations-manual/docs  # list all docs (admin only)
+```
+
+### Documentation Update Checker
+```bash
+# Advisory check — warns when operational code changes but docs are not updated
+npx tsx scripts/check-operations-docs.ts          # check staged files
+npx tsx scripts/check-operations-docs.ts --all    # check last commit
+```
+The `check-operations-docs.ts` script is advisory only (exits 0). CI enforcement is a backlog item.
+
+---
+
+## Operations Manual Definition of Done
+
+> Every sprint affecting production behavior MUST review/update the Operations Manual.
+
+**Always update:**
+- `docs/operations/17-sprint-change-log.md`
+
+**If routes changed:**
+- `docs/operations/16-api-and-uat-reference.md`
+
+**If new failure/recovery paths:**
+- `docs/operations/11-troubleshooting-runbook.md`
+
+**If schema/migrations changed:**
+- `docs/operations/03-database-and-migrations.md`
+
+**If deployment/env changed:**
+- `docs/operations/02-environments-and-deployment.md`
+
+**If security/auth changed:**
+- `docs/operations/12-security-and-devsecops.md`
+
+**If scheduled/background jobs changed:**
+- `docs/operations/09-background-jobs-and-scheduling.md`
+
+**If architecture changed:**
+- `docs/operations/01-system-architecture.md`
+
+**A sprint completion report must include:**
+```
+Operations Manual Updated: YES / NO
+Operations Manual Files Updated: [list]
+```
+
+A sprint requiring documentation CANNOT be GO when `Operations Manual Updated = NO`.

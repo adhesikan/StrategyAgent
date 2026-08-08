@@ -49,3 +49,4 @@
 - [Sector & Theme Intelligence](sector-theme-intelligence.md) — Sprint 2.3.3: curated theme registry + deterministic sector/theme engines; precomputed snapshots; 5 API routes; 3 client pages; 90 pure tests.
 - [Market Research Hub](market-research-hub.md) — Sprint 2.3.5: /research hub aggregates 6 modules over 4 parallel precomputed APIs; search + recently viewed; 53 pure tests; no new computation.
 - [Sprint 2.3.6 — Operations Hardening](sprint-236-operations.md) — sector fix (symbols table empty → LEFT JOIN market_data_symbols), rebuild lock, job status model, platform health dashboard, 15-doc handbook.
+- [Sprint 2.3.6A — Ops Manual Completion](sprint-236a-ops-manual.md) — /admin/operations-manual page + search API; docs 16/17; precomputation status tracking; enhanced diagnostics with per-symbol breakdown; check-operations-docs.ts.

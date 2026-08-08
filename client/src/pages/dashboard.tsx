@@ -354,6 +354,42 @@ interface OpportunityTodayResponse {
   message: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Change Intelligence types (Sprint 2.3.1 — /api/opportunities/changes/explained)
+// ---------------------------------------------------------------------------
+
+type ChangeImportance = "Minor" | "Moderate" | "Major" | "Critical";
+type ChangeConfidence = "high" | "medium" | "low";
+type ChangeDirection  = "upgraded" | "downgraded" | "new" | "moved" | "unchanged" | "removed";
+
+interface OpportunityChangeExplanation {
+  symbol: string;
+  previousRank: number | null;
+  currentRank:  number | null;
+  previousScore: number | null;
+  currentScore:  number;
+  scoreDelta:    number | null;
+  rankDelta:     number | null;
+  importance:    ChangeImportance;
+  summary:       string;
+  drivers:       string[];
+  warnings:      string[];
+  confidence:    ChangeConfidence;
+  category:      string;
+  direction:     ChangeDirection;
+}
+
+interface ChangeIntelligenceReport {
+  generatedAt:  string;
+  majorMovers:  OpportunityChangeExplanation[];
+  upgrades:     OpportunityChangeExplanation[];
+  downgrades:   OpportunityChangeExplanation[];
+  newEntries:   OpportunityChangeExplanation[];
+  removed:      OpportunityChangeExplanation[];
+  available:    boolean;
+  message?:     string | null;
+}
+
 interface SymbolHistoryEntry {
   id: string;
   snapshotId: string;
@@ -1187,40 +1223,164 @@ function StockOpportunityCard({
 }
 
 // ---------------------------------------------------------------------------
-// Ranking Changes Panel (Sprint 2.2.8)
-// Shows New / Upgraded / Downgraded / Moved entries from ranking.changes[].
-// Separate from OpportunityLifecycleSection which uses /api/opportunities/changes.
+// Enriched Ranking Changes Panel (Sprint 2.3.1)
+// Replaces the simple chip list with driver/score details from the
+// Change Intelligence engine (/api/opportunities/changes/explained).
+// Falls back to the simple chip view when explained data is unavailable.
 // ---------------------------------------------------------------------------
 
-function RankingChangesPanel({ changes }: { changes: OpportunityChange[] }) {
-  if (changes.length === 0) return null;
+const IMPORTANCE_COLOR: Record<ChangeImportance, string> = {
+  Critical: "border-rose-700 bg-rose-950/40 text-rose-200",
+  Major:    "border-amber-700 bg-amber-950/40 text-amber-200",
+  Moderate: "border-sky-800 bg-sky-950/40 text-sky-200",
+  Minor:    "border-slate-700 bg-slate-900 text-slate-400",
+};
+
+const DIRECTION_ICON: Record<ChangeDirection, string> = {
+  new:        "★",
+  upgraded:   "↑",
+  downgraded: "↓",
+  moved:      "→",
+  unchanged:  "·",
+  removed:    "✕",
+};
+
+function ChangeExplanationCard({
+  exp,
+}: {
+  exp: OpportunityChangeExplanation;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const colorClass = IMPORTANCE_COLOR[exp.importance] ?? IMPORTANCE_COLOR.Minor;
+  const dirIcon    = DIRECTION_ICON[exp.direction]   ?? "·";
+
   return (
-    <div data-testid="ranking-changes-panel">
+    <div
+      className={cn("rounded-lg border p-3 text-xs", colorClass)}
+      data-testid={`change-card-${exp.symbol}`}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 font-mono font-semibold">
+          <span className="opacity-70">{dirIcon}</span>
+          <span>{exp.symbol}</span>
+          <span className={cn(
+            "rounded px-1 py-0.5 text-[9px] font-sans font-normal uppercase tracking-wide",
+            exp.direction === "new"        ? "bg-emerald-900/60 text-emerald-300" :
+            exp.direction === "upgraded"   ? "bg-sky-900/60 text-sky-300" :
+            exp.direction === "downgraded" ? "bg-rose-900/60 text-rose-300" :
+            exp.direction === "removed"    ? "bg-slate-800 text-slate-400" :
+            "bg-slate-800 text-slate-400",
+          )}>
+            {exp.direction}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {exp.scoreDelta != null && (
+            <span className={cn(
+              "font-mono tabular-nums font-medium",
+              exp.scoreDelta > 0 ? "text-emerald-400" : exp.scoreDelta < 0 ? "text-rose-400" : "text-slate-500",
+            )}>
+              {exp.scoreDelta > 0 ? "+" : ""}{exp.scoreDelta}
+            </span>
+          )}
+          <span className="text-slate-500">{exp.currentScore}</span>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <p className="text-slate-300 leading-relaxed mb-1.5">{exp.summary}</p>
+
+      {/* Expand/collapse for drivers */}
+      {exp.drivers.length > 0 && (
+        <button
+          className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+          onClick={() => setExpanded(e => !e)}
+          aria-expanded={expanded}
+        >
+          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {expanded ? "Hide" : "Show"} drivers ({exp.drivers.length})
+        </button>
+      )}
+
+      {expanded && (
+        <div className="mt-2 space-y-1">
+          {exp.drivers.map((d, i) => (
+            <p key={i} className="text-[10px] text-slate-400 pl-2 border-l border-slate-700">
+              {d}
+            </p>
+          ))}
+          {exp.warnings.map((w, i) => (
+            <p key={`w${i}`} className="text-[10px] text-amber-400 pl-2 border-l border-amber-800">
+              ⚠ {w}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EnrichedRankingChangesPanel({
+  report,
+  fallbackChanges,
+}: {
+  report: ChangeIntelligenceReport | undefined;
+  fallbackChanges: OpportunityChange[];
+}) {
+  // Build a unified list: Major movers first, then upgrades/downgrades/new/removed
+  const allExplanations = report
+    ? [
+        ...report.majorMovers,
+        ...report.upgrades.filter(e => !report.majorMovers.some(m => m.symbol === e.symbol)),
+        ...report.downgrades.filter(e => !report.majorMovers.some(m => m.symbol === e.symbol)),
+        ...report.newEntries.filter(e => !report.majorMovers.some(m => m.symbol === e.symbol)),
+        ...report.removed,
+      ]
+    : [];
+
+  const hasEnriched = allExplanations.length > 0;
+
+  if (!hasEnriched && fallbackChanges.length === 0) return null;
+
+  return (
+    <div data-testid="enriched-ranking-changes-panel">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
         <Activity className="h-3.5 w-3.5" aria-hidden="true" />
-        Ranking Changes
-        <span className="ml-auto text-[10px] font-normal normal-case">{changes.length}</span>
+        What Changed
+        <span className="ml-auto text-[10px] font-normal normal-case">
+          {hasEnriched ? allExplanations.length : fallbackChanges.length}
+        </span>
       </h3>
-      <div className="flex flex-wrap gap-2">
-        {changes.map((c) => {
-          const { symbol: sym, label } = { symbol: getChangeDisplay(c.direction).symbol, label: getChangeDisplay(c.direction).label };
-          return (
-            <div
-              key={`${c.symbol}-${c.direction}`}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] font-mono",
-                getChangeBadgeClass(c.direction),
-              )}
-              data-testid={`ranking-change-${c.symbol}`}
-              title={`${c.symbol}: ${label} — ${c.from} → ${c.to}`}
-            >
-              <span aria-hidden="true">{sym}</span>
-              <span className="font-semibold">{c.symbol}</span>
-              <span className="opacity-60 font-sans normal-case">{label}</span>
-            </div>
-          );
-        })}
-      </div>
+
+      {hasEnriched ? (
+        <div className="space-y-2">
+          {allExplanations.slice(0, 8).map(exp => (
+            <ChangeExplanationCard key={exp.symbol} exp={exp} />
+          ))}
+        </div>
+      ) : (
+        /* Simple chip fallback when explained data is loading or unavailable */
+        <div className="flex flex-wrap gap-2">
+          {fallbackChanges.map((c) => {
+            const { symbol: sym, label } = getChangeDisplay(c.direction);
+            return (
+              <div
+                key={`${c.symbol}-${c.direction}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] font-mono",
+                  getChangeBadgeClass(c.direction),
+                )}
+                title={`${c.symbol}: ${label} — ${c.from} → ${c.to}`}
+              >
+                <span aria-hidden="true">{sym}</span>
+                <span className="font-semibold">{c.symbol}</span>
+                <span className="opacity-60 font-sans normal-case">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1819,11 +1979,13 @@ function OpportunityEngineSection({
   isLoading,
   isError,
   onRetry,
+  explainedChanges,
 }: {
   data: OpportunityTodayResponse | undefined;
   isLoading: boolean;
   isError?: boolean;
   onRetry: () => void;
+  explainedChanges?: ChangeIntelligenceReport;
 }) {
   const [, navigate] = useLocation();
   const ranking = data?.ranking ?? null;
@@ -2010,8 +2172,11 @@ function OpportunityEngineSection({
                 candidates={ranking.approaching}
               />
 
-              {/* Ranking changes — New / Upgraded / Downgraded / Moved */}
-              <RankingChangesPanel changes={ranking.changes} />
+              {/* What Changed — enriched by Change Intelligence engine (Sprint 2.3.1) */}
+              <EnrichedRankingChangesPanel
+                report={explainedChanges}
+                fallbackChanges={ranking.changes}
+              />
             </>
           )}
         </CardContent>
@@ -2819,6 +2984,16 @@ export default function DashboardPage() {
     refetchOnWindowFocus: false,
   });
 
+  // Change Intelligence — Sprint 2.3.1. Explains WHY each opportunity changed
+  // using the deterministic change engine. Non-blocking; dashboard still loads
+  // without it. Shares stale time with the ranking engine.
+  const explainedChangesQuery = useQuery<ChangeIntelligenceReport>({
+    queryKey: ["/api/opportunities/changes/explained"],
+    staleTime: 5 * 60_000,
+    refetchInterval: 12 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
     track("dashboard_viewed" as any);
   }, []);
@@ -2903,6 +3078,7 @@ export default function DashboardPage() {
             track("dashboard_section_retry", { section: "stock_opportunities" } as any);
             void oppsQuery.refetch();
           }}
+          explainedChanges={explainedChangesQuery.data}
         />
 
         {/* 4b. Opportunity Lifecycle Changes — Sprint 2.0

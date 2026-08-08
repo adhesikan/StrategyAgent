@@ -17,6 +17,8 @@
 import type { Express, RequestHandler } from "express";
 import { getSymbolHistory } from "../services/opportunity-snapshot-store";
 import { getInstitutionalSignal } from "../services/institutional/signal-engine";
+import { getLatestRanking } from "../services/opportunity-ranking-engine";
+import { explainSymbolChange, type SymbolHistoryRow } from "../services/opportunity-change-engine";
 
 const SYMBOL_RE = /^[A-Z]{1,10}$/;
 
@@ -88,11 +90,51 @@ export function registerOpportunityWorkspaceRoute(
           getInstitutionalSignal(raw).catch(() => null), // non-fatal
         ]);
 
+        // Build "Why it changed" explanation if ranking data is available.
+        // This is a zero-cost computation on already-loaded in-memory ranking.
+        let changeExplanation = null;
+        try {
+          const ranking = getLatestRanking();
+          if (ranking) {
+            const allCandidates = [
+              ...ranking.topGrowth.map((c, i) => ({ candidate: c, rank: i + 1 })),
+              ...ranking.topIncome.map((c, i) => ({ candidate: c, rank: i + 1 })),
+              ...ranking.watchlist.map(c  => ({ candidate: c, rank: null })),
+              ...ranking.approaching.map(c => ({ candidate: c, rank: null })),
+            ];
+            const match = allCandidates.find(x => x.candidate.symbol.toUpperCase() === raw);
+            if (match) {
+              const change = ranking.changes.find(c => c.symbol.toUpperCase() === raw) ?? null;
+              // Build SymbolHistoryRow[] from the fetched history (newest-first, max 2)
+              const historyRows: SymbolHistoryRow[] = history.slice(0, 2).map(h => ({
+                symbol: raw,
+                score: h.score,
+                rank: h.rank,
+                qualificationStatus: h.qualificationStatus,
+                lifecycleState: h.lifecycleState,
+                strategy: h.strategy,
+                marketRegime: h.marketRegime,
+                scanTime: h.scanTime,
+              }));
+              changeExplanation = explainSymbolChange(
+                match.candidate as any,
+                historyRows,
+                change,
+                match.rank,
+                ranking.regime,
+              );
+            }
+          }
+        } catch {
+          // Non-fatal — workspace still loads without change explanation
+        }
+
         return res.json({
           symbol: raw,
           companyName: COMPANY_NAMES[raw] ?? null,
           history,
           institutional,
+          changeExplanation,
         });
       } catch (err: any) {
         process.stderr.write(

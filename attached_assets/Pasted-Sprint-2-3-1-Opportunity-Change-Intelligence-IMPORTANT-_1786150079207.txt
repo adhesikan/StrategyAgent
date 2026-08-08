@@ -1,0 +1,221 @@
+Sprint 2.3.1 — Opportunity Change Intelligence
+
+IMPORTANT
+
+Do NOT modify:
+
+- Scanner
+- Ranking Engine
+- Opportunity Workspace
+- Institutional Engine
+- Existing APIs
+
+Build ON TOP of the current architecture.
+
+======================================================
+OBJECTIVE
+======================================================
+
+Explain WHY every opportunity changed.
+
+The user should immediately understand:
+
+Why is this stock higher?
+
+Why did it fall?
+
+What changed?
+
+======================================================
+NEW ENGINE
+
+server/services/opportunity-change-engine.ts
+
+Pure deterministic.
+
+No LLM.
+
+======================================================
+INPUT
+
+Previous ranking snapshot
+
+Today's ranking snapshot
+
+======================================================
+OUTPUT
+
+OpportunityChangeExplanation
+
+{
+
+symbol
+
+previousRank
+
+currentRank
+
+previousScore
+
+currentScore
+
+scoreDelta
+
+rankDelta
+
+importance
+
+summary
+
+drivers[]
+
+warnings[]
+
+confidence
+
+}
+
+======================================================
+DETERMINE CHANGES
+
+Compare
+
+Technical Score
+
+Institutional Score
+
+Fundamental Score
+
+Risk Score
+
+Regime
+
+Pattern
+
+Lifecycle
+
+Volume
+
+Strategy
+
+======================================================
+DRIVERS
+
+Examples
+
+Technical breakout confirmed
+
+Volume increased
+
+Relative strength improved
+
+Institutional buying increased
+
+Institutional confidence improved
+
+Risk decreased
+
+Market regime improved
+
+New earnings risk
+
+Pattern weakened
+
+Support broken
+
+======================================================
+IMPORTANCE
+
+Minor
+
+Moderate
+
+Major
+
+Critical
+
+======================================================
+SUMMARY
+
+Generate deterministic sentences.
+
+Examples
+
+"Overall score increased 11 points because technical quality and institutional confidence both improved."
+
+"Risk increased due to earnings approaching."
+
+No AI.
+
+Pure rule engine.
+
+======================================================
+API
+
+GET
+
+/api/opportunities/changes
+
+Returns
+
+{
+
+generatedAt
+
+majorMovers[]
+
+upgrades[]
+
+downgrades[]
+
+newEntries[]
+
+removed[]
+
+}
+
+======================================================
+WORKSPACE
+
+Add
+
+Why it changed
+
+panel.
+
+======================================================
+DASHBOARD
+
+Replace existing simple Changes section.
+
+Display
+
+Rank movement
+
+Score movement
+
+Top drivers
+
+Warnings
+
+======================================================
+TESTS
+
+Comprehensive deterministic tests.
+
+======================================================
+ACCEPTANCE
+
+✔ Deterministic
+
+✔ No AI
+
+✔ Dashboard integrated
+
+✔ Workspace integrated
+
+✔ Full tests
+
+✔ TypeScript
+
+Produce completion report.

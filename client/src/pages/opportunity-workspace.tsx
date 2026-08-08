@@ -105,11 +105,30 @@ interface InstitutionalSignal {
   };
 }
 
+// ChangeExplanation type (subset of OpportunityChangeExplanation from server)
+interface ChangeExplanation {
+  symbol: string;
+  previousRank: number | null;
+  currentRank:  number | null;
+  previousScore: number | null;
+  currentScore:  number;
+  scoreDelta:    number | null;
+  rankDelta:     number | null;
+  importance:    "Minor" | "Moderate" | "Major" | "Critical";
+  summary:       string;
+  drivers:       string[];
+  warnings:      string[];
+  confidence:    "high" | "medium" | "low";
+  category:      string;
+  direction:     "upgraded" | "downgraded" | "new" | "moved" | "unchanged" | "removed";
+}
+
 interface WorkspaceResponse {
   symbol: string;
   companyName: string | null;
   history: HistoryEntry[];
   institutional: InstitutionalSignal | null;
+  changeExplanation: ChangeExplanation | null;
 }
 
 interface OpportunityTodayResponse {
@@ -139,6 +158,89 @@ function formatDate(iso: string): string {
 function fmtNum(n: number | null | undefined, decimals = 0): string {
   if (n == null) return "—";
   return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+// ---------------------------------------------------------------------------
+// Why It Changed Panel (Sprint 2.3.1)
+// ---------------------------------------------------------------------------
+
+const IMPORTANCE_BORDER: Record<string, string> = {
+  Critical: "border-rose-700 bg-rose-950/20",
+  Major:    "border-amber-700 bg-amber-950/20",
+  Moderate: "border-sky-800 bg-sky-950/20",
+  Minor:    "border-slate-700 bg-slate-900/60",
+};
+
+const DIRECTION_ICON_WS: Record<string, string> = {
+  new: "★", upgraded: "↑", downgraded: "↓", moved: "→", unchanged: "·", removed: "✕",
+};
+
+function WhyItChangedPanel({ exp }: { exp: ChangeExplanation }) {
+  const [expanded, setExpanded] = useState(false);
+  const borderClass = IMPORTANCE_BORDER[exp.importance] ?? IMPORTANCE_BORDER.Minor;
+  const dirIcon     = DIRECTION_ICON_WS[exp.direction] ?? "·";
+  const scoreDeltaStr =
+    exp.scoreDelta == null ? null :
+    exp.scoreDelta > 0 ? `+${exp.scoreDelta}` : `${exp.scoreDelta}`;
+  const deltaColor =
+    (exp.scoreDelta ?? 0) > 0 ? "text-emerald-400" :
+    (exp.scoreDelta ?? 0) < 0 ? "text-rose-400" : "text-slate-500";
+
+  return (
+    <Card className={`border ${borderClass}`}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <Activity className="h-4 w-4 text-amber-400" />
+          Why It Changed
+          <span className={`ml-auto flex items-center gap-1 text-xs font-mono ${deltaColor}`}>
+            <span className="opacity-70">{dirIcon}</span>
+            {scoreDeltaStr ?? ""}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-slate-200">{exp.summary}</p>
+
+        {exp.drivers.length > 0 && (
+          <>
+            <button
+              className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+              onClick={() => setExpanded(e => !e)}
+            >
+              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {expanded ? "Hide" : "Show"} drivers ({exp.drivers.length})
+            </button>
+            {expanded && (
+              <ul className="space-y-1.5">
+                {exp.drivers.map((d, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-slate-300 pl-2 border-l border-slate-700">
+                    {d}
+                  </li>
+                ))}
+                {exp.warnings.map((w, i) => (
+                  <li key={`w${i}`} className="flex items-start gap-2 text-xs text-amber-300 pl-2 border-l border-amber-800">
+                    ⚠ {w}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
+        <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-500">
+          <span className="capitalize">{exp.importance} change</span>
+          <span>·</span>
+          <span className="capitalize">{exp.confidence} confidence</span>
+          {exp.previousScore != null && (
+            <>
+              <span>·</span>
+              <span>Prev score: {exp.previousScore}</span>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -787,7 +889,8 @@ export default function OpportunityWorkspacePage() {
 
   const companyName = workspaceQuery.data?.companyName ?? null;
   const history     = workspaceQuery.data?.history ?? [];
-  const institutional = workspaceQuery.data?.institutional ?? null;
+  const institutional    = workspaceQuery.data?.institutional ?? null;
+  const changeExplanation = workspaceQuery.data?.changeExplanation ?? null;
 
   const isLoading = todayQuery.isLoading || workspaceQuery.isLoading;
   const allSymbols = ranking ? getAllRankedSymbols(ranking).filter(s => s !== symbol) : [];
@@ -898,6 +1001,11 @@ export default function OpportunityWorkspacePage() {
           <ScorePill label="Risk"  score={score.riskScore} />
           <ScorePill label="Regime" score={score.regimeScore} />
         </div>
+
+        {/* Why it changed — Sprint 2.3.1 Change Intelligence panel */}
+        {changeExplanation && changeExplanation.direction !== "unchanged" && (
+          <WhyItChangedPanel exp={changeExplanation} />
+        )}
 
         {/* Compare controls */}
         <div className="flex items-center gap-2">

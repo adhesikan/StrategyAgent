@@ -357,3 +357,142 @@ curl -s -b "$COOKIE" -X POST /api/portfolio/import/confirm \
 | Disk writes | None (multer memoryStorage) |
 | Preview TTL | 30 minutes, single-use |
 
+---
+
+## Sprint 2.4.0A — Portfolio UX Walkthrough
+
+### Client Pages
+
+| URL | Page | Description |
+|-----|------|-------------|
+| `/portfolio` | Portfolio Landing / Overview | Onboarding (no portfolios) or holdings detail (portfolio exists) |
+| `/portfolio/import` | Portfolio Import | 3-step wizard: Upload → Review → Complete |
+
+### User Flow — First Import
+
+```
+/portfolio  (onboarding state)
+  → click "Upload Portfolio"
+  → /portfolio/import  [Step 1: Upload]
+      drop / click / keyboard (Enter or Space) to select file
+      "Preview Import" → POST /api/portfolio/import/csv or /xlsx
+  → [Step 2: Review]
+      Portfolio Summary card (7 fields)
+      Editable holdings table (remove rows before confirming)
+      Select or name the target portfolio
+      "Confirm Import" → POST /api/portfolio/import/confirm
+  → [Step 3: Complete]
+      "View Portfolio" → /portfolio  (portfolio detail state)
+```
+
+### User Flow — Manual Entry
+
+```
+/portfolio  (onboarding state)
+  → click "Enter Holdings Manually"
+  → dialog: name the portfolio → POST /api/portfolio
+  → /portfolio  (portfolio detail state)
+      click "Add Position" → dialog
+      symbol + quantity (+ optional avg cost) → POST /api/portfolio/:id/positions
+```
+
+### Portfolio Overview State
+
+Once at least one portfolio exists:
+- Breadcrumb: Home → Portfolio Overview → [Portfolio Name]
+- Holdings table: Symbol / Quantity / Avg Cost / Price / Market Value / G/L (all enriched from stored bars)
+- Summary bar: Positions / Market Value / Cost Basis / Unrealized G/L
+- Intelligence Placeholders section (7 cards, all "Upcoming")
+- Sidebar shown when >1 portfolio
+
+### Coming-Soon Features (UI display only — no routes, no APIs)
+
+| Label | Status |
+|-------|--------|
+| Import from Screenshot | Coming soon — disabled card, no implementation |
+| Import from PDF Statement | Coming soon — disabled card, no implementation |
+| Schwab broker connect | Coming soon — display only |
+| Interactive Brokers connect | Coming soon — display only |
+| Fidelity broker connect | Coming soon — display only |
+| Robinhood broker connect | Coming soon — display only |
+
+### Intelligence Placeholder Cards
+
+Shown in portfolio detail view when positions exist. Each card displays "Available in an upcoming release".
+
+| Card | Future Sprint |
+|------|---------------|
+| Portfolio Health | TBD |
+| AI Research | TBD |
+| Sector Exposure | TBD |
+| Institutional Activity | TBD |
+| Technical Strength | TBD |
+| Portfolio Risk | TBD |
+| Opportunities | Task #110 (partial) |
+
+### UAT Sequence — Sprint 2.4.0A
+
+```bash
+# 1. Onboarding title
+open /portfolio  (no portfolios)
+→ heading "Import Your Investment Portfolio" visible
+→ trust banner (4 bullets) visible
+→ buttons in order: Upload Portfolio / Connect Broker / Enter Holdings Manually
+→ coming-soon cards (Screenshot, PDF) present and non-clickable
+
+# 2. Supported imports card visible
+→ CSV, Excel, Fidelity, Schwab, Robinhood, Interactive Brokers, TradeStation, Tradier
+
+# 3. Broker card visible
+→ "Available Today": Tradier, TradeStation
+→ "Coming Soon": Schwab, Interactive Brokers, Fidelity, Robinhood
+
+# 4. What happens card visible
+→ 8 feature tiles: Track holdings / Portfolio performance / Sector exposure /
+  Institutional ownership / Technical strength / Portfolio concentration /
+  AI research / Covered call candidates
+
+# 5. Import flow
+open /portfolio/import
+→ breadcrumb: Home > Portfolio > Portfolio Import
+→ step indicator: Upload (active) → Review → Complete
+→ drop zone: click works, keyboard Enter/Space opens file picker
+→ file safety block visible (6 bullets)
+→ recognized headers block visible
+
+# 6. Preview (after upload)
+→ Portfolio Summary card shows: Detected Holdings / Unique Symbols /
+  Duplicate Symbols / Missing Average Cost / Missing Cost Basis /
+  Estimated Cost Basis / Est. Market Value
+→ tooltips on Avg Cost and Cost Basis column headers (hover to verify)
+→ invalid rows displayed with row numbers and reasons
+→ rows can be removed before confirming
+
+# 7. Success state
+→ "Import complete" confirmation
+→ "View Portfolio" navigates to /portfolio
+
+# 8. Portfolio overview (with holdings)
+→ breadcrumb: Home > Portfolio Overview > [Portfolio Name]
+→ holdings table scrolls horizontally on mobile
+→ tooltips on Avg Cost / Price / Market Value / G/L column headers
+→ intelligence placeholder section visible (7 Upcoming cards)
+→ Portfolio Source badge has tooltip
+
+# 9. Empty holdings state
+→ "No Holdings Yet" heading
+→ 3 action buttons: Import a Spreadsheet / Connect a Broker / Enter Holdings Manually
+
+# 10. Accessibility
+→ drop zone focusable via Tab, activates on Enter
+→ all icon-only buttons have aria-label
+→ remove buttons in preview have aria-label with symbol name
+```
+
+### Known Limitations (Sprint 2.4.0A)
+
+- Market value in preview summary always shows "—" (not available until after import and nightly bar refresh)
+- Intelligence placeholder cards are static; no computation occurs
+- Screenshot and PDF import are UI stubs only — no backend capability
+- Broker "Connect" navigates to `/settings?tab=broker`; only Tradier and TradeStation are functional
+

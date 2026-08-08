@@ -326,6 +326,71 @@ New enum: `portfolio_source_type` → `manual | csv | xlsx | broker`
 
 ---
 
+## Sprint 2.4.0A — Portfolio UX Polish
+
+**Date:** 2026-08-08
+**Type:** UI/UX refinement only — no backend changes, no schema changes, no API changes.
+
+### Objective
+
+Polish the Portfolio onboarding experience introduced in Sprint 2.4.0. All backend services, APIs, database schema, import engine, normalization engine, and security model are **unchanged**.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/pages/portfolio.tsx` | Full onboarding redesign; button reorder; trust banner; supported-imports card; broker card; "What happens" card; empty-state upgrade; intelligence placeholder cards; tooltips on column headers and form fields; ARIA labels; breadcrumbs; mobile scrollable tables |
+| `client/src/pages/portfolio-import.tsx` | File safety info block below drop zone; preview summary card (7 fields); tooltips on Avg Cost / Cost Basis columns; keyboard support for drop zone (Enter + Space); ARIA labels; step progress indicator; breadcrumbs |
+| `server/routes/__tests__/portfolio-ux-sprint240a.test.ts` | 124 new pure structural tests covering all 14 spec sections |
+| `docs/operations/17-sprint-change-log.md` | This entry |
+| `docs/operations/16-api-and-uat-reference.md` | Sprint 2.4.0A UI walkthrough section |
+
+### UI Changes by Section
+
+| § | Feature | Detail |
+|---|---------|--------|
+| 1 | Landing page title | "Import Your Investment Portfolio" + VCP Trader AI subtitle |
+| 1 | Trust banner | 4 bullets: No broker required · Import in minutes · Private · Secure |
+| 2 | Button order | PRIMARY Upload Portfolio → SECONDARY Connect Broker → TERTIARY Enter Manually |
+| 2 | Coming-soon cards | Screenshot Import + PDF Statement Import — disabled, informational only, no routes |
+| 3 | Supported imports | CSV, Excel, Fidelity, Schwab, Robinhood, IBKR, TradeStation, Tradier |
+| 4 | Broker card | Available Today: Tradier/TradeStation · Coming Soon: Schwab/IBKR/Fidelity/Robinhood |
+| 5 | What happens card | 8 feature tiles — Research/Analysis/Opportunities/Intelligence language only |
+| 6 | Import page safety | File safety bullets below drop zone; CSV/Excel badges |
+| 7 | Preview summary | 7-field summary card: Holdings/Unique/Duplicates/MissingCost/CostBasis/EstMV |
+| 8 | Empty state | "No Holdings Yet" + Import Spreadsheet / Connect Broker / Enter Manually |
+| 9 | Intelligence placeholders | 7 Upcoming cards: Health/AI Research/Sector/Institutional/Technical/Risk/Opportunities |
+| 10 | Breadcrumbs | Home → Portfolio Overview → [name] on portfolio page; Home → Portfolio → Portfolio Import on import page |
+| 11 | Tooltips | Avg Cost, Cost Basis, Market Value, G/L, Portfolio Source — all wired with HelpCircle triggers |
+| 12 | Accessibility | role=button+tabIndex on drop zone; Enter+Space keyboard; ARIA labels on all actions; role=progressbar; role=alert; aria-live; sr-only for hidden column headers |
+| 13 | Mobile | overflow-x-auto + min-w on both tables; responsive grid cols; sm: breakpoints throughout |
+| 14 | No new APIs | Zero new endpoints; zero new packages; all existing endpoints unchanged |
+
+### Language Compliance
+
+- Never: "Recommendation", "Recommended Trade", "Buy", "Sell"
+- Always: "Research", "Analysis", "Opportunities", "Intelligence"
+- Verified by tests §5.
+
+### Architecture Impact
+
+None. This sprint is pure UI polish. Zero backend, schema, or API modifications.
+
+### Tests
+
+| Metric | Value |
+|--------|-------|
+| New tests | 124 (portfolio-ux-sprint240a.test.ts) |
+| Total suite | 5,235 passing |
+| Failures | 0 |
+
+### Operations Manual Updated
+
+- `docs/operations/17-sprint-change-log.md` ← this entry
+- `docs/operations/16-api-and-uat-reference.md` ← UAT walkthrough added
+
+---
+
 ## Production Deployment Fix — Railway npm ci / tsx Missing
 
 **Date:** 2026-08-08

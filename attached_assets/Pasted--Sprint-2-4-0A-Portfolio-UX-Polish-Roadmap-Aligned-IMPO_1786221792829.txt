@@ -1,0 +1,529 @@
+# Sprint 2.4.0A — Portfolio UX Polish (Roadmap Aligned)
+
+## IMPORTANT
+
+Read the Operations Manual, Sprint Change Log, Roadmap, and Sprint 2.4.0 implementation before making any changes.
+
+This project MUST continue following the established roadmap.
+
+DO NOT introduce new product directions.
+
+DO NOT move future roadmap items earlier.
+
+This sprint is strictly a UX refinement sprint immediately following Sprint 2.4.0.
+
+Update the Operations Manual, Sprint Change Log, Roadmap, and UAT documentation upon completion.
+
+---
+
+# Objective
+
+Improve the Portfolio onboarding experience while keeping ALL backend functionality unchanged.
+
+This sprint is UI/UX only.
+
+DO NOT modify:
+
+- database schema
+- portfolio tables
+- import engine
+- normalization engine
+- APIs
+- authentication
+- ownership/security
+- preview confirmation logic
+- broker integrations
+
+---
+
+# 1. Portfolio Landing Page
+
+Redesign the onboarding page into a polished product introduction.
+
+Replace the current title.
+
+OLD
+
+Add your portfolio
+
+NEW
+
+Import Your Investment Portfolio
+
+Subtitle:
+
+Import holdings from your broker, spreadsheet, or enter them manually.
+
+Once imported, VCP Trader AI continuously analyzes your portfolio using market intelligence, technical research, institutional activity, sector leadership and portfolio analytics.
+
+Below the subtitle add a small trust banner:
+
+✓ No broker connection required
+✓ Import in minutes
+✓ Your portfolio stays private
+✓ Secure local processing
+
+---
+
+# 2. Reorder Primary Actions
+
+Current
+
+Manual
+Spreadsheet
+Broker
+
+Replace with
+
+PRIMARY (Blue)
+
+Upload Portfolio
+
+SECONDARY
+
+Connect Broker
+
+TERTIARY
+
+Enter Holdings Manually
+
+Below those add two disabled cards:
+
+Coming Soon
+
+Import from Screenshot
+
+Import from PDF Statement
+
+These are informational only.
+
+Do NOT create routes.
+
+Do NOT create APIs.
+
+Do NOT implement OCR.
+
+---
+
+# 3. Supported Import Sources
+
+Add a "Supported Imports" card.
+
+Include:
+
+CSV
+
+Excel (.xlsx)
+
+Fidelity Export
+
+Schwab Export
+
+Robinhood Export
+
+Interactive Brokers Export
+
+TradeStation Export
+
+Tradier Export
+
+Below that
+
+Coming Soon
+
+Screenshot Import
+
+PDF Statement Import
+
+---
+
+# 4. Broker Card
+
+Improve the Connect Broker section.
+
+Display
+
+Available Today
+
+Tradier
+
+TradeStation
+
+Coming Soon
+
+Schwab
+
+Interactive Brokers
+
+Fidelity
+
+Robinhood
+
+Do NOT implement new integrations.
+
+---
+
+# 5. Explain What Happens Next
+
+Below the action buttons create a card
+
+Title
+
+What happens after import?
+
+Show icons with:
+
+Track your holdings
+
+Monitor portfolio performance
+
+View sector exposure
+
+Research institutional ownership
+
+Compare against market leaders
+
+Monitor technical strength
+
+Identify portfolio concentration
+
+Generate AI research
+
+Discover covered call candidates
+
+Everything should use wording like
+
+Research
+Analysis
+Opportunities
+Intelligence
+
+Never use:
+
+Recommendation
+Recommended Trade
+Buy
+Sell
+
+---
+
+# 6. Improve Import Page
+
+Keep the existing upload page.
+
+Enhance it.
+
+Below the drag-and-drop zone add
+
+Supported Files
+
+CSV
+
+Excel
+
+Maximum 500 holdings
+
+Formula cells ignored
+
+Unknown columns safely ignored
+
+Nothing is uploaded until confirmation
+
+Broker credentials are never required
+
+Files processed securely
+
+---
+
+# 7. Better Import Preview
+
+Do NOT change parsing.
+
+Do NOT change APIs.
+
+Above the preview table create
+
+Portfolio Summary
+
+Detected Holdings
+
+Unique Symbols
+
+Duplicate Symbols
+
+Missing Average Cost
+
+Missing Cost Basis
+
+Unknown Symbols
+
+Estimated Cost Basis
+
+Estimated Market Value (when available)
+
+Unknown values should gracefully show
+
+—
+
+---
+
+# 8. Better Empty State
+
+When portfolio contains zero holdings show
+
+No Holdings Yet
+
+Import a Spreadsheet
+
+Connect a Broker
+
+Enter Holdings Manually
+
+instead of a blank page.
+
+---
+
+# 9. Portfolio Dashboard Placeholder
+
+After import completes,
+
+DO NOT implement Portfolio Intelligence.
+
+Instead show polished placeholder cards.
+
+Portfolio Health
+
+AI Research
+
+Sector Exposure
+
+Institutional Activity
+
+Technical Strength
+
+Portfolio Risk
+
+Opportunities
+
+Each card should contain
+
+Available in an upcoming release
+
+This keeps roadmap alignment.
+
+---
+
+# 10. Better Navigation
+
+Improve breadcrumbs
+
+Portfolio
+
+Portfolio Import
+
+Portfolio Overview
+
+Show portfolio name once available.
+
+---
+
+# 11. Tooltips
+
+Add help tooltips for
+
+Average Cost
+
+Cost Basis
+
+Market Value
+
+Portfolio Source
+
+Spreadsheet
+
+Manual
+
+Broker
+
+---
+
+# 12. Accessibility
+
+Improve
+
+ARIA labels
+
+Keyboard navigation
+
+Focus states
+
+Upload keyboard support
+
+Contrast
+
+---
+
+# 13. Mobile
+
+Improve
+
+Spacing
+
+Cards
+
+Buttons
+
+Scrollable tables
+
+Responsive layout
+
+---
+
+# 14. Performance
+
+Reuse existing APIs.
+
+No additional polling.
+
+No background jobs.
+
+No new dependencies.
+
+No additional API calls.
+
+---
+
+# 15. Documentation
+
+Update
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Portfolio User Guide
+
+Portfolio UX Walkthrough
+
+Portfolio Onboarding
+
+Add screenshots where appropriate.
+
+Document
+
+Landing page
+
+Upload page
+
+Preview
+
+Confirm
+
+Overview
+
+Empty state
+
+Common user mistakes
+
+Troubleshooting
+
+---
+
+# 16. Roadmap Alignment
+
+Update the master roadmap.
+
+Record this sprint as
+
+Sprint 2.4.0A — Portfolio UX Polish
+
+Mark it as
+
+UI/UX refinement only.
+
+No roadmap sequencing changes.
+
+No future functionality pulled forward.
+
+---
+
+# 17. Operations Manual Requirement
+
+Update the Operations Manual with
+
+Purpose
+
+Files changed
+
+Screens
+
+User flow
+
+UAT
+
+Known limitations
+
+Future roadmap references
+
+Every future sprint must continue updating this manual automatically.
+
+---
+
+# 18. Testing
+
+Add UI regression tests covering
+
+Landing page
+
+Button order
+
+Import page
+
+Preview summary
+
+Empty state
+
+Portfolio overview placeholders
+
+Accessibility
+
+Responsive behavior
+
+Verify all existing tests continue passing.
+
+---
+
+# 19. Completion Report
+
+Produce the standard completion report including
+
+• Architecture impact
+• Files changed
+• UI improvements
+• APIs changed (should be none)
+• Database changes (should be none)
+• Test counts
+• Build result
+• TypeScript result
+• Operations Manual updates
+• Roadmap updates
+• UAT checklist
+• Roadmap Alignment confirmation
+• GO / NO-GO decision
+
+---
+
+## CRITICAL ROADMAP RULE
+
+Do not deviate from the established roadmap.
+
+Whenever implementation, UAT, deployment, operations, documentation, monitoring, security, testing, or UX improvements are identified:
+
+• Add them to the most appropriate planned sprint.
+• If they are small refinements, place them in an "A" sprint immediately following the related sprint (example: 2.4.0A).
+• Never create unrelated roadmap branches.
+• Never move future milestones earlier.
+• Keep Portfolio Intelligence, AI Analysis, Broker Sync, Rebalancing, Goal Planning, Tax Features, Options Analysis, and Advisor features in their originally planned sprints.
+• Update the Roadmap, Operations Manual, Sprint Change Log, and UAT documentation whenever refinements are added.
+
+This rule applies to every future sprint automatically.

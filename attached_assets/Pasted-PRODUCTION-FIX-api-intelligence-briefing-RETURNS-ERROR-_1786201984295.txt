@@ -1,0 +1,391 @@
+PRODUCTION FIX — /api/intelligence/briefing RETURNS ERROR
+
+Current production behavior:
+
+GET https://vcptrader.com/api/intelligence/briefing
+
+returns:
+
+{
+  "error": "Failed to load intelligence briefing"
+}
+
+The Research Hub therefore correctly renders:
+
+"Market intelligence is not available yet."
+"Institutional activity is not available yet."
+
+The previous permanent-skeleton UI bug is fixed.
+
+This is now a SERVER-SIDE briefing failure.
+
+Do NOT modify the Research Hub UI.
+Do NOT modify Opportunity Ranking logic.
+Do NOT redesign Sector/Theme Intelligence.
+Do NOT start Portfolio Intelligence.
+
+============================================================
+1. FIND THE EXACT THROWN ERROR
+============================================================
+
+Trace:
+
+GET /api/intelligence/briefing
+→ server/routes/intelligence.ts
+→ getLatestRanking()
+→ getLatestSectorSnapshots()
+→ getLatestThemeSnapshots()
+→ buildDashboardContracts()
+→ briefing response
+
+The route currently hides the real exception behind:
+
+"Failed to load intelligence briefing"
+
+Temporarily/add structured server logging for the catch block:
+
+event: intelligence_briefing_failed
+errorName
+errorMessage
+errorCode
+stack
+phase
+
+Do NOT expose stack traces or DB internals to public clients.
+
+Return the exact production root exception in the completion report.
+
+============================================================
+2. ISOLATE EACH DEPENDENCY
+============================================================
+
+Test each dependency independently:
+
+A. getLatestRanking()
+
+Report:
+exists?
+generatedAt?
+candidate count?
+
+B. getLatestSectorSnapshots()
+
+Report:
+success/failure
+row count
+exact SQL/DB error if any
+
+C. getLatestThemeSnapshots()
+
+Report:
+success/failure
+row count
+exact SQL/DB error if any
+
+D. buildDashboardContracts()
+
+Run with:
+empty arrays
+sector data only
+theme data only
+both populated
+
+Confirm it never throws on null/empty data.
+
+Identify the FIRST failing stage.
+
+============================================================
+3. VERIFY PRODUCTION SCHEMA
+============================================================
+
+Confirm these tables exist in the production database:
+
+sector_intelligence_snapshots
+theme_intelligence_snapshots
+
+Confirm exact columns expected by the code:
+
+sector_intelligence_snapshots:
+- id
+- sector
+- score
+- label
+- metrics
+- top_symbols
+- changes
+- generated_at
+
+theme_intelligence_snapshots:
+- id
+- theme_id
+- theme_name
+- score
+- label
+- metrics
+- top_symbols
+- changes
+- generated_at
+
+Verify indexes too, but missing indexes are not a blocker.
+
+If a table/column is missing:
+
+fix the startup migration / schema contract.
+
+Do NOT manually patch production only.
+
+============================================================
+4. CHECK SQL COMPATIBILITY
+============================================================
+
+Inspect getLatestSectorSnapshots() and getLatestThemeSnapshots().
+
+Pay particular attention to:
+
+DISTINCT ON
+ORDER BY
+snake_case vs camelCase
+JSONB deserialization
+generated_at ordering
+Drizzle raw SQL aliases
+
+Verify query executes correctly against PostgreSQL production schema.
+
+If using:
+
+SELECT DISTINCT ON (...)
+
+ORDER BY ...
+
+ensure ORDER BY begins with the DISTINCT ON key as required by PostgreSQL.
+
+============================================================
+5. VERIFY MIGRATION ACTUALLY RAN
+============================================================
+
+Sprint 2.3.3 added intelligence snapshot tables.
+
+Production startup uses:
+
+npx tsx script/migrate.ts && npm run start
+
+Confirm script/migrate.ts OR server startup migrations actually create the two intelligence tables in the production DB.
+
+Important:
+
+The earlier release validation said these tables were covered by server/index.ts startup migrations.
+
+Verify that code path actually executes in production.
+
+Do not assume.
+
+============================================================
+6. ADD READ-ONLY DIAGNOSTIC ENDPOINT
+============================================================
+
+Add admin-only:
+
+GET /api/admin/intelligence/diagnostics
+
+Return:
+
+{
+  ranking: {
+    exists,
+    generatedAt,
+    rankedSymbolCount
+  },
+
+  sectorSnapshots: {
+    tableExists,
+    rowCount,
+    latestGeneratedAt,
+    readSuccess,
+    error
+  },
+
+  themeSnapshots: {
+    tableExists,
+    rowCount,
+    latestGeneratedAt,
+    readSuccess,
+    error
+  },
+
+  classifications: {
+    rankedSymbols,
+    withSector,
+    withoutSector,
+    inTheme,
+    notInTheme
+  },
+
+  institutionalSignals: {
+    rowCount
+  },
+
+  briefing: {
+    canBuild,
+    failureStage
+  }
+}
+
+Admin-only.
+Read-only.
+No mutations.
+
+Do not expose credentials, SQL connection strings, or stack traces.
+
+============================================================
+7. MAKE BRIEFING EMPTY-SAFE
+============================================================
+
+The endpoint must distinguish:
+
+A. infrastructure/query failure
+→ HTTP 500
+
+B. valid system with no snapshots yet
+→ HTTP 200
+{
+  hasData: false,
+  ...
+}
+
+C. valid snapshots
+→ HTTP 200
+{
+  hasData: true,
+  ...
+}
+
+Do not convert genuine DB failures into hasData:false.
+
+Do not throw merely because snapshot arrays are empty.
+
+============================================================
+8. VERIFY INTELLIGENCE PRECOMPUTATION
+============================================================
+
+Once reads work, verify:
+
+runIntelligencePrecomputation()
+
+is actually invoked after the production ranking cycle.
+
+Report:
+
+last ranking timestamp
+last intelligence snapshot timestamp
+
+If no snapshots exist:
+
+run one safe admin rebuild or add:
+
+POST /api/admin/intelligence/rebuild
+
+Admin-only.
+
+It should:
+
+- use latest ranking
+- rebuild sector/theme snapshots
+- not run the scanner
+- be idempotent
+- return counts
+
+Only add if operationally useful.
+
+============================================================
+9. PRODUCTION TARGET
+============================================================
+
+After fix:
+
+GET /api/intelligence/briefing
+
+must return HTTP 200.
+
+If snapshots do not exist yet:
+
+{
+  "hasData": false,
+  ...
+}
+
+If snapshots are built:
+
+{
+  "hasData": true,
+  "regime": ...,
+  "marketHealth": ...,
+  "leadingThemes": [...],
+  "leadingSectors": [...],
+  "institutionalHighlights": ...
+}
+
+Never:
+
+{
+  "error":"Failed to load intelligence briefing"
+}
+
+unless there is a genuine infrastructure failure.
+
+============================================================
+10. TESTS
+============================================================
+
+Add regression tests for:
+
+snapshot table missing
+empty snapshot tables
+sector snapshot only
+theme snapshot only
+both populated
+malformed JSONB metrics
+first snapshot/no previous snapshot
+buildDashboardContracts empty input
+briefing success
+briefing hasData:false
+briefing infrastructure failure
+diagnostics endpoint
+route permissions
+
+Run:
+
+intelligence tests
+server tests
+full application tests
+npm run build
+
+Zero new TypeScript errors in changed files.
+
+============================================================
+11. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact production exception
+2. Exact failing stage
+3. Production table existence
+4. Production snapshot row counts
+5. Migration status
+6. SQL/query issue found
+7. Root cause
+8. Files changed
+9. Diagnostics endpoint
+10. Briefing response before
+11. Briefing response after
+12. Whether rebuild was required
+13. Sector classification coverage
+14. Theme coverage
+15. Institutional signal count
+16. Tests
+17. npm run build
+18. Production UAT commands
+19. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

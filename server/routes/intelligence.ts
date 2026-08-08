@@ -10,7 +10,9 @@
 // All responses read from precomputed snapshots.
 // Responses include data quality / coverage fields for transparency.
 
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, RequestHandler } from "express";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
 import {
   getLatestSectorSnapshots,
   getLatestSectorDetail,
@@ -20,6 +22,7 @@ import {
 } from "../services/intelligence-snapshot-store";
 import { getAllThemes, getTheme } from "../config/theme-registry";
 import { getLatestRanking } from "../services/opportunity-ranking-engine";
+import { runIntelligencePrecomputation } from "../services/intelligence-orchestrator";
 
 // ---------------------------------------------------------------------------
 // Dashboard consumer contract (compact, for future dashboard wiring)
@@ -56,17 +59,23 @@ function buildDashboardContracts(
 // Route registration
 // ---------------------------------------------------------------------------
 
-export function registerIntelligenceRoutes(app: Express): void {
+export function registerIntelligenceRoutes(
+  app: Express,
+  isAuthenticated?: RequestHandler,
+  isAdmin?: RequestHandler,
+): void {
 
   // ── GET /api/intelligence/briefing ────────────────────────────────────────
   // Daily command-center summary: regime, market health, leading themes/sectors,
   // most improved stocks, institutional highlights.
   app.get("/api/intelligence/briefing", async (_req: Request, res: Response) => {
+    let phase = "init";
     try {
-      const [sectors, themes] = await Promise.all([
-        getLatestSectorSnapshots(),
-        getLatestThemeSnapshots(),
-      ]);
+      phase = "sector_snapshots";
+      const sectors = await getLatestSectorSnapshots();
+      phase = "theme_snapshots";
+      const themes  = await getLatestThemeSnapshots();
+      phase = "build_response";
 
       const hasData = sectors.length > 0 || themes.length > 0;
 
@@ -182,7 +191,14 @@ export function registerIntelligenceRoutes(app: Express): void {
         },
       });
     } catch (err: any) {
-      console.error("[intelligence] briefing error:", err?.message);
+      console.error("[intelligence] briefing_failed", JSON.stringify({
+        event:        "intelligence_briefing_failed",
+        phase,
+        errorName:    err?.name    ?? "UnknownError",
+        errorMessage: err?.message ?? String(err),
+        errorCode:    err?.code    ?? null,
+        stack:        err?.stack?.split("\n").slice(0, 6).join(" | ") ?? null,
+      }));
       res.status(500).json({ error: "Failed to load intelligence briefing" });
     }
   });
@@ -326,4 +342,156 @@ export function registerIntelligenceRoutes(app: Express): void {
       res.status(500).json({ error: "Failed to load theme history" });
     }
   });
+
+  // ── GET /api/admin/intelligence/diagnostics ───────────────────────────────
+  // Admin-only read-only diagnostic endpoint. Returns table existence, row counts,
+  // ranking state, classification coverage, and briefing build feasibility.
+  // Never exposes stack traces, connection strings, or internal credentials.
+  if (isAuthenticated && isAdmin) {
+    app.get(
+      "/api/admin/intelligence/diagnostics",
+      isAuthenticated,
+      isAdmin,
+      async (_req: Request, res: Response) => {
+        const diag: Record<string, unknown> = {};
+
+        // ── Ranking ──────────────────────────────────────────────────────────
+        const ranking = getLatestRanking();
+        diag.ranking = {
+          exists:           ranking !== null,
+          generatedAt:      ranking?.generatedAt ?? null,
+          rankedSymbolCount: ranking
+            ? [
+                ...(ranking.topGrowth   ?? []),
+                ...(ranking.topIncome   ?? []),
+                ...(ranking.watchlist   ?? []),
+                ...(ranking.approaching ?? []),
+              ].length
+            : 0,
+        };
+
+        // ── Sector snapshots ─────────────────────────────────────────────────
+        try {
+          const sectorCheck = await db.execute<{ exists: boolean }>(sql`
+            SELECT EXISTS (
+              SELECT 1 FROM information_schema.tables
+              WHERE table_name = 'sector_intelligence_snapshots'
+            ) AS exists
+          `);
+          const tableExists = sectorCheck.rows[0]?.exists ?? false;
+
+          if (tableExists) {
+            const cnt = await db.execute<{ count: string; latest: string | null }>(sql`
+              SELECT COUNT(*)::text AS count,
+                     MAX(generated_at)::text AS latest
+              FROM sector_intelligence_snapshots
+            `);
+            diag.sectorSnapshots = {
+              tableExists:      true,
+              rowCount:         parseInt(cnt.rows[0]?.count ?? "0", 10),
+              latestGeneratedAt: cnt.rows[0]?.latest ?? null,
+              readSuccess:      true,
+              error:            null,
+            };
+          } else {
+            diag.sectorSnapshots = { tableExists: false, rowCount: 0, latestGeneratedAt: null, readSuccess: false, error: "table_missing" };
+          }
+        } catch (e: any) {
+          diag.sectorSnapshots = { tableExists: null, rowCount: 0, latestGeneratedAt: null, readSuccess: false, error: e?.message ?? "unknown" };
+        }
+
+        // ── Theme snapshots ──────────────────────────────────────────────────
+        try {
+          const themeCheck = await db.execute<{ exists: boolean }>(sql`
+            SELECT EXISTS (
+              SELECT 1 FROM information_schema.tables
+              WHERE table_name = 'theme_intelligence_snapshots'
+            ) AS exists
+          `);
+          const tableExists = themeCheck.rows[0]?.exists ?? false;
+
+          if (tableExists) {
+            const cnt = await db.execute<{ count: string; latest: string | null }>(sql`
+              SELECT COUNT(*)::text AS count,
+                     MAX(generated_at)::text AS latest
+              FROM theme_intelligence_snapshots
+            `);
+            diag.themeSnapshots = {
+              tableExists:      true,
+              rowCount:         parseInt(cnt.rows[0]?.count ?? "0", 10),
+              latestGeneratedAt: cnt.rows[0]?.latest ?? null,
+              readSuccess:      true,
+              error:            null,
+            };
+          } else {
+            diag.themeSnapshots = { tableExists: false, rowCount: 0, latestGeneratedAt: null, readSuccess: false, error: "table_missing" };
+          }
+        } catch (e: any) {
+          diag.themeSnapshots = { tableExists: null, rowCount: 0, latestGeneratedAt: null, readSuccess: false, error: e?.message ?? "unknown" };
+        }
+
+        // ── Institutional signals ────────────────────────────────────────────
+        try {
+          const sigCount = await db.execute<{ count: string }>(sql`
+            SELECT COUNT(*)::text AS count FROM institutional_symbol_signals
+          `);
+          diag.institutionalSignals = { rowCount: parseInt(sigCount.rows[0]?.count ?? "0", 10) };
+        } catch {
+          diag.institutionalSignals = { rowCount: null };
+        }
+
+        // ── Briefing build feasibility ────────────────────────────────────────
+        const sSec = diag.sectorSnapshots as any;
+        const sTh  = diag.themeSnapshots  as any;
+        const canBuild = (sSec?.readSuccess || sTh?.readSuccess);
+        const failureStage =
+          !sSec?.tableExists ? "sector_table_missing" :
+          !sTh?.tableExists  ? "theme_table_missing"  :
+          !sSec?.readSuccess ? "sector_read_failed"   :
+          !sTh?.readSuccess  ? "theme_read_failed"    :
+          null;
+
+        diag.briefing = { canBuild, failureStage };
+
+        res.json(diag);
+      },
+    );
+
+    // ── POST /api/admin/intelligence/rebuild ────────────────────────────────
+    // Admin-only. Rebuilds sector and theme intelligence snapshots from the
+    // latest in-memory ranking. Does NOT re-run the scanner. Idempotent.
+    app.post(
+      "/api/admin/intelligence/rebuild",
+      isAuthenticated,
+      isAdmin,
+      async (_req: Request, res: Response) => {
+        const ranking = getLatestRanking();
+        if (!ranking) {
+          return res.status(409).json({
+            error: "No ranking available",
+            hint:  "Intelligence snapshots require a completed ranking cycle first.",
+          });
+        }
+
+        try {
+          await runIntelligencePrecomputation();
+
+          const [sectors, themes] = await Promise.all([
+            getLatestSectorSnapshots(),
+            getLatestThemeSnapshots(),
+          ]);
+
+          res.json({
+            ok:           true,
+            sectorCount:  sectors.length,
+            themeCount:   themes.length,
+            generatedAt:  themes[0]?.generatedAt ?? sectors[0]?.generatedAt ?? null,
+          });
+        } catch (err: any) {
+          console.error("[intelligence] admin rebuild failed:", err?.message);
+          res.status(500).json({ error: "Intelligence rebuild failed", detail: err?.message });
+        }
+      },
+    );
+  }
 }

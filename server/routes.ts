@@ -242,7 +242,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // must be registered before the dynamic /api/institutional/:symbol route.
   registerInstitutionalFundsRoutes(app, isAuthenticated);
   registerInstitutionalRoute(app, isAuthenticated); // dynamic :symbol — always last
-  registerIntelligenceRoutes(app);
+  registerIntelligenceRoutes(app, isAuthenticated, isAdmin);
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;
     const user = await authStorage.getUser(req.session.userId);

@@ -13,6 +13,18 @@ import {
   sectorIntelligenceSnapshots,
   themeIntelligenceSnapshots,
 } from "../../shared/schema";
+
+// ---------------------------------------------------------------------------
+// Date normalization helper
+// ---------------------------------------------------------------------------
+// The raw db.execute() path returns PG TIMESTAMP columns as Date objects in dev
+// but as ISO strings in some production driver configurations. This helper
+// handles both so callers never call .toISOString() on a string.
+function toIso(v: Date | string | null | undefined): string {
+  if (!v) return new Date().toISOString();
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+}
 import type {
   SectorIntelligence,
   SectorSnapshot,
@@ -105,7 +117,7 @@ export async function getLatestSectorSnapshots(): Promise<StoredSectorSummary[]>
     sector:      r.sector,
     score:       r.score,
     label:       r.label as IntelligenceLabel,
-    generatedAt: r.generated_at.toISOString(),
+    generatedAt: toIso(r.generated_at),
     metrics:     (r.metrics ?? {}) as Record<string, unknown>,
     topSymbols:  (r.top_symbols ?? []) as unknown[],
     changes:     (r.changes ?? {}) as Record<string, unknown>,
@@ -139,7 +151,7 @@ export async function getLatestSectorDetail(sector: string): Promise<StoredSecto
     sector:      r.sector,
     score:       r.score,
     label:       r.label as IntelligenceLabel,
-    generatedAt: r.generated_at.toISOString(),
+    generatedAt: toIso(r.generated_at),
     metrics:     (r.metrics ?? {}) as Record<string, unknown>,
     topSymbols:  (r.top_symbols ?? []) as unknown[],
     changes:     (r.changes ?? {}) as Record<string, unknown>,
@@ -183,7 +195,7 @@ export async function getLatestThemeSnapshots(): Promise<StoredThemeSummary[]> {
     themeName:   r.theme_name,
     score:       r.score,
     label:       r.label as IntelligenceLabel,
-    generatedAt: r.generated_at.toISOString(),
+    generatedAt: toIso(r.generated_at),
     metrics:     (r.metrics ?? {}) as Record<string, unknown>,
     topSymbols:  (r.top_symbols ?? []) as unknown[],
     changes:     (r.changes ?? {}) as Record<string, unknown>,
@@ -219,7 +231,7 @@ export async function getLatestThemeDetail(themeId: string): Promise<StoredTheme
     themeName:   r.theme_name,
     score:       r.score,
     label:       r.label as IntelligenceLabel,
-    generatedAt: r.generated_at.toISOString(),
+    generatedAt: toIso(r.generated_at),
     metrics:     (r.metrics ?? {}) as Record<string, unknown>,
     topSymbols:  (r.top_symbols ?? []) as unknown[],
     changes:     (r.changes ?? {}) as Record<string, unknown>,
@@ -254,7 +266,7 @@ export async function getThemeHistory(themeId: string, limit = 12): Promise<Stor
     themeName:   r.theme_name,
     score:       r.score,
     label:       r.label as IntelligenceLabel,
-    generatedAt: r.generated_at.toISOString(),
+    generatedAt: toIso(r.generated_at),
     metrics:     (r.metrics ?? {}) as Record<string, unknown>,
     topSymbols:  (r.top_symbols ?? []) as unknown[],
     changes:     (r.changes ?? {}) as Record<string, unknown>,

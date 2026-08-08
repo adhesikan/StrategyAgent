@@ -326,6 +326,55 @@ New enum: `portfolio_source_type` → `manual | csv | xlsx | broker`
 
 ---
 
+## Sprint 2.4.1A — Portfolio Upload Privacy & Compliance Disclosures
+
+**Date:** 2026-08-08
+**Type:** UX/compliance refinement only — zero backend, schema, extraction, or architecture changes.
+
+### Objective
+
+Add clear privacy and compliance disclosures to all portfolio upload flows before production deployment. Affects CSV, XLSX, Screenshot, and PDF import pages.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/pages/portfolio-import.tsx` | Added privacy disclosure, consent notice, review warning, confirm disclaimer + research disclaimer |
+| `client/src/pages/portfolio-import-document.tsx` | Added full privacy disclosure, AI extraction disclosure, file-retention notice, PII warning, consent notice, review warning, confirm disclaimer + research disclaimer |
+| `server/routes/__tests__/portfolio-privacy-disclosures.test.ts` | **NEW** — 48 pure structural disclosure tests |
+| `docs/operations/17-sprint-change-log.md` | This entry |
+| `docs/operations/16-api-and-uat-reference.md` | Disclosure UAT items added |
+| `docs/operations/12-security-and-devsecops.md` | User-facing disclosure inventory |
+
+### Disclosures Added
+
+| § | Location | Disclosure |
+|---|----------|-----------|
+| §1 | CSV/XLSX upload — before button | Privacy & Data Use: file used only to import holdings, not retained, stored after confirm, privacy link |
+| §1 | Image/PDF upload — before button | Full Privacy & Data Use: sensitive info, AI extraction, review required, data minimization |
+| §3 | Image/PDF upload — dedicated block | AI-assisted extraction: AI service for data extraction only, always verify values, "Learn how your data is handled" → /privacy |
+| §4 | Image/PDF upload — dedicated block | File retention: file discarded after extraction, only confirmed data stored |
+| §5 | Image/PDF upload — dedicated block | PII minimization: account numbers, addresses, tax IDs may be in statements; upload minimum necessary |
+| §6 | Adjacent to Upload/Extract button (both pages) | Consent notice: "By continuing, you acknowledge that the file will be processed as described above" |
+| §7 | CSV/XLSX only | Lighter disclosure, no AI mention (AI not used for spreadsheets) |
+| §8 | Preview step (both pages) | "Review carefully before importing. AI-extracted fields may be inaccurate." |
+| §9 | Above Confirm button (both pages) | Confirm acknowledgement + research disclaimer: not investment advice, no buy/sell/hold |
+| §10 | All upload pages | Privacy Policy link → /privacy (never to /admin or ops manual) |
+
+### Language Compliance
+
+- Research disclaimer: "does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance any security"
+- No guarantee of accuracy: "Automated extraction may contain errors" / "AI-extracted fields may be inaccurate"
+- No admin details exposed to users
+
+### Tests
+
+| File | Count |
+|------|-------|
+| `portfolio-privacy-disclosures.test.ts` | **48 new** |
+
+---
+
 ## Sprint 2.4.1 — Screenshot & PDF Portfolio Intake
 
 **Date:** 2026-08-08

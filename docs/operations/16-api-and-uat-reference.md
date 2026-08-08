@@ -645,3 +645,74 @@ open /portfolio/import
 - GPT-4o must be available (`OPENAI_API_KEY` set); otherwise 503
 - Confidence is AI self-reported; always review before confirming
 
+---
+
+## Sprint 2.4.1A — Portfolio Upload Privacy & Compliance Disclosures
+
+### Disclosure Inventory
+
+All portfolio upload flows display the following disclosures. UAT must verify each is visible to the user **before upload** and **before confirmation**.
+
+| § | Page | Test ID | Disclosure summary |
+|---|------|---------|-------------------|
+| §1 | CSV/XLSX upload | `csv-privacy-disclosure` | Privacy & Data Use — file processed for holdings import, not retained, stored after confirm, privacy link |
+| §1 | Image/PDF upload | `doc-privacy-disclosure` | Full Privacy & Data Use — sensitive info, AI use, review required, data minimization, privacy link |
+| §3 | Image/PDF upload | `ai-extraction-disclosure` | AI-assisted extraction — AI service for data only, always verify, "Learn how your data is handled" → /privacy |
+| §4 | Image/PDF upload | `file-retention-notice` | File discarded after extraction, only confirmed data stored |
+| §5 | Image/PDF upload | `pii-warning` | Account numbers/addresses/tax IDs may be present; upload minimum necessary |
+| §6 | CSV/XLSX — near button | `csv-consent-notice` | "By continuing, you acknowledge that the file will be processed as described above." |
+| §6 | Image/PDF — near button | `doc-consent-notice` | Same consent notice |
+| §8 | CSV/XLSX preview | `csv-review-warning` | "Review carefully before importing. Automated parsing may not detect every column correctly." |
+| §8 | Image/PDF preview | `doc-review-warning` | "Review carefully before importing. AI-extracted fields may be inaccurate." |
+| §9 | CSV/XLSX confirm | `csv-confirm-disclaimer` | Confirm acknowledgement + research disclaimer |
+| §9 | Image/PDF confirm | `doc-confirm-disclaimer` | Confirm acknowledgement + research disclaimer |
+| §10 | All pages | `privacy-link` | Links to `/privacy` — never to `/admin` or ops manual |
+
+### Research Disclaimer (§9)
+
+Appears immediately above the Confirm Import button on all import flows:
+
+> "Portfolio information is used for research and analytics purposes. VCP Trader AI does not make investment decisions for you, and imported portfolio data does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance any security."
+
+### UAT Checklist — Disclosures (Sprint 2.4.1A)
+
+**CSV/XLSX import (`/portfolio/import`):**
+```
+□ Before selecting a file: "Privacy & Data Use" disclosure visible (csv-privacy-disclosure)
+□ "not retained after processing" text visible
+□ Privacy Policy link present → navigates to /privacy
+□ "By continuing, you acknowledge..." notice visible near Upload button
+□ After upload: "Review carefully before importing" warning visible
+□ Above Confirm button: confirm acknowledgement visible
+□ Above Confirm button: research / not-investment-advice disclaimer visible
+□ No AI disclosure present (AI not used for CSV/XLSX)
+□ No admin links or operational details exposed
+```
+
+**Screenshot import (`/portfolio/import/document?type=image`):**
+```
+□ Privacy & Data Use disclosure visible (doc-privacy-disclosure)
+□ "sensitive financial information" mentioned
+□ "not retained after processing" visible
+□ Privacy Policy link present → /privacy
+□ AI-assisted extraction disclosure visible (ai-extraction-disclosure)
+□ "AI service solely to extract portfolio information" text visible
+□ "Learn how your data is handled" link → /privacy
+□ "original uploaded file is discarded after extraction" notice visible (file-retention-notice)
+□ PII warning visible (pii-warning): "account numbers, addresses, tax IDs"
+□ "Whenever possible, upload only the page or screenshot containing your holdings" visible
+□ "By continuing, you acknowledge..." consent notice visible near Extract button
+□ After extraction: "Review carefully before importing" warning visible
+□ "AI-extracted fields may be inaccurate" visible
+□ Above Confirm button: confirm acknowledgement visible
+□ Research disclaimer visible
+□ No guarantee of accuracy claimed
+□ No admin-only details exposed
+```
+
+**PDF import (`/portfolio/import/document?type=pdf`):**
+```
+□ Same as Screenshot import (same component, same disclosures)
+□ Extracting holdings from PDF… shown during processing
+```
+

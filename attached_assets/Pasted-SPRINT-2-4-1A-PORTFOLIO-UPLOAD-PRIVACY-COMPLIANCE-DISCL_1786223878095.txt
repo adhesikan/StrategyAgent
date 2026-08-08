@@ -1,0 +1,270 @@
+SPRINT 2.4.1A — PORTFOLIO UPLOAD PRIVACY & COMPLIANCE DISCLOSURES
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PURPOSE
+
+Sprint 2.4.1 implemented screenshot and PDF portfolio intake.
+
+Before production deployment, add clear privacy/compliance disclosures wherever a user uploads personal financial information.
+
+This is a UX/compliance refinement only.
+
+Do NOT change:
+- extraction logic
+- normalization
+- scoring
+- portfolio architecture
+- roadmap sequencing
+
+============================================================
+1. DISCLOSURE BEFORE UPLOAD
+============================================================
+
+On all portfolio upload flows:
+
+CSV
+XLSX
+Screenshot/Image
+PDF Statement
+
+show a concise disclosure BEFORE the file is submitted.
+
+Suggested wording:
+
+"Privacy & Data Use
+
+Your uploaded file may contain sensitive financial information.
+
+VCP Trader AI uses the file only to extract and normalize portfolio holdings for your account.
+
+Uploaded source files are not retained after processing unless explicitly stated.
+
+Extracted portfolio information is stored securely in your account after you confirm the import.
+
+Screenshots and PDFs may be processed using an AI extraction service to identify holdings.
+
+Please review all extracted information before confirming. Automated extraction may contain errors.
+
+Do not upload documents containing information that is not necessary for portfolio analysis."
+
+============================================================
+2. FINANCIAL RESEARCH DISCLAIMER
+============================================================
+
+Near Confirm Import add:
+
+"Portfolio information is used for research and analytics purposes.
+
+VCP Trader AI does not make investment decisions for you, and imported portfolio data does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance any security."
+
+Keep concise.
+
+Do not overuse disclaimers throughout the interface.
+
+============================================================
+3. AI EXTRACTION DISCLOSURE
+============================================================
+
+For Screenshot/PDF flows display:
+
+"AI-assisted extraction
+
+This document may be processed by an AI service solely to extract portfolio information.
+
+Always verify symbols, quantities, cost basis, and other values before confirming."
+
+Add link:
+
+Learn how your data is handled
+
+which opens a modal or existing privacy/help section.
+
+============================================================
+4. SOURCE FILE RETENTION DISCLOSURE
+============================================================
+
+Match actual implementation exactly.
+
+Current implementation:
+
+- files held in memory
+- files not written to disk
+- buffer discarded after extraction
+- raw source file not retained
+- normalized portfolio positions persisted only after confirmation
+
+Expose this in plain language:
+
+"Your original uploaded file is discarded after extraction. Only portfolio data you confirm is stored."
+
+Do not make this claim if implementation changes.
+
+============================================================
+5. PII WARNING
+============================================================
+
+Before screenshot/PDF upload:
+
+"Broker statements may contain account numbers, addresses, tax IDs, or other personal information.
+
+Whenever possible, upload only the page or screenshot containing your holdings."
+
+This supports data minimization.
+
+============================================================
+6. CONSENT / ACKNOWLEDGEMENT
+============================================================
+
+Do NOT create a burdensome legal checkbox unless required by existing legal policy.
+
+Instead use clear notice immediately adjacent to the Upload/Analyze button.
+
+Example:
+
+"By continuing, you acknowledge that the file will be processed as described above."
+
+If the application already has terms/privacy acceptance infrastructure, link to it rather than creating a new consent system.
+
+============================================================
+7. CSV / XLSX
+============================================================
+
+CSV/XLSX also contains user financial information.
+
+Add a lighter disclosure:
+
+"Your spreadsheet is processed to import your holdings. Review all positions before confirming."
+
+No AI disclosure unless AI is actually used.
+
+============================================================
+8. SCREENSHOT/PDF PREVIEW
+============================================================
+
+At preview:
+
+"Review carefully before importing"
+
+Show:
+
+AI-extracted fields may be inaccurate.
+
+Highlight:
+- low-confidence values
+- missing values
+- unknown symbols
+
+Do not permit the UI to imply that AI-extracted information has been verified.
+
+============================================================
+9. CONFIRM SCREEN
+============================================================
+
+Immediately above Confirm Import:
+
+"Confirm that these holdings accurately reflect the portfolio information you want stored in VCP Trader AI."
+
+Then show the research disclaimer.
+
+============================================================
+10. PRIVACY LINK
+============================================================
+
+Add contextual link to:
+
+Privacy Policy
+
+or existing privacy/security documentation intended for end users.
+
+Do NOT link end users to the admin Operations Manual.
+
+============================================================
+11. ADMIN OPERATIONS MANUAL
+============================================================
+
+Update:
+
+docs/operations/12-security-and-devsecops.md
+docs/operations/16-api-and-uat-reference.md
+docs/operations/17-sprint-change-log.md
+
+Document:
+
+- disclosures shown to users
+- AI extraction disclosure
+- file-retention statement
+- PII minimization guidance
+- confirmation workflow
+- data storage behavior
+
+Add a UAT item verifying the disclosures are visible BEFORE upload and BEFORE confirmation.
+
+============================================================
+12. TESTS
+============================================================
+
+Add tests verifying:
+
+CSV disclosure present
+XLSX disclosure present
+Screenshot AI disclosure present
+PDF AI disclosure present
+file-retention text matches actual implementation
+PII minimization warning present
+research/not-investment-advice language present
+preview verification warning present
+confirm acknowledgement present
+no claim that extraction is guaranteed accurate
+no admin-only operational details exposed
+
+Run:
+full application tests
+npm run build
+typecheck changed files
+
+============================================================
+13. ROADMAP ALIGNMENT
+============================================================
+
+This is Sprint 2.4.1A only.
+
+Do NOT implement:
+
+Broker Sync
+Portfolio History
+Portfolio Intelligence
+Recommendations
+Rebalancing
+Tax
+Goals
+Agents
+
+Next planned sprint remains:
+
+2.4.2 Broker Synchronization
+
+============================================================
+14. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Files changed
+2. Upload disclosures
+3. AI extraction disclosure
+4. File-retention disclosure
+5. PII guidance
+6. Confirm-import disclaimer
+7. Privacy links
+8. Tests
+9. Full test count
+10. npm run build
+11. Typecheck
+12. Operations Manual Updated
+13. Roadmap Alignment
+14. GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

@@ -604,24 +604,34 @@ describe("Client UI activation", () => {
     expect(docImportSource).toContain('role="progressbar"');
   });
 
-  it("portfolio-import-document.tsx never shows buy/sell/recommendation language", () => {
+  it("portfolio-import-document.tsx never shows actionable buy/sell signals or portfolio ratings", () => {
     const docImportSource = fs.readFileSync(
       path.join(__dirname, "../../../client/src/pages/portfolio-import-document.tsx"),
       "utf-8",
     );
     const lower = docImportSource.toLowerCase();
+    // Actionable trading signals must never appear
     expect(lower).not.toContain("buy signal");
     expect(lower).not.toContain("sell signal");
-    expect(lower).not.toContain("recommendation");
     expect(lower).not.toContain("portfolio rating");
+    // "recommendation" is permitted only inside the required compliance disclaimer
+    // ("does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance")
+    // Verify it appears only in the negating/disclaiming context, never as an affirmative
+    const recIdx = lower.indexOf("recommendation");
+    if (recIdx !== -1) {
+      const surroundingCtx = lower.slice(Math.max(0, recIdx - 60), recIdx + 60);
+      expect(surroundingCtx).toMatch(/does not constitute|not.*recommendation/);
+    }
   });
 
-  it("portfolio-import-document.tsx notes file is not stored after extraction", () => {
+  it("portfolio-import-document.tsx states file is not retained after extraction (Sprint 2.4.1A)", () => {
     const docImportSource = fs.readFileSync(
       path.join(__dirname, "../../../client/src/pages/portfolio-import-document.tsx"),
       "utf-8",
     );
-    expect(docImportSource).toContain("not stored");
+    // Sprint 2.4.1A replaced generic "not stored" with precise retention language
+    expect(docImportSource).toContain("not retained after processing");
+    expect(docImportSource).toContain("discarded after extraction");
   });
 
   it("portfolio-import-document.tsx reuses POST /api/portfolio/import/confirm", () => {

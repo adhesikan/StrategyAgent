@@ -12,7 +12,7 @@ import { useLocation, useSearch } from "wouter";
 import {
   Camera, FileText, Upload, CheckCircle2, AlertTriangle,
   ChevronLeft, ChevronRight, Trash2, RefreshCw, Info,
-  HelpCircle, Cpu, Shield, Eye, AlertCircle,
+  HelpCircle, Cpu, Shield, Eye, AlertCircle, Lock, ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -210,19 +210,87 @@ function StepUpload({
         <p className="text-sm text-muted-foreground mt-1">{cfg.subtitle}</p>
       </div>
 
-      {/* AI processing notice */}
+      {/* §1 — Privacy & Data Use disclosure (full version for image/PDF) */}
+      <div
+        className="rounded-lg border border-muted bg-muted/20 px-4 py-3 space-y-2 text-xs text-muted-foreground"
+        role="note"
+        aria-label="Privacy and data use disclosure"
+        data-testid="doc-privacy-disclosure"
+      >
+        <p className="font-medium text-foreground flex items-center gap-1.5">
+          <Shield className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
+          Privacy &amp; Data Use
+        </p>
+        <p>
+          Your uploaded file may contain sensitive financial information.
+          VCP Trader AI uses the file only to extract and normalize portfolio holdings for your account.
+        </p>
+        <p data-testid="file-retention-statement">
+          Uploaded source files are not retained after processing.
+          Extracted portfolio information is stored securely in your account after you confirm the import.
+        </p>
+        <p>
+          Please review all extracted information before confirming. Automated extraction may contain errors.
+        </p>
+        <p>
+          Do not upload documents containing information that is not necessary for portfolio analysis.
+        </p>
+        <a
+          href="/privacy"
+          className="inline-flex items-center gap-1 text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+          aria-label="Read the Privacy Policy"
+          data-testid="privacy-link"
+        >
+          Privacy Policy <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      </div>
+
+      {/* §3 — AI Extraction Disclosure */}
       <div
         className="flex items-start gap-2.5 rounded-lg border border-blue-500/20 bg-blue-500/8 px-4 py-3 text-sm"
         role="note"
+        data-testid="ai-extraction-disclosure"
       >
         <Cpu className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" aria-hidden="true" />
-        <div>
-          <p className="font-medium text-blue-700 dark:text-blue-400">AI-powered extraction</p>
-          <p className="text-muted-foreground text-xs mt-0.5">
-            Extraction accuracy varies. Always review detected holdings before confirming.
-            Your file is not stored after extraction.
+        <div className="space-y-1">
+          <p className="font-medium text-blue-700 dark:text-blue-400">AI-assisted extraction</p>
+          <p className="text-muted-foreground text-xs">
+            This document may be processed by an AI service solely to extract portfolio information.
+            Always verify symbols, quantities, cost basis, and other values before confirming.
           </p>
+          <a
+            href="/privacy"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+            aria-label="Learn how your data is handled"
+          >
+            Learn how your data is handled <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
         </div>
+      </div>
+
+      {/* §4 — File retention (explicit) */}
+      <div
+        className="flex items-center gap-2 text-xs text-muted-foreground rounded-md border border-green-500/20 bg-green-500/8 px-3 py-2"
+        data-testid="file-retention-notice"
+      >
+        <Lock className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
+        <span>
+          Your original uploaded file is discarded after extraction. Only portfolio data you confirm is stored.
+        </span>
+      </div>
+
+      {/* §5 — PII minimization warning */}
+      <div
+        className="flex items-start gap-2 text-xs rounded-md border border-amber-500/20 bg-amber-500/8 px-3 py-2"
+        role="note"
+        data-testid="pii-warning"
+      >
+        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+        <span className="text-muted-foreground">
+          <strong className="text-foreground">Data minimization: </strong>
+          Broker statements may contain account numbers, addresses, tax IDs, or other personal information.
+          Whenever possible, upload only the page or screenshot containing your holdings.
+        </span>
       </div>
 
       {/* Drop zone */}
@@ -280,11 +348,15 @@ function StepUpload({
             </li>
           ))}
         </ul>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1 border-t">
-          <Shield className="h-3 w-3 shrink-0" aria-hidden="true" />
-          <span>Your file is processed in memory only and is not stored.</span>
-        </div>
       </div>
+
+      {/* §6 — Consent notice adjacent to Extract button */}
+      <p
+        className="text-xs text-muted-foreground text-center"
+        data-testid="doc-consent-notice"
+      >
+        By continuing, you acknowledge that the file will be processed as described above.
+      </p>
 
       {/* Actions */}
       <div className="flex gap-3">
@@ -658,6 +730,34 @@ function StepPreview({
             All existing positions in this portfolio will be replaced.
           </p>
         )}
+      </div>
+
+      {/* §8 — Preview verification warning */}
+      <div
+        className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-amber-500/20 bg-amber-500/8 px-3 py-2"
+        role="note"
+        data-testid="doc-review-warning"
+      >
+        <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>
+          <strong className="text-foreground">Review carefully before importing. </strong>
+          AI-extracted fields may be inaccurate. Verify all symbols, quantities, and cost values before confirming.
+          Extraction is not guaranteed to be accurate.
+        </span>
+      </div>
+
+      {/* §9 — Confirm acknowledgement + research disclaimer */}
+      <div
+        className="space-y-2 rounded-lg border border-muted bg-muted/10 px-4 py-3 text-xs text-muted-foreground"
+        data-testid="doc-confirm-disclaimer"
+      >
+        <p className="font-medium text-foreground">
+          Confirm that these holdings accurately reflect the portfolio information you want stored in VCP Trader AI.
+        </p>
+        <p data-testid="doc-research-disclaimer">
+          Portfolio information is used for research and analytics purposes.
+          VCP Trader AI does not make investment decisions for you, and imported portfolio data does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance any security.
+        </p>
       </div>
 
       <Button

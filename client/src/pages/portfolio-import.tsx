@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import {
   Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
   ChevronLeft, ChevronRight, Trash2, RefreshCw, Info,
-  Shield, Lock, HelpCircle, CheckCheck,
+  Shield, Lock, HelpCircle, CheckCheck, ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -177,6 +177,34 @@ function StepUpload({
         />
       </div>
 
+      {/* §1 — Privacy & Data Use disclosure (CSV/XLSX) */}
+      <div
+        className="rounded-lg border border-muted bg-muted/20 px-4 py-3 space-y-2 text-xs text-muted-foreground"
+        role="note"
+        aria-label="Privacy and data use disclosure"
+        data-testid="csv-privacy-disclosure"
+      >
+        <p className="font-medium text-foreground flex items-center gap-1.5">
+          <Shield className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
+          Privacy &amp; Data Use
+        </p>
+        <p>
+          Your spreadsheet is processed to import your holdings. Review all positions before confirming.
+        </p>
+        <p>
+          Your uploaded file is used only to extract and normalize portfolio holdings for your account.
+          Uploaded source files are not retained after processing.
+          Extracted portfolio information is stored securely in your account after you confirm the import.
+        </p>
+        <a
+          href="/privacy"
+          className="inline-flex items-center gap-1 text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+          aria-label="Read the Privacy Policy"
+        >
+          Privacy Policy <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      </div>
+
       {/* Supported files safety info — §6 */}
       <div
         className="rounded-xl border bg-muted/20 p-4 space-y-3"
@@ -212,6 +240,14 @@ function StepUpload({
         <p><strong>Cost Basis:</strong> Cost Basis, Total Cost, Book Value</p>
         <p className="text-muted-foreground/60 mt-2 italic">Unknown columns are ignored.</p>
       </div>
+
+      {/* §6 — Consent notice adjacent to upload button */}
+      <p
+        className="text-xs text-muted-foreground text-center"
+        data-testid="csv-consent-notice"
+      >
+        By continuing, you acknowledge that the file will be processed as described above.
+      </p>
 
       {/* Actions */}
       <div className="flex gap-3">
@@ -553,6 +589,30 @@ function StepPreview({
             All existing positions in this portfolio will be replaced.
           </p>
         )}
+      </div>
+
+      {/* §8 — Review-carefully notice */}
+      <div
+        className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-muted bg-muted/20 px-3 py-2"
+        role="note"
+        data-testid="csv-review-warning"
+      >
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>Review carefully before importing. Automated parsing may not detect every column correctly.</span>
+      </div>
+
+      {/* §9 — Confirm acknowledgement + research disclaimer */}
+      <div
+        className="space-y-2 rounded-lg border border-muted bg-muted/10 px-4 py-3 text-xs text-muted-foreground"
+        data-testid="csv-confirm-disclaimer"
+      >
+        <p className="font-medium text-foreground">
+          Confirm that these holdings accurately reflect the portfolio information you want stored in VCP Trader AI.
+        </p>
+        <p data-testid="research-disclaimer">
+          Portfolio information is used for research and analytics purposes.
+          VCP Trader AI does not make investment decisions for you, and imported portfolio data does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance any security.
+        </p>
       </div>
 
       <Button

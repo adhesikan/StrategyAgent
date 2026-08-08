@@ -12,6 +12,39 @@ See [02-environments-and-deployment.md](02-environments-and-deployment.md) for t
 
 ---
 
+## Portfolio Upload Disclosures — User-Facing (Sprint 2.4.1A)
+
+### What users see (disclosure inventory)
+
+All portfolio upload flows display mandatory privacy and compliance disclosures. No checkbox consent — inline notice adjacent to the upload button. Disclosures are rendered client-side from source; they are not served from a CMS or database.
+
+**CSV/XLSX flows:**
+- Privacy & Data Use notice (§1): file used only to import holdings, not retained, stored after confirm
+- Consent notice (§6): "By continuing, you acknowledge that the file will be processed as described above."
+- Preview warning (§8): "Review carefully before importing."
+- Confirm disclaimer (§9): acknowledgement + research / not-investment-advice
+
+**Screenshot / PDF flows:**
+- Full Privacy & Data Use notice (§1): sensitive financial info, AI extraction, review required, data minimization
+- AI Extraction disclosure (§3): AI service for data extraction only; always verify values
+- File retention notice (§4): file discarded after extraction; only confirmed data stored
+- PII minimization warning (§5): may contain account numbers, addresses, tax IDs; upload minimum
+- Consent notice (§6): same as CSV/XLSX
+- Preview warning (§8): "AI-extracted fields may be inaccurate"
+- Confirm disclaimer (§9): same as CSV/XLSX
+
+### Privacy link target
+
+All disclosures link to `/privacy` — the public-facing privacy page. No links to `/admin`, the operations manual, or DevSecOps documentation are exposed to end users.
+
+### Research disclaimer wording (canonical)
+
+> "Portfolio information is used for research and analytics purposes. VCP Trader AI does not make investment decisions for you, and imported portfolio data does not constitute investment advice or a recommendation to buy, sell, hold, or rebalance any security."
+
+This text must not be removed without legal review.
+
+---
+
 ## Portfolio Document Intake — Privacy & Security (Sprint 2.4.1)
 
 ### Upload Endpoints

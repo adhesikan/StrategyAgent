@@ -647,6 +647,246 @@ open /portfolio/import
 
 ---
 
+## Sprint 2.5.1 — Research Collections & Watchlists
+
+### New Routes (15)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/api/collections` | ✅ | List system + user collections with state |
+| POST | `/api/collections` | ✅ | Create user collection |
+| GET | `/api/collections/symbol/:symbol` | ✅ | Saved/followed/related collections for symbol |
+| GET | `/api/collections/:id` | ✅ | Collection detail with canonical opportunities |
+| PATCH | `/api/collections/:id` | ✅ | Rename / archive user collection |
+| DELETE | `/api/collections/:id` | ✅ | Delete user collection (cascades symbols/follows) |
+| POST | `/api/collections/:id/follow` | ✅ | Follow a collection |
+| DELETE | `/api/collections/:id/follow` | ✅ | Unfollow |
+| POST | `/api/collections/:id/favorite` | ✅ | Favorite |
+| DELETE | `/api/collections/:id/favorite` | ✅ | Unfavorite |
+| POST | `/api/collections/:id/pin` | ✅ | Pin |
+| DELETE | `/api/collections/:id/pin` | ✅ | Unpin |
+| POST | `/api/collections/:id/duplicate` | ✅ | Duplicate (creates new user collection) |
+| POST | `/api/collections/:id/symbols` | ✅ | Add symbol to user collection |
+| DELETE | `/api/collections/:id/symbols/:symbol` | ✅ | Remove symbol from user collection |
+
+---
+
+### GET /api/collections
+
+**Query params (all optional):**
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `type` | `system` \| `user` | Filter by collection type |
+| `followedOnly` | `true` \| `false` | Only followed collections |
+| `favoriteOnly` | `true` \| `false` | Only favorited collections |
+| `pinnedOnly` | `true` \| `false` | Only pinned collections |
+| `includeArchived` | `true` | Include archived (excluded by default) |
+| `search` | string | Text search across name/description |
+| `sortBy` | `name` \| `opportunityCount` \| `followCount` \| `createdAt` \| `updatedAt` | Sort field |
+| `sortDirection` | `asc` \| `desc` | Sort direction |
+
+**Response:**
+```json
+{
+  "collections": [
+    {
+      "id": "uuid",
+      "name": "AI Infrastructure",
+      "description": "...",
+      "collectionType": "system",
+      "systemKey": "ai-infrastructure",
+      "opportunityCount": 8,
+      "symbolCount": 0,
+      "isArchived": false,
+      "isFollowing": true,
+      "isFavorite": false,
+      "isPinned": false,
+      "followCount": 42,
+      "createdAt": "...",
+      "updatedAt": "..."
+    }
+  ],
+  "count": 27
+}
+```
+
+---
+
+### GET /api/collections/:id
+
+Returns full collection detail including canonical opportunities.
+
+```json
+{
+  "collection": {
+    "id": "uuid",
+    "name": "My AI Stocks",
+    "collectionType": "user",
+    "systemKey": null,
+    "opportunities": [ { ... CanonicalOpportunity ... } ],
+    "symbols": ["NVDA", "AMD", "AVGO"],
+    "opportunityCount": 3,
+    "symbolCount": 3,
+    ...
+  }
+}
+```
+
+System collections: `opportunities[]` is populated from Opportunity Intelligence Engine filter.  
+User collections: `opportunities[]` = canonical opportunities for symbols in `symbols[]`.
+
+---
+
+### GET /api/collections/symbol/:symbol
+
+Returns collection membership for a specific symbol. Used by opportunity pages to show "Saved Collections / Followed Collections / Related Collections".
+
+```json
+{
+  "symbol": "NVDA",
+  "savedCollections": [ { "collectionId": "...", "collectionName": "My AI Stocks", ... } ],
+  "followedCollections": [ { "collectionId": "...", "collectionName": "AI Infrastructure", ... } ],
+  "relatedCollections": [ { "collectionId": "...", "collectionName": "Semiconductors", ... } ],
+  "allMemberships": [ ... ]
+}
+```
+
+---
+
+### POST /api/collections
+
+Create a user collection.
+
+**Body:** `{ "name": "My Research", "description": "Optional" }`  
+**Success (201):** `{ "collection": { ... CollectionSummary ... } }`  
+**Error (400):** `{ "error": "name is required" }` or `{ "error": "Collection name must be 100 characters or fewer" }`
+
+---
+
+### PATCH /api/collections/:id
+
+Update name, description, or archived state. User collections only.
+
+**Body:** `{ "name": "New Name", "isArchived": true }`  
+**Success (200):** `{ "collection": { ... } }`  
+**Error (404):** `{ "error": "Collection not found or not owned by user" }`
+
+---
+
+### DELETE /api/collections/:id
+
+Delete a user collection. Cascades: removes all symbols, follows, favorites, pins.
+
+**Success (200):** `{ "success": true, "message": "Collection deleted" }`
+
+---
+
+### POST /api/collections/:id/follow
+
+**Response:** `{ "success": true, "following": true }`
+
+### DELETE /api/collections/:id/follow
+
+**Response:** `{ "success": true, "following": false }`
+
+### POST / DELETE /api/collections/:id/favorite, /pin
+
+Same pattern: `{ "success": true, "favorite": true/false }` or `{ "success": true, "pinned": true/false }`
+
+---
+
+### POST /api/collections/:id/symbols
+
+Add a symbol to a user collection.
+
+**Body:** `{ "symbol": "NVDA" }`  
+**Response:** `{ "success": true, "symbol": "NVDA", "alreadyExists": false }`
+
+### DELETE /api/collections/:id/symbols/:symbol
+
+**Response:** `{ "success": true, "symbol": "NVDA" }`
+
+---
+
+### Platform Health — Collections Card
+
+```json
+{
+  "status": "HEALTHY | DEGRADED | UNKNOWN",
+  "summary": "25 system, 3 user, 12 follows",
+  "details": {
+    "systemCollectionCount": 25,
+    "userCollectionCount": 3,
+    "totalFollows": 12,
+    "totalFavorites": 5,
+    "totalPins": 2,
+    "totalUserSymbols": 18,
+    "seedingComplete": true
+  }
+}
+```
+
+Status rules: `DEGRADED` if seeding not complete OR system collection count < 25; `HEALTHY` otherwise.
+
+---
+
+### UAT Checklist — Research Collections
+
+**System collections (first login):**
+```
+□ GET /api/collections → 25 system collections present
+□ "AI Infrastructure" collection visible with collectionType: "system"
+□ "Growth" collection visible with collectionType: "system"
+□ "Market Leaders" collection visible
+□ GET /api/collections?type=system → only system collections returned
+□ GET /api/collections/:id for AI Infrastructure → opportunities[] populated (when scanner has run)
+□ AI Infrastructure opportunities all have "AI Infrastructure" in themes[]
+□ Growth collection opportunities all have opportunityType: "growth"
+□ Market Leaders sorted by researchScore desc, max 20
+```
+
+**Follow / Favorite / Pin:**
+```
+□ POST /api/collections/:id/follow → isFollowing: true
+□ DELETE /api/collections/:id/follow → isFollowing: false
+□ GET /api/collections?followedOnly=true → only followed collections returned
+□ POST /api/collections/:id/favorite → isFavorite: true
+□ POST /api/collections/:id/pin → isPinned: true
+□ GET /api/collections?pinnedOnly=true → only pinned collections
+```
+
+**User collections:**
+```
+□ POST /api/collections { name: "My AI Stocks" } → 201, collectionType: "user"
+□ GET /api/collections → new collection appears in list
+□ POST /api/collections/:id/symbols { symbol: "NVDA" } → success: true
+□ GET /api/collections/:id → symbols: ["NVDA"], opportunityCount: 1 (if NVDA ranked)
+□ PATCH /api/collections/:id { name: "Renamed" } → name updated
+□ POST /api/collections/:id/duplicate → new collection with "(Copy)" suffix, same symbols
+□ PATCH /api/collections/:id { isArchived: true } → collection archived
+□ GET /api/collections (default) → archived collection excluded
+□ GET /api/collections?includeArchived=true → archived included
+□ DELETE /api/collections/:id → 200 success; collection gone from list
+```
+
+**Symbol membership:**
+```
+□ GET /api/collections/symbol/NVDA → savedCollections / followedCollections / relatedCollections
+□ savedCollections shows user collections where NVDA was added
+□ relatedCollections shows system collections where NVDA appears (AI Infrastructure, Semiconductors)
+```
+
+**Access control:**
+```
+□ Unauthenticated request → 401
+□ PATCH system collection → 404 (system = no userId match)
+□ DELETE system collection → 404
+□ GET another user's user collection → 404
+```
+
+---
+
 ## Sprint 2.5.0 — Opportunity Intelligence Engine
 
 ### New Routes

@@ -16,6 +16,7 @@ import { getLatestRanking } from "../services/opportunity-ranking-engine";
 import { getAllJobStatuses } from "../services/job-status-store";
 import { getBrokerSyncHealth } from "../services/broker-sync-service";
 import { getOpportunityIntelligenceHealth } from "../services/opportunity-intelligence-service";
+import { getCollectionHealth, isSeedComplete } from "../services/collection-service";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 
 // ---------------------------------------------------------------------------
@@ -501,6 +502,31 @@ function checkApplication(): HealthCard {
 // Aggregate health
 // ---------------------------------------------------------------------------
 
+async function checkCollections(): Promise<HealthCard> {
+  const snap = await getCollectionHealth().catch(() => null);
+  if (!snap) {
+    return { status: "UNKNOWN", summary: "Collection health unavailable", details: {} };
+  }
+  const status: HealthStatus = !snap.seedingComplete             ? "DEGRADED"
+    : snap.systemCollectionCount < 25                            ? "DEGRADED"
+    : "HEALTHY";
+  return {
+    status,
+    summary: snap.seedingComplete
+      ? `${snap.systemCollectionCount} system, ${snap.userCollectionCount} user, ${snap.totalFollows} follows`
+      : "System collections not yet seeded",
+    details: {
+      systemCollectionCount: snap.systemCollectionCount,
+      userCollectionCount:   snap.userCollectionCount,
+      totalFollows:          snap.totalFollows,
+      totalFavorites:        snap.totalFavorites,
+      totalPins:             snap.totalPins,
+      totalUserSymbols:      snap.totalUserSymbols,
+      seedingComplete:       snap.seedingComplete,
+    },
+  };
+}
+
 function checkOpportunityIntelligence(): HealthCard {
   const snap = getOpportunityIntelligenceHealth();
   const status: HealthStatus = !snap.hasSnapshot ? "UNKNOWN"
@@ -567,6 +593,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
+  const collections = await checkCollections();
   const jobs       = getAllJobStatuses();
 
   return {
@@ -582,6 +609,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     brokers,
     brokerSync,
     opportunityIntelligence: oppIntel,
+    collections,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

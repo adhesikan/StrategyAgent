@@ -253,6 +253,12 @@ export default function AdminPlatformHealthPage() {
                   { label: "Opportunity Intelligence Runbook", docId: "11-troubleshooting-runbook" },
                 ]}
               />
+              <SectionCard title="Research Collections" icon={Database} card={h.collections as HealthCard}
+                manualLinks={[
+                  { label: "Collections API/UAT",    docId: "16-api-and-uat-reference" },
+                  { label: "Collections Runbook",    docId: "11-troubleshooting-runbook" },
+                ]}
+              />
               <SectionCard title="Broker Sync"   icon={Activity}   card={h.brokerSync  as HealthCard}
                 manualLinks={[
                   { label: "Broker Sync Runbook",  docId: "11-troubleshooting-runbook" },

@@ -661,3 +661,55 @@ grep -c "package-firewall.replit.local" package-lock.json
 **Cause:** Snapshot exists but contains zero opportunities.
 
 **Fix:** Check the scanner and ranking engine. Verify `GET /api/opportunities/latest` has a valid snapshot with qualified candidates.
+
+---
+
+## RESEARCH COLLECTIONS (Sprint 2.5.1)
+
+### COLL_SEED_NOT_COMPLETE
+
+**Symptom:** Platform Health → Research Collections card shows `DEGRADED` with "System collections not yet seeded". `systemCollectionCount < 25`.
+
+**Cause:** `seedSystemCollections()` has not run yet or failed silently.
+
+**Fix:** Check server startup logs for `collection_seed_started` and `collection_seed_complete` events. If absent, restart the application — seeding runs automatically on startup. Check for DB connectivity issues if seeding fails repeatedly.
+
+---
+
+### COLL_NOT_FOUND
+
+**Symptom:** `GET /api/collections/:id` returns 404.
+
+**Cause:** Collection ID does not exist, or user is attempting to access another user's private collection.
+
+**Fix:** Verify the collection ID via `GET /api/collections`. User collections are only visible to their owner. System collections are visible to all authenticated users.
+
+---
+
+### COLL_SYMBOL_DUPLICATE
+
+**Symptom:** `POST /api/collections/:id/symbols` returns `{ alreadyExists: true }`.
+
+**Cause:** The symbol is already in the collection. Expected behavior — not an error.
+
+**Fix:** No action needed. The response includes `alreadyExists: true` as an informational signal for the client.
+
+---
+
+### COLL_SYSTEM_EMPTY
+
+**Symptom:** `GET /api/collections/:id` for a system collection returns `opportunityCount: 0` and empty `opportunities[]`.
+
+**Cause:** The Opportunity Intelligence Engine has no snapshot yet, OR no ranked candidates match the system collection's filter (e.g., no energy sector stocks currently ranked).
+
+**Fix:** Check Platform Health → Opportunity Intelligence card. If no snapshot is available, wait for the next scanner cycle. If snapshot exists but the collection is empty, the current ranked candidates simply don't match the collection's filter criteria.
+
+---
+
+### COLL_ACCESS_DENIED
+
+**Symptom:** `PATCH /api/collections/:id` or `DELETE /api/collections/:id` returns 404 for a collection the user owns.
+
+**Cause:** System collections cannot be updated or deleted (they are read-only). Only user collections support mutations.
+
+**Fix:** Only apply PATCH/DELETE to user-created collections (those with `collectionType: "user"`).

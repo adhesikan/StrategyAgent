@@ -559,6 +559,17 @@ async function restoreBrokerConnections() {
   );
   log("Alert engine started");
 
+  // Research Collections — seed system collections (idempotent, non-blocking).
+  try {
+    const { seedSystemCollections } = await import("./services/collection-service");
+    seedSystemCollections().catch((err: any) =>
+      log(`Collection seeding error (non-fatal): ${err?.message}`, "collection-seed"),
+    );
+    log("Research collection seeding scheduled");
+  } catch (err: any) {
+    log(`Collection seed import error (non-fatal): ${err?.message}`, "collection-seed");
+  }
+
   // Opportunity Engine — pre-computes stock opportunities in the background.
   // Runs once at startup (non-blocking) then every 4 hours.
   // Dashboard reads from the cached snapshot via GET /api/opportunities/latest.

@@ -4,6 +4,75 @@
 
 ---
 
+## Sprint 2.5.1 — Personalized Research Collections & Watchlists (2026-08-08)
+
+**Purpose:** Create the personalization layer for VCP Trader AI. Research Collections allow users to follow system-curated collections and build their own custom collections of research candidates, consuming the Opportunity Intelligence Engine from Sprint 2.5.0.
+
+### Design Goals
+- Every user receives value immediately — 25 system collections available on first login.
+- No broker, portfolio, or uploaded files required.
+- Collections store only symbol references — never duplicate opportunity data.
+- Compliance-first: all language uses "research candidate" vocabulary.
+
+### Key Files
+
+| Type | Path |
+|------|------|
+| Types | `shared/collection-types.ts` |
+| Registry | `server/config/collection-registry.ts` |
+| Service | `server/services/collection-service.ts` |
+| Routes | `server/routes/research-collections.ts` |
+| Tests | `server/routes/__tests__/research-collections.test.ts` |
+
+### New DB Tables (5)
+`research_collections`, `collection_symbols`, `user_collection_follows`, `user_collection_favorites`, `user_collection_pins`
+
+### System Collections (25)
+**Theme:** AI Infrastructure, Semiconductors, Memory, Networking, Cybersecurity, Cloud  
+**Sector:** Energy, Healthcare, Financials, Consumer, Industrials  
+**Strategy:** Dividend, Income, Growth, Momentum, Value, ETF, Long-Term Investments, Swing Trading, Covered Calls, Cash Secured Puts  
+**Dynamic:** Market Leaders, Recently Improved, Institutional Activity, New Opportunities
+
+### New Routes (15)
+
+| Method | Path |
+|--------|------|
+| GET | `/api/collections` |
+| POST | `/api/collections` |
+| GET | `/api/collections/symbol/:symbol` |
+| GET | `/api/collections/:id` |
+| PATCH | `/api/collections/:id` |
+| DELETE | `/api/collections/:id` |
+| POST | `/api/collections/:id/follow` |
+| DELETE | `/api/collections/:id/follow` |
+| POST | `/api/collections/:id/favorite` |
+| DELETE | `/api/collections/:id/favorite` |
+| POST | `/api/collections/:id/pin` |
+| DELETE | `/api/collections/:id/pin` |
+| POST | `/api/collections/:id/duplicate` |
+| POST | `/api/collections/:id/symbols` |
+| DELETE | `/api/collections/:id/symbols/:symbol` |
+
+### Architecture
+Collections consume `getOpportunityIntelligence()` from Sprint 2.5.0 — called ONCE per request, filtered locally (no N+1 DB queries). System collections are filter-driven (no stored symbol lists). User collections store explicit symbol references in `collection_symbols`.
+
+### Startup
+`seedSystemCollections()` runs fire-and-forget on startup to ensure all 25 system collections exist in DB. Idempotent — safe to call on every restart.
+
+### Platform Health
+`checkCollections()` added. `collections` key in `buildPlatformHealth()`. Reports system/user count, follows, favorites, pins, seeding status.
+
+### Compliance
+All routes, services, registry descriptions use "research candidate" language. Zero uses of "recommendation", "buy", "sell", "target price" as values/keys.
+
+### Tests
+120+ structural assertions covering registry (25 system collections), filter spec helpers, schema tables, shared types, service functions (18 exports), access control, routes (15), registration, platform health, architecture, compliance, roadmap discipline.
+
+### Deferred (per roadmap)
+Portfolio Intelligence, Alerts, AI Conversations, automated collection population (user-side rule-based filtering), collection sharing between users.
+
+---
+
 ## Sprint 2.5.0 — Opportunity Intelligence Engine (2026-08-08)
 
 **Purpose:** Build a reusable Opportunity Intelligence Engine that produces a normalized `CanonicalOpportunity` model consumed by Dashboard, Research, Ask AI, Intelligence, and future Portfolio/Watchlist/Alert features. Eliminates logic duplication across consumer pages.

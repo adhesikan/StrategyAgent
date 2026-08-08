@@ -3354,3 +3354,96 @@ export type InsertPortfolioPosition = typeof portfolioPositions.$inferInsert;
 export const insertPortfolioPositionSchema = createInsertSchema(portfolioPositions).omit({
   id: true, importedAt: true, updatedAt: true,
 });
+
+// =============================================================================
+// Research Collections — Sprint 2.5.1
+// =============================================================================
+
+export const collectionTypeEnum = pgEnum("collection_type", ["system", "user"]);
+
+// ---------------------------------------------------------------------------
+// research_collections — collection definitions
+// ---------------------------------------------------------------------------
+
+export const researchCollections = pgTable("research_collections", {
+  id:             varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** null for system collections */
+  userId:         varchar("user_id"),
+  name:           text("name").notNull(),
+  description:    text("description"),
+  collectionType: collectionTypeEnum("collection_type").notNull(),
+  /** Stable key for system collections (e.g. "ai-infrastructure", "growth") */
+  systemKey:      text("system_key"),
+  isArchived:     boolean("is_archived").notNull().default(false),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxUserId:    index("idx_rc_user_id").on(t.userId),
+  idxSystemKey: index("idx_rc_system_key").on(t.systemKey),
+}));
+
+export type ResearchCollection = typeof researchCollections.$inferSelect;
+export type InsertResearchCollection = typeof researchCollections.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// collection_symbols — symbol references for user collections
+// ---------------------------------------------------------------------------
+
+export const collectionSymbols = pgTable("collection_symbols", {
+  id:           varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  collectionId: varchar("collection_id").notNull(),
+  symbol:       text("symbol").notNull(),
+  addedAt:      timestamp("added_at").notNull().defaultNow(),
+  addedBy:      varchar("added_by"),
+}, (t) => ({
+  idxCollectionId: index("idx_cs_collection_id").on(t.collectionId),
+  idxSymbol:       index("idx_cs_symbol").on(t.symbol),
+  uniqCollSym:     uniqueIndex("idx_cs_collection_symbol").on(t.collectionId, t.symbol),
+}));
+
+export type CollectionSymbol = typeof collectionSymbols.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// user_collection_follows — follow state (per-user, per-collection)
+// ---------------------------------------------------------------------------
+
+export const userCollectionFollows = pgTable("user_collection_follows", {
+  userId:       varchar("user_id").notNull(),
+  collectionId: varchar("collection_id").notNull(),
+  followedAt:   timestamp("followed_at").notNull().defaultNow(),
+}, (t) => ({
+  pk:        uniqueIndex("idx_ucf_user_coll").on(t.userId, t.collectionId),
+  idxUser:   index("idx_ucf_user_id").on(t.userId),
+}));
+
+export type UserCollectionFollow = typeof userCollectionFollows.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// user_collection_favorites — favorite state (per-user, per-collection)
+// ---------------------------------------------------------------------------
+
+export const userCollectionFavorites = pgTable("user_collection_favorites", {
+  userId:       varchar("user_id").notNull(),
+  collectionId: varchar("collection_id").notNull(),
+  favoritedAt:  timestamp("favorited_at").notNull().defaultNow(),
+}, (t) => ({
+  pk:        uniqueIndex("idx_ucfav_user_coll").on(t.userId, t.collectionId),
+  idxUser:   index("idx_ucfav_user_id").on(t.userId),
+}));
+
+export type UserCollectionFavorite = typeof userCollectionFavorites.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// user_collection_pins — pin state (per-user, per-collection)
+// ---------------------------------------------------------------------------
+
+export const userCollectionPins = pgTable("user_collection_pins", {
+  userId:       varchar("user_id").notNull(),
+  collectionId: varchar("collection_id").notNull(),
+  pinnedAt:     timestamp("pinned_at").notNull().defaultNow(),
+}, (t) => ({
+  pk:        uniqueIndex("idx_ucp_user_coll").on(t.userId, t.collectionId),
+  idxUser:   index("idx_ucp_user_id").on(t.userId),
+}));
+
+export type UserCollectionPin = typeof userCollectionPins.$inferSelect;

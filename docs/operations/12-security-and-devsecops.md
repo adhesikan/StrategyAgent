@@ -12,6 +12,39 @@ See [02-environments-and-deployment.md](02-environments-and-deployment.md) for t
 
 ---
 
+## Research Collections — Security (Sprint 2.5.1)
+
+### Ownership enforcement
+
+- User collections are only visible to their owner (`userId` match).
+- System collections are visible to all authenticated users (`userId IS NULL`).
+- `updateUserCollection`, `deleteUserCollection`, `addSymbolToCollection`, `removeSymbolFromCollection` all require `userId` match before any DB mutation.
+- Routes return 404 (not 403) for unauthorized access to prevent existence leakage.
+
+### No opportunity data duplication
+
+- `collection_symbols` stores only ticker symbols — never scores, prices, evidence, or any canonical opportunity data.
+- All opportunity data is resolved on-demand from `getOpportunityIntelligence()` (in-memory, no extra DB query).
+- A user who deletes their collection does not affect the shared Opportunity Intelligence Engine.
+
+### Cascade delete safety
+
+`deleteUserCollection` removes in this order: symbols → follows → favorites → pins → collection record. All deletions are scoped to the collection ID — no cross-user data is affected.
+
+### Structured log rules
+
+Log events: `collection_created`, `collection_deleted`, `collection_duplicated`, `collection_seed_started`, `collection_seed_complete`. Fields: `collectionId`, `event`, `timestamp`. `userId` always redacted to `"[redacted]"`.
+
+### Seeding safety
+
+`seedSystemCollections()` is idempotent — guarded by `_seedComplete` in-memory flag and a DB existence check per collection key. Re-running on restart cannot create duplicates. System collections cannot be modified by users (PATCH/DELETE return 404).
+
+### Compliance enforcement
+
+All registry descriptions, route response keys, and service functions use "research candidate" vocabulary. No "recommendation", "buy", "sell", "target price" appears in any route response or type definition.
+
+---
+
 ## Opportunity Intelligence Engine — Security (Sprint 2.5.0)
 
 ### Compliance language enforcement

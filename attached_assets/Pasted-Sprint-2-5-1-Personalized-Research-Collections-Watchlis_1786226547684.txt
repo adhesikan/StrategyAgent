@@ -1,0 +1,203 @@
+Sprint 2.5.1 — Personalized Research Collections & Watchlists
+
+IMPORTANT
+
+Follow the approved roadmap.
+
+This sprint follows Sprint 2.5.0.
+
+Do NOT implement Portfolio Intelligence.
+
+Do NOT implement Recommendations.
+
+Do NOT implement Alerts.
+
+Do NOT implement AI Conversations.
+
+Do NOT change Opportunity Intelligence.
+
+Consume it.
+
+=========================================
+OBJECTIVE
+=========================================
+
+Create a Research Collections framework.
+
+Collections become the personalization layer for VCP Trader AI.
+
+Collections consume the Opportunity Intelligence Engine.
+
+Portfolio will later become one collection type.
+
+=========================================
+COLLECTION TYPES
+=========================================
+
+System Collections
+
+AI Infrastructure
+
+Semiconductors
+
+Memory
+
+Networking
+
+Cybersecurity
+
+Cloud
+
+Energy
+
+Healthcare
+
+Financials
+
+Consumer
+
+Industrials
+
+Dividend
+
+Income
+
+Growth
+
+Momentum
+
+Value
+
+ETF
+
+Long-Term Investments
+
+Swing Trading
+
+Covered Calls
+
+Cash Secured Puts
+
+Market Leaders
+
+Recently Improved
+
+Institutional Activity
+
+New Opportunities
+
+=========================================
+USER COLLECTIONS
+=========================================
+
+Users can create:
+
+My Retirement
+
+My Trading
+
+My Dividend
+
+My AI Stocks
+
+My ETFs
+
+My India
+
+My Research
+
+Custom Collections
+
+=========================================
+COLLECTION FEATURES
+=========================================
+
+Follow
+
+Unfollow
+
+Favorite
+
+Pin
+
+Rename
+
+Archive
+
+Duplicate
+
+Search
+
+Filter
+
+Sort
+
+=========================================
+COLLECTION CONTENT
+=========================================
+
+Collections contain canonical opportunities.
+
+Do not duplicate Opportunity Intelligence.
+
+Store only references.
+
+=========================================
+OPPORTUNITY INTEGRATION
+=========================================
+
+Each opportunity should show:
+
+Saved Collections
+
+Followed Collections
+
+Related Collections
+
+=========================================
+DISCOVERY
+=========================================
+
+Research Hub
+
+Dashboard
+
+Opportunity pages
+
+AI Research
+
+all consume Collections.
+
+=========================================
+ADMIN
+=========================================
+
+Platform Health
+
+Collections Health
+
+Operations Manual
+
+Architecture
+
+Troubleshooting
+
+Definition of Done
+
+Sprint Log
+
+=========================================
+TESTING
+=========================================
+
+Comprehensive tests.
+
+Zero TS errors.
+
+Build clean.
+
+Update Operations Manual.
+
+Maintain roadmap discipline.
+
+No future roadmap work.

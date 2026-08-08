@@ -1,0 +1,283 @@
+Sprint 2.3.0 — Opportunity Research Workspace
+
+IMPORTANT
+
+Do NOT modify:
+
+- Opportunity Ranking Engine
+- Scanner
+- Institutional Intelligence
+- MCP tools
+- Existing ranking calculations
+
+This sprint adds an interactive research workspace.
+
+======================================================
+OBJECTIVE
+======================================================
+
+When a trader clicks any ranked opportunity,
+open a professional research workspace.
+
+The purpose is to answer:
+
+Why is this opportunity ranked highly?
+
+What evidence supports it?
+
+What risks exist?
+
+What changed since yesterday?
+
+======================================================
+NEW PAGE
+======================================================
+
+Create
+
+/opportunities/:symbol
+
+======================================================
+LAYOUT
+======================================================
+
+Header
+
+----------------------------------------
+
+Ticker
+
+Company name
+
+Overall Opportunity Score
+
+Category
+
+Confidence
+
+Last Updated
+
+Market Regime
+
+----------------------------------------
+
+Tabs
+
+Overview
+
+Technical
+
+Institutional
+
+Risk
+
+History
+
+======================================================
+OVERVIEW
+======================================================
+
+Display
+
+Overall Score
+
+Technical Score
+
+Institutional Score
+
+Fundamental Score
+
+Risk Score
+
+Regime Score
+
+Reasons
+
+Warnings
+
+Entry
+
+Stop
+
+Target
+
+Risk/Reward
+
+======================================================
+TECHNICAL TAB
+======================================================
+
+Display
+
+Strategy
+
+Pattern
+
+Stage
+
+Confidence
+
+Volume confirmation
+
+Support
+
+Resistance
+
+Breakout level
+
+Trend summary
+
+======================================================
+INSTITUTIONAL TAB
+======================================================
+
+Read from institutional intelligence.
+
+Display
+
+Institutional score
+
+Signal label
+
+Manager count
+
+New managers
+
+Exited managers
+
+Increased positions
+
+Reduced positions
+
+Institutional trend
+
+Data confidence
+
+======================================================
+RISK TAB
+======================================================
+
+Explain
+
+Risk Budget
+
+Reward/Risk
+
+Gap Risk
+
+Liquidity
+
+Upcoming earnings
+
+Volatility
+
+======================================================
+HISTORY TAB
+======================================================
+
+Show
+
+Previous rankings
+
+Category changes
+
+Score changes
+
+Confidence changes
+
+Trend over time
+
+======================================================
+WHY THIS RANKED
+======================================================
+
+Generate a deterministic explanation.
+
+Example
+
+"This opportunity ranks highly because:
+
+• Technical quality is strong.
+
+• Institutional accumulation has improved.
+
+• Market regime favors momentum.
+
+• Risk/reward exceeds 3:1."
+
+No LLM required.
+
+======================================================
+COMPARE
+======================================================
+
+Add Compare button.
+
+Allows
+
+NVDA vs AMD
+
+META vs GOOG
+
+etc.
+
+Side-by-side score comparison.
+
+======================================================
+RELATED OPPORTUNITIES
+======================================================
+
+Bottom section
+
+Similar strategy
+
+Same industry
+
+Same category
+
+======================================================
+PERFORMANCE
+======================================================
+
+Maximum two API calls.
+
+No expensive recomputation.
+
+======================================================
+TESTS
+======================================================
+
+Add tests for
+
+page routing
+
+score rendering
+
+institutional rendering
+
+comparison
+
+history
+
+deterministic explanation
+
+======================================================
+ACCEPTANCE
+
+✔ Professional research workspace
+
+✔ Deterministic explanations
+
+✔ Institutional evidence
+
+✔ Risk explanation
+
+✔ Compare mode
+
+✔ History
+
+✔ Full TypeScript
+
+✔ Tests passing
+
+Produce a completion report.

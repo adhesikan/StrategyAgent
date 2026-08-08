@@ -17,6 +17,7 @@ import { getAllJobStatuses } from "../services/job-status-store";
 import { getBrokerSyncHealth } from "../services/broker-sync-service";
 import { getOpportunityIntelligenceHealth } from "../services/opportunity-intelligence-service";
 import { getCollectionHealth, isSeedComplete } from "../services/collection-service";
+import { getWorkspaceHealth } from "../services/research-workspace-service";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 
 // ---------------------------------------------------------------------------
@@ -502,6 +503,26 @@ function checkApplication(): HealthCard {
 // Aggregate health
 // ---------------------------------------------------------------------------
 
+async function checkResearchWorkspace(): Promise<HealthCard> {
+  const snap = await getWorkspaceHealth().catch(() => null);
+  if (!snap) return { status: "UNKNOWN", summary: "Research Workspace health unavailable", details: {} };
+  const status: HealthStatus = !snap.openAiConfigured ? "DEGRADED"
+    : !snap.contextAssemblyOk                         ? "DEGRADED"
+    : "HEALTHY";
+  return {
+    status,
+    summary: snap.openAiConfigured
+      ? `${snap.conversationCount} conversations, ${snap.pinnedConversations} pinned; context assembly ${snap.contextAssemblyOk ? "ok" : "unavailable"}`
+      : "OpenAI key not configured — AI responses unavailable",
+    details: {
+      conversationCount:   snap.conversationCount,
+      pinnedConversations: snap.pinnedConversations,
+      contextAssemblyOk:   snap.contextAssemblyOk,
+      openAiConfigured:    snap.openAiConfigured,
+    },
+  };
+}
+
 async function checkCollections(): Promise<HealthCard> {
   const snap = await getCollectionHealth().catch(() => null);
   if (!snap) {
@@ -593,8 +614,9 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
-  const collections = await checkCollections();
-  const jobs       = getAllJobStatuses();
+  const collections       = await checkCollections();
+  const researchWorkspace = await checkResearchWorkspace();
+  const jobs              = getAllJobStatuses();
 
   return {
     application: app,
@@ -610,6 +632,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     brokerSync,
     opportunityIntelligence: oppIntel,
     collections,
+    researchWorkspace,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

@@ -4,6 +4,72 @@
 
 ---
 
+## Sprint 2.5.2 — AI Research Workspace (2026-08-08)
+
+**Purpose:** Transform Ask AI into a dedicated Research Workspace that consumes the full intelligence stack — Opportunity Intelligence Engine, Research Collections, Sector Intelligence, and Theme Intelligence. The AI explains evidence; it never invents opportunities.
+
+### Design Goals
+- 8 deterministic research modes, each with a mode-specific system prompt
+- 10 built-in research templates covering every core research workflow
+- Structured evidence panels in every AI response (7 sections)
+- Honest diagnostics when no candidates qualify (never "No opportunities.")
+- Contextual follow-up actions (never generic buttons)
+- Saved conversations with pin/unpin and history
+- Compliance-first: zero "recommendation", "buy", "sell", "target price"
+
+### New Key Files
+
+| Type | Path |
+|------|------|
+| Shared types | `shared/research-workspace-types.ts` |
+| Service | `server/services/research-workspace-service.ts` |
+| Routes | `server/routes/research-workspace.ts` |
+| Client page | `client/src/pages/research-workspace.tsx` |
+| Tests | `server/routes/__tests__/research-workspace.test.ts` |
+
+### New DB Tables (2)
+`workspace_conversations`, `workspace_messages`
+
+### Research Modes (8)
+Opportunity · Company · Theme · Sector · Institutional · Market · Collection · Comparison
+
+### Context Scopes (28)
+Entire Market · My Collections · 6 AI/Tech themes · 5 Sectors · 10 Strategy types · 4 Dynamic · Future Portfolio (placeholder)
+
+### Research Templates (10)
+Explain Why This Qualified · Compare Two Companies · Strongest AI Infrastructure Candidates · Summarize Today's Market Intelligence · Explain Institutional Activity · Explain Theme Leadership · Explain Sector Leadership · Find Similar Opportunities · Show Recent Changes · Challenge This Investment Thesis
+
+### New Routes (7)
+
+| Method | Path |
+|--------|------|
+| POST | `/api/research/ask` |
+| GET | `/api/research/conversations` |
+| GET | `/api/research/conversations/:id` |
+| DELETE | `/api/research/conversations/:id` |
+| PATCH | `/api/research/conversations/:id/pin` |
+| GET | `/api/research/templates` |
+
+### Architecture
+`assembleResearchContext()` calls `getOpportunityIntelligence()` ONCE, `getLatestSectorSnapshots()` and `getLatestThemeSnapshots()` in parallel. AI response is parsed into `WorkspaceAIResponse` with all 7 evidence sections. `buildRuleBasedWorkspaceResponse()` used as deterministic fallback. Conversations persist as `workspace_conversations` + `workspace_messages` (jsonb for AI responses). AI never re-invents data; all evidence sourced from deterministic engines.
+
+### Platform Health
+`checkResearchWorkspace()` → `DEGRADED` if OpenAI key missing or context assembly fails. `researchWorkspace` key in `buildPlatformHealth()`. Admin health page "Research Workspace" card added.
+
+### Client Route
+`/research-workspace` → `ResearchWorkspacePage` added to App.tsx
+
+### Tests
+151 structural assertions across 13 categories: modes, scopes, types, templates, schema, service, routes, registration, platform health, client page, compliance, architecture, roadmap discipline.
+
+### Compliance
+System prompt explicitly lists "Never: recommendation / buy / sell / target price". All evidence items use "research candidate" vocabulary. Disclaimer on every response. Tests verify absence of buy/sell labels in rendered JSX.
+
+### Deferred (per roadmap)
+Portfolio Intelligence context, Alert triggers, Automated follow-up agents, Goal Planning, Tax Planning.
+
+---
+
 ## Sprint 2.5.1 — Personalized Research Collections & Watchlists (2026-08-08)
 
 **Purpose:** Create the personalization layer for VCP Trader AI. Research Collections allow users to follow system-curated collections and build their own custom collections of research candidates, consuming the Opportunity Intelligence Engine from Sprint 2.5.0.

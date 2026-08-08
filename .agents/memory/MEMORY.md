@@ -57,3 +57,4 @@
 - [Broker Sync (Sprint 2.4.2)](broker-sync-sprint242.md) — 5 routes; runningSyncs Set concurrent guard; delete-then-insert idempotency; portfolios.sourceAccountId holds provider name; userId redacted in logs; disconnect keeps positions, converts to manual.
 - [Opportunity Intelligence Engine (Sprint 2.5.0)](opportunity-intelligence-engine-250.md) — canonical CanonicalOpportunity model; pure enrichment layer over getLatestRanking(); single batch DB query for company meta; theme map from registry; 3 GET routes; 156 tests.
 - [Research Collections (Sprint 2.5.1)](research-collections-251.md) — 25 system collections + user collections; collections store symbol refs only; OppIntel loaded once per request; 5 new DB tables; 15 routes; 139 tests.
+- [AI Research Workspace (Sprint 2.5.2)](research-workspace-252.md) — 8-mode AI workspace; evidence panels; saved conversations; 10 templates; 7 routes; 151 tests; wouter: useLocation+useSearch only.

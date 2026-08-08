@@ -647,6 +647,254 @@ open /portfolio/import
 
 ---
 
+## Sprint 2.5.2 — AI Research Workspace
+
+### Routes (7)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | `/api/research/ask` | ✅ | Main AI research endpoint |
+| GET | `/api/research/conversations` | ✅ | List pinned + recent conversations |
+| GET | `/api/research/conversations/:id` | ✅ | Conversation with full message history |
+| DELETE | `/api/research/conversations/:id` | ✅ | Delete conversation + all messages |
+| PATCH | `/api/research/conversations/:id/pin` | ✅ | Pin / unpin toggle |
+| GET | `/api/research/templates` | ✅ | 10 built-in prompt templates |
+
+---
+
+### POST /api/research/ask
+
+**Body:**
+```json
+{
+  "question": "string (min 3 chars)",
+  "researchMode": "opportunity | company | theme | sector | institutional | market | collection | comparison",
+  "contextScope": "entire_market | ai-infrastructure | growth | ...",
+  "tickers": ["NVDA", "AMD"],
+  "conversationId": "uuid (optional — omit to create new conversation)"
+}
+```
+
+**Success (200):**
+```json
+{
+  "conversationId": "uuid",
+  "messageId": "uuid",
+  "userMessageId": "uuid",
+  "response": {
+    "headline": "string",
+    "answer": "string",
+    "keyPoints": ["string"],
+    "riskNote": "string",
+    "confidence": "low | medium | high",
+    "evidencePanel": {
+      "summary": "string",
+      "supportingEvidence": [{"label":"string","value":"string","strength":"strong|moderate|weak","source":"string"}],
+      "technicalEvidence": [...],
+      "fundamentalEvidence": [...],
+      "institutionalEvidence": [...],
+      "riskFactors": ["string"],
+      "thesisInvalidators": ["string"],
+      "researchSourcesUsed": ["string"]
+    },
+    "followUpActions": [
+      {
+        "label": "string",
+        "description": "string",
+        "action": {"type":"ask","question":"string","mode":"opportunity","scope":"entire_market"}
+      }
+    ],
+    "diagnostics": null,
+    "referencedTickers": ["NVDA"],
+    "researchMode": "opportunity",
+    "contextScope": "entire_market",
+    "source": "openai | rule_based",
+    "disclaimer": "string"
+  },
+  "disclaimer": "string"
+}
+```
+
+**Errors:**
+- `400`: question too short or invalid researchMode
+- `404`: conversationId not found or not owned by user
+- `500`: server error
+
+---
+
+### Research Modes
+
+| Mode | Context |
+|------|---------|
+| `opportunity` | Ranked research candidates + evidence |
+| `company` | Specific ticker profile (use `tickers[]`) |
+| `theme` | Theme dynamics, leading themes |
+| `sector` | Sector intelligence, leading sectors |
+| `institutional` | 13F positioning signals |
+| `market` | Market regime, health, cross-asset |
+| `collection` | Candidates in a specific scope/collection |
+| `comparison` | Side-by-side ticker comparison (use `tickers[]`) |
+
+---
+
+### Context Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `entire_market` | All ranked candidates |
+| `my_collections` | User's followed collections |
+| `ai-infrastructure`, `semiconductors`, `memory`, `networking`, `cybersecurity`, `cloud` | Theme-scoped |
+| `energy`, `healthcare`, `financials`, `consumer`, `industrials` | Sector-scoped |
+| `dividend`, `income`, `growth`, `momentum`, `value`, `etf`, `long-term-investments`, `swing-trading`, `covered-calls`, `cash-secured-puts` | Strategy-scoped |
+| `market-leaders` | Top 25 by research score |
+| `recently-improved` | Top 25 by lastUpdated desc |
+| `institutional-activity` | Top 25 by institutionalScore |
+| `new-opportunities` | Top 20 by lastUpdated desc |
+| `future_portfolio` | Placeholder — not yet wired |
+
+---
+
+### GET /api/research/templates
+
+Returns 10 built-in prompt templates.
+
+```json
+{
+  "templates": [
+    {
+      "id": "qualify-explain",
+      "label": "Explain Why This Qualified",
+      "description": "Walk through the evidence that put this candidate on the radar",
+      "mode": "company",
+      "defaultScope": "entire_market",
+      "promptText": "Explain why {TICKER} qualified as a research candidate...",
+      "requiresTicker": true
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/research/conversations
+
+Returns pinned + recent conversations.
+
+```json
+{
+  "pinned": [{ "id": "uuid", "title": "string", "researchMode": "company", "contextScope": "ai-infrastructure", "tickers": ["NVDA"], "isPinned": true, "pinnedAt": "...", "lastMessageAt": "...", "createdAt": "..." }],
+  "recent": [...],
+  "all": [...]
+}
+```
+
+---
+
+### GET /api/research/conversations/:id
+
+Returns conversation with full message history.
+
+```json
+{
+  "conversation": {
+    "id": "uuid",
+    "title": "string",
+    "messages": [
+      { "id": "uuid", "role": "user",      "plainText": "Why did NVDA qualify?", "createdAt": "..." },
+      { "id": "uuid", "role": "assistant", "response": { ...WorkspaceAIResponse... }, "createdAt": "..." }
+    ]
+  }
+}
+```
+
+---
+
+### PATCH /api/research/conversations/:id/pin
+
+**Body:** `{ "pinned": true }` (default `true`; send `false` to unpin)  
+**Response:** `{ "success": true, "isPinned": true }`
+
+---
+
+### Platform Health — Research Workspace Card
+
+```json
+{
+  "status": "HEALTHY | DEGRADED",
+  "summary": "42 conversations, 3 pinned; context assembly ok",
+  "details": {
+    "conversationCount": 42,
+    "pinnedConversations": 3,
+    "contextAssemblyOk": true,
+    "openAiConfigured": true
+  }
+}
+```
+
+Status: `DEGRADED` if OpenAI key not configured or context assembly unavailable.
+
+---
+
+### UAT Checklist — Research Workspace
+
+**Templates:**
+```
+□ GET /api/research/templates → 10 templates returned
+□ "qualify-explain" template has requiresTicker: true
+□ "market-summary" template has mode: "market"
+□ "ai-infra-leaders" has defaultScope: "ai-infrastructure"
+```
+
+**Research modes:**
+```
+□ POST /api/research/ask { question: "What are the top AI candidates?", researchMode: "opportunity", contextScope: "ai-infrastructure" } → 200, response.source present
+□ response.evidencePanel has supportingEvidence, riskFactors, researchSourcesUsed
+□ response.followUpActions is array with label + action
+□ response.confidence is "low", "medium", or "high"
+□ response.referencedTickers is array
+□ POST with researchMode: "company", tickers: ["NVDA"] → response answers about NVDA
+□ POST with researchMode: "market" → response includes leading themes/sectors
+□ POST with researchMode: "institutional" → response focuses on 13F signals
+□ POST with researchMode: "comparison", tickers: ["NVDA","AMD"] → side-by-side answer
+```
+
+**Diagnostics (empty state):**
+```
+□ POST with contextScope: "future_portfolio" → response has diagnostics object (scope not wired)
+□ diagnostics.universeSearched populated
+□ diagnostics.rejectionReasons populated
+□ response does NOT say simply "No opportunities"
+```
+
+**Conversations:**
+```
+□ First POST creates a new conversationId
+□ Second POST with same conversationId appends to conversation
+□ GET /api/research/conversations → pinned and recent arrays
+□ GET /api/research/conversations/:id → messages array with role: "user" and role: "assistant"
+□ PATCH /api/research/conversations/:id/pin { pinned: true } → isPinned: true
+□ PATCH ... { pinned: false } → isPinned: false (unpin)
+□ DELETE /api/research/conversations/:id → 200; conversation gone
+□ GET /:id after delete → 404
+```
+
+**Compliance:**
+```
+□ response never contains key "recommendation"
+□ response never contains key "buy" or "sell" as action directive
+□ response.disclaimer present on every response
+□ followUpActions never have label "Buy" or "Sell"
+```
+
+**Platform Health:**
+```
+□ GET /api/admin/platform-health → researchWorkspace key present
+□ researchWorkspace.details.openAiConfigured present
+□ researchWorkspace.details.contextAssemblyOk present
+```
+
+---
+
 ## Sprint 2.5.1 — Research Collections & Watchlists
 
 ### New Routes (15)

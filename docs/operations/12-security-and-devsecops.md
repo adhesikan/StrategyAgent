@@ -301,3 +301,31 @@ The `logStructured()` function in `server/lib/structured-log.ts` automatically r
 Pipelines must use `logStructured()` rather than `console.log()` for events that might include user data or configuration values.
 
 Stack traces in logs are truncated to first 6 frames to avoid leaking internal paths.
+
+---
+
+## AI Research Workspace — Security (Sprint 2.5.2)
+
+### Conversation ownership
+
+All conversation read/write/delete/pin operations verify `userId` match before any DB access. Routes return 404 (not 403) to prevent existence leakage. No cross-user conversation access is possible.
+
+### AI output trust boundary
+
+AI responses are stored as jsonb in `workspace_messages.structured_content`. The AI is forbidden (via system prompt) from inventing opportunity scores, prices, or institutional positions. All factual data is sourced deterministically from `assembleResearchContext()` which reads from the Opportunity Intelligence Engine, Collection Service, and Intelligence Snapshot Store — not from any user-supplied input.
+
+### Prompt injection prevention
+
+User question is serialized to JSON as part of the user message (not injected into the system prompt). The system prompt is built server-side from mode/scope/context only. Maximum tickers: 4 (capped in route). Maximum question length: 500 characters (inherited from validation).
+
+### Context scope gate
+
+`future_portfolio` scope is defined in types but not wired to actual portfolio positions — the context assembler treats it as equivalent to empty (produces diagnostics, not portfolio data). Portfolio data cannot reach the AI via workspace scope.
+
+### AI compliance enforcement
+
+System prompt explicitly forbids: "recommendation", "buy", "sell", "target price" as output keys. Every mode-specific prompt includes the NEVER list. Disclaimer is server-generated and appended to every response — the AI cannot suppress it.
+
+### Structured log rules
+
+No user questions, AI responses, or ticker symbols are logged. Logs record only: `conversationId`, `event`, `timestamp`. UserId is never logged.

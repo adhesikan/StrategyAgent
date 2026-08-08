@@ -713,3 +713,55 @@ grep -c "package-firewall.replit.local" package-lock.json
 **Cause:** System collections cannot be updated or deleted (they are read-only). Only user collections support mutations.
 
 **Fix:** Only apply PATCH/DELETE to user-created collections (those with `collectionType: "user"`).
+
+---
+
+## AI RESEARCH WORKSPACE (Sprint 2.5.2)
+
+### WS_OPENAI_NOT_CONFIGURED
+
+**Symptom:** Platform Health → Research Workspace shows `DEGRADED` with "OpenAI key not configured". All `/api/research/ask` responses return `source: "rule_based"`.
+
+**Cause:** `OPENAI_API_KEY` environment secret is not set.
+
+**Fix:** Set the `OPENAI_API_KEY` secret via the Replit Secrets manager. No restart required — the key is read per-request.
+
+---
+
+### WS_CONTEXT_ASSEMBLY_FAILED
+
+**Symptom:** Platform Health → Research Workspace shows `DEGRADED` with "context assembly unavailable". AI responses are rule-based only.
+
+**Cause:** `getOpportunityIntelligence()` returned null — either no scanner snapshot exists yet, or the Opportunity Engine had an error.
+
+**Fix:** Check Platform Health → Opportunity Engine card. If the scanner has never run, wait for the first scheduled cycle. Check logs for `opportunity_engine` errors.
+
+---
+
+### WS_CONVERSATION_NOT_FOUND
+
+**Symptom:** `POST /api/research/ask` returns 404 when `conversationId` is supplied.
+
+**Cause:** The conversationId does not belong to the current user, or was deleted.
+
+**Fix:** Omit `conversationId` to start a new conversation. If the conversation was deleted, it cannot be recovered.
+
+---
+
+### WS_EMPTY_SCOPE
+
+**Symptom:** Research response includes `diagnostics` object with `candidatesQualified: 0`. User sees "No qualifying candidates in [scope]" response.
+
+**Cause:** The selected context scope (e.g. "AI Infrastructure") has no ranked candidates matching the filter in the current Opportunity Engine snapshot.
+
+**Fix:** This is expected behavior when the scope filter is too narrow or the scanner has not yet produced candidates in that theme/sector/type. Suggest user: 1) Switch scope to "Entire Market", 2) Wait for next scanner cycle, 3) Check Platform Health → Opportunity Engine for snapshot age.
+
+---
+
+### WS_PARSE_FAILURE
+
+**Symptom:** AI response is clearly not well-structured — missing key fields, generic content.
+
+**Cause:** OpenAI returned a response that could not be parsed as valid JSON matching the WorkspaceAIResponse schema. The system fell back to `buildRuleBasedWorkspaceResponse()`.
+
+**Fix:** This is a graceful fallback — no data is lost or invented. The rule-based response is deterministic. If recurring, check OpenAI API logs for response quality issues. Consider increasing `temperature: 0` for stricter JSON compliance.

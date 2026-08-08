@@ -3447,3 +3447,49 @@ export const userCollectionPins = pgTable("user_collection_pins", {
 }));
 
 export type UserCollectionPin = typeof userCollectionPins.$inferSelect;
+
+// =============================================================================
+// AI Research Workspace — Sprint 2.5.2
+// =============================================================================
+
+export const workspaceConversations = pgTable("workspace_conversations", {
+  id:              varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:          varchar("user_id").notNull(),
+  title:           text("title").notNull(),
+  /** Research mode: opportunity | company | theme | sector | institutional | market | collection | comparison */
+  researchMode:    text("research_mode").notNull().default("opportunity"),
+  /** Context scope: entire_market | my_collections | ai-infrastructure | growth | etc. */
+  contextScope:    text("context_scope").notNull().default("entire_market"),
+  /** Primary tickers referenced in this conversation */
+  tickers:         text("tickers").array(),
+  isPinned:        boolean("is_pinned").notNull().default(false),
+  pinnedAt:        timestamp("pinned_at"),
+  lastMessageAt:   timestamp("last_message_at").notNull().defaultNow(),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxUserId:       index("idx_wc_user_id").on(t.userId),
+  idxLastMessage:  index("idx_wc_last_message").on(t.userId, t.lastMessageAt),
+  idxPinned:       index("idx_wc_pinned").on(t.userId, t.isPinned),
+}));
+
+export type WorkspaceConversation = typeof workspaceConversations.$inferSelect;
+export type InsertWorkspaceConversation = typeof workspaceConversations.$inferInsert;
+
+export const workspaceMessages = pgTable("workspace_messages", {
+  id:              varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId:  varchar("conversation_id").notNull(),
+  /** "user" | "assistant" */
+  role:            text("role").notNull(),
+  /** Plain text content (for user messages) */
+  plainText:       text("plain_text"),
+  /** Structured response JSON (for assistant messages) */
+  structuredContent: jsonb("structured_content"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  idxConversationId: index("idx_wm_conversation_id").on(t.conversationId),
+  idxCreatedAt:      index("idx_wm_created_at").on(t.conversationId, t.createdAt),
+}));
+
+export type WorkspaceMessage = typeof workspaceMessages.$inferSelect;
+export type InsertWorkspaceMessage = typeof workspaceMessages.$inferInsert;

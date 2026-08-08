@@ -1,0 +1,323 @@
+Sprint 2.5.2 — AI Research Workspace
+
+IMPORTANT
+
+Follow the approved roadmap.
+
+This sprint follows Sprint 2.5.1.
+
+Do NOT implement:
+
+• Portfolio Intelligence
+• Portfolio Scoring
+• Recommendations
+• Alerts
+• Automated Trading
+• Goal Planning
+• Tax Planning
+
+Those remain future roadmap items.
+
+=========================================
+OBJECTIVE
+=========================================
+
+Transform Ask AI into a Research Workspace.
+
+The AI must consume:
+
+• Opportunity Intelligence Engine
+• Research Collections
+• Market Intelligence
+• Theme Intelligence
+• Sector Intelligence
+
+The AI never invents opportunities.
+
+The AI explains evidence.
+
+=========================================
+WORKSPACE
+=========================================
+
+Create a dedicated Research Workspace.
+
+Support:
+
+Saved conversations
+
+Pinned research
+
+Recent research
+
+Research history
+
+Research templates
+
+Suggested prompts
+
+=========================================
+RESEARCH MODES
+=========================================
+
+Support deterministic workflows:
+
+Opportunity Research
+
+Company Research
+
+Theme Research
+
+Sector Research
+
+Institutional Research
+
+Market Research
+
+Collection Research
+
+Comparison Research
+
+=========================================
+CONTEXT
+=========================================
+
+Allow research against:
+
+Entire Market
+
+My Collections
+
+System Collections
+
+AI Infrastructure
+
+Semiconductors
+
+Dividend
+
+Income
+
+Growth
+
+Market Leaders
+
+Institutional Activity
+
+Recent Opportunities
+
+Future Portfolio (placeholder only)
+
+=========================================
+PROMPT TEMPLATES
+=========================================
+
+Provide built-in templates:
+
+Explain why this candidate qualified
+
+Compare two companies
+
+Show strongest AI Infrastructure candidates
+
+Summarize today's Market Intelligence
+
+Explain institutional activity
+
+Explain theme leadership
+
+Explain sector leadership
+
+Find similar opportunities
+
+Show recent changes
+
+Challenge this investment thesis
+
+=========================================
+EVIDENCE PANELS
+=========================================
+
+Every AI response should clearly separate:
+
+Summary
+
+Supporting Evidence
+
+Technical Evidence
+
+Fundamental Evidence
+
+Institutional Evidence
+
+Risk Factors
+
+What Would Invalidate This Thesis
+
+Research Sources Used
+
+=========================================
+RESEARCH DIAGNOSTICS
+=========================================
+
+When no opportunities qualify,
+
+show:
+
+Universe searched
+
+Collections searched
+
+Filters applied
+
+Candidates evaluated
+
+Why candidates were rejected
+
+Evidence strength
+
+Data freshness
+
+Do not simply return:
+
+"No opportunities."
+
+=========================================
+FOLLOW-UP ACTIONS
+=========================================
+
+Generate contextual next actions.
+
+Examples:
+
+Show closest matches
+
+Relax risk threshold
+
+Search AI Infrastructure only
+
+Compare similar candidates
+
+Open Opportunity Workspace
+
+Open Theme Research
+
+Never generic buttons.
+
+=========================================
+COMPLIANCE
+=========================================
+
+Use:
+
+Research Candidate
+
+Investment Candidate
+
+Trade Candidate
+
+Qualified Opportunity
+
+Evidence
+
+Research Score
+
+Never:
+
+Buy
+
+Sell
+
+Recommendation
+
+Target Price
+
+=========================================
+MONETIZATION REVIEW
+=========================================
+
+For every user-facing capability document:
+
+Free value
+
+Subscriber value
+
+Professional value
+
+Enterprise extension
+
+RIA applicability
+
+Institutional applicability
+
+Do not artificially restrict functionality.
+
+Premium tiers add:
+
+Depth
+
+Automation
+
+Personalization
+
+Workflow
+
+Efficiency
+
+=========================================
+PLATFORM REUSE REVIEW
+=========================================
+
+Confirm every new capability is reusable by:
+
+Dashboard
+
+Research Hub
+
+Collections
+
+Future Portfolio Intelligence
+
+Future Alerts
+
+Future AI Agents
+
+=========================================
+ADMIN
+=========================================
+
+Platform Health:
+
+AI Research Workspace
+
+Operations Manual
+
+Architecture
+
+Troubleshooting
+
+API reference
+
+Sprint log
+
+Definition of Done
+
+Update the Product Monetization Framework section.
+
+=========================================
+TESTING
+=========================================
+
+Comprehensive tests
+
+Zero TypeScript errors
+
+Build clean
+
+Operations Manual updated
+
+Roadmap updated
+
+Sprint report updated
+
+No future roadmap work

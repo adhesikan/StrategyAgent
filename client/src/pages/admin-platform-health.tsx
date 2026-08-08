@@ -253,6 +253,12 @@ export default function AdminPlatformHealthPage() {
                   { label: "Opportunity Intelligence Runbook", docId: "11-troubleshooting-runbook" },
                 ]}
               />
+              <SectionCard title="Research Workspace" icon={Brain} card={h.researchWorkspace as HealthCard}
+                manualLinks={[
+                  { label: "Research Workspace API/UAT", docId: "16-api-and-uat-reference" },
+                  { label: "Research Workspace Runbook", docId: "11-troubleshooting-runbook" },
+                ]}
+              />
               <SectionCard title="Research Collections" icon={Database} card={h.collections as HealthCard}
                 manualLinks={[
                   { label: "Collections API/UAT",    docId: "16-api-and-uat-reference" },

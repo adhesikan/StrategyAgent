@@ -47,7 +47,7 @@ const NAV_ITEMS: TopNavItem[] = [
     matches: (p) => p === "/ask",
   },
   {
-    label: "My Research",
+    label: "Research",
     href: "/research",
     icon: BookOpen,
     testId: "topnav-research",

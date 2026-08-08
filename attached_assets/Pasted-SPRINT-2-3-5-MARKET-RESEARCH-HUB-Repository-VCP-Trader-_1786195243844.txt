@@ -1,0 +1,537 @@
+SPRINT 2.3.5 — MARKET RESEARCH HUB
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+PHASE:
+Trader Intelligence
+
+CURRENT STATE
+
+Completed:
+
+- Opportunity Ranking Engine
+- Ranked Dashboard
+- Opportunity Research Workspace
+- Opportunity Change Intelligence
+- Institutional Signal Engine
+- Institutional Fund Explorer
+- Sector Intelligence
+- Theme Intelligence
+- /intelligence Market Intelligence Dashboard
+- /api/intelligence/briefing
+
+OBJECTIVE
+
+Create a unified Market Research Hub where traders can discover and navigate all
+major research surfaces from one place.
+
+This is NOT another scoring engine.
+
+Do NOT duplicate calculations.
+
+Do NOT redesign the main dashboard.
+
+Do NOT introduce personalized recommendations.
+
+The Hub should organize existing intelligence into a clean research workflow.
+
+============================================================
+1. NEW PAGE
+============================================================
+
+Create:
+
+/research
+
+Title:
+
+Market Research
+
+Positioning:
+
+"Explore opportunities, market leadership, institutional activity, and important
+changes across the market."
+
+Keep the page compact and trader-oriented.
+
+============================================================
+2. PRIMARY RESEARCH MODULES
+============================================================
+
+Create six primary modules:
+
+A. Opportunities
+B. Market Intelligence
+C. Institutional Activity
+D. Funds
+E. Changes
+F. Events
+
+Each module should reuse existing APIs and engines.
+
+No duplicated computation.
+
+============================================================
+3. OPPORTUNITIES MODULE
+============================================================
+
+Use:
+
+GET /api/opportunities/today
+
+Display:
+
+Top Growth
+Top Income
+Approaching
+Watch
+
+Show only top 3–5 initially.
+
+CTA:
+
+View All Opportunities
+
+Candidate click:
+
+/opportunities/:symbol
+
+============================================================
+4. MARKET INTELLIGENCE MODULE
+============================================================
+
+Use:
+
+GET /api/intelligence/briefing
+
+Display:
+
+Market Regime
+Market Health
+Leading Themes
+Leading Sectors
+Improving Themes
+Weakening Themes
+
+CTA:
+
+Explore Market Intelligence
+
+Link:
+
+/intelligence
+
+============================================================
+5. INSTITUTIONAL ACTIVITY MODULE
+============================================================
+
+Use existing institutional signal data.
+
+Show bounded research summaries such as:
+
+Strongest Accumulation Evidence
+Distribution Evidence
+Newly Reported Institutional Positions
+Largest Reported Ownership Changes
+
+Do NOT call this:
+
+Smart Money
+
+Do NOT imply real-time institutional trading.
+
+Clearly show:
+
+SEC Form 13F · Delayed Data
+
+CTA:
+
+Explore Institutional Research
+
+============================================================
+6. FUND EXPLORER MODULE
+============================================================
+
+Use existing:
+
+/api/institutional/funds
+
+Display a compact set of major/recently active managers.
+
+Show:
+
+Manager
+Reported Portfolio Value
+Position Count
+Latest Filing Quarter
+
+CTA:
+
+Explore Funds
+
+Link:
+
+/institutional/funds
+
+Do not rank funds as "best".
+
+============================================================
+7. CHANGE INTELLIGENCE MODULE
+============================================================
+
+Use:
+
+GET /api/opportunities/changes/explained
+
+Show:
+
+Major Movers
+Upgrades
+Downgrades
+New Entries
+Removed Opportunities
+
+For each:
+
+symbol
+score delta
+rank/category movement
+primary deterministic driver
+
+CTA:
+
+See What Changed
+
+No LLM.
+
+============================================================
+8. EVENTS MODULE
+============================================================
+
+Reuse existing event/calendar data if available.
+
+Potential categories:
+
+Upcoming Earnings
+Economic Events
+Fed / Macro Events
+Important Company Events
+
+Do not create a new events provider unless required.
+
+If event data does not currently exist, create the UI contract and graceful unavailable
+state but do not expand this sprint into a new data-provider project.
+
+============================================================
+9. GLOBAL SEARCH
+============================================================
+
+Add research search at the top.
+
+Search should support:
+
+Ticker
+Company
+Theme
+Sector
+Institutional Manager
+
+Prefer existing datasets/endpoints.
+
+Results grouped by entity type.
+
+Example:
+
+NVDA
+
+Stock
+NVIDIA
+
+Theme
+AI Infrastructure
+
+Sector
+Technology
+
+Fund
+...
+
+Do not use AI for search.
+
+============================================================
+10. RESEARCH NAVIGATION
+============================================================
+
+Create a coherent navigation model:
+
+Research
+  ├ Opportunities
+  ├ Market Intelligence
+  ├ Institutional
+  ├ Funds
+  ├ Changes
+  └ Events
+
+Do not expose internal engine names.
+
+Keep navigation simple.
+
+============================================================
+11. RESEARCH ACTIVITY / RECENTLY VIEWED
+============================================================
+
+If existing client-side recent-history infrastructure exists, reuse it.
+
+Show:
+
+Recently Viewed Research
+
+Examples:
+
+NVDA Opportunity
+AI Infrastructure
+Technology
+Institutional Fund XYZ
+
+Do NOT create a complex persistence layer just for this sprint.
+
+localStorage is acceptable if consistent with existing application conventions.
+
+============================================================
+12. COMPACT CARD DESIGN
+============================================================
+
+Avoid creating another crowded dashboard.
+
+Initial view should answer:
+
+What's interesting?
+What's changing?
+Where is leadership?
+What should I research next?
+
+Use progressive disclosure.
+
+Limit each module to a small number of rows.
+
+============================================================
+13. CROSS-LINKING
+============================================================
+
+Ensure links are consistent:
+
+Stock
+→ /opportunities/:symbol
+
+Theme
+→ /intelligence/themes/:themeId
+
+Sector
+→ /intelligence/sectors/:sector
+
+Fund
+→ /institutional/funds/:managerId
+
+Market intelligence
+→ /intelligence
+
+No dead-end research cards.
+
+============================================================
+14. DATA FRESHNESS
+============================================================
+
+Every module should show appropriate freshness.
+
+Examples:
+
+Opportunities:
+Updated X minutes ago
+
+Market Intelligence:
+Updated X minutes ago
+
+Institutional:
+Quarter / period end + Delayed
+
+Funds:
+Latest filing quarter
+
+Events:
+Event timestamp/date
+
+Do not combine unlike freshness semantics.
+
+============================================================
+15. API STRATEGY
+============================================================
+
+Prefer existing APIs.
+
+Do NOT create a large backend aggregator unless actual client performance requires it.
+
+Target:
+
+3–5 parallel cached API requests maximum.
+
+If the page becomes too chatty, create:
+
+GET /api/research/briefing
+
+ONLY as a thin aggregator over existing precomputed services.
+
+No recomputation.
+
+============================================================
+16. MOBILE
+============================================================
+
+At 375px:
+
+Research search first
+
+Opportunity summary
+
+Market intelligence
+
+Changes
+
+Institutional
+
+Funds
+
+Events
+
+Cards stack vertically.
+
+No horizontal overflow.
+
+============================================================
+17. COMPLIANCE LANGUAGE
+============================================================
+
+Use:
+
+Research
+Evidence
+Opportunity
+Institutional Activity
+Reported Holdings
+Market Leadership
+Changes
+Events
+
+Avoid:
+
+Recommendations
+Buy List
+Sell List
+Best Stocks
+Smart Money Picks
+What You Should Buy
+
+The Research Hub helps users decide what to investigate.
+
+It does not tell users what to trade.
+
+============================================================
+18. TESTS
+============================================================
+
+Add tests for:
+
+page routing
+module rendering
+opportunity links
+theme links
+sector links
+fund links
+change rendering
+institutional delayed-data disclosure
+freshness labels
+empty modules
+partial API failure
+search grouping
+mobile constraints
+no recommendation language
+no LLM dependency
+no duplicate computation
+
+Run:
+
+client tests
+server tests
+full suite
+typecheck
+build
+
+============================================================
+19. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. /research loads successfully.
+
+B. User can navigate into every major research surface.
+
+C. Existing engines/APIs are reused.
+
+D. Partial API failure does not break the entire page.
+
+E. Research modules remain compact.
+
+F. Data freshness is visible.
+
+G. Institutional delay is explicit.
+
+H. No personalized advice language exists.
+
+I. No new stock/theme/fund scoring formula is introduced.
+
+J. Full suite passes.
+
+============================================================
+20. DEFERRED — DO NOT IMPLEMENT
+============================================================
+
+- Portfolio Research Intelligence
+- personalized recommendations
+- AI research commentary
+- agents / loops / graphs
+- knowledge graph
+- mapping auto-approval
+- external FIGI enrichment
+- dashboard redesign
+- voice
+- automated trading
+
+============================================================
+21. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Files changed
+2. Research Hub architecture
+3. APIs reused
+4. Any new API created
+5. Modules implemented
+6. Navigation model
+7. Search behavior
+8. Cross-links
+9. Freshness handling
+10. Institutional disclosure behavior
+11. Mobile behavior
+12. Performance
+13. Tests added
+14. Full-suite count
+15. Typecheck/build
+16. Production UAT
+17. Known limitations
+18. Deferred backlog
+19. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

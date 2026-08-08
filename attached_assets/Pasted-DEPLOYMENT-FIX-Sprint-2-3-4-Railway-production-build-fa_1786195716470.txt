@@ -1,0 +1,137 @@
+DEPLOYMENT FIX — Sprint 2.3.4
+
+Railway production build failed with:
+
+server/routes/intelligence.ts:22:9
+ERROR: No matching export in "server/services/opportunity-engine.ts"
+for import "getLatestRanking"
+
+Do NOT change product behavior.
+Do NOT redesign intelligence.
+Do NOT modify ranking logic.
+Fix only the broken module contract and verify full production build.
+
+============================================================
+1. TRACE getLatestRanking
+============================================================
+
+Find where getLatestRanking is actually defined.
+
+Likely candidates:
+
+server/services/opportunity-ranking-engine.ts
+server/services/opportunity-engine.ts
+
+Report:
+
+- exact defining file
+- whether it is exported there
+- all current imports/usages
+- whether re-exporting from opportunity-engine.ts is intentional or accidental
+
+============================================================
+2. FIX THE IMPORT CORRECTLY
+============================================================
+
+Preferred fix:
+
+Import getLatestRanking from the module that actually owns the ranking cache/state.
+
+If getLatestRanking is defined in:
+
+server/services/opportunity-ranking-engine.ts
+
+then change intelligence.ts to import it directly from there.
+
+Do NOT create duplicate ranking state.
+Do NOT create a second getLatestRanking implementation.
+Do NOT move ranking ownership unless required.
+
+If opportunity-engine.ts is intentionally the public facade, then add a safe re-export instead.
+
+Choose the smallest architecturally correct fix.
+
+============================================================
+3. CHECK ALL SPRINT 2.3.4 IMPORTS
+============================================================
+
+Audit new files from Sprint 2.3.4 for incorrect imports/export assumptions.
+
+Especially:
+
+server/routes/intelligence.ts
+server/services/intelligence-orchestrator.ts
+client intelligence pages
+
+Search for:
+
+getLatestRanking
+getLatestSnapshot
+runIntelligencePrecomputation
+buildDashboardContracts
+
+Verify every imported symbol exists and is exported by the referenced file.
+
+============================================================
+4. RUN FULL BUILD
+============================================================
+
+Run:
+
+npm run build
+
+Must complete successfully.
+
+Do not rely only on tests or dev server.
+
+============================================================
+5. RUN TESTS
+============================================================
+
+Run:
+
+full server tests
+full client tests
+full test suite
+typecheck
+
+Report exact totals.
+
+============================================================
+6. WARNINGS
+============================================================
+
+Do NOT turn this into a cleanup sprint.
+
+The following warnings are NOT blockers for this deployment:
+
+- import.meta warning in scripts/import-rithmic-api.ts
+- duplicate-object-key warnings in portfolio-intelligence-engine.ts
+- chunk-size warning
+- Browserslist warning
+- PostCSS warning
+
+However, list them in backlog.
+
+Do not modify unrelated files unless needed for build correctness.
+
+============================================================
+7. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Exact root cause
+2. Defining module for getLatestRanking
+3. Import before
+4. Import after
+5. Files changed
+6. Other invalid imports found, if any
+7. npm run build result
+8. Test counts
+9. Typecheck result
+10. Remaining warnings/backlog
+11. GO / NO_GO
+
+Do not deploy automatically.
+Wait for review.

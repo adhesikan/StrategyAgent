@@ -19,7 +19,7 @@ import {
   getThemeHistory,
 } from "../services/intelligence-snapshot-store";
 import { getAllThemes, getTheme } from "../config/theme-registry";
-import { getLatestRanking } from "../services/opportunity-engine";
+import { getLatestRanking } from "../services/opportunity-ranking-engine";
 
 // ---------------------------------------------------------------------------
 // Dashboard consumer contract (compact, for future dashboard wiring)

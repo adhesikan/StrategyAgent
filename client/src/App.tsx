@@ -74,6 +74,7 @@ import BillingSuccessPage from "@/pages/billing-success";
 import BillingCancelPage from "@/pages/billing-cancel";
 import AskPage from "@/pages/ask";
 import CongressActivityPage from "@/pages/congress-activity";
+import MarketResearchHub from "@/pages/market-research-hub";
 import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
 import OpportunityResearchPage from "@/pages/opportunity-research";
@@ -129,8 +130,9 @@ function AppRouter() {
       <Route path="/home" component={CommandCenterPage} />
       <Route path="/ideas" component={HomeV2} />
       <Route path="/ask" component={AskPage} />
+      <Route path="/research/library" component={ResearchLibraryPage} />
       <Route path="/research/:id" component={ResearchDetailPage} />
-      <Route path="/research" component={ResearchLibraryPage} />
+      <Route path="/research" component={MarketResearchHub} />
       <Route path="/opportunity/:symbol" component={OpportunityResearchPage} />
       <Route path="/opportunities/:symbol" component={OpportunityWorkspacePage} />
       <Route path="/institutional/funds" component={InstitutionalFundsPage} />

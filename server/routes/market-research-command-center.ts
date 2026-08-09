@@ -51,7 +51,9 @@ import type {
   CollectionChangeSummary,
   RelatedResearchLink,
   ConfidenceLevel,
+  MyWatchChangesSection,
 } from "@shared/command-center-types";
+import { buildMyWatchChangesSection } from "../services/research-monitor-service";
 import type { CollectionSummary } from "@shared/collection-types";
 
 // ---------------------------------------------------------------------------
@@ -833,12 +835,17 @@ export function registerCommandCenterRoutes(
         collectionSections,
         aiResearchSummary,
         researchTimeline,
+        myWatchChanges,
       ] = await Promise.all([
         buildOpportunityChanges(freshness),
         buildInstitutionalChanges(freshness),
         buildCollectionSections(userId, freshness),
         buildAiResearchSummary(userId),
         buildResearchTimeline(userId),
+        buildMyWatchChangesSection(userId).catch((): MyWatchChangesSection => ({
+          available: false, watchCount: 0, activeWatchCount: 0,
+          recentChanges: [], lastEvaluatedAt: null, feedSummary: null,
+        })),
       ]);
 
       const marketOverview = buildMarketOverview(sectors, themes, regime, freshness);
@@ -856,6 +863,7 @@ export function registerCommandCenterRoutes(
         myCollections:     collectionSections.myCollections,
         aiResearchSummary,
         researchTimeline,
+        myWatchChanges,
       };
 
       // Update health state

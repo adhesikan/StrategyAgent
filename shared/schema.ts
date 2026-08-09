@@ -3493,3 +3493,76 @@ export const workspaceMessages = pgTable("workspace_messages", {
 
 export type WorkspaceMessage = typeof workspaceMessages.$inferSelect;
 export type InsertWorkspaceMessage = typeof workspaceMessages.$inferInsert;
+
+// =============================================================================
+// Research Monitor — Sprint 2.5.4
+// =============================================================================
+
+/**
+ * research_watches — one row per watch per user
+ *
+ * entityId stores the watched entity identifier:
+ *   company              → ticker symbol (e.g. "NVDA")
+ *   theme                → themeId from theme-registry.ts (e.g. "ai-infrastructure")
+ *   sector               → sector name (e.g. "Technology")
+ *   collection           → collection UUID
+ *   opportunity_type     → type key (e.g. "growth" | "income" | "momentum")
+ *   market_regime        → null (market-wide)
+ *   growth_candidates etc. → null (market-wide category)
+ */
+export const researchWatches = pgTable("research_watches", {
+  id:               varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:           varchar("user_id").notNull(),
+  name:             text("name").notNull(),
+  /** WatchType enum — see shared/research-monitor-types.ts */
+  watchType:        text("watch_type").notNull(),
+  entityId:         text("entity_id"),
+  entityLabel:      text("entity_label"),
+  /** WatchStatus: 'active' | 'paused' | 'archived' */
+  status:           text("status").notNull().default("active"),
+  lastEvaluatedAt:  timestamp("last_evaluated_at"),
+  lastChangeAt:     timestamp("last_change_at"),
+  /** WatchActivityType of the most recent change */
+  lastChangeType:   text("last_change_type"),
+  lastChangeSummary:text("last_change_summary"),
+  /** Future notification targets — not implemented in Sprint 2.5.4 */
+  notifyEmail:      boolean("notify_email").notNull().default(false),
+  notifyPush:       boolean("notify_push").notNull().default(false),
+  createdAt:        timestamp("created_at").notNull().defaultNow(),
+  updatedAt:        timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxUserId:    index("idx_rw_user_id").on(t.userId),
+  idxStatus:    index("idx_rw_status").on(t.userId, t.status),
+  idxWatchType: index("idx_rw_watch_type").on(t.userId, t.watchType),
+}));
+
+export type ResearchWatchRow    = typeof researchWatches.$inferSelect;
+export type InsertResearchWatch = typeof researchWatches.$inferInsert;
+
+/**
+ * watch_activity_log — one row per detected change per watch evaluation
+ *
+ * changeData JSONB shape: { from?, to?, delta?, reasons?, regime?, score?, memberCount? }
+ * activityType 'status_unchanged' is written on evaluate-but-no-change (for freshness tracking).
+ * Rows older than 90 days are eligible for cleanup.
+ */
+export const watchActivityLog = pgTable("watch_activity_log", {
+  id:              varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  watchId:         varchar("watch_id").notNull(),
+  userId:          varchar("user_id").notNull(),
+  /** WatchActivityType */
+  activityType:    text("activity_type").notNull(),
+  entitySymbol:    text("entity_symbol"),
+  entityLabel:     text("entity_label"),
+  /** ChangeDirection: 'improved' | 'weakened' | 'new' | 'removed' | 'attention' | 'stable' */
+  changeDirection: text("change_direction"),
+  changeData:      jsonb("change_data"),
+  observedAt:      timestamp("observed_at").notNull().defaultNow(),
+}, (t) => ({
+  idxWatchId:    index("idx_wal_watch_id").on(t.watchId),
+  idxUserId:     index("idx_wal_user_id").on(t.userId),
+  idxObservedAt: index("idx_wal_observed_at").on(t.watchId, t.observedAt),
+}));
+
+export type WatchActivityRow    = typeof watchActivityLog.$inferSelect;
+export type InsertWatchActivity = typeof watchActivityLog.$inferInsert;

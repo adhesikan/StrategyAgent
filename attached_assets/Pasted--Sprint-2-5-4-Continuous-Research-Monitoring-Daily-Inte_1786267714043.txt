@@ -1,0 +1,513 @@
+# Sprint 2.5.4 — Continuous Research Monitoring & Daily Intelligence Feed
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Research Platform
+
+CURRENT SPRINT:
+2.5.4 — Continuous Research Monitoring & Daily Intelligence Feed
+
+============================================================
+IMPORTANT ROADMAP DISCIPLINE
+============================================================
+
+This sprint MUST build only on completed architecture.
+
+Reuse:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections
+✓ AI Research Workspace
+✓ Market Research Command Center
+✓ Research Glossary
+✓ Platform Health
+✓ Operations Manual
+
+Do NOT:
+
+- change scanner logic
+- change ranking formulas
+- change research scores
+- change Opportunity Intelligence
+- implement alerts
+- implement email
+- implement push notifications
+- implement broker execution
+- implement Trade Construction Engine
+- implement Portfolio Intelligence
+
+Monitoring only.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Create a Continuous Research Monitoring system that automatically tracks meaningful changes across research entities.
+
+Users define what they want monitored.
+
+The platform detects changes using existing precomputed intelligence.
+
+No recomputation.
+
+No duplicate logic.
+
+============================================================
+PART 1 — RESEARCH WATCH MODEL
+============================================================
+
+Create canonical watch entities.
+
+Users can monitor:
+
+Companies
+
+Themes
+
+Sectors
+
+Research Collections
+
+Opportunity Types
+
+Market Regime
+
+Institutional Activity
+
+Growth Candidates
+
+Income Candidates
+
+Momentum
+
+ETF Candidates
+
+Dividend Candidates
+
+Custom Collections
+
+Future Portfolio placeholder
+
+Future Watchlists
+
+Future Alerts
+
+============================================================
+PART 2 — WHAT IS MONITORED
+============================================================
+
+Reuse existing intelligence only.
+
+Examples:
+
+Research Score changes
+
+Technical Score changes
+
+Institutional Score changes
+
+Fundamental Score changes
+
+Risk changes
+
+Confidence changes
+
+New qualified candidate
+
+Candidate removed
+
+Theme leadership
+
+Sector leadership
+
+Market regime
+
+Institutional accumulation
+
+Collection membership
+
+Research freshness
+
+No new calculations.
+
+============================================================
+PART 3 — CHANGE ENGINE
+============================================================
+
+Reuse:
+
+Opportunity History
+
+Theme snapshots
+
+Sector snapshots
+
+Collections
+
+Command Center
+
+Determine:
+
+What's New
+
+What's Improved
+
+What's Weakened
+
+What's Removed
+
+What Needs Attention
+
+============================================================
+PART 4 — MY RESEARCH WATCHES
+============================================================
+
+New page:
+
+/research-monitor
+
+Shows:
+
+My Watches
+
+Recent Changes
+
+Latest Activity
+
+Freshness
+
+Related Research
+
+No notifications yet.
+
+============================================================
+PART 5 — DAILY RESEARCH FEED
+============================================================
+
+Create a deterministic daily feed.
+
+Example:
+
+Today's Research Changes
+
+8 new Growth Candidates
+
+3 AI Infrastructure changes
+
+Semiconductors strengthened
+
+2 Institutional improvements
+
+Memory theme improved
+
+4 Collection additions
+
+Every card links to existing pages.
+
+============================================================
+PART 6 — WATCH CREATION
+============================================================
+
+Users can create watches for:
+
+Ticker
+
+Theme
+
+Sector
+
+Collection
+
+Opportunity Type
+
+Market
+
+Simple UI.
+
+No advanced rule builder.
+
+============================================================
+PART 7 — WATCH DETAILS
+============================================================
+
+Every watch displays:
+
+Current status
+
+Last change
+
+Freshness
+
+Related candidates
+
+Why changed
+
+Evidence
+
+Confidence
+
+============================================================
+PART 8 — PLATFORM HEALTH
+============================================================
+
+Add:
+
+Research Monitoring
+
+Status:
+
+HEALTHY
+
+DEGRADED
+
+DISABLED
+
+UNKNOWN
+
+Show:
+
+number of watches
+
+last evaluation
+
+last successful update
+
+latest feed generation
+
+============================================================
+PART 9 — RESEARCH COMMAND CENTER
+============================================================
+
+Integrate.
+
+Add:
+
+"My Watch Changes"
+
+section.
+
+Reuse feed.
+
+============================================================
+PART 10 — AI RESEARCH WORKSPACE
+============================================================
+
+Allow:
+
+Explain today's monitored changes.
+
+Explain why my watched theme improved.
+
+Explain why this watch triggered.
+
+No new AI prompts.
+
+Reuse existing architecture.
+
+============================================================
+PART 11 — COMPLIANCE
+============================================================
+
+Never:
+
+Recommend
+
+Advise
+
+Predict
+
+Guarantee
+
+Use:
+
+Research Update
+
+Research Change
+
+Qualified Candidate
+
+Research Monitoring
+
+Observed Change
+
+============================================================
+PART 12 — FUTURE READY
+============================================================
+
+Design interfaces for:
+
+Future email
+
+Future push
+
+Future Slack
+
+Future Teams
+
+Future webhook
+
+Do NOT implement them.
+
+============================================================
+PART 13 — DATABASE
+============================================================
+
+Only create the minimum schema needed for:
+
+Research Watches
+
+Watch Membership
+
+Watch Activity
+
+Watch History
+
+Keep it normalized.
+
+============================================================
+PART 14 — PERFORMANCE
+============================================================
+
+Reuse precomputed stores.
+
+No rescanning.
+
+No reranking.
+
+No LLM.
+
+No duplicate Opportunity Intelligence.
+
+============================================================
+PART 15 — ADMIN
+============================================================
+
+Platform Health
+
+Operations Manual
+
+Diagnostics
+
+Runbook
+
+Monitoring health
+
+Feed freshness
+
+============================================================
+PART 16 — OPERATIONS MANUAL
+============================================================
+
+Update:
+
+Architecture
+
+API
+
+Runbook
+
+Troubleshooting
+
+Monitoring
+
+Platform Health
+
+Roadmap
+
+Search index
+
+UAT
+
+Change log
+
+Developer Guide
+
+============================================================
+PART 17 — TESTS
+============================================================
+
+Add comprehensive tests.
+
+Target:
+
+150+
+
+New assertions.
+
+============================================================
+PART 18 — ROADMAP
+============================================================
+
+Do not move future work forward.
+
+Trade Construction Engine
+
+Portfolio Intelligence
+
+Alerts
+
+Email
+
+Push
+
+Execution
+
+remain future roadmap items.
+
+============================================================
+PART 19 — COMMERCIAL REVIEW
+============================================================
+
+Document only.
+
+Free
+
+- Limited watches
+- Daily feed
+
+Premium
+
+- Unlimited watches
+- Advanced monitoring
+- Historical changes
+- Rich research history
+
+RIA
+
+Firm watches
+
+Institution
+
+Organization watches
+
+No pricing enforcement.
+
+============================================================
+PART 20 — COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Architecture
+2. Files changed
+3. Schema
+4. APIs
+5. Feed engine
+6. Monitoring engine
+7. Watch model
+8. Platform Health
+9. Operations Manual
+10. UAT
+11. Tests
+12. Build
+13. Typecheck
+14. Roadmap Alignment
+15. Commercial Review
+16. Improvement Suggestions
+17. GO / CONDITIONAL_GO / NO_GO
+
+Do NOT deploy automatically.
+
+Await review.

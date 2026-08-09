@@ -20,6 +20,7 @@ import { getCollectionHealth, isSeedComplete } from "../services/collection-serv
 import { getWorkspaceHealth } from "../services/research-workspace-service";
 import { getCommandCenterHealth } from "./market-research-command-center";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
+import { getResearchMonitoringHealth } from "../services/research-monitor-service";
 
 // ---------------------------------------------------------------------------
 // Health status type
@@ -626,6 +627,34 @@ async function checkCommandCenter(): Promise<HealthCard> {
   };
 }
 
+async function checkResearchMonitoring(): Promise<HealthCard> {
+  try {
+    const h = await getResearchMonitoringHealth();
+    const status: HealthStatus =
+      h.watchCount === 0          ? "UNKNOWN"  :
+      h.activeWatchCount === 0    ? "DISABLED" :
+      "HEALTHY";
+    return {
+      status,
+      summary: h.watchCount === 0
+        ? "No research watches configured"
+        : `${h.activeWatchCount} active watch${h.activeWatchCount !== 1 ? "es" : ""} — ${h.evaluationsToday} evaluation${h.evaluationsToday !== 1 ? "s" : ""} today`,
+      lastSuccessAt: h.lastEvaluatedAt,
+      details: {
+        watchCount:            h.watchCount,
+        activeWatchCount:      h.activeWatchCount,
+        evaluationsToday:      h.evaluationsToday,
+        lastEvaluatedAt:       h.lastEvaluatedAt ?? "Never",
+        lastFeedGeneratedAt:   h.lastFeedGeneratedAt ?? "Not yet",
+        notificationChannels:  "Not implemented (Sprint 2.5.4 — future)",
+      },
+      action: h.watchCount === 0 ? "Visit /research-monitor to create your first research watch" : null,
+    };
+  } catch {
+    return { status: "UNKNOWN", summary: "Research monitoring health unavailable", details: {} };
+  }
+}
+
 async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const [db_, marketData, mcp, scanner, intel, institutional, secMaster, brokers] = await Promise.all([
     checkDatabase(),
@@ -642,10 +671,11 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
-  const [collections, researchWorkspace, commandCenter] = await Promise.all([
+  const [collections, researchWorkspace, commandCenter, researchMonitoring] = await Promise.all([
     checkCollections(),
     checkResearchWorkspace(),
     checkCommandCenter(),
+    checkResearchMonitoring(),
   ]);
   const jobs = getAllJobStatuses();
 
@@ -665,6 +695,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     collections,
     researchWorkspace,
     commandCenter,
+    researchMonitoring,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

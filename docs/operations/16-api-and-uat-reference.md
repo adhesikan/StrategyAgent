@@ -1632,6 +1632,202 @@ Appears immediately above the Confirm Import button on all import flows:
 
 ---
 
+## Research Monitor & Daily Intelligence Feed (Sprint 2.5.4)
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/research-monitor/watches` | ✓ | List active watches |
+| POST | `/api/research-monitor/watches` | ✓ | Create watch |
+| GET | `/api/research-monitor/watches/:id` | ✓ | Watch detail |
+| PATCH | `/api/research-monitor/watches/:id` | ✓ | Update watch |
+| DELETE | `/api/research-monitor/watches/:id` | ✓ | Archive watch |
+| POST | `/api/research-monitor/watches/:id/evaluate` | ✓ | Trigger evaluation |
+| GET | `/api/research-monitor/feed` | ✓ | Daily research feed |
+| GET | `/api/research-monitor/health` | ✓ | Monitoring health |
+
+### POST /api/research-monitor/watches — Request Body
+
+```json
+{
+  "name": "NVDA Research Monitor",
+  "watchType": "company",
+  "entityId": "NVDA",
+  "entityLabel": "NVIDIA Corporation"
+}
+```
+
+Entity-required types: `company`, `theme`, `sector`, `collection`, `institutional_activity`
+Market-wide types (no entityId): `market_regime`, `growth_candidates`, `income_candidates`, `momentum`, `etf_candidates`, `dividend_candidates`
+
+### GET /api/research-monitor/feed — Response Shape
+
+```json
+{
+  "feed": {
+    "feedId": "feed-2026-08-09",
+    "generatedAt": "2026-08-09T10:00:00.000Z",
+    "feedDate": "2026-08-09",
+    "summary": {
+      "totalChanges": 7,
+      "highlights": ["3 new candidates", "2 theme changes"],
+      "newCandidates": 3,
+      "improvedCandidates": 2,
+      "weakenedCandidates": 1,
+      "themeChanges": 2,
+      "sectorChanges": 1,
+      "regimeChanged": false
+    },
+    "sections": [
+      {
+        "id": "new-candidates",
+        "title": "3 New Qualified Candidates",
+        "description": "...",
+        "changeType": "new",
+        "count": 3,
+        "items": [
+          { "id": "new-NVDA", "symbol": "NVDA", "label": "NVDA", "detail": "...", "changeDirection": "new", "linkTo": "/opportunities/NVDA", "score": 88 }
+        ],
+        "linkTo": "/dashboard"
+      }
+    ],
+    "isPersonalized": true,
+    "watchCount": 2
+  }
+}
+```
+
+### Command Center Integration
+
+`GET /api/command-center/daily` now includes `myWatchChanges: MyWatchChangesSection`:
+
+```json
+{
+  "myWatchChanges": {
+    "available": true,
+    "watchCount": 3,
+    "activeWatchCount": 2,
+    "recentChanges": [
+      {
+        "watchId": "...", "watchName": "NVDA Watch", "watchType": "company",
+        "entityLabel": "NVIDIA", "changeType": "score_improved",
+        "changeDirection": "improved", "changeSummary": "Score improved by 8 points (now 85)",
+        "changedAt": "2026-08-09T10:00:00.000Z", "linkTo": "/opportunities/NVDA"
+      }
+    ],
+    "lastEvaluatedAt": "2026-08-09T10:00:00.000Z",
+    "feedSummary": "1 research watch update"
+  }
+}
+```
+
+### UAT Checklist — Research Monitor (Sprint 2.5.4)
+
+**Page: /research-monitor**
+```
+□ Page loads without error
+□ "My Research Watches" section visible
+□ Empty state shows "No research watches yet" with "Create Your First Watch" button
+□ "+ New Watch" button opens Create Watch modal
+□ Modal: Watch Name field required
+□ Modal: Watch Type dropdown shows all 12 types (excluding custom_collection)
+□ Modal: Entity ID field appears for company, theme, sector, collection, institutional_activity
+□ Modal: Entity ID hidden for market_regime, growth_candidates, etc.
+□ Modal: Submit disabled when name is empty
+□ Modal: Submit disabled when entity-required type chosen but entityId is empty
+□ After creation: new watch card appears in grid
+□ Watch card shows: name, type badge, last change status, evaluate/delete buttons
+□ Evaluate button (↻) triggers manual evaluation and refreshes card
+□ Delete button (🗑) archives watch and removes from list
+□ "Daily Research Feed" section shows below watches
+□ Feed sections are collapsible (click header to toggle)
+□ Feed items show change direction indicator (green/amber/red)
+□ Feed items have clickable links to existing pages
+□ "How are scores calculated?" link visible (from Sprint 2.5.3A integration)
+□ "Not investment advice" disclaimer visible
+□ Footer: "Research changes only. Not a recommendation to buy or sell."
+```
+
+**Create watch — company type:**
+```
+□ Enter ticker "NVDA", name "NVDA Watch"
+□ Created → card shows "NVDA Research Monitor" type badge
+□ Entity ID stored as uppercase "NVDA"
+□ POST /api/research-monitor/watches returns 201 with watch object
+```
+
+**Create watch — growth_candidates type:**
+```
+□ Select "Growth Candidates" type
+□ No entityId field shown
+□ Created → card shows "Growth Candidates" type badge
+□ POST /api/research-monitor/watches returns 201
+```
+
+**Watch evaluation:**
+```
+□ POST /api/research-monitor/watches/:id/evaluate returns evaluation object
+□ Evaluation includes changed: boolean, changeType, changeSummary
+□ After evaluation: watch card shows last_change_summary if changed
+□ last_evaluated_at updated on watch record
+□ watch_activity_log has new row (including status_unchanged entries)
+```
+
+**Daily Feed:**
+```
+□ GET /api/research-monitor/feed returns feed object
+□ feed.feedId starts with "feed-"
+□ feed.sections is an array (may be empty if no intelligence loaded)
+□ feed.isPersonalized=true when user has active watches
+□ feed.summary.highlights is an array
+□ Each section has: id, title, description, changeType, count, items, linkTo?
+□ Each item has: id, label, detail, changeDirection, linkTo
+□ All item linkTo values start with "/" (internal pages only)
+```
+
+**Command Center integration:**
+```
+□ GET /api/command-center/daily includes myWatchChanges field
+□ myWatchChanges.available=false when user has no watches
+□ myWatchChanges.available=true after creating a watch with changes
+□ myWatchChanges.recentChanges is an array
+□ myWatchChanges.lastEvaluatedAt is string or null
+□ myWatchChanges section does not block other sections (degrades independently)
+```
+
+**Platform Health:**
+```
+□ GET /api/admin/platform-health includes researchMonitoring key
+□ researchMonitoring.status = "UNKNOWN" when no watches exist
+□ researchMonitoring.status = "HEALTHY" when active watches exist
+□ researchMonitoring.details.watchCount is numeric
+□ researchMonitoring.details.evaluationsToday is numeric
+□ action field suggests /research-monitor when watchCount=0
+```
+
+**Error handling:**
+```
+□ POST with invalid watchType returns 400 with error message listing valid types
+□ POST company type without entityId returns 400 "entityId is required"
+□ GET /watches/:id for non-existent ID returns 404
+□ All routes return 401 when not authenticated
+□ All routes return 500 with error message on unexpected failure (not blank)
+```
+
+**Compliance:**
+```
+□ No "alert" or "notification" language on /research-monitor page
+□ No "recommend", "buy", "sell", "predict" in any feed or watch copy
+□ "Research Monitor" used (not "Alert System" or "Signal Monitor")
+□ "Observed Change" / "Research Change" / "Qualified Candidate" language only
+□ Disclaimer present on watch creation modal
+□ Disclaimer present in daily feed footer
+□ notifyEmail and notifyPush always false (notification infrastructure not built)
+```
+
+---
+
 ## Research Glossary & Score Transparency (Sprint 2.5.3A)
 
 ### Central Research Glossary

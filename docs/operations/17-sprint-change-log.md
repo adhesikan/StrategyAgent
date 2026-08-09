@@ -4,6 +4,81 @@
 
 ---
 
+## Sprint 2.5.4 — Continuous Research Monitoring & Daily Intelligence Feed (2026-08-09)
+
+**Purpose:** Create a Continuous Research Monitoring system that automatically tracks meaningful changes across research entities. Users define watches; the platform detects changes using existing precomputed intelligence only.
+
+### DB Schema (2 new tables)
+
+| Table | Purpose |
+|-------|---------|
+| `research_watches` | One row per watch per user |
+| `watch_activity_log` | One row per detected change per evaluation |
+
+Both created via `CREATE TABLE IF NOT EXISTS` in `ensureResearchMonitorTables()` — idempotent, safe on every startup.
+
+### New Key Files
+
+| Type | Path |
+|------|------|
+| Shared types | `shared/research-monitor-types.ts` |
+| Service | `server/services/research-monitor-service.ts` |
+| Routes | `server/routes/research-monitor.ts` |
+| Client page | `client/src/pages/research-monitor.tsx` |
+| Tests | `server/routes/__tests__/research-monitor.test.ts` |
+| Ops doc | `docs/operations/19-research-monitor.md` |
+
+### Watch Types (13)
+
+company, theme, sector, collection, opportunity_type, market_regime, institutional_activity, growth_candidates, income_candidates, momentum, etf_candidates, dividend_candidates, custom_collection
+
+### Watch Activity Types (16)
+
+new_candidate, candidate_removed, score_improved, score_weakened, confidence_changed, regime_change, theme_improved, theme_weakened, sector_improved, sector_weakened, collection_added, collection_removed, institutional_accumulation, institutional_distribution, member_count_changed, status_unchanged
+
+### Daily Research Feed
+
+Deterministic feed from precomputed stores. Sections:
+1. New Qualified Candidates (from ranking.changes)
+2. Improved Research Scores (from ranking.changes — upgraded)
+3. Weakened Research Scores (from ranking.changes — downgraded)
+4. Market Regime (from ranking.regime)
+5. Theme Changes (scoreDelta ≥ 3)
+6. Sector Changes (scoreDelta ≥ 3)
+7. My Watch Changes (personalized — last 24h)
+
+### API Endpoints (8)
+
+- `GET  /api/research-monitor/watches`
+- `POST /api/research-monitor/watches`
+- `GET  /api/research-monitor/watches/:id`
+- `PATCH /api/research-monitor/watches/:id`
+- `DELETE /api/research-monitor/watches/:id`
+- `POST /api/research-monitor/watches/:id/evaluate`
+- `GET  /api/research-monitor/feed`
+- `GET  /api/research-monitor/health`
+
+### Integrations
+
+| Integration | Change |
+|-------------|--------|
+| Command Center | Added `myWatchChanges: MyWatchChangesSection` to `CommandCenterDailySnapshot` |
+| Platform Health | Added `researchMonitoring` health card |
+| App routing | `/research-monitor` → `ResearchMonitorPage` |
+
+### Future Notification Targets (Interfaces Only — NOT Implemented)
+
+`NotificationTarget` interface defines: email, push, slack, teams, webhook. `notifyEmail` and `notifyPush` columns reserved in `research_watches`. Sprint 2.6+ roadmap item.
+
+### Performance
+
+All evaluation reads from existing in-memory stores. No new background jobs. No LLM calls. No new scanner/ranking computation.
+
+### Env / Config Impact
+None. Read-only intelligence reads only.
+
+---
+
 ## Sprint 2.5.3A — Research Transparency, Explainability & Central Research Glossary (2026-08-09)
 
 **Purpose:** Refinement sprint — make existing research scores understandable, standardize terminology, create one canonical Research Glossary, improve compliance clarity, and add accessibility to all score surfaces. Zero business-logic changes.

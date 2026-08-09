@@ -1,5 +1,5 @@
 /**
- * Sprint 2.5.3 — Market Research Command Center
+ * Sprint 2.5.3 / 2.5.4 — Market Research Command Center
  *
  * Shared types for the daily command-center snapshot.
  * The Command Center answers "What changed today?" without requiring search.
@@ -282,6 +282,36 @@ export interface CommandCenterDailySnapshot {
   myCollections:         MyCollectionsSection;
   aiResearchSummary:     AiResearchSummarySection;
   researchTimeline:      ResearchTimelineSection;
+  /** Sprint 2.5.4 — personalized research monitoring changes */
+  myWatchChanges:        MyWatchChangesSection;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2.5.4 — Research Monitor (inline to avoid cross-module imports)
+// ---------------------------------------------------------------------------
+
+export type WatchChangeDirection = "improved" | "weakened" | "new" | "removed" | "attention" | "stable";
+export type CommandCenterWatchType = "company" | "theme" | "sector" | "collection" | "opportunity_type" | "market_regime" | "institutional_activity" | "growth_candidates" | "income_candidates" | "momentum" | "etf_candidates" | "dividend_candidates" | "custom_collection";
+
+export interface WatchChangeSummary {
+  watchId:         string;
+  watchName:       string;
+  watchType:       CommandCenterWatchType;
+  entityLabel:     string | null;
+  changeType:      string;
+  changeDirection: WatchChangeDirection | null;
+  changeSummary:   string;
+  changedAt:       string;
+  linkTo:          string | null;
+}
+
+export interface MyWatchChangesSection {
+  available:        boolean;
+  watchCount:       number;
+  activeWatchCount: number;
+  recentChanges:    WatchChangeSummary[];
+  lastEvaluatedAt:  string | null;
+  feedSummary:      string | null;
 }
 
 // ---------------------------------------------------------------------------

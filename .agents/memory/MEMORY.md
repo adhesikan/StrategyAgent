@@ -60,3 +60,4 @@
 - [AI Research Workspace (Sprint 2.5.2)](research-workspace-252.md) — 8-mode AI workspace; evidence panels; saved conversations; 10 templates; 7 routes; 151 tests; wouter: useLocation+useSearch only.
 - [Market Research Command Center](command-center-253.md) — Sprint 2.5.3: 10 sections; 2 routes; 60 tests; health snapshot in-memory (resets on restart); no new DB tables; free/premium tiers documented only.
 - [Research Glossary & Score Transparency](research-glossary-253a.md) — Sprint 2.5.3A: shared/research-glossary.ts is sole source; riskScore higher=better profile (not more risk); 94 tests; no DB/logic changes.
+- [Research Monitor (Sprint 2.5.4)](research-monitor-254.md) — 2 new tables (research_watches, watch_activity_log); 13 watch types; pure evaluation from precomputed stores; daily feed; command center + platform health integration; 113 tests.

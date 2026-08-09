@@ -90,6 +90,8 @@ import { registerResearchWorkspaceRoutes } from "./routes/research-workspace";
 import { registerCommandCenterRoutes } from "./routes/market-research-command-center";
 import { registerResearchMonitorRoutes } from "./routes/research-monitor";
 import { ensureResearchMonitorTables } from "./services/research-monitor-service";
+import { registerResearchReportRoutes } from "./routes/research-reports";
+import { ensureResearchReportsTables } from "./services/research-report-service";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -262,9 +264,13 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerResearchWorkspaceRoutes(app, isAuthenticated);
   registerCommandCenterRoutes(app, isAuthenticated);
   registerResearchMonitorRoutes(app, isAuthenticated);
-  // Sprint 2.5.4 — ensure research monitor tables exist at startup
+  registerResearchReportRoutes(app, isAuthenticated);
+  // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)
+  );
+  ensureResearchReportsTables().catch(err =>
+    console.error("[research-reports] startup table init failed:", err?.message)
   );
   registerDailyAnalysisRoutes(app, isAuthenticated, async (req: any) => {
     if (!req.session?.userId) return null;

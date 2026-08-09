@@ -21,6 +21,7 @@ import { getWorkspaceHealth } from "../services/research-workspace-service";
 import { getCommandCenterHealth } from "./market-research-command-center";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 import { getResearchMonitoringHealth } from "../services/research-monitor-service";
+import { getResearchReportsHealth } from "../services/research-report-service";
 
 // ---------------------------------------------------------------------------
 // Health status type
@@ -627,6 +628,36 @@ async function checkCommandCenter(): Promise<HealthCard> {
   };
 }
 
+async function checkResearchReports(): Promise<HealthCard> {
+  try {
+    const h = await getResearchReportsHealth();
+    const status: HealthStatus =
+      h.storageHealth === "unknown" ? "UNKNOWN"   :
+      h.storageHealth === "degraded" ? "DEGRADED" :
+      "HEALTHY";
+    return {
+      status,
+      summary: h.reportsGenerated === 0
+        ? "No research reports generated yet"
+        : `${h.reportsGenerated} report${h.reportsGenerated !== 1 ? "s" : ""} — ${h.reportsToday} today`,
+      lastSuccessAt: h.latestReport,
+      details: {
+        reportsGenerated:    h.reportsGenerated,
+        reportsToday:        h.reportsToday,
+        latestReport:        h.latestReport ?? "None",
+        generationTimeMs:    h.generationTimeMs ?? "N/A",
+        storageHealth:       h.storageHealth,
+        scheduledReports:    "Not implemented (Sprint 2.5.5 — future)",
+      },
+      action: h.reportsGenerated === 0
+        ? "Visit /research-reports to generate your first report"
+        : null,
+    };
+  } catch {
+    return { status: "UNKNOWN", summary: "Research reports health unavailable", details: {} };
+  }
+}
+
 async function checkResearchMonitoring(): Promise<HealthCard> {
   try {
     const h = await getResearchMonitoringHealth();
@@ -671,11 +702,12 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
-  const [collections, researchWorkspace, commandCenter, researchMonitoring] = await Promise.all([
+  const [collections, researchWorkspace, commandCenter, researchMonitoring, researchReports_] = await Promise.all([
     checkCollections(),
     checkResearchWorkspace(),
     checkCommandCenter(),
     checkResearchMonitoring(),
+    checkResearchReports(),
   ]);
   const jobs = getAllJobStatuses();
 
@@ -696,6 +728,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     researchWorkspace,
     commandCenter,
     researchMonitoring,
+    researchReports: researchReports_,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

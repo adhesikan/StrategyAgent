@@ -52,8 +52,10 @@ import type {
   RelatedResearchLink,
   ConfidenceLevel,
   MyWatchChangesSection,
+  LatestReportSection,
 } from "@shared/command-center-types";
 import { buildMyWatchChangesSection } from "../services/research-monitor-service";
+import { buildLatestReportSection } from "../services/research-report-service";
 import type { CollectionSummary } from "@shared/collection-types";
 
 // ---------------------------------------------------------------------------
@@ -836,6 +838,7 @@ export function registerCommandCenterRoutes(
         aiResearchSummary,
         researchTimeline,
         myWatchChanges,
+        latestReport,
       ] = await Promise.all([
         buildOpportunityChanges(freshness),
         buildInstitutionalChanges(freshness),
@@ -845,6 +848,11 @@ export function registerCommandCenterRoutes(
         buildMyWatchChangesSection(userId).catch((): MyWatchChangesSection => ({
           available: false, watchCount: 0, activeWatchCount: 0,
           recentChanges: [], lastEvaluatedAt: null, feedSummary: null,
+        })),
+        buildLatestReportSection(userId).catch((): LatestReportSection => ({
+          available: false, latestReport: null, recentReports: [],
+          reportsToday: 0, lastGeneratedAt: null,
+          generateShortcut: "/research-reports", viewAllShortcut: "/research-reports",
         })),
       ]);
 
@@ -864,6 +872,7 @@ export function registerCommandCenterRoutes(
         aiResearchSummary,
         researchTimeline,
         myWatchChanges,
+        latestReport,
       };
 
       // Update health state

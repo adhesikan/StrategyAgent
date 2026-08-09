@@ -4,6 +4,78 @@
 
 ---
 
+## Sprint 2.5.5 — Research Reports & Publishing (2026-08-09)
+
+**Purpose:** Build a reusable Research Report Engine that converts existing deterministic intelligence into professional research reports. No rescanning, no reranking, no new market-data fetches.
+
+### DB Schema (1 new table)
+
+| Table | Purpose |
+|-------|---------|
+| `research_reports` | One row per generated report per user; content stored as JSONB |
+
+Created via `CREATE TABLE IF NOT EXISTS` in `ensureResearchReportsTables()` — idempotent, safe on every startup.
+
+### New Key Files
+
+| Type | Path |
+|------|------|
+| Shared types | `shared/research-report-types.ts` |
+| Service | `server/services/research-report-service.ts` |
+| Routes | `server/routes/research-reports.ts` |
+| Client page | `client/src/pages/research-reports.tsx` |
+| Tests | `server/routes/__tests__/research-reports.test.ts` |
+| Ops doc | `docs/operations/20-research-reports.md` |
+
+### Report Types (16)
+
+morning_brief, evening_summary, market_changes, weekly_market_intel, weekly_ai_infrastructure, weekly_semiconductor, weekly_memory, weekly_cloud, weekly_cybersecurity, weekly_institutional, weekly_sector_leadership, weekly_theme_leadership, collection_summary, research_monitoring_summary, opportunity_intel_summary, workspace_summary
+
+### Template Section Types (11)
+
+executive_summary, market_overview, sector_summary, theme_summary, institutional_summary, research_candidate_summary, research_monitoring_summary, collection_summary, risk_summary, methodology, appendix
+
+### Export Formats (5)
+
+html, markdown, json, pdf_ready, ppt_ready (no rendering libraries — structured output only)
+
+### API Endpoints (7)
+
+- `POST /api/research-reports`
+- `GET  /api/research-reports`
+- `GET  /api/research-reports/health`
+- `GET  /api/research-reports/:id`
+- `PATCH /api/research-reports/:id`
+- `DELETE /api/research-reports/:id`
+- `GET  /api/research-reports/:id/export`
+
+### Integrations
+
+| Integration | Change |
+|-------------|--------|
+| Command Center | Added `latestReport: LatestReportSection` to `CommandCenterDailySnapshot` |
+| Platform Health | Added `researchReports` health card |
+| App routing | `/research-reports` → `ResearchReportsPage` |
+| schema.ts | Added `researchReports` Drizzle table |
+| command-center-types.ts | Added `ReportShortCard` + `LatestReportSection` inline |
+
+### RESEARCH_DISCLAIMER
+
+New shared constant exported from `research-report-service.ts` — covers informational only, no buy/sell, no guarantee, deterministic intelligence.
+
+### Performance
+
+All report generation reads from existing in-memory precomputed stores. Parallel fetch of 6 data sources. Typical generation time < 100ms on a warm cache.
+
+### Future Roadmap Items (NOT Implemented)
+
+`ScheduledReportConfig` and `DeliveryChannel` interfaces defined but not wired. Email/Slack/Teams/webhook/API-publishing reserved for Sprint 2.6+.
+
+### Env / Config Impact
+None. Read-only intelligence reads + new DB table (auto-created on startup).
+
+---
+
 ## Sprint 2.5.4 — Continuous Research Monitoring & Daily Intelligence Feed (2026-08-09)
 
 **Purpose:** Create a Continuous Research Monitoring system that automatically tracks meaningful changes across research entities. Users define watches; the platform detects changes using existing precomputed intelligence only.

@@ -284,6 +284,35 @@ export interface CommandCenterDailySnapshot {
   researchTimeline:      ResearchTimelineSection;
   /** Sprint 2.5.4 — personalized research monitoring changes */
   myWatchChanges:        MyWatchChangesSection;
+  /** Sprint 2.5.5 — latest generated research report */
+  latestReport:          LatestReportSection;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2.5.5 — Research Reports (inline to avoid cross-module imports)
+// ---------------------------------------------------------------------------
+
+export interface ReportShortCard {
+  reportId:     string;
+  title:        string;
+  reportType:   string;
+  typeLabel:    string;
+  generatedAt:  string;
+  marketRegime: string | null;
+  summary:      string | null;
+  isPinned:     boolean;
+  status:       "published" | "archived";
+  linkTo:       string;
+}
+
+export interface LatestReportSection {
+  available:        boolean;
+  latestReport:     ReportShortCard | null;
+  recentReports:    ReportShortCard[];
+  reportsToday:     number;
+  lastGeneratedAt:  string | null;
+  generateShortcut: string;
+  viewAllShortcut:  string;
 }
 
 // ---------------------------------------------------------------------------

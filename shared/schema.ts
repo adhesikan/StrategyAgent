@@ -3566,3 +3566,41 @@ export const watchActivityLog = pgTable("watch_activity_log", {
 
 export type WatchActivityRow    = typeof watchActivityLog.$inferSelect;
 export type InsertWatchActivity = typeof watchActivityLog.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Sprint 2.5.5 — Research Reports
+// ---------------------------------------------------------------------------
+
+export const researchReports = pgTable("research_reports", {
+  id:           varchar("id", { length: 128 }).primaryKey(),
+  userId:       varchar("user_id", { length: 128 }).notNull(),
+  title:        text("title").notNull(),
+  subtitle:     text("subtitle"),
+  reportType:   text("report_type").notNull(),
+  status:       text("status").notNull().default("published"),
+  isPinned:     boolean("is_pinned").notNull().default(false),
+  generatedAt:  timestamp("generated_at").notNull(),
+  dataFreshness: text("data_freshness"),
+  marketRegime:  text("market_regime"),
+  author:        text("author").notNull().default("VCP Trader AI Research Engine"),
+  version:       integer("version").notNull().default(1),
+  disclaimer:    text("disclaimer").notNull(),
+  /** ReportContent serialised as JSONB */
+  content:      jsonb("content").notNull(),
+  /** Cached export strings (html / markdown / json / pdf_ready / ppt_ready) */
+  exports:      jsonb("exports"),
+  tags:         text("tags").array(),
+  /** Short plain-text summary for search display (≤300 chars) */
+  summary:      text("summary"),
+  createdAt:    timestamp("created_at").defaultNow(),
+  updatedAt:    timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  idxRrUserId:      index("idx_rr_user_id").on(t.userId),
+  idxRrStatus:      index("idx_rr_status").on(t.userId, t.status),
+  idxRrType:        index("idx_rr_type").on(t.userId, t.reportType),
+  idxRrPinned:      index("idx_rr_pinned").on(t.userId, t.isPinned),
+  idxRrGeneratedAt: index("idx_rr_generated_at").on(t.userId, t.generatedAt),
+}));
+
+export type ResearchReportRow    = typeof researchReports.$inferSelect;
+export type InsertResearchReport = typeof researchReports.$inferInsert;

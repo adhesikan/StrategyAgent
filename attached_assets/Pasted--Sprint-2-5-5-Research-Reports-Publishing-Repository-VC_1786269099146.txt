@@ -1,0 +1,612 @@
+# Sprint 2.5.5 — Research Reports & Publishing
+
+Repository:
+VCP Trader AI
+
+CURRENT PHASE:
+Research & Intelligence Platform
+
+CURRENT SPRINT:
+2.5.5 — Research Reports & Publishing
+
+==============================================================================
+IMPORTANT ROADMAP DISCIPLINE
+==============================================================================
+
+This sprint completes the Research Platform.
+
+DO NOT implement:
+
+- Portfolio Intelligence
+- Portfolio Analytics
+- Portfolio Reports
+- Trade Planning
+- Trade Construction Engine
+- Alerts
+- Email delivery
+- Push notifications
+- Broker execution
+- Scheduled jobs
+
+Only build the Research Report platform.
+
+Continue using the existing architecture.
+
+Reuse:
+
+✓ Opportunity Intelligence Engine
+
+✓ Market Research Command Center
+
+✓ Research Monitoring
+
+✓ Research Collections
+
+✓ AI Research Workspace
+
+✓ Research Glossary
+
+✓ Platform Health
+
+✓ Operations Handbook
+
+No duplicate business logic.
+
+No duplicate calculations.
+
+==============================================================================
+OBJECTIVE
+==============================================================================
+
+Build a reusable Research Report Engine that converts existing intelligence into
+professional research reports.
+
+Reports are generated from existing deterministic intelligence.
+
+No rescanning.
+
+No reranking.
+
+No new market-data calculations.
+
+==============================================================================
+PART 1 — REPORT ENGINE
+==============================================================================
+
+Create a reusable Report Service.
+
+Every report is assembled from existing services.
+
+Report metadata:
+
+title
+
+subtitle
+
+reportType
+
+generatedAt
+
+dataFreshness
+
+marketRegime
+
+author
+
+version
+
+disclaimer
+
+Every report has:
+
+Executive Summary
+
+Key Findings
+
+Supporting Evidence
+
+Risk Factors
+
+Research Methodology
+
+Data Freshness
+
+Compliance Disclaimer
+
+==============================================================================
+PART 2 — REPORT TYPES
+==============================================================================
+
+Support:
+
+Morning Research Brief
+
+Evening Research Summary
+
+Today's Market Changes
+
+Weekly Market Intelligence
+
+Weekly AI Infrastructure
+
+Weekly Semiconductor Intelligence
+
+Weekly Memory Intelligence
+
+Weekly Cloud Intelligence
+
+Weekly Cybersecurity Intelligence
+
+Weekly Institutional Activity
+
+Weekly Sector Leadership
+
+Weekly Theme Leadership
+
+Research Collection Summary
+
+Research Monitoring Summary
+
+Opportunity Intelligence Summary
+
+Research Workspace Summary
+
+All report types reuse existing intelligence.
+
+==============================================================================
+PART 3 — REPORT TEMPLATES
+==============================================================================
+
+Create reusable templates.
+
+Executive Summary
+
+Market Overview
+
+Sector Summary
+
+Theme Summary
+
+Institutional Summary
+
+Research Candidate Summary
+
+Research Monitoring Summary
+
+Collection Summary
+
+Risk Summary
+
+Methodology
+
+Appendix
+
+==============================================================================
+PART 4 — EXPORTS
+==============================================================================
+
+Support:
+
+HTML
+
+Markdown
+
+JSON
+
+PDF-ready structure
+
+PowerPoint-ready structure
+
+Do NOT implement PDF rendering libraries.
+
+Produce reusable structured output.
+
+==============================================================================
+PART 5 — REPORT LIBRARY
+==============================================================================
+
+New page:
+
+/research-reports
+
+Displays:
+
+Generated reports
+
+Report types
+
+Generated date
+
+Freshness
+
+Market regime
+
+Open report
+
+Duplicate report
+
+Delete report
+
+Pin report
+
+Search reports
+
+Filter reports
+
+==============================================================================
+PART 6 — REPORT VIEWER
+==============================================================================
+
+Create report viewer.
+
+Sections:
+
+Summary
+
+Evidence
+
+Charts placeholder
+
+Related Research
+
+Methodology
+
+Glossary
+
+Compliance
+
+Links back into:
+
+Command Center
+
+Research Workspace
+
+Collections
+
+Monitoring
+
+Opportunity Intelligence
+
+==============================================================================
+PART 7 — AI SUMMARIZATION
+==============================================================================
+
+Reuse AI Research Workspace.
+
+AI may generate:
+
+Executive Summary
+
+Plain-English Summary
+
+Institutional Summary
+
+Risk Summary
+
+Technical Summary
+
+Rules:
+
+AI cannot invent candidates.
+
+AI cannot change scores.
+
+AI cannot alter evidence.
+
+AI summarizes deterministic intelligence only.
+
+==============================================================================
+PART 8 — COMPLIANCE
+==============================================================================
+
+Use only:
+
+Research Report
+
+Research Candidate
+
+Observed Change
+
+Research Summary
+
+Market Intelligence
+
+Never:
+
+Recommendation
+
+Buy
+
+Sell
+
+Strong Buy
+
+Top Pick
+
+Target Price
+
+Price Target
+
+Guarantee
+
+Every report ends with the standard research disclaimer.
+
+==============================================================================
+PART 9 — REPORT SEARCH
+==============================================================================
+
+Users can search reports.
+
+By:
+
+Date
+
+Type
+
+Theme
+
+Sector
+
+Collection
+
+Market Regime
+
+Symbol
+
+Keyword
+
+==============================================================================
+PART 10 — PLATFORM HEALTH
+==============================================================================
+
+Add:
+
+Research Reports
+
+Status:
+
+HEALTHY
+
+DEGRADED
+
+UNKNOWN
+
+Show:
+
+reportsGenerated
+
+latestReport
+
+generationTime
+
+storageHealth
+
+==============================================================================
+PART 11 — COMMAND CENTER
+==============================================================================
+
+Integrate.
+
+Latest Report
+
+Recent Reports
+
+Generate Report shortcut
+
+View Report shortcut
+
+==============================================================================
+PART 12 — AI WORKSPACE
+==============================================================================
+
+Allow:
+
+Open report
+
+Continue research
+
+Explain report
+
+Challenge report
+
+Compare reports
+
+No duplicate logic.
+
+==============================================================================
+PART 13 — FUTURE READY
+==============================================================================
+
+Design interfaces for:
+
+Scheduled Reports
+
+Email Reports
+
+Newsletter
+
+Slack
+
+Teams
+
+Webhooks
+
+API publishing
+
+Do NOT implement.
+
+==============================================================================
+PART 14 — PERFORMANCE
+==============================================================================
+
+Reuse precomputed stores.
+
+No rescanning.
+
+No reranking.
+
+No duplicate database queries.
+
+Parallel retrieval.
+
+==============================================================================
+PART 15 — OPERATIONS MANUAL
+==============================================================================
+
+Automatically update:
+
+Architecture
+
+API Reference
+
+Platform Health
+
+Troubleshooting
+
+Developer Guide
+
+Operations Guide
+
+UAT Guide
+
+Search Index
+
+Sprint Change Log
+
+Research Report documentation
+
+Future roadmap
+
+==============================================================================
+PART 16 — TESTS
+==============================================================================
+
+Add comprehensive tests.
+
+Target:
+
+150+
+
+new assertions.
+
+Validate:
+
+Report generation
+
+Templates
+
+Compliance
+
+Reuse
+
+Search
+
+Viewer
+
+Exports
+
+Health
+
+==============================================================================
+PART 17 — ROADMAP
+==============================================================================
+
+Update roadmap.
+
+Mark:
+
+Sprint 2.5.5
+
+Research Reports & Publishing
+
+Complete.
+
+Next planned phase:
+
+Phase 3
+
+Portfolio Intelligence
+
+Do NOT move Portfolio Intelligence work into this sprint.
+
+==============================================================================
+PART 18 — COMMERCIAL REVIEW
+==============================================================================
+
+Document only.
+
+Free
+
+Limited reports
+
+Retail
+
+Unlimited report viewing
+
+Professional
+
+Advanced reports
+
+Historical reports
+
+RIA
+
+Client reports
+
+Branded reports
+
+Institutional
+
+Research publishing
+
+Enterprise
+
+Custom report templates
+
+No licensing enforcement.
+
+==============================================================================
+PART 19 — COMPLETION REPORT
+==============================================================================
+
+Return:
+
+1. Architecture
+
+2. Files changed
+
+3. Report engine
+
+4. Templates
+
+5. APIs
+
+6. Report viewer
+
+7. Search
+
+8. AI integration
+
+9. Platform Health
+
+10. Operations Manual updates
+
+11. UAT
+
+12. Tests
+
+13. Build
+
+14. TypeScript
+
+15. Roadmap update
+
+16. Commercial review
+
+17. Improvement suggestions
+
+18. GO / CONDITIONAL_GO / NO_GO
+
+Do NOT deploy automatically.
+
+Await review.

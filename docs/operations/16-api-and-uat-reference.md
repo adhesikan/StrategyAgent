@@ -1632,6 +1632,240 @@ Appears immediately above the Confirm Import button on all import flows:
 
 ---
 
+## Research Reports & Publishing (Sprint 2.5.5)
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/research-reports` | ✓ | Generate report |
+| GET | `/api/research-reports` | ✓ | List / search reports |
+| GET | `/api/research-reports/health` | ✓ | Health stats |
+| GET | `/api/research-reports/:id` | ✓ | Single report |
+| PATCH | `/api/research-reports/:id` | ✓ | Update (pin/rename/archive) |
+| DELETE | `/api/research-reports/:id` | ✓ | Archive report |
+| GET | `/api/research-reports/:id/export` | ✓ | Export in format |
+
+### POST /api/research-reports — Request Body
+
+```json
+{
+  "reportType": "morning_brief",
+  "title": "My Morning Brief",
+  "subtitle": "For internal review",
+  "tags": ["daily"]
+}
+```
+
+Valid reportType values: morning_brief, evening_summary, market_changes, weekly_market_intel, weekly_ai_infrastructure, weekly_semiconductor, weekly_memory, weekly_cloud, weekly_cybersecurity, weekly_institutional, weekly_sector_leadership, weekly_theme_leadership, collection_summary, research_monitoring_summary, opportunity_intel_summary, workspace_summary
+
+### GET /api/research-reports/:id/export — Format Param
+
+```
+GET /api/research-reports/:id/export?format=html
+GET /api/research-reports/:id/export?format=markdown
+GET /api/research-reports/:id/export?format=json
+GET /api/research-reports/:id/export?format=pdf_ready
+GET /api/research-reports/:id/export?format=ppt_ready
+```
+
+HTML/Markdown return the raw string with Content-Type header. JSON/pdf_ready/ppt_ready return `{ format, content }`.
+
+### GET /api/research-reports/health — Response
+
+```json
+{
+  "health": {
+    "reportsGenerated": 5,
+    "reportsToday": 2,
+    "latestReport": "2026-08-09T10:00:00.000Z",
+    "generationTimeMs": 45,
+    "storageHealth": "ok",
+    "reportTypeBreakdown": {
+      "morning_brief": 3,
+      "weekly_market_intel": 2
+    }
+  }
+}
+```
+
+### Command Center Integration
+
+`GET /api/command-center/daily` now includes `latestReport: LatestReportSection`:
+
+```json
+{
+  "latestReport": {
+    "available": true,
+    "latestReport": {
+      "reportId": "rpt-1786269099146-abc123",
+      "title": "Morning Research Brief",
+      "reportType": "morning_brief",
+      "typeLabel": "Morning Research Brief",
+      "generatedAt": "2026-08-09T10:00:00.000Z",
+      "marketRegime": "Bullish",
+      "summary": "5 research candidates tracked in Bullish regime.",
+      "isPinned": false,
+      "status": "published",
+      "linkTo": "/research-reports/rpt-1786269099146-abc123"
+    },
+    "recentReports": [],
+    "reportsToday": 1,
+    "lastGeneratedAt": "2026-08-09T10:00:00.000Z",
+    "generateShortcut": "/research-reports",
+    "viewAllShortcut": "/research-reports"
+  }
+}
+```
+
+### UAT Checklist — Research Reports (Sprint 2.5.5)
+
+**Page: /research-reports**
+```
+□ Page loads without error
+□ "Research Reports" heading with FileText icon visible
+□ Report count shown in subtitle
+□ "Generate Report" button visible in top right
+□ Empty state visible on first visit: "No research reports yet"
+□ Empty state has "Generate Your First Report" button
+□ Clicking "Generate Report" or empty-state button opens Generate Report modal
+□ Modal: Report Type dropdown shows all 16 types
+□ Modal: Custom Title field optional
+□ Modal: Subtitle field optional
+□ Modal: "Generated from existing intelligence — no new scans performed" note visible
+□ Modal: Compliance note visible
+□ Modal: "Generate Report" button disabled when mutation is in progress (shows spinner)
+□ After generation: new report card appears in grid
+□ Report card shows: type badge, title, summary excerpt, meta (time ago, regime, freshness)
+□ Report card has: export menu, pin button, archive button
+□ Clicking anywhere on card (except buttons) opens Report Viewer
+```
+
+**Report Viewer:**
+```
+□ "← Back to reports" link visible
+□ Report title and subtitle visible
+□ Meta strip shows: type badge, generated time, data freshness, market regime, author
+□ "Pinned" badge shown when isPinned=true
+□ Export menu visible (Downloads dropdown)
+□ Pin/Unpin button toggles correctly
+□ Archive (trash) button with confirmation dialog
+□ "Key Findings" panel with blue left border
+□ Key findings listed as bullets
+□ Section cards are collapsible (first 2 open by default)
+□ Each section shows: icon, title, content text, bullets (if any)
+□ Clicking section header toggles open/closed
+□ Supporting Evidence grid visible with source labels
+□ Related research links: Command Center, Research Workspace, Collections, Research Monitor, Opportunity Intel
+□ "How are scores calculated? View Research Glossary" link
+□ Compliance disclaimer at bottom
+```
+
+**Generate each report type:**
+```
+□ morning_brief       → generates without error
+□ evening_summary     → generates without error
+□ market_changes      → generates without error
+□ weekly_market_intel → generates without error
+□ collection_summary  → generates without error
+□ research_monitoring_summary → generates without error
+□ opportunity_intel_summary   → generates without error
+□ (Verify: all 16 types generate successfully)
+```
+
+**Report Library features:**
+```
+□ Search bar filters reports by title/summary in real time
+□ Clear (×) button appears when search has text
+□ Type filter dropdown filters by report type
+□ "Pinned" toggle shows only pinned reports
+□ Pinned reports always appear first in grid
+□ Clearing filters restores full list
+```
+
+**Pin/Unpin:**
+```
+□ Clicking Pin button on card sends PATCH with isPinned=true
+□ Report card shows yellow Pin icon when pinned
+□ Pinned reports move to top of grid
+□ Clicking Unpin removes pin and card returns to chrono order
+□ PATCH /api/research-reports/:id returns 200 with updated report
+```
+
+**Archive/Delete:**
+```
+□ Clicking Trash button shows confirmation dialog
+□ Confirming sends DELETE /api/research-reports/:id
+□ DELETE returns { ok: true, archived: true }
+□ Report disappears from library (status=archived, excluded from default list)
+□ Archived reports retrievable via ?status=archived query param
+```
+
+**Export:**
+```
+□ Export menu opens on click
+□ HTML option opens new browser tab with formatted HTML
+□ Markdown option opens new browser tab with markdown text
+□ JSON option downloads .json file
+□ PDF-ready option downloads .pdf-ready.json file
+□ PPT-ready option downloads .ppt-ready.json file
+□ HTML export starts with <!DOCTYPE html>
+□ HTML export contains report title in <h1>
+□ HTML export contains key findings in <ul>
+□ Markdown export starts with # heading
+□ PDF-ready export has pages[] array
+□ PDF-ready export has metadata.title
+□ PPT-ready export has slides[] array
+□ PPT-ready first slide is slideType: "title"
+□ PPT-ready last slide is slideType: "disclaimer"
+```
+
+**Platform Health:**
+```
+□ GET /api/admin/platform-health includes researchReports key
+□ researchReports.status = "HEALTHY" (or "UNKNOWN" if DB issue)
+□ researchReports.details.reportsGenerated is numeric
+□ researchReports.details.storageHealth = "ok"
+□ action field suggests /research-reports when reportsGenerated=0
+```
+
+**Command Center integration:**
+```
+□ GET /api/command-center/daily includes latestReport field
+□ latestReport.available=false when user has no reports
+□ latestReport.available=true after generating a report
+□ latestReport.latestReport has reportId, title, reportType, linkTo
+□ latestReport.linkTo starts with /research-reports/
+□ latestReport section does not block other sections (degrades independently)
+□ latestReport.generateShortcut = "/research-reports"
+□ latestReport.viewAllShortcut = "/research-reports"
+```
+
+**Compliance:**
+```
+□ No "recommendation to buy" in any generated report
+□ No "strong buy" in any generated report
+□ No "top pick" in any generated report
+□ No "price target" or "target price" in any generated report
+□ No "guarantee" in any generated report
+□ Disclaimer present in report viewer
+□ Compliance footer present on /research-reports page
+□ Compliance note present in Generate Report modal
+□ Report type labels do not contain "buy", "sell", or "guarantee"
+□ Section titles do not contain "buy", "sell", or "guarantee"
+```
+
+**Error handling:**
+```
+□ POST with invalid reportType returns 400 with validTypes list
+□ GET /reports/:id for non-existent returns 404
+□ GET /reports/:id/export with invalid format returns 400 with validFormats list
+□ All routes return 401 when not authenticated
+□ All routes return 500 with error detail on unexpected failure
+```
+
+---
+
 ## Research Monitor & Daily Intelligence Feed (Sprint 2.5.4)
 
 ### API Endpoints

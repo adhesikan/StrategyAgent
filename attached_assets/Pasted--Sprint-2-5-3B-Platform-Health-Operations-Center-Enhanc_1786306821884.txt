@@ -1,0 +1,1446 @@
+# Sprint 2.5.3B — Platform Health & Operations Center Enhancement
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PRODUCT STATUS:
+Research Platform v1.0 complete.
+Portfolio History & Change Intelligence (2.6.0) complete.
+
+CURRENT SPRINT:
+2.5.3B — Platform Health & Operations Center Enhancement
+
+SPRINT TYPE:
+Admin / Operations / Reliability refinement sprint
+
+============================================================
+CRITICAL ROADMAP DISCIPLINE
+============================================================
+
+This sprint is NOT a new product direction.
+
+It exists only to improve production operations, observability, diagnostics, and system readiness visibility.
+
+DO NOT implement:
+
+- Portfolio Intelligence
+- Portfolio Analytics
+- Portfolio Research Workspace
+- Goals & Planning
+- Trade Planning
+- Trade Construction Engine
+- Trade Execution
+- Portfolio Recommendations
+- Alerts
+- Notifications
+- Scheduled Reports
+- AI Agents
+- New Watchlist features
+- New broker integrations
+- New market-data providers
+
+DO NOT modify:
+
+- Scanner scoring
+- Opportunity Ranking formulas
+- Opportunity Intelligence scoring
+- Research Glossary semantics
+- Portfolio History calculations
+- Market Intelligence formulas
+
+After this sprint, roadmap execution returns to:
+
+2.6.1 — Portfolio Intelligence
+
+============================================================
+OBJECTIVE
+============================================================
+
+Transform the existing admin-only Platform Health page into a true Operations Center.
+
+An operator should be able to answer within seconds:
+
+1. Is the application healthy?
+2. Is today's market data current?
+3. Has the scanner run?
+4. Has ranking completed?
+5. Is Opportunity Intelligence current?
+6. Are sector/theme intelligence snapshots current?
+7. Is Research Monitoring current?
+8. Is the Command Center ready?
+9. Are Research Reports operational?
+10. Are Portfolio History services operational?
+11. Are broker integrations healthy?
+12. Which subsystem requires attention?
+13. What diagnostic or runbook should be used next?
+
+This sprint is read-only operational visibility.
+
+Do not create duplicate business logic.
+
+============================================================
+1. ARCHITECTURE AUDIT FIRST
+============================================================
+
+Before coding inspect:
+
+server/routes/platform-health.ts
+
+client/src/pages/admin-platform-health.tsx
+
+server/services/job-status-store.ts
+
+server/lib/structured-log.ts
+
+Opportunity Intelligence health
+
+Research Workspace health
+
+Research Collections health
+
+Research Monitoring health
+
+Research Reports health
+
+Market Research Command Center health
+
+Portfolio History health
+
+Broker Sync health
+
+Market Data health
+
+MCP health
+
+Scanner status
+
+Ranking status
+
+Sector/Theme Intelligence diagnostics
+
+Operations Manual
+
+existing admin diagnostics endpoints
+
+existing timestamps / generatedAt / lastSuccessAt / lastRunAt fields
+
+Report:
+
+A. Existing health cards
+B. Existing metrics available
+C. Metrics that can be read directly
+D. Metrics that would require new computation
+E. Existing diagnostic URLs
+F. Existing runbook links
+G. Existing status vocabulary
+H. Any duplicate health logic
+
+DO NOT implement anything until audit is complete.
+
+============================================================
+2. OPERATIONS SUMMARY BANNER
+============================================================
+
+At the very top of /admin/platform-health create:
+
+Operations Summary
+
+Show:
+
+Platform Status
+Research Readiness
+Market Data Readiness
+AI Readiness
+Reports Readiness
+Portfolio Services Readiness
+Broker Services Readiness
+
+Possible states:
+
+READY
+DEGRADED
+WAITING
+FAILED
+UNKNOWN
+DISABLED
+
+Use existing subsystem health.
+
+No invented status.
+
+Suggested messages:
+
+"Today's Research Platform is Ready"
+
+or
+
+"Today's Research Platform Requires Attention"
+
+If attention required:
+
+show concise deterministic reasons.
+
+Example:
+
+Market Data stale
+Scanner has not run
+Command Center snapshot missing
+
+============================================================
+3. END-TO-END RESEARCH PIPELINE
+============================================================
+
+Create a visual pipeline:
+
+Market Data
+   ↓
+Universe Ready
+   ↓
+Scanner
+   ↓
+Opportunity Ranking
+   ↓
+Opportunity Intelligence
+   ↓
+Sector / Theme Intelligence
+   ↓
+Research Collections
+   ↓
+Research Monitoring
+   ↓
+Market Research Command Center
+   ↓
+Research Reports
+
+Each stage should show:
+
+status
+last updated
+freshness
+primary metric
+optional warning
+
+Status:
+
+HEALTHY
+RUNNING
+WAITING
+DEGRADED
+FAILED
+UNKNOWN
+DISABLED
+
+Do NOT derive false success.
+
+If a stage has never run:
+
+show:
+
+"Not run yet"
+
+rather than generic Unknown when possible.
+
+============================================================
+4. DATA FRESHNESS DASHBOARD
+============================================================
+
+Create a dedicated Data Freshness section.
+
+Include:
+
+Market Prices
+Historical Bars
+Market Symbol Metadata
+Opportunity Ranking
+Opportunity Intelligence
+Sector Intelligence
+Theme Intelligence
+Institutional Signals
+Research Collections
+Research Monitor
+Command Center Snapshot
+Research Reports
+Portfolio History
+Broker Sync
+
+Each row/card shows:
+
+dataset
+lastUpdated
+age
+expectedCadence if known
+freshnessStatus
+
+Standard freshness vocabulary:
+
+FRESH
+RECENT
+DELAYED
+STALE
+UNKNOWN
+NOT_APPLICABLE
+
+Do not apply one universal threshold blindly.
+
+Examples:
+
+Market data:
+minutes / latest trading day
+
+13F:
+quarterly / delayed by design
+
+Research reports:
+fresh based on generation time
+
+Broker sync:
+only applicable when connected
+
+Document freshness rules.
+
+============================================================
+5. MARKET DATA HEALTH ENHANCEMENT
+============================================================
+
+Expand existing Market Data card.
+
+Show only metrics already available or cheaply queryable.
+
+Possible fields:
+
+provider
+licenseMode
+environment
+activeSymbols
+symbolsWithSector
+sectorCoveragePercent
+historicalBarsStored
+lastIngestionAt
+lastSuccessfulRefreshAt
+failedSymbols
+requestLatencyMs
+dataFreshness
+ingestionStatus
+
+DO NOT call Twelve Data from Platform Health.
+
+No live provider requests.
+
+Database/cached data only.
+
+If Twelve Data credits/usage are available through existing local telemetry:
+
+show them.
+
+Otherwise:
+do not invent them.
+
+============================================================
+6. SCANNER HEALTH
+============================================================
+
+Replace unhelpful generic "Unknown" where possible.
+
+Show:
+
+status
+lastScanAt
+scanDurationMs
+universeSize
+qualifiedCount
+rejectedCount
+errorCount
+latestMarketRegime if available
+
+Possible statuses:
+
+IDLE
+RUNNING
+COMPLETED
+FAILED
+NOT_RUN
+
+If no scanner status persistence exists:
+
+use existing Job Status Store if appropriate.
+
+Do NOT create scanner business logic.
+
+Do NOT run scanner just to get health.
+
+============================================================
+7. OPPORTUNITY RANKING HEALTH
+============================================================
+
+Show:
+
+rankingExists
+generatedAt
+rankedSymbolCount
+marketRegime
+growthCount
+incomeCount
+watchCount
+approachingCount
+generationAge
+freshness
+
+If ranking unavailable:
+
+show clear action / diagnostic.
+
+============================================================
+8. OPPORTUNITY INTELLIGENCE HEALTH
+============================================================
+
+Show:
+
+available
+candidateCount
+growthCandidates
+incomeCandidates
+watchCandidates
+averageResearchScore if available without expensive recomputation
+lastGeneratedAt
+coveragePercent if already available
+generationDuration if tracked
+
+Do not recalculate Opportunity Intelligence solely for health.
+
+============================================================
+9. SECTOR / THEME INTELLIGENCE HEALTH
+============================================================
+
+Show separately or combined:
+
+sector snapshot rows
+theme snapshot rows
+latest sector generatedAt
+latest theme generatedAt
+classificationCoverage
+unclassifiedCount
+classifiedButUnrankedCount
+themesWithData
+themesWithoutData
+
+Link to existing intelligence diagnostics.
+
+============================================================
+10. RESEARCH COLLECTIONS HEALTH
+============================================================
+
+Show:
+
+systemCollections
+userCollections
+followCount
+favoriteCount
+pinCount
+lastUpdatedAt if available
+systemSeedStatus
+
+Do NOT expose user identities or collection contents.
+
+Aggregates only.
+
+============================================================
+11. RESEARCH WORKSPACE HEALTH
+============================================================
+
+Show safe aggregate operational metrics.
+
+Examples if already available:
+
+conversationsTotal
+conversationsToday
+pinnedConversations
+contextAssemblyStatus
+fallbackCount
+AI error count
+averageResponseDuration
+lastSuccessfulResearchAt
+
+If OpenAI telemetry does NOT currently exist:
+
+do NOT add expensive AI calls.
+
+Only expose metrics safely available.
+
+Prompt version may be shown if currently versioned.
+
+============================================================
+12. RESEARCH MONITORING HEALTH
+============================================================
+
+Show:
+
+watchCount
+activityCount
+latestEvaluationAt
+latestFeedGeneratedAt
+evaluationsToday
+failedEvaluations
+monitoringStatus
+
+Use existing research-monitor tables/services.
+
+============================================================
+13. MARKET RESEARCH COMMAND CENTER HEALTH
+============================================================
+
+Improve existing card.
+
+Show:
+
+snapshotExists
+generatedAt
+sectionsAvailable
+sectionsUnavailable
+freshness
+latestSnapshotAge
+
+If missing:
+
+display:
+
+"No Daily Research Snapshot has been generated yet."
+
+Provide:
+
+Open Market Research Command Center
+
+Do NOT automatically generate snapshot.
+
+============================================================
+14. RESEARCH REPORTS HEALTH
+============================================================
+
+Show:
+
+reportsGeneratedTotal
+reportsToday
+latestReportAt
+latestReportType
+averageGenerationTimeMs
+storageHealth
+reportTypeBreakdown if already available
+
+No report generation from health page.
+
+============================================================
+15. PORTFOLIO HISTORY HEALTH
+============================================================
+
+Add / expand:
+
+portfoliosTracked
+snapshotsTotal
+snapshotsToday
+latestSnapshotAt
+failedSnapshots
+positionsCaptured
+averageSnapshotDurationMs
+
+Admin metrics only.
+
+DO NOT expose:
+
+portfolio names
+symbols
+market values
+cost basis
+user identities
+
+============================================================
+16. BROKER SYNC HEALTH
+============================================================
+
+Show:
+
+configuredProviders
+connectedPortfolioCount
+healthyConnections
+failedConnections
+needsReauth
+runningSyncs
+lastSyncAt
+averageSyncDurationMs
+lastSafeError
+
+No tokens.
+
+No broker account IDs.
+
+No user identity.
+
+If no connected portfolio:
+
+DISABLED
+
+is correct.
+
+============================================================
+17. MCP HEALTH
+============================================================
+
+Show:
+
+reachable
+latencyMs
+providerMode if safely available
+lastSuccessfulCheck
+base configuration status
+
+Never expose:
+
+service token
+credentials
+authorization headers
+
+============================================================
+18. DATABASE HEALTH
+============================================================
+
+Expand:
+
+reachable
+latencyMs
+tableCount
+migration/readiness state if available
+pool state if safely available
+
+Do not perform expensive DB introspection every refresh.
+
+Cache reasonably.
+
+============================================================
+19. APPLICATION HEALTH
+============================================================
+
+Show:
+
+environment
+uptime
+nodeVersion
+build/version/commit if already exposed
+memory usage
+server startedAt
+process health
+
+Never expose filesystem paths containing secrets.
+
+============================================================
+20. BACKGROUND JOBS
+============================================================
+
+Keep existing Background Job Status section.
+
+Improve readability.
+
+Jobs currently include:
+
+scanner
+ranking
+intelligence_precompute
+institutional_ingestion
+mapping_pipeline
+institutional_signal_rebuild
+symbol_enrichment
+broker_sync
+portfolio_snapshot
+research monitoring/report jobs if applicable
+
+Show:
+
+status
+startedAt
+completedAt
+duration
+lastSuccessAt
+lastError safely truncated
+
+No PII.
+
+============================================================
+21. HEALTH STATUS NORMALIZATION
+============================================================
+
+Audit all health-status terminology.
+
+Create or reuse canonical status helper.
+
+Preferred normalized admin status vocabulary:
+
+HEALTHY
+RUNNING
+WAITING
+DEGRADED
+FAILED
+UNKNOWN
+DISABLED
+
+Do not allow each card to invent its own meaning.
+
+Document mapping from subsystem statuses.
+
+============================================================
+22. SERVICE READINESS VS HEALTH
+============================================================
+
+Distinguish:
+
+Health:
+"Can the subsystem operate?"
+
+from
+
+Readiness:
+"Is today's data/results ready?"
+
+Example:
+
+Scanner service may be HEALTHY
+
+but scanner readiness may be WAITING because today's scan has not run.
+
+This distinction is important.
+
+Implement where useful.
+
+============================================================
+23. RESEARCH READINESS
+============================================================
+
+Create a deterministic Research Readiness summary.
+
+Required core stages might include:
+
+Market Data
+Ranking
+Opportunity Intelligence
+Intelligence snapshots
+
+Optional stages:
+
+Research Reports
+Portfolio
+Broker Sync
+
+Broker Sync should NOT make platform research unready when user has no broker connected.
+
+Portfolio should NOT make research unready.
+
+Institutional 13F may be delayed by design.
+
+Document readiness rules clearly.
+
+============================================================
+24. DATA FRESHNESS RULES
+============================================================
+
+Create reusable freshness helper.
+
+Suggested structure:
+
+FreshnessRule {
+  dataset
+  freshWithinMs?
+  recentWithinMs?
+  delayedByDesign?
+  expectedCadence?
+}
+
+Do not use exact thresholds unless supported by actual platform cadence.
+
+Examples:
+
+Daily-close market data:
+fresh relative to latest completed trading day
+
+Opportunity ranking:
+fresh relative to latest scan cycle
+
+13F:
+delayedByDesign
+
+Broker sync:
+fresh relative to last requested sync
+
+============================================================
+25. ADMIN ACTIONS
+============================================================
+
+Keep admin operations that already exist.
+
+Examples:
+
+Enrich Symbol Classifications
+Rebuild Intelligence
+Raw Diagnostics
+
+Do NOT add high-risk actions without need.
+
+Any operational button must:
+
+require admin
+show confirmation where destructive/rate-consuming
+show running state
+prevent concurrency
+show result
+log safe status
+
+============================================================
+26. DETAIL LINKS
+============================================================
+
+Every health card should have:
+
+Show Details
+
+Use existing diagnostics if available.
+
+Do NOT create duplicate diagnostic endpoints.
+
+Examples:
+
+Intelligence → existing diagnostics
+Mapping → existing mapping diagnostics
+Market Data → existing admin market-data health
+Reports → report health endpoint
+Portfolio History → existing/new safe health endpoint
+
+============================================================
+27. RUNBOOK INTEGRATION
+============================================================
+
+For DEGRADED / FAILED / WAITING states:
+
+provide:
+
+View Runbook
+
+Deep-link into:
+
+/admin/operations-manual
+
+with search/query/section targeting if supported.
+
+Examples:
+
+scanner
+market data stale
+ranking unavailable
+sector snapshots
+broker sync
+research reports
+portfolio history
+
+No documentation duplication inside UI.
+
+============================================================
+28. OPERATIONS MANUAL SEARCH
+============================================================
+
+Ensure admin manual search finds:
+
+platform health
+research readiness
+data freshness
+scanner
+ranking
+opportunity intelligence
+market data
+MCP
+research workspace
+collections
+monitor
+command center
+reports
+portfolio history
+broker sync
+database
+background jobs
+
+============================================================
+29. PERFORMANCE
+============================================================
+
+Platform Health should remain inexpensive.
+
+Target:
+
+single aggregated endpoint
+
+parallel subsystem checks where necessary
+
+short cache (e.g. existing 30 sec)
+
+no scanner execution
+
+no ranking execution
+
+no AI invocation
+
+no market-data-provider invocation
+
+no expensive full-table scans
+
+Use COUNT / metadata queries carefully.
+
+Report measured endpoint latency.
+
+============================================================
+30. FAILURE ISOLATION
+============================================================
+
+One failed subsystem must NOT cause entire Platform Health endpoint to 500.
+
+Each health check should independently return:
+
+status
+message
+safeError
+
+Example:
+
+Institutional DB query fails
+
+→ Institutional card FAILED/UNKNOWN
+
+→ Remaining cards still render.
+
+Use Promise.allSettled or existing equivalent where appropriate.
+
+============================================================
+31. SECURITY / DEVSECOPS
+============================================================
+
+Admin only.
+
+Never display:
+
+API keys
+tokens
+JWT secrets
+session secrets
+broker tokens
+account numbers
+portfolio holdings
+portfolio values
+emails
+PII
+DATABASE_URL
+authorization headers
+raw OpenAI prompts containing user data
+
+Structured-log redaction must remain enabled.
+
+Add tests for secret patterns.
+
+============================================================
+32. CLIENT UX
+============================================================
+
+Maintain current dark professional aesthetic.
+
+Do NOT redesign the entire admin interface.
+
+Improve information hierarchy.
+
+Recommended order:
+
+Operations Summary
+
+Research Pipeline
+
+Data Freshness
+
+Infrastructure
+
+Market Data & MCP
+
+Scanner & Intelligence
+
+Research Services
+
+Portfolio Services
+
+Broker Services
+
+Institutional Services
+
+Admin Operations
+
+Background Jobs
+
+Responsive behavior required.
+
+============================================================
+33. MOBILE / SMALL SCREEN
+============================================================
+
+Admin may use desktop primarily, but page must remain usable.
+
+Cards stack.
+
+Pipeline becomes vertical if needed.
+
+Tables horizontally scroll.
+
+No clipped actions.
+
+============================================================
+34. COMMERCIAL READINESS
+============================================================
+
+Document only.
+
+Do not implement pricing.
+
+Explain how Platform Health supports:
+
+Retail production operations
+
+Professional support
+
+RIA support
+
+Institutional SLA monitoring
+
+Enterprise operational governance
+
+Future editions may expose organization-specific health views.
+
+Do NOT expose admin Platform Health to normal users.
+
+============================================================
+35. TESTS
+============================================================
+
+Add comprehensive tests.
+
+Target 150+ assertions where meaningful.
+
+Cover:
+
+summary banner
+
+research readiness
+
+pipeline stages
+
+status normalization
+
+health vs readiness distinction
+
+data freshness helper
+
+delayed-by-design data
+
+scanner never-run state
+
+ranking state
+
+Opportunity Intelligence state
+
+Sector/Theme state
+
+Research Collections
+
+Research Workspace
+
+Research Monitoring
+
+Command Center
+
+Research Reports
+
+Portfolio History
+
+Broker Sync disabled
+
+MCP
+
+Market Data
+
+Database
+
+Application
+
+background jobs
+
+failure isolation
+
+runbook links
+
+diagnostic links
+
+admin authorization
+
+secret redaction
+
+no private portfolio data
+
+no external provider calls
+
+no AI calls
+
+no scanner execution
+
+endpoint caching
+
+Operations Manual updates
+
+Roadmap discipline
+
+============================================================
+36. PRODUCTION UAT
+============================================================
+
+Document UAT.
+
+At minimum:
+
+1. Open /admin/platform-health.
+
+2. Verify Operations Summary.
+
+3. Verify Research Pipeline.
+
+4. Verify Data Freshness.
+
+5. Verify Market Data card.
+
+6. Verify Scanner state.
+
+7. Verify Ranking state.
+
+8. Verify Opportunity Intelligence.
+
+9. Verify Intelligence.
+
+10. Verify Research Workspace.
+
+11. Verify Collections.
+
+12. Verify Research Monitoring.
+
+13. Verify Command Center.
+
+14. Verify Reports.
+
+15. Verify Portfolio History.
+
+16. Verify Broker Sync DISABLED when none connected.
+
+17. Verify MCP healthy.
+
+18. Verify background job table.
+
+19. Verify degraded state links to correct runbook.
+
+20. Verify one simulated subsystem failure does not break page.
+
+21. Verify no secrets appear in response/UI.
+
+============================================================
+37. OPERATIONS MANUAL — REQUIRED
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+platform health documentation
+
+monitoring/health documentation
+
+troubleshooting runbook
+
+Create or update an Operations Center doc such as:
+
+docs/operations/23-platform-operations-center.md
+
+Document:
+
+architecture
+health vs readiness
+status vocabulary
+research pipeline
+freshness rules
+every card
+metrics
+diagnostic links
+runbook links
+admin actions
+security
+performance
+failure isolation
+UAT
+troubleshooting
+
+============================================================
+38. ROADMAP UPDATE
+============================================================
+
+Record:
+
+Sprint 2.5.3B — Platform Health & Operations Center Enhancement
+
+Classification:
+
+Operational refinement.
+
+Do NOT change product sequencing.
+
+After completion return immediately to:
+
+2.6.1 — Portfolio Intelligence
+
+Existing roadmap:
+
+2.6.1 Portfolio Intelligence
+2.6.2 Portfolio Analytics
+2.6.3 Portfolio Research Workspace
+2.6.4 Goals & Planning
+
+then:
+
+Trade Planning & Trade Construction
+
+============================================================
+39. EXISTING BACKLOG PLACEMENT
+============================================================
+
+Keep:
+
+#120 Portfolio Value Chart
+
+assigned to:
+
+2.6.2 Portfolio Analytics
+
+Do NOT implement here.
+
+Keep previous:
+
+startup integration tests
+scheduled reports
+report deduplication
+report versioning
+indexed symbol report search
+
+in their existing future sprint/backlog assignments.
+
+Do not pull them forward.
+
+============================================================
+40. IMPROVEMENT CAPTURE RULE
+============================================================
+
+If new ideas emerge:
+
+DO NOT implement unrelated work automatically.
+
+Classify:
+
+Critical production fix
+
+Current sprint requirement
+
+Future planned sprint
+
+Backlog
+
+Completion report must list:
+
+Suggestion
+Assigned sprint/backlog
+Priority
+Reason
+
+============================================================
+41. COMMERCIAL EXPERIENCE REVIEW
+============================================================
+
+Document only.
+
+Explain:
+
+Retail:
+Reliable production research platform.
+
+Professional:
+Operational reliability for heavier usage.
+
+RIA:
+Future firm-level operational monitoring.
+
+Institutional:
+SLA/readiness visibility.
+
+Enterprise:
+Organization/environment-specific health and governance.
+
+No entitlement implementation.
+
+============================================================
+42. PLATFORM REUSABILITY REVIEW
+============================================================
+
+Confirm Operations Center can support future:
+
+Portfolio Intelligence
+
+Trade Construction Engine
+
+Execution
+
+AI Agents
+
+RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+without redesign.
+
+============================================================
+43. NO BUSINESS LOGIC CHANGE CONFIRMATION
+============================================================
+
+Explicitly confirm:
+
+Scanner logic unchanged
+
+Ranking logic unchanged
+
+Opportunity Intelligence unchanged
+
+Portfolio History unchanged
+
+Research Monitoring unchanged
+
+Research Reports unchanged
+
+No new market data calculations
+
+No new AI behavior
+
+No product-facing scoring changes
+
+============================================================
+44. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. Operations Summary implemented.
+
+B. Research Pipeline visualization implemented.
+
+C. Data Freshness dashboard implemented.
+
+D. Scanner state meaningful.
+
+E. Ranking health meaningful.
+
+F. Opportunity Intelligence health enhanced.
+
+G. Market Data metrics enhanced.
+
+H. Research services visible.
+
+I. Reports visible.
+
+J. Portfolio History visible.
+
+K. Broker Sync correctly shows disabled when unused.
+
+L. Health vs readiness distinguished.
+
+M. Failure isolation works.
+
+N. No secrets exposed.
+
+O. No user financial data exposed.
+
+P. No external provider requests performed by health page.
+
+Q. No LLM calls.
+
+R. No scanner/ranking execution triggered.
+
+S. Runbook integration works.
+
+T. Operations Manual search works.
+
+U. Admin authorization enforced.
+
+V. Full tests pass.
+
+W. npm run build passes.
+
+X. Zero new TypeScript errors.
+
+Y. Operations Manual updated.
+
+Z. Roadmap alignment confirmed.
+
+============================================================
+45. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Architecture audit
+2. Existing health architecture discovered
+3. Files changed
+4. Operations Summary
+5. Research Pipeline
+6. Health vs Readiness model
+7. Data Freshness architecture
+8. Market Data health
+9. Scanner health
+10. Ranking health
+11. Opportunity Intelligence health
+12. Sector/Theme Intelligence health
+13. Research Workspace health
+14. Research Collections health
+15. Research Monitoring health
+16. Command Center health
+17. Research Reports health
+18. Portfolio History health
+19. Broker Sync health
+20. MCP health
+21. Database/Application health
+22. Background Jobs
+23. Admin operations
+24. Diagnostics integration
+25. Runbook integration
+26. Security/DevSecOps
+27. Performance / measured endpoint latency
+28. Failure isolation
+29. UI/mobile
+30. Tests
+31. Full test count
+32. npm run build
+33. Typecheck
+34. Production UAT
+35. Operations Manual updates
+36. Commercial Experience Review
+37. Platform Reusability Review
+38. Improvement Suggestions Captured
+39. Deferred backlog
+40. Roadmap Impact
+41. No Business Logic Change Confirmation
+42. Operations Manual Updated: YES/NO
+43. Operations Manual Files Updated
+44. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

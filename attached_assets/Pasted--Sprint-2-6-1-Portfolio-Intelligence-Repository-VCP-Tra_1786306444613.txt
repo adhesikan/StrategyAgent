@@ -1,0 +1,1362 @@
+# Sprint 2.6.1 — Portfolio Intelligence
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Phase 3 — Portfolio Intelligence
+
+CURRENT SPRINT:
+2.6.1 — Portfolio Intelligence
+
+PREREQUISITE:
+Sprint 2.6.0 Portfolio History & Change Intelligence is code-complete.
+
+Before implementing this sprint, verify production readiness for 2.6.0:
+
+1. Production migration applied successfully.
+2. Portfolio history tables exist.
+3. Snapshot capture works.
+4. Two-snapshot change comparison works.
+5. Platform Health shows Portfolio History healthy.
+6. No unexpected 500s.
+7. User isolation verified.
+
+If any of these fail:
+STOP.
+Report the issue.
+Do not begin 2.6.1 until 2.6.0 production UAT is green.
+
+======================================================================
+PRODUCT PRINCIPLE
+======================================================================
+
+VCP Trader AI remains RESEARCH-FIRST.
+
+Portfolio Intelligence is a personalization layer over the existing Research Platform.
+
+Opportunity Intelligence owns:
+
+- researchScore
+- technicalScore
+- institutionalScore
+- fundamentalScore
+- risk semantics
+- opportunityType
+- evidence confidence
+- qualification status
+- primary evidence
+- secondary evidence
+- risk factors
+- thesis invalidation
+
+Portfolio Intelligence MUST consume those fields.
+
+DO NOT create another scoring universe.
+
+DO NOT independently rank securities.
+
+DO NOT create buy/sell/rebalance recommendations.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Help a user understand:
+
+"What does the existing VCP Trader AI research mean for MY portfolio?"
+
+The system should answer:
+
+- Where am I concentrated?
+- Which sectors and themes dominate?
+- Which holdings have strong research evidence?
+- Which holdings have weakened?
+- Which holdings overlap with current qualified opportunities?
+- Which holdings lack sufficient research coverage?
+- Which portfolio exposures have recently changed?
+- What deserves further research?
+
+Everything should be descriptive and research-oriented.
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Inspect:
+
+portfolio tables
+
+portfolio history/snapshot tables
+
+portfolio-history-service.ts
+
+Opportunity Intelligence service
+
+CanonicalOpportunity types
+
+Research Glossary
+
+Research Collections
+
+Research Monitoring
+
+Research Reports
+
+Command Center
+
+AI Research Workspace
+
+market_data_symbols
+
+theme registry
+
+institutional signals
+
+existing portfolio-intelligence-engine.ts
+
+legacy portfolio analytics code
+
+existing dashboard portfolio fragments
+
+Report:
+
+A. Existing reusable capabilities
+B. Legacy/duplicate portfolio logic
+C. Anything that should be retired or avoided
+D. Existing calculations safe to reuse
+E. Gaps required for this sprint
+
+Do not write code until the audit is complete.
+
+======================================================================
+2. CANONICAL PORTFOLIO INTELLIGENCE RESULT
+======================================================================
+
+Create a reusable domain model.
+
+Suggested:
+
+PortfolioIntelligenceResult {
+  portfolioId
+  portfolioName
+  generatedAt
+  snapshotId
+  marketValue
+  costBasis
+  positionCount
+
+  coverage
+  concentration
+  sectorExposure[]
+  themeExposure[]
+  researchCoverage
+  opportunityOverlap
+  strengthenedHoldings[]
+  weakenedHoldings[]
+  qualifiedHoldings[]
+  unqualifiedHoldings[]
+  uncoveredHoldings[]
+  institutionalSummary
+  riskObservations[]
+  researchObservations[]
+  limitations[]
+  freshness
+}
+
+Do not create vague AI-only fields.
+
+All fields should be deterministic or explicitly sourced.
+
+======================================================================
+3. RESEARCH COVERAGE
+======================================================================
+
+For every portfolio calculate:
+
+positionsTotal
+
+positionsWithMarketData
+
+positionsWithOpportunityIntelligence
+
+positionsWithFundamentalEvidence
+
+positionsWithInstitutionalEvidence
+
+positionsWithSector
+
+positionsWithTheme
+
+overallCoveragePercent
+
+Coverage must distinguish:
+
+0 score
+
+from
+
+unavailable data.
+
+Never convert missing data to zero.
+
+======================================================================
+4. CONCENTRATION ANALYSIS
+======================================================================
+
+Compute deterministic concentration metrics.
+
+Examples:
+
+largestPositionPercent
+
+top3PositionPercent
+
+top5PositionPercent
+
+sectorConcentration
+
+themeConcentration
+
+singleNameConcentration
+
+Do not call these:
+
+"bad"
+"good"
+"too high"
+
+Instead use descriptive labels:
+
+Low concentration
+
+Moderate concentration
+
+High concentration
+
+based on transparent thresholds.
+
+Thresholds must be documented in the Research Glossary / Portfolio Intelligence docs.
+
+Do not claim regulatory suitability.
+
+======================================================================
+5. SECTOR EXPOSURE
+======================================================================
+
+Using existing market_data_symbols sector data:
+
+Show:
+
+sector
+marketValue
+portfolioPercent
+positionCount
+changeSincePreviousSnapshot if available
+
+Sort largest exposure first.
+
+Do not create new sector classifications.
+
+Use existing classification infrastructure.
+
+======================================================================
+6. THEME EXPOSURE
+======================================================================
+
+Use existing theme registry.
+
+Calculate:
+
+theme
+marketValue
+portfolioPercent
+positionCount
+symbols[]
+
+Allow one holding to belong to multiple themes.
+
+Clearly state:
+
+theme percentages can overlap and therefore may not sum to 100%.
+
+This disclosure is required.
+
+======================================================================
+7. OPPORTUNITY OVERLAP
+======================================================================
+
+This is one of the most important features.
+
+For portfolio holdings, identify those currently present in:
+
+Opportunity Intelligence.
+
+Return:
+
+symbol
+researchScore
+opportunityType
+confidence
+riskLevel
+primaryEvidence
+recentChange
+
+Categories:
+
+Currently Qualified
+
+Approaching Qualification
+
+No Longer Qualified
+
+Not Currently Ranked
+
+Do not interpret absence as negative quality.
+
+Use:
+
+"Not currently represented in the latest Opportunity Intelligence snapshot."
+
+======================================================================
+8. HOLDINGS STRENGTHENING / WEAKENING
+======================================================================
+
+Consume Portfolio History + Opportunity Intelligence.
+
+Use existing change data.
+
+Show:
+
+Research Strengthened
+
+Research Weakened
+
+Newly Qualified
+
+No Longer Qualified
+
+No Change
+
+For each:
+
+symbol
+previousResearchScore
+currentResearchScore
+delta
+evidence drivers
+freshness
+
+Do not create new change formulas.
+
+======================================================================
+9. PORTFOLIO RESEARCH OBSERVATIONS
+======================================================================
+
+Build deterministic research observations.
+
+Examples:
+
+"Technology represents 42% of current portfolio market value."
+
+"Three holdings currently appear in Opportunity Intelligence."
+
+"Two holdings strengthened in research score since the previous snapshot."
+
+"Four holdings do not currently have sufficient Opportunity Intelligence coverage."
+
+"AI Infrastructure exposure represents 28% of portfolio value across 5 holdings."
+
+These are descriptive.
+
+Never:
+
+"You should diversify."
+
+"Reduce Technology."
+
+"Sell PLTR."
+
+"Add NVDA."
+
+======================================================================
+10. RISK OBSERVATIONS
+======================================================================
+
+Create descriptive risk observations using existing evidence.
+
+Examples:
+
+Concentration risk
+
+Sector concentration
+
+Theme concentration
+
+High-volatility holdings
+
+Upcoming earnings concentration
+
+Limited research coverage
+
+Institutional-data limitations
+
+Liquidity concerns if existing evidence supports it
+
+Do NOT introduce suitability scoring.
+
+Do NOT determine whether risk is appropriate for this individual.
+
+Use:
+
+"Research consideration"
+
+"Observed concentration"
+
+"Portfolio exposure"
+
+"Risk factor"
+
+======================================================================
+11. PORTFOLIO RESEARCH SUMMARY
+======================================================================
+
+Create deterministic summary structure:
+
+Portfolio Snapshot
+
+Research Coverage
+
+Current Opportunity Overlap
+
+Research Strengthening
+
+Research Weakening
+
+Sector Exposure
+
+Theme Exposure
+
+Concentration
+
+Institutional Context
+
+Risk Observations
+
+Further Research Areas
+
+"Further Research Areas" should be links/questions, not recommendations.
+
+Example:
+
+Review semiconductor exposure
+
+Review holdings with missing cost basis
+
+Review holdings with weakened research evidence
+
+Explore institutional context
+
+======================================================================
+12. API
+======================================================================
+
+Create:
+
+GET /api/portfolio/:id/intelligence
+
+Authenticated + ownership.
+
+Optional:
+
+?snapshotId=
+
+Default:
+latest portfolio snapshot/current portfolio state.
+
+Response:
+
+{
+  available,
+  portfolioId,
+  generatedAt,
+  intelligence,
+  message?
+}
+
+If no positions:
+
+available:false
+message:"Portfolio has no positions."
+
+If insufficient research data:
+
+return partial intelligence.
+
+Do not return 500 merely because a subsystem is unavailable.
+
+======================================================================
+13. DETAIL API
+======================================================================
+
+Create if useful:
+
+GET /api/portfolio/:id/intelligence/:symbol
+
+Return portfolio-context research for one holding.
+
+Include:
+
+portfolioWeight
+
+sectorExposureContribution
+
+themeExposure
+
+CanonicalOpportunity if available
+
+portfolio history change
+
+research change
+
+institutional context
+
+Do NOT duplicate Opportunity Workspace data unnecessarily.
+
+Prefer links/reference data where possible.
+
+======================================================================
+14. UI — PORTFOLIO INTELLIGENCE TAB
+======================================================================
+
+Enhance existing Portfolio page.
+
+Tabs should now include:
+
+Holdings
+
+History
+
+Intelligence
+
+Do not create unnecessary top-level nav.
+
+Intelligence tab sections:
+
+Portfolio Research Summary
+
+Research Coverage
+
+Opportunity Overlap
+
+Strengthening / Weakening
+
+Sector Exposure
+
+Theme Exposure
+
+Concentration
+
+Institutional Context
+
+Risk Observations
+
+======================================================================
+15. UX — RESEARCH FIRST
+======================================================================
+
+The page should never feel like a generic portfolio tracker.
+
+Every section should link back into:
+
+Opportunity Workspace
+
+Research Workspace
+
+Collections
+
+Command Center
+
+Research Reports
+
+Research Monitor
+
+Examples:
+
+"Open MU Research"
+
+"View Semiconductor Theme"
+
+"Explain in Research Workspace"
+
+"View Recent Changes"
+
+======================================================================
+16. GLOSSARY / TOOLTIPS
+======================================================================
+
+Use the Central Research Glossary.
+
+Add portfolio-specific glossary terms if needed:
+
+portfolio_research_coverage
+
+portfolio_concentration
+
+sector_exposure
+
+theme_exposure
+
+opportunity_overlap
+
+research_strengthened
+
+research_weakened
+
+qualified_holding
+
+uncovered_holding
+
+Do not hardcode competing definitions.
+
+======================================================================
+17. AI RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Do NOT build a separate Portfolio AI chatbot.
+
+Allow the existing AI Research Workspace to accept portfolio intelligence as context.
+
+Examples:
+
+"Explain my semiconductor exposure."
+
+"Which holdings have weakened in research evidence?"
+
+"Summarize the biggest portfolio changes."
+
+AI may explain deterministic intelligence.
+
+AI may NOT:
+
+invent holdings
+
+change scores
+
+recommend selling/buying/rebalancing
+
+claim suitability
+
+If portfolio context integration would require substantial redesign:
+expose clean service contracts now and defer full UX to 2.6.3.
+
+======================================================================
+18. INSTITUTIONAL CONTEXT
+======================================================================
+
+For covered holdings:
+
+Show existing institutional evidence.
+
+Preserve:
+
+SEC Form 13F delayed-data disclosure.
+
+Never imply current institutional positions.
+
+If unavailable:
+
+show "Institutional evidence unavailable."
+
+Do not treat unavailable as zero.
+
+======================================================================
+19. MARKET CONTEXT
+======================================================================
+
+Overlay current:
+
+Market Regime
+
+Sector Intelligence
+
+Theme Intelligence
+
+where available.
+
+Examples:
+
+"Technology is currently one of the leading sectors in Market Intelligence."
+
+"AI Infrastructure theme score improved in the latest snapshot."
+
+This should be contextual.
+
+Do not reinterpret portfolio suitability.
+
+======================================================================
+20. PORTFOLIO HISTORY INTEGRATION
+======================================================================
+
+Consume 2.6.0 history.
+
+Examples:
+
+sector exposure change
+
+theme exposure change
+
+research score movement
+
+holding quantity change
+
+portfolio value change
+
+Clearly distinguish:
+
+Market movement
+
+Position movement
+
+Research evidence movement
+
+======================================================================
+21. NO PORTFOLIO SCORE
+======================================================================
+
+IMPORTANT.
+
+Do NOT create a single:
+
+Portfolio Score
+
+Portfolio Grade
+
+Portfolio Rating
+
+unless there is already an approved deterministic methodology.
+
+This sprint should favor transparent dimensions over opaque composite scoring.
+
+Examples:
+
+Research Coverage: 82%
+
+Largest Position: 18%
+
+Technology Exposure: 42%
+
+Opportunity Overlap: 6 / 18 holdings
+
+Research Strengthened: 4
+
+Much more useful than:
+
+Portfolio Score = 73.
+
+======================================================================
+22. COMPLIANCE
+======================================================================
+
+Use:
+
+Portfolio Research
+
+Portfolio Intelligence
+
+Research Observation
+
+Risk Observation
+
+Exposure
+
+Research Candidate
+
+Research Evidence
+
+Further Research
+
+Avoid:
+
+Recommendation
+
+Suitable
+
+Unsuitable
+
+Overweight recommendation
+
+Underweight recommendation
+
+Rebalance now
+
+Buy
+
+Sell
+
+Trim
+
+Add
+
+Every Intelligence tab should contain concise disclaimer:
+
+"Portfolio Intelligence summarizes research evidence and observed portfolio characteristics for informational and research purposes. It does not provide individualized investment advice, suitability determinations, or recommendations to buy, sell, hold, or rebalance securities."
+
+Do not repeat excessively.
+
+======================================================================
+23. PRIVACY
+======================================================================
+
+Portfolio Intelligence operates on private financial data.
+
+Requirements:
+
+authenticated endpoints
+
+strict ownership
+
+no private portfolio values in structured logs
+
+no holdings leaked into admin health
+
+no cross-user cache keys
+
+if caching:
+cache key must include userId + portfolioId
+
+Add explicit tests.
+
+======================================================================
+24. CACHING
+======================================================================
+
+Portfolio Intelligence may be moderately expensive.
+
+Implement sensible cache if needed.
+
+Invalidate when:
+
+portfolio changes
+
+snapshot captured
+
+broker sync completes
+
+import confirmed
+
+manual position updated
+
+Opportunity Intelligence ranking refreshes
+
+Avoid stale personalized data.
+
+Document cache behavior.
+
+======================================================================
+25. PERFORMANCE
+======================================================================
+
+Avoid N+1.
+
+Preferred:
+
+load positions once
+
+load latest history once
+
+get Opportunity Intelligence once
+
+build symbol map
+
+load sector/theme metadata in bulk
+
+load institutional evidence in bulk/existing aggregate
+
+Target predictable query count.
+
+Measure latency.
+
+Report:
+
+small portfolio ~10 holdings
+
+medium ~50
+
+large ~200
+
+Do not over-optimize prematurely.
+
+======================================================================
+26. PLATFORM HEALTH
+======================================================================
+
+Add:
+
+Portfolio Intelligence
+
+Status:
+
+HEALTHY
+DEGRADED
+UNKNOWN
+DISABLED
+
+Admin-safe metrics only:
+
+portfoliosAnalyzed
+
+lastAnalysisAt
+
+averageAnalysisDurationMs
+
+partialAnalyses
+
+failedAnalyses
+
+averageCoveragePercent
+
+Do NOT expose:
+
+symbols
+
+values
+
+portfolio names
+
+user data
+
+======================================================================
+27. STRUCTURED LOGGING
+======================================================================
+
+Events:
+
+portfolio_intelligence_started
+
+portfolio_intelligence_completed
+
+portfolio_intelligence_partial
+
+portfolio_intelligence_failed
+
+Safe fields:
+
+durationMs
+
+positionCount
+
+coveragePercent
+
+subsystemsAvailable
+
+No holdings details.
+
+No market values.
+
+No cost basis.
+
+No user PII.
+
+======================================================================
+28. REPORTS FUTURE CONTRACT
+======================================================================
+
+Research Reports will eventually support:
+
+Portfolio Research Summary
+
+Do NOT implement report generation now.
+
+Expose PortfolioIntelligenceResult in reusable form so Sprint 2.6.3/reports can consume it.
+
+======================================================================
+29. TRADE PLANNING FUTURE CONTRACT
+======================================================================
+
+Future Trade Planning must be able to consume:
+
+portfolio exposure
+
+concentration
+
+existing holdings
+
+opportunity overlap
+
+risk observations
+
+Do NOT implement Trade Planning now.
+
+======================================================================
+30. COMMERCIAL EXPERIENCE REVIEW
+======================================================================
+
+Document only.
+
+FREE:
+Potentially basic portfolio overview.
+
+RETAIL:
+Portfolio Intelligence
+Research coverage
+Opportunity overlap
+Sector/theme exposure
+Research changes
+
+PROFESSIONAL:
+Advanced analytics
+Longer history
+Multiple portfolios
+Cross-portfolio comparisons
+
+RIA:
+Client portfolio intelligence
+Client research observations
+Advisor workflow
+Client-ready reporting later
+
+INSTITUTIONAL:
+Multi-portfolio intelligence
+Custom research policies
+Firm-level analytics
+
+ENTERPRISE:
+Custom methodologies
+API
+Private datasets
+Custom UI
+
+Do NOT implement entitlement enforcement.
+
+======================================================================
+31. RIA / INSTITUTIONAL EXTENSION POINTS
+======================================================================
+
+Document architecture hooks for future:
+
+organizationId
+
+advisor/client relationship
+
+custom policies
+
+custom theme registry
+
+custom research rules
+
+custom reporting
+
+Do NOT implement them now.
+
+======================================================================
+32. TESTS
+======================================================================
+
+Add comprehensive tests.
+
+Target 150+ assertions where appropriate.
+
+Cover:
+
+empty portfolio
+
+single holding
+
+10 holdings
+
+50 holdings
+
+200 holdings
+
+missing market data
+
+missing Opportunity Intelligence
+
+missing institutional evidence
+
+NULL vs 0
+
+sector exposure
+
+theme overlap percentages
+
+concentration
+
+largest holding
+
+top3/top5
+
+qualified overlap
+
+approaching qualification
+
+not ranked
+
+strengthened
+
+weakened
+
+newly qualified
+
+no longer qualified
+
+history integration
+
+market movement vs position change
+
+coverage
+
+ownership
+
+cross-user denial
+
+private cache isolation
+
+structured-log privacy
+
+13F disclosure
+
+glossary integration
+
+no portfolio score
+
+no recommendation language
+
+Opportunity Intelligence ownership of scoring
+
+partial subsystem failure
+
+Platform Health
+
+Operations Manual
+
+Roadmap discipline
+
+======================================================================
+33. PRODUCTION UAT
+======================================================================
+
+Document:
+
+1. Open portfolio with positions.
+2. Open Intelligence tab.
+3. Confirm coverage.
+4. Confirm opportunity overlap.
+5. Confirm sector exposure.
+6. Confirm theme exposure.
+7. Confirm concentration.
+8. Confirm strengthening/weakening.
+9. Confirm institutional disclosure.
+10. Click through to Opportunity Workspace.
+11. Click through to Research Workspace.
+12. Verify partial state if a subsystem unavailable.
+13. Verify cross-user denial.
+14. Verify Platform Health.
+15. Verify no unexpected 500s.
+
+======================================================================
+34. OPERATIONS MANUAL — REQUIRED
+======================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/22-portfolio-intelligence.md
+
+Document:
+
+architecture
+
+service ownership
+
+Opportunity Intelligence integration
+
+schema impact
+
+API
+
+UI
+
+coverage
+
+concentration thresholds
+
+sector exposure
+
+theme exposure
+
+opportunity overlap
+
+history integration
+
+institutional context
+
+privacy
+
+caching
+
+health
+
+logging
+
+UAT
+
+troubleshooting
+
+commercial extension points
+
+Update Research Glossary if new terms added.
+
+Update security docs if private-data behavior changes.
+
+======================================================================
+35. IMPROVEMENT CAPTURE
+======================================================================
+
+Do not implement unrelated discoveries automatically.
+
+Classify as:
+
+Critical production fix
+
+Current sprint requirement
+
+Future planned sprint
+
+Backlog
+
+Report:
+
+Suggestion
+Assigned sprint/backlog
+Priority
+Reason
+
+Existing follow-up:
+
+#120 Portfolio Value Chart
+
+Assign to:
+
+2.6.2 Portfolio Analytics
+
+Do NOT implement in 2.6.1.
+
+======================================================================
+36. ROADMAP ALIGNMENT
+======================================================================
+
+Current:
+2.6.1 Portfolio Intelligence
+
+Next:
+2.6.2 Portfolio Analytics
+
+Then:
+2.6.3 Portfolio Research Workspace
+
+2.6.4 Goals & Planning
+
+Future:
+Trade Planning / Trade Construction
+
+Do not pull future work forward.
+
+======================================================================
+37. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Portfolio Intelligence consumes Opportunity Intelligence.
+
+B. No duplicate scoring exists.
+
+C. No opaque Portfolio Score introduced.
+
+D. Research coverage is explicit.
+
+E. Missing data stays missing, not zero.
+
+F. Sector exposure works.
+
+G. Theme exposure works.
+
+H. Opportunity overlap works.
+
+I. Research strengthening/weakening works.
+
+J. Concentration analysis is transparent.
+
+K. History integrates correctly.
+
+L. Institutional disclosure preserved.
+
+M. Privacy/ownership enforced.
+
+N. Partial subsystem failures degrade gracefully.
+
+O. Platform Health integrated.
+
+P. Full tests pass.
+
+Q. npm run build passes.
+
+R. Zero new TypeScript errors.
+
+S. Operations Manual updated.
+
+T. Roadmap alignment confirmed.
+
+======================================================================
+38. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Legacy portfolio intelligence discovered
+3. Files changed
+4. Canonical PortfolioIntelligenceResult
+5. Research coverage
+6. Concentration
+7. Sector exposure
+8. Theme exposure
+9. Opportunity overlap
+10. Strengthening/weakening
+11. Research observations
+12. Risk observations
+13. History integration
+14. Institutional context
+15. Market context
+16. API
+17. UI
+18. Glossary
+19. Privacy/security
+20. Cache architecture
+21. Performance results
+22. Platform Health
+23. Structured logging
+24. Tests
+25. Full test count
+26. npm run build
+27. Typecheck
+28. Production UAT
+29. Commercial Experience Review
+30. RIA/Institutional Extension Points
+31. Improvement Suggestions Captured
+32. Deferred backlog
+33. Roadmap Alignment
+34. Operations Manual Updated: YES/NO
+35. Operations Manual Files Updated
+36. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

@@ -775,6 +775,189 @@ export function getCandidateTypeEntries(): ResearchGlossaryEntry[] {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Portfolio Intelligence glossary terms (Sprint 2.6.1)
+// ---------------------------------------------------------------------------
+
+const PORTFOLIO_INTELLIGENCE_ENTRIES: ResearchGlossaryEntry[] = [
+  {
+    key:              "portfolio_research_coverage",
+    label:            "Portfolio Research Coverage",
+    shortLabel:       "Coverage",
+    shortDefinition:  "How much of a portfolio has each research data dimension available.",
+    fullDefinition:
+      "Portfolio Research Coverage tracks the proportion of portfolio holdings that have " +
+      "each research data dimension available: Opportunity Intelligence, reference prices, " +
+      "sector classification, theme membership, fundamental evidence, and institutional evidence. " +
+      "Missing data is recorded as unavailable — it is never converted to zero.",
+    methodologySummary:
+      "Weighted composite: Opportunity Intelligence 40%, market data 25%, sector 15%, " +
+      "theme 10%, institutional 10%.",
+    interpretation:
+      "Higher coverage means more holdings have research context. Low coverage may indicate " +
+      "holdings outside the standard research universe.",
+    caution:
+      "Coverage is not a quality score. A low-covered holding is simply outside current research data, " +
+      "not inferior.",
+    sources: ["Opportunity Intelligence snapshot", "Theme registry", "Institutional 13F signals"],
+  },
+  {
+    key:              "portfolio_concentration",
+    label:            "Portfolio Concentration",
+    shortLabel:       "Concentration",
+    shortDefinition:  "The degree to which a portfolio is weighted toward a small number of positions, sectors, or themes.",
+    fullDefinition:
+      "Portfolio Concentration measures how much of the portfolio is represented by the largest " +
+      "position, top-3 positions, top-5 positions, and the dominant sector or theme. " +
+      "Higher concentration means a smaller number of holdings represent a larger fraction of portfolio value.",
+    methodologySummary:
+      "Thresholds — Largest position: Low <10%, Moderate 10–20%, High >20%. " +
+      "Top-3 positions: Low <25%, Moderate 25–50%, High >50%. " +
+      "Sector: Low <30%, Moderate 30–50%, High >50%. " +
+      "Theme: Low <20%, Moderate 20–40%, High >40%.",
+    interpretation:
+      "Labels (Low/Moderate/High) are descriptive. They are not suitability determinations.",
+    caution:
+      "Concentration is an observed characteristic, not an advisory signal. " +
+      "Appropriate concentration levels vary by strategy and individual circumstances.",
+    sources: ["Portfolio positions", "Reference prices", "Sector/theme classification"],
+  },
+  {
+    key:              "sector_exposure",
+    label:            "Sector Exposure",
+    shortLabel:       "Sector",
+    shortDefinition:  "The fraction of portfolio market value invested in each sector.",
+    fullDefinition:
+      "Sector Exposure shows how portfolio market value is distributed across industry sectors. " +
+      "Sector classification comes from Opportunity Intelligence and the market_data_symbols table — " +
+      "no independent classifications are created.",
+    methodologySummary:
+      "For each sector: (sum of position market values in sector) / (total portfolio market value) × 100.",
+    interpretation:
+      "Shows concentration by sector. Compare with sector intelligence to understand market context.",
+    caution:
+      "Percentages reflect observed portfolio characteristics. They are not rebalancing signals.",
+    sources: ["Portfolio positions", "Opportunity Intelligence", "market_data_symbols"],
+  },
+  {
+    key:              "theme_exposure",
+    label:            "Theme Exposure",
+    shortLabel:       "Theme",
+    shortDefinition:  "The fraction of portfolio market value invested in each curated research theme.",
+    fullDefinition:
+      "Theme Exposure shows how portfolio market value is distributed across curated research themes " +
+      "(AI Infrastructure, Cloud Computing, etc.). One holding may belong to multiple themes, so theme " +
+      "percentages may exceed 100% in total — this is by design.",
+    methodologySummary:
+      "For each theme: sum of position market values where the symbol belongs to the theme, divided by " +
+      "total portfolio market value. Overlap is preserved.",
+    interpretation:
+      "Theme percentages can exceed 100% total due to overlap. Each percentage shows that theme's " +
+      "share of portfolio value independently.",
+    caution:
+      "Theme percentages may overlap and therefore may not sum to 100%. This is intentional.",
+    sources: ["Theme registry", "Portfolio positions", "Reference prices"],
+  },
+  {
+    key:              "opportunity_overlap",
+    label:            "Opportunity Overlap",
+    shortLabel:       "Overlap",
+    shortDefinition:  "How current portfolio holdings relate to the Opportunity Intelligence snapshot.",
+    fullDefinition:
+      "Opportunity Overlap classifies each holding based on its presence in the current Opportunity " +
+      "Intelligence snapshot: Currently Qualified (topGrowth/topIncome), Approaching Qualification " +
+      "(approaching/watchlist), No Longer Qualified (was qualified, now absent), or Not Currently Ranked " +
+      "(not in current snapshot). Absence is not a negative quality signal.",
+    methodologySummary:
+      "Based on _sourceCategory field in CanonicalOpportunity from the current OppIntel snapshot.",
+    interpretation:
+      "'Not Currently Ranked' means the symbol is not represented in the latest Opportunity Intelligence " +
+      "snapshot. It does not indicate poor quality.",
+    caution:
+      "Do not interpret absence from the current snapshot as negative. Opportunity Intelligence snapshots " +
+      "change as market conditions change.",
+    sources: ["Opportunity Intelligence snapshot"],
+  },
+  {
+    key:              "research_strengthened",
+    label:            "Research Strengthened",
+    shortLabel:       "Strengthened",
+    shortDefinition:  "A holding whose research evidence improved since the previous portfolio snapshot.",
+    fullDefinition:
+      "Research Strengthened identifies holdings where the Research Score improved by 2 or more points " +
+      "between two consecutive portfolio snapshots. The change is sourced from Portfolio History " +
+      "change intelligence — it is not computed independently.",
+    methodologySummary:
+      "Threshold: score delta ≥ +2 between consecutive portfolio snapshots.",
+    interpretation:
+      "Indicates that supporting research evidence has strengthened for this holding.",
+    caution:
+      "Research score movement is a research observation. It is not a trading signal.",
+    sources: ["Portfolio History", "Opportunity Intelligence"],
+  },
+  {
+    key:              "research_weakened",
+    label:            "Research Weakened",
+    shortLabel:       "Weakened",
+    shortDefinition:  "A holding whose research evidence declined since the previous portfolio snapshot.",
+    fullDefinition:
+      "Research Weakened identifies holdings where the Research Score declined by 2 or more points " +
+      "between two consecutive portfolio snapshots. The change is sourced from Portfolio History " +
+      "change intelligence — it is not computed independently.",
+    methodologySummary:
+      "Threshold: score delta ≤ −2 between consecutive portfolio snapshots.",
+    interpretation:
+      "Indicates that supporting research evidence has weakened for this holding.",
+    caution:
+      "Research evidence weakening is a research observation. It is not a sell signal.",
+    sources: ["Portfolio History", "Opportunity Intelligence"],
+  },
+  {
+    key:              "qualified_holding",
+    label:            "Qualified Holding",
+    shortLabel:       "Qualified",
+    shortDefinition:  "A portfolio holding that currently appears in the Opportunity Intelligence snapshot.",
+    fullDefinition:
+      "A Qualified Holding is a portfolio position whose symbol appears in the current Opportunity " +
+      "Intelligence snapshot with at least one research score. This includes Currently Qualified " +
+      "(topGrowth/topIncome) and Approaching Qualification (approaching/watchlist) categories.",
+    methodologySummary:
+      "Symbol present in getOpportunityIntelligence() result.",
+    interpretation:
+      "Qualified holdings have research context from the platform. Scores come from Opportunity Intelligence " +
+      "and are not independently recomputed.",
+    caution:
+      "Qualified status reflects current Opportunity Intelligence coverage, not a recommendation to hold.",
+    sources: ["Opportunity Intelligence snapshot"],
+  },
+  {
+    key:              "uncovered_holding",
+    label:            "Uncovered Holding",
+    shortLabel:       "Uncovered",
+    shortDefinition:  "A portfolio holding that is not currently in the Opportunity Intelligence snapshot.",
+    fullDefinition:
+      "An Uncovered Holding is a portfolio position whose symbol does not appear in the current " +
+      "Opportunity Intelligence snapshot. This means no research scores are available from the platform " +
+      "for this holding. It does not indicate the holding is of poor quality.",
+    methodologySummary:
+      "Symbol absent from getOpportunityIntelligence() result.",
+    interpretation:
+      "Consider exploring coverage for uncovered holdings in the Research Workspace or requesting " +
+      "research coverage expansion.",
+    caution:
+      "Uncovered status does not imply any quality judgment about the holding.",
+    sources: ["Opportunity Intelligence snapshot"],
+  },
+];
+
+// Merge portfolio terms into the main glossary
+const _extendedGlossary = [...PORTFOLIO_INTELLIGENCE_ENTRIES];
+
+// Expose portfolio-specific lookup
+export function getPortfolioGlossaryEntry(key: string): ResearchGlossaryEntry | undefined {
+  return _extendedGlossary.find(e => e.key === key);
+}
+
 /** Map from a score display label to its glossary key. */
 export const SCORE_LABEL_TO_GLOSSARY_KEY: Readonly<Record<string, string>> = {
   Tech: "technical_score",

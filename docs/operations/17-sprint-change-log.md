@@ -4,6 +4,41 @@
 
 ---
 
+## Sprint 2.6.1 — Portfolio Intelligence (2026-08-09)
+
+**Phase:** 3 — Portfolio Intelligence
+
+**Purpose:** Research-first personalization layer. Answers: "What does VCP Trader AI research mean for MY portfolio?" — coverage, concentration, sector/theme exposure, opportunity overlap, research strengthening/weakening. No buy/sell recommendations. No portfolio score.
+
+**Key Services:**
+- `shared/portfolio-intelligence-types.ts` — canonical types (`PortfolioIntelligenceResult`, 9 portfolio-specific glossary terms)
+- `server/services/portfolio-intelligence-service.ts` — pure computation engine (7 exported functions + cache)
+- `server/routes/portfolio-intelligence.ts` — 2 GET routes
+- `server/routes/platform-health.ts` — `checkPortfolioIntelligence()` + `portfolioIntelligence` health card
+
+**API:**
+- `GET /api/portfolio/:id/intelligence` — full intelligence result
+- `GET /api/portfolio/:id/intelligence/:symbol` — single holding context
+
+**UI:**
+- Intelligence tab added to Portfolio page (`/portfolio`)
+- 10 sections: Coverage, Overlap, Changes, Sectors, Themes, Concentration, Institutional, Risk Observations, Research Observations, Further Research
+
+**Caching:** 15-minute in-memory TTL, keyed `${userId}:${portfolioId}`; invalidated on position/snapshot/sync events.
+
+**No new DB tables.** Reads: `portfolios`, `portfolio_positions`, `institutional_symbol_signals`, portfolio snapshot tables (via 2.6.0), OppIntel snapshot (in-memory).
+
+**Tests:** 88 new assertions covering all computation paths, compliance, privacy, platform health, ops docs.
+
+**Compliance:** No portfolio score/grade/rating. No buy/sell/trim/add language. Mandatory disclaimer + 13F disclosure preserved. ConcentrationLabel uses only Low/Moderate/High.
+
+**Roadmap:**
+- 2.6.2 — Portfolio Analytics (value chart)
+- 2.6.3 — Portfolio Research Workspace (AI context)
+- 2.6.4 — Goals & Planning
+
+---
+
 ## Sprint 2.6.0 — Portfolio History & Change Intelligence (2026-08-09)
 
 **Phase:** 3 — Portfolio Intelligence (foundation)

@@ -881,6 +881,361 @@ function PositionChangeIcon({ type }: { type: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Portfolio Intelligence types (Sprint 2.6.1)
+// ---------------------------------------------------------------------------
+
+interface PortfolioIntelligenceResult {
+  portfolioId: string; portfolioName: string; generatedAt: string; snapshotId: string | null;
+  marketValue: number | null; costBasis: number | null; positionCount: number; marketRegime: string | null;
+  coverage: { positionsTotal: number; positionsWithOpportunityIntelligence: number; positionsWithMarketData: number; positionsWithFundamentalEvidence: number; positionsWithInstitutionalEvidence: number; positionsWithSector: number; positionsWithTheme: number; overallCoveragePercent: number };
+  concentration: { largestPositionPercent: number | null; largestPositionSymbol: string | null; top3PositionPercent: number | null; top5PositionPercent: number | null; largestSectorPercent: number | null; largestSectorName: string | null; largestThemePercent: number | null; largestThemeName: string | null; concentrationLabel: "Low" | "Moderate" | "High"; top3Label: "Low" | "Moderate" | "High"; sectorLabel: "Low" | "Moderate" | "High" };
+  sectorExposure: Array<{ sector: string; marketValue: number | null; portfolioPercent: number | null; positionCount: number; symbols: string[]; changeSincePreviousSnapshot: number | null }>;
+  themeExposure: Array<{ themeId: string; themeName: string; marketValue: number | null; portfolioPercent: number | null; positionCount: number; symbols: string[] }>;
+  opportunityOverlap: Array<{ symbol: string; companyName: string | null; overlapCategory: string; researchScore: number | null; technicalScore: number | null; opportunityType: string | null; opportunityTypeLabel: string | null; confidence: string | null; riskLevel: string | null; portfolioWeight: number | null; primaryEvidence: Array<{ type: string; description: string; weight: number }> }>;
+  strengthenedHoldings: Array<{ symbol: string; changeType: string; previousScore: number | null; currentScore: number | null; scoreDelta: number | null; companyName: string | null; sector: string | null }>;
+  weakenedHoldings: Array<{ symbol: string; changeType: string; previousScore: number | null; currentScore: number | null; scoreDelta: number | null; companyName: string | null; sector: string | null }>;
+  newlyQualifiedHoldings: Array<{ symbol: string; changeType: string; previousScore: number | null; currentScore: number | null; scoreDelta: number | null; companyName: string | null; sector: string | null }>;
+  noLongerQualifiedHoldings: Array<{ symbol: string; changeType: string; previousScore: number | null; currentScore: number | null; scoreDelta: number | null; companyName: string | null; sector: string | null }>;
+  qualifiedHoldings: Array<{ symbol: string; companyName: string | null; sector: string | null; themes: string[]; portfolioWeight: number | null; marketValue: number | null; researchScore: number | null; overlapCategory: string; hasInstitutionalEvidence: boolean }>;
+  uncoveredHoldings: Array<{ symbol: string; companyName: string | null; sector: string | null; themes: string[]; portfolioWeight: number | null }>;
+  institutionalSummary: { symbolsCovered: number; symbolsTotal: number; coveragePercent: number; holdingsWithActivity: number; disclosure: string };
+  riskObservations: Array<{ type: string; label: string; description: string; affectedSymbols: string[] }>;
+  researchObservations: Array<{ type: string; text: string }>;
+  furtherResearchAreas: Array<{ area: string; description: string; linkPath?: string }>;
+  disclaimer: string; limitations: string[];
+  freshness: { generatedAt: string; opportunityIntelligenceAt: string | null; latestSnapshotAt: string | null; institutionalDataNote: string };
+}
+
+interface PortfolioIntelligenceResponse {
+  available: boolean; portfolioId: string; generatedAt: string;
+  intelligence: PortfolioIntelligenceResult | null; message?: string;
+}
+
+function concentrationColor(label: "Low" | "Moderate" | "High"): string {
+  if (label === "High")     return "text-destructive";
+  if (label === "Moderate") return "text-amber-600";
+  return "text-green-600";
+}
+
+function overlapBadge(cat: string): { label: string; className: string } {
+  if (cat === "CURRENTLY_QUALIFIED")      return { label: "Qualified",   className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" };
+  if (cat === "APPROACHING_QUALIFICATION") return { label: "Approaching", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" };
+  if (cat === "NO_LONGER_QUALIFIED")      return { label: "Was Qualified", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" };
+  return { label: "Not Ranked",  className: "bg-muted text-muted-foreground" };
+}
+
+function ScoreBar({ score, label }: { score: number | null; label: string }) {
+  if (score === null) return <span className="text-[10px] text-muted-foreground">—</span>;
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+        <div className="h-full bg-primary/70 rounded-full" style={{ width: `${Math.min(score, 100)}%` }} />
+      </div>
+      <span className="text-[10px] text-muted-foreground w-6 shrink-0">{score}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Intelligence Tab (Sprint 2.6.1)
+// ---------------------------------------------------------------------------
+
+function PortfolioIntelligenceTab({ portfolioId }: { portfolioId: string }) {
+  const [, setLocation] = useLocation();
+
+  const { data, isLoading, error } = useQuery<PortfolioIntelligenceResponse>({
+    queryKey:  [`/api/portfolio/${portfolioId}/intelligence`],
+    queryFn:   () => fetch(`/api/portfolio/${portfolioId}/intelligence`).then(r => r.json()),
+    staleTime: 10 * 60 * 1000, // 10 min
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading intelligence…" />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return <p className="text-sm text-destructive py-4">Portfolio Intelligence is temporarily unavailable.</p>;
+  }
+
+  if (!data.available || !data.intelligence) {
+    return (
+      <div className="rounded-lg border border-dashed p-8 text-center space-y-2">
+        <Activity className="h-8 w-8 text-muted-foreground mx-auto" aria-hidden="true" />
+        <p className="text-sm font-medium">Portfolio Intelligence unavailable</p>
+        <p className="text-xs text-muted-foreground">{data.message ?? "Add positions to generate intelligence."}</p>
+      </div>
+    );
+  }
+
+  const intel = data.intelligence;
+  const cov   = intel.coverage;
+  const conc  = intel.concentration;
+
+  return (
+    <div className="space-y-6">
+
+      {/* Limitations */}
+      {intel.limitations.length > 0 && (
+        <div className="rounded-lg bg-muted/40 border px-3 py-2 space-y-1">
+          {intel.limitations.map(l => (
+            <p key={l} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+              <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" aria-hidden="true" /> {l}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* ── Research Coverage ────────────────────────────────────────────── */}
+      <section aria-labelledby="intel-coverage">
+        <h3 id="intel-coverage" className="text-sm font-semibold mb-2">Research Coverage</h3>
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Overall Coverage</span>
+            <span className="text-sm font-semibold">{cov.overallCoveragePercent}%</span>
+          </div>
+          <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${cov.overallCoveragePercent}%` }} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+            {[
+              { label: "Research Data",    value: cov.positionsWithOpportunityIntelligence },
+              { label: "Market Prices",    value: cov.positionsWithMarketData },
+              { label: "Sector Tagged",    value: cov.positionsWithSector },
+              { label: "Theme Tagged",     value: cov.positionsWithTheme },
+              { label: "Fundamental",      value: cov.positionsWithFundamentalEvidence },
+              { label: "Institutional",    value: cov.positionsWithInstitutionalEvidence },
+            ].map(({ label, value }) => (
+              <div key={label} className="space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">{label}</p>
+                <p className="text-xs font-medium">{value} / {cov.positionsTotal}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Opportunity Overlap ──────────────────────────────────────────── */}
+      <section aria-labelledby="intel-overlap">
+        <h3 id="intel-overlap" className="text-sm font-semibold mb-2">Opportunity Overlap</h3>
+        <div className="space-y-1">
+          {intel.opportunityOverlap.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No opportunity overlap data available.</p>
+          ) : intel.opportunityOverlap.map(item => {
+            const badge = overlapBadge(item.overlapCategory);
+            return (
+              <div key={item.symbol} className="flex items-center justify-between gap-2 px-2 py-2 rounded bg-muted/30 hover:bg-muted/50 cursor-pointer" onClick={() => setLocation(`/opportunities/${item.symbol}`)} role="button" aria-label={`Open ${item.symbol} in Opportunity Workspace`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-xs font-semibold shrink-0">{item.symbol}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${badge.className}`}>{badge.label}</span>
+                  {item.companyName && <span className="text-[10px] text-muted-foreground truncate hidden sm:block">{item.companyName}</span>}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {item.researchScore !== null && (
+                    <div className="w-16 hidden sm:block">
+                      <ScoreBar score={item.researchScore} label="Research" />
+                    </div>
+                  )}
+                  <span className="text-[10px] text-muted-foreground">{item.portfolioWeight !== null ? `${item.portfolioWeight}%` : "—"}</span>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Research Changes ─────────────────────────────────────────────── */}
+      {(intel.strengthenedHoldings.length + intel.weakenedHoldings.length +
+        intel.newlyQualifiedHoldings.length + intel.noLongerQualifiedHoldings.length) > 0 && (
+        <section aria-labelledby="intel-changes">
+          <h3 id="intel-changes" className="text-sm font-semibold mb-2">Research Evidence Changes</h3>
+          <div className="space-y-1">
+            {[
+              ...intel.strengthenedHoldings.map(h => ({ ...h, _label: "Strengthened", _color: "text-green-600" })),
+              ...intel.newlyQualifiedHoldings.map(h => ({ ...h, _label: "Newly Qualified", _color: "text-blue-600" })),
+              ...intel.weakenedHoldings.map(h => ({ ...h, _label: "Weakened", _color: "text-amber-600" })),
+              ...intel.noLongerQualifiedHoldings.map(h => ({ ...h, _label: "No Longer Qualified", _color: "text-destructive" })),
+            ].map(h => (
+              <div key={`${h.symbol}-${h.changeType}`} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-muted/30 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-medium ${h._color}`}>{h._label}</span>
+                  <span className="font-mono font-semibold">{h.symbol}</span>
+                  {h.sector && <span className="text-muted-foreground hidden sm:block">{h.sector}</span>}
+                </div>
+                {h.scoreDelta !== null && (
+                  <span className="text-muted-foreground shrink-0">
+                    {h.scoreDelta > 0 ? `+${h.scoreDelta}` : h.scoreDelta} pts
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Sector Exposure ──────────────────────────────────────────────── */}
+      {intel.sectorExposure.length > 0 && (
+        <section aria-labelledby="intel-sectors">
+          <h3 id="intel-sectors" className="text-sm font-semibold mb-2">Sector Exposure</h3>
+          <div className="space-y-2">
+            {intel.sectorExposure.map(s => (
+              <div key={s.sector} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <button className="hover:text-primary focus-visible:outline-none focus-visible:underline text-left" onClick={() => setLocation("/research/sectors")}>{s.sector}</button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-muted-foreground">{s.positionCount} holding{s.positionCount !== 1 ? "s" : ""}</span>
+                    <span className="font-semibold">{s.portfolioPercent !== null ? `${s.portfolioPercent}%` : "—"}</span>
+                    {s.changeSincePreviousSnapshot !== null && (
+                      <span className={`text-[10px] ${s.changeSincePreviousSnapshot > 0 ? "text-blue-600" : "text-amber-600"}`}>
+                        {s.changeSincePreviousSnapshot > 0 ? "+" : ""}{s.changeSincePreviousSnapshot.toFixed(1)}pp
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {s.portfolioPercent !== null && (
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary/60 rounded-full" style={{ width: `${Math.min(s.portfolioPercent, 100)}%` }} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Theme Exposure ───────────────────────────────────────────────── */}
+      {intel.themeExposure.length > 0 && (
+        <section aria-labelledby="intel-themes">
+          <div className="flex items-center justify-between mb-2">
+            <h3 id="intel-themes" className="text-sm font-semibold">Theme Exposure</h3>
+            <span className="text-[10px] text-muted-foreground">May exceed 100% due to overlap</span>
+          </div>
+          <div className="space-y-2">
+            {intel.themeExposure.map(t => (
+              <div key={t.themeId} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <button className="hover:text-primary focus-visible:outline-none focus-visible:underline text-left" onClick={() => setLocation(`/research/themes`)}>{t.themeName}</button>
+                  <span className="font-semibold shrink-0">{t.portfolioPercent !== null ? `${t.portfolioPercent}%` : "—"}</span>
+                </div>
+                {t.portfolioPercent !== null && (
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500/60 rounded-full" style={{ width: `${Math.min(t.portfolioPercent, 100)}%` }} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Concentration ────────────────────────────────────────────────── */}
+      <section aria-labelledby="intel-concentration">
+        <h3 id="intel-concentration" className="text-sm font-semibold mb-2">Concentration</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {[
+            { label: "Largest Position",    value: conc.largestPositionPercent !== null ? `${conc.largestPositionPercent}%` : "—", sub: conc.largestPositionSymbol ?? "", labelTag: conc.concentrationLabel },
+            { label: "Top 3 Positions",     value: conc.top3PositionPercent    !== null ? `${conc.top3PositionPercent}%`    : "—", sub: "", labelTag: conc.top3Label },
+            { label: "Top 5 Positions",     value: conc.top5PositionPercent    !== null ? `${conc.top5PositionPercent}%`    : "—", sub: "", labelTag: undefined },
+            { label: "Largest Sector",      value: conc.largestSectorPercent   !== null ? `${conc.largestSectorPercent}%`   : "—", sub: conc.largestSectorName ?? "", labelTag: conc.sectorLabel },
+            { label: "Largest Theme",       value: conc.largestThemePercent    !== null ? `${conc.largestThemePercent}%`    : "—", sub: conc.largestThemeName  ?? "", labelTag: undefined },
+          ].map(({ label, value, sub, labelTag }) => (
+            <div key={label} className="rounded-lg border bg-muted/30 p-2.5 space-y-0.5">
+              <p className="text-[10px] text-muted-foreground">{label}</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-sm font-semibold">{value}</p>
+                {labelTag && <span className={`text-[10px] font-medium ${concentrationColor(labelTag as any)}`}>{labelTag}</span>}
+              </div>
+              {sub && <p className="text-[10px] text-muted-foreground truncate">{sub}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Institutional Context ────────────────────────────────────────── */}
+      <section aria-labelledby="intel-institutional">
+        <h3 id="intel-institutional" className="text-sm font-semibold mb-2">Institutional Context</h3>
+        <div className="rounded-lg border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">13F Signal Coverage</span>
+            <span className="font-semibold">{intel.institutionalSummary.symbolsCovered} / {intel.institutionalSummary.symbolsTotal} holdings</span>
+          </div>
+          {intel.institutionalSummary.symbolsCovered === 0 ? (
+            <p className="text-[11px] text-muted-foreground">Institutional evidence unavailable for this portfolio's holdings.</p>
+          ) : (
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-primary/60 rounded-full" style={{ width: `${intel.institutionalSummary.coveragePercent}%` }} />
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground/70 italic border-t pt-2 leading-relaxed">
+            {intel.institutionalSummary.disclosure}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Risk Observations ────────────────────────────────────────────── */}
+      {intel.riskObservations.length > 0 && (
+        <section aria-labelledby="intel-risk">
+          <h3 id="intel-risk" className="text-sm font-semibold mb-2">Risk Observations</h3>
+          <div className="space-y-2">
+            {intel.riskObservations.map(obs => (
+              <div key={obs.type} className="rounded-lg border bg-muted/20 p-3 space-y-1">
+                <p className="text-xs font-semibold">{obs.label}</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{obs.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Research Observations ────────────────────────────────────────── */}
+      {intel.researchObservations.length > 0 && (
+        <section aria-labelledby="intel-research-obs">
+          <h3 id="intel-research-obs" className="text-sm font-semibold mb-2">Research Observations</h3>
+          <div className="rounded-lg border bg-card p-3 space-y-2">
+            {intel.researchObservations.map(obs => (
+              <p key={obs.type} className="text-[11px] text-muted-foreground leading-relaxed">• {obs.text}</p>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Further Research ─────────────────────────────────────────────── */}
+      {intel.furtherResearchAreas.length > 0 && (
+        <section aria-labelledby="intel-further">
+          <h3 id="intel-further" className="text-sm font-semibold mb-2">Further Research Areas</h3>
+          <div className="space-y-1.5">
+            {intel.furtherResearchAreas.map(area => (
+              <button key={area.area} className="w-full text-left rounded-lg border bg-muted/20 hover:bg-muted/40 p-2.5 space-y-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => area.linkPath && setLocation(area.linkPath)}>
+                <p className="text-xs font-medium flex items-center gap-1">
+                  <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />{area.area}
+                </p>
+                <p className="text-[10px] text-muted-foreground">{area.description}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Compliance disclaimer */}
+      <p className="text-[11px] text-muted-foreground/60 italic border-t pt-3 leading-relaxed">
+        {intel.disclaimer}
+      </p>
+
+      {/* Data freshness */}
+      {intel.freshness.opportunityIntelligenceAt && (
+        <p className="text-[11px] text-muted-foreground/50">
+          Research data as of: {new Date(intel.freshness.opportunityIntelligenceAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Portfolio History tab (Sprint 2.6.0)
 // ---------------------------------------------------------------------------
 
@@ -1177,7 +1532,7 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
   const [deletingPos, setDeletingPos] = useState<EnrichedPosition | undefined>();
   const [editingName, setEditingName] = useState(false);
   const [nameValue,   setNameValue]   = useState(portfolio.name);
-  const [activeTab,   setActiveTab]   = useState<"holdings" | "history">("holdings");
+  const [activeTab,   setActiveTab]   = useState<"holdings" | "history" | "intelligence">("holdings");
 
   const { data, isLoading } = useQuery<PositionsResponse>({
     queryKey: [`/api/portfolio/${portfolio.id}/positions`],
@@ -1316,8 +1671,9 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
       {/* Tab switcher */}
       <div className="flex gap-1 border-b" role="tablist" aria-label="Portfolio sections">
         {([
-          { id: "holdings", label: "Holdings" },
-          { id: "history",  label: "History",  icon: History },
+          { id: "holdings",      label: "Holdings" },
+          { id: "history",       label: "History",      icon: History },
+          { id: "intelligence",  label: "Intelligence", icon: Activity },
         ] as const).map(tab => (
           <button
             key={tab.id}
@@ -1338,6 +1694,8 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
 
       {activeTab === "history" ? (
         <PortfolioHistoryTab portfolioId={portfolio.id} />
+      ) : activeTab === "intelligence" ? (
+        <PortfolioIntelligenceTab portfolioId={portfolio.id} />
       ) : isLoading ? (
         <div className="flex justify-center py-12">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading positions…" />

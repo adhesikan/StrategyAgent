@@ -23,6 +23,7 @@ import { enrichMissingSymbolClassifications } from "../services/daily-market-dat
 import { getResearchMonitoringHealth } from "../services/research-monitor-service";
 import { getResearchReportsHealth } from "../services/research-report-service";
 import { getPortfolioHistoryHealth } from "../services/portfolio-history-service";
+import { getPortfolioIntelligenceHealth } from "../services/portfolio-intelligence-service";
 
 // ---------------------------------------------------------------------------
 // Health status type
@@ -629,6 +630,33 @@ async function checkCommandCenter(): Promise<HealthCard> {
   };
 }
 
+async function checkPortfolioIntelligence(): Promise<HealthCard> {
+  try {
+    const h = getPortfolioIntelligenceHealth();
+    const status: HealthStatus =
+      h.status === "HEALTHY"  ? "HEALTHY"  :
+      h.status === "DEGRADED" ? "DEGRADED" :
+      "UNKNOWN";
+    return {
+      status,
+      summary: h.portfoliosAnalyzed === 0
+        ? "No portfolio intelligence analyses yet this session"
+        : `${h.portfoliosAnalyzed} portfolio${h.portfoliosAnalyzed !== 1 ? "s" : ""} analyzed — avg ${h.averageAnalysisDurationMs ?? "?"}ms`,
+      lastSuccessAt: h.lastAnalysisAt,
+      details: {
+        portfoliosAnalyzed:       h.portfoliosAnalyzed,
+        lastAnalysisAt:           h.lastAnalysisAt ?? "Never",
+        averageAnalysisDurationMs: h.averageAnalysisDurationMs ?? "N/A",
+        partialAnalyses:          h.partialAnalyses,
+        failedAnalyses:           h.failedAnalyses,
+        averageCoveragePercent:   h.averageCoveragePercent ?? "N/A",
+      },
+    };
+  } catch {
+    return { status: "UNKNOWN", summary: "Portfolio intelligence health unavailable", details: {} };
+  }
+}
+
 async function checkPortfolioHistory(): Promise<HealthCard> {
   try {
     const h = await getPortfolioHistoryHealth();
@@ -735,13 +763,14 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
-  const [collections, researchWorkspace, commandCenter, researchMonitoring, researchReports_, portfolioHistory_] = await Promise.all([
+  const [collections, researchWorkspace, commandCenter, researchMonitoring, researchReports_, portfolioHistory_, portfolioIntelligence_] = await Promise.all([
     checkCollections(),
     checkResearchWorkspace(),
     checkCommandCenter(),
     checkResearchMonitoring(),
     checkResearchReports(),
     checkPortfolioHistory(),
+    checkPortfolioIntelligence(),
   ]);
   const jobs = getAllJobStatuses();
 
@@ -763,7 +792,8 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     commandCenter,
     researchMonitoring,
     researchReports:  researchReports_,
-    portfolioHistory: portfolioHistory_,
+    portfolioHistory:       portfolioHistory_,
+    portfolioIntelligence: portfolioIntelligence_,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

@@ -94,6 +94,7 @@ import { registerResearchReportRoutes } from "./routes/research-reports";
 import { ensureResearchReportsTables } from "./services/research-report-service";
 import { registerPortfolioHistoryRoutes } from "./routes/portfolio-history";
 import { ensurePortfolioHistoryTables } from "./services/portfolio-history-service";
+import { registerPortfolioIntelligenceRoutes } from "./routes/portfolio-intelligence";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -268,6 +269,7 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerResearchMonitorRoutes(app, isAuthenticated);
   registerResearchReportRoutes(app, isAuthenticated);
   registerPortfolioHistoryRoutes(app, isAuthenticated);
+  registerPortfolioIntelligenceRoutes(app, isAuthenticated);
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

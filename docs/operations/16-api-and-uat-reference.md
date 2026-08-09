@@ -1632,6 +1632,73 @@ Appears immediately above the Confirm Import button on all import flows:
 
 ---
 
+## Portfolio Intelligence (Sprint 2.6.1)
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/portfolio/:id/intelligence` | ✓ | Full portfolio intelligence result |
+| GET | `/api/portfolio/:id/intelligence/:symbol` | ✓ | Single holding context |
+| GET | `/api/platform-health` | Admin | Includes `portfolioIntelligence` health card |
+
+### GET /api/portfolio/:id/intelligence
+
+**Query params:**
+```
+?snapshotId=<uuid>   (optional — pins analysis to a specific portfolio snapshot)
+```
+
+**Response shape:**
+```json
+{
+  "available": true,
+  "portfolioId": "...",
+  "generatedAt": "ISO",
+  "intelligence": {
+    "coverage": { "overallCoveragePercent": 78, ... },
+    "concentration": { "concentrationLabel": "Moderate", ... },
+    "sectorExposure": [{ "sector": "Technology", "portfolioPercent": 42.1, ... }],
+    "themeExposure": [{ "themeId": "ai-infra", "portfolioPercent": 55.2, ... }],
+    "opportunityOverlap": [{ "symbol": "NVDA", "overlapCategory": "CURRENTLY_QUALIFIED", ... }],
+    "strengthenedHoldings": [...],
+    "weakenedHoldings": [...],
+    "institutionalSummary": { "coveragePercent": 60, "disclosure": "..." },
+    "riskObservations": [...],
+    "researchObservations": [...],
+    "furtherResearchAreas": [...],
+    "disclaimer": "This analysis is research information only...",
+    "limitations": [],
+    "freshness": { ... }
+  }
+}
+```
+
+**When `available: false`:** Portfolio not found, not owned, has no positions, or subsystem failure.
+
+### UAT Checklist — Portfolio Intelligence (Sprint 2.6.1)
+
+| # | Step | Expected |
+|---|------|----------|
+| 1 | Open `/portfolio` with a portfolio that has positions | Three tabs visible: Holdings, History, Intelligence |
+| 2 | Click Intelligence tab | Tab activates; loading spinner appears then resolves |
+| 3 | No positions portfolio | Intelligence tab shows "Add positions" prompt, not error |
+| 4 | Check Coverage section | Shows overall % progress bar + 6 breakdown counts |
+| 5 | Check Opportunity Overlap | Cards list symbols with Qualified/Approaching/Not Ranked badges |
+| 6 | Click an overlap card | Navigates to `/opportunities/:symbol` |
+| 7 | Check Sector Exposure | Bars showing sector %, sum ≤ 100% |
+| 8 | Check Theme Exposure | "May exceed 100% due to overlap" disclosure visible |
+| 9 | Check Concentration section | Shows Low/Moderate/High labels with color coding |
+| 10 | Check Institutional Context | Coverage bar + 13F disclosure footer |
+| 11 | Check compliance disclaimer | Research-only disclaimer visible at page bottom |
+| 12 | Inspect GET /api/portfolio/:id/intelligence | No `portfolioScore`, `portfolioGrade`, `portfolioRating` fields in response |
+| 13 | Inspect platform health | `portfolioIntelligence` card present |
+| 14 | Cross-user test | User B cannot fetch User A's intelligence (401 or 404) |
+| 15 | 10-min re-request | Response is identical (cache hit); check `generatedAt` unchanged |
+| 16 | Position mutation | After add/edit/delete, cache invalidated; fresh request recomputes |
+
+---
+
 ## Portfolio History & Change Intelligence (Sprint 2.6.0)
 
 ### API Endpoints

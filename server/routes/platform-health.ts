@@ -18,6 +18,7 @@ import { getBrokerSyncHealth } from "../services/broker-sync-service";
 import { getOpportunityIntelligenceHealth } from "../services/opportunity-intelligence-service";
 import { getCollectionHealth, isSeedComplete } from "../services/collection-service";
 import { getWorkspaceHealth } from "../services/research-workspace-service";
+import { getCommandCenterHealth } from "./market-research-command-center";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 
 // ---------------------------------------------------------------------------
@@ -598,6 +599,33 @@ function checkBrokerSync(): HealthCard {
   };
 }
 
+async function checkCommandCenter(): Promise<HealthCard> {
+  const snap = getCommandCenterHealth();
+  const status: HealthStatus =
+    snap.lastGeneratedAt === null             ? "UNKNOWN"   :
+    snap.sectionsAvailable === 0              ? "DEGRADED"  :
+    snap.sectionsAvailable < 5               ? "DEGRADED"  :
+    "HEALTHY";
+  return {
+    status,
+    summary: snap.lastGeneratedAt
+      ? `${snap.sectionsAvailable}/9 sections available — last generated ${new Date(snap.lastGeneratedAt).toISOString()}`
+      : "No snapshot generated yet — page not yet visited",
+    lastSuccessAt: snap.lastGeneratedAt,
+    details: {
+      sectionsAvailable:           snap.sectionsAvailable,
+      opportunityChangesAvailable: snap.opportunityChangesAvailable,
+      themeDataAvailable:          snap.themeDataAvailable,
+      sectorDataAvailable:         snap.sectorDataAvailable,
+      collectionsSeeded:           snap.collectionsSeeded,
+      institutionalDataAvailable:  snap.institutionalDataAvailable,
+    },
+    action: snap.lastGeneratedAt === null
+      ? "Visit /market-research-command-center to generate the first snapshot"
+      : null,
+  };
+}
+
 async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const [db_, marketData, mcp, scanner, intel, institutional, secMaster, brokers] = await Promise.all([
     checkDatabase(),
@@ -614,9 +642,12 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
-  const collections       = await checkCollections();
-  const researchWorkspace = await checkResearchWorkspace();
-  const jobs              = getAllJobStatuses();
+  const [collections, researchWorkspace, commandCenter] = await Promise.all([
+    checkCollections(),
+    checkResearchWorkspace(),
+    checkCommandCenter(),
+  ]);
+  const jobs = getAllJobStatuses();
 
   return {
     application: app,
@@ -633,6 +664,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     opportunityIntelligence: oppIntel,
     collections,
     researchWorkspace,
+    commandCenter,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

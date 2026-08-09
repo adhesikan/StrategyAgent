@@ -1,0 +1,1164 @@
+# Sprint 2.5.3A — Research Transparency, Explainability & Central Research Glossary
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Research Platform
+
+CURRENT SPRINT:
+2.5.3A — Research Transparency & Explainability
+
+IMPORTANT ROADMAP RULE
+
+This sprint is a refinement sprint only.
+
+DO NOT change:
+
+- scanner logic
+- ranking logic
+- Opportunity Intelligence scoring
+- research score formulas
+- database schema
+- portfolio logic
+- broker logic
+- recommendation policy
+- opportunity eligibility rules
+
+DO NOT pull future roadmap work forward.
+
+This sprint is about:
+
+1. explaining existing scores and labels
+2. standardizing research terminology
+3. making qualification evidence understandable
+4. creating one centralized Research Glossary
+5. improving compliance clarity
+6. improving accessibility
+
+============================================================
+1. ARCHITECTURE AUDIT FIRST
+============================================================
+
+Before coding inspect:
+
+Dashboard opportunity cards
+
+Opportunity Workspace
+
+Opportunity Intelligence types/service
+
+Research Hub
+
+Research Workspace
+
+Collections
+
+Ask AI
+
+Intelligence pages
+
+Portfolio pages where research scores appear
+
+Existing tooltip components
+
+Existing modal/dialog components
+
+Existing compliance helpers/constants
+
+Operations Manual
+
+Look for duplicated definitions of:
+
+Research Score
+Technical Score
+Institutional Score
+Fundamental Score
+Risk Score
+Confidence
+Opportunity Type
+Market Regime
+Theme
+Sector
+Evidence
+Risk Factors
+Invalidates Thesis
+Data Freshness
+Time Horizon
+
+Report duplication before implementation.
+
+============================================================
+2. CENTRALIZED RESEARCH GLOSSARY — REQUIRED
+============================================================
+
+Create ONE canonical Research Glossary.
+
+Suggested location:
+
+shared/research-glossary.ts
+
+or an equivalent shared module accessible to both client and server.
+
+Do NOT create multiple competing definition objects.
+
+The glossary becomes the single source of truth for research terminology.
+
+Suggested interface:
+
+ResearchGlossaryEntry {
+  key
+  label
+  shortLabel?
+  shortDefinition
+  fullDefinition
+  methodologySummary?
+  interpretation?
+  caution?
+  category
+  higherIsBetter?: boolean
+  userFacing: boolean
+  aliases?: string[]
+}
+
+Categories may include:
+
+score
+confidence
+risk
+candidate_type
+market_context
+evidence
+data_quality
+research_term
+
+============================================================
+3. REQUIRED GLOSSARY TERMS
+============================================================
+
+At minimum include:
+
+research_score
+
+technical_score
+
+institutional_score
+
+fundamental_score
+
+risk_score
+
+evidence_confidence
+
+market_regime
+
+data_freshness
+
+time_horizon
+
+opportunity_type
+
+growth_candidate
+
+income_candidate
+
+watch_candidate
+
+long_term_investment_candidate
+
+momentum_candidate
+
+swing_candidate
+
+etf_candidate
+
+covered_call_candidate
+
+cash_secured_put_candidate
+
+research_evidence
+
+primary_evidence
+
+secondary_evidence
+
+risk_factor
+
+invalidates_thesis
+
+sector
+
+theme
+
+institutional_activity
+
+research_candidate
+
+qualified_opportunity
+
+============================================================
+4. CANONICAL DEFINITIONS
+============================================================
+
+Use clear plain-English definitions.
+
+Do NOT overstate methodology beyond what actually exists in code.
+
+Example:
+
+Research Score
+
+Short:
+"A composite score used to rank research candidates."
+
+Full:
+"Research Score combines deterministic evidence already produced by the platform, including technical, institutional, fundamental and risk-related inputs. It is used to organize and compare research candidates."
+
+Caution:
+"It is not a prediction of future returns, a probability of success, or investment advice."
+
+Technical Score
+
+Short:
+"Measures the strength of technical evidence."
+
+Full:
+"Measures technical research evidence such as trend quality, price structure, volume behavior, support/resistance and other deterministic technical signals available to the platform."
+
+Institutional Score
+
+Short:
+"Measures available institutional evidence."
+
+Full:
+"Measures publicly available evidence of institutional participation, ownership trends and related institutional signals. Form 13F information is delayed and does not represent real-time positions."
+
+Fundamental Score
+
+Short:
+"Measures available fundamental business evidence."
+
+Full:
+"Measures available company fundamentals such as growth, profitability, balance-sheet quality, cash-flow characteristics and related business metrics."
+
+Risk Score
+
+IMPORTANT:
+Verify actual score semantics from code before defining this.
+
+If higher score = higher risk:
+say exactly that.
+
+If higher score = better risk quality / lower risk:
+say exactly that instead.
+
+DO NOT guess.
+
+Evidence Confidence
+
+Short:
+"Describes the amount and consistency of supporting research evidence."
+
+Caution:
+"It does not represent the probability that a security will rise or fall."
+
+============================================================
+5. GLOSSARY REUSE CONTRACT
+============================================================
+
+The glossary must power:
+
+- score tooltips
+- badge tooltips
+- "How are scores calculated?" modal
+- Research Workspace help text
+- Opportunity cards
+- future AI response definitions
+- Operations Manual glossary
+- future RIA / Institutional customization
+
+Do not duplicate definitions inside React components.
+
+Components should reference glossary keys.
+
+Example:
+
+<ResearchDefinitionTooltip term="technical_score" />
+
+NOT:
+
+<Tooltip content="Technical score means..." />
+
+============================================================
+6. REUSABLE TOOLTIP COMPONENT
+============================================================
+
+Create:
+
+ResearchDefinitionTooltip
+
+Requirements:
+
+Accept glossary key
+
+Render glossary label + short definition
+
+Optional "Learn more"
+
+Keyboard accessible
+
+Touch accessible
+
+ARIA support
+
+Consistent styling
+
+Works in dark/light mode if supported
+
+No hard-coded score definitions inside component.
+
+============================================================
+7. SCORE TOOLTIP COVERAGE
+============================================================
+
+Add tooltips anywhere these scores appear:
+
+Research Score
+
+Tech / Technical
+
+Inst / Institutional
+
+Fund / Fundamental
+
+Risk
+
+Confidence
+
+Market Regime
+
+Data Freshness
+
+Time Horizon
+
+At minimum audit:
+
+Dashboard
+
+Opportunity Workspace
+
+Research Hub
+
+Research Workspace
+
+Intelligence
+
+Collections
+
+Portfolio research surfaces if present
+
+Do NOT introduce additional API calls.
+
+============================================================
+8. DASHBOARD OPPORTUNITY CARD IMPROVEMENT
+============================================================
+
+For cards such as:
+
+COST
+PLTR
+TSLA
+
+show understandable labels.
+
+Current abbreviated row:
+
+Tech
+Inst
+Fund
+Risk
+
+Keep compact labels if necessary, but each must have tooltip.
+
+Example:
+
+Tech 85
+hover →
+Technical Score
+"Measures the strength of technical evidence."
+
+Fund 60
+hover →
+Fundamental Score
+"Measures available business-quality and financial evidence."
+
+============================================================
+9. OVERALL RESEARCH SCORE
+============================================================
+
+The large score such as:
+
+66 / 100
+
+must expose:
+
+Research Score
+
+Tooltip:
+
+"A composite score used to rank research candidates using the deterministic evidence currently available to VCP Trader AI."
+
+Include caution:
+
+"Not a probability of success or expected return."
+
+============================================================
+10. STANDARDIZE CANDIDATE TERMINOLOGY
+============================================================
+
+Audit user-facing research pages.
+
+Prefer:
+
+Research Candidate
+
+Qualified Opportunity
+
+Growth Candidate
+
+Income Candidate
+
+Watch Candidate
+
+Long-Term Investment Candidate
+
+Momentum Candidate
+
+Swing Candidate
+
+ETF Candidate
+
+Covered Call Candidate
+
+Cash-Secured Put Candidate
+
+Avoid labels that imply explicit instructions.
+
+Do NOT use:
+
+Strong Buy
+
+Buy Now
+
+Sell
+
+Top Pick
+
+Recommended Trade
+
+Recommendation
+
+Target Price
+
+Expected Profit
+
+Guaranteed
+
+============================================================
+11. STOCK / OPTION OPPORTUNITY TERMINOLOGY
+============================================================
+
+We need compliant ways to distinguish research types.
+
+Use terms such as:
+
+Equity Research Candidate
+
+Stock Research Candidate
+
+Options Research Candidate
+
+Options Income Candidate
+
+Covered Call Candidate
+
+Cash-Secured Put Candidate
+
+Swing Research Candidate
+
+Long-Term Investment Candidate
+
+Do NOT label a card:
+
+"Trade This"
+
+"Best Trade"
+
+"Recommended Trade"
+
+"Buy Candidate"
+
+============================================================
+12. WHY THIS QUALIFIED
+============================================================
+
+Every opportunity card should support:
+
+Why this qualified
+
+Expandable/collapsible.
+
+Use ONLY deterministic evidence already available.
+
+Examples:
+
+Strong technical structure
+
+Technical score above threshold
+
+Institutional evidence present
+
+Fundamental evidence supportive
+
+Sector leadership
+
+Theme leadership
+
+Relative strength improving
+
+Regime alignment
+
+Warnings:
+
+Earnings approaching
+
+Elevated volatility
+
+Weak institutional evidence
+
+Liquidity concern
+
+Risk score elevated
+
+Never invent explanations.
+
+Never invoke an LLM merely to generate this panel.
+
+============================================================
+13. QUALIFICATION EXPLANATION SOURCE
+============================================================
+
+Prefer existing Opportunity Intelligence fields:
+
+primaryEvidence
+
+secondaryEvidence
+
+riskFactors
+
+invalidatesThesis
+
+researchScore
+
+technicalScore
+
+fundamentalScore
+
+institutionalScore
+
+riskLevel
+
+confidence
+
+marketRegime
+
+Do not recreate scoring logic in the client.
+
+============================================================
+14. SCORE EXPLANATION MODAL
+============================================================
+
+Create a reusable modal:
+
+Understanding Research Scores
+
+Populate it from the centralized Research Glossary.
+
+Sections:
+
+Research Score
+
+Technical Score
+
+Institutional Score
+
+Fundamental Score
+
+Risk Score
+
+Evidence Confidence
+
+Market Regime
+
+Data Freshness
+
+Time Horizon
+
+Opportunity Types
+
+Research Evidence
+
+Risk Factors
+
+Invalidates Thesis
+
+Footer disclaimer:
+
+"Research scores organize available evidence. They are not predictions of future performance and do not constitute investment advice."
+
+============================================================
+15. ENTRY POINT
+============================================================
+
+Add:
+
+"How are scores calculated?"
+
+or
+
+"Understanding research scores"
+
+to appropriate research surfaces.
+
+Do not clutter every card.
+
+Good locations include:
+
+Dashboard opportunity header
+
+Opportunity Workspace
+
+Research Hub
+
+Research Workspace
+
+============================================================
+16. EVIDENCE CONFIDENCE
+============================================================
+
+Audit generic badges such as:
+
+Low
+Medium
+High
+
+Where the badge represents confidence, label/tooltip it clearly as:
+
+Evidence Confidence
+
+Do NOT imply:
+
+Probability of Winning
+
+Chance of Success
+
+Expected Return Probability
+
+============================================================
+17. DATA FRESHNESS
+============================================================
+
+Whenever appropriate, expose:
+
+Latest daily close
+
+Updated X minutes ago
+
+13F delayed data
+
+Current ranking generated at...
+
+Tooltip data freshness using glossary.
+
+For institutional evidence specifically preserve disclosure that SEC Form 13F data is delayed and does not reflect current positions.
+
+============================================================
+18. COMPLIANCE AUDIT
+============================================================
+
+Perform a user-facing language audit across the affected research pages.
+
+Flag and replace problematic phrases where they imply personalized instructions.
+
+Do not blindly remove prohibited words when used in disclaimers such as:
+
+"not a recommendation"
+
+Tests must remain context-aware.
+
+============================================================
+19. ACCESSIBILITY
+============================================================
+
+ResearchDefinitionTooltip:
+
+keyboard accessible
+
+focusable trigger
+
+Enter/Space activation where appropriate
+
+Escape closes
+
+ARIA described-by or labelled-by
+
+touch-friendly behavior
+
+Modal:
+
+focus trap
+
+Escape close
+
+restore focus
+
+semantic headings
+
+Screen-reader friendly.
+
+============================================================
+20. MOBILE
+============================================================
+
+Tooltips must work on touch.
+
+Do not depend only on hover.
+
+Score explanation modal responsive.
+
+Expandable qualification panel works at mobile width.
+
+No horizontal overflow caused by tooltip triggers.
+
+============================================================
+21. AI RESEARCH WORKSPACE INTEGRATION
+============================================================
+
+Do NOT redesign Ask AI.
+
+Make glossary available to the AI Research Workspace so future AI explanations can reference canonical definitions.
+
+If AI currently needs definitions, inject/reference glossary definitions rather than duplicating terminology in system prompts.
+
+Do NOT allow the AI to redefine score meaning.
+
+============================================================
+22. FUTURE CUSTOMIZATION SUPPORT
+============================================================
+
+Design glossary architecture so future editions can extend PRESENTATION without changing underlying canonical meaning.
+
+Examples:
+
+Retail
+
+RIA
+
+Institutional
+
+Enterprise
+
+Different editions may use:
+
+different examples
+
+additional explanatory copy
+
+different UI placement
+
+But core score definitions must remain consistent unless methodology itself changes.
+
+Do NOT implement edition-specific customization now.
+
+============================================================
+23. RESEARCH GLOSSARY USER PAGE
+============================================================
+
+Do not create a large new product feature.
+
+If easy and consistent with current architecture, optionally expose a lightweight user-facing glossary/help modal or section reachable from:
+
+Understanding Research Scores
+
+No new main navigation item required.
+
+The Operations Manual remains admin-only.
+
+============================================================
+24. OPERATIONS MANUAL
+============================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/12-security-and-devsecops.md if terminology/compliance rules change
+
+Add or update a research scoring/glossary operations document.
+
+Document:
+
+Glossary source file
+
+Glossary architecture
+
+Every canonical term
+
+Definition ownership
+
+Actual score source
+
+Score semantic direction
+
+Which service owns each score
+
+How UI components consume glossary
+
+How AI consumes glossary
+
+How to safely change terminology
+
+How methodology changes must trigger glossary review
+
+============================================================
+25. OPERATIONS MANUAL SEARCH
+============================================================
+
+Admin search must find useful documentation for:
+
+research score
+
+technical score
+
+fundamental score
+
+institutional score
+
+risk score
+
+confidence
+
+market regime
+
+why qualified
+
+candidate
+
+13F delayed
+
+qualified opportunity
+
+============================================================
+26. UAT
+============================================================
+
+Test production-like UI flows:
+
+Dashboard:
+
+hover/tap Tech
+
+hover/tap Inst
+
+hover/tap Fund
+
+hover/tap Risk
+
+Research Score explanation
+
+Evidence Confidence explanation
+
+Why This Qualified
+
+Opportunity Workspace:
+
+score definitions
+
+risk factors
+
+invalidates thesis
+
+Research Workspace:
+
+canonical terminology preserved
+
+Mobile:
+
+tap tooltips
+
+modal
+
+expand evidence
+
+Compliance:
+
+no instructional trading language introduced
+
+============================================================
+27. TESTS
+============================================================
+
+Add comprehensive tests.
+
+Test:
+
+Glossary keys unique
+
+Required glossary entries present
+
+No duplicate definitions
+
+Tooltip resolves glossary key
+
+Unknown glossary key fails gracefully
+
+Score modal consumes glossary
+
+Dashboard score labels mapped correctly
+
+Opportunity evidence panel deterministic
+
+No LLM invocation for qualification evidence
+
+Risk semantics match actual code
+
+Institutional disclosure present
+
+Accessibility behavior
+
+Context-aware compliance checks
+
+Operations Manual updated
+
+Roadmap alignment
+
+============================================================
+28. NO BUSINESS LOGIC CHANGES
+============================================================
+
+Explicitly verify:
+
+Scanner unchanged
+
+Ranking formulas unchanged
+
+Opportunity Intelligence formulas unchanged
+
+Risk calculation unchanged
+
+Fundamental score unchanged
+
+Institutional score unchanged
+
+Technical score unchanged
+
+No new market data requests
+
+No DB schema change
+
+No new background jobs
+
+============================================================
+29. COMMERCIAL EXPERIENCE REVIEW
+============================================================
+
+Document only — do not introduce artificial paywalls.
+
+For this feature describe:
+
+Free Value:
+Users understand what research scores mean.
+
+Subscriber Value:
+Deeper evidence panels, historical context, richer research workflows may be premium later.
+
+Professional Value:
+Clear methodology explanations suitable for professional research workflow.
+
+Enterprise/RIA Extension:
+Glossary and methodology presentation can later support organization-specific explanatory layers while preserving canonical score definitions.
+
+Do NOT implement pricing gates in this sprint.
+
+============================================================
+30. PLATFORM REUSABILITY REVIEW
+============================================================
+
+Report whether the centralized glossary is reusable by:
+
+Dashboard
+
+Research Hub
+
+Opportunity Workspace
+
+AI Research Workspace
+
+Collections
+
+Portfolio Intelligence
+
+Alerts
+
+Agents
+
+RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+============================================================
+31. IMPROVEMENT CAPTURE RULE
+============================================================
+
+If implementation reveals additional ideas:
+
+DO NOT automatically implement unrelated work.
+
+Classify each as:
+
+Critical production fix
+
+Current sprint acceptance requirement
+
+Future planned sprint enhancement
+
+Backlog
+
+For every suggestion report:
+
+Suggestion
+
+Assigned sprint/backlog
+
+Priority
+
+Reason
+
+============================================================
+32. ROADMAP ALIGNMENT
+============================================================
+
+This sprint is:
+
+2.5.3A — Research Transparency, Explainability & Central Research Glossary
+
+Do NOT pull forward:
+
+Portfolio Intelligence
+
+Alerts
+
+Automated Research Monitoring
+
+Execution
+
+RIA customization
+
+Institutional customization
+
+Enterprise customization
+
+Agents
+
+Tax
+
+Goals
+
+Rebalancing
+
+============================================================
+33. ACCEPTANCE CRITERIA
+============================================================
+
+GO only if:
+
+A. Central Research Glossary exists.
+
+B. Every required definition exists exactly once.
+
+C. Tooltips consume glossary.
+
+D. Score explanation modal consumes glossary.
+
+E. Dashboard Tech/Inst/Fund/Risk scores are understandable.
+
+F. Research Score explained.
+
+G. Evidence Confidence explained.
+
+H. Why This Qualified uses deterministic existing evidence.
+
+I. Candidate terminology standardized.
+
+J. Equity vs Options research terminology standardized.
+
+K. Compliance audit passes.
+
+L. Accessibility works.
+
+M. No scoring/business logic changed.
+
+N. No schema changes.
+
+O. Full tests pass.
+
+P. npm run build passes.
+
+Q. Operations Manual updated.
+
+R. Roadmap alignment confirmed.
+
+============================================================
+34. COMPLETION REPORT
+============================================================
+
+Return:
+
+1. Architecture audit
+2. Duplicate definitions discovered
+3. Files changed
+4. Central Research Glossary architecture
+5. Full glossary term list
+6. Definition examples
+7. Tooltip component
+8. Pages updated
+9. Dashboard changes
+10. Why This Qualified implementation
+11. Score explanation modal
+12. Candidate terminology changes
+13. Equity/options terminology
+14. Compliance audit
+15. Accessibility
+16. AI Workspace glossary integration
+17. Operations Manual updates
+18. UAT
+19. Tests added
+20. Full test count
+21. npm run build
+22. Typecheck
+23. Business logic change confirmation
+24. Commercial Experience Review
+25. Platform Reusability Review
+26. Improvement Suggestions Captured
+27. Roadmap Alignment
+28. Operations Manual Updated: YES/NO
+29. Operations Manual Files Updated
+30. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

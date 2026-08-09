@@ -1630,3 +1630,160 @@ Appears immediately above the Confirm Import button on all import flows:
 □ Extracting holdings from PDF… shown during processing
 ```
 
+---
+
+## Market Research Command Center (Sprint 2.5.3)
+
+### `GET /api/command-center/daily`
+
+**Purpose:** Aggregated daily snapshot answering "What changed today?" — reads from all precomputed intelligence stores in parallel. Never recomputes anything.
+
+**Auth:** Authenticated user (session required)
+
+**Expected status:** 200
+
+**Response shape:**
+```json
+{
+  "generatedAt": "2026-08-09T12:00:00.000Z",
+  "marketOverview": {
+    "regime": "bull | bear | sideways | null",
+    "marketHealth": 72,
+    "marketHealthLabel": "Strong | Moderate | Weak | Unknown",
+    "leadingThemes": [{ "themeId": "...", "themeName": "...", "score": 82, "direction": "up|down|stable", "scoreDelta": 5.2, "topSymbols": ["NVDA"], "relatedResearch": [{ "label": "...", "path": "..." }] }],
+    "leadingSectors": [{ "sector": "Technology", "label": "Technology", "score": 75, "direction": "stable", "scoreDelta": null, "topSymbols": [], "relatedResearch": [] }],
+    "mostImprovedThemes": [],
+    "weakeningThemes": [],
+    "whatsNew": ["AI Infrastructure momentum building (+5.2 pts)"],
+    "whatsChanged": ["Energy showing weakness (-3.1 pts)"],
+    "evidence": ["12 theme snapshots analyzed"],
+    "confidence": { "level": "high", "basis": "12 themes and 5 sectors" },
+    "freshness": "2026-08-09T10:00:00.000Z",
+    "hasData": true,
+    "relatedResearch": [{ "label": "Intelligence Hub", "path": "/intelligence" }]
+  },
+  "opportunityChanges": {
+    "available": true,
+    "majorMovers": [{ "symbol": "NVDA", "companyName": null, "previousScore": 70, "currentScore": 85, "scoreDelta": 15, "changeType": "major_mover", "importance": "Critical", "explanation": "...", "drivers": ["..."], "warnings": [], "previousState": "QUALIFIED", "currentState": "QUALIFIED", "relatedResearch": [] }],
+    "upgrades": [],
+    "downgrades": [],
+    "newEntries": [],
+    "removed": [],
+    "totalChanged": 1,
+    "whatsNew": ["1 new candidate(s) entered the ranking"],
+    "whatsChanged": ["1 major move(s) detected — review drivers"],
+    "evidence": ["50 symbols in current ranking"],
+    "confidence": { "level": "high", "basis": "50 ranked symbols, 1 changes detected" },
+    "freshness": "2026-08-09T10:00:00.000Z",
+    "relatedResearch": []
+  },
+  "themeChanges": { "themes": [], "whatsNew": [], "whatsChanged": [], "evidence": [], "confidence": { "level": "low", "basis": "..." }, "freshness": null, "hasData": false, "relatedResearch": [] },
+  "sectorChanges": { "sectors": [], "whatsNew": [], "whatsChanged": [], "evidence": [], "confidence": { "level": "low", "basis": "..." }, "freshness": null, "hasData": false, "relatedResearch": [] },
+  "institutionalChanges": { "available": false, "recentSignals": [], "whatsNew": [], "whatsChanged": [], "evidence": [], "confidence": { "level": "low", "basis": "..." }, "freshness": null, "relatedResearch": [] },
+  "collectionChanges": { "collections": [], "whatsNew": [], "whatsChanged": [], "evidence": [], "confidence": { "level": "low", "basis": "..." }, "freshness": null, "relatedResearch": [] },
+  "myCollections": { "pinned": [], "favorites": [], "followed": [], "systemHighlights": [], "total": 0, "relatedResearch": [] },
+  "aiResearchSummary": { "available": false, "recentConversationCount": 0, "pinnedConversationCount": 0, "topModes": [], "suggestedQueries": [{ "label": "What changed today?", "description": "...", "mode": "market", "scope": "entire_market", "promptText": "..." }], "whatsNew": [], "evidence": [], "confidence": { "level": "low", "basis": "..." }, "relatedResearch": [] },
+  "researchTimeline": { "items": [], "totalConversations": 0, "available": false, "relatedResearch": [] }
+}
+```
+
+**Healthy data response:** All sections populated — marketOverview.hasData=true, opportunityChanges.available=true, themeChanges.hasData=true, sectorChanges.hasData=true, institutionalChanges.available depends on env config.
+
+**Healthy empty response (fresh deployment):** `marketOverview.hasData=false`, all available=false, `opportunityChanges.available=false`. Sections show "Not available yet" placeholders. This is correct behavior before the first scan completes.
+
+**Common failures:**
+- All sections unavailable → No scan completed + no intelligence rebuild run
+- Opportunity changes unavailable → Ranking lost after server restart; wait for next scan
+- Institutional unavailable → Check `INSTITUTIONAL_INTELLIGENCE_ENABLED` and 13F ingestion status
+
+**Runbook:** [11-troubleshooting-runbook.md](11-troubleshooting-runbook.md) → CMD_ALL_SECTIONS_UNAVAILABLE
+
+---
+
+### `GET /api/command-center/health`
+
+**Purpose:** Lightweight in-memory health snapshot — reads zero DB rows. Populated on the first visit to `/market-research-command-center`.
+
+**Auth:** Authenticated user
+
+**Expected status:** 200
+
+**Response shape:**
+```json
+{
+  "lastGeneratedAt": "2026-08-09T12:00:00.000Z | null",
+  "sectionsAvailable": 7,
+  "opportunityChangesAvailable": true,
+  "themeDataAvailable": true,
+  "sectorDataAvailable": true,
+  "collectionsSeeded": true,
+  "institutionalDataAvailable": false
+}
+```
+
+**Note:** Returns `lastGeneratedAt: null` and `sectionsAvailable: 0` on fresh deploy until a user visits the page. This is expected — not a health failure.
+
+---
+
+### UAT Checklist — Market Research Command Center (Sprint 2.5.3)
+
+**Page: `/market-research-command-center`**
+```
+□ Page title "Market Research Command Center" visible (data-testid="cmd-center-title")
+□ Three nav buttons visible: AI Workspace, Intelligence, Research Hub
+□ Market Overview section visible (data-testid="cmd-market-overview")
+  □ If data available: Market Health label (Strong/Moderate/Weak/Unknown) displayed
+  □ Leading Themes badges link to /intelligence/themes/:themeId
+  □ Leading Sectors badges link to /intelligence/sectors/:sector
+  □ What's New and What's Changed lists populated when data available
+  □ Confidence badge and freshness badge visible in section header
+  □ Related Research links present at bottom of section
+□ Opportunity Changes section visible (data-testid="cmd-opp-changes")
+  □ If ranking available: change cards shown (major movers, new entries, upgrades, downgrades, removed)
+  □ Clicking a change row navigates to /opportunities/:symbol
+  □ Score delta shown in green (positive) or red (negative)
+  □ If ranking not available: "Ranking not yet available" message shown
+□ Theme Changes section visible (data-testid="cmd-theme-changes")
+  □ Theme rows link to /intelligence/themes/:themeId
+  □ Direction icons shown (up=green, down=red, stable=gray)
+  □ Score delta shown with +/- prefix
+□ Sector Changes section visible (data-testid="cmd-sector-changes")
+  □ Sector rows link to /intelligence/sectors/:sector
+  □ Direction icons correct
+□ Institutional Changes section visible (data-testid="cmd-institutional-changes")
+  □ If INSTITUTIONAL_INTELLIGENCE_ENABLED: signal cards shown with magnitude badges
+  □ Clicking signal row navigates to /opportunities/:symbol
+  □ If disabled: "Institutional data not available" message shown
+□ Collection Changes section visible (data-testid="cmd-collection-changes")
+  □ Collection cards shown with opportunity count badge
+  □ Clicking card navigates to /research?collection=:id
+□ My Collections section visible (data-testid="cmd-my-collections")
+  □ Pinned / Favorites / Following / System Highlights groups shown
+  □ Empty groups are not rendered (no blank headers)
+□ AI Research Summary section visible (data-testid="cmd-ai-research-summary")
+  □ Conversation count stats shown when user has conversations
+  □ 3 Suggested Research Queries shown with mode/scope
+  □ Clicking a query navigates to /research-workspace with mode+scope params
+□ Research Timeline section visible (data-testid="cmd-research-timeline")
+  □ Last 10 conversations listed with date
+  □ Pinned conversations show star icon
+  □ Clicking row navigates to /research-workspace?conversation=:id
+  □ If no conversations: "Open AI Research Workspace" button shown
+□ Explain Why section visible (data-testid="cmd-explain-why")
+  □ 6 research query shortcuts shown
+  □ Clicking any shortcut navigates to /research-workspace with mode+scope params
+  □ "Open AI Research Workspace" button navigates to /research-workspace
+□ Page auto-refreshes every 5 minutes (staleTime=2min, refetchInterval=5min)
+□ No "recommendation", "buy", or "sell" language visible anywhere
+□ On error: error card with AlertCircle icon shown, not a blank page
+```
+
+**Platform Health (`/admin/platform-health`):**
+```
+□ "Market Research Command Center" health card visible under Infrastructure section
+□ Before first page visit: status=UNKNOWN, "No snapshot generated yet" message
+□ After first page visit: status=HEALTHY, shows sectionsAvailable count
+□ If <5 sections available: status=DEGRADED
+□ Clicking "Command Center Runbook" links to troubleshooting doc
+```
+

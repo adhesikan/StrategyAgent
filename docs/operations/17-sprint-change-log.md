@@ -4,6 +4,77 @@
 
 ---
 
+## Sprint 2.5.3 — Market Research Command Center (2026-08-09)
+
+**Purpose:** Build the primary daily destination for users. Answers "What changed today?" without requiring search. Aggregates all intelligence surfaces — Opportunity Intelligence, Research Collections, AI Research Workspace, Market/Theme/Sector Intelligence, and Institutional Intelligence — into a single unified snapshot.
+
+### Design Goals
+- One aggregated endpoint reads from all precomputed stores in parallel (zero recomputation)
+- Each of 10 sections degrades independently — one failure never blocks others
+- Every section shows: What's New, What's Changed, Evidence, Confidence, Freshness, Related Research
+- Every card links into: Opportunity Workspace · AI Research Workspace · Theme/Sector Research · Collections · Institutional
+- Free vs Premium tiers documented in types (no artificial restrictions in code)
+- Platform Health card added for admin monitoring
+
+### New Key Files
+
+| Type | Path |
+|------|------|
+| Shared types | `shared/command-center-types.ts` |
+| Server route | `server/routes/market-research-command-center.ts` |
+| Client page | `client/src/pages/market-research-command-center.tsx` |
+| Tests | `server/routes/__tests__/market-research-command-center.test.ts` |
+
+### No New DB Tables
+All data is read from existing precomputed stores. No schema migrations required.
+
+### New Routes (2)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/command-center/daily` | User | Aggregated daily snapshot (all 10 sections) |
+| GET | `/api/command-center/health` | User | Lightweight in-memory health (no DB read) |
+
+### New Client Route
+`/market-research-command-center` — Market Research Command Center page
+
+### 10 Sections
+
+| Section | Source | What's Available When |
+|---------|--------|----------------------|
+| Market Overview | Theme + Sector snapshots + Ranking regime | Intelligence rebuild has run |
+| Opportunity Changes | Change Engine + opportunity_history DB | Ranking exists |
+| Theme Changes | Theme snapshots | Intelligence rebuild has run |
+| Sector Changes | Sector snapshots | Intelligence rebuild has run |
+| Institutional Changes | institutional_symbol_signals | INSTITUTIONAL_INTELLIGENCE_ENABLED=true + 13F ingested |
+| Collection Changes | Collection service (system collections) | System collections seeded |
+| My Collections | Collection service (user collections) | User has followed/pinned/favorited collections |
+| AI Research Summary | workspace_conversations DB | User has started research conversations |
+| Research Timeline | workspace_conversations DB | User has started research conversations |
+| Explain Why | Static cross-navigation links | Always available |
+
+### Cross Navigation
+Every card navigates to: `/opportunities/:symbol` · `/research-workspace` · `/intelligence/themes/:themeId` · `/intelligence/sectors/:sector` · `/research?collection=:id` · `/institutional/funds`
+
+### Free vs Premium (documented — no code restrictions)
+- **Registered**: Market Overview, top-5 Theme/Sector changes, Opportunity Changes (5 movers), system collection highlights, Research Timeline (last 5)
+- **Subscribers**: Full Opportunity Changes, all Theme/Sector, Institutional Changes, AI Research Summary
+- **Professional**: Evidence citations per section, cross-collection analysis, institutional fund detail
+- **Enterprise**: Custom collection monitoring, institutional portfolio matching
+
+### Platform Health
+New `commandCenter` key in `/api/admin/platform-health` response — tracks `sectionsAvailable`, `opportunityChangesAvailable`, `themeDataAvailable`, `sectorDataAvailable`, `collectionsSeeded`, `institutionalDataAvailable`.
+
+### Env / Config Impact
+None. Reads `INSTITUTIONAL_INTELLIGENCE_ENABLED` (already used by institutional routes).
+
+### Known Limitations
+- `topOpportunities` field in `CollectionChangeSummary` is intentionally empty for lightweight collection listing (would require N+1 detail calls to populate)
+- Health snapshot is in-memory only — resets on server restart until a user visits `/market-research-command-center`
+- Institutional signals section reads raw DB (not pre-aggregated signals service) to avoid import cycle with route-level module
+
+---
+
 ## Sprint 2.5.2 — AI Research Workspace (2026-08-08)
 
 **Purpose:** Transform Ask AI into a dedicated Research Workspace that consumes the full intelligence stack — Opportunity Intelligence Engine, Research Collections, Sector Intelligence, and Theme Intelligence. The AI explains evidence; it never invents opportunities.

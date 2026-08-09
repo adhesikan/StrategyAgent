@@ -82,6 +82,7 @@ import AskPage from "@/pages/ask";
 import CongressActivityPage from "@/pages/congress-activity";
 import MarketResearchHub from "@/pages/market-research-hub";
 import ResearchWorkspacePage from "@/pages/research-workspace";
+import MarketResearchCommandCenterPage from "@/pages/market-research-command-center";
 import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
 import OpportunityResearchPage from "@/pages/opportunity-research";
@@ -145,6 +146,7 @@ function AppRouter() {
       <Route path="/research/:id" component={ResearchDetailPage} />
       <Route path="/research" component={MarketResearchHub} />
       <Route path="/research-workspace" component={ResearchWorkspacePage} />
+      <Route path="/market-research-command-center" component={MarketResearchCommandCenterPage} />
       <Route path="/opportunity/:symbol" component={OpportunityResearchPage} />
       <Route path="/opportunities/:symbol" component={OpportunityWorkspacePage} />
       <Route path="/institutional/funds" component={InstitutionalFundsPage} />

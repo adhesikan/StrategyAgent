@@ -765,3 +765,83 @@ grep -c "package-firewall.replit.local" package-lock.json
 **Cause:** OpenAI returned a response that could not be parsed as valid JSON matching the WorkspaceAIResponse schema. The system fell back to `buildRuleBasedWorkspaceResponse()`.
 
 **Fix:** This is a graceful fallback — no data is lost or invented. The rule-based response is deterministic. If recurring, check OpenAI API logs for response quality issues. Consider increasing `temperature: 0` for stricter JSON compliance.
+
+---
+
+## MARKET RESEARCH COMMAND CENTER (Sprint 2.5.3)
+
+### CMD_ALL_SECTIONS_UNAVAILABLE
+
+**Symptom:** Command Center page loads but all sections show "Not available yet" messages.
+
+**Diagnostic:**
+1. `GET /api/command-center/health` — check `sectionsAvailable` count
+2. `GET /api/admin/platform-health` → `commandCenter` key — check status
+3. Check if `/api/opportunities/today` returns `available: true`
+4. Check if `/api/intelligence/briefing` returns theme/sector data
+
+**Likely cause:** No scan has completed yet (opportunity ranking absent) AND no intelligence rebuild has run (no sector/theme snapshots).
+
+**Remediation:**
+1. Wait for next scheduled scan cycle, OR trigger manually via admin
+2. POST `/api/admin/intelligence/rebuild` to generate sector/theme snapshots
+3. Visit `/market-research-command-center` after fixes to generate the health snapshot
+
+**Verification:** `GET /api/command-center/health` → `sectionsAvailable >= 3`
+
+---
+
+### CMD_OPPORTUNITY_CHANGES_UNAVAILABLE
+
+**Symptom:** "Opportunity Changes" section shows "Ranking not yet available."
+
+**Cause:** `getLatestRanking()` returns null — either no scan has completed yet, or the server restarted and the in-memory ranking was lost.
+
+**Remediation:**
+1. Check Platform Health → Scanner section for last scan status
+2. If scanner ran but ranking is missing, wait for next scan cycle (ranking is rebuilt automatically)
+3. Check `OPPORTUNITY_SCAN_INTERVAL_MINUTES` env var (default 240 min)
+
+**Verification:** Section shows change cards including Major Movers, New Entries, or Upgrades.
+
+---
+
+### CMD_INSTITUTIONAL_SECTION_UNAVAILABLE
+
+**Symptom:** Institutional Changes section shows "Institutional data not available."
+
+**Cause:** `INSTITUTIONAL_INTELLIGENCE_ENABLED` is not `"true"` OR no signals have been calculated yet.
+
+**Remediation:**
+1. Check env: `INSTITUTIONAL_INTELLIGENCE_ENABLED` must be unset (defaults true) or explicitly `"true"`
+2. If enabled, check `institutional_symbol_signals` table has rows: `SELECT COUNT(*) FROM institutional_symbol_signals;`
+3. If empty, run 13F ingestion pipeline first: POST `/api/admin/institutional/ingest`
+
+**Verification:** Section shows signal cards with symbol names and magnitude badges.
+
+---
+
+### CMD_COLLECTION_SECTION_EMPTY
+
+**Symptom:** Collection Changes section shows "No collections found."
+
+**Cause:** System collections have not been seeded yet. Seeding runs automatically on server startup.
+
+**Remediation:**
+1. Check Platform Health → Research Collections → `seedingComplete: true`
+2. If false, restart the server — `seedSystemCollections()` runs fire-and-forget on startup
+3. If restart doesn't help, check server logs for seed errors
+
+**Verification:** Section shows collection cards with opportunity counts.
+
+---
+
+### CMD_HEALTH_SNAPSHOT_NEVER_GENERATED
+
+**Symptom:** Platform Health → Command Center shows "No snapshot generated yet."
+
+**Cause:** The `/api/command-center/daily` endpoint has never been called. The health snapshot is populated in-memory on first page visit.
+
+**Fix:** This is expected on a fresh deployment. Once a user visits `/market-research-command-center`, the health snapshot is generated and the Platform Health card updates.
+
+**Note:** After a server restart, the health snapshot resets. The next page visit regenerates it automatically.

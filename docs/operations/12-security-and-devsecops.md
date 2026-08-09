@@ -12,6 +12,31 @@ See [02-environments-and-deployment.md](02-environments-and-deployment.md) for t
 
 ---
 
+## Market Research Command Center — Security (Sprint 2.5.3)
+
+### Authentication boundary
+
+- `GET /api/command-center/daily` and `GET /api/command-center/health` are both gated by `isAuthenticated` middleware. Unauthenticated requests receive 401.
+- `userId` is read from `req.session.userId` and used only for collection and workspace queries — never echoed back in the response.
+
+### Data trust rules
+
+- All data is read from precomputed stores (ranking, sector/theme snapshots, collection service). No raw market prices are ever included in the response.
+- Institutional signals section reads only `symbol`, `signal_type`, `signal_strength`, `signal_detail`, and `calculated_at` — no fund-level identifiers or portfolio values.
+- `companyName` fields are intentionally `null` in Sprint 2.5.3 (populated in a future sprint that wires company meta). No fabricated names appear.
+- `relatedResearch` links are all relative paths — no external URLs, no session tokens embedded in links.
+
+### No secrets in response
+
+- No API keys, bearer tokens, session identifiers, broker credentials, or internal table IDs are returned.
+- `getCommandCenterHealth()` is in-memory only; it never reads the DB and is therefore safe to expose on the authenticated health endpoint.
+
+### Section independence
+
+- Each section builder is wrapped in a `try/catch`. A failure in one section (e.g. institutional DB error) produces `available: false` without leaking the error message to the client. Errors are logged server-side only.
+
+---
+
 ## Research Collections — Security (Sprint 2.5.1)
 
 ### Ownership enforcement

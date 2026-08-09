@@ -1,0 +1,165 @@
+Sprint 2.5.3 — Market Research Command Center
+
+IMPORTANT
+
+Follow the approved roadmap.
+
+This sprint follows Sprint 2.5.2.
+
+Do NOT implement:
+
+Portfolio Intelligence
+
+Recommendations
+
+Alerts
+
+Automated Trading
+
+Tax
+
+Goal Planning
+
+=========================================
+OBJECTIVE
+=========================================
+
+Build the Market Research Command Center.
+
+This becomes the primary daily destination for users.
+
+The page should answer:
+
+"What changed today?"
+
+without requiring the user to search.
+
+=========================================
+CONSUME
+=========================================
+
+Consume:
+
+Opportunity Intelligence Engine
+
+Research Collections
+
+AI Research Workspace
+
+Market Intelligence
+
+Theme Intelligence
+
+Sector Intelligence
+
+Institutional Intelligence
+
+Do not duplicate logic.
+
+=========================================
+SECTIONS
+=========================================
+
+Market Overview
+
+Opportunity Changes
+
+Theme Changes
+
+Sector Changes
+
+Institutional Changes
+
+Collection Changes
+
+My Collections
+
+AI Research Summary
+
+Research Timeline
+
+Explain Why
+
+=========================================
+EVERY SECTION MUST SHOW
+=========================================
+
+What's New
+
+What's Changed
+
+Evidence
+
+Confidence
+
+Freshness
+
+Related Research
+
+=========================================
+CROSS NAVIGATION
+=========================================
+
+Every card links naturally into:
+
+Opportunity Workspace
+
+AI Research Workspace
+
+Theme Research
+
+Sector Research
+
+Collections
+
+Institutional
+
+=========================================
+FREE VS PREMIUM
+=========================================
+
+Document:
+
+Value for every registered user
+
+Additional subscriber capabilities
+
+Professional edition capabilities
+
+Enterprise customization
+
+No artificial restrictions.
+
+=========================================
+ADMIN
+=========================================
+
+Platform Health
+
+Operations Manual
+
+Architecture
+
+Troubleshooting
+
+API reference
+
+Definition of Done
+
+Sprint log
+
+=========================================
+TESTING
+=========================================
+
+Comprehensive tests
+
+Build clean
+
+Zero TS errors
+
+Documentation updated
+
+Maintain roadmap discipline
+
+Do not pull future roadmap work.

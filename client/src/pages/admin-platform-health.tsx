@@ -9,7 +9,7 @@ import {
   Activity, Database, Server, Globe, BarChart2, Brain,
   Building2, ShieldCheck, Link2, RefreshCw, Wrench, CheckCircle2,
   AlertTriangle, XCircle, MinusCircle, HelpCircle, ExternalLink, Loader2,
-  BookOpen,
+  BookOpen, Layers,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -263,6 +263,12 @@ export default function AdminPlatformHealthPage() {
                 manualLinks={[
                   { label: "Collections API/UAT",    docId: "16-api-and-uat-reference" },
                   { label: "Collections Runbook",    docId: "11-troubleshooting-runbook" },
+                ]}
+              />
+              <SectionCard title="Market Research Command Center" icon={Layers} card={h.commandCenter as HealthCard}
+                manualLinks={[
+                  { label: "Command Center API/UAT", docId: "16-api-and-uat-reference" },
+                  { label: "Command Center Runbook", docId: "11-troubleshooting-runbook" },
                 ]}
               />
               <SectionCard title="Broker Sync"   icon={Activity}   card={h.brokerSync  as HealthCard}

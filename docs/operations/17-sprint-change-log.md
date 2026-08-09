@@ -4,6 +4,79 @@
 
 ---
 
+## Sprint 2.5.3A — Research Transparency, Explainability & Central Research Glossary (2026-08-09)
+
+**Purpose:** Refinement sprint — make existing research scores understandable, standardize terminology, create one canonical Research Glossary, improve compliance clarity, and add accessibility to all score surfaces. Zero business-logic changes.
+
+### No DB Schema Changes. No New Background Jobs. No Scoring Logic Changes.
+
+### New Key Files
+
+| Type | Path |
+|------|------|
+| Shared glossary | `shared/research-glossary.ts` |
+| Tooltip component | `client/src/components/research-definition-tooltip.tsx` |
+| Score modal | `client/src/components/score-explanation-modal.tsx` |
+| Tests | `server/routes/__tests__/research-glossary.test.ts` |
+| Operations doc | `docs/operations/18-research-glossary.md` |
+
+### Central Research Glossary
+
+Single source of truth for all research terminology. 30+ entries covering scores, confidence, evidence, market context, candidate types, data quality, and institutional activity. All definitions comply with the "never overstate methodology" rule. 13F delay disclosure required on all institutional entries.
+
+### UI Surfaces Updated
+
+| Surface | Changes |
+|---------|---------|
+| Dashboard | ScorePill labels (Tech/Inst/Fund/Risk) get glossary tooltips; confidence badge gets help icon; overall score gets help icon; "Why This Qualified" expandable panel added to every card; "How are scores calculated?" modal link in section header |
+| Opportunity Workspace | ScoreBar labels (Overall/Technical/Institutional/Fundamental/Risk/Regime) get glossary tooltips; "Understanding research scores" modal link in Score card header |
+| Scanner | "Top Picks" heading renamed to "High-Scoring Setups" |
+| Options Scanner | Both "Top Picks" headings renamed to "High-Confidence Results" |
+| Smart Panel | "Top Pick" label renamed to "Highest Score" |
+
+### Risk Score Semantics Verified & Documented
+
+`riskScore` on `OpportunityScore` (from the Opportunity Ranking Engine) is "higher = better risk profile" — verified from `computeRiskScore()` in `server/services/opportunity-ranking-engine.ts`. This semantic is now documented in the glossary, pinned by a failing test if changed, and displayed in the tooltip with "↑ Higher is better."
+
+### Compliance Audit
+
+- "Top Picks" → "High-Scoring Setups" / "High-Confidence Results" (scanner / options scanner)
+- "Top Pick" → "Highest Score" (smart panel)
+- No "Strong Buy", "Buy Now", "Recommended Trade", "Buy Candidate" found in research surfaces
+- Evidence Confidence badges no longer imply probability of success
+- All score tooltips include caution text: "not a prediction of future performance"
+- 13F disclosure mandatory on institutional score and institutional activity entries
+
+### Accessibility
+
+- `ResearchDefinitionTooltip` trigger is a `<button>` (keyboard-focusable by default)
+- Enter/Space activates via button default behavior + Radix tooltip
+- Escape closes via Radix TooltipPrimitive
+- `aria-label="What is {term}?"` on every trigger
+- `aria-expanded` on "Why This Qualified" toggle button
+- `aria-controls` links toggle to panel
+- Modal: Radix Dialog provides focus trap, Escape close, restore focus, semantic headings
+- Touch: onClick state toggling for mobile tap support
+- No horizontal overflow: `max-w-xs` with word-wrap on tooltip content
+
+### Why This Qualified Panel
+
+Every dashboard opportunity card now has a collapsible "Why this qualified" panel:
+- Expanded: shows all `score.reasons` (emerald checkmarks) + `score.warnings` (amber triangles)
+- Collapsed by default (tap/click to reveal)
+- Uses ONLY deterministic evidence already in `OpportunityScore.reasons` / `OpportunityScore.warnings`
+- No LLM invocation
+- Footer: "Deterministic evidence only. Not a recommendation."
+
+### Env / Config Impact
+None. Read-only UI changes only.
+
+### Known Limitations
+- Research Hub and Research Workspace pages have modal available via exported components but not yet wired (follow-up sprint opportunity)
+- AI system prompts not yet updated to reference canonical glossary definitions (follow-up sprint)
+
+---
+
 ## Sprint 2.5.3 — Market Research Command Center (2026-08-09)
 
 **Purpose:** Build the primary daily destination for users. Answers "What changed today?" without requiring search. Aggregates all intelligence surfaces — Opportunity Intelligence, Research Collections, AI Research Workspace, Market/Theme/Sector Intelligence, and Institutional Intelligence — into a single unified snapshot.

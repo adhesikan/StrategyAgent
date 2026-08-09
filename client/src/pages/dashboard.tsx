@@ -74,7 +74,11 @@ import {
   ChevronDown,
   Zap,
   X,
+  CheckCircle2,
 } from "lucide-react";
+import { SCORE_LABEL_TO_GLOSSARY_KEY } from "@shared/research-glossary";
+import { ResearchDefinitionTooltip, ResearchHelpIcon } from "@/components/research-definition-tooltip";
+import { ScoreExplanationModal } from "@/components/score-explanation-modal";
 
 // ---------------------------------------------------------------------------
 // Types (mirrors what GET /api/dashboard returns)
@@ -1031,6 +1035,7 @@ const LIFECYCLE_BADGE: Record<LifecycleState, { label: string; className: string
 
 /** Mini score pill — label + coloured numeric value. */
 function ScorePill({ label, score }: { label: string; score: number }) {
+  const termKey = SCORE_LABEL_TO_GLOSSARY_KEY[label];
   return (
     <div className="flex flex-col items-center gap-0.5 min-w-0">
       <span
@@ -1039,7 +1044,13 @@ function ScorePill({ label, score }: { label: string; score: number }) {
       >
         {score}
       </span>
-      <span className="text-[9px] text-muted-foreground truncate">{label}</span>
+      {termKey ? (
+        <ResearchDefinitionTooltip term={termKey} side="bottom" showCaution={false}>
+          <span className="text-[9px] text-muted-foreground truncate">{label}</span>
+        </ResearchDefinitionTooltip>
+      ) : (
+        <span className="text-[9px] text-muted-foreground truncate">{label}</span>
+      )}
     </div>
   );
 }
@@ -1059,6 +1070,7 @@ function StockOpportunityCard({
   lifecycleState?: LifecycleState;
 }) {
   const [, navigate] = useLocation();
+  const [showWhy, setShowWhy] = useState(false);
   const ctaText = hasCachedResult ? "Open Analysis" : "Analyze";
   const score = candidate.opportunityScore;
 
@@ -1089,14 +1101,17 @@ function StockOpportunityCard({
           {getCategoryLabel(score.category)}
         </Badge>
         {/* Composite confidence (not raw MCP confidence) */}
-        <Badge
-          variant="outline"
-          className={cn("text-[10px]", getConfidenceBadgeClass(score.confidence))}
-          data-testid={`confidence-${candidate.symbol}`}
-          aria-label={`Confidence: ${score.confidence}`}
-        >
-          {score.confidence.charAt(0).toUpperCase() + score.confidence.slice(1)}
-        </Badge>
+        <div className="flex items-center gap-0.5">
+          <Badge
+            variant="outline"
+            className={cn("text-[10px]", getConfidenceBadgeClass(score.confidence))}
+            data-testid={`confidence-${candidate.symbol}`}
+            aria-label={`Evidence Confidence: ${score.confidence}`}
+          >
+            {score.confidence.charAt(0).toUpperCase() + score.confidence.slice(1)}
+          </Badge>
+          <ResearchHelpIcon term="evidence_confidence" side="bottom" />
+        </div>
         {lifecycleState && <LifecycleBadge state={lifecycleState} />}
       </div>
 
@@ -1125,6 +1140,7 @@ function StockOpportunityCard({
           />
         </div>
         <span className="text-[10px] text-muted-foreground">/ 100</span>
+        <ResearchHelpIcon term="research_score" side="top" />
       </div>
 
       {/* ── Score breakdown ─────────────────────────────────────────────── */}
@@ -1138,25 +1154,47 @@ function StockOpportunityCard({
         <ScorePill label="Risk"  score={score.riskScore} />
       </div>
 
-      {/* ── Reasons (from ranking engine, not raw MCP) ──────────────────── */}
-      {score.reasons.length > 0 && (
-        <div className="space-y-1" data-testid={`reasons-${candidate.symbol}`}>
-          {score.reasons.slice(0, 2).map((r, i) => (
-            <p key={i} className="text-xs leading-snug text-foreground/80">
-              {r}
-            </p>
-          ))}
-        </div>
-      )}
-
-      {/* ── Warnings ────────────────────────────────────────────────────── */}
-      {score.warnings.length > 0 && (
-        <div
-          className="flex items-start gap-1 text-[10px] text-amber-400"
-          data-testid={`warnings-${candidate.symbol}`}
-        >
-          <AlertTriangle className="h-3 w-3 mt-px shrink-0" aria-hidden="true" />
-          <span>{score.warnings[0]}</span>
+      {/* ── Why This Qualified (expandable) ─────────────────────────────── */}
+      {(score.reasons.length > 0 || score.warnings.length > 0) && (
+        <div data-testid={`why-qualified-${candidate.symbol}`}>
+          <button
+            type="button"
+            onClick={() => setShowWhy((v) => !v)}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground w-full text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded py-0.5"
+            aria-expanded={showWhy}
+            aria-controls={`why-panel-${candidate.symbol}`}
+          >
+            <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span>Why this qualified</span>
+            {showWhy ? (
+              <ChevronUp className="h-3 w-3 ml-auto shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3 w-3 ml-auto shrink-0" aria-hidden="true" />
+            )}
+          </button>
+          {showWhy && (
+            <div
+              id={`why-panel-${candidate.symbol}`}
+              className="mt-1.5 space-y-1.5"
+              data-testid={`why-panel-${candidate.symbol}`}
+            >
+              {score.reasons.map((r, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-xs text-foreground/80">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{r}</span>
+                </div>
+              ))}
+              {score.warnings.map((w, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-[11px] text-amber-400">
+                  <AlertTriangle className="h-3 w-3 mt-px shrink-0" aria-hidden="true" />
+                  <span>{w}</span>
+                </div>
+              ))}
+              <p className="text-[10px] text-muted-foreground/50 border-t border-border/20 pt-1">
+                Deterministic evidence only. Not a recommendation.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -2060,10 +2098,13 @@ function OpportunityEngineSection({
               </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Stock setups ranked by Technical, Institutional, Fundamental and Risk signals.
-            Not a recommendation to buy or sell.
-          </p>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-muted-foreground">
+              Stock setups ranked by Technical, Institutional, Fundamental and Risk signals.
+              Not a recommendation to buy or sell.
+            </p>
+            <ScoreExplanationModal />
+          </div>
           {/* Freshness row — uses ranking.generatedAt */}
           {ranking && (
             <div className="flex items-center gap-3 pt-0.5 flex-wrap">

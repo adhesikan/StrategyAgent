@@ -16,6 +16,9 @@
 
 import { useState, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
+import { SCORE_LABEL_TO_GLOSSARY_KEY } from "@shared/research-glossary";
+import { ResearchDefinitionTooltip } from "@/components/research-definition-tooltip";
+import { UnderstandingScoresLink } from "@/components/score-explanation-modal";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -248,10 +251,17 @@ function WhyItChangedPanel({ exp }: { exp: ChangeExplanation }) {
 // ---------------------------------------------------------------------------
 
 function ScoreBar({ score, label }: { score: number; label: string }) {
+  const termKey = SCORE_LABEL_TO_GLOSSARY_KEY[label];
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <span className="text-slate-400">{label}</span>
+        {termKey ? (
+          <ResearchDefinitionTooltip term={termKey} side="left" showCaution={false}>
+            <span className="text-slate-400">{label}</span>
+          </ResearchDefinitionTooltip>
+        ) : (
+          <span className="text-slate-400">{label}</span>
+        )}
         <span className={cn("font-medium tabular-nums", getScoreColor(score))}>{score}</span>
       </div>
       <div className="h-1.5 rounded-full bg-slate-800">
@@ -298,7 +308,10 @@ function OverviewTab({
       {/* Score overview */}
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-slate-300">Score Breakdown</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm text-slate-300">Research Score</CardTitle>
+            <UnderstandingScoresLink />
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <ScoreBar score={score.overallScore}     label="Overall" />

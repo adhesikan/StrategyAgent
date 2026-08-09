@@ -1266,7 +1266,7 @@ function CandidatesCardView({ candidates, onInstaTrade, canInstaTrade }: { candi
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Star className="h-4 w-4 text-primary fill-primary" />
-          <h3 className="text-sm font-semibold">Top Picks</h3>
+          <h3 className="text-sm font-semibold">High-Confidence Results</h3>
           <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count">
             {topPicks.length}
           </Badge>
@@ -1275,7 +1275,7 @@ function CandidatesCardView({ candidates, onInstaTrade, canInstaTrade }: { candi
               <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-options-top-picks-info-card" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs text-xs">
-              Top Picks are selected using a composite score: overall score (&ge;95) combined with probability of profit (&ge;60%), or the top 5% of all results. Higher premium and better risk/reward boost rankings.
+              High-confidence results are selected using a composite score: overall score (&ge;95) combined with probability of profit (&ge;60%), or the top 5% of all results. Higher premium and better risk/reward boost rankings.
             </TooltipContent>
           </Tooltip>
           <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>
@@ -1512,7 +1512,7 @@ function CandidatesListView({ candidates, onInstaTrade, canInstaTrade }: { candi
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Star className="h-4 w-4 text-primary fill-primary" />
-          <h3 className="text-sm font-semibold">Top Picks</h3>
+          <h3 className="text-sm font-semibold">High-Confidence Results</h3>
           <Badge variant="secondary" className="text-xs" data-testid="badge-top-picks-count-list">
             {sortedTopPicks.length}
           </Badge>
@@ -1521,7 +1521,7 @@ function CandidatesListView({ candidates, onInstaTrade, canInstaTrade }: { candi
               <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-options-top-picks-info-list" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs text-xs">
-              Top Picks are selected using a composite score: overall score (&ge;95) combined with probability of profit (&ge;60%), or the top 5% of all results. Higher premium and better risk/reward boost rankings.
+              High-confidence results are selected using a composite score: overall score (&ge;95) combined with probability of profit (&ge;60%), or the top 5% of all results. Higher premium and better risk/reward boost rankings.
             </TooltipContent>
           </Tooltip>
           <span className="text-xs text-muted-foreground">Highest confidence based on score, probability, and premium</span>

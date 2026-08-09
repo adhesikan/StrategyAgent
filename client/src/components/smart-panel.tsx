@@ -213,7 +213,7 @@ export function SmartPanel() {
         <Separator />
 
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">Top Pick</p>
+          <p className="text-xs font-medium text-muted-foreground">Highest Score</p>
           {topPick ? (
             <Card className="hover-elevate">
               <CardContent className="p-3 space-y-2">

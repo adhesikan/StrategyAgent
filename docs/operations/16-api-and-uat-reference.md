@@ -1632,6 +1632,109 @@ Appears immediately above the Confirm Import button on all import flows:
 
 ---
 
+## Research Glossary & Score Transparency (Sprint 2.5.3A)
+
+### Central Research Glossary
+
+**Source:** `shared/research-glossary.ts`
+
+The Research Glossary is the single canonical source for all score definitions, candidate types, evidence terminology, and compliance cautions. No definitions are duplicated inside React components — all surfaces consume the glossary via `getGlossaryEntry(key)`.
+
+**Components consuming the glossary:**
+- `ResearchDefinitionTooltip` — wraps any label/text to show a tooltip with `shortDefinition` + optional caution
+- `ResearchHelpIcon` — standalone `?` icon with glossary tooltip (no children required)
+- `ScoreExplanationModal` / `UnderstandingScoresLink` — full "Understanding Research Scores" modal populated from glossary sections
+
+**SCORE_LABEL_TO_GLOSSARY_KEY:** Auto-maps display labels (`"Tech"`, `"Inst"`, `"Fund"`, `"Risk"`, `"Overall"`, `"Regime"`, `"Confidence"`) to glossary keys. Used by `ScorePill` and `ScoreBar` to auto-derive tooltip without changing call signatures.
+
+**Risk Score special note:** `riskScore` in the UI (OpportunityScore from ranking engine) is "higher = better risk profile" — verified from `computeRiskScore()`. Higher does NOT mean more risk; it means better risk/reward quality.
+
+---
+
+### UAT Checklist — Research Glossary & Score Transparency (Sprint 2.5.3A)
+
+**Dashboard (`/dashboard`) — Opportunity Cards:**
+```
+□ Hover/tap "Tech" label on any opportunity card → tooltip shows "Technical Score" + short definition
+□ Hover/tap "Inst" label → tooltip shows "Institutional Score" + definition
+□ Hover/tap "Fund" label → tooltip shows "Fundamental Score" + definition
+□ Hover/tap "Risk" label → tooltip shows "Risk Score" + "↑ Higher is better" + definition
+□ "?" icon next to confidence badge → tooltip shows "Evidence Confidence" definition
+□ Caution text visible below definition in tooltip (amber color)
+□ "?" icon next to overall score bar → tooltip shows "Research Score" definition
+□ "How are scores calculated?" button visible below section subtitle
+□ Clicking "How are scores calculated?" opens "Understanding Research Scores" modal
+□ Modal sections: Research Scores · Evidence Confidence · Research Evidence · Market Context · Data Quality · Research Candidate Types
+□ Modal footer: "Research scores organize available evidence. They are not predictions..."
+□ Modal closes on Escape key
+□ Modal focus trapped while open
+□ "Why this qualified" toggle visible on each opportunity card
+□ Clicking toggle expands: shows green checkmarks for reasons, amber triangles for warnings
+□ Toggle is keyboard accessible (Tab + Enter)
+□ Expanded panel shows "Deterministic evidence only. Not a recommendation."
+□ "Highest Score" (not "Top Pick") shown in Smart Panel if applicable
+```
+
+**Scanner (`/scanner`) — Compliance:**
+```
+□ High-Scoring Setups section heading visible (NOT "Top Picks")
+□ Tooltip explanation still present next to section heading
+□ Score methodology description unchanged
+```
+
+**Options Scanner (`/options-scanner`) — Compliance:**
+```
+□ "High-Confidence Results" heading visible in card view (NOT "Top Picks")
+□ "High-Confidence Results" heading visible in list view (NOT "Top Picks")
+□ Tooltip explanation still present next to heading
+□ Score methodology description unchanged
+```
+
+**Opportunity Workspace (`/opportunities/:symbol`) — Score Breakdown:**
+```
+□ Score card title reads "Research Score" (previously "Score Breakdown")
+□ "Understanding research scores" link visible in score card header
+□ Clicking link opens the full score explanation modal
+□ Hover/tap "Overall" label → tooltip shows Research Score definition
+□ Hover/tap "Technical" label → tooltip shows Technical Score definition
+□ Hover/tap "Institutional" label → tooltip shows Institutional Score + 13F delay caution
+□ Hover/tap "Fundamental" label → tooltip shows Fundamental Score definition
+□ Hover/tap "Risk" label → tooltip shows Risk Score + "Higher is better" indicator
+□ Hover/tap "Regime" label → tooltip shows Regime Alignment Score definition
+□ "Why This Ranked" section still present with deterministic bullet points
+```
+
+**Compliance Audit:**
+```
+□ No "Strong Buy", "Buy Now", "Top Pick", "Recommended Trade", "Buy Candidate" visible on research pages
+□ Confidence badges do NOT say "Probability of winning" or "Chance of success"
+□ All score tooltips include amber caution text
+□ Institutional score tooltip includes "13F data is delayed" language
+□ No LLM invoked for "Why This Qualified" panel (all deterministic)
+```
+
+**Accessibility:**
+```
+□ All tooltip triggers focusable via Tab key
+□ Tooltip opens on Enter/Space for keyboard users
+□ Tooltip closes on Escape
+□ "Why this qualified" button has aria-expanded attribute
+□ Score modal has focus trap — Tab stays within modal while open
+□ Escape closes score modal and restores focus to trigger
+□ Screen reader: tooltip trigger has aria-label="What is [Term]?"
+```
+
+**Mobile:**
+```
+□ Tap on "Tech"/"Inst"/"Fund"/"Risk" label opens tooltip (no hover needed)
+□ Tap on "?" icon opens tooltip
+□ Score explanation modal is scrollable on small screens
+□ "Why this qualified" panel expands correctly at mobile width
+□ No horizontal overflow caused by tooltip triggers
+```
+
+---
+
 ## Market Research Command Center (Sprint 2.5.3)
 
 ### `GET /api/command-center/daily`

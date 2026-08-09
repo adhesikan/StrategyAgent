@@ -1623,12 +1623,12 @@ export default function Scanner() {
             </div>
           </div>
 
-          {/* Top Picks */}
+          {/* High-Scoring Setups */}
           {topPicks.length > 0 && (
             <div className="space-y-3" data-testid="top-picks-section">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <h3 className="text-sm font-semibold">Top Picks</h3>
+                <h3 className="text-sm font-semibold">High-Scoring Setups</h3>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" data-testid="icon-top-picks-info" />

@@ -4,6 +4,64 @@
 
 ---
 
+## Sprint 2.6.2 — Portfolio Analytics (2026-08-09)
+
+**Phase:** Portfolio Intelligence Track — Phase 3
+
+**Purpose:** Surface time-series analytics, allocation breakdowns, and trend intelligence from captured portfolio snapshots. No new database tables, no new background jobs — pure computation from existing data.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `shared/portfolio-analytics-types.ts` | Canonical types: `PortfolioAnalyticsResult`, `HoldingAnalyticsResult`, `AnalyticsPeriod` |
+| `server/services/portfolio-analytics-service.ts` | Pure analytics computation; 5-min cache; ownership verification |
+| `server/routes/portfolio-analytics.ts` | GET `/api/portfolio/:id/analytics`, GET `/api/portfolio/:id/analytics/:symbol` |
+| `client/src/pages/portfolio-analytics-tab.tsx` | Analytics tab UI — 10 sections (value summary, chart, allocation ×3, concentration, coverage trend, overlap trend, research change trend, coverage & limitations) |
+| `server/services/__tests__/portfolio-analytics.test.ts` | 165 assertions (pure computation, compliance, type shape, cache logic, period cutoffs) |
+| `docs/operations/24-portfolio-analytics.md` | Architecture, API reference, compliance rules, runbooks |
+
+### Modified Files
+
+| File | Change |
+|------|-------|
+| `shared/research-glossary.ts` | 8 new analytics glossary terms added |
+| `server/routes.ts` | `registerPortfolioAnalyticsRoutes` imported and registered |
+| `client/src/pages/portfolio.tsx` | Analytics tab added (4th tab: Holdings → History → Intelligence → Analytics) |
+| `docs/operations/16-api-and-uat-reference.md` | UAT checklist added (Portfolio Analytics, 20 steps) |
+| `docs/operations/17-sprint-change-log.md` | This entry |
+
+### New Glossary Terms
+
+`portfolio_value_change`, `unrealized_gain_loss`, `position_allocation`, `portfolio_weight`, `research_coverage_trend`, `opportunity_overlap_trend`, `exposure_change`, `market_value_history`
+
+### API Routes
+
+| Route | Auth | Cache |
+|-------|------|-------|
+| `GET /api/portfolio/:id/analytics?period=30D` | Required | 5 min |
+| `GET /api/portfolio/:id/analytics/:symbol?period=30D` | Required | None (per-request) |
+
+### No Migrations Required
+
+Both analytics routes read from `portfolio_snapshots` and `portfolio_position_snapshots` — tables created by Sprint 2.6.0 startup DDL. No new schema changes.
+
+### Compliance Rules (Enforced by Service + Tests)
+
+- Forbidden: "Return", "Alpha", "Performance", "CAGR", "Sharpe", "Outperformance"
+- Required: "Portfolio Value Change", "Unrealized Gain/Loss", "Market Value Trend"
+- Theme overlap disclosure on every theme chart
+- Cash exclusion disclosure on value history chart
+- Full compliance disclaimer rendered on Analytics tab
+
+### Known Limitations (Deferred)
+
+- Sector/theme exposure history charts: populated once `portfolio_snapshots.coverage` JSONB stores sector/theme breakdowns at capture time (future snapshot enhancement)
+- Cash balance tracking: `cash_value` field declared in schema but never populated (Sprint 2.6.0 design decision)
+- Benchmark comparison: no stored benchmark data — excluded
+
+---
+
 ## Sprint 2.5.3B — Platform Health & Operations Center Enhancement (2026-08-09)
 
 **Phase:** Ops hardening — admin-only, no product logic changes.

@@ -8,8 +8,9 @@ import {
   Building2, FlaskConical, Activity, Target, Search,
   Cpu, PieChart, AlertCircle, BookOpen, HelpCircle,
   FileSpreadsheet, Camera, FileText, History, Camera as CameraIcon,
-  ArrowUp, ArrowDown, Minus, CircleDot, LogOut,
+  ArrowUp, ArrowDown, Minus, CircleDot, LogOut, LineChart,
 } from "lucide-react";
+import { PortfolioAnalyticsTab } from "./portfolio-analytics-tab";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1532,7 +1533,7 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
   const [deletingPos, setDeletingPos] = useState<EnrichedPosition | undefined>();
   const [editingName, setEditingName] = useState(false);
   const [nameValue,   setNameValue]   = useState(portfolio.name);
-  const [activeTab,   setActiveTab]   = useState<"holdings" | "history" | "intelligence">("holdings");
+  const [activeTab,   setActiveTab]   = useState<"holdings" | "history" | "intelligence" | "analytics">("holdings");
 
   const { data, isLoading } = useQuery<PositionsResponse>({
     queryKey: [`/api/portfolio/${portfolio.id}/positions`],
@@ -1674,6 +1675,7 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
           { id: "holdings",      label: "Holdings" },
           { id: "history",       label: "History",      icon: History },
           { id: "intelligence",  label: "Intelligence", icon: Activity },
+          { id: "analytics",     label: "Analytics",    icon: LineChart },
         ] as const).map(tab => (
           <button
             key={tab.id}
@@ -1696,6 +1698,8 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
         <PortfolioHistoryTab portfolioId={portfolio.id} />
       ) : activeTab === "intelligence" ? (
         <PortfolioIntelligenceTab portfolioId={portfolio.id} />
+      ) : activeTab === "analytics" ? (
+        <PortfolioAnalyticsTab portfolioId={portfolio.id} />
       ) : isLoading ? (
         <div className="flex justify-center py-12">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading positions…" />

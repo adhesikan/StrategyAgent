@@ -24,6 +24,7 @@ import { getResearchMonitoringHealth } from "../services/research-monitor-servic
 import { getResearchReportsHealth } from "../services/research-report-service";
 import { getPortfolioHistoryHealth } from "../services/portfolio-history-service";
 import { getPortfolioIntelligenceHealth } from "../services/portfolio-intelligence-service";
+import { getPortfolioAnalyticsHealth } from "../services/portfolio-analytics-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -827,6 +828,23 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
     checkPortfolioHistory(),
     checkPortfolioIntelligence(),
   ]);
+
+  // Portfolio Analytics health (in-memory; resets on restart)
+  const paHealth = getPortfolioAnalyticsHealth();
+  const portfolioAnalytics_: HealthCard = {
+    status:  paHealth.analyticsRequests === 0 ? "UNKNOWN" : "HEALTHY",
+    summary: paHealth.analyticsRequests === 0
+      ? "No portfolio analytics requests yet this session"
+      : `${paHealth.portfoliosWithAnalytics} portfolio${paHealth.portfoliosWithAnalytics !== 1 ? "s" : ""} analyzed — avg ${paHealth.averageAnalyticsDurationMs ?? "?"}ms`,
+    lastSuccessAt: paHealth.latestAnalyticsAt,
+    details: {
+      portfoliosWithAnalytics:    paHealth.portfoliosWithAnalytics,
+      analyticsRequests:          paHealth.analyticsRequests,
+      averageAnalyticsDurationMs: paHealth.averageAnalyticsDurationMs ?? "N/A",
+      latestAnalyticsAt:          paHealth.latestAnalyticsAt ?? "Never",
+      partialAnalytics:           paHealth.partialAnalytics,
+    },
+  };
   const jobs = getAllJobStatuses();
 
   const health: Record<string, HealthCard> = {
@@ -848,7 +866,8 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
     researchMonitoring,
     researchReports:  researchReports_,
     portfolioHistory:       portfolioHistory_,
-    portfolioIntelligence: portfolioIntelligence_,
+    portfolioIntelligence:  portfolioIntelligence_,
+    portfolioAnalytics:     portfolioAnalytics_,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

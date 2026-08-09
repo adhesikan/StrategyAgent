@@ -1,0 +1,1625 @@
+# Sprint 2.6.2 — Portfolio Analytics
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Phase 3 — Portfolio Intelligence
+
+CURRENT SPRINT:
+2.6.2 — Portfolio Analytics
+
+PREREQUISITES COMPLETED:
+
+✓ 2.6.0 Portfolio History & Change Intelligence
+✓ 2.6.1 Portfolio Intelligence
+✓ 2.5.3B Platform Health & Operations Center Enhancement
+
+CURRENT PRODUCT PRINCIPLE:
+
+VCP Trader AI is RESEARCH-FIRST.
+
+Portfolio Analytics is a personalization and visualization layer over the existing:
+
+- Portfolio History
+- Portfolio Intelligence
+- Opportunity Intelligence
+- Research Platform
+- Market Intelligence
+
+DO NOT create a separate portfolio research/scoring universe.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+This sprint is ANALYTICS + VISUALIZATION only.
+
+DO NOT implement:
+
+- Portfolio recommendations
+- Rebalancing
+- Goal planning
+- Tax optimization
+- Trade Planning
+- Trade Construction Engine
+- Order execution
+- New broker integrations
+- AI portfolio chatbot
+- Alerts
+- Scheduled reports
+- Advisor workflows
+- RIA edition
+- Institutional customization
+
+Do NOT change:
+
+- Opportunity Intelligence scoring
+- Portfolio Intelligence logic
+- Research Score formulas
+- Scanner logic
+- Ranking logic
+- Risk semantics
+- Research Glossary semantics unless new analytics terms genuinely require additions
+
+After this sprint, continue to the next approved product sprint.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a professional Portfolio Analytics experience that helps users visually understand:
+
+1. Portfolio value over time
+2. Cost basis vs current market value
+3. Gain/loss history where data supports it
+4. Position allocation
+5. Sector allocation
+6. Theme allocation
+7. Concentration
+8. Exposure changes over time
+9. Position history
+10. Research coverage trends
+11. Opportunity overlap trends
+12. Research strengthening / weakening trends
+
+The user should be able to answer:
+
+"How is my portfolio structured?"
+
+"How has it changed?"
+
+"Where is my exposure concentrated?"
+
+"How much of my portfolio is covered by current research?"
+
+"Which research dimensions are improving or weakening?"
+
+NOT:
+
+"What should I buy or sell?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+shared/schema.ts
+
+portfolio tables
+
+portfolio snapshot tables
+
+portfolio_position_snapshots
+
+portfolio-history-service.ts
+
+portfolio-intelligence-service.ts
+
+shared/portfolio-intelligence-types.ts
+
+Opportunity Intelligence Engine
+
+Research Glossary
+
+existing charting libraries
+
+existing analytics/chart components
+
+dashboard chart components
+
+Research Command Center charts
+
+sector/theme intelligence visualizations
+
+stored market data
+
+reference snapshot service
+
+portfolio.tsx
+
+Operations Manual docs 21/22/23 if present
+
+Report:
+
+A. Existing chart infrastructure
+B. Existing reusable analytics helpers
+C. Existing performance calculations
+D. Existing portfolio history fields
+E. Existing sector/theme exposure data
+F. Existing research coverage data
+G. Missing fields needed
+H. Legacy duplicate analytics code to avoid
+I. Whether any schema change is actually necessary
+
+Do not code until audit complete.
+
+======================================================================
+2. NO NEW PRIMARY DATA MODEL
+======================================================================
+
+Prefer existing:
+
+Portfolio History
+Portfolio Position Snapshots
+Portfolio Intelligence
+
+Do NOT create a second portfolio analytics persistence layer unless a concrete need exists.
+
+Analytics should be computed from existing snapshots where practical.
+
+If derived aggregate caching is required for performance:
+
+justify it explicitly.
+
+======================================================================
+3. PORTFOLIO VALUE HISTORY — TASK #120
+======================================================================
+
+Implement the previously deferred:
+
+#120 Portfolio Value Chart
+
+This is now IN SCOPE.
+
+Display:
+
+Portfolio Market Value over time
+
+Supported periods:
+
+7D
+30D
+90D
+YTD
+1Y
+ALL
+
+Only expose periods supported by actual snapshots.
+
+Do not fabricate historical values before snapshots exist.
+
+Chart:
+
+x-axis = snapshot date/time
+y-axis = portfolio market value
+
+Show:
+
+starting value
+ending value
+absolute change
+percentage change
+
+Important:
+
+Value change reflects BOTH:
+
+market movement
+and
+position changes.
+
+Clearly disclose that unless flows are separately accounted for.
+
+Do NOT call it investment performance unless calculation truly adjusts for contributions/withdrawals/trades.
+
+Prefer:
+
+"Portfolio Value Change"
+
+instead of:
+
+"Portfolio Return"
+
+unless return methodology is correctly implemented.
+
+======================================================================
+4. COST BASIS VS MARKET VALUE
+======================================================================
+
+Where cost basis coverage exists:
+
+show:
+
+Total Cost Basis
+
+Current Market Value
+
+Unrealized Gain/Loss
+
+Unrealized Gain/Loss %
+
+Coverage:
+
+positionsWithCostBasis
+totalPositions
+coveragePercent
+
+If cost basis incomplete:
+
+show:
+
+"Cost basis available for 14 of 18 holdings."
+
+Do not compute misleading totals from partial coverage without labeling them partial.
+
+======================================================================
+5. POSITION ALLOCATION
+======================================================================
+
+Create visualizations for current allocation.
+
+Show:
+
+symbol
+marketValue
+portfolioPercent
+
+Recommended visualizations:
+
+horizontal bars
+donut/pie only if already supported and legible
+
+Prefer bars for many positions.
+
+Show:
+
+Top 5
+Top 10
+All
+
+Largest position highlighted descriptively.
+
+No language such as:
+
+too large
+reduce
+trim
+
+Use:
+
+Largest Position
+Position Concentration
+
+======================================================================
+6. SECTOR ALLOCATION
+======================================================================
+
+Consume Portfolio Intelligence sectorExposure[].
+
+Show:
+
+sector
+marketValue
+portfolioPercent
+positionCount
+
+Visual:
+
+bar chart / donut
+
+Also show:
+
+change since previous snapshot
+
+Example:
+
+Technology
+42.3%
++3.4 percentage points since prior snapshot
+
+Do not classify sector suitability.
+
+======================================================================
+7. THEME ALLOCATION
+======================================================================
+
+Consume existing theme registry + Portfolio Intelligence.
+
+Show:
+
+theme
+portfolio exposure
+position count
+symbols
+
+Important disclosure:
+
+"Theme memberships may overlap, so theme percentages may not sum to 100%."
+
+This must be visible near the chart.
+
+Do not double-count theme values into a fake total portfolio allocation.
+
+======================================================================
+8. CONCENTRATION ANALYTICS
+======================================================================
+
+Visualize existing deterministic concentration metrics.
+
+Show:
+
+Largest Position %
+
+Top 3 %
+
+Top 5 %
+
+Largest Sector %
+
+Largest Theme %
+
+Number of positions
+
+Do NOT create an opaque Portfolio Score.
+
+Use transparent dimensions.
+
+Optional descriptive labels:
+
+Low
+Moderate
+High
+
+only if thresholds already exist/documented from 2.6.1.
+
+Do not alter thresholds in this sprint.
+
+======================================================================
+9. POSITION HISTORY
+======================================================================
+
+Allow users to select a holding and view:
+
+quantity history
+
+market value history
+
+cost basis history if available
+
+portfolio weight history
+
+researchScore history if available
+
+technicalScore history
+
+fundamentalScore history
+
+institutionalScore history
+
+qualification status history
+
+Do not recreate Opportunity History.
+
+Reuse stored portfolio snapshots and research snapshots.
+
+======================================================================
+10. PORTFOLIO WEIGHT HISTORY
+======================================================================
+
+For a selected holding:
+
+show:
+
+portfolio weight over time.
+
+Example:
+
+NVDA
+
+Aug 1
+12%
+
+Aug 5
+15%
+
+Aug 9
+14%
+
+This is descriptive exposure analysis.
+
+======================================================================
+11. SECTOR EXPOSURE HISTORY
+======================================================================
+
+Show sector weights over time.
+
+Avoid clutter.
+
+Recommended:
+
+selectable sectors
+top 5 by current exposure
+stacked chart only if existing library supports it cleanly
+
+Do not add a large charting dependency.
+
+======================================================================
+12. THEME EXPOSURE HISTORY
+======================================================================
+
+Show how major research themes changed over time.
+
+Examples:
+
+AI Infrastructure
+
+Semiconductors
+
+Memory
+
+Cloud
+
+Energy
+
+Only calculate from portfolio snapshot composition + existing theme registry.
+
+Remember overlap disclosure.
+
+======================================================================
+13. RESEARCH COVERAGE TREND
+======================================================================
+
+One of the most useful research-first analytics.
+
+Show over time:
+
+portfolio holdings count
+
+holdings with Opportunity Intelligence
+
+research coverage %
+
+Example:
+
+Aug 1:
+61%
+
+Aug 5:
+72%
+
+Aug 9:
+83%
+
+Tooltip:
+
+"Research Coverage represents the portion of portfolio holdings for which the current research platform has sufficient intelligence available. It is not a measure of portfolio quality."
+
+Use Research Glossary.
+
+======================================================================
+14. OPPORTUNITY OVERLAP TREND
+======================================================================
+
+Show over time:
+
+qualified holdings count
+
+approaching qualification count
+
+not ranked count
+
+no longer qualified count
+
+Do NOT interpret these as portfolio quality scores.
+
+Example:
+
+Current:
+
+4 Qualified
+
+3 Approaching
+
+9 Not Currently Ranked
+
+2 Uncovered
+
+======================================================================
+15. RESEARCH CHANGE TREND
+======================================================================
+
+Visualize:
+
+Research Strengthened
+
+Research Weakened
+
+Newly Qualified
+
+No Longer Qualified
+
+over selected period.
+
+Use existing 2.6.0/2.6.1 change classifications.
+
+Do not invent new thresholds.
+
+======================================================================
+16. MARKET MOVEMENT VS POSITION MOVEMENT
+======================================================================
+
+This distinction is critical.
+
+Where possible show separately:
+
+Position Quantity Changes
+
+Portfolio Market Value Changes
+
+Research Evidence Changes
+
+Do not imply:
+
+portfolio value changed because user traded.
+
+If you cannot isolate flows accurately:
+
+say so.
+
+Example:
+
+"Portfolio Value Change includes the combined effect of market movement and changes in holdings."
+
+======================================================================
+17. PERFORMANCE TERMINOLOGY
+======================================================================
+
+Do NOT use:
+
+Return
+Alpha
+Performance
+CAGR
+Sharpe
+Benchmark Outperformance
+
+unless mathematically valid with current stored cash-flow/transaction data.
+
+If transactions/contributions are not fully known:
+
+use:
+
+Portfolio Value Change
+
+Market Value Trend
+
+Unrealized Gain/Loss
+
+Exposure Change
+
+If reliable return methodology already exists:
+
+audit and document it before using.
+
+======================================================================
+18. BENCHMARK COMPARISON
+======================================================================
+
+Optional.
+
+Implement ONLY if:
+
+existing stored benchmark data exists
+
+AND
+
+comparison methodology is mathematically valid.
+
+Example benchmark:
+
+SPY
+
+Do not create external calls.
+
+Do not fetch benchmark history ad hoc.
+
+If unsupported:
+
+explicitly defer benchmark comparison.
+
+Do not block sprint.
+
+======================================================================
+19. PORTFOLIO ANALYTICS API
+======================================================================
+
+Create or extend:
+
+GET /api/portfolio/:id/analytics
+
+Authenticated + ownership.
+
+Parameters:
+
+period=7d|30d|90d|ytd|1y|all
+
+Return canonical:
+
+PortfolioAnalyticsResult
+
+Suggested shape:
+
+{
+  portfolioId,
+  generatedAt,
+  period,
+
+  valueHistory[],
+  costBasisSummary,
+  positionAllocation[],
+  sectorAllocation[],
+  themeAllocation[],
+  concentration,
+  researchCoverageTrend[],
+  opportunityOverlapTrend[],
+  researchChangeTrend[],
+  freshness,
+  coverage,
+  limitations[]
+}
+
+No LLM.
+
+No new scoring.
+
+======================================================================
+20. HOLDING ANALYTICS API
+======================================================================
+
+If useful:
+
+GET /api/portfolio/:id/analytics/:symbol
+
+Return:
+
+quantityHistory
+marketValueHistory
+portfolioWeightHistory
+costBasisHistory
+researchScoreHistory
+technicalScoreHistory
+fundamentalScoreHistory
+institutionalScoreHistory
+qualificationHistory
+freshness
+
+Do not duplicate Opportunity Workspace payload.
+
+======================================================================
+21. PORTFOLIO UI
+======================================================================
+
+Existing tabs:
+
+Holdings
+History
+Intelligence
+
+Add:
+
+Analytics
+
+Preferred order:
+
+Overview / Holdings
+History
+Intelligence
+Analytics
+
+Do not create another top-level navigation item.
+
+======================================================================
+22. ANALYTICS PAGE LAYOUT
+======================================================================
+
+Recommended sections:
+
+Portfolio Value
+
+Cost Basis & Unrealized Gain/Loss
+
+Allocation by Position
+
+Sector Exposure
+
+Theme Exposure
+
+Concentration
+
+Exposure History
+
+Research Coverage
+
+Opportunity Overlap
+
+Research Changes
+
+Holding Analytics
+
+Use modular cards.
+
+Do not overload one giant dashboard.
+
+======================================================================
+23. CHART UX
+======================================================================
+
+Charts must include:
+
+title
+short explanation
+tooltip
+time period
+freshness
+empty state
+
+Every chart should answer:
+
+What is this?
+
+Why does it matter?
+
+Where did data come from?
+
+Tooltips should use Research Glossary where applicable.
+
+======================================================================
+24. EMPTY STATES
+======================================================================
+
+Examples:
+
+No portfolio snapshots:
+
+"Portfolio analytics will appear after at least one historical snapshot is available."
+
+One snapshot only:
+
+"More historical analytics become available after additional snapshots are captured."
+
+Missing cost basis:
+
+"Cost basis is unavailable for some holdings."
+
+No Opportunity Intelligence:
+
+"Research coverage is currently limited for this portfolio."
+
+No fake charts.
+
+======================================================================
+25. DATA FRESHNESS
+======================================================================
+
+Show:
+
+Latest Portfolio Snapshot
+
+Latest Market Data
+
+Latest Opportunity Intelligence
+
+Latest Sector/Theme Intelligence
+
+Institutional data age when relevant
+
+Use Central Research Glossary.
+
+Preserve 13F delayed-data disclosure.
+
+======================================================================
+26. RESEARCH CROSS-LINKING
+======================================================================
+
+Analytics should feed users back into Research.
+
+Examples:
+
+Click sector:
+→ Sector Intelligence detail
+
+Click theme:
+→ Theme Research
+
+Click holding:
+→ Opportunity Workspace
+
+Click research coverage:
+→ Research Workspace
+
+Click strengthened holding:
+→ Explain change
+
+Click qualification:
+→ Opportunity Intelligence
+
+The platform remains Research-first.
+
+======================================================================
+27. AI RESEARCH WORKSPACE
+======================================================================
+
+Do NOT create a separate AI analytics chat.
+
+Expose analytics data in reusable service form so existing AI Research Workspace can later consume it.
+
+If simple integration already exists:
+
+allow contextual actions such as:
+
+Explain Technology exposure
+
+Explain portfolio value change
+
+Explain why research coverage changed
+
+But no major AI redesign.
+
+======================================================================
+28. GLOSSARY
+======================================================================
+
+Add only terms not already present.
+
+Potential new terms:
+
+portfolio_value_change
+
+unrealized_gain_loss
+
+position_allocation
+
+portfolio_weight
+
+research_coverage_trend
+
+opportunity_overlap_trend
+
+exposure_change
+
+market_value_history
+
+Do not duplicate existing:
+
+sector_exposure
+
+theme_exposure
+
+portfolio_concentration
+
+research_strengthened
+
+research_weakened
+
+======================================================================
+29. PRIVACY
+======================================================================
+
+Portfolio Analytics contains private financial information.
+
+Requirements:
+
+authenticated
+
+ownership enforcement
+
+404 for cross-user IDs
+
+cache includes userId + portfolioId
+
+no portfolio contents in admin health
+
+no market values in structured logs
+
+no cost basis logs
+
+no holdings in operational telemetry
+
+No public share links.
+
+======================================================================
+30. CACHING
+======================================================================
+
+Use sensible analytics cache if needed.
+
+Invalidate when:
+
+snapshot captured
+
+portfolio updated
+
+broker sync completes
+
+import confirmed
+
+manual holding edited
+
+Opportunity Intelligence refresh affects research analytics
+
+Sector/theme metadata changes if applicable
+
+Avoid stale personalized analytics.
+
+======================================================================
+31. PERFORMANCE
+======================================================================
+
+Avoid N+1.
+
+Analytics should preferably use:
+
+one portfolio query
+
+one snapshot/history query
+
+one position snapshot query
+
+existing Portfolio Intelligence result
+
+existing Opportunity Intelligence result
+
+lookup maps
+
+Measure:
+
+10-position portfolio
+
+50-position portfolio
+
+200-position portfolio
+
+Report latency.
+
+======================================================================
+32. PLATFORM HEALTH
+======================================================================
+
+Extend existing:
+
+Portfolio Intelligence / Portfolio Services
+
+with analytics readiness if appropriate.
+
+Possible metrics:
+
+portfoliosWithAnalytics
+
+analyticsRequests
+
+averageAnalyticsDurationMs
+
+latestAnalyticsAt
+
+partialAnalytics
+
+historyCoverage
+
+Do not add another unnecessary health card if existing Portfolio Services section can absorb it cleanly.
+
+Use 2.5.3B Operations Center patterns.
+
+======================================================================
+33. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+portfolio_analytics_started
+
+portfolio_analytics_completed
+
+portfolio_analytics_partial
+
+portfolio_analytics_failed
+
+Safe fields:
+
+durationMs
+snapshotCount
+positionCount
+period
+coveragePercent
+
+Never:
+
+portfolio value
+cost basis
+symbols
+user identity
+broker account
+raw holdings
+
+======================================================================
+34. NO NEW BACKGROUND JOB
+======================================================================
+
+Analytics should be on-demand/cached.
+
+Do NOT add scheduler.
+
+Do NOT precompute everything unless performance evidence requires it.
+
+======================================================================
+35. COMPLIANCE
+======================================================================
+
+Use:
+
+Portfolio Analytics
+
+Portfolio Value Change
+
+Unrealized Gain/Loss
+
+Portfolio Exposure
+
+Position Allocation
+
+Sector Exposure
+
+Theme Exposure
+
+Research Coverage
+
+Observed Change
+
+Research Trend
+
+Avoid:
+
+Recommended Allocation
+
+Ideal Allocation
+
+Optimal Portfolio
+
+You Should Diversify
+
+Overweight Recommendation
+
+Underweight Recommendation
+
+Trim
+
+Add
+
+Buy
+
+Sell
+
+Rebalance
+
+Standard concise disclaimer:
+
+"Portfolio Analytics summarizes historical portfolio data, research coverage, and observed exposures for informational and research purposes. It does not provide investment advice, suitability determinations, performance guarantees, or recommendations to buy, sell, hold, or rebalance securities."
+
+======================================================================
+36. COMMERCIAL EXPERIENCE REVIEW
+======================================================================
+
+Document only.
+
+Do not enforce pricing.
+
+FREE:
+
+Basic current allocation may be available.
+
+RETAIL:
+
+Portfolio Value History
+Allocation Analytics
+Sector/Theme Exposure
+Research Coverage
+Opportunity Overlap
+
+PROFESSIONAL:
+
+Longer history
+Advanced exposure trends
+Multiple portfolios
+Cross-period analytics
+
+RIA:
+
+Client portfolio analytics
+Historical client exposure
+Advisor reporting
+
+INSTITUTIONAL:
+
+Multi-portfolio analytics
+Strategy exposure
+Custom analytics
+
+ENTERPRISE:
+
+Custom methodologies
+Private datasets
+API
+Custom retention
+
+Document monetization opportunities.
+
+No artificial restrictions in code.
+
+======================================================================
+37. PLATFORM REUSABILITY REVIEW
+======================================================================
+
+Ensure PortfolioAnalyticsResult is reusable by:
+
+Portfolio Research Workspace
+
+Research Reports
+
+Goal Planning
+
+Trade Planning
+
+Trade Construction Engine
+
+Position Monitoring
+
+RIA Edition
+
+Institutional Edition
+
+Enterprise APIs
+
+Avoid UI-specific response shapes.
+
+======================================================================
+38. FUTURE TRADE PLANNING CONTRACT
+======================================================================
+
+Trade Planning may later need:
+
+portfolio weight
+
+sector exposure
+
+theme exposure
+
+concentration
+
+existing position size
+
+historical volatility context
+
+research coverage
+
+opportunity overlap
+
+Expose clean interfaces.
+
+Do NOT implement Trade Planning.
+
+======================================================================
+39. REPORTS FUTURE CONTRACT
+======================================================================
+
+Future report types:
+
+Portfolio Analytics Report
+
+Portfolio Exposure Report
+
+Portfolio Research Coverage Report
+
+Do NOT implement these report types now.
+
+Ensure analytics service is reusable by reports.
+
+======================================================================
+40. IMPROVEMENT CAPTURE
+======================================================================
+
+Do not automatically implement unrelated ideas.
+
+Classify:
+
+Critical production fix
+
+Current sprint requirement
+
+Future sprint
+
+Backlog
+
+Completion report must include:
+
+Suggestion
+Assigned Sprint
+Priority
+Reason
+
+Potential backlog examples:
+
+benchmark comparison
+
+transaction-aware performance
+
+time-weighted return
+
+money-weighted return
+
+dividend analytics
+
+tax-lot analytics
+
+Do NOT pull forward unless required.
+
+======================================================================
+41. ROADMAP ALIGNMENT
+======================================================================
+
+CURRENT:
+
+2.6.2 Portfolio Analytics
+
+NEXT:
+
+2.6.3 Opportunity Workspace v2 / Research Experience Enhancement
+or the exact currently approved next sprint in the master roadmap.
+
+IMPORTANT:
+
+Do NOT alter roadmap order during implementation.
+
+Do not pull in:
+
+Goals
+Trade Planning
+Trade Construction
+Execution
+RIA
+Institutional
+Enterprise
+Agents
+
+======================================================================
+42. TESTS
+======================================================================
+
+Add comprehensive tests.
+
+Target 150+ meaningful assertions.
+
+Cover:
+
+empty portfolio
+
+one snapshot
+
+multiple snapshots
+
+7d
+
+30d
+
+90d
+
+YTD
+
+1Y
+
+ALL
+
+portfolio value trend
+
+market value change
+
+cost basis complete
+
+partial cost basis
+
+missing cost basis
+
+unrealized gain
+
+unrealized loss
+
+position allocation
+
+sector allocation
+
+theme overlap disclosure
+
+largest position
+
+top3
+
+top5
+
+concentration thresholds unchanged
+
+research coverage trend
+
+qualified overlap trend
+
+approaching trend
+
+not ranked trend
+
+research strengthened trend
+
+research weakened trend
+
+holding quantity history
+
+holding market value history
+
+portfolio weight history
+
+research score history
+
+missing Opportunity Intelligence
+
+missing sector
+
+missing theme
+
+NULL vs zero
+
+market movement vs position movement wording
+
+no fake performance terminology
+
+ownership
+
+cross-user denial
+
+cache isolation
+
+structured log privacy
+
+13F disclosure
+
+glossary
+
+Platform Health
+
+partial subsystem failure
+
+Operations Manual
+
+roadmap alignment
+
+no scoring duplication
+
+no recommendations
+
+======================================================================
+43. BUILD / TYPECHECK
+======================================================================
+
+Mandatory:
+
+full project tests
+
+npm run build
+
+npx tsc --noEmit
+
+Zero new TypeScript errors in sprint files.
+
+Do not declare GO based only on dev server.
+
+======================================================================
+44. PRODUCTION UAT
+======================================================================
+
+Document:
+
+1. Open portfolio with history.
+2. Open Analytics tab.
+3. Verify Portfolio Value chart.
+4. Switch 7D / 30D / 90D / YTD / 1Y / ALL where available.
+5. Verify cost basis coverage.
+6. Verify unrealized gain/loss.
+7. Verify position allocation.
+8. Verify sector allocation.
+9. Verify theme allocation and overlap disclosure.
+10. Verify concentration.
+11. Verify research coverage trend.
+12. Verify opportunity overlap trend.
+13. Verify strengthening/weakening trend.
+14. Open holding analytics.
+15. Verify freshness.
+16. Verify cross-links into Research.
+17. Verify partial data handling.
+18. Verify cross-user denial.
+19. Verify Platform Health.
+20. Verify no unexpected 500s.
+
+======================================================================
+45. OPERATIONS MANUAL — REQUIRED
+======================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/24-portfolio-analytics.md
+
+Document:
+
+architecture
+
+PortfolioAnalyticsResult
+
+data sources
+
+calculation rules
+
+portfolio value terminology
+
+cost basis coverage
+
+allocation
+
+sector/theme exposure
+
+concentration
+
+historical analytics
+
+research coverage trend
+
+opportunity overlap
+
+performance terminology restrictions
+
+privacy
+
+cache
+
+performance
+
+health
+
+logging
+
+UAT
+
+troubleshooting
+
+future extension points
+
+Update Research Glossary documentation.
+
+Update Security/DevSecOps if privacy behavior changes.
+
+======================================================================
+46. FINAL ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Portfolio Value Chart (#120) works.
+
+B. No fabricated historical values.
+
+C. Portfolio Value Change terminology is correct.
+
+D. Cost basis partial coverage handled correctly.
+
+E. Position allocation works.
+
+F. Sector allocation works.
+
+G. Theme allocation works with overlap disclosure.
+
+H. Concentration visualization works.
+
+I. Exposure history works.
+
+J. Research Coverage trend works.
+
+K. Opportunity Overlap trend works.
+
+L. Research Change trends work.
+
+M. Holding history works.
+
+N. Missing data remains missing, not zero.
+
+O. No new portfolio scoring.
+
+P. No recommendation/rebalancing logic.
+
+Q. Ownership/privacy enforced.
+
+R. No private financial data in logs/admin health.
+
+S. Cross-links into Research Platform work.
+
+T. Performance acceptable.
+
+U. Full tests pass.
+
+V. Build passes.
+
+W. Zero new TS errors.
+
+X. Operations Manual updated.
+
+Y. Roadmap alignment confirmed.
+
+======================================================================
+47. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing chart/analytics infrastructure discovered
+3. Files changed
+4. Schema impact
+5. Canonical PortfolioAnalyticsResult
+6. Portfolio Value History
+7. Cost Basis / Unrealized G/L
+8. Position Allocation
+9. Sector Allocation
+10. Theme Allocation
+11. Concentration
+12. Exposure History
+13. Research Coverage Trend
+14. Opportunity Overlap Trend
+15. Research Change Trend
+16. Holding Analytics
+17. Performance terminology
+18. Benchmark support/defer decision
+19. API
+20. UI
+21. Glossary
+22. Privacy/security
+23. Cache architecture
+24. Performance results
+25. Platform Health
+26. Structured logging
+27. Tests
+28. Full test count
+29. npm run build
+30. Typecheck
+31. Production UAT
+32. Commercial Experience Review
+33. Platform Reusability Review
+34. Improvement Suggestions Captured
+35. Deferred backlog
+36. Roadmap Alignment
+37. Operations Manual Updated: YES/NO
+38. Operations Manual Files Updated
+39. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

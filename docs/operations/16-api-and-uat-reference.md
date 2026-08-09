@@ -2638,6 +2638,80 @@ New response fields:
 
 ### Status Vocabularies
 
+---
+
+## Portfolio Analytics UAT Checklist (Sprint 2.6.2)
+
+**Pre-conditions:**
+- Authenticated as a trader with at least one portfolio
+- Portfolio has at least 1 captured snapshot (from the History tab)
+- Opportunity Intelligence scan has run at least once
+
+### Navigation & Loading
+
+1. Navigate to `/portfolio` and select a portfolio → confirm 4 tabs appear: Holdings, History, Intelligence, **Analytics**
+2. Click the Analytics tab → confirm loading spinner appears briefly, then analytics content renders
+3. Confirm no errors in browser console during tab load
+
+### Period Selector
+
+4. Six period buttons are visible: 7D, 30D, 90D, YTD, 1Y, ALL → the active period is highlighted
+5. Click a different period button → analytics refresh automatically for the new period
+6. Current period is reflected in the subtitle below the heading
+
+### Value Overview Section
+
+7. Current Market Value card shows a dollar figure or "—" if unavailable
+8. Portfolio Value Change card shows absolute change and percentage (or "—" if unavailable)
+9. Unrealized Gain/Loss card appears only when cost basis data is present
+10. Cash disclosure note appears under the value metrics: *"Portfolio Value Change reflects tracked positions only…"*
+11. Value change disclosure includes "not an investment return" language
+
+### Value History Chart
+
+12. When ≥2 snapshots exist: area chart renders with dates on X-axis and dollar values on Y-axis
+13. When only 1 snapshot: "At least 2 snapshots needed" placeholder message shown
+14. Tooltip on hover shows formatted dollar value
+
+### Allocation Charts
+
+15. Position Allocation bar chart shows up to 10 positions sorted by weight descending
+16. Sector Allocation bar chart is empty (with message) until Portfolio Intelligence has run
+17. Theme Allocation bar chart shows theme overlap disclosure: *"Theme percentages may not sum to 100%"*
+
+### Concentration Section
+
+18. Concentration cards show: Largest Position %, Top 3 %, Largest Sector %, Largest Theme %
+19. Labels (Low / Moderate / High) appear as colored badges next to each metric
+20. Concentration note: *"Labels (Low / Moderate / High) are descriptive. They are not suitability determinations."*
+
+### Trend Charts
+
+21. Research Coverage Trend line chart appears when ≥2 snapshots; shows coverage % over time
+22. Opportunity Overlap Trend stacked bar chart shows Qualified / Approaching / Not Ranked counts
+23. Research Change Activity bar chart: empty state if no change events recorded in period
+
+### Coverage & Limitations
+
+24. Coverage section shows snapshot count, market data coverage, research coverage, cost basis coverage
+25. Limitations expand/collapse on click; all known data gaps are listed
+26. Disclaimer block appears at the bottom of the Analytics tab
+
+### API Response Validation
+
+27. `GET /api/portfolio/{id}/analytics?period=30D` → 200 with `available: true` and `analytics` object
+28. `GET /api/portfolio/{id}/analytics?period=ALL` → 200 with `snapshotCount` reflecting all-time data
+29. `GET /api/portfolio/{id}/analytics/AAPL` → 200 with `history[]` or empty array with limitation message
+30. `GET /api/portfolio/{wrong-id}/analytics` → 404 with `available: false`
+
+### Compliance
+
+31. Browser DevTools: no network call to the analytics API from any other tab (only fires on Analytics tab click)
+32. Confirm analytics response does NOT contain fields named "return", "alpha", "cagr", or "sharpe"
+33. Theme chart disclosure is visible without scrolling when theme data is present
+
+---
+
 **Operational Readiness (operationsSummary):** READY | DEGRADED | WAITING | FAILED | UNKNOWN | DISABLED
 
 **Pipeline Stage:** HEALTHY | RUNNING | WAITING | DEGRADED | FAILED | UNKNOWN | DISABLED

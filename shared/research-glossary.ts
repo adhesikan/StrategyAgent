@@ -950,8 +950,172 @@ const PORTFOLIO_INTELLIGENCE_ENTRIES: ResearchGlossaryEntry[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Portfolio Analytics glossary terms (Sprint 2.6.2)
+// ---------------------------------------------------------------------------
+
+const PORTFOLIO_ANALYTICS_ENTRIES: ResearchGlossaryEntry[] = [
+  {
+    key:              "portfolio_value_change",
+    label:            "Portfolio Value Change",
+    shortLabel:       "Value Change",
+    shortDefinition:  "The change in total portfolio market value over a selected period.",
+    fullDefinition:
+      "Portfolio Value Change measures the absolute and percentage difference in total portfolio " +
+      "market value between two points in time. It reflects the combined effect of market price " +
+      "movement AND changes in holdings (positions added or removed). Because holdings may have " +
+      "changed during the period, this is NOT equivalent to investment return.",
+    methodologySummary:
+      "Ending market value − Starting market value. Starting and ending values come from " +
+      "portfolio snapshots at the edges of the selected period.",
+    interpretation:
+      "A positive Portfolio Value Change means the tracked market value increased. " +
+      "A negative change means it decreased. The direction and magnitude combine price changes " +
+      "and position changes during the period.",
+    caution:
+      "Portfolio Value Change is not an investment return. It is not adjusted for deposits, " +
+      "withdrawals, or time-weighted flows. Do not use it to compare investment performance " +
+      "across different portfolios or time periods.",
+    sources: ["Portfolio Snapshots", "Reference Prices"],
+  },
+  {
+    key:              "unrealized_gain_loss",
+    label:            "Unrealized Gain / Loss",
+    shortLabel:       "Unrealized G/L",
+    shortDefinition:  "The difference between current market value and total cost basis for tracked positions.",
+    fullDefinition:
+      "Unrealized Gain / Loss is the difference between the current market value of tracked positions " +
+      "and their total cost basis (average purchase price × quantity). It becomes realized only when " +
+      "positions are exited. When cost basis data is partial, the figure reflects partial coverage only.",
+    methodologySummary:
+      "Current market value − total cost basis. Only positions with cost basis data contribute.",
+    interpretation:
+      "A positive figure indicates total market value exceeds cost basis. " +
+      "A negative figure indicates market value is below cost basis.",
+    caution:
+      "Unrealized Gain / Loss is not a measure of investment performance. It reflects observed " +
+      "price movement relative to the cost basis entered or imported — it does not account for " +
+      "dividends, fees, taxes, or time. Partial cost basis data produces partial figures.",
+    sources: ["Portfolio Positions", "Reference Prices", "Cost Basis data"],
+  },
+  {
+    key:              "position_allocation",
+    label:            "Position Allocation",
+    shortLabel:       "Allocation",
+    shortDefinition:  "The fraction of total portfolio market value invested in each position.",
+    fullDefinition:
+      "Position Allocation shows the portfolio weight of each holding: " +
+      "(position market value / total portfolio market value) × 100. " +
+      "It is based on reference prices from the platform's market data store — not live quotes.",
+    methodologySummary:
+      "Weight = position market value ÷ total portfolio market value × 100.",
+    interpretation:
+      "Larger weights indicate greater concentration in that position. " +
+      "Use with Concentration Analysis to understand position-level risk observations.",
+    caution:
+      "Position weights reflect reference prices as of the latest snapshot, which may lag current " +
+      "market prices. They are not rebalancing recommendations.",
+    sources: ["Portfolio Snapshots", "Reference Prices"],
+  },
+  {
+    key:              "portfolio_weight",
+    label:            "Portfolio Weight",
+    shortLabel:       "Weight",
+    shortDefinition:  "A position's share of total portfolio market value, expressed as a percentage.",
+    fullDefinition:
+      "Portfolio Weight is the percentage of total portfolio market value represented by a single " +
+      "position. It is equivalent to Position Allocation at the individual holding level.",
+    methodologySummary:
+      "(Position market value / Total portfolio market value) × 100.",
+    interpretation:
+      "Higher portfolio weight = greater concentration in that position.",
+    caution:
+      "Portfolio Weight is an observed characteristic. It is not a suitability or quality signal.",
+    sources: ["Portfolio Snapshots", "Reference Prices"],
+  },
+  {
+    key:              "research_coverage_trend",
+    label:            "Research Coverage Trend",
+    shortLabel:       "Coverage Trend",
+    shortDefinition:  "How the fraction of holdings with Opportunity Intelligence has changed over time.",
+    fullDefinition:
+      "Research Coverage Trend shows the percentage of portfolio holdings that appear in the " +
+      "Opportunity Intelligence snapshot at each portfolio snapshot point. " +
+      "Tracking this trend helps identify whether coverage is growing or narrowing over time as " +
+      "holdings change or the research universe expands.",
+    methodologySummary:
+      "At each snapshot: positionsWithOpportunityIntelligence / positionsTotal × 100.",
+    interpretation:
+      "Rising coverage means more holdings have research context over time. " +
+      "Falling coverage may reflect new holdings entering the portfolio that are not yet in the " +
+      "Opportunity Intelligence universe.",
+    caution:
+      "Coverage is not a quality metric. Coverage change is not a trading signal.",
+    sources: ["Portfolio Snapshots", "Opportunity Intelligence snapshot"],
+  },
+  {
+    key:              "opportunity_overlap_trend",
+    label:            "Opportunity Overlap Trend",
+    shortLabel:       "Overlap Trend",
+    shortDefinition:  "How many portfolio holdings align with Opportunity Intelligence categories over time.",
+    fullDefinition:
+      "Opportunity Overlap Trend tracks, at each portfolio snapshot, how many holdings are " +
+      "Currently Qualified, Approaching Qualification, or Not Currently Ranked in Opportunity Intelligence. " +
+      "This shows whether the research-alignment of the portfolio has shifted across snapshot periods.",
+    methodologySummary:
+      "At each snapshot: count holdings in each Opportunity Intelligence category.",
+    interpretation:
+      "Tracks research-alignment shift over time. Does not imply any quality judgment.",
+    caution:
+      "Absence from the Opportunity Intelligence snapshot does not indicate poor quality. " +
+      "The snapshot changes as market conditions change.",
+    sources: ["Portfolio Snapshots", "Opportunity Intelligence snapshot"],
+  },
+  {
+    key:              "exposure_change",
+    label:            "Exposure Change",
+    shortLabel:       "Exposure Δ",
+    shortDefinition:  "A percentage-point change in sector or theme allocation between two portfolio snapshots.",
+    fullDefinition:
+      "Exposure Change is the shift in the fraction of portfolio market value invested in a given " +
+      "sector or theme between two consecutive portfolio snapshots. It is measured in percentage points. " +
+      "Noise threshold: changes smaller than 0.5pp are not reported.",
+    methodologySummary:
+      "Current sector/theme % − previous sector/theme %. Noise threshold: |delta| < 0.5pp ignored.",
+    interpretation:
+      "Positive exposure change = greater portfolio fraction in that sector/theme. " +
+      "Negative = reduced fraction.",
+    caution:
+      "Exposure Change is an observed portfolio characteristic. It is not a rebalancing signal.",
+    sources: ["Portfolio Snapshots", "Sector/theme classification"],
+  },
+  {
+    key:              "market_value_history",
+    label:            "Market Value History",
+    shortLabel:       "Value History",
+    shortDefinition:  "A time series of total portfolio market value from captured snapshots.",
+    fullDefinition:
+      "Market Value History plots the total market value of tracked portfolio positions at each " +
+      "portfolio snapshot point. It shows how the aggregate value of the tracked positions has " +
+      "moved over the selected period. Cash balances are never included.",
+    methodologySummary:
+      "At each portfolio snapshot: sum of (quantity × reference price) for all positions with " +
+      "available reference prices.",
+    interpretation:
+      "Upward trend: aggregate tracked value increased. Downward: decreased. " +
+      "Flat: limited snapshots or minimal price movement.",
+    caution:
+      "Market Value History reflects tracked positions only — it excludes cash, untracked accounts, " +
+      "and positions without reference price data. It is not an investment return series.",
+    sources: ["Portfolio Snapshots", "Reference Prices"],
+  },
+];
+
 // Merge portfolio terms into the main glossary
-const _extendedGlossary = [...PORTFOLIO_INTELLIGENCE_ENTRIES];
+const _extendedGlossary = [
+  ...PORTFOLIO_INTELLIGENCE_ENTRIES,
+  ...PORTFOLIO_ANALYTICS_ENTRIES,
+];
 
 // Expose portfolio-specific lookup
 export function getPortfolioGlossaryEntry(key: string): ResearchGlossaryEntry | undefined {

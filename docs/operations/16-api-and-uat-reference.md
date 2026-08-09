@@ -2572,3 +2572,83 @@ The Research Glossary is the single canonical source for all score definitions, 
 □ Clicking "Command Center Runbook" links to troubleshooting doc
 ```
 
+---
+
+## Platform Operations Center — Sprint 2.5.3B UAT
+
+**Page:** `/admin/platform-health`
+
+### API Endpoint
+
+**GET /api/admin/platform-health** (admin + authenticated)
+
+New response fields:
+```json
+{
+  "health": { ... },
+  "operationsSummary": {
+    "overallStatus": "READY|DEGRADED|WAITING|FAILED|UNKNOWN|DISABLED",
+    "headline": "string",
+    "requiresAttention": false,
+    "reasons": [],
+    "dimensions": [{ "dimension": "string", "status": "string", "reason": null, "runbookQuery": "string" }],
+    "generatedAt": "ISO"
+  },
+  "researchPipeline": [
+    { "name": "string", "status": "string", "primaryMetric": "string", "freshnessSec": null, "warning": null, "runbookQuery": "string", "diagnosticPath": null }
+  ],
+  "dataFreshness": [
+    { "dataset": "string", "lastUpdated": "ISO|null", "ageSec": null, "ageLabel": "string", "expectedCadence": "string", "freshnessStatus": "string", "freshnessLabel": "string" }
+  ],
+  "endpointLatencyMs": 120,
+  "cachedAt": "ISO",
+  "cached": false
+}
+```
+
+### UAT Steps
+
+| # | Step | Expected |
+|---|------|---------|
+| 1 | Open `/admin/platform-health` as admin | Page loads — title "Platform Operations Center" |
+| 2 | Verify Operations Summary banner | 7 dimension tiles visible; headline and overallStatus present |
+| 3 | Verify Research Pipeline | 10 stages visible, left-to-right with arrow connectors |
+| 4 | Verify Data Freshness table | 14 rows; each has dataset / age / status column |
+| 5 | Check Market Data card | Shows symbol count and sector coverage % |
+| 6 | Check Scanner card | "Not run yet" when no scan, or candidate counts when run |
+| 7 | Check Ranking card | Symbol count + regime, or "No ranking in memory" |
+| 8 | Check Opportunity Intelligence card | Opportunity counts or "No snapshot" |
+| 9 | Check Sector/Theme Intelligence card | Snapshot row counts |
+| 10 | Check Research Workspace card | Shows conversation count and OpenAI status |
+| 11 | Check Collections card | System + user collection counts |
+| 12 | Check Research Monitoring card | Active watch count |
+| 13 | Check Command Center card | Sections available count or "No snapshot" |
+| 14 | Check Research Reports card | Report counts or "No reports yet" |
+| 15 | Check Portfolio History card | Portfolio + snapshot counts |
+| 16 | Check Broker Sync when no portfolios linked | DISABLED badge |
+| 17 | Check MCP card | DISABLED (dev) or reachable (prod) |
+| 18 | Check Background Jobs table | All registered jobs listed |
+| 19 | Verify DEGRADED card shows runbook link | Runbook link appears for DEGRADED/UNAVAILABLE cards |
+| 20 | Click Refresh button | Fresh snapshot loaded; `cached: false` in response JSON |
+| 21 | Verify `endpointLatencyMs` in response | Non-zero; reasonable (<5000ms) |
+| 22 | Verify no secrets in response | Inspect raw JSON — no token/key/secret/auth values |
+| 23 | Verify no user portfolio data | No symbols, values, or user identities in health response |
+| 24 | Non-admin user requests endpoint | 403 Forbidden |
+| 25 | Unauthenticated request | 401 Unauthorized |
+
+### Status Vocabularies
+
+**Operational Readiness (operationsSummary):** READY | DEGRADED | WAITING | FAILED | UNKNOWN | DISABLED
+
+**Pipeline Stage:** HEALTHY | RUNNING | WAITING | DEGRADED | FAILED | UNKNOWN | DISABLED
+
+**Data Freshness:** FRESH | RECENT | DELAYED | STALE | UNKNOWN | NOT_APPLICABLE
+
+### Key Behavioral Rules
+
+- Broker Sync = DISABLED when no portfolios linked — correct, not a platform failure
+- Institutional 13F = DELAYED by design (quarterly) — never STALE regardless of age
+- DISABLED status never triggers `requiresAttention`
+- Research Readiness can be WAITING even when Scanner health = HEALTHY (health ≠ readiness)
+- `endpointLatencyMs` is 0 for cached responses
+

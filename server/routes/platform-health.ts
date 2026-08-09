@@ -16,7 +16,7 @@ import { getLatestRanking } from "../services/opportunity-ranking-engine";
 import { getAllJobStatuses } from "../services/job-status-store";
 import { getBrokerSyncHealth } from "../services/broker-sync-service";
 import { getOpportunityIntelligenceHealth } from "../services/opportunity-intelligence-service";
-import { getCollectionHealth, isSeedComplete } from "../services/collection-service";
+import { getCollectionHealth } from "../services/collection-service";
 import { getWorkspaceHealth } from "../services/research-workspace-service";
 import { getCommandCenterHealth } from "./market-research-command-center";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
@@ -24,11 +24,18 @@ import { getResearchMonitoringHealth } from "../services/research-monitor-servic
 import { getResearchReportsHealth } from "../services/research-report-service";
 import { getPortfolioHistoryHealth } from "../services/portfolio-history-service";
 import { getPortfolioIntelligenceHealth } from "../services/portfolio-intelligence-service";
+import { type FreshnessResult } from "../lib/health-freshness";
+import {
+  computeOperationsSummary,
+  computePipelineStages,
+  computeDataFreshness,
+} from "./platform-health-internals";
 
 // ---------------------------------------------------------------------------
-// Health status type
+// Health status types — Sprint 2.5.3B canonical vocabulary
 // ---------------------------------------------------------------------------
 
+/** Per-subsystem health status: "Can the subsystem operate?" */
 export type HealthStatus = "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "DISABLED" | "UNKNOWN";
 
 interface HealthCard {
@@ -41,20 +48,61 @@ interface HealthCard {
   details:         Record<string, unknown>;
 }
 
+/** Operational readiness status: "Is today's data/results ready?" */
+export type OperationalStatus = "READY" | "DEGRADED" | "WAITING" | "FAILED" | "UNKNOWN" | "DISABLED";
+
+export interface OperationsDimension {
+  dimension:     string;
+  status:        OperationalStatus;
+  reason:        string | null;
+  runbookQuery:  string;
+}
+
+export interface OperationsSummary {
+  overallStatus:     OperationalStatus;
+  headline:          string;
+  requiresAttention: boolean;
+  reasons:           string[];
+  dimensions:        OperationsDimension[];
+  generatedAt:       string;
+}
+
+/** Status of a stage in the end-to-end research pipeline */
+export type PipelineStageStatus = "HEALTHY" | "RUNNING" | "WAITING" | "DEGRADED" | "FAILED" | "UNKNOWN" | "DISABLED";
+
+export interface PipelineStage {
+  name:           string;
+  status:         PipelineStageStatus;
+  lastUpdated:    string | null;
+  freshnessSec:   number | null;
+  primaryMetric:  string;
+  warning:        string | null;
+  runbookQuery:   string;
+  diagnosticPath: string | null;
+}
+
+export interface PlatformHealthEnriched {
+  health:             Record<string, HealthCard>;
+  operationsSummary:  OperationsSummary;
+  researchPipeline:   PipelineStage[];
+  dataFreshness:      FreshnessResult[];
+  endpointLatencyMs:  number;
+}
+
 // ---------------------------------------------------------------------------
 // 30-second cache
 // ---------------------------------------------------------------------------
 
-let _cachedHealth: Record<string, HealthCard> | null = null;
+let _cachedEnriched: PlatformHealthEnriched | null = null;
 let _cachedAt = 0;
 const CACHE_TTL_MS = 30_000;
 
 function isCacheValid(): boolean {
-  return _cachedHealth !== null && Date.now() - _cachedAt < CACHE_TTL_MS;
+  return _cachedEnriched !== null && Date.now() - _cachedAt < CACHE_TTL_MS;
 }
 
 function invalidateHealthCache(): void {
-  _cachedHealth = null;
+  _cachedEnriched = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -747,7 +795,14 @@ async function checkResearchMonitoring(): Promise<HealthCard> {
   }
 }
 
-async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
+// computeOperationsSummary, computePipelineStages, computeDataFreshness
+// are imported from ./platform-health-internals (pure — no DB, no network).
+
+// ---------------------------------------------------------------------------
+// Build full enriched platform health
+// ---------------------------------------------------------------------------
+
+async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
   const [db_, marketData, mcp, scanner, intel, institutional, secMaster, brokers] = await Promise.all([
     checkDatabase(),
     checkMarketData(),
@@ -774,7 +829,7 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   ]);
   const jobs = getAllJobStatuses();
 
-  return {
+  const health: Record<string, HealthCard> = {
     application: app,
     database:    db_,
     marketData,
@@ -800,6 +855,14 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
       details: jobs,
     } as HealthCard,
   };
+
+  return {
+    health,
+    operationsSummary: computeOperationsSummary(health),
+    researchPipeline:  computePipelineStages(health),
+    dataFreshness:     computeDataFreshness(health),
+    endpointLatencyMs: 0, // caller will fill this in
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -816,12 +879,14 @@ export function registerPlatformHealthRoutes(
   app.get("/api/admin/platform-health", isAuthenticated, isAdmin, async (_req: Request, res: Response) => {
     try {
       if (isCacheValid()) {
-        return res.json({ health: _cachedHealth, cachedAt: new Date(_cachedAt).toISOString(), cached: true });
+        return res.json({ ..._cachedEnriched!, cachedAt: new Date(_cachedAt).toISOString(), cached: true });
       }
-      const health = await buildPlatformHealth();
-      _cachedHealth = health;
+      const t0 = Date.now();
+      const enriched = await buildPlatformHealth();
+      enriched.endpointLatencyMs = Date.now() - t0;
+      _cachedEnriched = enriched;
       _cachedAt = Date.now();
-      res.json({ health, cachedAt: new Date(_cachedAt).toISOString(), cached: false });
+      res.json({ ...enriched, cachedAt: new Date(_cachedAt).toISOString(), cached: false });
     } catch (err: any) {
       console.error("[platform-health] failed:", err?.message);
       res.status(500).json({ error: "Platform health check failed" });
@@ -832,10 +897,12 @@ export function registerPlatformHealthRoutes(
   app.post("/api/admin/platform-health/refresh", isAuthenticated, isAdmin, async (_req: Request, res: Response) => {
     invalidateHealthCache();
     try {
-      const health = await buildPlatformHealth();
-      _cachedHealth = health;
+      const t0 = Date.now();
+      const enriched = await buildPlatformHealth();
+      enriched.endpointLatencyMs = Date.now() - t0;
+      _cachedEnriched = enriched;
       _cachedAt = Date.now();
-      res.json({ health, cachedAt: new Date(_cachedAt).toISOString(), cached: false });
+      res.json({ ...enriched, cachedAt: new Date(_cachedAt).toISOString(), cached: false });
     } catch (err: any) {
       res.status(500).json({ error: "Platform health refresh failed" });
     }

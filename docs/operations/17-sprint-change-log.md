@@ -4,6 +4,78 @@
 
 ---
 
+## Sprint 2.5.3B — Platform Health & Operations Center Enhancement (2026-08-09)
+
+**Phase:** Ops hardening — admin-only, no product logic changes.
+
+**Purpose:** Transform `/admin/platform-health` into a true Operations Center with three new enrichment layers:
+- **Operations Summary:** 7-dimension readiness banner (Platform Status, Research Readiness, Market Data, AI, Reports, Portfolio Services, Broker Services)
+- **Research Pipeline:** 10-stage visual flow (Market Data → Research Reports)
+- **Data Freshness Dashboard:** 14-dataset, per-dataset-threshold freshness assessment
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `server/lib/health-freshness.ts` | Pure freshness helper — `assessFreshness()`, `FRESHNESS_RULES` (14 datasets) |
+| `server/routes/platform-health-internals.ts` | Pure compute functions — `computeOperationsSummary`, `computePipelineStages`, `computeDataFreshness` |
+| `server/routes/platform-health-test-exports.ts` | Test shim — re-exports pure functions for unit tests |
+| `client/src/pages/admin-platform-health.tsx` | Full Operations Center UI rewrite |
+| `docs/operations/23-platform-operations-center.md` | Architecture, runbooks, UAT, security |
+
+### Modified Files
+
+| File | Change |
+|------|-------|
+| `server/routes/platform-health.ts` | Response shape → `PlatformHealthEnriched`; inline compute functions removed (now imported from internals); route handlers updated to spread enriched response |
+
+### API Changes
+
+`GET /api/admin/platform-health` response now includes:
+```json
+{
+  "health": { ... },
+  "operationsSummary": { ... },
+  "researchPipeline": [ ... ],
+  "dataFreshness": [ ... ],
+  "endpointLatencyMs": 120,
+  "cachedAt": "ISO",
+  "cached": false
+}
+```
+
+### Status Vocabulary
+
+**Health** (per-subsystem capability): HEALTHY | DEGRADED | UNAVAILABLE | DISABLED | UNKNOWN
+
+**Readiness** (Operations Summary): READY | DEGRADED | WAITING | FAILED | UNKNOWN | DISABLED
+
+**Pipeline**: HEALTHY | RUNNING | WAITING | DEGRADED | FAILED | UNKNOWN | DISABLED
+
+**Freshness**: FRESH | RECENT | DELAYED | STALE | UNKNOWN | NOT_APPLICABLE
+
+### Key Rules
+
+- Broker Sync = DISABLED when no portfolios connected (correct, not a failure)
+- Institutional 13F = DELAYED by design (quarterly cadence — never STALE)
+- DISABLED never triggers `requiresAttention`
+- No new DB tables, no business logic changes, no scoring changes
+
+### Test Coverage
+
+New test file: `server/routes/__tests__/platform-health-operations.test.ts` — 150+ assertions
+
+### UAT
+
+See doc 23 for 25-step UAT checklist.
+
+### Known Limitations
+
+- Command Center snapshot resets on server restart (in-memory, by design — visit the page to regenerate)
+- Broker Sync freshness is NOT_APPLICABLE until first portfolio is linked
+
+---
+
 ## Sprint 2.6.1 — Portfolio Intelligence (2026-08-09)
 
 **Phase:** 3 — Portfolio Intelligence

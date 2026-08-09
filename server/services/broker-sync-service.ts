@@ -238,6 +238,11 @@ export async function syncPortfolioFromBroker(
       timestamp:    completedAt.toISOString(),
     }));
 
+    // Sprint 2.6.0 — trigger portfolio history snapshot after successful sync (fire-and-forget)
+    import("./portfolio-history-service").then(({ triggerSnapshotAsync }) => {
+      triggerSnapshotAsync(portfolioId, userId, "broker_sync");
+    }).catch(() => {});
+
     return { alreadyRunning: false, portfolioId, provider, importedCount, updatedCount, deletedCount, durationMs };
 
   } catch (err: unknown) {

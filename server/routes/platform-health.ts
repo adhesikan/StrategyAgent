@@ -22,6 +22,7 @@ import { getCommandCenterHealth } from "./market-research-command-center";
 import { enrichMissingSymbolClassifications } from "../services/daily-market-data/symbol-enrichment";
 import { getResearchMonitoringHealth } from "../services/research-monitor-service";
 import { getResearchReportsHealth } from "../services/research-report-service";
+import { getPortfolioHistoryHealth } from "../services/portfolio-history-service";
 
 // ---------------------------------------------------------------------------
 // Health status type
@@ -628,6 +629,38 @@ async function checkCommandCenter(): Promise<HealthCard> {
   };
 }
 
+async function checkPortfolioHistory(): Promise<HealthCard> {
+  try {
+    const h = await getPortfolioHistoryHealth();
+    const status: HealthStatus =
+      h.storageHealth === "unknown"  ? "UNKNOWN"  :
+      h.storageHealth === "degraded" ? "DEGRADED" :
+      "HEALTHY";
+    return {
+      status,
+      summary: h.snapshotsTotal === 0
+        ? "No portfolio snapshots captured yet"
+        : `${h.portfoliosTracked} portfolio${h.portfoliosTracked !== 1 ? "s" : ""} tracked — ${h.snapshotsToday} snapshot${h.snapshotsToday !== 1 ? "s" : ""} today`,
+      lastSuccessAt: h.latestSnapshotAt,
+      details: {
+        portfoliosTracked:         h.portfoliosTracked,
+        snapshotsTotal:            h.snapshotsTotal,
+        snapshotsToday:            h.snapshotsToday,
+        latestSnapshotAt:          h.latestSnapshotAt ?? "Never",
+        positionsCaptured:         h.positionsCaptured,
+        averageSnapshotDurationMs: h.averageSnapshotDurationMs ?? "N/A",
+        storageHealth:             h.storageHealth,
+        scheduledSnapshots:        "Not implemented (Sprint 2.6.0 — future scheduler)",
+      },
+      action: h.snapshotsTotal === 0
+        ? "Visit /portfolio to import or sync holdings and capture your first snapshot"
+        : null,
+    };
+  } catch {
+    return { status: "UNKNOWN", summary: "Portfolio history health unavailable", details: {} };
+  }
+}
+
 async function checkResearchReports(): Promise<HealthCard> {
   try {
     const h = await getResearchReportsHealth();
@@ -702,12 +735,13 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
   const ranking    = checkRanking();
   const brokerSync = checkBrokerSync();
   const oppIntel   = checkOpportunityIntelligence();
-  const [collections, researchWorkspace, commandCenter, researchMonitoring, researchReports_] = await Promise.all([
+  const [collections, researchWorkspace, commandCenter, researchMonitoring, researchReports_, portfolioHistory_] = await Promise.all([
     checkCollections(),
     checkResearchWorkspace(),
     checkCommandCenter(),
     checkResearchMonitoring(),
     checkResearchReports(),
+    checkPortfolioHistory(),
   ]);
   const jobs = getAllJobStatuses();
 
@@ -728,7 +762,8 @@ async function buildPlatformHealth(): Promise<Record<string, HealthCard>> {
     researchWorkspace,
     commandCenter,
     researchMonitoring,
-    researchReports: researchReports_,
+    researchReports:  researchReports_,
+    portfolioHistory: portfolioHistory_,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

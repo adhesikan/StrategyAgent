@@ -1,0 +1,1232 @@
+# Sprint 2.6.0 — Portfolio History & Change Intelligence
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Phase 3 — Portfolio Intelligence
+
+CURRENT SPRINT:
+2.6.0 — Portfolio History & Change Intelligence
+
+PREREQUISITE MILESTONE:
+Research Platform v1.0 is complete.
+
+Completed research foundation includes:
+
+- Opportunity Intelligence Engine
+- Research Collections & Watchlists
+- AI Research Workspace
+- Market Research Command Center
+- Research Transparency / Central Research Glossary
+- Continuous Research Monitoring
+- Research Reports & Publishing
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+This sprint establishes PORTFOLIO HISTORY and PORTFOLIO CHANGE INTELLIGENCE only.
+
+DO NOT implement:
+
+- Portfolio Intelligence scoring
+- Portfolio recommendations
+- Rebalancing
+- Goal planning
+- Tax optimization
+- Trade Construction Engine
+- Trade recommendations
+- Automated execution
+- Portfolio AI conversations
+- Alerts / notifications
+- Scheduled reports
+- New broker integrations
+
+Those belong to later planned sprints.
+
+Do not create a new research scoring universe.
+
+Portfolio features MUST consume existing canonical research services.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Give users a reliable historical view of:
+
+1. What their portfolio looked like previously.
+2. What changed.
+3. Which holdings were added, removed, increased, or reduced.
+4. How market value and exposure changed.
+5. How existing Opportunity Intelligence evidence changed for their holdings.
+6. What changed since yesterday / previous snapshot / selected period.
+
+The key user question is:
+
+"What changed in my portfolio?"
+
+NOT:
+
+"What should I buy or sell?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+shared/schema.ts
+
+portfolio tables
+
+portfolio position model
+
+broker sync service
+
+manual / CSV / XLSX / PDF / image intake
+
+Opportunity Intelligence Engine
+
+Opportunity History
+
+Research Monitoring
+
+Research Collections
+
+Research Reports
+
+Market data snapshot storage
+
+existing portfolio-intelligence-engine.ts
+
+existing portfolio trade-plan code
+
+any existing historical portfolio concepts
+
+Operations Manual
+
+Report:
+
+- existing persistence
+- existing position timestamps
+- existing source fields
+- existing market value fields
+- existing historical price facilities
+- any existing snapshot tables
+- any duplicate/legacy portfolio logic that should NOT be reused
+
+Do not create duplicate history infrastructure if appropriate functionality already exists.
+
+======================================================================
+2. CANONICAL PORTFOLIO SNAPSHOT MODEL
+======================================================================
+
+Create the minimum persistent history model necessary.
+
+Suggested:
+
+portfolio_snapshots
+
+id
+portfolio_id
+user_id
+snapshot_date
+snapshot_time / captured_at
+source_type
+total_market_value nullable
+total_cost_basis nullable
+position_count
+cash_value nullable
+metadata JSONB
+created_at
+
+portfolio_position_snapshots
+
+id
+snapshot_id
+portfolio_id
+symbol
+quantity
+average_cost nullable
+cost_basis nullable
+reference_price nullable
+market_value nullable
+sector nullable
+industry nullable
+themes JSONB or text[] if appropriate
+research_score nullable
+technical_score nullable
+fundamental_score nullable
+institutional_score nullable
+risk_score nullable
+evidence_confidence nullable
+opportunity_type nullable
+captured_at
+
+IMPORTANT:
+
+Do not copy unnecessary Opportunity Intelligence payloads.
+
+Persist only the fields required to reconstruct meaningful historical comparisons.
+
+Prefer references/compact snapshots over full duplicated research objects.
+
+======================================================================
+3. SNAPSHOT TRIGGERS
+======================================================================
+
+Capture portfolio snapshots after meaningful portfolio state changes.
+
+At minimum:
+
+Manual portfolio position changes
+
+CSV/XLSX confirmed import
+
+Screenshot/PDF confirmed import
+
+Broker synchronization completion
+
+Manual "Capture Snapshot" if operationally useful
+
+Do not create duplicate snapshots unnecessarily.
+
+Design deterministic deduplication.
+
+Example:
+
+same portfolio
+same effective date/state fingerprint
+→ do not create identical snapshot twice.
+
+======================================================================
+4. DAILY SNAPSHOT INTERFACE
+======================================================================
+
+Create reusable service:
+
+capturePortfolioSnapshot(portfolioId, userId)
+
+and:
+
+captureUserPortfolioSnapshots(userId)
+
+The interface should be scheduler-ready.
+
+Do NOT enable new cron/scheduling if not already part of the approved scheduler architecture.
+
+Future scheduler may invoke the service.
+
+======================================================================
+5. DATABASE-FIRST MARKET DATA
+======================================================================
+
+Snapshot enrichment must follow existing policy:
+
+DATABASE FIRST.
+
+Use existing:
+
+stored daily bars
+reference snapshots
+market_data_symbols
+Opportunity Intelligence
+theme registry
+
+Do NOT call Twelve Data once per holding.
+
+Do NOT introduce a new external-data retrieval path.
+
+If current/reference price unavailable:
+
+store null
+
+and record appropriate freshness/coverage metadata.
+
+======================================================================
+6. CHANGE CLASSIFICATION ENGINE
+======================================================================
+
+Create deterministic portfolio change classifications.
+
+Position-level:
+
+NEW
+EXITED
+INCREASED
+REDUCED
+UNCHANGED
+
+Research-level:
+
+RESEARCH_STRENGTHENED
+RESEARCH_WEAKENED
+RESEARCH_UNCHANGED
+NEWLY_QUALIFIED
+NO_LONGER_QUALIFIED
+
+Exposure-level:
+
+SECTOR_EXPOSURE_INCREASED
+SECTOR_EXPOSURE_DECREASED
+THEME_EXPOSURE_INCREASED
+THEME_EXPOSURE_DECREASED
+
+Do not interpret changes as instructions.
+
+======================================================================
+7. SHARE/QUANTITY CHANGE RULES
+======================================================================
+
+Deterministic definitions:
+
+NEW:
+current quantity > 0 and previous absent
+
+EXITED:
+previous quantity > 0 and current absent
+
+INCREASED:
+current quantity > previous quantity
+
+REDUCED:
+current quantity < previous quantity and > 0
+
+UNCHANGED:
+same quantity
+
+Do not infer trades beyond what the snapshots prove.
+
+Example:
+
+Do not say:
+"User bought NVDA."
+
+Say:
+"NVDA position increased by 20 shares since the previous snapshot."
+
+This matters for correctness and compliance.
+
+======================================================================
+8. RESEARCH CHANGE RULES
+======================================================================
+
+Consume existing Opportunity Intelligence fields.
+
+Compare, when available:
+
+researchScore
+technicalScore
+institutionalScore
+fundamentalScore
+riskScore
+confidence
+opportunityType
+qualification state
+
+Do NOT create new formulas.
+
+Examples:
+
+Research Score 64 → 72
+Technical Score +8
+Institutional evidence unchanged
+
+Use canonical Research Glossary definitions.
+
+======================================================================
+9. PORTFOLIO CHANGE SERVICE
+======================================================================
+
+Create reusable service:
+
+getPortfolioChanges(
+  portfolioId,
+  userId,
+  fromSnapshot?,
+  toSnapshot?
+)
+
+Return:
+
+summary
+
+addedPositions[]
+exitedPositions[]
+increasedPositions[]
+reducedPositions[]
+unchangedPositions[]
+
+researchStrengthened[]
+researchWeakened[]
+newlyQualified[]
+noLongerQualified[]
+
+sectorChanges[]
+themeChanges[]
+
+valueChange
+costBasisChange
+positionCountChange
+
+dataFreshness
+coverage
+limitations[]
+
+Everything deterministic.
+
+======================================================================
+10. PORTFOLIO TIMELINE
+======================================================================
+
+Create:
+
+GET /api/portfolio/:id/history
+
+Return historical snapshots.
+
+Support:
+
+7D
+30D
+90D
+YTD
+1Y
+ALL
+
+depending on available data.
+
+Do not fabricate periods before history exists.
+
+======================================================================
+11. CHANGE API
+======================================================================
+
+Create:
+
+GET /api/portfolio/:id/changes
+
+Optional query:
+
+from=
+to=
+
+If omitted:
+
+compare latest snapshot to previous snapshot.
+
+Return canonical PortfolioChangeResult.
+
+======================================================================
+12. SNAPSHOT API
+======================================================================
+
+If operationally/user useful:
+
+POST /api/portfolio/:id/snapshot
+
+Authenticated + ownership required.
+
+Prevent abusive repeated snapshots through deduplication/rate protection.
+
+Do not expose admin functionality unnecessarily.
+
+======================================================================
+13. PORTFOLIO UI
+======================================================================
+
+Enhance:
+
+/portfolio
+
+Add:
+
+Portfolio Changes
+
+Portfolio Timeline
+
+Recent Changes
+
+Examples:
+
+3 Positions Increased
+
+1 Position Reduced
+
+2 Research Scores Improved
+
+Technology Exposure +4.2%
+
+AI Infrastructure Exposure +3.1%
+
+No instructional language.
+
+======================================================================
+14. PORTFOLIO HISTORY PAGE / TAB
+======================================================================
+
+Prefer existing /portfolio experience.
+
+Add History tab or equivalent rather than unnecessary new top-level navigation.
+
+Show:
+
+Portfolio Value History
+
+Position Count History
+
+Sector Exposure History
+
+Theme Exposure History
+
+Holding Changes
+
+Research Evidence Changes
+
+Freshness
+
+If chart infrastructure already exists, reuse it.
+
+Do not add dependencies unnecessarily.
+
+======================================================================
+15. "WHAT CHANGED?" EXPERIENCE
+======================================================================
+
+Create a concise deterministic summary.
+
+Example:
+
+Since Aug 5:
+
+Portfolio value:
+$1.24M → $1.27M
+
+Positions:
+18 → 19
+
+New:
+CRDO
+
+Increased:
+MU +100 shares
+
+Reduced:
+NVDA -25 shares
+
+Research strengthened:
+MU
+AVGO
+
+Research weakened:
+PLTR
+
+Largest sector exposure change:
+Technology +2.8%
+
+This is descriptive research.
+
+======================================================================
+16. DO NOT CONFUSE MARKET MOVEMENT WITH USER ACTION
+======================================================================
+
+Critical.
+
+Portfolio market value can change even when holdings did not.
+
+Clearly separate:
+
+POSITION CHANGES
+
+from:
+
+MARKET VALUE CHANGES
+
+and:
+
+RESEARCH EVIDENCE CHANGES
+
+Never imply the user traded solely because market value changed.
+
+======================================================================
+17. DATA FRESHNESS
+======================================================================
+
+Every historical comparison should state:
+
+snapshot capturedAt
+reference market price date/time
+Opportunity Intelligence generatedAt
+institutional data freshness if used
+
+Reuse Research Glossary.
+
+Institutional data must retain Form 13F delayed-data disclosure.
+
+======================================================================
+18. COVERAGE
+======================================================================
+
+Show research coverage:
+
+positionsTotal
+
+positionsWithMarketData
+
+positionsWithOpportunityIntelligence
+
+positionsWithSector
+
+positionsWithTheme
+
+coveragePercent
+
+Do not silently treat missing research as zero.
+
+NULL / unavailable must remain distinct from score 0.
+
+======================================================================
+19. USER ISOLATION
+======================================================================
+
+Portfolio history is private user data.
+
+Every endpoint:
+
+authenticated
+
+userId from session
+
+ownership checked
+
+cross-user portfolio IDs return 404
+
+snapshot IDs also ownership-bound
+
+No data leakage through counts/errors.
+
+Add explicit tests.
+
+======================================================================
+20. SOURCE TRANSPARENCY
+======================================================================
+
+Snapshots should preserve source context:
+
+Manual
+
+CSV
+
+XLSX
+
+Image
+
+PDF
+
+Broker
+
+If broker synced:
+
+show source provider if available.
+
+Do not imply uploaded portfolios are live.
+
+======================================================================
+21. COMPLIANCE
+======================================================================
+
+Use:
+
+Portfolio Change
+
+Observed Change
+
+Research Evidence Improved
+
+Research Evidence Weakened
+
+Position Increased
+
+Position Reduced
+
+Research Candidate
+
+Avoid:
+
+You bought
+
+You sold
+
+You should sell
+
+You should add
+
+Rebalance now
+
+Recommendation
+
+Strong Buy
+
+Reduce this holding
+
+Every relevant UI should include concise language:
+
+"Portfolio change information is provided for research and analytics purposes and does not constitute investment advice."
+
+Do not overwhelm users with repeated disclaimers.
+
+======================================================================
+22. RESEARCH-FIRST ARCHITECTURE CONTRACT
+======================================================================
+
+Formalize this relationship:
+
+Opportunity Intelligence
+        ↓
+Portfolio History
+        ↓
+Portfolio Change Intelligence
+        ↓
+Future Portfolio Intelligence
+        ↓
+Future Trade Planning
+
+Portfolio History must NOT redefine:
+
+researchScore
+technicalScore
+institutionalScore
+fundamentalScore
+riskScore
+opportunityType
+evidenceConfidence
+
+Those remain owned by Opportunity Intelligence / canonical research architecture.
+
+======================================================================
+23. RESEARCH COLLECTION INTEGRATION
+======================================================================
+
+Do not create new watchlist logic.
+
+If useful, provide links from changed holdings into:
+
+Opportunity Workspace
+
+Research Workspace
+
+Collections
+
+Command Center
+
+Research Reports
+
+No duplicated collection data.
+
+======================================================================
+24. RESEARCH REPORT INTEGRATION
+======================================================================
+
+Do NOT create portfolio reports yet.
+
+Future Portfolio Research Reports will consume Portfolio Change Intelligence.
+
+Expose clean service/API contracts now.
+
+Do not implement portfolio report types.
+
+======================================================================
+25. PLATFORM HEALTH
+======================================================================
+
+Add:
+
+Portfolio History
+
+Health status:
+
+HEALTHY
+DEGRADED
+UNKNOWN
+DISABLED
+
+Useful metrics:
+
+portfoliosTracked
+
+snapshotsTotal
+
+snapshotsToday
+
+latestSnapshotAt
+
+snapshotsFailed
+
+positionsCaptured
+
+averageSnapshotDurationMs
+
+Do not expose private portfolio contents on admin health.
+
+======================================================================
+26. JOB STATUS
+======================================================================
+
+If snapshot creation uses existing background-job architecture:
+
+add:
+
+portfolio_snapshot
+
+Track:
+
+started
+completed
+failed
+duration
+portfolio count
+position count
+
+Do not add scheduler yet unless already supported by approved architecture.
+
+======================================================================
+27. STRUCTURED LOGGING
+======================================================================
+
+Events:
+
+portfolio_snapshot_started
+portfolio_snapshot_completed
+portfolio_snapshot_failed
+
+portfolio_change_computed
+
+Do not log:
+
+portfolio holdings
+quantities unless operationally essential
+cost basis
+market values
+account IDs
+broker account numbers
+PII
+
+Use safe aggregate counts.
+
+======================================================================
+28. PERFORMANCE
+======================================================================
+
+Avoid N+1.
+
+For each portfolio snapshot:
+
+bulk-load positions
+
+bulk-load symbol metadata
+
+bulk-load market data
+
+reuse/get Opportunity Intelligence once
+
+build lookup maps
+
+Target bounded DB round trips.
+
+Document measured performance.
+
+======================================================================
+29. SNAPSHOT RETENTION
+======================================================================
+
+Define a sensible retention strategy but do not prematurely delete data.
+
+Document:
+
+daily snapshots
+event-driven snapshots
+potential future compaction
+
+No destructive cleanup job in this sprint.
+
+======================================================================
+30. MIGRATION SAFETY
+======================================================================
+
+If schema changes required:
+
+additive only
+
+idempotent
+
+no DROP
+
+no TRUNCATE
+
+no modification of existing portfolio records
+
+Startup migration must be safe on Railway.
+
+Document exact production impact.
+
+======================================================================
+31. TESTS
+======================================================================
+
+Add comprehensive tests.
+
+Target 150+ assertions where meaningful.
+
+Cover:
+
+snapshot creation
+
+snapshot deduplication
+
+manual portfolio
+
+CSV portfolio
+
+XLSX portfolio
+
+image portfolio
+
+PDF portfolio
+
+broker portfolio
+
+NEW position
+
+EXITED position
+
+INCREASED position
+
+REDUCED position
+
+UNCHANGED position
+
+market value change without quantity change
+
+research strengthened
+
+research weakened
+
+newly qualified
+
+no longer qualified
+
+sector exposure change
+
+theme exposure change
+
+missing market data
+
+missing Opportunity Intelligence
+
+NULL vs score 0
+
+date-range history
+
+user isolation
+
+cross-user denial
+
+snapshot ownership
+
+13F disclosure
+
+no recommendation language
+
+no duplicated score formulas
+
+bulk retrieval architecture
+
+Platform Health
+
+structured logging privacy
+
+schema migration safety
+
+Operations Manual updates
+
+Roadmap alignment
+
+======================================================================
+32. PRODUCTION UAT
+======================================================================
+
+Document a UAT sequence.
+
+Example:
+
+1. Create/import portfolio.
+2. Capture initial snapshot.
+3. Modify one holding.
+4. Capture second snapshot.
+5. Open History.
+6. Verify position classified correctly.
+7. Verify value changes separated from quantity changes.
+8. Verify research changes show only existing Opportunity Intelligence evidence.
+9. Verify freshness.
+10. Verify user isolation.
+11. Verify Platform Health.
+12. Verify no unexpected 500s.
+
+Broker UAT:
+
+sync
+→ snapshot
+→ sync changed positions
+→ second snapshot
+→ changes
+
+======================================================================
+33. OPERATIONS MANUAL UPDATE — REQUIRED
+======================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+Update API/UAT reference.
+
+Create appropriate new operations doc, e.g.:
+
+docs/operations/21-portfolio-history.md
+
+Document:
+
+architecture
+schema
+snapshot triggers
+deduplication
+change definitions
+research integration
+API contracts
+security
+retention
+health
+logging
+UAT
+troubleshooting
+recovery
+
+Update Security/DevSecOps if private-data handling changes.
+
+Update Database/Migrations documentation.
+
+======================================================================
+34. COMMERCIAL EXPERIENCE REVIEW
+======================================================================
+
+Document only.
+
+Do NOT implement pricing gates.
+
+FREE:
+
+Basic current portfolio view may remain available depending final edition design.
+
+RETAIL:
+
+Portfolio history
+recent changes
+basic research evidence changes
+
+PROFESSIONAL:
+
+Longer history
+advanced exposure analysis
+cross-portfolio history
+
+RIA:
+
+Client portfolio history
+client change review
+advisor workflows
+
+INSTITUTIONAL:
+
+Multi-portfolio / strategy history
+team research workflows
+
+ENTERPRISE:
+
+Custom retention
+API access
+organization-specific history policies
+
+No artificial degradation of core usefulness.
+
+======================================================================
+35. PLATFORM REUSABILITY REVIEW
+======================================================================
+
+Confirm this sprint creates reusable services for:
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Portfolio Research Workspace
+
+Research Reports
+
+Trade Planning
+
+Trade Construction
+
+Position Monitoring
+
+RIA workflows
+
+Institutional workflows
+
+Enterprise APIs
+
+======================================================================
+36. IMPROVEMENT CAPTURE RULE
+======================================================================
+
+During implementation/UAT:
+
+DO NOT implement unrelated improvements automatically.
+
+Classify each:
+
+Critical production fix
+
+Current sprint acceptance requirement
+
+Future planned sprint enhancement
+
+Backlog
+
+Report:
+
+suggestion
+assigned sprint/backlog
+priority
+reason
+
+======================================================================
+37. ROADMAP IMPACT
+======================================================================
+
+Current:
+
+2.6.0 Portfolio History & Change Intelligence
+
+Next planned:
+
+2.6.1 Portfolio Intelligence
+
+Do NOT pull forward:
+
+2.6.1 Portfolio Intelligence
+
+2.6.2 Portfolio Analytics
+
+2.6.3 Portfolio Research Workspace
+
+2.6.4 Goals & Planning
+
+Trade Planning
+
+Trade Construction Engine
+
+Execution
+
+Agents
+
+RIA customization
+
+Institutional customization
+
+Enterprise customization
+
+======================================================================
+38. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Portfolio snapshots persist.
+
+B. Position change classifications are deterministic.
+
+C. Portfolio value changes are separated from user position changes.
+
+D. Research evidence changes consume Opportunity Intelligence.
+
+E. No duplicate scoring logic exists.
+
+F. History API works.
+
+G. Change API works.
+
+H. User isolation works.
+
+I. Missing data is not treated as score 0.
+
+J. Data freshness is visible.
+
+K. Platform Health integrated.
+
+L. Logging does not expose private financial data.
+
+M. Migration is safe.
+
+N. Full tests pass.
+
+O. npm run build passes.
+
+P. Zero new TypeScript errors.
+
+Q. Operations Manual updated.
+
+R. Roadmap alignment confirmed.
+
+======================================================================
+39. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing portfolio/history logic discovered
+3. Files changed
+4. Schema changes
+5. Snapshot architecture
+6. Snapshot triggers
+7. Deduplication
+8. Change classification rules
+9. Research change integration
+10. Market-value vs position-change separation
+11. APIs
+12. UI
+13. Data freshness
+14. Coverage model
+15. Security/user isolation
+16. Performance
+17. Platform Health
+18. Structured logging
+19. Migration
+20. Tests
+21. Full test count
+22. npm run build
+23. Typecheck
+24. Production UAT
+25. Commercial Experience Review
+26. Platform Reusability Review
+27. Improvement Suggestions Captured
+28. Deferred backlog
+29. Roadmap Impact
+30. Operations Manual Updated: YES/NO
+31. Operations Manual Files Updated
+32. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

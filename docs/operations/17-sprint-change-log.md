@@ -4,6 +4,82 @@
 
 ---
 
+## Sprint 2.6.0 — Portfolio History & Change Intelligence (2026-08-09)
+
+**Phase:** 3 — Portfolio Intelligence (foundation)
+
+**Purpose:** Establish deterministic portfolio history and change classification. User question answered: "What changed in my portfolio?" — not "What should I buy or sell?"
+
+### DB Schema (2 new tables)
+
+| Table | Purpose |
+|-------|---------|
+| `portfolio_snapshots` | One row per snapshot per portfolio; includes fingerprint, coverage, metadata |
+| `portfolio_position_snapshots` | One row per position per snapshot; includes enriched research scores |
+
+Created via `CREATE TABLE IF NOT EXISTS` — idempotent, safe on every startup.
+
+### New Key Files
+
+| Type | Path |
+|------|------|
+| Shared types | `shared/portfolio-history-types.ts` |
+| Service | `server/services/portfolio-history-service.ts` |
+| Routes | `server/routes/portfolio-history.ts` |
+| Tests | `server/routes/__tests__/portfolio-history.test.ts` |
+| Ops doc | `docs/operations/21-portfolio-history.md` |
+
+### Change Classification
+
+**PositionChangeType (5):** NEW, EXITED, INCREASED, REDUCED, UNCHANGED
+
+**ResearchChangeType (5):** RESEARCH_STRENGTHENED, RESEARCH_WEAKENED, RESEARCH_UNCHANGED, NEWLY_QUALIFIED, NO_LONGER_QUALIFIED
+
+**ExposureChangeType (4):** SECTOR_EXPOSURE_INCREASED, SECTOR_EXPOSURE_DECREASED, THEME_EXPOSURE_INCREASED, THEME_EXPOSURE_DECREASED
+
+### Snapshot Triggers (automatic, fire-and-forget)
+
+- CSV/XLSX/image/PDF import confirmed → `{sourceType}_import`
+- Broker sync completed → `broker_sync`
+- Manual position add/edit/delete → `position_change`
+- User-initiated → `manual_snapshot` (POST /api/portfolio/:id/snapshot)
+
+### API Endpoints (3)
+
+- `GET /api/portfolio/:id/history?period=7D|30D|90D|YTD|1Y|ALL`
+- `GET /api/portfolio/:id/changes?from=snapshotId&to=snapshotId`
+- `POST /api/portfolio/:id/snapshot`
+
+### Integrations
+
+| Integration | Change |
+|-------------|--------|
+| `server/routes.ts` | Register portfolio-history routes + `ensurePortfolioHistoryTables` startup call |
+| `server/routes/portfolio.ts` | `triggerSnapshotAsync` after import confirm + position add/edit/delete |
+| `server/services/broker-sync-service.ts` | `triggerSnapshotAsync` after successful broker sync |
+| `server/routes/platform-health.ts` | `portfolioHistory` health card |
+| `client/src/pages/portfolio.tsx` | "History" tab in PortfolioDetail |
+
+### Key Design Rules
+
+- Database-first market data (getReferenceSnapshotsBulk, no Twelve Data calls)
+- Snapshot deduplication: same fingerprint within 30 min → skip
+- NULL = unavailable (never coerced to 0)
+- Market value change separated from position quantity change
+- Research scores read from Opportunity Intelligence — never redefined
+- Structured logs never include symbols, quantities, cost basis, or PII
+- All endpoints user-isolated (cross-user → 404)
+
+### Env / Config Impact
+
+None. Read-only intelligence reads + 2 new DB tables (auto-created on startup).
+
+### Excluded from Sprint 2.6.0
+
+Portfolio Intelligence scoring, rebalancing, goal planning, tax optimization, trade recommendations, automated execution, portfolio AI conversations, new broker integrations, scheduled reports.
+
+---
+
 ## Sprint 2.5.5 — Research Reports & Publishing (2026-08-09)
 
 **Purpose:** Build a reusable Research Report Engine that converts existing deterministic intelligence into professional research reports. No rescanning, no reranking, no new market-data fetches.

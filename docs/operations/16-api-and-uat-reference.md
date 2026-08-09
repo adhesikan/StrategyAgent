@@ -1632,6 +1632,191 @@ Appears immediately above the Confirm Import button on all import flows:
 
 ---
 
+## Portfolio History & Change Intelligence (Sprint 2.6.0)
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/portfolio/:id/history` | ✓ | Portfolio snapshot timeline |
+| GET | `/api/portfolio/:id/changes` | ✓ | Deterministic change classification |
+| POST | `/api/portfolio/:id/snapshot` | ✓ | Manually capture a snapshot |
+
+### GET /api/portfolio/:id/history
+
+**Query params:**
+```
+?period=7D|30D|90D|YTD|1Y|ALL   (default: 30D)
+```
+
+**Response:**
+```json
+{
+  "portfolioId": "port-uuid",
+  "period": "30D",
+  "snapshots": [
+    {
+      "id": "snap-...",
+      "snapshotDate": "2026-08-09",
+      "capturedAt": "2026-08-09T10:00:00.000Z",
+      "sourceType": "broker_sync",
+      "totalMarketValue": 127400.00,
+      "totalCostBasis": 118200.00,
+      "positionCount": 8,
+      "coverage": { "positionsTotal": 8, "positionsWithMarketData": 7, "coveragePercent": 87 }
+    }
+  ],
+  "count": 4,
+  "disclaimer": "Portfolio history is provided for research and analytics purposes and does not constitute investment advice."
+}
+```
+
+### GET /api/portfolio/:id/changes
+
+**Query params:**
+```
+?from=<snapshotId>   (optional — defaults to snapshot before latest)
+?to=<snapshotId>     (optional — defaults to latest snapshot)
+```
+
+**Response key structure:**
+```json
+{
+  "changes": {
+    "portfolioId": "...",
+    "summary": { "fromSnapshotId", "toSnapshotId", "fromDate", "toDate", "valueChange", "valueChangePercent", "previousValue", "currentValue", "costBasisChange", "positionCountChange", "previousPositionCount", "currentPositionCount" },
+    "addedPositions": [{ "symbol", "changeType": "NEW", "previousQuantity": null, "currentQuantity", "quantityDelta", "previousMarketValue", "currentMarketValue", "marketValueDelta", "sector", "themes" }],
+    "exitedPositions": [...],
+    "increasedPositions": [...],
+    "reducedPositions": [...],
+    "unchangedPositions": [...],
+    "researchStrengthened": [{ "symbol", "changeType": "RESEARCH_STRENGTHENED", "previousScore", "currentScore", "scoreDelta", "previousTechScore", "currentTechScore", "sector" }],
+    "researchWeakened": [...],
+    "newlyQualified": [...],
+    "noLongerQualified": [...],
+    "sectorChanges": [{ "name", "changeType": "SECTOR_EXPOSURE_INCREASED", "previousPercent", "currentPercent", "percentDelta" }],
+    "themeChanges": [...],
+    "dataFreshness": { "fromSnapshotAt", "toSnapshotAt", "institutionalDataNote" },
+    "coverage": { "positionsTotal", "positionsWithMarketData", "positionsWithOpportunityIntelligence", "coveragePercent" },
+    "limitations": []
+  },
+  "disclaimer": "Portfolio change information is provided for research and analytics purposes and does not constitute investment advice."
+}
+```
+
+**Errors:**
+- `404` — Portfolio not found, or fewer than 2 snapshots exist
+
+### POST /api/portfolio/:id/snapshot
+
+**Response (201 — new):**
+```json
+{ "ok": true, "snapshotId": "snap-...", "skipped": false, "message": "...", "durationMs": 85 }
+```
+
+**Response (200 — deduplicated):**
+```json
+{ "ok": true, "snapshotId": null, "skipped": true, "message": "Identical snapshot captured in last 30 minutes...", "durationMs": 12 }
+```
+
+### UAT Checklist — Portfolio History (Sprint 2.6.0)
+
+**Snapshot capture:**
+```
+□ Import portfolio (CSV/XLSX) → server log shows portfolio_snapshot_completed
+□ Broker sync completes → server log shows portfolio_snapshot_completed
+□ Add a position manually → server log shows portfolio_snapshot_completed
+□ Edit a position manually → server log shows portfolio_snapshot_completed
+□ Delete a position manually → server log shows portfolio_snapshot_completed
+□ POST /api/portfolio/:id/snapshot → returns 201 with snapshotId
+□ POST again immediately → returns 200 with skipped=true (deduplication)
+□ Wait 30 min → POST again → returns 201 (new snapshot)
+```
+
+**History tab:**
+```
+□ /portfolio shows "History" tab after at least 1 snapshot
+□ History tab loads without error
+□ Snapshots listed in reverse chronological order
+□ Each card shows: date, source type badge, total market value, position count, coverage
+□ "Capture Snapshot" button appears in History tab
+□ Period selector changes the list (7D, 30D, 90D, ALL)
+□ Empty state shown when no snapshots exist yet
+```
+
+**Changes view:**
+```
+□ At least 2 snapshots → "View Changes" button appears
+□ GET /api/portfolio/:id/changes returns 200
+□ "What Changed?" summary shows value change and position count change
+□ Added positions (NEW) are listed with current quantity
+□ Exited positions (EXITED) are listed with previous quantity
+□ Increased positions (INCREASED) show quantity delta
+□ Reduced positions (REDUCED) show quantity delta (negative)
+□ Unchanged positions (UNCHANGED) show quantity delta = 0
+□ Market value change for UNCHANGED position is tracked separately from quantity change
+□ Research Strengthened section shows symbols with score increase ≥ 2
+□ Research Weakened section shows symbols with score decrease ≥ 2
+□ Newly Qualified shows symbols that appeared in Opportunity Intelligence
+□ No Longer Qualified shows symbols that left Opportunity Intelligence
+□ Sector exposure changes listed (Technology +2.8%, etc.)
+□ Theme exposure changes listed (ai-infrastructure +3.1%, etc.)
+□ Data freshness shown (fromSnapshot date, toSnapshot date)
+□ 13F institutional data delay note visible
+□ Limitations listed when market data is unavailable
+□ Compliance disclaimer visible at bottom
+```
+
+**Missing data handling:**
+```
+□ Position with no reference price shows market value as "—" (not $0)
+□ Position with no Opportunity Intelligence shows research score as "—" (not 0)
+□ Total portfolio value shows "—" when all reference prices unavailable
+□ Coverage section shows correct counts (positionsWithMarketData, etc.)
+```
+
+**User isolation:**
+```
+□ User A cannot access User B's portfolio history (404 returned)
+□ User A cannot access User B's snapshots via ?from=&to= params (404 returned)
+□ No error message reveals whether portfolio ID exists for another user
+```
+
+**Platform health:**
+```
+□ GET /api/admin/platform-health includes portfolioHistory key
+□ portfolioHistory.status = "HEALTHY"
+□ portfolioHistory.details.portfoliosTracked is numeric
+□ portfolioHistory.details.snapshotsTotal is numeric
+□ portfolioHistory.details.storageHealth = "ok"
+□ action field suggests /portfolio when snapshotsTotal = 0
+□ No portfolio holdings or symbols appear in health response
+```
+
+**Compliance:**
+```
+□ No "you bought" in any API response
+□ No "you sold" in any API response
+□ No "recommendation" in any response
+□ No "strong buy" in any response
+□ "Position Increased" language used (not "You bought more")
+□ "Position Reduced" language used (not "You sold some")
+□ Disclaimer present on /api/portfolio/:id/history response
+□ Disclaimer present on /api/portfolio/:id/changes response
+□ 13F disclosure present in dataFreshness when changes include institutional evidence
+```
+
+**Structured logging:**
+```
+□ Server logs show portfolio_snapshot_completed with aggregate counts
+□ portfolio_snapshot_completed log does NOT contain symbols array
+□ portfolio_snapshot_completed log does NOT contain quantities
+□ portfolio_snapshot_completed log does NOT contain cost basis
+□ portfolio_change_computed log shows only aggregate counts
+```
+
+---
+
 ## Research Reports & Publishing (Sprint 2.5.5)
 
 ### API Endpoints

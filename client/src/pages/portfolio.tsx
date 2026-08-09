@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Plus, Upload, Link2, Trash2, Pencil, Check, X,
@@ -7,7 +7,8 @@ import {
   CheckCircle2, Shield, Clock, Lock, BarChart2, Layers,
   Building2, FlaskConical, Activity, Target, Search,
   Cpu, PieChart, AlertCircle, BookOpen, HelpCircle,
-  FileSpreadsheet, Camera, FileText,
+  FileSpreadsheet, Camera, FileText, History, Camera as CameraIcon,
+  ArrowUp, ArrowDown, Minus, CircleDot, LogOut,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -764,6 +765,409 @@ function IntelligencePlaceholders() {
 // Portfolio detail view
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Portfolio History types (Sprint 2.6.0)
+// ---------------------------------------------------------------------------
+
+interface SnapshotCard {
+  id:               string;
+  snapshotDate:     string;
+  capturedAt:       string;
+  sourceType:       string;
+  totalMarketValue: number | null;
+  positionCount:    number;
+  coverage:         { positionsTotal: number; positionsWithMarketData: number; coveragePercent: number };
+}
+
+interface PortfolioHistoryResponse {
+  portfolioId: string;
+  period:      string;
+  snapshots:   SnapshotCard[];
+  count:       number;
+  disclaimer:  string;
+}
+
+interface PositionChangeItem {
+  symbol:           string;
+  changeType:       string;
+  previousQuantity: number | null;
+  currentQuantity:  number | null;
+  quantityDelta:    number | null;
+  marketValueDelta: number | null;
+  sector:           string | null;
+}
+
+interface ExposureChangeItem {
+  name:           string;
+  changeType:     string;
+  percentDelta:   number | null;
+  previousPercent: number | null;
+  currentPercent:  number | null;
+}
+
+interface ResearchChangeItem {
+  symbol:        string;
+  changeType:    string;
+  previousScore: number | null;
+  currentScore:  number | null;
+  scoreDelta:    number | null;
+  sector:        string | null;
+}
+
+interface PortfolioChanges {
+  summary: {
+    fromDate:              string;
+    toDate:                string;
+    valueChange:           number | null;
+    valueChangePercent:    number | null;
+    previousValue:         number | null;
+    currentValue:          number | null;
+    positionCountChange:   number;
+    previousPositionCount: number;
+    currentPositionCount:  number;
+  };
+  addedPositions:       PositionChangeItem[];
+  exitedPositions:      PositionChangeItem[];
+  increasedPositions:   PositionChangeItem[];
+  reducedPositions:     PositionChangeItem[];
+  researchStrengthened: ResearchChangeItem[];
+  researchWeakened:     ResearchChangeItem[];
+  newlyQualified:       ResearchChangeItem[];
+  noLongerQualified:    ResearchChangeItem[];
+  sectorChanges:        ExposureChangeItem[];
+  themeChanges:         ExposureChangeItem[];
+  limitations:          string[];
+  dataFreshness:        { fromSnapshotAt: string; toSnapshotAt: string; institutionalDataNote: string };
+}
+
+interface PortfolioChangesResponse {
+  changes:    PortfolioChanges;
+  disclaimer: string;
+}
+
+// Source type labels
+function sourceTypeLabel(t: string): string {
+  const map: Record<string, string> = {
+    manual_import:   "CSV Import",
+    xlsx_import:     "Excel Import",
+    image_import:    "Screenshot Import",
+    pdf_import:      "PDF Import",
+    broker_sync:     "Broker Sync",
+    manual_snapshot: "Manual Capture",
+    position_change: "Position Change",
+  };
+  return map[t] ?? t;
+}
+
+function fmtPct(v: number | null): string {
+  if (v == null) return "—";
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(1)}%`;
+}
+
+function fmtQtyDelta(v: number | null): string {
+  if (v == null) return "—";
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${Number(v).toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
+}
+
+// Change type icon + colour
+function PositionChangeIcon({ type }: { type: string }) {
+  if (type === "NEW")       return <ArrowUp   className="h-3.5 w-3.5 text-green-500"  aria-hidden="true" />;
+  if (type === "INCREASED") return <ArrowUp   className="h-3.5 w-3.5 text-blue-500"   aria-hidden="true" />;
+  if (type === "EXITED")    return <LogOut    className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />;
+  if (type === "REDUCED")   return <ArrowDown className="h-3.5 w-3.5 text-amber-500"  aria-hidden="true" />;
+  return <Minus className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />;
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio History tab (Sprint 2.6.0)
+// ---------------------------------------------------------------------------
+
+function PortfolioHistoryTab({ portfolioId }: { portfolioId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [period, setPeriod] = useState<string>("30D");
+  const [showChanges, setShowChanges] = useState(false);
+
+  const { data: historyData, isLoading: historyLoading } = useQuery<PortfolioHistoryResponse>({
+    queryKey: [`/api/portfolio/${portfolioId}/history`, period],
+    queryFn: () =>
+      fetch(`/api/portfolio/${portfolioId}/history?period=${period}`)
+        .then(r => r.json()),
+  });
+
+  const { data: changesData, isLoading: changesLoading } = useQuery<PortfolioChangesResponse>({
+    queryKey: [`/api/portfolio/${portfolioId}/changes`],
+    queryFn:  () =>
+      fetch(`/api/portfolio/${portfolioId}/changes`).then(r => {
+        if (!r.ok) return null;
+        return r.json();
+      }),
+    enabled: showChanges,
+  });
+
+  const captureSnapshot = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/portfolio/${portfolioId}/snapshot`, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).error ?? "Failed");
+      return r.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/portfolio/${portfolioId}/history`] });
+      toast({
+        title: data.skipped ? "Snapshot already current" : "Snapshot captured",
+        description: data.skipped
+          ? "An identical snapshot was captured in the last 30 minutes."
+          : `Portfolio state saved successfully.`,
+      });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const snapshots = historyData?.snapshots ?? [];
+  const changes   = changesData?.changes;
+
+  const PERIODS = ["7D", "30D", "90D", "YTD", "1Y", "ALL"];
+
+  return (
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-1 flex-wrap" role="group" aria-label="History period">
+          {PERIODS.map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                period === p
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+              aria-pressed={period === p}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => captureSnapshot.mutate()}
+          disabled={captureSnapshot.isPending}
+          aria-label="Capture portfolio snapshot"
+        >
+          <CircleDot className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+          {captureSnapshot.isPending ? "Capturing…" : "Capture Snapshot"}
+        </Button>
+      </div>
+
+      {/* Snapshot timeline */}
+      {historyLoading ? (
+        <div className="flex justify-center py-8">
+          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading history…" />
+        </div>
+      ) : snapshots.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center space-y-2">
+          <History className="h-8 w-8 text-muted-foreground mx-auto" aria-hidden="true" />
+          <p className="text-sm font-medium">No portfolio snapshots yet</p>
+          <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+            Snapshots are captured automatically after imports, broker syncs, and position changes.
+            Click "Capture Snapshot" to create one now.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">{snapshots.length} snapshot{snapshots.length !== 1 ? "s" : ""} in {period}</p>
+            {snapshots.length >= 2 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={() => setShowChanges(v => !v)}
+              >
+                {showChanges ? "Hide Changes" : "View Changes"}
+              </Button>
+            )}
+          </div>
+
+          {/* Snapshot cards */}
+          <ol className="space-y-2" role="list">
+            {snapshots.map(snap => (
+              <li key={snap.id} role="listitem">
+                <div className="rounded-lg border bg-card p-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">
+                        {new Date(snap.capturedAt).toLocaleString("en-US", {
+                          month: "short", day: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </span>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {sourceTypeLabel(snap.sourceType)}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{snap.positionCount} position{snap.positionCount !== 1 ? "s" : ""}</span>
+                      <span>{fmtCurrency(snap.totalMarketValue)}</span>
+                      <span className="text-[10px]">{snap.coverage.coveragePercent}% priced</span>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* "What Changed?" section */}
+      {showChanges && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
+            <h3 className="text-sm font-semibold">What Changed?</h3>
+          </div>
+
+          {changesLoading ? (
+            <div className="flex justify-center py-4">
+              <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : !changes ? (
+            <p className="text-xs text-muted-foreground">
+              At least two snapshots are needed to compare changes.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Summary strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { label: "Portfolio Value", value: fmtCurrency(changes.summary.currentValue), sub: changes.summary.valueChange !== null ? `${fmtPct(changes.summary.valueChangePercent)} change` : "—" },
+                  { label: "Positions", value: String(changes.summary.currentPositionCount), sub: `${fmtQtyDelta(changes.summary.positionCountChange)} from previous` },
+                  { label: "New Positions", value: String(changes.addedPositions.length), sub: changes.addedPositions.map(p => p.symbol).join(", ") || "None" },
+                  { label: "Research Changes", value: String(changes.researchStrengthened.length + changes.researchWeakened.length), sub: `${changes.researchStrengthened.length} improved · ${changes.researchWeakened.length} weakened` },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} className="rounded-lg border bg-muted/30 p-2.5 space-y-0.5">
+                    <p className="text-[10px] text-muted-foreground">{label}</p>
+                    <p className="text-sm font-semibold">{value}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Position changes */}
+              {(changes.addedPositions.length + changes.exitedPositions.length +
+                changes.increasedPositions.length + changes.reducedPositions.length) > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Position Changes</p>
+                  <div className="space-y-1">
+                    {[...changes.addedPositions, ...changes.exitedPositions,
+                       ...changes.increasedPositions, ...changes.reducedPositions].map(p => (
+                      <div key={`${p.symbol}-${p.changeType}`} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-muted/30 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <PositionChangeIcon type={p.changeType} />
+                          <span className="font-mono font-medium">{p.symbol}</span>
+                          {p.sector && <span className="text-muted-foreground text-[10px]">{p.sector}</span>}
+                        </div>
+                        <span className="text-muted-foreground shrink-0">
+                          {p.changeType === "NEW" ? `+${fmtNumber(p.currentQuantity)} shares`
+                            : p.changeType === "EXITED" ? `−${fmtNumber(p.previousQuantity)} shares`
+                            : fmtQtyDelta(p.quantityDelta) + " shares"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Research evidence changes */}
+              {(changes.researchStrengthened.length + changes.researchWeakened.length +
+                changes.newlyQualified.length + changes.noLongerQualified.length) > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Research Evidence</p>
+                  <div className="space-y-1">
+                    {[
+                      ...changes.researchStrengthened.map(r => ({ ...r, _label: "Strengthened", _color: "text-green-600" })),
+                      ...changes.researchWeakened.map(r => ({ ...r, _label: "Weakened", _color: "text-amber-600" })),
+                      ...changes.newlyQualified.map(r => ({ ...r, _label: "Newly Qualified", _color: "text-blue-600" })),
+                      ...changes.noLongerQualified.map(r => ({ ...r, _label: "No Longer Qualified", _color: "text-destructive" })),
+                    ].map(r => (
+                      <div key={`${r.symbol}-${r.changeType}`} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-muted/30 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-medium text-[10px] ${r._color}`}>{r._label}</span>
+                          <span className="font-mono font-medium">{r.symbol}</span>
+                        </div>
+                        {r.scoreDelta !== null && (
+                          <span className="text-muted-foreground shrink-0">
+                            Score {fmtQtyDelta(r.scoreDelta)} pts
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Exposure changes */}
+              {changes.sectorChanges.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sector Exposure Changes</p>
+                  <div className="space-y-1">
+                    {changes.sectorChanges.map(e => (
+                      <div key={e.name} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-muted/30 text-xs">
+                        <span className="font-medium">{e.name}</span>
+                        <span className={`shrink-0 ${(e.percentDelta ?? 0) > 0 ? "text-blue-600" : "text-amber-600"}`}>
+                          {fmtPct(e.percentDelta)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Limitations */}
+              {changes.limitations.length > 0 && (
+                <div className="rounded-lg bg-muted/40 border px-3 py-2 space-y-0.5">
+                  {changes.limitations.map(l => (
+                    <p key={l} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                      <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" aria-hidden="true" /> {l}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* Data freshness */}
+              <div className="text-[11px] text-muted-foreground space-y-0.5 pt-1 border-t">
+                <p>Comparing: {new Date(changes.dataFreshness.fromSnapshotAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} → {new Date(changes.dataFreshness.toSnapshotAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                <p>{changes.dataFreshness.institutionalDataNote}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Compliance disclaimer */}
+          {changesData?.disclaimer && (
+            <p className="text-[11px] text-muted-foreground/60 italic border-t pt-2">
+              {changesData.disclaimer}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Compliance disclaimer */}
+      {historyData?.disclaimer && snapshots.length > 0 && (
+        <p className="text-[11px] text-muted-foreground/60 italic border-t pt-2">
+          {historyData.disclaimer}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio detail view
+// ---------------------------------------------------------------------------
+
 function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -773,6 +1177,7 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
   const [deletingPos, setDeletingPos] = useState<EnrichedPosition | undefined>();
   const [editingName, setEditingName] = useState(false);
   const [nameValue,   setNameValue]   = useState(portfolio.name);
+  const [activeTab,   setActiveTab]   = useState<"holdings" | "history">("holdings");
 
   const { data, isLoading } = useQuery<PositionsResponse>({
     queryKey: [`/api/portfolio/${portfolio.id}/positions`],
@@ -908,7 +1313,32 @@ function PortfolioDetail({ portfolio }: { portfolio: Portfolio }) {
         </div>
       </div>
 
-      {isLoading ? (
+      {/* Tab switcher */}
+      <div className="flex gap-1 border-b" role="tablist" aria-label="Portfolio sections">
+        {([
+          { id: "holdings", label: "Holdings" },
+          { id: "history",  label: "History",  icon: History },
+        ] as const).map(tab => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -mb-px ${
+              activeTab === tab.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {"icon" in tab && tab.icon ? <tab.icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "history" ? (
+        <PortfolioHistoryTab portfolioId={portfolio.id} />
+      ) : isLoading ? (
         <div className="flex justify-center py-12">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading positions…" />
         </div>

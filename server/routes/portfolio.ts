@@ -35,6 +35,7 @@ import {
   MAX_PDF_PAGES,
 } from "../services/portfolio-document-extractor";
 import { getReferenceSnapshotsBulk } from "../services/daily-market-data/reference-snapshot";
+import { triggerSnapshotAsync } from "../services/portfolio-history-service";
 
 // ---------------------------------------------------------------------------
 // Multer instances — memory storage only (no disk writes)
@@ -318,6 +319,8 @@ export function registerPortfolioRoutes(
         currency:     "USD",
         sourceType:   "manual",
       }).returning();
+      // Sprint 2.6.0 — snapshot after position change (fire-and-forget)
+      triggerSnapshotAsync(req.params.id, userId, "position_change");
       res.status(201).json(created);
     } catch (err) {
       console.error("[portfolio] add position error:", err);
@@ -372,6 +375,8 @@ export function registerPortfolioRoutes(
           eq(portfolioPositions.portfolioId, req.params.id),
         ))
         .returning();
+      // Sprint 2.6.0 — snapshot after position change (fire-and-forget)
+      triggerSnapshotAsync(req.params.id, userId, "position_change");
       res.json(updated);
     } catch (err) {
       console.error("[portfolio] edit position error:", err);
@@ -395,6 +400,8 @@ export function registerPortfolioRoutes(
         ))
         .returning();
       if (!deleted.length) return res.status(404).json({ error: "Position not found" });
+      // Sprint 2.6.0 — snapshot after position removed (fire-and-forget)
+      triggerSnapshotAsync(req.params.id, userId, "position_change");
       res.json({ ok: true });
     } catch (err) {
       console.error("[portfolio] delete position error:", err);
@@ -738,6 +745,9 @@ export function registerPortfolioRoutes(
       }));
 
       await db.insert(portfolioPositions).values(rows);
+
+      // Sprint 2.6.0 — trigger portfolio history snapshot (fire-and-forget)
+      triggerSnapshotAsync(targetPortfolio.id, userId, `${session.sourceType}_import` as any);
 
       res.status(201).json({
         ok:             true,

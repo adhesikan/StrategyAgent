@@ -1,0 +1,2007 @@
+# Sprint 2.6.3 — Opportunity Workspace v2
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Research Experience Enhancement
+
+CURRENT SPRINT:
+2.6.3 — Opportunity Workspace v2
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections & Watchlists
+✓ AI Research Workspace
+✓ Market Research Command Center
+✓ Research Transparency & Central Research Glossary
+✓ Continuous Research Monitoring
+✓ Research Reports & Publishing
+✓ Portfolio History & Change Intelligence
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Platform Operations Center
+
+==============================================================================
+PRODUCT PRINCIPLE
+==============================================================================
+
+VCP Trader AI is RESEARCH-FIRST.
+
+The Opportunity Workspace should become the single best place in the product to understand one security.
+
+It should answer:
+
+Why is this security currently relevant?
+
+What evidence supports it?
+
+What changed?
+
+Where is evidence strengthening or weakening?
+
+What are the risks?
+
+What would invalidate the thesis?
+
+How does the sector/theme context look?
+
+What institutional evidence exists?
+
+What related research exists?
+
+How fresh is the data?
+
+What should I research next?
+
+It must NOT answer:
+
+"What should I buy?"
+
+"What should I sell?"
+
+"What trade should I place?"
+
+Trade construction belongs to the future Trade Planning phase.
+
+==============================================================================
+ROADMAP DISCIPLINE
+==============================================================================
+
+DO NOT implement:
+
+- Trade Construction Engine
+- Option leg construction
+- Order tickets
+- Broker execution
+- Automated trading
+- Portfolio recommendations
+- Rebalancing
+- Goal planning
+- Tax optimization
+- Alerts / notifications
+- New AI agents
+- RIA customization
+- Institutional customization
+- Enterprise customization
+
+DO NOT change:
+
+- scanner logic
+- ranking formulas
+- Opportunity Intelligence scoring
+- research score methodology
+- risk score semantics
+- qualification thresholds
+- theme/sector methodology
+- portfolio intelligence formulas
+
+This sprint is a RESEARCH EXPERIENCE sprint.
+
+==============================================================================
+OBJECTIVE
+==============================================================================
+
+Upgrade:
+
+/opportunities/:symbol
+
+into the flagship single-security research workspace.
+
+The page must aggregate existing intelligence without duplicating business logic.
+
+It should become the canonical research destination for:
+
+Dashboard
+
+Command Center
+
+Collections
+
+Research Monitor
+
+Research Reports
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+AI Research Workspace
+
+Future Trade Planning
+
+==============================================================================
+1. ARCHITECTURE AUDIT FIRST
+==============================================================================
+
+Before coding inspect:
+
+client/src/pages/opportunity-workspace.tsx
+
+server/routes/opportunity-workspace.ts
+
+Opportunity Intelligence service
+
+CanonicalOpportunity type
+
+Opportunity History
+
+Change Intelligence Engine
+
+Research Glossary
+
+Research Collections
+
+Research Monitoring
+
+Research Reports
+
+AI Research Workspace
+
+Market Intelligence
+
+Sector Intelligence
+
+Theme Intelligence
+
+Institutional signal services
+
+13F fund/holder APIs
+
+market_data_symbols
+
+existing charts
+
+existing technical-analysis payloads
+
+existing fundamentals
+
+existing earnings/event data
+
+existing options metadata if any
+
+portfolio intelligence cross-links
+
+Operations Manual
+
+Report:
+
+A. Current workspace sections
+B. Existing APIs used
+C. Existing evidence already available
+D. Missing data that would require new retrieval
+E. Duplicate logic to avoid
+F. Current page load/API count
+G. Existing cross-links
+H. Current performance
+
+Do not code until audit is complete.
+
+==============================================================================
+2. WORKSPACE DESIGN
+==============================================================================
+
+The workspace should be information-dense but understandable.
+
+Recommended top-level structure:
+
+Header
+
+Research Snapshot
+
+Why This Qualified
+
+What Changed
+
+Research Evidence
+
+Technical
+
+Fundamental
+
+Institutional
+
+Sector & Theme Context
+
+Risk & Thesis Invalidation
+
+History
+
+Related Research
+
+Monitoring & Collections
+
+AI Research
+
+Future Trade Planning Handoff
+
+Do not create a cluttered wall of cards.
+
+Use progressive disclosure.
+
+==============================================================================
+3. HEADER
+==============================================================================
+
+Sticky header should show:
+
+Ticker
+
+Company Name
+
+Exchange if available
+
+Sector
+
+Industry
+
+Primary Themes
+
+Opportunity Type
+
+Research Score
+
+Evidence Confidence
+
+Risk Level
+
+Market Regime
+
+Last Updated
+
+ResearchDefinitionTooltip support for every score/badge.
+
+Buttons:
+
+Open AI Research
+
+Add to Collection
+
+Monitor
+
+View Reports
+
+No trade/order buttons.
+
+==============================================================================
+4. RESEARCH SNAPSHOT
+==============================================================================
+
+Create a concise summary card.
+
+Show:
+
+Current research classification
+
+Research Score
+
+Technical Score
+
+Fundamental Score
+
+Institutional Score
+
+Risk Profile
+
+Evidence Confidence
+
+Time Horizon
+
+Latest Change Direction
+
+Data Freshness
+
+Example:
+
+Research Candidate:
+Growth Candidate
+
+Research Score:
+78
+
+Evidence Confidence:
+High
+
+Market Context:
+Bullish Regime
+
+Research Trend:
+Strengthening
+
+Keep terminology compliant.
+
+==============================================================================
+5. WHY THIS QUALIFIED
+==============================================================================
+
+Enhance existing deterministic panel.
+
+Use only:
+
+primaryEvidence[]
+
+secondaryEvidence[]
+
+riskFactors[]
+
+invalidatesThesis[]
+
+Do not generate evidence with AI.
+
+Group evidence:
+
+Primary Reasons
+
+Supporting Context
+
+Warnings
+
+Thesis Invalidation
+
+Each item should identify source category where available:
+
+Technical
+
+Fundamental
+
+Institutional
+
+Sector
+
+Theme
+
+Market
+
+==============================================================================
+6. WHAT CHANGED
+==============================================================================
+
+Consume Change Intelligence.
+
+Show:
+
+Research Score delta
+
+Technical delta
+
+Fundamental delta
+
+Institutional delta
+
+Risk change
+
+Qualification change
+
+Category change
+
+Market regime change
+
+Theme change
+
+Sector change
+
+Primary drivers
+
+If unchanged:
+
+show:
+
+"No material research change since the previous snapshot."
+
+Do not manufacture change.
+
+==============================================================================
+7. RESEARCH EVIDENCE MATRIX
+==============================================================================
+
+Create a compact matrix.
+
+Rows:
+
+Technical
+
+Fundamental
+
+Institutional
+
+Sector
+
+Theme
+
+Market Regime
+
+Risk
+
+Columns:
+
+Score / State
+
+Direction
+
+Confidence
+
+Freshness
+
+Evidence Count
+
+Example:
+
+Technical
+82
+↑ Improving
+High
+12m ago
+4 evidence items
+
+Use existing data only.
+
+==============================================================================
+8. TECHNICAL RESEARCH
+==============================================================================
+
+Show:
+
+Strategy
+
+Pattern
+
+Stage
+
+Trend
+
+Technical Score
+
+Relative strength if available
+
+Volume behavior
+
+Support
+
+Resistance
+
+Pivot
+
+Volatility contraction
+
+Recent technical changes
+
+Warnings
+
+Use existing technical engine output.
+
+No new technical calculations unless already part of existing service.
+
+==============================================================================
+9. FUNDAMENTAL RESEARCH
+==============================================================================
+
+Show available evidence such as:
+
+Revenue growth
+
+EPS / earnings trends
+
+Profitability
+
+Cash flow
+
+Balance sheet
+
+Margins
+
+Valuation context if existing
+
+Fundamental Score
+
+Evidence coverage
+
+Data freshness
+
+If fundamentals unavailable:
+
+show clear partial state.
+
+Do not treat unavailable as zero.
+
+==============================================================================
+10. INSTITUTIONAL RESEARCH
+==============================================================================
+
+Show existing institutional evidence:
+
+Institutional Score
+
+Signal label
+
+Manager counts
+
+New positions
+
+Increased positions
+
+Reduced positions
+
+Exited positions
+
+Trend
+
+Data Confidence
+
+Top relevant managers if existing
+
+13F disclosure must remain visible:
+
+"SEC Form 13F data is delayed and does not represent real-time institutional positions."
+
+No "Smart Money" language.
+
+==============================================================================
+11. SECTOR CONTEXT
+==============================================================================
+
+Show:
+
+Sector name
+
+Sector score
+
+Sector direction
+
+Sector rank if existing
+
+Recent sector change
+
+Leading/weakening state
+
+Related sector candidates
+
+Link:
+
+Open Sector Research
+
+Do not recalculate sector intelligence.
+
+==============================================================================
+12. THEME CONTEXT
+==============================================================================
+
+Show all themes containing symbol.
+
+For each:
+
+Theme
+
+Score
+
+Direction
+
+Recent change
+
+Leadership state
+
+Related candidates
+
+Link:
+
+Open Theme Research
+
+Do not assign themes dynamically outside existing registry.
+
+==============================================================================
+13. MARKET REGIME CONTEXT
+==============================================================================
+
+Show:
+
+Current Market Regime
+
+Regime score / state if existing
+
+How regime affects interpretation of current evidence
+
+Use deterministic explanatory text.
+
+Example:
+
+"Current market regime is supportive of growth-oriented research candidates."
+
+Avoid prescriptive wording.
+
+==============================================================================
+14. RISK RESEARCH
+==============================================================================
+
+Create transparent risk section.
+
+Use existing:
+
+riskLevel
+
+riskFactors[]
+
+earnings/event notes
+
+liquidity
+
+volatility
+
+gap risk
+
+technical invalidation
+
+Do not create suitability analysis.
+
+Use:
+
+Observed Risk
+
+Risk Factor
+
+Research Consideration
+
+Avoid:
+
+Too Risky
+
+Safe
+
+Suitable
+
+Unsuitable
+
+==============================================================================
+15. THESIS INVALIDATION
+==============================================================================
+
+This is critical.
+
+Show:
+
+What Would Invalidate This Thesis
+
+Use existing invalidatesThesis[].
+
+Examples:
+
+Break below support
+
+Loss of trend structure
+
+Fundamental deterioration
+
+Institutional evidence weakens
+
+Theme leadership reverses
+
+Do not invent items.
+
+==============================================================================
+16. HISTORY
+==============================================================================
+
+Expand existing history tab/section.
+
+Show:
+
+Research Score history
+
+Technical Score history
+
+Fundamental Score history
+
+Institutional Score history
+
+Qualification history
+
+Category history
+
+Lifecycle state
+
+Major change markers
+
+Use existing Opportunity History.
+
+No new persistence.
+
+==============================================================================
+17. CHANGE TIMELINE
+==============================================================================
+
+Create a readable chronological timeline.
+
+Example:
+
+Aug 9
+Research Score +6
+Technical evidence strengthened
+
+Aug 7
+New institutional evidence
+
+Aug 5
+Entered Growth Candidate category
+
+Aug 2
+Theme score improved
+
+Only use existing stored changes.
+
+==============================================================================
+18. RELATED RESEARCH
+==============================================================================
+
+Show:
+
+Related Opportunities
+
+Same Sector
+
+Same Theme
+
+Similar Opportunity Type
+
+Similar Research Score range
+
+Recently Improved candidates
+
+Reuse Opportunity Intelligence.
+
+No new recommendation algorithm.
+
+Label:
+
+Related Research
+
+not:
+
+Similar Stocks to Buy
+
+==============================================================================
+19. COLLECTIONS INTEGRATION
+==============================================================================
+
+Show:
+
+Collections containing this symbol
+
+System Collections
+
+User Collections
+
+Followed Collections
+
+Pinned Collections
+
+Allow:
+
+Add to collection
+
+Remove
+
+Open collection
+
+Use existing collection APIs.
+
+Do not create new collection logic.
+
+==============================================================================
+20. MONITORING INTEGRATION
+==============================================================================
+
+Show current monitoring state.
+
+Examples:
+
+Monitoring:
+Active
+
+Last monitored change:
+2h ago
+
+Recent research changes:
+3
+
+Allow:
+
+Monitor
+
+Stop Monitoring
+
+Open Research Monitor
+
+Reuse Sprint 2.5.4 services.
+
+Do not add alerts.
+
+==============================================================================
+21. REPORTS INTEGRATION
+==============================================================================
+
+Show relevant reports containing:
+
+symbol
+
+sector
+
+theme
+
+opportunity type
+
+If report symbol indexing is not efficient:
+
+use existing search capability.
+
+Do not create new DB indexing unless necessary and justified.
+
+Show:
+
+Latest Reports
+
+Open
+
+Continue Research
+
+==============================================================================
+22. AI RESEARCH WORKSPACE INTEGRATION
+==============================================================================
+
+Create contextual actions:
+
+Explain This Candidate
+
+Challenge This Thesis
+
+Explain What Changed
+
+Compare With Another Candidate
+
+Explain Institutional Evidence
+
+Explain Risk Factors
+
+Open existing:
+
+/research-workspace
+
+with symbol/context preselected if supported.
+
+Do not create another AI chat.
+
+==============================================================================
+23. AI RESPONSE CONTRACT
+==============================================================================
+
+AI may:
+
+summarize
+
+explain
+
+compare
+
+challenge
+
+clarify evidence
+
+AI may NOT:
+
+invent scores
+
+invent candidates
+
+change qualification
+
+recommend buy/sell
+
+create trades
+
+provide target price
+
+re-rank opportunities
+
+Use canonical Research Glossary definitions.
+
+==============================================================================
+24. PORTFOLIO CONTEXT
+==============================================================================
+
+If the authenticated user owns this symbol in a portfolio:
+
+show small contextual card:
+
+Owned in:
+Retirement Portfolio
+
+Portfolio Weight:
+8.2%
+
+Research Status:
+Qualified Candidate
+
+Recent Research Change:
+Strengthening
+
+Link:
+
+Open Portfolio Intelligence
+
+Do not show portfolio context if not owned.
+
+Do not require portfolio.
+
+Users without portfolios get full Opportunity Workspace value.
+
+==============================================================================
+25. FUTURE TRADE PLANNING HANDOFF
+==============================================================================
+
+Do NOT construct trades.
+
+Instead expose a small research-only section:
+
+Potential Research Expression
+
+Possible future research paths:
+
+Equity Research
+
+Options Research
+
+Income Strategy Research
+
+Defined-Risk Research
+
+Only if existing opportunity type supports it.
+
+Label:
+
+"Trade Planning capabilities are part of a future workflow."
+
+Do NOT show strikes.
+
+Do NOT show expiration.
+
+Do NOT show max gain/loss.
+
+Do NOT construct orders.
+
+This is only a future handoff contract.
+
+==============================================================================
+26. STOCK VS OPTIONS TERMINOLOGY
+==============================================================================
+
+Use compliant labels:
+
+Equity Research Candidate
+
+Stock Research Candidate
+
+Options Research Candidate
+
+Income Strategy Candidate
+
+Covered Call Candidate
+
+Cash-Secured Put Candidate
+
+Defined-Risk Strategy Candidate
+
+Avoid:
+
+Trade Now
+
+Best Trade
+
+Recommended Trade
+
+Buy Candidate
+
+Options Pick
+
+==============================================================================
+27. DATA FRESHNESS
+==============================================================================
+
+Each major section must expose freshness where meaningful:
+
+Ranking
+
+Technical
+
+Fundamental
+
+Institutional
+
+Sector
+
+Theme
+
+Market Regime
+
+Reports
+
+Monitoring
+
+Use Research Glossary.
+
+Do not show fake timestamps.
+
+==============================================================================
+28. PARTIAL DATA RESILIENCE
+==============================================================================
+
+Every section degrades independently.
+
+Example:
+
+Institutional unavailable
+
+→ Institutional section shows unavailable
+
+Technical still renders.
+
+No entire-page failure.
+
+Use parallel fetches where possible.
+
+Prefer Promise.allSettled for optional services.
+
+==============================================================================
+29. PERFORMANCE CONTRACT
+==============================================================================
+
+Target:
+
+maximum 3–5 server/API calls from page.
+
+Prefer one aggregated workspace endpoint.
+
+Do not create N+1.
+
+Reuse in-memory Opportunity Intelligence snapshot.
+
+Batch related-symbol metadata.
+
+Measure:
+
+cold load
+
+warm load
+
+server endpoint latency
+
+Report actual values.
+
+==============================================================================
+30. SERVER ENDPOINT
+==============================================================================
+
+Prefer extending existing:
+
+GET /api/opportunities/workspace/:symbol
+
+Return consolidated payload.
+
+Suggested:
+
+{
+  symbol,
+  company,
+  opportunity,
+  change,
+  technical,
+  fundamental,
+  institutional,
+  sectorContext,
+  themeContext,
+  regimeContext,
+  history,
+  collections,
+  monitoring,
+  reports,
+  portfolioContext,
+  freshness,
+  limitations
+}
+
+Do not duplicate entire data stores unnecessarily.
+
+==============================================================================
+31. CLIENT ROUTE
+==============================================================================
+
+Keep:
+
+/opportunities/:symbol
+
+This remains canonical.
+
+Do not create:
+
+/opportunity-v2/:symbol
+
+Do not fragment routing.
+
+==============================================================================
+32. NAVIGATION
+==============================================================================
+
+All major research surfaces should prefer:
+
+/opportunities/:symbol
+
+as the canonical single-security research destination.
+
+Audit links from:
+
+Dashboard
+
+Command Center
+
+Research Hub
+
+Collections
+
+Research Monitor
+
+Reports
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+AI Workspace
+
+Update broken/inconsistent symbol links where necessary.
+
+Do not create unrelated navigation changes.
+
+==============================================================================
+33. CENTRAL RESEARCH GLOSSARY
+==============================================================================
+
+Use existing glossary for:
+
+Research Score
+
+Technical
+
+Fundamental
+
+Institutional
+
+Risk
+
+Confidence
+
+Market Regime
+
+Freshness
+
+Candidate Types
+
+Evidence
+
+Invalidates Thesis
+
+Add new terms only when truly necessary.
+
+No duplicate tooltip strings.
+
+==============================================================================
+34. COMPLIANCE
+==============================================================================
+
+Standard disclaimer:
+
+"Opportunity research summarizes deterministic and AI-assisted research evidence for informational and research purposes. It does not constitute investment advice or a recommendation to buy, sell, hold, or enter any particular security or strategy."
+
+AI-assisted only applies where AI summary exists.
+
+Avoid:
+
+Strong Buy
+
+Top Pick
+
+Buy Now
+
+Sell
+
+Target Price
+
+Expected Return
+
+Probability of Winning
+
+Safe Trade
+
+Guaranteed
+
+==============================================================================
+35. USER VALUE / MONETIZATION
+==============================================================================
+
+Document only.
+
+No pricing enforcement.
+
+FREE:
+
+Limited opportunity detail
+
+Basic evidence
+
+Basic score explanation
+
+RETAIL:
+
+Full workspace
+
+History
+
+Institutional context
+
+Collections
+
+Monitoring
+
+Reports
+
+AI research actions
+
+PROFESSIONAL:
+
+Advanced comparisons
+
+Historical research depth
+
+More AI usage
+
+Advanced monitoring
+
+RIA:
+
+Client research workflows
+
+Firm collections
+
+Client-ready research
+
+Institutional:
+
+Shared research
+
+Custom policies
+
+Team workflows
+
+Enterprise:
+
+Custom methodology presentation
+
+Private data
+
+APIs
+
+White-label
+
+Do not artificially degrade current product.
+
+==============================================================================
+36. RESEARCH-FIRST COMMERCIAL EXPERIENCE
+==============================================================================
+
+Every screen should naturally answer:
+
+What value did the user receive?
+
+What deeper research is available?
+
+What could premium unlock later?
+
+Avoid aggressive upsell UI.
+
+If showing locked/upcoming capabilities:
+
+explain benefit.
+
+Do not interrupt research flow.
+
+==============================================================================
+37. PLATFORM REUSABILITY
+==============================================================================
+
+Ensure workspace can later support:
+
+Portfolio Research Workspace
+
+Trade Planning
+
+Trade Construction Engine
+
+Position Monitoring
+
+RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+without duplicating research logic.
+
+==============================================================================
+38. PLATFORM HEALTH
+==============================================================================
+
+Do not create unnecessary new health card.
+
+Extend existing Opportunity Intelligence / Research Platform health if useful.
+
+Possible workspace metrics:
+
+workspaceRequests
+
+averageWorkspaceLatency
+
+partialResponses
+
+failedResponses
+
+lastSuccessfulWorkspaceAt
+
+Do not expose symbols or user research history in admin metrics.
+
+==============================================================================
+39. STRUCTURED LOGGING
+==============================================================================
+
+Safe events:
+
+opportunity_workspace_requested
+
+opportunity_workspace_completed
+
+opportunity_workspace_partial
+
+opportunity_workspace_failed
+
+Safe fields:
+
+durationMs
+
+subsystemsAvailable
+
+evidenceCounts
+
+historyCount
+
+No user PII.
+
+No portfolio values.
+
+No raw AI prompts.
+
+No confidential content.
+
+==============================================================================
+40. CACHE
+==============================================================================
+
+Reuse existing caches.
+
+If workspace aggregation cache needed:
+
+key:
+
+symbol
+ranking generatedAt
+optional userId only for personalized collection/portfolio context
+
+Never share user-personalized context across users.
+
+Document cache invalidation.
+
+==============================================================================
+41. SECURITY
+==============================================================================
+
+Authenticated route if current architecture requires auth.
+
+Portfolio context:
+
+strict user ownership.
+
+Collection context:
+
+strict user ownership.
+
+Saved research:
+
+strict ownership.
+
+Public/non-private company research must not leak private user context.
+
+Add tests.
+
+==============================================================================
+42. ACCESSIBILITY
+==============================================================================
+
+Keyboard navigation.
+
+ARIA tabs.
+
+Tooltips accessible.
+
+Expand/collapse accessible.
+
+Focus management.
+
+Charts include textual equivalent where used.
+
+Mobile/touch support.
+
+==============================================================================
+43. MOBILE
+==============================================================================
+
+Workspace must be usable at 375px.
+
+Sticky header adapts.
+
+Tabs scroll/wrap cleanly.
+
+Evidence cards stack.
+
+No clipped tables.
+
+No hover-only critical information.
+
+==============================================================================
+44. EMPTY STATES
+==============================================================================
+
+Examples:
+
+Not currently ranked:
+
+"This symbol is not present in the latest Opportunity Intelligence snapshot."
+
+No institutional data:
+
+"Institutional evidence is unavailable for this symbol."
+
+No history:
+
+"Research history will appear after multiple ranking cycles."
+
+No reports:
+
+"No related research reports are available yet."
+
+No monitoring:
+
+"This symbol is not currently monitored."
+
+No portfolio:
+
+"No portfolio context is available."
+
+No fake data.
+
+==============================================================================
+45. TESTS
+==============================================================================
+
+Add comprehensive tests.
+
+Target 175+ meaningful assertions.
+
+Cover:
+
+canonical route
+
+header
+
+company name
+
+sector
+
+industry
+
+themes
+
+opportunity type
+
+Research Score
+
+Technical
+
+Fundamental
+
+Institutional
+
+Risk
+
+Confidence
+
+market regime
+
+Why This Qualified
+
+primary evidence
+
+secondary evidence
+
+warnings
+
+invalidates thesis
+
+What Changed
+
+unchanged
+
+research strengthened
+
+research weakened
+
+new qualification
+
+lost qualification
+
+technical section
+
+fundamental partial data
+
+institutional 13F disclosure
+
+sector context
+
+theme context
+
+regime context
+
+risk section
+
+history
+
+change timeline
+
+related opportunities
+
+collections
+
+monitoring
+
+reports
+
+AI actions
+
+portfolio context owned
+
+no portfolio context
+
+future trade handoff has no trade construction
+
+data freshness
+
+partial failure isolation
+
+cache isolation
+
+cross-user ownership
+
+compliance language
+
+no recommendation language
+
+no scoring duplication
+
+no new ranking logic
+
+Glossary usage
+
+mobile/accessibility structure
+
+Operations Manual
+
+Roadmap alignment
+
+==============================================================================
+46. BUILD / TYPECHECK
+==============================================================================
+
+Mandatory:
+
+full test suite
+
+npm run build
+
+npx tsc --noEmit
+
+Zero new TS errors in sprint files.
+
+Do not declare GO based only on dev server.
+
+==============================================================================
+47. PRODUCTION UAT
+==============================================================================
+
+Document:
+
+1. Open ranked symbol from Dashboard.
+2. Verify header.
+3. Verify score tooltips.
+4. Verify Why This Qualified.
+5. Verify What Changed.
+6. Verify Technical.
+7. Verify Fundamental.
+8. Verify Institutional + 13F disclosure.
+9. Verify Sector Context.
+10. Verify Theme Context.
+11. Verify Market Regime.
+12. Verify Risk.
+13. Verify Thesis Invalidation.
+14. Verify History.
+15. Verify Timeline.
+16. Verify Related Research.
+17. Verify Collections.
+18. Verify Monitoring.
+19. Verify Reports.
+20. Verify AI Research actions.
+21. Verify portfolio context when owned.
+22. Verify no portfolio requirement for normal research.
+23. Verify partial subsystem failure.
+24. Verify mobile.
+25. Verify Platform Health.
+26. Verify no unexpected 500s.
+27. Verify no trade construction appears.
+
+==============================================================================
+48. OPERATIONS MANUAL — REQUIRED
+==============================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/25-opportunity-workspace-v2.md
+
+Document:
+
+architecture
+
+aggregated endpoint
+
+data sources
+
+evidence ownership
+
+score ownership
+
+change integration
+
+technical section
+
+fundamental section
+
+institutional section
+
+sector/theme context
+
+history
+
+collections
+
+monitoring
+
+reports
+
+AI integration
+
+portfolio context
+
+future Trade Planning handoff
+
+cache
+
+security
+
+performance
+
+health
+
+logging
+
+UAT
+
+troubleshooting
+
+extension points
+
+Update Research Glossary docs if terms change.
+
+==============================================================================
+49. IMPROVEMENT CAPTURE
+==============================================================================
+
+Do not implement unrelated discoveries automatically.
+
+Classify:
+
+Critical production fix
+
+Current sprint requirement
+
+Future sprint
+
+Backlog
+
+Completion report:
+
+Suggestion
+
+Assigned Sprint
+
+Priority
+
+Reason
+
+Potential examples:
+
+interactive price chart
+
+earnings calendar
+
+options-chain visualization
+
+peer comparison
+
+analyst estimates
+
+news timeline
+
+Do not pull them forward unless current architecture already supports them and they are required for acceptance.
+
+==============================================================================
+50. ROADMAP ALIGNMENT
+==============================================================================
+
+CURRENT:
+
+2.6.3 Opportunity Workspace v2
+
+NEXT:
+
+2.6.4 Research Workspace v2 / Integrated Research Experience
+
+THEN:
+
+2.6.5 Goals & Planning
+
+FUTURE:
+
+2.7.x Trade Planning & Trade Construction
+
+Do not pull forward:
+
+Trade Construction
+
+Execution
+
+Agents
+
+RIA
+
+Institutional
+
+Enterprise
+
+Tax
+
+Automated portfolio actions
+
+==============================================================================
+51. COMMERCIAL EXPERIENCE REVIEW
+==============================================================================
+
+Completion report must include:
+
+Free value
+
+Retail subscription value
+
+Professional value
+
+RIA applicability
+
+Institutional applicability
+
+Enterprise extension
+
+Do not implement entitlement enforcement.
+
+==============================================================================
+52. PLATFORM REUSABILITY REVIEW
+==============================================================================
+
+Confirm workspace reuses:
+
+Opportunity Intelligence
+
+Change Intelligence
+
+Research Glossary
+
+Sector Intelligence
+
+Theme Intelligence
+
+Institutional Intelligence
+
+Collections
+
+Research Monitoring
+
+Research Reports
+
+AI Workspace
+
+Portfolio Intelligence
+
+and creates no duplicate business logic.
+
+==============================================================================
+53. FINAL ACCEPTANCE CRITERIA
+==============================================================================
+
+GO only if:
+
+A. /opportunities/:symbol becomes canonical workspace.
+
+B. Existing Opportunity Intelligence remains source of truth.
+
+C. Why This Qualified deterministic.
+
+D. What Changed integrated.
+
+E. Technical research complete.
+
+F. Fundamental research complete/partial-safe.
+
+G. Institutional evidence + delay disclosure.
+
+H. Sector context integrated.
+
+I. Theme context integrated.
+
+J. Market regime integrated.
+
+K. Risk factors transparent.
+
+L. Thesis invalidation visible.
+
+M. History works.
+
+N. Related Research works.
+
+O. Collections integrated.
+
+P. Monitoring integrated.
+
+Q. Reports integrated.
+
+R. AI Workspace integrated.
+
+S. Portfolio context optional.
+
+T. Users without portfolio receive full research value.
+
+U. Future Trade Planning handoff does NOT construct trades.
+
+V. No new scoring logic.
+
+W. No recommendations.
+
+X. Partial subsystem failures degrade gracefully.
+
+Y. Performance contract met.
+
+Z. Privacy enforced.
+
+AA. Full tests pass.
+
+AB. Build passes.
+
+AC. Zero new TS errors.
+
+AD. Operations Manual updated.
+
+AE. Roadmap alignment confirmed.
+
+==============================================================================
+54. COMPLETION REPORT
+==============================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing Opportunity Workspace discovered
+3. Files changed
+4. API-call count before/after
+5. Workspace architecture
+6. Header
+7. Research Snapshot
+8. Why This Qualified
+9. What Changed
+10. Evidence Matrix
+11. Technical Research
+12. Fundamental Research
+13. Institutional Research
+14. Sector Context
+15. Theme Context
+16. Market Regime
+17. Risk
+18. Thesis Invalidation
+19. History
+20. Change Timeline
+21. Related Research
+22. Collections
+23. Monitoring
+24. Reports
+25. AI Research integration
+26. Portfolio context
+27. Future Trade Planning handoff
+28. Data freshness
+29. Partial-data resilience
+30. Performance measurements
+31. Cache
+32. Security/privacy
+33. Accessibility/mobile
+34. Compliance audit
+35. Platform Health
+36. Structured logging
+37. Tests added
+38. Full test count
+39. npm run build
+40. Typecheck
+41. Production UAT
+42. Commercial Experience Review
+43. Platform Reusability Review
+44. Improvement Suggestions Captured
+45. Deferred backlog
+46. Roadmap Alignment
+47. Operations Manual Updated: YES/NO
+48. Operations Manual Files Updated
+49. GO / CONDITIONAL_GO / NO_GO
+
+Do NOT deploy automatically.
+
+Wait for review.

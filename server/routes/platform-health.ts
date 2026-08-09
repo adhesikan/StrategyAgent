@@ -25,6 +25,7 @@ import { getResearchReportsHealth } from "../services/research-report-service";
 import { getPortfolioHistoryHealth } from "../services/portfolio-history-service";
 import { getPortfolioIntelligenceHealth } from "../services/portfolio-intelligence-service";
 import { getPortfolioAnalyticsHealth } from "../services/portfolio-analytics-service";
+import { getWorkspaceV2Health } from "./opportunity-workspace";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -845,6 +846,28 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
       partialAnalytics:           paHealth.partialAnalytics,
     },
   };
+  // Opportunity Workspace v2 health (in-memory; resets on restart)
+  const wsV2Health = getWorkspaceV2Health();
+  const opportunityWorkspaceV2_: HealthCard = {
+    status: wsV2Health.workspaceRequests === 0
+      ? "UNKNOWN"
+      : wsV2Health.workspaceFailures > wsV2Health.workspaceSuccesses + wsV2Health.workspacePartials
+        ? "DEGRADED"
+        : "HEALTHY",
+    summary: wsV2Health.workspaceRequests === 0
+      ? "No workspace v2 requests yet this session"
+      : `${wsV2Health.workspaceRequests} requests — ${wsV2Health.workspacePartials} partial — avg ${wsV2Health.averageWorkspaceLatencyMs ?? "?"}ms`,
+    lastSuccessAt: wsV2Health.lastSuccessfulWorkspaceAt,
+    details: {
+      workspaceRequests:           wsV2Health.workspaceRequests,
+      workspaceSuccesses:          wsV2Health.workspaceSuccesses,
+      workspacePartials:           wsV2Health.workspacePartials,
+      workspaceFailures:           wsV2Health.workspaceFailures,
+      averageWorkspaceLatencyMs:   wsV2Health.averageWorkspaceLatencyMs ?? "N/A",
+      lastSuccessfulWorkspaceAt:   wsV2Health.lastSuccessfulWorkspaceAt ?? "Never",
+    },
+  };
+
   const jobs = getAllJobStatuses();
 
   const health: Record<string, HealthCard> = {
@@ -867,7 +890,8 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
     researchReports:  researchReports_,
     portfolioHistory:       portfolioHistory_,
     portfolioIntelligence:  portfolioIntelligence_,
-    portfolioAnalytics:     portfolioAnalytics_,
+    portfolioAnalytics:          portfolioAnalytics_,
+    opportunityWorkspaceV2:      opportunityWorkspaceV2_,
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

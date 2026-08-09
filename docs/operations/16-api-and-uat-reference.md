@@ -2640,6 +2640,137 @@ New response fields:
 
 ---
 
+## Opportunity Workspace v2 UAT Checklist (Sprint 2.6.3)
+
+**Pre-conditions:**
+- Authenticated as a trader
+- Opportunity Intelligence scan has run at least once (ranking available)
+- Optional: user has at least one portfolio containing the symbol being viewed
+
+### UAT Steps
+
+1. Open a ranked symbol from the Dashboard.  
+   ✓ Page loads at `/opportunities/{SYMBOL}` (canonical route, no -v2 suffix).
+
+2. Verify sticky header.  
+   ✓ Shows: symbol, company name, sector badge, opportunity type badge, risk badge, market regime badge, Research Score.  
+   ✓ Action buttons visible: Open AI Research, Collections, Monitor, Reports.  
+   ✓ No "Buy", "Sell", or order buttons in header.
+
+3. Verify score tooltips.  
+   ✓ Clicking Research Score shows ResearchDefinitionTooltip.
+
+4. Verify Research Snapshot card.  
+   ✓ Classification, Research Score, Technical/Fundamental/Institutional sub-scores.  
+   ✓ Evidence Confidence, Market Context, Research Trend, Time Horizon visible.  
+   ✓ Data freshness timestamp shown.
+
+5. Verify Why This Qualified.  
+   ✓ Primary Reasons section shows primaryEvidence items.  
+   ✓ Supporting Context shows secondaryEvidence items.  
+   ✓ What Would Invalidate This Thesis shows invalidatesThesis items.  
+   ✓ Groups are collapsible.  
+   ✓ No AI-generated evidence — all deterministic.
+
+6. Verify What Changed.  
+   ✓ If change exists: shows summary, score delta, primary drivers toggle.  
+   ✓ If no change: shows "No material research change since the previous snapshot."
+
+7. Verify Evidence Matrix.  
+   ✓ 7 rows: Technical, Fundamental, Institutional, Sector, Theme, Market Regime, Risk.  
+   ✓ Columns: Score/State, Direction, Confidence, Freshness.  
+   ✓ No clipped columns on mobile.
+
+8. Verify Technical tab.  
+   ✓ Opportunity Type, Technical Score, Risk Level, Time Horizon shown.  
+   ✓ Technical evidence items shown where available.
+
+9. Verify Fundamental tab — partial data.  
+   ✓ If fundamentalScore < 20: "Partial Data" badge and notice visible.  
+   ✓ "Unavailable data is not treated as zero" language present.
+
+10. Verify Institutional tab + 13F disclosure.  
+    ✓ 13F delay disclosure banner always visible at top.  
+    ✓ No "Smart Money" language anywhere.  
+    ✓ Manager counts: New/Increased/Reduced/Exited shown.  
+    ✓ If unavailable: empty state message visible, not an error.
+
+11. Verify Sector Context tab.  
+    ✓ Sector name, score, label, freshness shown.  
+    ✓ "Open Sector Research" button navigates to `/intelligence/sector/...`.
+
+12. Verify Theme Context tab.  
+    ✓ One card per theme in `opportunity.themes`.  
+    ✓ "Open Theme Research" button navigates to `/intelligence/theme/...`.
+
+13. Verify Market Regime context.  
+    ✓ Deterministic explanatory text shown.  
+    ✓ No prescriptive wording ("you should...").
+
+14. Verify Risk tab.  
+    ✓ Risk Level badge shown.  
+    ✓ Risk factors with severity and detail listed.  
+    ✓ No "Too Risky / Safe / Suitable / Unsuitable" language.
+
+15. Verify Thesis Invalidation (Risk tab).  
+    ✓ `invalidatesThesis` items shown.  
+    ✓ No invented items.
+
+16. Verify History tab.  
+    ✓ Change Timeline shows last 10 snapshots with date, score, delta, status.  
+    ✓ Full score history table shows all rows.  
+    ✓ Empty state message if no history yet.
+
+17. Verify Related Research.  
+    ✓ Up to 6 related opportunities shown.  
+    ✓ Labeled "Related Research" not "Similar Stocks to Buy".  
+    ✓ Clicking a card navigates to that symbol's workspace.
+
+18. Verify Collections section.  
+    ✓ Collections containing symbol are listed.  
+    ✓ "Manage Collections" button navigates to `/research`.
+
+19. Verify Monitoring section.  
+    ✓ Active monitoring shows green status indicator.  
+    ✓ Not monitored shows "This symbol is not currently monitored."  
+    ✓ "Open Research Monitor" button navigates to `/research-monitor`.
+
+20. Verify Reports section.  
+    ✓ Related reports listed (up to 5).  
+    ✓ "No related research reports available" shown when empty.
+
+21. Verify AI Research actions.  
+    ✓ 6 action buttons visible.  
+    ✓ All open `/research-workspace?symbol=...&mode=...` — no new chat window.
+
+22. Verify portfolio context when owned.  
+    ✓ Portfolio card shows portfolio name and weight.  
+    ✓ "Open Portfolio Intelligence" link visible.
+
+23. Verify no portfolio requirement.  
+    ✓ User without any portfolio sees full workspace value.  
+    ✓ No portfolio card shown when not owned.
+
+24. Verify Future Trade Planning Handoff section.  
+    ✓ Shows "Trade Planning capabilities are part of a future workflow."  
+    ✓ No strikes, expirations, max gain/loss, or order construction visible.
+
+25. Verify partial subsystem failure.  
+    ✓ Disconnect sector intelligence — sector tab shows empty state, not error.  
+    ✓ Other tabs still render correctly.
+
+26. Verify mobile (375px viewport).  
+    ✓ Header adapts; score still visible.  
+    ✓ Tabs scroll cleanly.  
+    ✓ Evidence cards stack.  
+    ✓ No clipped tables.
+
+27. Verify Platform Health.  
+    ✓ `GET /api/admin/platform-health` response includes `opportunityWorkspaceV2` card.  
+    ✓ Card shows `workspaceRequests`, `workspaceSuccesses`, `workspacePartials`, `averageWorkspaceLatencyMs`.
+
+---
+
 ## Portfolio Analytics UAT Checklist (Sprint 2.6.2)
 
 **Pre-conditions:**

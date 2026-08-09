@@ -1,25 +1,40 @@
-// /opportunities/:symbol — Sprint 2.3.0 Opportunity Research Workspace
+// /opportunities/:symbol — Sprint 2.6.3 Opportunity Workspace v2
 //
-// Professional research workspace answering:
-//   • Why is this opportunity ranked highly?
+// Canonical single-security research workspace. Answers:
+//   • Why is this security currently relevant?
 //   • What evidence supports it?
-//   • What risks exist?
-//   • What changed since yesterday?
+//   • What changed?
+//   • Where is evidence strengthening or weakening?
+//   • What are the risks?
+//   • What would invalidate the thesis?
+//   • How does the sector/theme context look?
+//   • What institutional evidence exists?
+//   • What related research exists?
+//   • How fresh is the data?
+//   • What should I research next?
+//
+// This workspace does NOT answer:
+//   • What should I buy/sell?
+//   • What trade should I place?
 //
 // Performance contract: exactly 2 API calls.
-//   Call 1 — GET /api/opportunities/today     → full ranking (in-memory, instant)
-//   Call 2 — GET /api/opportunities/workspace/:symbol → history + institutional
+//   Call 1 — GET /api/opportunities/today      → full ranking (in-memory)
+//   Call 2 — GET /api/opportunities/workspace/:symbol → consolidated payload
 //
-// Compliance: never uses "buy/sell/recommendation/expected profit/target return".
-//             All price levels labeled as educational planning only.
-//             No LLM — all explanations are deterministic.
+// Compliance: no "buy/sell/recommendation/target price/expected return" language.
+//             All evidence is deterministic. AI sections link out to Research Workspace.
+//             13F data disclosure present wherever institutional data appears.
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { SCORE_LABEL_TO_GLOSSARY_KEY } from "@shared/research-glossary";
-import { ResearchDefinitionTooltip } from "@/components/research-definition-tooltip";
-import { UnderstandingScoresLink } from "@/components/score-explanation-modal";
 import { useQuery } from "@tanstack/react-query";
+import { ResearchDefinitionTooltip } from "@/components/research-definition-tooltip";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ArrowLeft,
   TrendingUp,
@@ -29,34 +44,31 @@ import {
   Building2,
   BarChart2,
   Clock,
-  RefreshCcw,
-  GitCompare,
-  ChevronDown,
-  ChevronUp,
+  Activity,
   AlertTriangle,
   CheckCircle2,
   Info,
   Users,
-  Activity,
   Layers,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  BookOpen,
+  Bell,
+  FolderOpen,
+  FileText,
+  BrainCircuit,
+  MapPin,
+  Tag,
+  Eye,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import {
+  findScoredCandidate,
+  getAllRankedSymbols,
   getScoreColor,
   getScoreBarBg,
   getConfidenceBadge,
   getCategoryBadge,
-  buildRankedExplanation,
-  buildRiskExplanation,
-  findRelated,
-  analyzeHistoryTrend,
-  getAllRankedSymbols,
-  findScoredCandidate,
   type OpportunityScore,
   type ScoredCandidate,
   type WatchScoredCandidate,
@@ -65,18 +77,54 @@ import {
 } from "@/lib/opportunity-workspace-helpers";
 
 // ---------------------------------------------------------------------------
-// Server response types (mirrored from server/routes/opportunity-workspace.ts)
+// Types (mirrored from server/routes/opportunity-workspace.ts)
 // ---------------------------------------------------------------------------
 
-interface InstitutionalMetrics {
-  managerCountLatest: number | null;
-  managerCountPrevious: number | null;
-  totalSharesLatest: number | null;
-  totalSharesPrevious: number | null;
-  newManagerCount: number;
-  exitedManagerCount: number;
-  increasedManagerCount: number;
-  reducedManagerCount: number;
+interface CanonicalOpportunity {
+  id: string;
+  symbol: string;
+  companyName: string | null;
+  sector: string | null;
+  industry: string | null;
+  themes: string[];
+  opportunityType: string;
+  opportunityTypeLabel: string;
+  researchScore: number;
+  technicalScore: number;
+  fundamentalScore: number;
+  institutionalScore: number;
+  sentimentScore: number;
+  confidence: string;
+  marketRegime: string | null;
+  timeHorizon: string;
+  riskLevel: string;
+  lastUpdated: string;
+  primaryEvidence: EvidenceItem[];
+  secondaryEvidence: EvidenceItem[];
+  riskFactors: RiskFactor[];
+  invalidatesThesis: InvalidatesThesisItem[];
+  _sourceCategory: string;
+  _rank: number;
+}
+
+interface EvidenceItem {
+  category: string;
+  label: string;
+  value?: string | null;
+  detail?: string | null;
+  strength?: string | null;
+}
+
+interface RiskFactor {
+  category: string;
+  label: string;
+  severity?: string;
+  detail?: string | null;
+}
+
+interface InvalidatesThesisItem {
+  condition: string;
+  detail?: string | null;
 }
 
 interface InstitutionalSignal {
@@ -88,11 +136,17 @@ interface InstitutionalSignal {
   score: number | null;
   label: string | null;
   summary: string | null;
-  metrics: InstitutionalMetrics;
+  metrics: {
+    managerCountLatest: number | null;
+    managerCountPrevious: number | null;
+    newManagerCount: number;
+    exitedManagerCount: number;
+    increasedManagerCount: number;
+    reducedManagerCount: number;
+  };
   concentration: {
     holderCount: number;
     topHolderSharePct: number | null;
-    top5HolderSharePct: number | null;
     trend: string;
   };
   dataQuality: {
@@ -108,30 +162,113 @@ interface InstitutionalSignal {
   };
 }
 
-// ChangeExplanation type (subset of OpportunityChangeExplanation from server)
 interface ChangeExplanation {
   symbol: string;
   previousRank: number | null;
-  currentRank:  number | null;
+  currentRank: number | null;
   previousScore: number | null;
-  currentScore:  number;
-  scoreDelta:    number | null;
-  rankDelta:     number | null;
-  importance:    "Minor" | "Moderate" | "Major" | "Critical";
-  summary:       string;
-  drivers:       string[];
-  warnings:      string[];
-  confidence:    "high" | "medium" | "low";
-  category:      string;
-  direction:     "upgraded" | "downgraded" | "new" | "moved" | "unchanged" | "removed";
+  currentScore: number;
+  scoreDelta: number | null;
+  rankDelta: number | null;
+  importance: "Minor" | "Moderate" | "Major" | "Critical";
+  summary: string;
+  drivers: string[];
+  warnings: string[];
+  confidence: "high" | "medium" | "low";
+  category: string;
+  direction: "upgraded" | "downgraded" | "new" | "moved" | "unchanged" | "removed";
 }
 
-interface WorkspaceResponse {
+interface SectorContext {
+  sector: string;
+  score: number;
+  label: string;
+  generatedAt: string;
+  metrics: Record<string, unknown>;
+  topSymbols: unknown[];
+  changes: Record<string, unknown>;
+}
+
+interface ThemeContext {
+  themeId: string;
+  themeName: string;
+  score: number;
+  label: string;
+  generatedAt: string;
+  metrics: Record<string, unknown>;
+  topSymbols: unknown[];
+  changes: Record<string, unknown>;
+}
+
+interface CollectionMembership {
+  collectionId: string;
+  collectionName: string;
+  collectionType: "system" | "user";
+  systemKey: string | null;
+  isMember: boolean;
+  isFollowing: boolean;
+  isFavorite: boolean;
+}
+
+interface MonitoringState {
+  isMonitored: boolean;
+  watchId: string | null;
+  status: string | null;
+  lastChangeAt: string | null;
+  lastChangeSummary: string | null;
+  recentActivityCount: number;
+}
+
+interface ReportSummary {
+  reportId: string;
+  title: string;
+  reportType: string;
+  status: string;
+  generatedAt: string | null;
+  isPinned: boolean;
+}
+
+interface PortfolioContext {
+  portfolioId: string;
+  portfolioName: string;
+  symbol: string;
+  portfolioWeight: number | null;
+  sector: string | null;
+  industry: string | null;
+  researchChange: string | null;
+}
+
+interface RelatedOpp {
   symbol: string;
   companyName: string | null;
+  score: number;
+  category: string;
+}
+
+interface WorkspaceFreshness {
+  rankingGeneratedAt: string | null;
+  institutionalDataAt: string | null;
+  sectorDataAt: string | null;
+  historyLatestAt: string | null;
+  workspaceAssembledAt: string;
+}
+
+interface WorkspaceV2Response {
+  symbol: string;
+  companyName: string | null;
+  opportunity: CanonicalOpportunity | null;
   history: HistoryEntry[];
   institutional: InstitutionalSignal | null;
   changeExplanation: ChangeExplanation | null;
+  sectorContext: SectorContext | null;
+  themeContexts: ThemeContext[];
+  collections: CollectionMembership[];
+  monitoring: MonitoringState;
+  reports: ReportSummary[];
+  portfolioContext: PortfolioContext | null;
+  relatedOpportunities: RelatedOpp[];
+  freshness: WorkspaceFreshness;
+  limitations: string[];
 }
 
 interface OpportunityTodayResponse {
@@ -141,7 +278,7 @@ interface OpportunityTodayResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Utility helpers
 // ---------------------------------------------------------------------------
 
 function formatAge(iso: string): string {
@@ -155,89 +292,353 @@ function formatAge(iso: string): string {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function fmtNum(n: number | null | undefined, decimals = 0): string {
   if (n == null) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+function scoreColor(s: number) {
+  if (s >= 75) return "text-emerald-400";
+  if (s >= 55) return "text-sky-400";
+  if (s >= 35) return "text-amber-400";
+  return "text-rose-400";
+}
+
+function labelBadgeClass(label: string) {
+  switch (label) {
+    case "Strong": return "bg-emerald-900/40 text-emerald-300 border-emerald-800";
+    case "Improving": return "bg-sky-900/40 text-sky-300 border-sky-800";
+    case "Mixed": return "bg-amber-900/40 text-amber-300 border-amber-800";
+    case "Weakening": return "bg-orange-900/40 text-orange-300 border-orange-800";
+    case "Weak": return "bg-rose-900/40 text-rose-300 border-rose-800";
+    default: return "bg-slate-800 text-slate-400 border-slate-700";
+  }
+}
+
+function riskLevelBadge(level: string) {
+  switch (level?.toLowerCase()) {
+    case "low": return "bg-emerald-900/40 text-emerald-300 border-emerald-800";
+    case "moderate": return "bg-amber-900/40 text-amber-300 border-amber-800";
+    case "high": return "bg-rose-900/40 text-rose-300 border-rose-800";
+    default: return "bg-slate-800 text-slate-400 border-slate-700";
+  }
+}
+
+function directionIcon(dir: string) {
+  if (dir === "upgraded" || dir === "new") return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />;
+  if (dir === "downgraded" || dir === "removed") return <TrendingDown className="h-3.5 w-3.5 text-rose-400" />;
+  return <Minus className="h-3.5 w-3.5 text-slate-500" />;
 }
 
 // ---------------------------------------------------------------------------
-// Why It Changed Panel (Sprint 2.3.1)
+// Score bar component
+// ---------------------------------------------------------------------------
+
+function ScoreBar({ label, score, glossaryKey }: { label: string; score: number | null; glossaryKey?: string }) {
+  if (score == null) return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-20 text-slate-500 shrink-0">{label}</span>
+      <span className="text-slate-600">—</span>
+    </div>
+  );
+  const bar = (
+    <div className="flex items-center gap-2 text-xs flex-1">
+      <span className="w-20 text-slate-400 shrink-0">{label}</span>
+      <div className="flex-1 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", getScoreBarBg(score))}
+          style={{ width: `${Math.min(100, score)}%` }}
+        />
+      </div>
+      <span className={cn("w-8 text-right font-mono tabular-nums", scoreColor(score))}>{score}</span>
+    </div>
+  );
+  if (glossaryKey) {
+    return (
+      <ResearchDefinitionTooltip term={glossaryKey as any}>
+        {bar}
+      </ResearchDefinitionTooltip>
+    );
+  }
+  return bar;
+}
+
+// ---------------------------------------------------------------------------
+// Research Snapshot card
+// ---------------------------------------------------------------------------
+
+function ResearchSnapshotCard({ opportunity, changeExplanation, freshness }: {
+  opportunity: CanonicalOpportunity;
+  changeExplanation: ChangeExplanation | null;
+  freshness: WorkspaceFreshness;
+}) {
+  const trendLabel =
+    changeExplanation?.direction === "upgraded" || changeExplanation?.direction === "new" ? "Strengthening" :
+    changeExplanation?.direction === "downgraded" ? "Weakening" :
+    changeExplanation?.direction === "unchanged" ? "Stable" :
+    "Unknown";
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-400 flex items-center gap-2">
+          <BarChart2 className="h-4 w-4 text-sky-400" />
+          Research Snapshot
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+          <div>
+            <div className="text-slate-500 mb-0.5">Classification</div>
+            <div className="text-slate-200 font-medium">{opportunity.opportunityTypeLabel}</div>
+          </div>
+          <div>
+            <div className="text-slate-500 mb-0.5">Research Score</div>
+            <div className={cn("font-bold tabular-nums text-lg", scoreColor(opportunity.researchScore))}>
+              {opportunity.researchScore}
+            </div>
+          </div>
+          <div>
+            <div className="text-slate-500 mb-0.5">Evidence Confidence</div>
+            <div className="text-slate-200 capitalize">{opportunity.confidence}</div>
+          </div>
+          <div>
+            <div className="text-slate-500 mb-0.5">Market Context</div>
+            <div className="text-slate-200">{opportunity.marketRegime ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-slate-500 mb-0.5">Research Trend</div>
+            <div className={cn(
+              trendLabel === "Strengthening" ? "text-emerald-400" :
+              trendLabel === "Weakening" ? "text-rose-400" : "text-slate-300"
+            )}>{trendLabel}</div>
+          </div>
+          <div>
+            <div className="text-slate-500 mb-0.5">Time Horizon</div>
+            <div className="text-slate-200 capitalize">{opportunity.timeHorizon}</div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 pt-1 border-t border-slate-800">
+          <ScoreBar label="Technical" score={opportunity.technicalScore} glossaryKey="technical_score" />
+          <ScoreBar label="Fundamental" score={opportunity.fundamentalScore} glossaryKey="fundamental_score" />
+          <ScoreBar label="Institutional" score={opportunity.institutionalScore} glossaryKey="institutional_score" />
+        </div>
+
+        {freshness.rankingGeneratedAt && (
+          <div className="text-[10px] text-slate-600 flex items-center gap-1 pt-1">
+            <Clock className="h-3 w-3" />
+            Ranking: {formatAge(freshness.rankingGeneratedAt)}
+            {freshness.institutionalDataAt && (
+              <>
+                <span className="mx-1">·</span>
+                Institutional: {formatAge(freshness.institutionalDataAt)}
+              </>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Why This Qualified — evidence panel
+// ---------------------------------------------------------------------------
+
+function EvidenceGroup({ title, items, icon, colorClass }: {
+  title: string;
+  items: EvidenceItem[];
+  icon: React.ReactNode;
+  colorClass: string;
+}) {
+  const [open, setOpen] = useState(true);
+  if (items.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <button
+        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors w-full"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+      >
+        {icon}
+        <span className={cn("font-medium", colorClass)}>{title}</span>
+        <span className="text-slate-600 ml-1">({items.length})</span>
+        <span className="ml-auto">{open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</span>
+      </button>
+      {open && (
+        <ul className="space-y-1 pl-4">
+          {items.map((item, i) => (
+            <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+              <span className="text-slate-600 shrink-0 mt-0.5">·</span>
+              <span>
+                <span className="font-medium">{item.label}</span>
+                {item.value && <span className="text-slate-400"> — {item.value}</span>}
+                {item.detail && <span className="text-slate-500"> ({item.detail})</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function WhyThisQualifiedSection({ opportunity }: { opportunity: CanonicalOpportunity }) {
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          Why This Qualified
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <EvidenceGroup
+          title="Primary Reasons"
+          items={opportunity.primaryEvidence}
+          icon={<TrendingUp className="h-3.5 w-3.5 text-emerald-400" />}
+          colorClass="text-emerald-300"
+        />
+        <EvidenceGroup
+          title="Supporting Context"
+          items={opportunity.secondaryEvidence}
+          icon={<Info className="h-3.5 w-3.5 text-sky-400" />}
+          colorClass="text-sky-300"
+        />
+        {opportunity.invalidatesThesis.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-rose-300">
+              <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+              What Would Invalidate This Thesis
+            </div>
+            <ul className="space-y-1 pl-4">
+              {opportunity.invalidatesThesis.map((item, i) => (
+                <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+                  <span className="text-rose-700 shrink-0 mt-0.5">✕</span>
+                  <span>
+                    {item.condition}
+                    {item.detail && <span className="text-slate-500"> — {item.detail}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {opportunity.primaryEvidence.length === 0 && opportunity.secondaryEvidence.length === 0 && (
+          <p className="text-xs text-slate-500">No evidence items available for this snapshot.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// What Changed panel
 // ---------------------------------------------------------------------------
 
 const IMPORTANCE_BORDER: Record<string, string> = {
   Critical: "border-rose-700 bg-rose-950/20",
-  Major:    "border-amber-700 bg-amber-950/20",
+  Major: "border-amber-700 bg-amber-950/20",
   Moderate: "border-sky-800 bg-sky-950/20",
-  Minor:    "border-slate-700 bg-slate-900/60",
+  Minor: "border-slate-700 bg-slate-900/60",
 };
 
-const DIRECTION_ICON_WS: Record<string, string> = {
-  new: "★", upgraded: "↑", downgraded: "↓", moved: "→", unchanged: "·", removed: "✕",
-};
-
-function WhyItChangedPanel({ exp }: { exp: ChangeExplanation }) {
+function WhatChangedSection({ changeExplanation }: { changeExplanation: ChangeExplanation | null }) {
   const [expanded, setExpanded] = useState(false);
-  const borderClass = IMPORTANCE_BORDER[exp.importance] ?? IMPORTANCE_BORDER.Minor;
-  const dirIcon     = DIRECTION_ICON_WS[exp.direction] ?? "·";
+
+  if (!changeExplanation) {
+    return (
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="py-4">
+          <p className="text-xs text-slate-500 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-slate-600" />
+            No material research change since the previous snapshot.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (changeExplanation.direction === "unchanged") {
+    return (
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="py-4">
+          <p className="text-xs text-slate-400 flex items-center gap-2">
+            <Minus className="h-4 w-4 text-slate-600" />
+            No material research change since the previous snapshot.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const borderClass = IMPORTANCE_BORDER[changeExplanation.importance] ?? IMPORTANCE_BORDER.Minor;
   const scoreDeltaStr =
-    exp.scoreDelta == null ? null :
-    exp.scoreDelta > 0 ? `+${exp.scoreDelta}` : `${exp.scoreDelta}`;
+    changeExplanation.scoreDelta == null ? null :
+    changeExplanation.scoreDelta > 0 ? `+${changeExplanation.scoreDelta}` :
+    `${changeExplanation.scoreDelta}`;
   const deltaColor =
-    (exp.scoreDelta ?? 0) > 0 ? "text-emerald-400" :
-    (exp.scoreDelta ?? 0) < 0 ? "text-rose-400" : "text-slate-500";
+    (changeExplanation.scoreDelta ?? 0) > 0 ? "text-emerald-400" :
+    (changeExplanation.scoreDelta ?? 0) < 0 ? "text-rose-400" : "text-slate-500";
 
   return (
     <Card className={`border ${borderClass}`}>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
           <Activity className="h-4 w-4 text-amber-400" />
-          Why It Changed
-          <span className={`ml-auto flex items-center gap-1 text-xs font-mono ${deltaColor}`}>
-            <span className="opacity-70">{dirIcon}</span>
-            {scoreDeltaStr ?? ""}
-          </span>
+          What Changed
+          {scoreDeltaStr && (
+            <span className={cn("ml-auto text-xs font-mono tabular-nums", deltaColor)}>
+              {scoreDeltaStr}
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-slate-200">{exp.summary}</p>
+        <p className="text-sm text-slate-200">{changeExplanation.summary}</p>
 
-        {exp.drivers.length > 0 && (
+        {changeExplanation.drivers.length > 0 && (
           <>
             <button
               className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
               onClick={() => setExpanded(e => !e)}
+              aria-expanded={expanded}
             >
               {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {expanded ? "Hide" : "Show"} drivers ({exp.drivers.length})
+              {expanded ? "Hide" : "Show"} primary drivers ({changeExplanation.drivers.length})
             </button>
             {expanded && (
               <ul className="space-y-1.5">
-                {exp.drivers.map((d, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-slate-300 pl-2 border-l border-slate-700">
-                    {d}
-                  </li>
+                {changeExplanation.drivers.map((d, i) => (
+                  <li key={i} className="text-xs text-slate-300 pl-2 border-l border-slate-700">{d}</li>
                 ))}
-                {exp.warnings.map((w, i) => (
-                  <li key={`w${i}`} className="flex items-start gap-2 text-xs text-amber-300 pl-2 border-l border-amber-800">
-                    ⚠ {w}
-                  </li>
+                {changeExplanation.warnings.map((w, i) => (
+                  <li key={`w${i}`} className="text-xs text-amber-300 pl-2 border-l border-amber-800">⚠ {w}</li>
                 ))}
               </ul>
             )}
           </>
         )}
 
-        <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-500">
-          <span className="capitalize">{exp.importance} change</span>
+        <div className="flex items-center gap-3 text-[10px] text-slate-500">
+          <span className="capitalize">{changeExplanation.importance} change</span>
           <span>·</span>
-          <span className="capitalize">{exp.confidence} confidence</span>
-          {exp.previousScore != null && (
+          <span className="capitalize">{changeExplanation.confidence} confidence</span>
+          {changeExplanation.previousScore != null && (
             <>
               <span>·</span>
-              <span>Prev score: {exp.previousScore}</span>
+              <span>Prev score: {changeExplanation.previousScore}</span>
             </>
           )}
         </div>
@@ -247,570 +648,112 @@ function WhyItChangedPanel({ exp }: { exp: ChangeExplanation }) {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Evidence Matrix (compact 7-row table)
 // ---------------------------------------------------------------------------
 
-function ScoreBar({ score, label }: { score: number; label: string }) {
-  const termKey = SCORE_LABEL_TO_GLOSSARY_KEY[label];
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs">
-        {termKey ? (
-          <ResearchDefinitionTooltip term={termKey} side="left" showCaution={false}>
-            <span className="text-slate-400">{label}</span>
-          </ResearchDefinitionTooltip>
-        ) : (
-          <span className="text-slate-400">{label}</span>
-        )}
-        <span className={cn("font-medium tabular-nums", getScoreColor(score))}>{score}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-slate-800">
-        <div
-          className={cn("h-full rounded-full transition-all duration-500", getScoreBarBg(score))}
-          style={{ width: `${score}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ScorePill({ label, score }: { label: string; score: number }) {
-  return (
-    <div className="flex flex-col items-center gap-1 rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 min-w-[72px]">
-      <span className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</span>
-      <span className={cn("text-lg font-bold tabular-nums", getScoreColor(score))}>{score}</span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Overview Tab
-// ---------------------------------------------------------------------------
-
-function OverviewTab({
-  candidate,
-  score,
-  regime,
-}: {
-  candidate: ScoredCandidate | WatchScoredCandidate | null;
-  score: OpportunityScore;
-  regime: string | null;
-}) {
-  const isScored = (c: any): c is ScoredCandidate => c && "rewardRisk" in c;
-  const c = isScored(candidate) ? candidate : null;
-  const exp = buildRankedExplanation(score, c, regime);
-  const entryPrice = c?.trigger ?? null;
-  const stopPrice  = c?.invalidation ?? null;
-  const target     = c?.objective ?? null;
-
-  return (
-    <div className="space-y-5">
-      {/* Score overview */}
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-sm text-slate-300">Research Score</CardTitle>
-            <UnderstandingScoresLink />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <ScoreBar score={score.overallScore}     label="Overall" />
-          <ScoreBar score={score.technicalScore}   label="Technical" />
-          <ScoreBar score={score.institutionalScore} label="Institutional" />
-          <ScoreBar score={score.fundamentalScore} label="Fundamental" />
-          <ScoreBar score={score.riskScore}        label="Risk" />
-          <ScoreBar score={score.regimeScore}      label="Regime" />
-        </CardContent>
-      </Card>
-
-      {/* Why This Ranked */}
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-            <Info className="h-4 w-4 text-sky-400" />
-            Why This Ranked
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-slate-400">{exp.summary}</p>
-          <ul className="space-y-2">
-            {exp.bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                {b}
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Signals */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Supporting Signals
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {score.reasons.length === 0 ? (
-              <p className="text-sm text-slate-500">No signals recorded.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {score.reasons.map((r, i) => (
-                  <li key={i} className="text-sm text-slate-300">{r}</li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" /> Risk Warnings
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {score.warnings.length === 0 ? (
-              <p className="text-sm text-slate-500">No warnings flagged.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {score.warnings.map((w, i) => (
-                  <li key={i} className="text-sm text-amber-300">{w}</li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Entry / Stop / Target */}
-      {(entryPrice || stopPrice || target) && (
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-300">
-              Educational Planning Levels
-              <span className="ml-2 text-[10px] font-normal text-slate-500 uppercase tracking-wide">
-                Not financial advice
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              {[
-                { label: "Entry Zone", value: entryPrice },
-                { label: "Stop Level",  value: stopPrice },
-                { label: "Target",      value: target },
-              ].map(({ label, value }) => (
-                <div key={label} className="rounded-lg bg-slate-950 border border-slate-800 p-2">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">{label}</p>
-                  <p className="text-sm text-slate-200 font-medium">{value ?? "—"}</p>
-                </div>
-              ))}
-            </div>
-            {c?.rewardRisk != null && (
-              <p className="mt-3 text-center text-xs text-slate-500">
-                Risk/Reward: <span className={cn("font-medium", c.rewardRisk >= 3 ? "text-emerald-400" : "text-amber-400")}>{c.rewardRisk.toFixed(1)}:1</span>
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Technical Tab
-// ---------------------------------------------------------------------------
-
-function TechnicalTab({ candidate }: { candidate: ScoredCandidate | WatchScoredCandidate | null }) {
-  const isScored = (c: any): c is ScoredCandidate => c && "whySelected" in c;
-  const c = isScored(candidate) ? candidate : null;
-  const score = candidate?.opportunityScore;
-
-  const rows: Array<{ label: string; value: string | number | undefined | null }> = [
-    { label: "Strategy",          value: c?.strategy ?? (candidate as WatchScoredCandidate)?.strategy },
-    { label: "Pattern / Setup",   value: c?.structure ?? (candidate as WatchScoredCandidate)?.currentStage },
-    { label: "Stage",             value: (candidate as WatchScoredCandidate)?.currentStage },
-    { label: "Confidence",        value: c?.confidence },
-    { label: "Volume Confirmation", value: c?.whySelected?.find(w => w.toLowerCase().includes("volume")) ?? null },
-    { label: "Support / Stop",    value: c?.invalidation },
-    { label: "Resistance / Entry", value: c?.trigger },
-    { label: "Breakout Level",    value: c?.trigger },
-    { label: "Setup Status",      value: c?.setupStatus ?? (candidate as WatchScoredCandidate)?.missingConfirmation },
-    { label: "Technical Score",   value: score ? `${score.technicalScore}/100` : null },
-  ];
-
-  const filteredRows = rows.filter(r => r.value != null && String(r.value).trim() !== "");
-  const deduped = filteredRows.filter((r, i, arr) =>
-    arr.findIndex(x => x.value === r.value && x.label !== r.label) === i ||
-    !arr.slice(0, i).some(x => x.value === r.value)
-  );
-
-  const trendBullets: string[] = c?.whySelected ?? (candidate as WatchScoredCandidate)?.watchConditions ?? [];
-
-  return (
-    <div className="space-y-5">
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-            <BarChart2 className="h-4 w-4 text-sky-400" /> Technical Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {deduped.length === 0 ? (
-            <p className="text-sm text-slate-500">Technical details available after the first live scan.</p>
-          ) : (
-            <dl className="space-y-3">
-              {deduped.map(({ label, value }) => (
-                <div key={label} className="flex justify-between items-start gap-4">
-                  <dt className="text-sm text-slate-500 shrink-0 w-40">{label}</dt>
-                  <dd className="text-sm text-slate-200 text-right">{String(value)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </CardContent>
-      </Card>
-
-      {trendBullets.length > 0 && (
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-400" /> Trend Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {trendBullets.map((b, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                  <span className="text-slate-600 mt-0.5">•</span> {b}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Institutional Tab
-// ---------------------------------------------------------------------------
-
-function InstitutionalTab({
-  institutional,
-  score,
-}: {
+function EvidenceMatrix({ opportunity, sectorContext, themeContexts, institutional }: {
+  opportunity: CanonicalOpportunity;
+  sectorContext: SectorContext | null;
+  themeContexts: ThemeContext[];
   institutional: InstitutionalSignal | null;
-  score: OpportunityScore;
 }) {
-  const isUnavailable = !institutional || institutional.status === "unavailable";
-
-  if (isUnavailable) {
-    return (
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="py-10 text-center">
-          <Building2 className="h-8 w-8 text-slate-600 mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Institutional 13F data is not yet available for this symbol.</p>
-          <p className="text-xs text-slate-600 mt-1">Score uses neutral baseline of 50.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const m = institutional.metrics;
-  const dq = institutional.dataQuality;
-  const freshness = institutional.freshness;
-
-  const trendLabel: Record<string, string> = {
-    increasing_concentration:  "Increasing concentration",
-    stable_concentration:      "Stable concentration",
-    broadening_ownership:      "Broadening ownership",
-    insufficient_data:         "Insufficient data",
-  };
-
-  const rows: Array<{ label: string; value: React.ReactNode }> = [
-    { label: "Institutional Score",  value: <span className={cn("font-bold", getScoreColor(institutional.score ?? 0))}>{institutional.score ?? "—"}/100</span> },
-    { label: "Signal",               value: institutional.label ?? "—" },
-    { label: "Period",               value: institutional.latestQuarter ?? "—" },
-    { label: "Manager Count",        value: fmtNum(m.managerCountLatest) },
-    { label: "New Managers",         value: <span className="text-emerald-400">{fmtNum(m.newManagerCount)}</span> },
-    { label: "Exited Managers",      value: <span className="text-rose-400">{fmtNum(m.exitedManagerCount)}</span> },
-    { label: "Increased Positions",  value: <span className="text-emerald-400">{fmtNum(m.increasedManagerCount)}</span> },
-    { label: "Reduced Positions",    value: <span className="text-amber-400">{fmtNum(m.reducedManagerCount)}</span> },
-    { label: "Institutional Trend",  value: trendLabel[institutional.concentration.trend] ?? institutional.concentration.trend },
-    { label: "Data Confidence",      value: <span className="capitalize">{dq.confidence}</span> },
-    { label: "Comparable Managers",  value: fmtNum(dq.comparableManagerCount) },
-    { label: "Data Source",          value: freshness.source },
+  const rows = [
+    {
+      dimension: "Technical",
+      score: opportunity.technicalScore,
+      direction: opportunity.technicalScore >= 60 ? "Improving" : opportunity.technicalScore >= 40 ? "Stable" : "Weakening",
+      confidence: opportunity.confidence,
+      freshness: opportunity.lastUpdated ? formatAge(opportunity.lastUpdated) : "—",
+      evidenceCount: opportunity.primaryEvidence.filter(e => e.category?.toLowerCase().includes("tech")).length,
+    },
+    {
+      dimension: "Fundamental",
+      score: opportunity.fundamentalScore,
+      direction: opportunity.fundamentalScore >= 60 ? "Improving" : opportunity.fundamentalScore >= 40 ? "Stable" : "Weakening",
+      confidence: opportunity.fundamentalScore > 0 ? "available" : "limited",
+      freshness: opportunity.lastUpdated ? formatAge(opportunity.lastUpdated) : "—",
+      evidenceCount: opportunity.primaryEvidence.filter(e => e.category?.toLowerCase().includes("fund")).length,
+    },
+    {
+      dimension: "Institutional",
+      score: institutional?.score ?? null,
+      direction: institutional?.label ?? "—",
+      confidence: institutional?.dataQuality?.confidence ?? "unavailable",
+      freshness: institutional?.freshness?.calculatedAt ? formatAge(institutional.freshness.calculatedAt) : "—",
+      evidenceCount: institutional?.metrics?.managerCountLatest ?? 0,
+    },
+    {
+      dimension: "Sector",
+      score: sectorContext?.score ?? null,
+      direction: sectorContext?.label ?? "—",
+      confidence: sectorContext ? "available" : "unavailable",
+      freshness: sectorContext?.generatedAt ? formatAge(sectorContext.generatedAt) : "—",
+      evidenceCount: sectorContext ? 1 : 0,
+    },
+    {
+      dimension: "Theme",
+      score: themeContexts.length > 0 ? Math.round(themeContexts.reduce((s, t) => s + t.score, 0) / themeContexts.length) : null,
+      direction: themeContexts.length > 0 ? themeContexts[0].label : "—",
+      confidence: themeContexts.length > 0 ? "available" : "unavailable",
+      freshness: themeContexts[0]?.generatedAt ? formatAge(themeContexts[0].generatedAt) : "—",
+      evidenceCount: themeContexts.length,
+    },
+    {
+      dimension: "Market Regime",
+      score: null as number | null,
+      direction: opportunity.marketRegime ?? "—",
+      confidence: opportunity.marketRegime ? "available" : "unavailable",
+      freshness: opportunity.lastUpdated ? formatAge(opportunity.lastUpdated) : "—",
+      evidenceCount: 0,
+    },
+    {
+      dimension: "Risk",
+      score: null as number | null,
+      direction: opportunity.riskLevel,
+      confidence: opportunity.riskFactors.length > 0 ? "documented" : "minimal",
+      freshness: opportunity.lastUpdated ? formatAge(opportunity.lastUpdated) : "—",
+      evidenceCount: opportunity.riskFactors.length,
+    },
   ];
 
   return (
-    <div className="space-y-5">
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-sky-400" /> 13F Institutional Signal
-            <Badge className="ml-auto text-[10px] bg-amber-900/40 text-amber-400 border border-amber-800">
-              Delayed — SEC Form 13F
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {institutional.summary && (
-            <p className="text-sm text-slate-300 mb-4 pb-4 border-b border-slate-800">{institutional.summary}</p>
-          )}
-          <dl className="space-y-3">
-            {rows.map(({ label, value }) => (
-              <div key={label} className="flex justify-between items-center gap-4">
-                <dt className="text-sm text-slate-500 shrink-0 w-44">{label}</dt>
-                <dd className="text-sm text-slate-200">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </CardContent>
-      </Card>
-
-      <p className="text-[11px] text-slate-600 text-center">
-        13F data is delayed up to 45 days after quarter end. Holdings reflect the period ending{" "}
-        {freshness.periodEndDate ? formatDate(freshness.periodEndDate) : "unknown"}.
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Risk Tab
-// ---------------------------------------------------------------------------
-
-function RiskTab({
-  score,
-  candidate,
-}: {
-  score: OpportunityScore;
-  candidate: ScoredCandidate | WatchScoredCandidate | null;
-}) {
-  const isScored = (c: any): c is ScoredCandidate => c && "rewardRisk" in c;
-  const c = isScored(candidate) ? candidate : null;
-  const exp = buildRiskExplanation(score, c);
-
-  const riskRows = [
-    { icon: <BarChart2 className="h-4 w-4 text-sky-400" />,     label: "Risk Budget",       value: exp.riskBudget },
-    { icon: <TrendingUp className="h-4 w-4 text-emerald-400" />, label: "Reward/Risk",       value: exp.rewardRisk },
-    { icon: <AlertTriangle className="h-4 w-4 text-amber-400" />, label: "Gap Risk",          value: exp.gapRisk },
-    { icon: <Activity className="h-4 w-4 text-slate-400" />,     label: "Liquidity",         value: exp.liquidity },
-    { icon: <Clock className="h-4 w-4 text-slate-400" />,        label: "Upcoming Earnings", value: exp.earningsNote },
-    { icon: <Layers className="h-4 w-4 text-slate-400" />,       label: "Volatility",        value: exp.volatility },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg bg-amber-950/30 border border-amber-900/50 p-3">
-        <p className="text-xs text-amber-400">
-          All risk levels are for educational planning only. Past patterns are not predictive of future outcomes.
-          Always apply your own position sizing and risk management rules.
-        </p>
-      </div>
-      {riskRows.map(({ icon, label, value }) => (
-        <Card key={label} className="bg-slate-900 border-slate-800">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">{icon}</div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-0.5">{label}</p>
-                <p className="text-sm text-slate-200">{value}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// History Tab
-// ---------------------------------------------------------------------------
-
-function HistoryTab({ history, symbol }: { history: HistoryEntry[]; symbol: string }) {
-  const trend = analyzeHistoryTrend(history);
-
-  const trendIcon =
-    trend.direction === "improving" ? <TrendingUp className="h-4 w-4 text-emerald-400" /> :
-    trend.direction === "declining" ? <TrendingDown className="h-4 w-4 text-rose-400" /> :
-    trend.direction === "stable"    ? <Minus className="h-4 w-4 text-slate-400" /> :
-    <Info className="h-4 w-4 text-slate-500" />;
-
-  const trendColor =
-    trend.direction === "improving" ? "text-emerald-400" :
-    trend.direction === "declining" ? "text-rose-400" : "text-slate-400";
-
-  return (
-    <div className="space-y-5">
-      {/* Trend summary */}
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="py-4 px-4">
-          <div className="flex items-center gap-3">
-            {trendIcon}
-            <div>
-              <p className="text-sm text-slate-200">
-                <span className={cn("font-semibold capitalize", trendColor)}>{trend.direction}</span>
-                {trend.deltaScore != null && (
-                  <span className="ml-2 text-slate-500">
-                    ({trend.deltaScore > 0 ? "+" : ""}{trend.deltaScore} pts over {trend.sessions} sessions)
-                  </span>
-                )}
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5">{symbol} score trend over available history</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* History table */}
-      {history.length === 0 ? (
-        <Card className="bg-slate-900 border-slate-800">
-          <CardContent className="py-10 text-center">
-            <Clock className="h-8 w-8 text-slate-600 mx-auto mb-3" />
-            <p className="text-sm text-slate-400">No ranking history yet for {symbol}.</p>
-            <p className="text-xs text-slate-600 mt-1">History is recorded after each scanner run.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-800">
-          <table className="w-full text-sm text-slate-300">
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <Layers className="h-4 w-4 text-sky-400" />
+          Evidence Matrix
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs" role="grid" aria-label="Evidence matrix">
             <thead>
-              <tr className="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wide">
-                <th className="text-left py-2 px-3">Date</th>
-                <th className="text-right py-2 px-3">Rank</th>
-                <th className="text-right py-2 px-3">Score</th>
-                <th className="text-left py-2 px-3">Status</th>
-                <th className="text-left py-2 px-3">Category Change</th>
-                <th className="text-left py-2 px-3">Regime</th>
+              <tr className="border-b border-slate-800">
+                <th className="text-left text-slate-500 font-normal px-4 py-2">Dimension</th>
+                <th className="text-right text-slate-500 font-normal px-2 py-2">Score / State</th>
+                <th className="text-left text-slate-500 font-normal px-2 py-2 hidden sm:table-cell">Direction</th>
+                <th className="text-left text-slate-500 font-normal px-2 py-2 hidden sm:table-cell">Confidence</th>
+                <th className="text-right text-slate-500 font-normal px-4 py-2">Freshness</th>
               </tr>
             </thead>
             <tbody>
-              {history.map((row, i) => {
-                const prev = history[i + 1];
-                const scoreDelta = prev ? row.score - prev.score : null;
-                const statusColor =
-                  row.lifecycleState === "NEWLY_QUALIFIED" || row.lifecycleState === "STRENGTHENING"
-                    ? "text-emerald-400"
-                    : row.lifecycleState === "WEAKENING" || row.lifecycleState === "DROPPED"
-                    ? "text-rose-400"
-                    : "text-slate-400";
-                return (
-                  <tr key={row.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                    <td className="py-2 px-3 whitespace-nowrap">{formatDate(row.scanTime)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{row.rank ?? "—"}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">
-                      <span className={cn("font-medium", getScoreColor(row.score))}>{row.score.toFixed(1)}</span>
-                      {scoreDelta != null && (
-                        <span className={cn("ml-1 text-[10px]", scoreDelta > 0 ? "text-emerald-500" : scoreDelta < 0 ? "text-rose-500" : "text-slate-600")}>
-                          {scoreDelta > 0 ? "+" : ""}{scoreDelta.toFixed(1)}
-                        </span>
-                      )}
-                    </td>
-                    <td className={cn("py-2 px-3 text-xs", statusColor)}>
-                      {row.lifecycleState.replace(/_/g, " ").toLowerCase()}
-                    </td>
-                    <td className="py-2 px-3 text-xs text-slate-400">{row.qualificationStatus}</td>
-                    <td className="py-2 px-3 text-xs text-slate-500">{row.marketRegime ?? "—"}</td>
-                  </tr>
-                );
-              })}
+              {rows.map((row) => (
+                <tr key={row.dimension} className="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
+                  <td className="px-4 py-2 font-medium text-slate-300">{row.dimension}</td>
+                  <td className="px-2 py-2 text-right">
+                    {row.score != null ? (
+                      <span className={cn("font-mono tabular-nums", scoreColor(row.score))}>{row.score}</span>
+                    ) : (
+                      <span className="text-slate-400">{row.direction}</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-slate-400 hidden sm:table-cell capitalize">{row.score != null ? row.direction : "—"}</td>
+                  <td className="px-2 py-2 text-slate-500 hidden sm:table-cell capitalize">{row.confidence}</td>
+                  <td className="px-4 py-2 text-right text-slate-500">{row.freshness}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Compare Panel
-// ---------------------------------------------------------------------------
-
-function ComparePanel({
-  symbol,
-  compareSymbol,
-  ranking,
-  onClose,
-}: {
-  symbol: string;
-  compareSymbol: string;
-  ranking: OpportunityRanking;
-  onClose: () => void;
-}) {
-  const a = findScoredCandidate(symbol, ranking);
-  const b = findScoredCandidate(compareSymbol, ranking);
-
-  const scoreA = a?.opportunityScore;
-  const scoreB = b?.opportunityScore;
-
-  if (!scoreA || !scoreB) {
-    return (
-      <Card className="bg-slate-900 border-slate-800 mt-4">
-        <CardContent className="py-6 text-center">
-          <p className="text-sm text-slate-400">
-            {!scoreA ? symbol : compareSymbol} is not in the current ranking.
-          </p>
-          <Button variant="ghost" size="sm" className="mt-2 text-slate-500" onClick={onClose}>Close</Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const metrics: Array<{ label: string; keyA: keyof OpportunityScore }> = [
-    { label: "Overall",       keyA: "overallScore" },
-    { label: "Technical",     keyA: "technicalScore" },
-    { label: "Institutional", keyA: "institutionalScore" },
-    { label: "Fundamental",   keyA: "fundamentalScore" },
-    { label: "Risk",          keyA: "riskScore" },
-    { label: "Regime",        keyA: "regimeScore" },
-  ];
-
-  return (
-    <Card className="bg-slate-900 border-slate-800 mt-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-slate-300 flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <GitCompare className="h-4 w-4 text-sky-400" />
-            {symbol} vs {compareSymbol}
-          </span>
-          <Button variant="ghost" size="sm" className="h-6 text-xs text-slate-500" onClick={onClose}>✕</Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          <div className="grid grid-cols-3 text-xs text-slate-500 uppercase tracking-wide mb-1">
-            <span>{symbol}</span>
-            <span className="text-center">Metric</span>
-            <span className="text-right">{compareSymbol}</span>
-          </div>
-          {metrics.map(({ label, keyA }) => {
-            const va = scoreA[keyA] as number;
-            const vb = scoreB[keyA] as number;
-            return (
-              <div key={label} className="grid grid-cols-3 items-center">
-                <span className={cn("text-sm font-medium tabular-nums", getScoreColor(va), va >= vb ? "font-bold" : "")}>{va}</span>
-                <span className="text-center text-xs text-slate-500">{label}</span>
-                <span className={cn("text-sm font-medium tabular-nums text-right", getScoreColor(vb), vb > va ? "font-bold" : "")}>{vb}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-4 pt-3 border-t border-slate-800 grid grid-cols-2 gap-3 text-center text-xs">
-          <div>
-            <Badge className={cn("border", getCategoryBadge(scoreA.category))}>{scoreA.category}</Badge>
-            <p className="mt-1 text-slate-500">{scoreA.confidence} confidence</p>
-          </div>
-          <div>
-            <Badge className={cn("border", getCategoryBadge(scoreB.category))}>{scoreB.category}</Badge>
-            <p className="mt-1 text-slate-500">{scoreB.confidence} confidence</p>
-          </div>
         </div>
       </CardContent>
     </Card>
@@ -818,139 +761,950 @@ function ComparePanel({
 }
 
 // ---------------------------------------------------------------------------
-// Related Opportunities
+// Technical Research tab
 // ---------------------------------------------------------------------------
 
-function RelatedSection({
-  symbol,
-  ranking,
-  onSelect,
-}: {
-  symbol: string;
-  ranking: OpportunityRanking;
-  onSelect: (sym: string) => void;
-}) {
-  const related = useMemo(() => findRelated(symbol, ranking, 4), [symbol, ranking]);
-
-  if (related.length === 0) return null;
-
-  const reasonLabel: Record<string, string> = {
-    same_strategy: "Same strategy",
-    same_category: "Same category",
-    same_bucket:   "Same bucket",
-  };
+function TechnicalResearchTab({ opportunity }: { opportunity: CanonicalOpportunity }) {
+  const candidate = null; // candidate from /today used for legacy fields only
+  const techEvidence = [
+    ...opportunity.primaryEvidence.filter(e =>
+      e.category?.toLowerCase().includes("tech") ||
+      e.category?.toLowerCase().includes("pattern") ||
+      e.category?.toLowerCase().includes("volume") ||
+      e.category?.toLowerCase().includes("trend"),
+    ),
+    ...opportunity.secondaryEvidence.filter(e =>
+      e.category?.toLowerCase().includes("tech"),
+    ),
+  ];
 
   return (
-    <section>
-      <h3 className="text-sm font-medium text-slate-400 mb-3">Related Opportunities</h3>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {related.map(r => (
-          <button
-            key={r.symbol}
-            onClick={() => onSelect(r.symbol)}
-            className="rounded-lg bg-slate-900 border border-slate-800 p-3 text-left hover:border-slate-600 transition-colors"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-semibold text-slate-200">{r.symbol}</span>
-              <span className={cn("text-sm font-bold tabular-nums", getScoreColor(r.overallScore))}>{r.overallScore}</span>
+    <div className="space-y-4">
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="pt-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <div className="text-slate-500 mb-0.5">Opportunity Type</div>
+              <div className="text-slate-200">{opportunity.opportunityTypeLabel}</div>
             </div>
-            <Badge className={cn("text-[9px] border mb-1", getCategoryBadge(r.category))}>{r.category}</Badge>
-            <p className="text-[10px] text-slate-600">{reasonLabel[r.reason] ?? r.reason}</p>
-          </button>
-        ))}
-      </div>
-    </section>
+            <div>
+              <div className="text-slate-500 mb-0.5">Technical Score</div>
+              <div className={cn("font-bold tabular-nums", scoreColor(opportunity.technicalScore))}>
+                {opportunity.technicalScore}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 mb-0.5">Risk Level</div>
+              <Badge className={cn("text-[10px] border", riskLevelBadge(opportunity.riskLevel))}>
+                {opportunity.riskLevel}
+              </Badge>
+            </div>
+            <div>
+              <div className="text-slate-500 mb-0.5">Time Horizon</div>
+              <div className="text-slate-200 capitalize">{opportunity.timeHorizon}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {techEvidence.length > 0 ? (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-slate-400">Technical Evidence</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {techEvidence.map((e, i) => (
+              <div key={i} className="text-xs border-l-2 border-sky-800 pl-3 space-y-0.5">
+                <div className="text-slate-300 font-medium">{e.label}</div>
+                {e.value && <div className="text-slate-400">{e.value}</div>}
+                {e.detail && <div className="text-slate-500">{e.detail}</div>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-6 text-center">
+            <p className="text-xs text-slate-500">Technical evidence details are part of the broader research snapshot above.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Main page
+// Fundamental Research tab
+// ---------------------------------------------------------------------------
+
+function FundamentalResearchTab({ opportunity }: { opportunity: CanonicalOpportunity }) {
+  const fundEvidence = [
+    ...opportunity.primaryEvidence.filter(e =>
+      e.category?.toLowerCase().includes("fund") ||
+      e.category?.toLowerCase().includes("earning") ||
+      e.category?.toLowerCase().includes("revenue") ||
+      e.category?.toLowerCase().includes("margin") ||
+      e.category?.toLowerCase().includes("eps"),
+    ),
+    ...opportunity.secondaryEvidence.filter(e =>
+      e.category?.toLowerCase().includes("fund") ||
+      e.category?.toLowerCase().includes("earning"),
+    ),
+  ];
+
+  const lowCoverage = opportunity.fundamentalScore < 20;
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="pt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">Fundamental Score</div>
+              <div className={cn("text-2xl font-bold tabular-nums", scoreColor(opportunity.fundamentalScore))}>
+                {opportunity.fundamentalScore}
+              </div>
+            </div>
+            {lowCoverage && (
+              <Badge className="text-[10px] border bg-amber-900/30 text-amber-300 border-amber-800">
+                Partial Data
+              </Badge>
+            )}
+          </div>
+          {lowCoverage && (
+            <p className="text-xs text-amber-400/80 bg-amber-950/30 rounded p-2 border border-amber-900/40">
+              Fundamental data coverage is limited for this symbol. Score reflects available evidence only — unavailable data is not treated as zero.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {fundEvidence.length > 0 ? (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-slate-400">Fundamental Evidence</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {fundEvidence.map((e, i) => (
+              <div key={i} className="text-xs border-l-2 border-emerald-900 pl-3 space-y-0.5">
+                <div className="text-slate-300 font-medium">{e.label}</div>
+                {e.value && <div className="text-slate-400">{e.value}</div>}
+                {e.detail && <div className="text-slate-500">{e.detail}</div>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-6 text-center">
+            <p className="text-xs text-slate-500">
+              {lowCoverage
+                ? "Fundamental evidence is not available for this symbol in the current snapshot."
+                : "Fundamental evidence is incorporated into the overall research score above."}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Institutional Research tab
+// ---------------------------------------------------------------------------
+
+function InstitutionalResearchTab({ institutional, opportunity }: {
+  institutional: InstitutionalSignal | null;
+  opportunity: CanonicalOpportunity;
+}) {
+  const DELAY_DISCLOSURE =
+    "SEC Form 13F data is delayed and does not represent real-time institutional positions. Data reflects filings from a previous quarter.";
+
+  return (
+    <div className="space-y-4">
+      {/* 13F disclosure — always visible */}
+      <div className="flex items-start gap-2 text-xs text-amber-400/80 bg-amber-950/20 rounded p-3 border border-amber-900/30">
+        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        <span>{DELAY_DISCLOSURE}</span>
+      </div>
+
+      {institutional ? (
+        <>
+          <Card className="bg-slate-900 border-slate-800">
+            <CardContent className="pt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-slate-500 mb-0.5">Institutional Score</div>
+                  <div className={cn("text-2xl font-bold tabular-nums", scoreColor(institutional.score ?? 0))}>
+                    {institutional.score ?? "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500 mb-0.5">Signal</div>
+                  <Badge className={cn("text-[10px] border", labelBadgeClass(institutional.label ?? ""))}>
+                    {institutional.label ?? "—"}
+                  </Badge>
+                </div>
+                <div>
+                  <div className="text-slate-500 mb-0.5">Manager Count</div>
+                  <div className="text-slate-200">{fmtNum(institutional.metrics.managerCountLatest)}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500 mb-0.5">Data Confidence</div>
+                  <div className="text-slate-200 capitalize">{institutional.dataQuality.confidence}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-800">
+                {[
+                  { label: "New Positions", value: institutional.metrics.newManagerCount, color: "text-emerald-400" },
+                  { label: "Increased", value: institutional.metrics.increasedManagerCount, color: "text-sky-400" },
+                  { label: "Reduced", value: institutional.metrics.reducedManagerCount, color: "text-amber-400" },
+                  { label: "Exited", value: institutional.metrics.exitedManagerCount, color: "text-rose-400" },
+                ].map(item => (
+                  <div key={item.label} className="text-center">
+                    <div className={cn("text-lg font-bold tabular-nums", item.color)}>
+                      {fmtNum(item.value)}
+                    </div>
+                    <div className="text-[10px] text-slate-500">{item.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {institutional.summary && (
+                <p className="text-xs text-slate-400 italic">{institutional.summary}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs text-slate-400">Concentration & Trend</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Holder Count</span>
+                <span className="text-slate-200">{fmtNum(institutional.concentration.holderCount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Top Holder Share</span>
+                <span className="text-slate-200">{institutional.concentration.topHolderSharePct != null ? `${fmtNum(institutional.concentration.topHolderSharePct, 1)}%` : "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Concentration Trend</span>
+                <span className="text-slate-200 capitalize">{institutional.concentration.trend}</span>
+              </div>
+              {institutional.latestQuarter && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Latest Quarter</span>
+                  <span className="text-slate-200">{institutional.latestQuarter}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-8 text-center">
+            <Users className="h-8 w-8 text-slate-700 mx-auto mb-3" />
+            <p className="text-sm text-slate-400">Institutional evidence is unavailable for this symbol.</p>
+            <p className="text-xs text-slate-600 mt-1">Institutional Score: {opportunity.institutionalScore}</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sector & Theme Context tab
+// ---------------------------------------------------------------------------
+
+function SectorThemeTab({ opportunity, sectorContext, themeContexts, navigate }: {
+  opportunity: CanonicalOpportunity;
+  sectorContext: SectorContext | null;
+  themeContexts: ThemeContext[];
+  navigate: (path: string) => void;
+}) {
+  const regimeText = opportunity.marketRegime
+    ? opportunity.marketRegime.toLowerCase().includes("bull")
+      ? `Current market regime (${opportunity.marketRegime}) is generally supportive of growth-oriented research candidates.`
+      : opportunity.marketRegime.toLowerCase().includes("bear")
+      ? `Current market regime (${opportunity.marketRegime}) reflects increased caution in broader research conditions.`
+      : `Current market regime is ${opportunity.marketRegime}. Evidence should be interpreted in this broader context.`
+    : "Market regime context is not available in the current snapshot.";
+
+  return (
+    <div className="space-y-4">
+      {/* Sector */}
+      {sectorContext ? (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-sky-400" />
+              Sector: {sectorContext.sector}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-4 text-xs">
+              <div>
+                <div className="text-slate-500 mb-0.5">Score</div>
+                <div className={cn("font-bold tabular-nums", scoreColor(sectorContext.score))}>
+                  {sectorContext.score}
+                </div>
+              </div>
+              <div>
+                <div className="text-slate-500 mb-0.5">State</div>
+                <Badge className={cn("text-[10px] border", labelBadgeClass(sectorContext.label))}>
+                  {sectorContext.label}
+                </Badge>
+              </div>
+              <div>
+                <div className="text-slate-500 mb-0.5">Updated</div>
+                <div className="text-slate-400">{formatAge(sectorContext.generatedAt)}</div>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-sky-400 hover:text-sky-300 -ml-2 h-7"
+              onClick={() => navigate(`/intelligence/sector/${encodeURIComponent(sectorContext.sector)}`)}
+            >
+              <ExternalLink className="h-3 w-3 mr-1" />
+              Open Sector Research
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-4">
+            <p className="text-xs text-slate-500">
+              {opportunity.sector
+                ? `Sector intelligence data for "${opportunity.sector}" is not yet available.`
+                : "No sector classification for this symbol."}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Themes */}
+      {opportunity.themes.length > 0 ? (
+        <div className="space-y-3">
+          {opportunity.themes.map((themeName, i) => {
+            const tc = themeContexts.find(t => t.themeName.toLowerCase() === themeName.toLowerCase());
+            return (
+              <Card key={i} className="bg-slate-900 border-slate-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-purple-400" />
+                    {themeName}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {tc ? (
+                    <>
+                      <div className="flex items-center gap-4 text-xs">
+                        <div>
+                          <div className="text-slate-500 mb-0.5">Score</div>
+                          <div className={cn("font-bold tabular-nums", scoreColor(tc.score))}>{tc.score}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500 mb-0.5">State</div>
+                          <Badge className={cn("text-[10px] border", labelBadgeClass(tc.label))}>{tc.label}</Badge>
+                        </div>
+                        <div>
+                          <div className="text-slate-500 mb-0.5">Updated</div>
+                          <div className="text-slate-400">{formatAge(tc.generatedAt)}</div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-purple-400 hover:text-purple-300 -ml-2 h-7"
+                        onClick={() => navigate(`/intelligence/theme/${tc.themeId}`)}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        Open Theme Research
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-500">Theme intelligence data is not yet available.</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-4">
+            <p className="text-xs text-slate-500">No theme classifications for this symbol.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Market Regime */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs text-slate-400 flex items-center gap-2">
+            <Activity className="h-3.5 w-3.5" />
+            Market Regime Context
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-slate-300">{regimeText}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Risk & Thesis Invalidation tab
+// ---------------------------------------------------------------------------
+
+function RiskThesisTab({ opportunity }: { opportunity: CanonicalOpportunity }) {
+  return (
+    <div className="space-y-4">
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+            <Shield className="h-4 w-4 text-amber-400" />
+            Observed Risk
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3 text-xs">
+            <div>
+              <div className="text-slate-500 mb-0.5">Risk Level</div>
+              <Badge className={cn("border", riskLevelBadge(opportunity.riskLevel))}>
+                {opportunity.riskLevel}
+              </Badge>
+            </div>
+          </div>
+
+          {opportunity.riskFactors.length > 0 ? (
+            <ul className="space-y-2">
+              {opportunity.riskFactors.map((rf, i) => (
+                <li key={i} className="text-xs border-l-2 border-amber-800 pl-3 space-y-0.5">
+                  <div className="text-slate-300 font-medium">{rf.label}</div>
+                  {rf.severity && <div className="text-amber-400/70 text-[10px] uppercase tracking-wide">Risk Factor — {rf.severity}</div>}
+                  {rf.detail && <div className="text-slate-500">{rf.detail}</div>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-500">No specific risk factors documented in the current snapshot.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-rose-400" />
+            What Would Invalidate This Thesis
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {opportunity.invalidatesThesis.length > 0 ? (
+            <ul className="space-y-2">
+              {opportunity.invalidatesThesis.map((item, i) => (
+                <li key={i} className="text-xs border-l-2 border-rose-900 pl-3 space-y-0.5">
+                  <div className="text-slate-300">{item.condition}</div>
+                  {item.detail && <div className="text-slate-500">{item.detail}</div>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-500">No thesis invalidation conditions documented.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// History & Change Timeline tab
+// ---------------------------------------------------------------------------
+
+function HistoryTimelineTab({ history, symbol }: { history: HistoryEntry[]; symbol: string }) {
+  if (history.length === 0) {
+    return (
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="py-8 text-center">
+          <Clock className="h-8 w-8 text-slate-700 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Research history will appear after multiple ranking cycles.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Change Timeline */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs text-slate-400">Change Timeline</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ol className="space-y-3" aria-label="Research change timeline">
+            {history.slice(0, 10).map((h, i) => {
+              const prev = history[i + 1];
+              const delta = prev ? h.score - prev.score : null;
+              const deltaStr = delta == null ? null : delta > 0 ? `+${delta}` : `${delta}`;
+              const deltaColor = delta == null ? "" : delta > 0 ? "text-emerald-400" : delta < 0 ? "text-rose-400" : "text-slate-500";
+              return (
+                <li key={h.id} className="flex items-start gap-3 text-xs">
+                  <div className="shrink-0 w-16 text-slate-600 pt-0.5">{formatDate(h.scanTime)}</div>
+                  <div className="flex-1 space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("font-mono tabular-nums font-medium", scoreColor(h.score))}>
+                        {h.score}
+                      </span>
+                      {deltaStr && (
+                        <span className={cn("text-[10px] font-mono", deltaColor)}>{deltaStr}</span>
+                      )}
+                      {h.qualificationStatus && (
+                        <Badge className="text-[9px] border bg-slate-800 text-slate-400 border-slate-700 py-0">
+                          {h.qualificationStatus}
+                        </Badge>
+                      )}
+                    </div>
+                    {h.lifecycleState && h.lifecycleState !== h.qualificationStatus && (
+                      <div className="text-slate-600">{h.lifecycleState}</div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </CardContent>
+      </Card>
+
+      {/* Score history table */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs text-slate-400">Full Research Score History</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs" aria-label="Research score history">
+              <thead>
+                <tr className="border-b border-slate-800">
+                  <th className="text-left text-slate-500 font-normal px-4 py-2">Date</th>
+                  <th className="text-right text-slate-500 font-normal px-2 py-2">Score</th>
+                  <th className="text-right text-slate-500 font-normal px-2 py-2 hidden sm:table-cell">Rank</th>
+                  <th className="text-left text-slate-500 font-normal px-4 py-2 hidden sm:table-cell">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.id} className="border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors">
+                    <td className="px-4 py-1.5 text-slate-400">{formatDate(h.scanTime)}</td>
+                    <td className={cn("px-2 py-1.5 text-right font-mono tabular-nums", scoreColor(h.score))}>{h.score}</td>
+                    <td className="px-2 py-1.5 text-right text-slate-500 hidden sm:table-cell">{h.rank ?? "—"}</td>
+                    <td className="px-4 py-1.5 text-slate-500 hidden sm:table-cell">{h.qualificationStatus}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Related Research section
+// ---------------------------------------------------------------------------
+
+function RelatedResearchSection({ relatedOpportunities, navigate }: {
+  relatedOpportunities: RelatedOpp[];
+  navigate: (path: string) => void;
+}) {
+  if (relatedOpportunities.length === 0) return null;
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-sky-400" />
+          Related Research
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {relatedOpportunities.map(opp => (
+            <button
+              key={opp.symbol}
+              className="text-left p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 transition-all"
+              onClick={() => navigate(`/opportunities/${opp.symbol}`)}
+              aria-label={`Open research for ${opp.symbol}`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-slate-200">{opp.symbol}</span>
+                <span className={cn("text-xs font-mono tabular-nums", scoreColor(opp.score))}>{opp.score}</span>
+              </div>
+              {opp.companyName && <div className="text-[10px] text-slate-500 truncate">{opp.companyName}</div>}
+              <Badge className={cn("text-[9px] border mt-1", getCategoryBadge(opp.category))}>{opp.category}</Badge>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Collections integration section
+// ---------------------------------------------------------------------------
+
+function CollectionsSection({ collections, symbol, navigate }: {
+  collections: CollectionMembership[];
+  symbol: string;
+  navigate: (path: string) => void;
+}) {
+  const memberCollections = collections.filter(c => c.isMember);
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <FolderOpen className="h-4 w-4 text-purple-400" />
+          Collections
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {memberCollections.length > 0 ? (
+          <ul className="space-y-2">
+            {memberCollections.map(c => (
+              <li key={c.collectionId} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Badge className={cn("text-[9px] border", c.collectionType === "system" ? "bg-sky-900/40 text-sky-300 border-sky-800" : "bg-purple-900/40 text-purple-300 border-purple-800")}>
+                    {c.collectionType}
+                  </Badge>
+                  <span className="text-slate-300">{c.collectionName}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[10px] text-slate-500 hover:text-slate-300"
+                  onClick={() => navigate(`/research?collection=${c.collectionId}`)}
+                >
+                  Open
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-slate-500">{symbol} is not in any of your collections.</p>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-3 text-xs text-sky-400 hover:text-sky-300 -ml-2 h-7"
+          onClick={() => navigate("/research")}
+        >
+          <FolderOpen className="h-3 w-3 mr-1" />
+          Manage Collections
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Monitoring integration section
+// ---------------------------------------------------------------------------
+
+function MonitoringSection({ monitoring, symbol, navigate }: {
+  monitoring: MonitoringState;
+  symbol: string;
+  navigate: (path: string) => void;
+}) {
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <Bell className="h-4 w-4 text-amber-400" />
+          Research Monitoring
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {monitoring.isMonitored ? (
+          <>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+              <span className="text-emerald-300 font-medium">Monitoring: Active</span>
+            </div>
+            {monitoring.lastChangeAt && (
+              <div className="text-xs text-slate-400">
+                Last research change: {formatAge(monitoring.lastChangeAt)}
+              </div>
+            )}
+            {monitoring.lastChangeSummary && (
+              <p className="text-xs text-slate-400 italic">{monitoring.lastChangeSummary}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-slate-500">This symbol is not currently monitored.</p>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-amber-400 hover:text-amber-300 -ml-2 h-7"
+          onClick={() => navigate("/research-monitor")}
+        >
+          <Eye className="h-3 w-3 mr-1" />
+          Open Research Monitor
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reports integration section
+// ---------------------------------------------------------------------------
+
+function ReportsSection({ reports, navigate }: { reports: ReportSummary[]; navigate: (path: string) => void }) {
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <FileText className="h-4 w-4 text-sky-400" />
+          Research Reports
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {reports.length > 0 ? (
+          <ul className="space-y-2">
+            {reports.map(r => (
+              <li key={r.reportId} className="flex items-start justify-between gap-2 text-xs">
+                <div className="flex-1 min-w-0">
+                  <div className="text-slate-300 truncate">{r.title}</div>
+                  <div className="text-slate-600">
+                    {r.reportType}
+                    {r.generatedAt && <> · {formatAge(r.generatedAt)}</>}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[10px] text-sky-400 hover:text-sky-300 shrink-0"
+                  onClick={() => navigate(`/research-reports/${r.reportId}`)}
+                >
+                  Open
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-slate-500">No related research reports are available yet.</p>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-sky-400 hover:text-sky-300 -ml-2 h-7"
+          onClick={() => navigate("/research-reports")}
+        >
+          <FileText className="h-3 w-3 mr-1" />
+          View All Reports
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI Research actions
+// ---------------------------------------------------------------------------
+
+function AIResearchSection({ symbol, navigate }: { symbol: string; navigate: (path: string) => void }) {
+  const actions = [
+    { label: "Explain This Candidate", mode: "explain_concept" },
+    { label: "Challenge This Thesis", mode: "challenge" },
+    { label: "Explain What Changed", mode: "explain_change" },
+    { label: "Explain Risk Factors", mode: "risk" },
+    { label: "Compare With Another Candidate", mode: "compare" },
+    { label: "Explain Institutional Evidence", mode: "institutional" },
+  ];
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-slate-300 flex items-center gap-2">
+          <BrainCircuit className="h-4 w-4 text-violet-400" />
+          AI Research
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-slate-500 mb-3">
+          Open the AI Research Workspace with this symbol's context pre-selected.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {actions.map(action => (
+            <Button
+              key={action.mode}
+              variant="outline"
+              size="sm"
+              className="text-xs h-8 border-slate-700 text-slate-300 hover:text-slate-100 hover:border-violet-700 justify-start"
+              onClick={() => navigate(`/research-workspace?symbol=${symbol}&mode=${action.mode}`)}
+            >
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Context (optional)
+// ---------------------------------------------------------------------------
+
+function PortfolioContextCard({ portfolioContext, navigate }: {
+  portfolioContext: PortfolioContext;
+  navigate: (path: string) => void;
+}) {
+  return (
+    <Card className="bg-slate-900 border-emerald-900/40">
+      <CardContent className="pt-4 space-y-3">
+        <div className="text-xs font-medium text-emerald-300 flex items-center gap-1.5">
+          <Building2 className="h-3.5 w-3.5" />
+          Portfolio Position
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <div className="text-slate-500 mb-0.5">Owned in</div>
+            <div className="text-slate-200">{portfolioContext.portfolioName}</div>
+          </div>
+          {portfolioContext.portfolioWeight != null && (
+            <div>
+              <div className="text-slate-500 mb-0.5">Portfolio Weight</div>
+              <div className="text-slate-200">{portfolioContext.portfolioWeight}%</div>
+            </div>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-emerald-400 hover:text-emerald-300 -ml-2 h-7"
+          onClick={() => navigate(`/portfolio/${portfolioContext.portfolioId}?tab=intelligence`)}
+        >
+          <ExternalLink className="h-3 w-3 mr-1" />
+          Open Portfolio Intelligence
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Future Trade Planning Handoff
+// ---------------------------------------------------------------------------
+
+function TradePlanningHandoff({ opportunity }: { opportunity: CanonicalOpportunity }) {
+  const type = opportunity.opportunityType?.toLowerCase() ?? "";
+  const paths = [];
+  if (type.includes("growth") || type.includes("vcp") || type.includes("momentum"))
+    paths.push("Equity Research", "Options Research");
+  if (type.includes("income") || type.includes("covered"))
+    paths.push("Income Strategy Research", "Defined-Risk Research");
+  if (paths.length === 0)
+    paths.push("Equity Research", "Options Research");
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs text-slate-500">Potential Research Expression</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-slate-600 italic">
+          Trade Planning capabilities are part of a future workflow.
+        </p>
+        <div className="space-y-1">
+          {paths.map(p => (
+            <div key={p} className="text-xs text-slate-500 flex items-center gap-1.5">
+              <span className="text-slate-700">·</span> {p}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page component
 // ---------------------------------------------------------------------------
 
 export default function OpportunityWorkspacePage() {
-  const { symbol: rawSymbol } = useParams<{ symbol: string }>();
-  const symbol = (rawSymbol ?? "").toUpperCase();
+  const params = useParams<{ symbol: string }>();
   const [, navigate] = useLocation();
+  const symbol = (params.symbol ?? "").toUpperCase();
 
-  const [compareSymbol, setCompareSymbol] = useState<string>("");
-  const [compareOpen, setCompareOpen] = useState(false);
-  const [compareInput, setCompareInput] = useState("");
-
-  // ── Call 1: full ranking (already cached by dashboard)
+  // Call 1: In-memory ranking
   const todayQuery = useQuery<OpportunityTodayResponse>({
     queryKey: ["/api/opportunities/today"],
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Call 2: workspace enrichment (history + institutional)
-  const workspaceQuery = useQuery<WorkspaceResponse>({
-    queryKey: ["/api/opportunities/workspace", symbol],
-    queryFn: async () => {
-      const res = await fetch(`/api/opportunities/workspace/${encodeURIComponent(symbol)}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to load workspace data");
-      return res.json();
-    },
+  // Call 2: Full workspace payload
+  const workspaceQuery = useQuery<WorkspaceV2Response>({
+    queryKey: [`/api/opportunities/workspace/${symbol}`],
     enabled: !!symbol,
     staleTime: 5 * 60 * 1000,
   });
 
   const ranking = todayQuery.data?.ranking ?? null;
+  const ws = workspaceQuery.data;
+  const opportunity = ws?.opportunity ?? null;
   const candidate = ranking ? findScoredCandidate(symbol, ranking) : null;
   const score = candidate?.opportunityScore ?? null;
 
-  const companyName = workspaceQuery.data?.companyName ?? null;
-  const history     = workspaceQuery.data?.history ?? [];
-  const institutional    = workspaceQuery.data?.institutional ?? null;
-  const changeExplanation = workspaceQuery.data?.changeExplanation ?? null;
+  // Use canonical opportunity scores when available; fall back to ranking score
+  const researchScore = opportunity?.researchScore ?? score?.overallScore ?? null;
+  const companyName = ws?.companyName ?? opportunity?.companyName ?? null;
 
   const isLoading = todayQuery.isLoading || workspaceQuery.isLoading;
-  const allSymbols = ranking ? getAllRankedSymbols(ranking).filter(s => s !== symbol) : [];
 
-  function handleCompare() {
-    const target = compareInput.toUpperCase().trim();
-    if (target && target !== symbol) {
-      setCompareSymbol(target);
-      setCompareOpen(true);
-      setCompareInput("");
-    }
-  }
-
-  function handleRelatedSelect(sym: string) {
-    navigate(`/opportunities/${sym}`);
-  }
-
-  // ── Loading skeleton
+  // ── Loading skeleton ─────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 p-4 sm:p-6">
-        <div className="max-w-3xl mx-auto space-y-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           <Skeleton className="h-8 w-32 bg-slate-800" />
-          <Skeleton className="h-24 w-full bg-slate-800" />
+          <Skeleton className="h-28 w-full bg-slate-800" />
           <Skeleton className="h-10 w-full bg-slate-800" />
+          <Skeleton className="h-48 w-full bg-slate-800" />
           <Skeleton className="h-64 w-full bg-slate-800" />
         </div>
       </div>
     );
   }
 
-  // ── Not in ranking
-  if (!score && !isLoading) {
+  // ── Not in ranking — still render if workspace data is available ─────────
+  if (!researchScore && !isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 p-4 sm:p-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <Button variant="ghost" className="mb-4 text-slate-400" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" /> Dashboard
           </Button>
           <Card className="bg-slate-900 border-slate-800">
             <CardContent className="py-16 text-center">
               <Info className="h-10 w-10 text-slate-600 mx-auto mb-4" />
-              <h2 className="text-lg font-semibold text-slate-200 mb-2">{symbol} not in current ranking</h2>
+              <h2 className="text-lg font-semibold text-slate-200 mb-2">{symbol} — Research Not Available</h2>
               <p className="text-sm text-slate-400 max-w-sm mx-auto">
-                {todayQuery.data?.available === false
-                  ? todayQuery.data.message ?? "Rankings are being computed."
-                  : `${symbol} is not in today's opportunity ranking. It may have been excluded by the scanner or not yet ingested.`}
+                {ws?.limitations?.[0] ??
+                  (todayQuery.data?.available === false
+                    ? todayQuery.data.message ?? "Rankings are being computed."
+                    : "This symbol is not present in the latest Opportunity Intelligence snapshot.")}
               </p>
               <Button className="mt-6" onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
             </CardContent>
@@ -960,131 +1714,263 @@ export default function OpportunityWorkspacePage() {
     );
   }
 
-  if (!score) return null;
+  if (!researchScore) return null;
+
+  const changeExplanation = ws?.changeExplanation ?? null;
+  const institutional = ws?.institutional ?? null;
+  const history = ws?.history ?? [];
+  const sectorContext = ws?.sectorContext ?? null;
+  const themeContexts = ws?.themeContexts ?? [];
+  const collections = ws?.collections ?? [];
+  const monitoring = ws?.monitoring ?? { isMonitored: false, watchId: null, status: null, lastChangeAt: null, lastChangeSummary: null, recentActivityCount: 0 };
+  const reports = ws?.reports ?? [];
+  const portfolioContext = ws?.portfolioContext ?? null;
+  const relatedOpportunities = ws?.relatedOpportunities ?? [];
+  const freshness = ws?.freshness ?? { rankingGeneratedAt: null, institutionalDataAt: null, sectorDataAt: null, historyLatestAt: null, workspaceAssembledAt: new Date().toISOString() };
+  const limitations = ws?.limitations ?? [];
+
+  // Derive display values from canonical opportunity or ranking score
+  const displaySector = opportunity?.sector ?? score?.category ?? null;
+  const displayIndustry = opportunity?.industry ?? null;
+  const displayThemes = opportunity?.themes ?? [];
+  const displayRiskLevel = opportunity?.riskLevel ?? "—";
+  const displayConfidence = opportunity?.confidence ?? score?.confidence ?? "—";
+  const displayRegime = opportunity?.marketRegime ?? ranking?.regime ?? null;
+  const displayTypeLabel = opportunity?.opportunityTypeLabel ?? score?.category ?? "Research Candidate";
 
   return (
     <div className="min-h-screen bg-slate-950">
-      {/* ── Header ── */}
-      <div className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-3xl mx-auto px-4 py-3">
-          <Button variant="ghost" size="sm" className="mb-2 text-slate-400 -ml-2" onClick={() => navigate("/dashboard")}>
+      {/* ── Sticky Header ─────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mb-2 text-slate-400 -ml-2"
+            onClick={() => navigate("/dashboard")}
+            aria-label="Back to Dashboard"
+          >
             <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
           </Button>
+
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-bold text-slate-100">{symbol}</h1>
-                {companyName && <span className="text-sm text-slate-400">{companyName}</span>}
+                {companyName && (
+                  <span className="text-sm text-slate-400 truncate">{companyName}</span>
+                )}
               </div>
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <Badge className={cn("text-xs border", getCategoryBadge(score.category))}>{score.category}</Badge>
-                <Badge className={cn("text-xs border", getConfidenceBadge(score.confidence))}>
-                  {score.confidence} confidence
+
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                <Badge className={cn("text-[10px] border", getCategoryBadge(score?.category ?? "Watch"))}>
+                  {displayTypeLabel}
                 </Badge>
-                {ranking?.regime && (
-                  <Badge className="text-xs border bg-slate-800/60 text-slate-300 border-slate-700">
-                    {ranking.regime}
+                {displaySector && (
+                  <Badge className="text-[10px] border bg-slate-800/60 text-slate-400 border-slate-700">
+                    {displaySector}
+                  </Badge>
+                )}
+                {displayThemes.slice(0, 2).map(t => (
+                  <Badge key={t} className="text-[10px] border bg-purple-900/30 text-purple-300 border-purple-800">
+                    {t}
+                  </Badge>
+                ))}
+                <Badge className={cn("text-[10px] border", riskLevelBadge(displayRiskLevel))}>
+                  {displayRiskLevel} risk
+                </Badge>
+                {displayRegime && (
+                  <Badge className="text-[10px] border bg-slate-800/60 text-slate-300 border-slate-700">
+                    {displayRegime}
                   </Badge>
                 )}
               </div>
             </div>
+
             <div className="text-right shrink-0">
-              <div className={cn("text-3xl font-black tabular-nums", getScoreColor(score.overallScore))}>
-                {score.overallScore}
+              <div aria-label={`Research score: ${researchScore}`}>
+                <ResearchDefinitionTooltip term="research_score">
+                  <div className={cn("text-3xl font-black tabular-nums cursor-help", scoreColor(researchScore))}>
+                    {researchScore}
+                  </div>
+                </ResearchDefinitionTooltip>
               </div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Overall Score</div>
-              {ranking && (
-                <div className="text-[10px] text-slate-600 mt-0.5">
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  {formatAge(ranking.generatedAt)}
+              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Research Score</div>
+              {freshness.rankingGeneratedAt && (
+                <div className="text-[10px] text-slate-600 mt-0.5 flex items-center justify-end gap-1">
+                  <Clock className="h-3 w-3" />
+                  {formatAge(freshness.rankingGeneratedAt)}
                 </div>
               )}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* ── Body ── */}
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {/* Score pills summary */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          <ScorePill label="Tech"  score={score.technicalScore} />
-          <ScorePill label="Inst"  score={score.institutionalScore} />
-          <ScorePill label="Fund"  score={score.fundamentalScore} />
-          <ScorePill label="Risk"  score={score.riskScore} />
-          <ScorePill label="Regime" score={score.regimeScore} />
-        </div>
-
-        {/* Why it changed — Sprint 2.3.1 Change Intelligence panel */}
-        {changeExplanation && changeExplanation.direction !== "unchanged" && (
-          <WhyItChangedPanel exp={changeExplanation} />
-        )}
-
-        {/* Compare controls */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 flex-1">
-            <GitCompare className="h-4 w-4 text-slate-500 shrink-0" />
-            <input
-              list="ranked-symbols"
-              value={compareInput}
-              onChange={e => setCompareInput(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === "Enter" && handleCompare()}
-              placeholder="Compare with… (e.g. AMD)"
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-sky-700"
-            />
-            <datalist id="ranked-symbols">
-              {allSymbols.map(s => <option key={s} value={s} />)}
-            </datalist>
-            <Button size="sm" variant="outline" className="border-slate-700 text-slate-300 shrink-0" onClick={handleCompare}>
-              Compare
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-slate-700 text-violet-300 hover:border-violet-700"
+              onClick={() => navigate(`/research-workspace?symbol=${symbol}&mode=explain_concept`)}
+            >
+              <BrainCircuit className="h-3 w-3 mr-1" />
+              Open AI Research
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-slate-700 text-slate-300 hover:border-slate-600"
+              onClick={() => navigate("/research")}
+            >
+              <FolderOpen className="h-3 w-3 mr-1" />
+              Collections
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-slate-700 text-slate-300 hover:border-slate-600"
+              onClick={() => navigate("/research-monitor")}
+            >
+              <Bell className="h-3 w-3 mr-1" />
+              Monitor
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-slate-700 text-slate-300 hover:border-slate-600"
+              onClick={() => navigate("/research-reports")}
+            >
+              <FileText className="h-3 w-3 mr-1" />
+              Reports
             </Button>
           </div>
         </div>
+      </div>
 
-        {compareOpen && compareSymbol && ranking && (
-          <ComparePanel
-            symbol={symbol}
-            compareSymbol={compareSymbol}
-            ranking={ranking}
-            onClose={() => { setCompareOpen(false); setCompareSymbol(""); }}
+      {/* ── Body ──────────────────────────────────────────────────────────── */}
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+
+        {/* Portfolio context — shown only when the user owns this symbol */}
+        {portfolioContext && (
+          <PortfolioContextCard portfolioContext={portfolioContext} navigate={navigate} />
+        )}
+
+        {/* Research Snapshot */}
+        {opportunity && (
+          <ResearchSnapshotCard
+            opportunity={opportunity}
+            changeExplanation={changeExplanation}
+            freshness={freshness}
           />
         )}
 
-        {/* Tabs */}
-        <Tabs defaultValue="overview">
-          <TabsList className="bg-slate-900 border border-slate-800 w-full grid grid-cols-5">
-            <TabsTrigger value="overview"      className="text-xs data-[state=active]:bg-slate-800">Overview</TabsTrigger>
-            <TabsTrigger value="technical"     className="text-xs data-[state=active]:bg-slate-800">Technical</TabsTrigger>
-            <TabsTrigger value="institutional" className="text-xs data-[state=active]:bg-slate-800">Institutional</TabsTrigger>
-            <TabsTrigger value="risk"          className="text-xs data-[state=active]:bg-slate-800">Risk</TabsTrigger>
-            <TabsTrigger value="history"       className="text-xs data-[state=active]:bg-slate-800">History</TabsTrigger>
-          </TabsList>
+        {/* Why This Qualified */}
+        {opportunity && <WhyThisQualifiedSection opportunity={opportunity} />}
 
-          <TabsContent value="overview" className="mt-4">
-            <OverviewTab candidate={candidate} score={score} regime={ranking?.regime ?? null} />
-          </TabsContent>
-          <TabsContent value="technical" className="mt-4">
-            <TechnicalTab candidate={candidate} />
-          </TabsContent>
-          <TabsContent value="institutional" className="mt-4">
-            <InstitutionalTab institutional={institutional} score={score} />
-          </TabsContent>
-          <TabsContent value="risk" className="mt-4">
-            <RiskTab score={score} candidate={candidate} />
-          </TabsContent>
-          <TabsContent value="history" className="mt-4">
-            <HistoryTab history={history} symbol={symbol} />
-          </TabsContent>
-        </Tabs>
+        {/* What Changed */}
+        <WhatChangedSection changeExplanation={changeExplanation} />
 
-        {/* Related opportunities */}
-        {ranking && (
-          <RelatedSection symbol={symbol} ranking={ranking} onSelect={handleRelatedSelect} />
+        {/* Evidence Matrix */}
+        {opportunity && (
+          <EvidenceMatrix
+            opportunity={opportunity}
+            sectorContext={sectorContext}
+            themeContexts={themeContexts}
+            institutional={institutional}
+          />
         )}
 
-        {/* Footer disclaimer */}
+        {/* Main research tabs */}
+        {opportunity && (
+          <Tabs defaultValue="technical">
+            <TabsList className="bg-slate-900 border border-slate-800 w-full overflow-x-auto flex" role="tablist" aria-label="Research sections">
+              <TabsTrigger value="technical" className="text-xs data-[state=active]:bg-slate-800 shrink-0">Technical</TabsTrigger>
+              <TabsTrigger value="fundamental" className="text-xs data-[state=active]:bg-slate-800 shrink-0">Fundamental</TabsTrigger>
+              <TabsTrigger value="institutional" className="text-xs data-[state=active]:bg-slate-800 shrink-0">Institutional</TabsTrigger>
+              <TabsTrigger value="sector-theme" className="text-xs data-[state=active]:bg-slate-800 shrink-0">Sector & Theme</TabsTrigger>
+              <TabsTrigger value="risk" className="text-xs data-[state=active]:bg-slate-800 shrink-0">Risk</TabsTrigger>
+              <TabsTrigger value="history" className="text-xs data-[state=active]:bg-slate-800 shrink-0">History</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="technical" className="mt-4">
+              <TechnicalResearchTab opportunity={opportunity} />
+            </TabsContent>
+
+            <TabsContent value="fundamental" className="mt-4">
+              <FundamentalResearchTab opportunity={opportunity} />
+            </TabsContent>
+
+            <TabsContent value="institutional" className="mt-4">
+              <InstitutionalResearchTab institutional={institutional} opportunity={opportunity} />
+            </TabsContent>
+
+            <TabsContent value="sector-theme" className="mt-4">
+              <SectorThemeTab
+                opportunity={opportunity}
+                sectorContext={sectorContext}
+                themeContexts={themeContexts}
+                navigate={navigate}
+              />
+            </TabsContent>
+
+            <TabsContent value="risk" className="mt-4">
+              <RiskThesisTab opportunity={opportunity} />
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-4">
+              <HistoryTimelineTab history={history} symbol={symbol} />
+            </TabsContent>
+          </Tabs>
+        )}
+
+        {/* Related Research */}
+        <RelatedResearchSection relatedOpportunities={relatedOpportunities} navigate={navigate} />
+
+        {/* Collections / Monitoring / Reports / AI Research */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <CollectionsSection collections={collections} symbol={symbol} navigate={navigate} />
+          <MonitoringSection monitoring={monitoring} symbol={symbol} navigate={navigate} />
+        </div>
+        <ReportsSection reports={reports} navigate={navigate} />
+        <AIResearchSection symbol={symbol} navigate={navigate} />
+
+        {/* Future Trade Planning Handoff */}
+        {opportunity && <TradePlanningHandoff opportunity={opportunity} />}
+
+        {/* Limitations */}
+        {limitations.length > 0 && (
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs text-slate-500 flex items-center gap-2">
+                <Info className="h-3.5 w-3.5" />
+                Coverage & Limitations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1">
+                {limitations.map((l, i) => (
+                  <li key={i} className="text-xs text-slate-500 flex items-start gap-2">
+                    <span className="text-slate-700 shrink-0">·</span>
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Data Freshness summary */}
+        <div className="text-[10px] text-slate-600 space-y-0.5">
+          {freshness.rankingGeneratedAt && <div>Ranking: {formatAge(freshness.rankingGeneratedAt)}</div>}
+          {freshness.sectorDataAt && <div>Sector: {formatAge(freshness.sectorDataAt)}</div>}
+          {freshness.institutionalDataAt && <div>Institutional: {formatAge(freshness.institutionalDataAt)}</div>}
+          <div>Workspace assembled: {formatAge(freshness.workspaceAssembledAt)}</div>
+        </div>
+
+        {/* Compliance disclaimer */}
         <p className="text-[11px] text-slate-700 text-center pb-4">
-          All scores are algorithmic and educational only. Not financial advice. Scores reflect pattern recognition only — not predictions.
+          Opportunity research summarizes deterministic and AI-assisted research evidence for informational and research purposes.
+          It does not constitute investment advice or a recommendation to buy, sell, hold, or enter any particular security or strategy.
         </p>
       </div>
     </div>

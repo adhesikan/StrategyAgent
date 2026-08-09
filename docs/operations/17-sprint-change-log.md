@@ -4,6 +4,90 @@
 
 ---
 
+## Sprint 2.6.3 — Opportunity Workspace v2 (2026-08-09)
+
+**Phase:** Research Experience Enhancement
+
+**Purpose:** Upgrade `/opportunities/:symbol` into the flagship single-security research workspace.
+Aggregates all existing research intelligence (Opportunity Intelligence, Change Intelligence,
+Institutional, Sector, Theme, Collections, Monitoring, Reports, Portfolio context) into one consolidated
+page without duplicating business logic. Performance contract: exactly 2 client API calls.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `docs/operations/25-opportunity-workspace-v2.md` | Full architecture, data source table, compliance rules, runbooks, known gaps |
+| `server/routes/__tests__/opportunity-workspace-v2.test.ts` | 127 pure assertions covering all sections, compliance, partial-data resilience, security, AI contract |
+
+### Modified Files
+
+| File | Change |
+|------|-------|
+| `server/routes/opportunity-workspace.ts` | Full rewrite: aggregated endpoint returning opportunity + sector + theme + collections + monitoring + reports + portfolio context + related opportunities + freshness + limitations. All parallel via Promise.allSettled. Health metrics added. |
+| `client/src/pages/opportunity-workspace.tsx` | Full rewrite: 15+ page sections — sticky header, Research Snapshot, Why This Qualified, What Changed, Evidence Matrix, 6-tab research (Technical/Fundamental/Institutional/Sector & Theme/Risk/History), Related Research, Collections, Monitoring, Reports, AI Research actions, Portfolio Context, Future Trade Planning Handoff, Coverage & Limitations, Compliance disclaimer |
+| `server/routes/platform-health.ts` | `getWorkspaceV2Health` imported; `opportunityWorkspaceV2` health card added |
+| `docs/operations/16-api-and-uat-reference.md` | Sprint 2.6.3 UAT checklist added |
+| `docs/operations/17-sprint-change-log.md` | This entry |
+
+### Tables / Schema
+
+No new tables. Reads from:
+- `portfolio_positions` + `portfolios` (portfolio context)
+- `sector_intelligence_snapshots` (sector context)
+- `theme_intelligence_snapshots` (theme contexts)
+- `research_watches` (monitoring state)
+- `research_reports` (reports)
+- `user_collections` / `collection_memberships` (collections)
+
+### Jobs / Scheduled Work
+
+No new jobs.
+
+### Environment / Config
+
+No new environment variables required.
+
+### API Changes
+
+`GET /api/opportunities/workspace/:symbol` response expanded from:
+```json
+{ "symbol", "companyName", "history", "institutional", "changeExplanation" }
+```
+to:
+```json
+{
+  "symbol", "companyName", "opportunity", "history", "institutional",
+  "changeExplanation", "sectorContext", "themeContexts", "collections",
+  "monitoring", "reports", "portfolioContext", "relatedOpportunities",
+  "freshness", "limitations"
+}
+```
+
+Backward-compatible: old fields are preserved.
+
+### Performance
+
+All subsystem fetches run in parallel via `Promise.allSettled`. Partial failures degrade
+individual sections without failing the page.
+
+### Tests
+
+127 new assertions covering: workspace health, monitoring state, report summary, limitations,
+CanonicalOpportunity shape, compliance language, partial-data resilience, evidence matrix,
+institutional contract, portfolio context security, sector/theme shapes, change explanation,
+freshness, related opportunities, symbol validation, future trade handoff, full response type,
+company name resolution, security/privacy, AI contract, route structure, edge cases, roadmap alignment.
+
+### Known Limitations
+
+- Exchange field not in CanonicalOpportunity (no data source connected)
+- `monitoring.recentActivityCount` always 0 (separate DB call deferred)
+- Reports filtered by keyword only (symbol filter in listReports not yet implemented in service)
+- Theme filtering uses name-match, not ID (themes in CanonicalOpportunity are name strings)
+
+---
+
 ## Sprint 2.6.2 — Portfolio Analytics (2026-08-09)
 
 **Phase:** Portfolio Intelligence Track — Phase 3

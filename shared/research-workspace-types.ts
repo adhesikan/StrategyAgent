@@ -1,5 +1,5 @@
 /**
- * Research Workspace Types — Sprint 2.5.2
+ * Research Workspace Types — Sprint 2.6.4
  *
  * Shared between server and client.
  * COMPLIANCE: "recommendation", "buy", "sell", "target price" are never used.
@@ -113,6 +113,89 @@ export const SYSTEM_SCOPE_KEYS: ContextScope[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Sprint 2.6.4 — Research Context (canonical entry model)
+// ---------------------------------------------------------------------------
+
+/** All supported context entry types */
+export type ResearchContextType =
+  | "market"
+  | "opportunity"
+  | "company"
+  | "theme"
+  | "sector"
+  | "institutional"
+  | "collection"
+  | "comparison"
+  | "monitor"
+  | "report"
+  | "portfolio"
+  | "portfolio_holding"
+  | "custom";
+
+/** Workspace action param — maps to prefilled questions */
+export type WorkspaceAction =
+  | "explain_concept"
+  | "challenge"
+  | "explain_change"
+  | "risk"
+  | "institutional"
+  | "compare";
+
+/**
+ * Canonical research context — assembled server-side or derived from URL params.
+ * Client uses this to display the context banner, pre-fill tickers/mode,
+ * and persist context metadata in workspace_conversations.
+ */
+export interface ResearchContext {
+  contextType:        ResearchContextType;
+  /** Opaque entity ID (collectionId, themeId, portfolioId, etc.) */
+  contextId?:         string;
+  /** Human-readable label: "Researching: NVDA" or "AI Infrastructure Theme" */
+  label:              string;
+  /** Primary ticker(s) pre-filled into the ticker pin list */
+  symbols:            string[];
+  /** Suggested workspace mode */
+  defaultMode:        ResearchMode;
+  /** Suggested context scope */
+  defaultScope:       ContextScope;
+  // Entity-specific fields
+  collectionId?:      string;
+  collectionName?:    string;
+  themeId?:           string;
+  themeName?:         string;
+  sector?:            string;
+  reportId?:          string;
+  reportTitle?:       string;
+  portfolioId?:       string;
+  portfolioName?:     string;
+  watchId?:           string;
+  watchLabel?:        string;
+  comparisonSymbols?: string[];
+  /** Page that originated this workspace session (for "Back to …" links) */
+  sourceRoute?:       string;
+}
+
+/** Pre-filled question mapping for workspace action params */
+export const ACTION_QUESTIONS: Record<WorkspaceAction, (symbol: string) => string> = {
+  explain_concept:  (s) => `Explain why ${s} qualified as a research candidate. Walk through the technical evidence, fundamental health indicators, institutional signals, and key risk factors in detail.`,
+  challenge:        (s) => `Challenge the investment thesis for ${s}. Steel-man the bear case — what evidence argues against it being a qualified opportunity? What conditions would invalidate the thesis?`,
+  explain_change:   (s) => `Explain what changed for ${s} in the most recent ranking cycle. What evidence improved or deteriorated? Why did its research score move?`,
+  risk:             (s) => `Explain the risk factors for ${s}. What are the primary thesis invalidators, and what conditions would cause this candidate to exit the qualified list?`,
+  institutional:    (s) => `Explain the institutional positioning signals for ${s}. What does the 13F data show about accumulation patterns, concentration changes, and conviction level?`,
+  compare:          (s) => `Compare ${s} with similar research candidates. Look for matching themes, technical patterns, and institutional signals. What differentiates ${s} from its closest peers?`,
+};
+
+/** Map workspace action → ResearchMode */
+export const ACTION_MODE_MAP: Record<WorkspaceAction, ResearchMode> = {
+  explain_concept: "company",
+  challenge:       "company",
+  explain_change:  "opportunity",
+  risk:            "company",
+  institutional:   "institutional",
+  compare:         "comparison",
+};
+
+// ---------------------------------------------------------------------------
 // Evidence panel
 // ---------------------------------------------------------------------------
 
@@ -146,7 +229,7 @@ export interface FollowUpAction {
     | { type: "ask"; question: string; mode?: ResearchMode; scope?: ContextScope }
     | { type: "navigate"; path: string }
     | { type: "set_scope"; scope: ContextScope }
-    | { type: "relax_filter"; filterName: string };
+    | { type: "relax_filter"; filterName: string; suggestedScope?: ContextScope };
 }
 
 export interface ResearchDiagnostics {
@@ -205,6 +288,12 @@ export interface ConversationSummary {
   lastMessageAt: string;
   createdAt:     string;
   messageCount?: number;
+  /** Sprint 2.6.4 context metadata */
+  contextType?:       string;
+  contextLabel?:      string;
+  primarySymbol?:     string;
+  comparisonSymbols?: string[];
+  sourceRoute?:       string;
 }
 
 export interface ConversationDetail extends ConversationSummary {
@@ -234,6 +323,33 @@ export const RESEARCH_TEMPLATES: ResearchTemplate[] = [
     mode:         "company",
     defaultScope: "entire_market",
     promptText:   "Explain why {TICKER} qualified as a research candidate. Walk through the technical evidence, institutional signals, and risk factors.",
+    requiresTicker: true,
+  },
+  {
+    id:           "challenge-thesis",
+    label:        "Challenge This Investment Thesis",
+    description:  "Steel-man the bear case for a candidate",
+    mode:         "company",
+    defaultScope: "entire_market",
+    promptText:   "Challenge the investment thesis for {TICKER}. What evidence argues against it being a qualified opportunity? What would invalidate the thesis?",
+    requiresTicker: true,
+  },
+  {
+    id:           "explain-change",
+    label:        "Explain What Changed",
+    description:  "Why did this candidate's ranking or evidence shift?",
+    mode:         "opportunity",
+    defaultScope: "recently-improved",
+    promptText:   "Explain what changed for {TICKER} in the most recent ranking cycle. What evidence improved or deteriorated?",
+    requiresTicker: true,
+  },
+  {
+    id:           "risk-profile",
+    label:        "Explain Risk Profile",
+    description:  "Deep dive into risk factors and thesis invalidators",
+    mode:         "company",
+    defaultScope: "entire_market",
+    promptText:   "Explain the risk factors for {TICKER}. What are the primary thesis invalidators and under what conditions would it exit the qualified list?",
     requiresTicker: true,
   },
   {
@@ -308,15 +424,6 @@ export const RESEARCH_TEMPLATES: ResearchTemplate[] = [
     promptText:   "What changed in the research candidate landscape recently? Which opportunities improved and what evidence drove the change?",
     requiresTicker: false,
   },
-  {
-    id:           "challenge-thesis",
-    label:        "Challenge This Investment Thesis",
-    description:  "Steel-man the bear case for a candidate",
-    mode:         "company",
-    defaultScope: "entire_market",
-    promptText:   "Challenge the investment thesis for {TICKER}. What evidence argues against it being a qualified opportunity? What would invalidate the thesis?",
-    requiresTicker: true,
-  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -329,6 +436,14 @@ export interface WorkspaceAskRequest {
   contextScope:   ContextScope;
   tickers?:       string[];
   conversationId?: string;
+  /** Sprint 2.6.4 — optional context metadata for conversation persistence */
+  researchContext?: {
+    contextType?:      string;
+    contextLabel?:     string;
+    primarySymbol?:    string;
+    comparisonSymbols?: string[];
+    sourceRoute?:      string;
+  };
 }
 
 export interface WorkspaceAskResponse {
@@ -341,4 +456,14 @@ export interface ConversationListResponse {
   pinned:  ConversationSummary[];
   recent:  ConversationSummary[];
   all:     ConversationSummary[];
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2.6.4 — Context endpoint response
+// ---------------------------------------------------------------------------
+
+export interface ResearchContextResponse {
+  context:      ResearchContext;
+  limitations:  string[];
+  assembledAt:  string;
 }

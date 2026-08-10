@@ -67,3 +67,4 @@
 - [Platform Operations Center](platform-operations-center.md) — Sprint 2.5.3B: enriched health endpoint (7-dim summary, 10-stage pipeline, 14-dataset freshness); pure internals module for tests; NOT_APPLICABLE label must be "N/A".
 - [Portfolio Analytics (Sprint 2.6.2)](portfolio-analytics-262.md) — Phase 3 of Portfolio Intelligence; no new DB tables; 5-min cache; "Portfolio Value Change" not "Return"; theme overlap disclosure required; sectorExposureHistory/themeExposureHistory empty until capture stores breakdown.
 - [Opportunity Workspace v2](opportunity-workspace-v2.md) — Sprint 2.6.3: aggregated endpoint (15 fields, Promise.allSettled), 15-section client, 127 tests; WatchStatus is lowercase; themes are name strings not IDs.
+- [Research Workspace v2](research-workspace-v2.md) — Sprint 2.6.4: full context entry contract, evidence sidebar, comparison matrix, challenge thesis, relax_filter handler, conversation persistence v2; critical type fixes documented.

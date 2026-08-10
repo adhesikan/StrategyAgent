@@ -1,12 +1,13 @@
 /**
- * Research Workspace Service — Sprint 2.5.2
+ * Research Workspace Service — Sprint 2.6.4
  *
  * Assembles rich research context from:
  *   • Opportunity Intelligence Engine (Sprint 2.5.0)
  *   • Research Collections (Sprint 2.5.1)
  *   • Sector Intelligence snapshots
  *   • Theme Intelligence snapshots
- *   • Market Intelligence briefing
+ *   • Research Monitor (Sprint 2.5.4)
+ *   • Research Reports (Sprint 2.5.5)
  *
  * Context is assembled deterministically — AI is forbidden from inventing
  * opportunities, scores, or institutional positions. It explains evidence only.
@@ -14,10 +15,12 @@
  * COMPLIANCE: never uses "recommendation", "buy", "sell", "target price".
  */
 
-import type { CanonicalOpportunity } from "../../shared/opportunity-intelligence-types";
+import type { CanonicalOpportunity, OpportunitySortOptions } from "../../shared/opportunity-intelligence-types";
 import type {
   ResearchMode,
   ContextScope,
+  ResearchContext,
+  ResearchContextType,
   EvidencePanel,
   EvidenceItem,
   FollowUpAction,
@@ -25,9 +28,14 @@ import type {
   WorkspaceAIResponse,
 } from "../../shared/research-workspace-types";
 import { CONTEXT_SCOPE_LABELS, SYSTEM_SCOPE_KEYS } from "../../shared/research-workspace-types";
-import { getOpportunityIntelligence, filterOpportunities, sortOpportunities } from "./opportunity-intelligence-service";
+import { getOpportunityIntelligence, sortOpportunities } from "./opportunity-intelligence-service";
 import { listCollections, getCollectionDetail } from "./collection-service";
-import { getLatestSectorSnapshots, getLatestThemeSnapshots } from "./intelligence-snapshot-store";
+import {
+  getLatestSectorSnapshots,
+  getLatestThemeSnapshots,
+  getLatestSectorDetail,
+  getLatestThemeDetail,
+} from "./intelligence-snapshot-store";
 
 // ---------------------------------------------------------------------------
 // Assembled research context passed to AI prompt builder
@@ -73,8 +81,123 @@ interface StoredThemeSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Health metrics (Sprint 2.6.4 extended)
+// ---------------------------------------------------------------------------
+
+/** Per-request counters — reset on restart (in-memory only) */
+const healthMetrics = {
+  contextRequests:     0,
+  contextRequestsOk:   0,
+  askRequests:         0,
+  askRequestsOk:       0,
+  fallbackCount:       0,
+  partialContextCount: 0,
+  totalAIResponseMs:   0,
+  aiResponseCount:     0,
+};
+
+export function recordContextRequest(ok: boolean): void {
+  healthMetrics.contextRequests++;
+  if (ok) healthMetrics.contextRequestsOk++;
+}
+
+export function recordAskRequest(ok: boolean, usedFallback: boolean, latencyMs?: number): void {
+  healthMetrics.askRequests++;
+  if (ok) healthMetrics.askRequestsOk++;
+  if (usedFallback) healthMetrics.fallbackCount++;
+  if (latencyMs !== undefined) {
+    healthMetrics.totalAIResponseMs += latencyMs;
+    healthMetrics.aiResponseCount++;
+  }
+}
+
+export function recordPartialContext(): void {
+  healthMetrics.partialContextCount++;
+}
+
+// ---------------------------------------------------------------------------
+// Scope-based opportunity filter (manual — OpportunityFilterOptions has no scope)
+// ---------------------------------------------------------------------------
+
+function filterByScopeKey(opps: CanonicalOpportunity[], scope: ContextScope): CanonicalOpportunity[] {
+  const THEME_SCOPE_MAP: Partial<Record<ContextScope, string[]>> = {
+    "ai-infrastructure": ["AI Infrastructure", "Artificial Intelligence"],
+    "semiconductors":    ["Semiconductors", "Chips"],
+    "memory":            ["Memory"],
+    "networking":        ["Networking"],
+    "cybersecurity":     ["Cybersecurity"],
+    "cloud":             ["Cloud Computing", "Cloud"],
+    "energy":            ["Energy"],
+    "healthcare":        ["Healthcare"],
+    "financials":        ["Financials", "Finance"],
+    "consumer":          ["Consumer", "Consumer Discretionary"],
+    "industrials":       ["Industrials"],
+  };
+
+  const RISK_SCOPE_MAP: Partial<Record<ContextScope, string>> = {
+    "dividend":    "low",
+    "income":      "low",
+    "value":       "low",
+  };
+
+  const TYPE_SCOPE_MAP: Partial<Record<ContextScope, string[]>> = {
+    "swing-trading":        ["swing", "vcp", "breakout"],
+    "covered-calls":        ["covered_call"],
+    "cash-secured-puts":    ["cash_secured_put"],
+  };
+
+  // Theme-based filter
+  const themeNames = THEME_SCOPE_MAP[scope];
+  if (themeNames) {
+    return opps.filter(o => o.themes.some(t => themeNames.some(tn => t.toLowerCase().includes(tn.toLowerCase()))));
+  }
+
+  // Risk-based filter
+  const riskLevel = RISK_SCOPE_MAP[scope];
+  if (riskLevel) {
+    return opps.filter(o => o.riskLevel === riskLevel);
+  }
+
+  // Type-based filter
+  const types = TYPE_SCOPE_MAP[scope];
+  if (types) {
+    return opps.filter(o => types.includes(o.opportunityType));
+  }
+
+  // Dynamic scopes
+  if (scope === "market-leaders") {
+    return opps.slice(0, 20);
+  }
+  if (scope === "recently-improved") {
+    return opps.filter(o => o._sourceCategory === "approaching" || o.researchScore >= 60);
+  }
+  if (scope === "institutional-activity") {
+    return opps.filter(o => o.institutionalScore >= 50).sort((a, b) => b.institutionalScore - a.institutionalScore);
+  }
+  if (scope === "new-opportunities") {
+    return opps.filter(o => o._sourceCategory === "approaching");
+  }
+  if (scope === "growth") {
+    return opps.filter(o => o.opportunityType === "growth" || o.researchScore >= 65);
+  }
+  if (scope === "momentum") {
+    return opps.filter(o => o.technicalScore >= 65);
+  }
+  if (scope === "etf") {
+    return opps.filter(o => o.opportunityType === "etf");
+  }
+  if (scope === "long-term-investments") {
+    return opps.filter(o => o.timeHorizon === "long");
+  }
+
+  return opps;
+}
+
+// ---------------------------------------------------------------------------
 // Context assembly
 // ---------------------------------------------------------------------------
+
+const SORT_BY_RESEARCH: OpportunitySortOptions = { field: "researchScore", direction: "desc" };
 
 export async function assembleResearchContext(
   userId: string,
@@ -94,143 +217,341 @@ export async function assembleResearchContext(
 
   // --- Scope filtering ---
   if (scope === "my_collections") {
-    // Load all followed/favorited collections for the user
     const colls = await listCollections(userId, { followedOnly: true }).catch(() => []);
     for (const c of colls) {
       collectionNames.push(c.name);
-    }
-    const followedSymbols = new Set<string>();
-    for (const c of colls) {
       const detail = await getCollectionDetail(c.id, userId).catch(() => null);
-      if (detail) {
-        for (const o of detail.opportunities) followedSymbols.add(o.symbol);
+      if (detail?.symbols && detail.symbols.length > 0) {
+        contextOpps = contextOpps.filter(o => detail.symbols.includes(o.symbol));
       }
     }
-    contextOpps = contextOpps.filter(o => followedSymbols.has(o.symbol));
-  } else if (scope !== "entire_market" && scope !== "future_portfolio" && SYSTEM_SCOPE_KEYS.includes(scope as any)) {
-    // System collection scope — filter by theme or opportunityType or sector matching scope
-    contextOpps = filterByScope(allOpps, scope);
-    collectionNames.push(CONTEXT_SCOPE_LABELS[scope] ?? scope);
+  } else if (SYSTEM_SCOPE_KEYS.includes(scope)) {
+    contextOpps = filterByScopeKey(allOpps, scope);
   }
 
-  // --- Mode-specific sorting ---
-  if (mode === "institutional") {
-    contextOpps = sortOpportunities(contextOpps, { field: "institutionalScore", direction: "desc" });
-  } else if (mode === "market") {
-    contextOpps = sortOpportunities(contextOpps, { field: "researchScore", direction: "desc" });
-  } else {
-    contextOpps = sortOpportunities(contextOpps, { field: "researchScore", direction: "desc" });
-  }
-
-  // --- Ticker-scoped subset ---
-  const upperTickers = tickers.map(t => t.toUpperCase());
-  const tickerOpportunities = upperTickers.length > 0
-    ? allOpps.filter(o => upperTickers.includes(o.symbol))
+  // Apply ticker filter (intersection)
+  const tickerOpportunities = tickers.length > 0
+    ? allOpps.filter(o => tickers.includes(o.symbol))
     : [];
 
-  // Top sectors/themes
-  const topSectors = [...sectors]
+  // Sort by research score
+  const sortedOpps = sortOpportunities(contextOpps, SORT_BY_RESEARCH);
+
+  // Build top-N lists
+  const topSectors = (sectors as StoredSectorSummary[])
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
     .map(s => s.sector);
 
-  const topThemes = [...themes]
+  const topThemes = (themes as StoredThemeSummary[])
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
     .map(t => t.themeName);
 
-  // Data freshness
-  const newestOpp = contextOpps[0];
-  const freshnessDate = newestOpp?.lastUpdated ?? (sectors[0]?.generatedAt ?? "unavailable");
-  const dataFreshness = freshnessDate !== "unavailable"
-    ? `Last updated: ${new Date(freshnessDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
-    : "Data freshness unavailable";
+  const dataFreshness = oppResult?.generatedAt
+    ? `Snapshot from ${new Date(oppResult.generatedAt).toLocaleString("en-US", { timeZone: "America/New_York", hour12: false })}`
+    : "Freshness unavailable";
 
   return {
     mode,
     scope,
-    scopeLabel: CONTEXT_SCOPE_LABELS[scope] ?? scope,
-    opportunities: contextOpps.slice(0, 50),   // cap at 50 for prompt size
-    totalCandidates: contextOpps.length,
-    sectors: sectors as StoredSectorSummary[],
-    themes:  themes as StoredThemeSummary[],
+    scopeLabel:          CONTEXT_SCOPE_LABELS[scope] ?? scope,
+    opportunities:       sortedOpps,
+    totalCandidates:     sortedOpps.length,
+    sectors:             sectors as StoredSectorSummary[],
+    themes:              themes as StoredThemeSummary[],
     topSectors,
     topThemes,
     collectionNames,
-    tickers: upperTickers,
+    tickers,
     tickerOpportunities,
     dataFreshness,
-    hasOpportunities: contextOpps.length > 0,
+    hasOpportunities:    sortedOpps.length > 0,
   };
-}
-
-function filterByScope(opps: CanonicalOpportunity[], scope: ContextScope): CanonicalOpportunity[] {
-  const scopeKey = scope as string;
-
-  // Theme-based scopes
-  const themeMap: Record<string, string> = {
-    "ai-infrastructure": "AI Infrastructure",
-    "semiconductors":    "Semiconductors",
-    "memory":            "Memory",
-    "networking":        "Networking",
-    "cybersecurity":     "Cybersecurity",
-    "cloud":             "Cloud",
-  };
-  if (themeMap[scopeKey]) {
-    const theme = themeMap[scopeKey];
-    return opps.filter(o => o.themes?.includes(theme));
-  }
-
-  // Sector-based scopes
-  const sectorMap: Record<string, string> = {
-    "energy":        "Energy",
-    "healthcare":    "Healthcare",
-    "financials":    "Financial Services",
-    "consumer":      "Consumer Cyclical",
-    "industrials":   "Industrials",
-  };
-  if (sectorMap[scopeKey]) {
-    const sector = sectorMap[scopeKey];
-    return opps.filter(o => o.sector === sector);
-  }
-
-  // opportunityType-based scopes
-  const typeMap: Record<string, string[]> = {
-    "dividend":               ["dividend"],
-    "income":                 ["income_growth", "covered_call_candidate", "cash_secured_put"],
-    "growth":                 ["growth"],
-    "momentum":               ["momentum", "breakout_candidate", "vcp_setup"],
-    "value":                  ["value"],
-    "etf":                    ["etf"],
-    "long-term-investments":  ["long_term_hold"],
-    "swing-trading":          ["swing_trade", "vcp_setup", "breakout_candidate"],
-    "covered-calls":          ["covered_call_candidate"],
-    "cash-secured-puts":      ["cash_secured_put"],
-  };
-  if (typeMap[scopeKey]) {
-    const types = new Set(typeMap[scopeKey]);
-    return opps.filter(o => o.opportunityType && types.has(o.opportunityType));
-  }
-
-  // Dynamic / ranking-based scopes
-  if (scopeKey === "market-leaders") {
-    return sortOpportunities(opps, { field: "researchScore", direction: "desc" }).slice(0, 25);
-  }
-  if (scopeKey === "recently-improved") {
-    return sortOpportunities(opps, { field: "lastUpdated", direction: "desc" }).slice(0, 25);
-  }
-  if (scopeKey === "institutional-activity") {
-    return sortOpportunities(opps, { field: "institutionalScore", direction: "desc" }).slice(0, 25);
-  }
-  if (scopeKey === "new-opportunities") {
-    return sortOpportunities(opps, { field: "lastUpdated", direction: "desc" }).slice(0, 20);
-  }
-
-  return opps;
 }
 
 // ---------------------------------------------------------------------------
-// System prompt builder (mode-specific)
+// Sprint 2.6.4 — Canonical ResearchContext assembly (for context endpoint)
+// ---------------------------------------------------------------------------
+
+export async function assembleCanonicalContext(
+  userId: string,
+  contextType: ResearchContextType,
+  params: {
+    symbol?:          string;
+    symbols?:         string[];
+    themeId?:         string;
+    sector?:          string;
+    collectionId?:    string;
+    portfolioId?:     string;
+    watchId?:         string;
+    reportId?:        string;
+    sourceRoute?:     string;
+  },
+): Promise<{ context: ResearchContext; limitations: string[] }> {
+  const limitations: string[] = [];
+
+  switch (contextType) {
+    case "opportunity":
+    case "company": {
+      const symbol = params.symbol?.toUpperCase() ?? "";
+      if (!symbol) limitations.push("No symbol provided");
+
+      const oppResult = await getOpportunityIntelligence().catch(() => null);
+      const opp = oppResult?.opportunities.find(o => o.symbol === symbol);
+      if (symbol && !opp) {
+        limitations.push(`${symbol} is not in the current ranked opportunity list`);
+      }
+
+      return {
+        context: {
+          contextType,
+          label:        symbol ? `Researching: ${symbol}${opp?.companyName ? ` (${opp.companyName})` : ""}` : "Company Research",
+          symbols:      symbol ? [symbol] : [],
+          defaultMode:  contextType === "opportunity" ? "opportunity" : "company",
+          defaultScope: "entire_market",
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "comparison": {
+      const symbols = (params.symbols ?? (params.symbol ? [params.symbol] : [])).map(s => s.toUpperCase());
+      if (symbols.length < 2) limitations.push("Comparison requires at least 2 symbols");
+      const oppResult = await getOpportunityIntelligence().catch(() => null);
+      const missing = symbols.filter(s => !oppResult?.opportunities.find(o => o.symbol === s));
+      if (missing.length > 0) limitations.push(`${missing.join(", ")} not in current ranking`);
+
+      return {
+        context: {
+          contextType:       "comparison",
+          label:             `Comparing: ${symbols.join(" vs ")}`,
+          symbols,
+          defaultMode:       "comparison",
+          defaultScope:      "entire_market",
+          comparisonSymbols: symbols,
+          sourceRoute:       params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "theme": {
+      const themeId = params.themeId ?? "";
+      let themeName = themeId;
+      if (themeId) {
+        const detail = await getLatestThemeDetail(themeId).catch(() => null);
+        if (detail) {
+          themeName = detail.themeName;
+        } else {
+          limitations.push(`Theme "${themeId}" data not available`);
+        }
+      }
+
+      return {
+        context: {
+          contextType:  "theme",
+          contextId:    themeId,
+          label:        themeId ? `Theme: ${themeName}` : "Theme Research",
+          symbols:      [],
+          defaultMode:  "theme",
+          defaultScope: (themeId as ContextScope) in CONTEXT_SCOPE_LABELS ? themeId as ContextScope : "entire_market",
+          themeId,
+          themeName,
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "sector": {
+      const sector = params.sector ?? "";
+      if (sector) {
+        const sectorDetail = await getLatestSectorDetail(sector).catch(() => null);
+        if (!sectorDetail) limitations.push(`Sector "${sector}" data not available`);
+      }
+
+      return {
+        context: {
+          contextType:  "sector",
+          label:        sector ? `Sector: ${sector}` : "Sector Research",
+          symbols:      [],
+          defaultMode:  "sector",
+          defaultScope: "entire_market",
+          sector,
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "institutional": {
+      return {
+        context: {
+          contextType:  "institutional",
+          label:        params.symbol ? `Institutional: ${params.symbol.toUpperCase()}` : "Institutional Research",
+          symbols:      params.symbol ? [params.symbol.toUpperCase()] : [],
+          defaultMode:  "institutional",
+          defaultScope: "institutional-activity",
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "collection": {
+      const collectionId = params.collectionId ?? "";
+      let collectionName = "Collection";
+      if (collectionId) {
+        const detail = await getCollectionDetail(collectionId, userId).catch(() => null);
+        if (detail) {
+          collectionName = detail.name;
+        } else {
+          limitations.push("Collection not found or inaccessible");
+        }
+      }
+
+      return {
+        context: {
+          contextType:   "collection",
+          contextId:     collectionId,
+          label:         `Collection: ${collectionName}`,
+          symbols:       [],
+          defaultMode:   "collection",
+          defaultScope:  "my_collections",
+          collectionId,
+          collectionName,
+          sourceRoute:   params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "monitor": {
+      const watchId = params.watchId ?? "";
+      let watchLabel = "Research Monitor";
+      if (watchId) {
+        try {
+          const { getWatchById } = await import("./research-monitor-service");
+          const watch = await getWatchById(watchId, userId).catch(() => null);
+          if (watch) {
+            watchLabel = (watch as { name: string }).name;
+          } else {
+            limitations.push("Watch not found or inaccessible");
+          }
+        } catch {
+          limitations.push("Monitor service unavailable");
+        }
+      }
+
+      return {
+        context: {
+          contextType:  "monitor",
+          contextId:    watchId,
+          label:        `Monitor: ${watchLabel}`,
+          symbols:      params.symbol ? [params.symbol.toUpperCase()] : [],
+          defaultMode:  "company",
+          defaultScope: "entire_market",
+          watchId,
+          watchLabel,
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "report": {
+      const reportId = params.reportId ?? "";
+      let reportTitle = "Research Report";
+      if (reportId) {
+        try {
+          const { getReport } = await import("./research-report-service");
+          const report = await getReport(reportId, userId).catch(() => null);
+          if (report) {
+            reportTitle = (report as { title: string }).title;
+          } else {
+            limitations.push("Report not found or inaccessible");
+          }
+        } catch {
+          limitations.push("Report service unavailable");
+        }
+      }
+
+      return {
+        context: {
+          contextType:  "report",
+          contextId:    reportId,
+          label:        `Report: ${reportTitle}`,
+          symbols:      [],
+          defaultMode:  "opportunity",
+          defaultScope: "entire_market",
+          reportId,
+          reportTitle,
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "portfolio": {
+      const portfolioId = params.portfolioId ?? "";
+      let portfolioName = "My Portfolio";
+      if (portfolioId) {
+        try {
+          // Load portfolio name from DB directly
+          const { db } = await import("../db");
+          const { portfolios } = await import("../../shared/schema");
+          const { eq, and } = await import("drizzle-orm");
+          const [row] = await db.select({ name: portfolios.name })
+            .from(portfolios)
+            .where(and(eq(portfolios.id, portfolioId), eq(portfolios.userId, userId)))
+            .limit(1);
+          if (row) {
+            portfolioName = row.name;
+          } else {
+            limitations.push("Portfolio not found or inaccessible");
+          }
+        } catch {
+          limitations.push("Portfolio service unavailable");
+        }
+      }
+
+      return {
+        context: {
+          contextType:   "portfolio",
+          contextId:     portfolioId,
+          label:         `Portfolio: ${portfolioName}`,
+          symbols:       [],
+          defaultMode:   "company",
+          defaultScope:  "entire_market",
+          portfolioId,
+          portfolioName,
+          sourceRoute:   params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+
+    case "market":
+    default: {
+      return {
+        context: {
+          contextType:  "market",
+          label:        "Market Intelligence",
+          symbols:      [],
+          defaultMode:  "market",
+          defaultScope: "entire_market",
+          sourceRoute:  params.sourceRoute,
+        },
+        limitations,
+      };
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// System prompt builder
 // ---------------------------------------------------------------------------
 
 export function buildResearchSystemPrompt(mode: ResearchMode, ctx: AssembledContext): string {
@@ -238,11 +559,12 @@ export function buildResearchSystemPrompt(mode: ResearchMode, ctx: AssembledCont
 
 CORE RULES:
 - You may only explain evidence supplied in the CONTEXT below. Never invent opportunities, scores, prices, or institutional positions.
-- You NEVER recommend buying, selling, or taking any specific position.
-- Use language: "research candidate", "investment candidate", "qualified opportunity", "evidence", "research score". NEVER: "recommendation", "buy", "sell", "target price".
+- You are a research engine, not an advisor. Never suggest or advise entering or exiting any position.
+- Preferred terms: "research candidate", "investment candidate", "qualified opportunity", "evidence", "research score". Forbidden terms: any advise-to-act language including transaction verbs or price targets.
 - Structure EVERY response as valid JSON matching the WorkspaceAIResponse schema.
 - Always populate: headline, answer, keyPoints (3-5), riskNote, confidence, evidencePanel, followUpActions (2-4), referencedTickers.
 - If the context has no qualifying candidates, populate the diagnostics field with honest empty-state information.
+- In followUpActions, use "relax_filter" (with suggestedScope field) when the user should broaden their search scope.
 - Data freshness: ${ctx.dataFreshness}.`;
 
   const modeRules: Record<ResearchMode, string> = {
@@ -256,7 +578,8 @@ MODE: Opportunity Research
 MODE: Company Research
 - Focus on a specific ticker or company's research profile.
 - Walk through all available evidence: technical pattern quality, fundamental health, institutional positioning, theme membership, and risk factors.
-- Be explicit about what evidence exists vs. what is unavailable.`,
+- Be explicit about what evidence exists vs. what is unavailable.
+- When challenging a thesis, surface only evidence from the supplied context — never extrapolate.`,
 
     theme: `
 MODE: Theme Research
@@ -293,7 +616,8 @@ MODE: Collection Research
 MODE: Comparison Research
 - Focus on comparing multiple candidates side by side.
 - For each candidate: technical score, institutional score, risk level, themes, and key differentiators.
-- Never declare a winner — surface evidence for the user to evaluate.`,
+- Never declare a winner — surface evidence for the user to evaluate.
+- If one candidate has notably stronger evidence in any dimension, state that clearly with the supporting data.`,
   };
 
   const responseSchema = `
@@ -357,16 +681,15 @@ export function buildResearchUserMessage(
       symbol: o.symbol,
       companyName: o.companyName,
       institutionalScore: o.institutionalScore,
-      institutionalSignals: o.evidence?.filter(e => e.category === "institutional") ?? [],
+      institutionalSignals: [...(o.primaryEvidence ?? []), ...(o.secondaryEvidence ?? [])]
+        .filter(e => String(e.type) === "institutional"),
     }));
   } else if (ctx.mode === "comparison") {
-    // For comparison: show all ticker data + top 5 from scope for context
     contextSummary.comparisonCandidates = [
       ...ctx.tickerOpportunities.map(serializeOpportunity),
       ...ctx.opportunities.slice(0, 5).filter(o => !ctx.tickers.includes(o.symbol)).map(serializeOpportunity),
     ];
   } else {
-    // opportunity, company, collection, default
     contextSummary.topCandidatesInScope = ctx.opportunities.slice(0, 15).map(serializeOpportunity);
     contextSummary.totalInScope = ctx.totalCandidates;
     if (ctx.collectionNames.length > 0) {
@@ -374,7 +697,6 @@ export function buildResearchUserMessage(
     }
   }
 
-  // Diagnostics when empty
   if (!ctx.hasOpportunities || ctx.opportunities.length === 0) {
     contextSummary.diagnostics = {
       universeSearched: `Entire ranked opportunity universe (${ctx.totalCandidates} candidates)`,
@@ -389,6 +711,7 @@ export function buildResearchUserMessage(
 }
 
 function serializeOpportunity(o: CanonicalOpportunity): Record<string, unknown> {
+  const allEvidence = [...(o.primaryEvidence ?? []), ...(o.secondaryEvidence ?? [])];
   return {
     symbol:             o.symbol,
     companyName:        o.companyName,
@@ -399,14 +722,14 @@ function serializeOpportunity(o: CanonicalOpportunity): Record<string, unknown> 
     riskLevel:          o.riskLevel,
     opportunityType:    o.opportunityType,
     themes:             o.themes,
-    evidenceSummary: (o.evidence ?? []).slice(0, 4).map(e => ({
+    evidenceSummary:    allEvidence.slice(0, 4).map(e => ({
       label:    e.label,
-      value:    e.value,
+      value:    e.detail,
       strength: e.strength,
-      category: e.category,
+      category: e.type,
     })),
-    riskFactors:        o.riskFactors?.slice(0, 3) ?? [],
-    thesisInvalidators: o.thesisInvalidators?.slice(0, 2) ?? [],
+    riskFactors:        (o.riskFactors ?? []).slice(0, 3).map(r => r.label),
+    thesisInvalidators: (o.invalidatesThesis ?? []).slice(0, 2).map(t => t.condition),
     lastUpdated:        o.lastUpdated,
   };
 }
@@ -454,7 +777,7 @@ export function buildRuleBasedWorkspaceResponse(
     {
       label:       "Explore Top Candidate",
       description: `View the full research profile for ${topOpps[0]?.symbol ?? "the top candidate"}`,
-      action:      { type: "navigate", path: `/opportunity/${topOpps[0]?.symbol ?? ""}` },
+      action:      { type: "navigate", path: `/opportunities/${topOpps[0]?.symbol ?? ""}` },
     },
     {
       label:       "Expand to Entire Market",
@@ -465,7 +788,7 @@ export function buildRuleBasedWorkspaceResponse(
     {
       label:       "Search Entire Market",
       description: "Broaden scope to all ranked research candidates",
-      action:      { type: "set_scope", scope: "entire_market" },
+      action:      { type: "relax_filter", filterName: "scope", suggestedScope: "entire_market" },
     },
     {
       label:       "Check Market Leaders",
@@ -496,8 +819,8 @@ export function buildRuleBasedWorkspaceResponse(
       technicalEvidence:     [],
       fundamentalEvidence:   [],
       institutionalEvidence: [],
-      riskFactors:           topOpps.flatMap(o => o.riskFactors?.slice(0, 1) ?? []),
-      thesisInvalidators:    topOpps.flatMap(o => o.thesisInvalidators?.slice(0, 1) ?? []),
+      riskFactors:           topOpps.flatMap(o => (o.riskFactors ?? []).slice(0, 1).map(r => r.label)),
+      thesisInvalidators:    topOpps.flatMap(o => (o.invalidatesThesis ?? []).slice(0, 1).map(t => t.condition)),
       researchSourcesUsed:   ["Opportunity Intelligence Engine", "Market Intelligence", ctx.dataFreshness],
     },
     followUpActions,
@@ -522,7 +845,6 @@ export function parseAIWorkspaceResponse(
   ctx: AssembledContext,
 ): WorkspaceAIResponse {
   try {
-    // Strip markdown code fences if present
     const cleaned = raw
       .replace(/^```json\s*/i, "")
       .replace(/```\s*$/, "")
@@ -547,7 +869,6 @@ export function parseAIWorkspaceResponse(
       disclaimer:           "This analysis summarizes deterministic research generated from market data and predefined qualification rules. It is not personalized investment advice.",
     };
   } catch {
-    // Parse failure → return rule-based fallback
     return buildRuleBasedWorkspaceResponse("", ctx, mode, scope);
   }
 }
@@ -592,43 +913,73 @@ function parseFollowUpActions(raw: unknown[]): FollowUpAction[] {
   return raw.slice(0, 4).map(item => {
     if (!item || typeof item !== "object") return null;
     const i = item as Record<string, unknown>;
+    const action = i.action as Record<string, unknown> | undefined;
+    let parsedAction: FollowUpAction["action"];
+    if (action?.type === "relax_filter") {
+      parsedAction = {
+        type: "relax_filter",
+        filterName: String(action.filterName ?? "scope"),
+        suggestedScope: action.suggestedScope as ContextScope | undefined,
+      };
+    } else {
+      parsedAction = (action ?? { type: "ask", question: "" }) as FollowUpAction["action"];
+    }
     return {
       label:       String(i.label ?? ""),
       description: String(i.description ?? ""),
-      action:      (i.action ?? { type: "ask", question: "" }) as FollowUpAction["action"],
+      action:      parsedAction,
     };
   }).filter((x): x is FollowUpAction => x !== null && x.label.length > 0);
 }
 
 // ---------------------------------------------------------------------------
-// Platform health
+// Platform health (Sprint 2.6.4 extended)
 // ---------------------------------------------------------------------------
 
 export interface WorkspaceHealthSnapshot {
-  conversationCount:    number;
-  pinnedConversations:  number;
-  contextAssemblyOk:   boolean;
-  openAiConfigured:     boolean;
+  conversationCount:       number;
+  pinnedConversations:     number;
+  contextAssemblyOk:       boolean;
+  openAiConfigured:        boolean;
+  contextRequests:         number;
+  contextRequestsOk:       number;
+  askRequests:             number;
+  askRequestsOk:           number;
+  fallbackCount:           number;
+  partialContextCount:     number;
+  averageAIResponseMs:     number;
 }
 
 export async function getWorkspaceHealth(): Promise<WorkspaceHealthSnapshot> {
   try {
     const { db } = await import("../db");
     const { workspaceConversations } = await import("../../shared/schema");
-    const { count } = await import("drizzle-orm");
+    const drizzle = await import("drizzle-orm");
+    const { count, eq } = drizzle;
 
     const [total, pinned, oppResult] = await Promise.all([
       db.select({ cnt: count() }).from(workspaceConversations),
       db.select({ cnt: count() }).from(workspaceConversations)
-        .where((await import("drizzle-orm")).eq(workspaceConversations.isPinned, true)),
+        .where(eq(workspaceConversations.isPinned, true)),
       getOpportunityIntelligence().catch(() => null),
     ]);
+
+    const avgMs = healthMetrics.aiResponseCount > 0
+      ? Math.round(healthMetrics.totalAIResponseMs / healthMetrics.aiResponseCount)
+      : 0;
 
     return {
       conversationCount:   Number(total[0]?.cnt ?? 0),
       pinnedConversations: Number(pinned[0]?.cnt ?? 0),
       contextAssemblyOk:   oppResult !== null,
       openAiConfigured:    !!process.env.OPENAI_API_KEY,
+      contextRequests:     healthMetrics.contextRequests,
+      contextRequestsOk:   healthMetrics.contextRequestsOk,
+      askRequests:         healthMetrics.askRequests,
+      askRequestsOk:       healthMetrics.askRequestsOk,
+      fallbackCount:       healthMetrics.fallbackCount,
+      partialContextCount: healthMetrics.partialContextCount,
+      averageAIResponseMs: avgMs,
     };
   } catch {
     return {
@@ -636,6 +987,13 @@ export async function getWorkspaceHealth(): Promise<WorkspaceHealthSnapshot> {
       pinnedConversations: 0,
       contextAssemblyOk:   false,
       openAiConfigured:    false,
+      contextRequests:     healthMetrics.contextRequests,
+      contextRequestsOk:   healthMetrics.contextRequestsOk,
+      askRequests:         healthMetrics.askRequests,
+      askRequestsOk:       healthMetrics.askRequestsOk,
+      fallbackCount:       healthMetrics.fallbackCount,
+      partialContextCount: healthMetrics.partialContextCount,
+      averageAIResponseMs: 0,
     };
   }
 }

@@ -1,0 +1,1891 @@
+# Sprint 2.6.4 — Research Workspace v2 / Integrated Research Experience
+
+Repository:
+VCP Trader AI / StrategyAgent
+
+CURRENT PHASE:
+Research Experience Enhancement
+
+CURRENT SPRINT:
+2.6.4 — Research Workspace v2 / Integrated Research Experience
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections & Watchlists
+✓ AI Research Workspace v1
+✓ Market Research Command Center
+✓ Research Monitoring
+✓ Research Reports & Publishing
+✓ Research Transparency / Central Research Glossary
+✓ Portfolio History
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Opportunity Workspace v2
+✓ Opportunity Routing & Navigation Integrity Fix
+✓ Platform Operations Center
+
+======================================================================
+PRODUCT PRINCIPLE
+======================================================================
+
+VCP Trader AI is RESEARCH-FIRST.
+
+The Research Workspace should become the cross-platform orchestration layer for:
+
+- Opportunity research
+- Company research
+- Theme research
+- Sector research
+- Institutional research
+- Market research
+- Collection research
+- Comparison research
+- Portfolio-context research
+- Research report follow-up
+- Monitoring/change explanation
+
+The AI must work from existing deterministic platform evidence.
+
+It must NOT invent:
+
+- candidates
+- scores
+- evidence
+- qualifications
+- institutional activity
+- portfolio holdings
+- trade structures
+- target prices
+
+The AI explains, compares, challenges, summarizes, and organizes existing research.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- Trade Construction Engine
+- Option strike selection
+- Order tickets
+- Broker execution
+- Automated trading
+- Portfolio recommendations
+- Rebalancing
+- Goal planning
+- Tax optimization
+- Alerts / notifications
+- New AI agents
+- RIA workflows
+- Institutional workflows
+- Enterprise customization
+
+DO NOT change:
+
+- scanner logic
+- Opportunity Ranking formulas
+- Opportunity Intelligence scoring
+- Portfolio Intelligence calculations
+- Research Glossary semantics
+- Research Monitoring logic
+- candidate qualification thresholds
+
+This sprint is an INTEGRATION + UX + CONTEXT MANAGEMENT sprint.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Upgrade:
+
+/research-workspace
+
+into the canonical cross-platform research environment.
+
+A user should be able to enter the workspace from:
+
+- Dashboard
+- Opportunity Workspace
+- Research Collection
+- Market Research Command Center
+- Theme Detail
+- Sector Detail
+- Research Monitor
+- Research Report
+- Portfolio Intelligence
+- Portfolio Analytics
+
+and immediately retain the correct research context.
+
+The workspace should answer:
+
+"What am I researching?"
+
+"What evidence is available?"
+
+"What changed?"
+
+"What are the strongest and weakest parts of the thesis?"
+
+"What related research should I inspect?"
+
+"How does this compare with alternatives?"
+
+"What should I research next?"
+
+NOT:
+
+"What should I buy?"
+
+"What trade should I place?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+client/src/pages/research-workspace.tsx
+
+server research-workspace routes
+
+research-workspace-service
+
+workspace_conversations
+
+workspace message/history tables
+
+Opportunity Intelligence
+
+Opportunity Workspace v2
+
+Research Collections
+
+Market Research Command Center
+
+Theme Intelligence
+
+Sector Intelligence
+
+Institutional Intelligence
+
+Research Monitoring
+
+Research Reports
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Central Research Glossary
+
+existing AI prompt architecture
+
+OpenAI abstraction/provider layer
+
+fallback logic
+
+structured response parser
+
+context assembly
+
+saved conversations
+
+pinning
+
+research templates
+
+follow-up actions
+
+Operations Manual
+
+Report:
+
+A. Existing workspace modes
+B. Existing context scopes
+C. Existing AI architecture
+D. Existing prompt duplication
+E. Existing conversation persistence
+F. Existing deep-link support
+G. Current API-call count
+H. Existing partial-data behavior
+I. Existing source attribution
+J. Current latency
+K. Any legacy Ask AI paths still bypassing the workspace
+
+Do not code until audit is complete.
+
+======================================================================
+2. CANONICAL RESEARCH CONTEXT MODEL
+======================================================================
+
+Create or formalize one reusable context model.
+
+Suggested:
+
+ResearchContext {
+  contextType
+  contextId
+  label
+  symbols[]
+  collectionId?
+  themeId?
+  sector?
+  reportId?
+  portfolioId?
+  watchId?
+  opportunitySymbol?
+  comparisonSymbols[]
+  sourceRoute?
+  metadata
+}
+
+Supported context types:
+
+market
+opportunity
+company
+theme
+sector
+institutional
+collection
+comparison
+monitor
+report
+portfolio
+portfolio_holding
+custom
+
+Do not create separate context models per page.
+
+======================================================================
+3. CONTEXT ENTRY CONTRACT
+======================================================================
+
+Every major research surface should be able to open:
+
+/research-workspace
+
+with preselected context.
+
+Prefer URL/query contract such as:
+
+/research-workspace?mode=company&symbol=NVDA
+
+/research-workspace?mode=theme&theme=ai-infrastructure
+
+/research-workspace?mode=sector&sector=Technology
+
+/research-workspace?mode=collection&collectionId=...
+
+/research-workspace?mode=report&reportId=...
+
+/research-workspace?mode=portfolio&portfolioId=...
+
+/research-workspace?mode=comparison&symbols=NVDA,AMD
+
+Use the current router/query conventions.
+
+Do not invent inconsistent deep-link patterns.
+
+======================================================================
+4. CONTEXT PERSISTENCE
+======================================================================
+
+Once a conversation starts:
+
+persist the research context with the conversation.
+
+A multi-turn follow-up must retain:
+
+research mode
+context entity
+symbols
+comparison set
+collection/report/portfolio reference
+relevant evidence snapshot identifiers if needed
+
+The user should not need to restate context every message.
+
+======================================================================
+5. CONTEXT SWITCHER
+======================================================================
+
+Add a clear context selector at the top of the workspace.
+
+Examples:
+
+Entire Market
+
+Opportunity
+
+Company
+
+Theme
+
+Sector
+
+Collection
+
+Report
+
+Research Watch
+
+Portfolio
+
+Compare
+
+Show current context visibly.
+
+Example:
+
+Researching:
+AI Infrastructure
+
+or:
+
+Comparing:
+NVDA vs AMD
+
+or:
+
+Portfolio Context:
+Retirement Portfolio
+
+Do not show private portfolio names outside authenticated owner context.
+
+======================================================================
+6. RESEARCH MODES
+======================================================================
+
+Preserve and improve the existing 8 modes:
+
+Opportunity
+
+Company
+
+Theme
+
+Sector
+
+Institutional
+
+Market
+
+Collection
+
+Comparison
+
+Add context-driven behavior where appropriate.
+
+Do NOT create unnecessary new modes if contextType can handle them.
+
+Portfolio/report/monitor may use existing modes with additional context.
+
+======================================================================
+7. OPPORTUNITY WORKSPACE HANDOFF
+======================================================================
+
+From /opportunities/:symbol:
+
+actions such as:
+
+Explain This Candidate
+
+Challenge This Thesis
+
+Explain What Changed
+
+Compare With Another Candidate
+
+Explain Institutional Evidence
+
+Explain Risk Factors
+
+must open Research Workspace with:
+
+symbol
+opportunity context
+appropriate research mode
+
+No user re-entry required.
+
+======================================================================
+8. COLLECTION HANDOFF
+======================================================================
+
+From a Research Collection:
+
+Open in Research Workspace
+
+should pass:
+
+collectionId
+collection label
+collection symbols
+collection type
+
+Example questions:
+
+Summarize this collection.
+
+Which candidates strengthened?
+
+Compare the highest-scoring members.
+
+Explain sector/theme concentration.
+
+Do not create new collection analytics.
+
+Use existing intelligence.
+
+======================================================================
+9. THEME / SECTOR HANDOFF
+======================================================================
+
+From theme/sector pages:
+
+Open in Research Workspace
+
+with context preloaded.
+
+Support:
+
+Explain leadership.
+
+Explain recent changes.
+
+Show qualified candidates.
+
+Compare leaders.
+
+Explain weakening evidence.
+
+Use existing Theme/Sector Intelligence.
+
+======================================================================
+10. COMMAND CENTER HANDOFF
+======================================================================
+
+Every meaningful Command Center card should support:
+
+Explain in Research Workspace
+
+Context should include:
+
+section type
+related symbols
+change direction
+current snapshot date
+
+Examples:
+
+Explain semiconductor strengthening.
+
+Explain today's opportunity changes.
+
+Explain institutional changes.
+
+No duplicate AI summary logic in Command Center.
+
+======================================================================
+11. MONITOR HANDOFF
+======================================================================
+
+From Research Monitor:
+
+Explain This Change
+
+should pass:
+
+watchId
+watch type
+entity
+activity type
+previous state
+current state
+evidence if available
+
+Research Workspace then explains WHY the observed change occurred.
+
+It must not reinterpret the watch as a trade alert.
+
+======================================================================
+12. REPORT HANDOFF
+======================================================================
+
+From Research Reports:
+
+Explain Report
+
+Challenge Report
+
+Compare Reports
+
+Continue Research
+
+should preserve report context.
+
+The AI should be able to reference:
+
+report title
+report type
+generatedAt
+deterministic sections
+key findings
+evidence
+risk factors
+
+Do not feed raw unrelated reports.
+
+======================================================================
+13. PORTFOLIO HANDOFF
+======================================================================
+
+Portfolio context is optional.
+
+Users without portfolio data must retain full workspace functionality.
+
+From Portfolio Intelligence/Analytics:
+
+Explain Sector Exposure
+
+Explain Research Weakening
+
+Explain Opportunity Overlap
+
+Explain Portfolio Value Change
+
+should pass:
+
+portfolioId
+relevant aggregate context
+not full raw private data unless required
+
+AI must not recommend:
+
+sell
+buy
+rebalance
+trim
+add
+
+Use descriptive research language.
+
+======================================================================
+14. COMPARE MODE V2
+======================================================================
+
+Upgrade comparison research.
+
+Support:
+
+2–5 symbols if architecture allows safely.
+
+Minimum:
+2 symbols.
+
+Comparison matrix:
+
+Research Score
+
+Technical
+
+Fundamental
+
+Institutional
+
+Risk
+
+Confidence
+
+Sector
+
+Themes
+
+Opportunity Type
+
+Recent Change
+
+Freshness
+
+Evidence Strength
+
+Primary Risks
+
+Thesis Invalidation
+
+All values come from canonical intelligence.
+
+No new comparison scoring.
+
+======================================================================
+15. PEER / RELATED CANDIDATE SELECTION
+======================================================================
+
+Allow user to add a comparison symbol from:
+
+current Opportunity Intelligence
+
+same sector
+
+same theme
+
+related opportunities
+
+Do not generate arbitrary symbols from AI.
+
+AI may suggest comparison targets ONLY from deterministic related-research candidates already provided in context.
+
+======================================================================
+16. RESEARCH EVIDENCE SIDEBAR
+======================================================================
+
+Create persistent evidence panel beside conversation where responsive layout allows.
+
+Show:
+
+Current Context
+
+Research Score
+
+Technical
+
+Fundamental
+
+Institutional
+
+Risk
+
+Confidence
+
+Market Regime
+
+Freshness
+
+Primary Evidence
+
+Warnings
+
+Data Limitations
+
+This should update when context switches.
+
+Do not duplicate business logic.
+
+======================================================================
+17. SOURCE ATTRIBUTION
+======================================================================
+
+Every AI response should state which platform sources were used.
+
+Examples:
+
+Opportunity Intelligence
+
+Technical Scanner
+
+Fundamental Data
+
+Institutional 13F
+
+Theme Intelligence
+
+Sector Intelligence
+
+Market Intelligence
+
+Research Monitoring
+
+Portfolio Intelligence
+
+Research Report
+
+Use source labels, not fabricated citations.
+
+======================================================================
+18. EVIDENCE STRENGTH
+======================================================================
+
+Use existing Research Glossary.
+
+Display:
+
+Evidence Strength
+
+Coverage
+
+Freshness
+
+Do not display:
+
+Probability of Success
+
+Chance of Winning
+
+AI Confidence
+
+unless explicitly describing model parsing reliability.
+
+Evidence confidence refers to research evidence only.
+
+======================================================================
+19. STRUCTURED RESPONSE CONTRACT
+======================================================================
+
+Formalize response structure.
+
+Suggested:
+
+ResearchWorkspaceResponse {
+  summary
+  keyFindings[]
+  supportingEvidence[]
+  technicalEvidence[]
+  fundamentalEvidence[]
+  institutionalEvidence[]
+  riskFactors[]
+  thesisInvalidation[]
+  limitations[]
+  sourcesUsed[]
+  freshness
+  followUpActions[]
+}
+
+Not every section must contain data.
+
+Empty sections should be omitted or clearly marked unavailable.
+
+======================================================================
+20. AI GROUNDING CONTRACT
+======================================================================
+
+AI receives:
+
+deterministic assembled context
+
+canonical glossary
+
+user question
+
+conversation context
+
+AI may:
+
+summarize
+explain
+compare
+challenge
+organize
+translate technical evidence into plain English
+
+AI may NOT:
+
+invent securities
+invent scores
+invent evidence
+change rankings
+promote unqualified securities
+construct trades
+provide target prices
+generate personalized recommendations
+
+Enforce in system prompt + tests.
+
+======================================================================
+21. CHALLENGE THE THESIS
+======================================================================
+
+Make this a first-class research workflow.
+
+Output:
+
+Strongest Supporting Evidence
+
+Weakest Evidence
+
+Contradictory Evidence
+
+Risks
+
+Missing Data
+
+What Would Invalidate Thesis
+
+What Additional Research Would Help
+
+This is research-oriented and valuable.
+
+Do not conclude:
+
+Therefore buy/sell.
+
+======================================================================
+22. WHAT CHANGED WORKFLOW
+======================================================================
+
+For contexts with history:
+
+Show:
+
+Previous State
+
+Current State
+
+Score Changes
+
+Qualification Changes
+
+Primary Drivers
+
+Risk Changes
+
+Freshness
+
+Allow:
+
+Explain What Changed
+
+Compare with previous research state
+
+Use existing change engines only.
+
+======================================================================
+23. FIND RELATED RESEARCH
+======================================================================
+
+Create deterministic related-research panel.
+
+Potential sources:
+
+same sector
+
+same theme
+
+same opportunity type
+
+related collection
+
+recently improved
+
+similar research score range
+
+Do not call this:
+
+Recommendations
+
+Use:
+
+Related Research
+
+Similar Research Candidates
+
+Candidates to Compare
+
+======================================================================
+24. FOLLOW-UP ACTIONS V2
+======================================================================
+
+Every answer generates 2–4 contextual actions.
+
+Examples:
+
+Open Opportunity Workspace
+
+Compare with AMD
+
+Explain Institutional Evidence
+
+Open Semiconductor Theme
+
+Show Recent Changes
+
+Challenge Thesis
+
+View Related Report
+
+Monitor This Candidate
+
+Avoid generic:
+
+Ask another question
+
+Learn more
+
+when specific actions are available.
+
+======================================================================
+25. SAVED RESEARCH
+======================================================================
+
+Preserve:
+
+conversation history
+
+pinning
+
+recent research
+
+multi-turn logs
+
+Enhance metadata:
+
+contextType
+contextLabel
+primarySymbol
+comparisonSymbols
+sourceRoute
+
+Do not create a second research-history system.
+
+======================================================================
+26. RECENT CONTEXTS
+======================================================================
+
+Show lightweight recent research contexts.
+
+Examples:
+
+NVDA
+
+AI Infrastructure
+
+Semiconductors
+
+Portfolio: Growth
+
+Report: Weekly Market Intelligence
+
+Reuse conversation metadata.
+
+Do not create extra persistence unless needed.
+
+======================================================================
+27. RESEARCH TEMPLATES V2
+======================================================================
+
+Keep existing 10 templates.
+
+Add contextual prefill.
+
+Examples:
+
+Company context:
+Explain Why This Qualified
+
+Theme context:
+Explain Theme Leadership
+
+Monitor context:
+Explain This Change
+
+Report context:
+Challenge This Report
+
+Comparison:
+Compare Research Evidence
+
+No duplicated template definitions.
+
+======================================================================
+28. CENTRAL RESEARCH GLOSSARY
+======================================================================
+
+AI system prompt should reference canonical glossary definitions where relevant.
+
+Do not duplicate full glossary prose in multiple prompts if avoidable.
+
+At minimum enforce canonical meaning for:
+
+Research Score
+
+Technical Score
+
+Institutional Score
+
+Fundamental Score
+
+Risk
+
+Evidence Confidence
+
+Market Regime
+
+Data Freshness
+
+Qualified Opportunity
+
+Research Candidate
+
+Portfolio Research Coverage
+
+======================================================================
+29. FREE / SUBSCRIBER EXPERIENCE
+======================================================================
+
+Document only.
+
+No entitlement enforcement.
+
+Free:
+
+basic research conversation
+limited history
+basic company/market questions
+
+Retail:
+
+full contextual workspace
+saved conversations
+collections
+monitor/report integration
+comparison
+
+Professional:
+
+deeper history
+larger comparison sets
+advanced research workflows
+
+RIA:
+
+client context
+firm templates
+advisor research workflows
+
+Institutional:
+
+shared analyst workflows
+approval-ready research
+private datasets
+
+Enterprise:
+
+custom prompts
+custom methodology presentation
+private AI
+APIs
+
+Do not implement pricing gates.
+
+======================================================================
+30. COMMERCIAL EXPERIENCE PRINCIPLE
+======================================================================
+
+Every workflow should:
+
+deliver immediate value
+
+then naturally expose deeper research possibilities.
+
+No intrusive upsells.
+
+No artificial frustration.
+
+Do not hide basic definitions or evidence behind paywalls.
+
+Future premium value should come from:
+
+depth
+history
+automation
+personalization
+workflow
+scale
+collaboration
+
+======================================================================
+31. PERFORMANCE CONTRACT
+======================================================================
+
+Avoid excessive API calls.
+
+Preferred:
+
+1 primary research-context endpoint
+
+1 conversation/ask request
+
+additional queries only when context changes
+
+Reuse caches.
+
+No N+1.
+
+Measure:
+
+workspace initial load
+
+context switch
+
+first AI response
+
+follow-up response
+
+comparison context
+
+Report actual latency.
+
+======================================================================
+32. CONTEXT ASSEMBLY ENDPOINT
+======================================================================
+
+Create or extend a route such as:
+
+GET /api/research-workspace/context
+
+Parameters depend on contextType.
+
+Example:
+
+?type=opportunity&symbol=NVDA
+
+?type=theme&id=ai-infrastructure
+
+?type=collection&id=...
+
+Return canonical assembled research context.
+
+Do not expose private data without ownership.
+
+======================================================================
+33. ASK ENDPOINT
+======================================================================
+
+Prefer existing workspace ask endpoint.
+
+Request should include:
+
+conversationId?
+researchContext reference
+question
+selectedMode
+
+Server reconstructs/validates authoritative context.
+
+Do not trust arbitrary client-supplied scores/evidence.
+
+======================================================================
+34. SECURITY / OWNERSHIP
+======================================================================
+
+For private contexts:
+
+collections
+reports
+portfolio
+monitor watches
+conversations
+
+enforce user ownership.
+
+Cross-user ID:
+
+404
+
+not 403 where existing privacy pattern requires existence protection.
+
+No private research context leakage.
+
+======================================================================
+35. CONTEXT CACHE
+======================================================================
+
+If caching assembled context:
+
+public-ish market context:
+cache by deterministic entity + intelligence generation ID.
+
+private context:
+cache key must contain userId + context ID.
+
+Never share personalized context across users.
+
+Invalidate appropriately.
+
+======================================================================
+36. PARTIAL DATA RESILIENCE
+======================================================================
+
+One failed subsystem should not kill the workspace.
+
+Examples:
+
+Institutional unavailable
+
+→ explain without institutional section.
+
+Portfolio unavailable
+
+→ rest of research works.
+
+Reports unavailable
+
+→ report links unavailable.
+
+Use explicit limitations[].
+
+No generic 500 unless core infrastructure fails.
+
+======================================================================
+37. FALLBACK BEHAVIOR
+======================================================================
+
+Existing rule-based fallback must remain.
+
+If OpenAI fails:
+
+return deterministic research summary from context.
+
+Clearly mark:
+
+"AI explanation temporarily unavailable; deterministic research evidence is shown below."
+
+Do not leave blank workspace.
+
+======================================================================
+38. NAVIGATION INTEGRITY
+======================================================================
+
+Because a route collision was recently fixed:
+
+audit all Research Workspace deep links.
+
+Add route-contract tests.
+
+No static route should be swallowed by dynamic routes.
+
+Every context deep link must survive:
+
+direct URL
+
+browser refresh
+
+back/forward
+
+bookmark
+
+mobile navigation
+
+======================================================================
+39. ACCESSIBILITY
+======================================================================
+
+Keyboard accessible context switcher.
+
+ARIA labels.
+
+Conversation messages screen-reader friendly.
+
+Evidence sections semantic.
+
+Follow-up actions keyboard accessible.
+
+Focus restored after context modal/dialog.
+
+Mobile touch support.
+
+======================================================================
+40. MOBILE
+======================================================================
+
+At 375px:
+
+context selector full width
+
+evidence sidebar collapses into drawer/card
+
+conversation uses full width
+
+follow-up actions wrap
+
+no clipped source labels
+
+comparison table horizontally scrolls or transforms into cards
+
+======================================================================
+41. COMPLIANCE
+======================================================================
+
+Canonical disclaimer:
+
+"VCP Trader AI provides research and analytical information for informational purposes. AI-assisted explanations summarize available research evidence and do not constitute investment advice, personalized recommendations, or instructions to buy, sell, hold, or enter any security or strategy."
+
+Use context-aware disclaimers.
+
+13F data retains delayed disclosure.
+
+Portfolio context retains portfolio research disclaimer.
+
+Avoid:
+
+Buy
+
+Sell
+
+Strong Buy
+
+Top Pick
+
+Recommended Trade
+
+Target Price
+
+Price Target
+
+Expected Profit
+
+Probability of Winning
+
+Guaranteed
+
+unless appearing in a negating compliance disclaimer.
+
+Tests must be context-aware.
+
+======================================================================
+42. PLATFORM HEALTH
+======================================================================
+
+Enhance existing Research Workspace health rather than adding another card.
+
+Possible aggregate metrics:
+
+contextRequests
+
+contextAssemblyLatencyMs
+
+askRequests
+
+averageAIResponseMs
+
+fallbackCount
+
+partialContextCount
+
+failedRequests
+
+lastSuccessfulResearchAt
+
+Do not expose:
+
+questions
+symbols
+portfolio names
+report titles
+user PII
+
+======================================================================
+43. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+research_context_requested
+
+research_context_completed
+
+research_context_partial
+
+research_workspace_ask_started
+
+research_workspace_ask_completed
+
+research_workspace_fallback
+
+research_workspace_failed
+
+Safe metadata:
+
+contextType
+subsystem count
+durationMs
+evidenceCount
+fallbackUsed
+
+Do not log:
+
+raw prompt
+conversation content
+private portfolio holdings
+account numbers
+PII
+
+======================================================================
+44. OPERATIONS MANUAL
+======================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/26-research-workspace-v2.md
+
+Document:
+
+architecture
+
+context model
+
+context types
+
+deep-link contracts
+
+conversation persistence
+
+context switching
+
+AI grounding
+
+structured response
+
+source attribution
+
+comparison mode
+
+challenge thesis workflow
+
+what changed workflow
+
+portfolio context
+
+report context
+
+monitor context
+
+fallback behavior
+
+privacy
+
+cache
+
+performance
+
+health
+
+logging
+
+UAT
+
+troubleshooting
+
+future extension points
+
+Update Research Glossary documentation if needed.
+
+======================================================================
+45. UAT
+======================================================================
+
+Document and test:
+
+1. Open Research Workspace directly.
+2. Entire Market context.
+3. Enter from NVDA Opportunity Workspace.
+4. Verify symbol context retained.
+5. Ask follow-up without restating NVDA.
+6. Challenge thesis.
+7. Explain what changed.
+8. Compare NVDA vs AMD.
+9. Enter from AI Infrastructure theme.
+10. Enter from Technology sector.
+11. Enter from collection.
+12. Enter from Research Monitor.
+13. Enter from Research Report.
+14. Enter from Portfolio Intelligence.
+15. Verify no-portfolio user still receives full normal research.
+16. Switch contexts.
+17. Reload bookmarked context URL.
+18. Browser back/forward.
+19. AI failure → deterministic fallback.
+20. Institutional unavailable → partial response.
+21. Private cross-user collection ID → 404.
+22. Private cross-user portfolio ID → 404.
+23. Mobile.
+24. Accessibility.
+25. Platform Health.
+26. No unexpected 500s.
+27. No invented evidence/scores.
+28. No trade construction.
+
+======================================================================
+46. TESTS
+======================================================================
+
+Target 175+ meaningful assertions.
+
+Cover:
+
+context types
+
+context parsing
+
+opportunity deep link
+
+company context
+
+theme context
+
+sector context
+
+collection context
+
+monitor context
+
+report context
+
+portfolio context
+
+comparison context
+
+context persistence
+
+conversation metadata
+
+context switching
+
+source attribution
+
+structured responses
+
+evidence sections
+
+challenge thesis
+
+what changed
+
+related research
+
+follow-up actions
+
+saved research
+
+templates
+
+glossary usage
+
+AI grounding
+
+no invented candidates
+
+no score changes
+
+fallback
+
+partial data
+
+ownership
+
+404 privacy
+
+cache isolation
+
+route integrity
+
+direct refresh
+
+compliance
+
+13F disclaimer
+
+portfolio disclaimer
+
+structured-log privacy
+
+Platform Health
+
+Operations Manual
+
+Roadmap alignment
+
+No new scoring logic
+
+No Trade Construction
+
+======================================================================
+47. BUILD / TYPECHECK
+======================================================================
+
+Mandatory:
+
+full project tests
+
+npm run build
+
+npx tsc --noEmit
+
+Zero new TypeScript errors in sprint files.
+
+Report existing unrelated errors separately if any.
+
+======================================================================
+48. IMPROVEMENT CAPTURE
+======================================================================
+
+Do NOT implement unrelated ideas automatically.
+
+Classify:
+
+Critical production fix
+
+Current sprint requirement
+
+Future planned sprint
+
+Backlog
+
+Potential future items:
+
+voice research
+
+shared conversations
+
+collaboration
+
+analyst notes
+
+external document upload into research context
+
+private knowledge bases
+
+news timeline
+
+earnings calendar
+
+more complex peer comparison
+
+Do not pull forward.
+
+======================================================================
+49. ROADMAP ALIGNMENT
+======================================================================
+
+CURRENT:
+
+2.6.4 Research Workspace v2 / Integrated Research Experience
+
+NEXT:
+
+2.6.5 Goals & Planning
+
+THEN:
+
+2.7.x Trade Planning & Trade Construction
+
+Do NOT pull forward:
+
+Trade Construction
+
+Execution
+
+Agents
+
+RIA
+
+Institutional
+
+Enterprise
+
+Tax Optimization
+
+Automated portfolio actions
+
+======================================================================
+50. COMMERCIAL EXPERIENCE REVIEW
+======================================================================
+
+Completion report must include:
+
+Free Value
+
+Retail Subscriber Value
+
+Professional Value
+
+RIA Applicability
+
+Institutional Applicability
+
+Enterprise Extension
+
+No entitlement implementation.
+
+======================================================================
+51. PLATFORM REUSABILITY REVIEW
+======================================================================
+
+Confirm Workspace v2 reuses:
+
+Opportunity Intelligence
+
+Opportunity Workspace v2
+
+Change Intelligence
+
+Research Collections
+
+Theme Intelligence
+
+Sector Intelligence
+
+Institutional Intelligence
+
+Research Monitoring
+
+Research Reports
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Research Glossary
+
+and creates no duplicate business logic.
+
+======================================================================
+52. PERMANENT ROUTING REGRESSION RULE
+======================================================================
+
+Add to engineering Definition of Done / Operations Manual:
+
+"Every new static route introduced beneath a namespace that also contains a dynamic parameter route must include explicit route-contract regression tests proving static routes cannot be interpreted as dynamic parameters."
+
+This is now a permanent project rule.
+
+======================================================================
+53. FINAL ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Research Workspace is canonical cross-platform AI research environment.
+
+B. Context can originate from all major research surfaces.
+
+C. Context persists through multi-turn conversation.
+
+D. Context switcher works.
+
+E. Opportunity handoff works.
+
+F. Theme handoff works.
+
+G. Sector handoff works.
+
+H. Collection handoff works.
+
+I. Monitor handoff works.
+
+J. Report handoff works.
+
+K. Portfolio handoff works without being required.
+
+L. Compare mode improved.
+
+M. Source attribution visible.
+
+N. Evidence Strength/Freshness clear.
+
+O. Challenge Thesis works.
+
+P. What Changed works.
+
+Q. Related Research deterministic.
+
+R. Follow-up actions contextual.
+
+S. Saved conversations preserve context.
+
+T. AI uses canonical glossary.
+
+U. AI cannot invent evidence or scores.
+
+V. AI fallback works.
+
+W. Partial failures degrade gracefully.
+
+X. Private context ownership enforced.
+
+Y. No trade construction.
+
+Z. No recommendation logic.
+
+AA. Routing regression tests present.
+
+AB. Performance contract met.
+
+AC. Full tests pass.
+
+AD. Build passes.
+
+AE. Zero new TS errors.
+
+AF. Operations Manual updated.
+
+AG. Roadmap alignment confirmed.
+
+======================================================================
+54. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing Research Workspace discovered
+3. Files changed
+4. Canonical ResearchContext model
+5. Context types
+6. Deep-link contract
+7. Context persistence
+8. Context switcher
+9. Opportunity handoff
+10. Collection handoff
+11. Theme/Sector handoff
+12. Command Center handoff
+13. Monitor handoff
+14. Report handoff
+15. Portfolio handoff
+16. Compare Mode v2
+17. Evidence sidebar
+18. Source attribution
+19. Structured response contract
+20. AI grounding contract
+21. Challenge Thesis
+22. What Changed
+23. Related Research
+24. Follow-up actions
+25. Saved research
+26. Templates
+27. Glossary integration
+28. Fallback behavior
+29. Partial-data resilience
+30. API-call count / performance
+31. Cache
+32. Security/ownership
+33. Accessibility/mobile
+34. Compliance audit
+35. Platform Health
+36. Structured logging
+37. Route regression protection
+38. Tests added
+39. Full test count
+40. npm run build
+41. Typecheck
+42. Production UAT
+43. Commercial Experience Review
+44. Platform Reusability Review
+45. Improvement Suggestions Captured
+46. Deferred backlog
+47. Roadmap Alignment
+48. Operations Manual Updated: YES/NO
+49. Operations Manual Files Updated
+50. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Wait for review.

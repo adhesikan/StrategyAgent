@@ -2640,6 +2640,101 @@ New response fields:
 
 ---
 
+## Research Workspace v2 UAT Checklist (Sprint 2.6.4)
+
+### New Endpoints
+
+| Method | Path | Expected |
+|--------|------|---------|
+| GET | `/api/research-workspace/context?contextType=company&symbol=NVDA` | `{ context: { contextType:"company", label:"Researching: NVDA", ... }, limitations:[] }` |
+| GET | `/api/research-workspace/context?contextType=theme&themeId=ai-infrastructure` | `{ context: { contextType:"theme", themeId:"ai-infrastructure", ... } }` |
+| GET | `/api/research-workspace/context?contextType=comparison&symbols=NVDA,AMD` | `{ context: { contextType:"comparison", comparisonSymbols:["NVDA","AMD"], ... } }` |
+| GET | `/api/research-workspace/context?contextType=market` | `{ context: { contextType:"market", label:"Market Intelligence", ... } }` |
+| POST | `/api/research/ask` (with `researchContext` field) | Response includes evidence panel; conversation row stores contextType+contextLabel |
+
+### URL Entry Scenarios
+
+| URL | Expected Banner | Expected Mode |
+|-----|-----------------|---------------|
+| `/research-workspace` | None | opportunity (default) |
+| `/research-workspace?symbol=NVDA&mode=company` | "Researching: NVDA" | company |
+| `/research-workspace?symbol=NVDA&mode=company&action=challenge` | "Researching: NVDA" | company; question prefilled |
+| `/research-workspace?mode=comparison&symbols=NVDA,AMD` | "Comparing: NVDA vs AMD" | comparison; matrix shows |
+| `/research-workspace?themeId=ai-infrastructure&mode=theme` | "Theme: ai-infrastructure" | theme |
+| `/research-workspace?sector=Technology&mode=sector` | "Sector: Technology" | sector |
+| `/research-workspace?conversation=UUID` | None (conversation restored) | saved mode |
+
+### Action Param → Prefilled Question
+
+| `?action=` | Expected prefilled question |
+|------------|----------------------------|
+| `challenge` | "Challenge the investment thesis for NVDA…" |
+| `explain_concept` | "Explain why NVDA qualified as a research candidate…" |
+| `explain_change` | "Explain what changed for NVDA…" |
+| `risk` | "Explain the risk factors for NVDA…" |
+| `institutional` | "Explain institutional positioning for NVDA…" |
+| `compare` | "Compare NVDA with similar candidates…" |
+
+### UAT Steps
+
+1. Open `/research-workspace`.  
+   ✓ 6 template buttons visible. Mode selector shows "Opportunity Research" (default).
+
+2. Select mode "Comparison".  
+   ✓ Mode description updates to comparison description.
+
+3. Type a question, press ⌘↵.  
+   ✓ Response appears with evidence panel toggle.
+
+4. Click "Show Evidence Sidebar" (desktop).  
+   ✓ Right panel appears with top evidence items from response.
+
+5. Navigate to `/research-workspace?symbol=NVDA&mode=company`.  
+   ✓ Context banner: "Researching: NVDA".  
+   ✓ Mode selector is locked to "Company Research".
+
+6. Navigate to `/research-workspace?symbol=NVDA&mode=company&action=challenge`.  
+   ✓ Context banner: "Researching: NVDA".  
+   ✓ Question textarea prefilled: "Challenge the investment thesis for NVDA…".
+
+7. Navigate to `/research-workspace?mode=comparison&symbols=NVDA,AMD`.  
+   ✓ Context banner: "Comparing: NVDA vs AMD".  
+   ✓ Mode = Comparison.  
+   ✓ After asking a question, comparison matrix appears below response.
+
+8. Click a follow-up action with type=relax_filter.  
+   ✓ Scope dropdown updates to the suggested scope.
+
+9. Pin a conversation.  
+   ✓ Appears in "Pinned" section in conversation list.
+
+10. Click "Open AI Research" from `/opportunities/NVDA`.  
+    ✓ Navigates to `/research-workspace?symbol=NVDA&mode=company&action=explain_concept&sourceRoute=...`.  
+    ✓ Context banner appears.
+
+11. Every response shows source indicator.  
+    ✓ Green = OpenAI. Yellow = rule-based fallback.
+
+12. Navigate to `/research-workspace?conversation=UUID`.  
+    ✓ Conversation history restored from saved conversation.
+
+### OW → Research Workspace Handoff Regression Check
+
+All 6 action buttons in the AI Research section of Opportunity Workspace MUST use valid mode + action params:
+
+| Button | Expected URL pattern |
+|--------|---------------------|
+| Explain Qualification | `?mode=company&action=explain_concept` |
+| Challenge This Thesis | `?mode=company&action=challenge` |
+| Explain What Changed | `?mode=opportunity&action=explain_change` |
+| Risk Analysis | `?mode=company&action=risk` |
+| Institutional View | `?mode=institutional&action=institutional` |
+| Compare with Peers | `?mode=comparison&action=compare` |
+
+✗ MUST NOT use: `?mode=explain_concept` (invalid mode — silently ignored)
+
+---
+
 ## Opportunity Workspace v2 UAT Checklist (Sprint 2.6.3 + Blocking Defect Fix)
 
 ### Canonical Opportunity Route Table

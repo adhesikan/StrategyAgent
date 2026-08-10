@@ -1524,13 +1524,14 @@ function ReportsSection({ reports, navigate }: { reports: ReportSummary[]; navig
 // ---------------------------------------------------------------------------
 
 function AIResearchSection({ symbol, navigate }: { symbol: string; navigate: (path: string) => void }) {
+  // Sprint 2.6.4: use valid ResearchMode + action param instead of overloading mode
   const actions = [
-    { label: "Explain This Candidate", mode: "explain_concept" },
-    { label: "Challenge This Thesis", mode: "challenge" },
-    { label: "Explain What Changed", mode: "explain_change" },
-    { label: "Explain Risk Factors", mode: "risk" },
-    { label: "Compare With Another Candidate", mode: "compare" },
-    { label: "Explain Institutional Evidence", mode: "institutional" },
+    { label: "Explain This Candidate",         mode: "company",       action: "explain_concept" },
+    { label: "Challenge This Thesis",           mode: "company",       action: "challenge" },
+    { label: "Explain What Changed",            mode: "opportunity",   action: "explain_change" },
+    { label: "Explain Risk Factors",            mode: "company",       action: "risk" },
+    { label: "Compare With Another Candidate",  mode: "comparison",    action: "compare" },
+    { label: "Explain Institutional Evidence",  mode: "institutional", action: "institutional" },
   ];
 
   return (
@@ -1548,11 +1549,11 @@ function AIResearchSection({ symbol, navigate }: { symbol: string; navigate: (pa
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {actions.map(action => (
             <Button
-              key={action.mode}
+              key={action.action}
               variant="outline"
               size="sm"
               className="text-xs h-8 border-slate-700 text-slate-300 hover:text-slate-100 hover:border-violet-700 justify-start"
-              onClick={() => navigate(`/research-workspace?symbol=${symbol}&mode=${action.mode}`)}
+              onClick={() => navigate(`/research-workspace?symbol=${symbol}&mode=${action.mode}&action=${action.action}&sourceRoute=/opportunities/${symbol}`)}
             >
               {action.label}
             </Button>
@@ -1832,7 +1833,7 @@ export default function OpportunityWorkspacePage() {
               size="sm"
               variant="outline"
               className="h-7 text-xs border-slate-700 text-violet-300 hover:border-violet-700"
-              onClick={() => navigate(`/research-workspace?symbol=${symbol}&mode=explain_concept`)}
+              onClick={() => navigate(`/research-workspace?symbol=${symbol}&mode=company&action=explain_concept&sourceRoute=/opportunities/${symbol}`)}
             >
               <BrainCircuit className="h-3 w-3 mr-1" />
               Open AI Research

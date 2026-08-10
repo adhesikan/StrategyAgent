@@ -3462,6 +3462,12 @@ export const workspaceConversations = pgTable("workspace_conversations", {
   contextScope:    text("context_scope").notNull().default("entire_market"),
   /** Primary tickers referenced in this conversation */
   tickers:         text("tickers").array(),
+  /** Sprint 2.6.4 context metadata columns */
+  contextType:     text("context_type"),
+  contextLabel:    text("context_label"),
+  primarySymbol:   varchar("primary_symbol"),
+  comparisonSymbols: text("comparison_symbols").array(),
+  sourceRoute:     varchar("source_route"),
   isPinned:        boolean("is_pinned").notNull().default(false),
   pinnedAt:        timestamp("pinned_at"),
   lastMessageAt:   timestamp("last_message_at").notNull().defaultNow(),

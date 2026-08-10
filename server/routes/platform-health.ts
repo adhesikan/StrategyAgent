@@ -574,6 +574,13 @@ async function checkResearchWorkspace(): Promise<HealthCard> {
       pinnedConversations: snap.pinnedConversations,
       contextAssemblyOk:   snap.contextAssemblyOk,
       openAiConfigured:    snap.openAiConfigured,
+      contextRequests:     snap.contextRequests,
+      contextRequestsOk:   snap.contextRequestsOk,
+      askRequests:         snap.askRequests,
+      askRequestsOk:       snap.askRequestsOk,
+      fallbackCount:       snap.fallbackCount,
+      partialContextCount: snap.partialContextCount,
+      averageAIResponseMs: snap.averageAIResponseMs,
     },
   };
 }

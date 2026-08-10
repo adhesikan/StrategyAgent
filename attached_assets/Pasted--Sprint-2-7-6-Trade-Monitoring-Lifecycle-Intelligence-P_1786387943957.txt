@@ -1,0 +1,2339 @@
+# Sprint 2.7.6 — Trade Monitoring & Lifecycle Intelligence
+# + Permanent Smoke / Regression Quality Gates
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.6 — Trade Monitoring & Lifecycle Intelligence
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Workspace v2
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Trade Planning Foundation
+✓ Equity Trade Planning Engine
+✓ Options Strategy Matching Engine
+✓ Options Contract Research Engine
+✓ Trade Risk & Scenario Analysis
+✓ Trade Plan Workspace
+✓ Platform Operations Center
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to the user?
+
+Portfolio Intelligence answers:
+
+HOW the research relates to current exposure?
+
+Trade Planning answers:
+
+HOW the research thesis could potentially be expressed?
+
+Contract Research answers:
+
+WHICH concrete structures are worth researching?
+
+Risk Analysis answers:
+
+WHAT the risk characteristics and scenario behavior are?
+
+Trade Plan Workspace answers:
+
+WHAT research plan the user chose to save?
+
+Trade Monitoring & Lifecycle Intelligence answers:
+
+HAS anything important changed since the plan was saved?
+
+This sprint observes.
+
+It does NOT execute.
+
+It does NOT recommend exits.
+
+It does NOT modify saved trade plans automatically.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker order submission
+- order tickets
+- automated execution
+- one-click execution
+- position liquidation
+- automatic rolls
+- automatic adjustments
+- "sell now"
+- "close trade"
+- "take profit"
+- "stop out"
+- personalized recommendations
+- suitability logic
+- auto-rebalancing
+- autonomous agents
+
+DO NOT change:
+
+- Opportunity Intelligence scoring
+- Trade Plan saved snapshots
+- Risk Analysis methodology
+- Options Strategy Matching
+- Contract Research
+- Equity Planning
+- Goal Matching
+- Portfolio Intelligence
+
+This sprint is MONITORING + CHANGE DETECTION + LIFECYCLE INTELLIGENCE only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a deterministic lifecycle monitoring layer for saved Trade Plans.
+
+It should answer:
+
+- Has the underlying research thesis changed?
+- Has qualification changed?
+- Has technical evidence changed?
+- Have fundamentals changed?
+- Has institutional evidence changed?
+- Has sector/theme leadership changed?
+- Has market regime changed?
+- Has a saved thesis invalidation condition been observed?
+- Has options-specific structure risk changed?
+- Has event exposure changed?
+- Has liquidity/quote quality changed?
+- Has data gone stale?
+- Does this plan require research review?
+
+The system may say:
+
+"Research Review Required"
+
+It must NOT say:
+
+"Exit the trade"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+trade_plans
+
+trade_plan_versions
+
+TradePlan
+
+computePlanHealth
+
+computeResearchChange
+
+TradePlanMonitoringInput
+
+Research Monitor
+
+watch_activity_log
+
+research-monitor services
+
+Opportunity Intelligence
+
+Opportunity History
+
+Change Intelligence
+
+Portfolio History
+
+Portfolio Intelligence
+
+Options Contract Research
+
+Trade Risk Scenario Analysis
+
+Research Glossary
+
+Background Job Store
+
+Structured Logging
+
+Platform Health
+
+Operations Manual
+
+existing alert infrastructure
+
+existing notifications
+
+existing scheduled jobs
+
+existing position monitoring
+
+existing stop-loss/position protection logic
+
+Report:
+
+A. Existing monitoring infrastructure
+B. Existing change-detection services
+C. Existing lifecycle states
+D. Existing jobs/schedulers
+E. Existing watch/activity persistence
+F. Existing alert/notification code that must remain out of scope
+G. Existing position-protection logic that must remain isolated
+H. Reusable services
+I. Schema changes required
+J. Existing health/operations hooks
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL LIFECYCLE RESULT
+======================================================================
+
+Create shared canonical type.
+
+Suggested:
+
+TradePlanLifecycleResult {
+  tradePlanId
+  symbol
+  evaluatedAt
+
+  savedPlanStatus
+  lifecycleState
+
+  researchChanges[]
+  invalidationChanges[]
+  structureChanges[]
+  eventChanges[]
+  liquidityChanges[]
+  freshnessChanges[]
+
+  currentResearchSummary
+  savedResearchSummary
+
+  requiresReview
+
+  reviewReasons[]
+
+  limitations[]
+  freshness
+
+  methodologyVersion
+}
+
+======================================================================
+3. LIFECYCLE STATES
+======================================================================
+
+Use deterministic non-prescriptive states:
+
+CURRENT
+
+CHANGED
+
+REQUIRES_REVIEW
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+ARCHIVED
+
+UNKNOWN
+
+Do NOT use:
+
+EXIT
+
+SELL
+
+CLOSE
+
+STOPPED_OUT
+
+ROLL
+
+TAKE_PROFIT
+
+BUY_MORE
+
+======================================================================
+4. STATE RULES
+======================================================================
+
+CURRENT
+
+No material research or structure change.
+
+CHANGED
+
+Research/evidence changed but no review threshold crossed.
+
+REQUIRES_REVIEW
+
+Material change detected based on existing change rules.
+
+THESIS_INVALIDATED
+
+One or more canonical saved invalidation conditions have been observed.
+
+DATA_STALE
+
+Critical required data is too stale to safely evaluate current state.
+
+ARCHIVED
+
+Plan inactive.
+
+UNKNOWN
+
+Insufficient data.
+
+Do not create new arbitrary thresholds if Change Intelligence already owns them.
+
+======================================================================
+5. SAVED VS CURRENT RESEARCH
+======================================================================
+
+Compare immutable saved Trade Plan snapshot against current authoritative research.
+
+Include:
+
+Research Score
+
+Technical Score
+
+Fundamental Score
+
+Institutional Score
+
+Risk Level
+
+Evidence Confidence
+
+Qualification
+
+Opportunity Type
+
+Market Regime
+
+Sector Intelligence
+
+Theme Intelligence
+
+Primary Evidence
+
+Risk Factors
+
+Invalidation Conditions
+
+Do not overwrite saved snapshot.
+
+======================================================================
+6. RESEARCH CHANGE TYPES
+======================================================================
+
+Reuse existing canonical change types where possible.
+
+Examples:
+
+RESEARCH_STRENGTHENED
+
+RESEARCH_WEAKENED
+
+NEWLY_QUALIFIED
+
+NO_LONGER_QUALIFIED
+
+TECHNICAL_STRENGTHENED
+
+TECHNICAL_WEAKENED
+
+FUNDAMENTAL_CHANGED
+
+INSTITUTIONAL_CHANGED
+
+REGIME_CHANGED
+
+SECTOR_CONTEXT_CHANGED
+
+THEME_CONTEXT_CHANGED
+
+Do not turn any into execution instructions.
+
+======================================================================
+7. THESIS INVALIDATION MONITORING
+======================================================================
+
+Evaluate saved:
+
+invalidatesThesis[]
+
+against current canonical data.
+
+Examples:
+
+price below saved support/invalidation reference
+
+technical stage deterioration
+
+qualification loss
+
+fundamental deterioration if canonical evidence supports it
+
+institutional evidence deterioration
+
+sector/theme leadership reversal
+
+market regime change if explicitly included in saved invalidation logic
+
+Return:
+
+observed
+notObserved
+unknown
+
+Do not infer beyond available data.
+
+======================================================================
+8. INVALIDATION LANGUAGE
+======================================================================
+
+Use:
+
+"Research Thesis Invalidation Condition Observed"
+
+or
+
+"One or more saved research invalidation conditions are currently observed."
+
+Do NOT use:
+
+"Exit now."
+
+"Close the position."
+
+"Sell."
+
+======================================================================
+9. EQUITY PLAN MONITORING
+======================================================================
+
+For equity plans monitor:
+
+reference price
+
+research entry framework
+
+saved invalidation levels
+
+technical structure
+
+portfolio context where applicable
+
+research score changes
+
+market regime
+
+sector/theme context
+
+events
+
+data freshness
+
+If price crosses a saved reference:
+
+describe observed condition.
+
+Do not create stop-order behavior.
+
+======================================================================
+10. OPTIONS PLAN MONITORING
+======================================================================
+
+For options plans monitor:
+
+underlying research thesis
+
+DTE
+
+expiration proximity
+
+earnings/event window
+
+option quote freshness
+
+liquidity
+
+bid/ask quality
+
+Greeks coverage
+
+risk flags
+
+saved contract state where refreshable
+
+thesis invalidation
+
+Do not automatically substitute contract.
+
+Do not roll.
+
+Do not close.
+
+======================================================================
+11. OPTIONS EXPIRATION STATES
+======================================================================
+
+Add deterministic lifecycle context:
+
+FAR_FROM_EXPIRATION
+
+APPROACHING_EXPIRATION
+
+NEAR_EXPIRATION
+
+EXPIRED
+
+Thresholds must be documented.
+
+Do not prescribe action.
+
+Example:
+
+"Contract is approaching expiration; review current research assumptions and structure risk."
+
+======================================================================
+12. EVENT MONITORING
+======================================================================
+
+If earnings/event data available:
+
+detect:
+
+new event entered plan lifetime
+
+event approaching
+
+event passed
+
+event date changed
+
+Do not forecast event outcome.
+
+======================================================================
+13. LIQUIDITY MONITORING
+======================================================================
+
+Compare current vs saved:
+
+bid/ask quality
+
+volume
+
+open interest
+
+quote freshness
+
+liquidity category
+
+Possible:
+
+LIQUIDITY_IMPROVED
+
+LIQUIDITY_WEAKENED
+
+QUOTE_STALE
+
+Do not call weak liquidity an instruction to exit.
+
+======================================================================
+14. GREEKS MONITORING
+======================================================================
+
+If current normalized Greeks available:
+
+compare:
+
+netDelta
+
+netGamma
+
+netTheta
+
+netVega
+
+Do not treat missing Greek as zero.
+
+If coverage degrades:
+
+show:
+
+PARTIAL_GREEKS
+
+This is lifecycle research context.
+
+======================================================================
+15. RISK PROFILE CHANGE
+======================================================================
+
+Compare saved risk snapshot against current structure context where possible.
+
+Examples:
+
+constraint status changed
+
+event risk changed
+
+liquidity risk changed
+
+DTE changed materially
+
+quote freshness changed
+
+thesis invalidation observed
+
+Do not recompute a totally new contract candidate.
+
+======================================================================
+16. USER PLANNING CONSTRAINTS
+======================================================================
+
+If current scenario risk can still be evaluated:
+
+compare to saved user-selected planning constraints.
+
+Example:
+
+"Current estimated scenario loss remains within the planning constraint saved with this plan."
+
+or
+
+"Current estimated scenario loss now exceeds the planning constraint saved with this plan."
+
+Do not say:
+
+"Too risky for you."
+
+======================================================================
+17. REVIEW REASONS
+======================================================================
+
+Create transparent review reasons.
+
+Examples:
+
+Qualification lost
+
+Research score materially weakened
+
+Technical invalidation observed
+
+Critical data stale
+
+Earnings now inside structure lifetime
+
+Liquidity degraded
+
+Expiration approaching
+
+Saved max-loss constraint exceeded
+
+Market regime materially changed
+
+No opaque composite review score.
+
+======================================================================
+18. PLAN ACTIVITY TIMELINE
+======================================================================
+
+Create/persist lifecycle activity events.
+
+Example:
+
+Aug 10
+Plan created
+
+Aug 11
+Institutional evidence strengthened
+
+Aug 12
+Research Score 78 → 72
+
+Aug 13
+Market regime changed
+
+Aug 14
+Research invalidation condition observed
+
+Only persist actual observed lifecycle events.
+
+======================================================================
+19. ACTIVITY EVENT MODEL
+======================================================================
+
+Suggested:
+
+TradePlanActivity {
+  id
+  tradePlanId
+  userId
+  activityType
+  observedAt
+  previousState?
+  currentState?
+  summary
+  metadata
+}
+
+Avoid storing sensitive raw payloads.
+
+======================================================================
+20. DEDUPLICATION
+======================================================================
+
+Do not create the same lifecycle event repeatedly.
+
+Use deterministic fingerprint such as:
+
+tradePlanId
+activityType
+currentState
+relevantDataVersion
+
+Document deduplication.
+
+======================================================================
+21. LIFECYCLE SERVICE
+======================================================================
+
+Create reusable service.
+
+Suggested:
+
+evaluateTradePlanLifecycle(
+  userId,
+  tradePlanId
+)
+
+and:
+
+evaluateUserTradePlans(userId)
+
+and potentially:
+
+evaluateAllActiveTradePlans()
+
+only if scheduler architecture supports it.
+
+No execution side effects.
+
+======================================================================
+22. SCHEDULER READINESS
+======================================================================
+
+Make service scheduler-ready.
+
+Do not create uncontrolled polling.
+
+If existing scheduler architecture supports recurring jobs:
+
+wire only if explicitly safe and in scope.
+
+Otherwise expose clean job interface for later scheduling.
+
+Document decision.
+
+======================================================================
+23. MANUAL EVALUATION
+======================================================================
+
+Allow user:
+
+Refresh Plan Status
+
+This re-evaluates current research/lifecycle state.
+
+Concurrency guard required if potentially expensive.
+
+No execution action.
+
+======================================================================
+24. API
+======================================================================
+
+Suggested authenticated routes:
+
+GET /api/trade-plans/:id/lifecycle
+
+POST /api/trade-plans/:id/lifecycle/evaluate
+
+GET /api/trade-plans/:id/activity
+
+GET /api/trade-plans/:id/monitoring-context
+
+Optional:
+
+POST /api/trade-plans/:id/monitor
+
+POST /api/trade-plans/:id/stop-monitoring
+
+only if reusing existing monitor infrastructure safely.
+
+Static route ordering rules apply.
+
+======================================================================
+25. TRADE PLAN DETAIL INTEGRATION
+======================================================================
+
+Enhance /trade-plans/:id.
+
+Top lifecycle summary:
+
+Current Plan Research State
+
+CURRENT / CHANGED / REQUIRES_REVIEW / THESIS_INVALIDATED / DATA_STALE
+
+Show:
+
+Last evaluated
+
+Current research change
+
+Invalidation status
+
+Event status
+
+Liquidity status
+
+Expiration status if options
+
+Freshness
+
+======================================================================
+26. "WHAT CHANGED?" SECTION
+======================================================================
+
+Make this prominent.
+
+Separate:
+
+Research Changes
+
+Structure/Risk Changes
+
+Event Changes
+
+Data Freshness Changes
+
+Do not mix categories into one vague alert.
+
+======================================================================
+27. PLAN TIMELINE UI
+======================================================================
+
+Show lifecycle events chronologically.
+
+Filters:
+
+All
+
+Research
+
+Risk
+
+Events
+
+Freshness
+
+User Actions
+
+Do not add social/activity complexity.
+
+======================================================================
+28. REVIEW CTA
+======================================================================
+
+When REQUIRES_REVIEW:
+
+CTA:
+
+Review Research
+
+Open Research Workspace
+
+Re-run Risk Analysis
+
+Return to Contract Research
+
+Do NOT show:
+
+Close Position
+
+Sell
+
+Roll
+
+Trade Now
+
+======================================================================
+29. THESIS INVALIDATED UX
+======================================================================
+
+When observed:
+
+prominent but neutral:
+
+"Research Thesis Invalidation Condition Observed"
+
+Then:
+
+View Invalidation Evidence
+
+Compare Saved vs Current Research
+
+Open Research Workspace
+
+No execution recommendation.
+
+======================================================================
+30. DATA STALE UX
+======================================================================
+
+When critical inputs stale:
+
+"Current lifecycle analysis is limited because one or more required data sources are stale."
+
+Show which.
+
+Do not pretend current state is known.
+
+======================================================================
+31. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Actions:
+
+Explain What Changed
+
+Explain Why Review Is Required
+
+Explain Invalidation
+
+Challenge Current Thesis
+
+Compare Saved vs Current Research
+
+Explain Liquidity Change
+
+Explain Expiration Risk
+
+AI may explain deterministic lifecycle result.
+
+AI may NOT:
+
+change state
+
+create execution instruction
+
+select replacement strategy
+
+select replacement contract
+
+======================================================================
+32. RESEARCH MONITOR INTEGRATION
+======================================================================
+
+Reuse existing monitoring infrastructure where appropriate.
+
+Trade-plan lifecycle may consume existing watch evaluation or emit into shared activity infrastructure.
+
+Do not create duplicate monitoring engine if existing Research Monitor can support it.
+
+Keep plan-specific lifecycle semantics separate from generic research watches.
+
+======================================================================
+33. PORTFOLIO / POSITION CONTEXT
+======================================================================
+
+If actual portfolio position exists:
+
+show current context descriptively.
+
+But remember:
+
+A Trade Plan does NOT prove execution occurred.
+
+Do not assume plan = position.
+
+Only show actual position when confirmed through portfolio/broker data.
+
+======================================================================
+34. PLAN VS ACTUAL POSITION
+======================================================================
+
+Prepare future distinction:
+
+PLANNED
+
+vs
+
+ACTUAL_POSITION_LINKED
+
+Do not implement full actual-vs-plan unless trivial and already supported.
+
+This likely belongs after execution.
+
+======================================================================
+35. COMPLIANCE
+======================================================================
+
+Canonical disclaimer:
+
+"Trade Monitoring & Lifecycle Intelligence compares a saved research plan
+with current available research and market information. Lifecycle states
+such as Requires Review or Thesis Invalidated are research observations,
+not instructions to buy, sell, hold, close, roll, or otherwise transact."
+
+Avoid:
+
+Exit Signal
+
+Sell Signal
+
+Close Now
+
+Take Profit
+
+Stop Loss Triggered
+
+Roll Recommended
+
+Adjustment Recommended
+
+======================================================================
+36. SECURITY / PRIVACY
+======================================================================
+
+Authenticated.
+
+Strict ownership.
+
+Cross-user plan → 404.
+
+Activity events user-owned.
+
+No lifecycle data leakage.
+
+No plan contents in admin metrics.
+
+No user notes in logs.
+
+======================================================================
+37. PLATFORM HEALTH
+======================================================================
+
+Add/extend:
+
+Trade Plan Monitoring
+
+Metrics:
+
+plansEvaluated
+
+currentPlans
+
+changedPlans
+
+reviewRequiredPlans
+
+invalidatedPlans
+
+stalePlans
+
+failedEvaluations
+
+averageEvaluationDurationMs
+
+lastEvaluationAt
+
+Admin aggregate only.
+
+No user-specific details.
+
+======================================================================
+38. BACKGROUND JOB STATUS
+======================================================================
+
+If scheduler/background evaluation is enabled:
+
+add:
+
+trade_plan_monitoring
+
+to Job Status Store.
+
+Track:
+
+started
+
+completed
+
+partial
+
+failed
+
+planCount
+
+duration
+
+No private contents.
+
+======================================================================
+39. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+trade_plan_lifecycle_started
+
+trade_plan_lifecycle_completed
+
+trade_plan_lifecycle_changed
+
+trade_plan_review_required
+
+trade_plan_thesis_invalidated
+
+trade_plan_data_stale
+
+trade_plan_lifecycle_failed
+
+Safe fields:
+
+durationMs
+
+planType
+
+lifecycleState
+
+changeCount
+
+riskFlagCount
+
+hasEventChange
+
+hasLiquidityChange
+
+No:
+
+capital
+
+P/L
+
+notes
+
+option legs
+
+portfolio values
+
+user identity
+
+======================================================================
+40. CACHE
+======================================================================
+
+Lifecycle evaluation may use:
+
+current Opportunity Intelligence cache
+
+Trade Plan persisted snapshots
+
+Portfolio Intelligence cache
+
+Contract quote cache
+
+Do not over-cache state.
+
+Persist activity separately.
+
+======================================================================
+41. FAILURE ISOLATION
+======================================================================
+
+Examples:
+
+Institutional unavailable:
+partial evaluation.
+
+Portfolio unavailable:
+normal if optional.
+
+Options quote unavailable:
+structure monitoring partial.
+
+Research current state unavailable:
+UNKNOWN / DATA_STALE as appropriate.
+
+Do not crash entire plan.
+
+======================================================================
+42. PERFORMANCE
+======================================================================
+
+Avoid N+1.
+
+For batch user-plan evaluation:
+
+load active plans in one query
+
+group symbols
+
+reuse current Opportunity Intelligence
+
+batch current research lookup
+
+reuse options chain caches where possible
+
+No per-plan scanner/ranking run.
+
+Measure:
+
+1 plan
+
+10 plans
+
+50 plans
+
+Report latency.
+
+======================================================================
+43. ACCESSIBILITY
+======================================================================
+
+Lifecycle statuses text + icons.
+
+Timeline semantic.
+
+Filters keyboard accessible.
+
+Warnings not color-only.
+
+Mobile usable.
+
+======================================================================
+44. MOBILE
+======================================================================
+
+At 375px:
+
+summary cards stack
+
+timeline readable
+
+change groups collapse
+
+options lifecycle details horizontally safe
+
+review actions wrap
+
+======================================================================
+45. ROUTING REGRESSION
+======================================================================
+
+Permanent route-contract rule applies.
+
+Any static route under:
+
+/trade-plans/:id/...
+
+must be tested.
+
+Direct refresh.
+
+Back/forward.
+
+No route collision.
+
+======================================================================
+46. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/34-trade-monitoring-lifecycle.md
+
+Document:
+
+architecture
+
+lifecycle states
+
+state rules
+
+Saved vs Current Research
+
+thesis invalidation
+
+equity monitoring
+
+options monitoring
+
+expiration states
+
+event monitoring
+
+liquidity monitoring
+
+Greeks monitoring
+
+risk-profile changes
+
+review reasons
+
+activity timeline
+
+deduplication
+
+scheduler decision
+
+API
+
+security
+
+privacy
+
+cache
+
+performance
+
+health
+
+logging
+
+failure isolation
+
+compliance
+
+routing
+
+UAT
+
+troubleshooting
+
+future execution handoff
+
+actual-vs-plan future
+
+RIA/Institutional extension
+
+commercialization
+
+Update Research Glossary docs.
+
+======================================================================
+47. PERMANENT QUALITY GATES — NEW
+======================================================================
+
+Starting THIS sprint, create and enforce a standardized quality-gate framework.
+
+This becomes mandatory for every sprint from now onward.
+
+Required categories:
+
+UNIT / FEATURE TESTS
+
+INTEGRATION TESTS
+
+SMOKE TESTS
+
+REGRESSION TESTS
+
+ROUTE REGRESSION
+
+COMPLIANCE REGRESSION
+
+SECURITY / OWNERSHIP REGRESSION
+
+BUILD
+
+TYPESCRIPT
+
+SERVER STARTUP
+
+DATABASE MIGRATION / SCHEMA READINESS
+
+PLATFORM HEALTH
+
+UAT
+
+No sprint is GO if a mandatory gate fails.
+
+======================================================================
+48. FORMAL SMOKE TEST SUITE
+======================================================================
+
+Create a fast formal smoke suite.
+
+Preferred command:
+
+npm run test:smoke
+
+If project conventions suggest another name, document clearly.
+
+Target runtime:
+
+fast — ideally a few minutes or less.
+
+Smoke tests answer:
+
+"Is the platform fundamentally alive?"
+
+At minimum verify:
+
+1. Server can start.
+
+2. Database connectivity.
+
+3. Authentication middleware basic behavior.
+
+4. /api/admin/platform-health responds for admin fixture/test context.
+
+5. Opportunity Intelligence route responds.
+
+6. Opportunity Workspace route responds.
+
+7. Research Workspace route responds.
+
+8. Research Goals route responds.
+
+9. Portfolio route responds.
+
+10. Portfolio Intelligence route responds.
+
+11. Portfolio Analytics route responds.
+
+12. Trade Planning context responds.
+
+13. Equity Planning route responds.
+
+14. Options Strategy Matching route responds.
+
+15. Contract Research route responds or safely reports provider unavailable in test environment.
+
+16. Risk Analysis route responds.
+
+17. Trade Plan Library route responds.
+
+18. Trade Plan Detail route responds.
+
+19. Lifecycle route responds.
+
+20. Critical static/dynamic routes resolve correctly.
+
+21. Critical DB tables/schema exist.
+
+22. No unexpected 500 from smoke paths.
+
+Use test fixtures/mocks where live dependencies would make smoke nondeterministic.
+
+======================================================================
+49. REGRESSION TEST SUITE
+======================================================================
+
+Formalize:
+
+npm run test:regression
+
+or equivalent.
+
+This should run the complete automated test suite required to detect regressions.
+
+Do not only run new sprint tests.
+
+Regression must include prior functionality.
+
+Report:
+
+test files
+
+tests/assertions
+
+failures
+
+runtime
+
+======================================================================
+50. INTEGRATION TEST SUITE
+======================================================================
+
+Create or formalize:
+
+npm run test:integration
+
+Cover real integration between major internal layers.
+
+At minimum examples:
+
+Opportunity Intelligence → Opportunity Workspace
+
+Research Goal → Research Workspace context
+
+Portfolio → Portfolio Intelligence
+
+TradePlanningContext → Equity Planning
+
+TradePlanningContext → Options Strategy Matching
+
+Options Match → Contract Research
+
+Contract Research → Risk Analysis
+
+Risk Analysis → Trade Plan
+
+Trade Plan → Lifecycle Evaluation
+
+Use actual service boundaries.
+
+Avoid merely source-string structural assertions where true integration is feasible.
+
+======================================================================
+51. ROUTE REGRESSION SUITE
+======================================================================
+
+Maintain explicit route-contract tests.
+
+Required historical regression:
+
+/opportunities/today
+
+must NOT become ticker TODAY.
+
+/opportunities/changes
+
+must NOT become ticker CHANGES.
+
+Also validate:
+
+/trade-plans static vs dynamic
+
+/trade-planning static/session vs symbol routes
+
+/goals static vs dynamic
+
+/research workspace context routes
+
+Every new static route under a dynamic namespace must get a contract test.
+
+======================================================================
+52. COMPLIANCE REGRESSION SUITE
+======================================================================
+
+Create/formalize a compliance regression group.
+
+Check user-facing paths for prohibited or risky context-dependent language.
+
+Examples:
+
+Best Trade
+
+Recommended Trade
+
+Strong Buy
+
+Expected Return
+
+Chance of Winning
+
+Sell Now
+
+Exit Now
+
+Close Trade
+
+Approved Trade
+
+Do not use naive bare-word patterns that produce false positives in disclaimers.
+
+Use context-aware patterns.
+
+Also verify:
+
+options risk disclosure
+
+13F delay disclosure
+
+portfolio disclaimers
+
+trade-planning disclaimers
+
+lifecycle disclaimer
+
+======================================================================
+53. SECURITY / OWNERSHIP REGRESSION
+======================================================================
+
+Formal suite covering:
+
+cross-user portfolio → 404
+
+cross-user collection → 404
+
+cross-user goal → 404
+
+cross-user planning session → 404
+
+cross-user trade plan → 404
+
+cross-user lifecycle activity → 404
+
+no userId accepted from body as authority
+
+private cache key isolation
+
+no tokens in responses
+
+no secrets in logs
+
+no private values in admin health
+
+======================================================================
+54. POST-DEPLOY SMOKE DESIGN
+======================================================================
+
+Create a documented production smoke checklist/runner design.
+
+Do not necessarily execute against production from local CI if credentials unavailable.
+
+But establish a script or documented command capable of checking:
+
+production homepage
+
+health endpoint
+
+authenticated critical API path
+
+Opportunity Workspace
+
+Research Workspace
+
+Trade Planning
+
+Trade Plans
+
+No unexpected 500
+
+DB readiness
+
+Platform Health readiness
+
+Production smoke must not:
+
+create broker orders
+
+consume large provider quota
+
+modify user data unnecessarily
+
+======================================================================
+55. QUALITY GATE REPORT FORMAT
+======================================================================
+
+Every sprint completion report from now on MUST include:
+
+QUALITY GATES
+
+Unit / Feature Tests:
+PASS / FAIL
+count
+
+Integration Tests:
+PASS / FAIL
+count
+
+Smoke Tests:
+PASS / FAIL
+count
+
+Regression Tests:
+PASS / FAIL
+count
+
+Route Regression:
+PASS / FAIL
+
+Compliance Regression:
+PASS / FAIL
+
+Security / Ownership:
+PASS / FAIL
+
+npm run build:
+PASS / FAIL
+
+npx tsc --noEmit:
+PASS / FAIL
+
+Server Startup:
+PASS / FAIL
+
+Database Migration / Schema:
+PASS / FAIL / N/A
+
+Platform Health:
+PASS / DEGRADED / FAIL
+
+UAT:
+PASS / CONDITIONAL / FAIL
+
+Production Smoke:
+PASS / NOT_RUN / FAIL
+
+GO requires all mandatory pre-deploy gates PASS.
+
+Production Smoke may be NOT_RUN only before deployment and must be run after actual production deployment.
+
+======================================================================
+56. TEST SEPARATION
+======================================================================
+
+Do not count structural tests as integration tests.
+
+Label test types honestly.
+
+Categories:
+
+unit
+
+pure/service
+
+structural
+
+integration
+
+browser/e2e
+
+smoke
+
+security
+
+compliance
+
+UAT
+
+This reporting distinction is now mandatory.
+
+======================================================================
+57. BROWSER E2E PREPARATION
+======================================================================
+
+Audit whether Playwright/Cypress or another browser test framework already exists.
+
+If yes:
+
+add a small critical E2E path.
+
+If not:
+
+document recommendation and place full browser framework in:
+
+2.7.7 End-to-End Platform Validation & Production Readiness Gate
+
+Do not derail 2.7.6 installing a large test framework unless low-risk.
+
+======================================================================
+58. 2.7.7 ROADMAP ADDITION
+======================================================================
+
+Add:
+
+Sprint 2.7.7
+End-to-End Platform Validation & Production Readiness Gate
+
+This sprint occurs AFTER 2.7.6 and BEFORE Phase 2.8 Broker-Assisted Execution.
+
+Purpose:
+
+validate Research + Portfolio + Trade Planning end-to-end before any broker execution functionality is introduced.
+
+2.7.7 should later include:
+
+browser E2E
+
+real DB integration
+
+live market-data validation
+
+broker sandbox validation
+
+failure/recovery testing
+
+security regression
+
+performance/load
+
+production smoke automation
+
+full critical-journey UAT
+
+Do NOT implement full 2.7.7 in this sprint.
+
+Only add roadmap entry + test framework foundation.
+
+======================================================================
+59. TESTS FOR 2.7.6 FUNCTIONALITY
+======================================================================
+
+Add meaningful tests covering:
+
+TradePlanLifecycleResult
+
+all lifecycle states
+
+CURRENT
+
+CHANGED
+
+REQUIRES_REVIEW
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+ARCHIVED
+
+UNKNOWN
+
+saved vs current research
+
+research strengthened
+
+research weakened
+
+qualification loss
+
+technical change
+
+fundamental change
+
+institutional change
+
+regime change
+
+sector/theme change
+
+invalidation observed
+
+invalidation unknown
+
+equity reference level crossed
+
+options DTE
+
+approaching expiration
+
+expired
+
+event entering lifecycle
+
+event passed
+
+liquidity degraded
+
+quote stale
+
+Greeks partial
+
+constraint status changed
+
+review reasons
+
+activity event creation
+
+event deduplication
+
+manual evaluation
+
+batch evaluation
+
+partial subsystem failure
+
+no recommendation language
+
+no exit language
+
+cross-user isolation
+
+structured logging privacy
+
+Platform Health
+
+route regression
+
+Operations Manual
+
+quality gates
+
+smoke suite
+
+regression suite
+
+integration suite
+
+security suite
+
+commercial/roadmap discipline
+
+======================================================================
+60. UAT
+======================================================================
+
+Document and run:
+
+1. Open saved Trade Plan.
+
+2. Verify lifecycle summary.
+
+3. Verify CURRENT plan.
+
+4. Simulate material research change.
+
+5. Verify CHANGED or REQUIRES_REVIEW.
+
+6. Simulate qualification loss.
+
+7. Verify review reason.
+
+8. Simulate canonical invalidation.
+
+9. Verify THESIS_INVALIDATED.
+
+10. Verify no exit instruction.
+
+11. Simulate stale critical data.
+
+12. Verify DATA_STALE.
+
+13. Options plan: reduce DTE.
+
+14. Verify approaching expiration.
+
+15. Simulate earnings entering lifetime.
+
+16. Verify event change.
+
+17. Simulate liquidity weakening.
+
+18. Verify liquidity change.
+
+19. Missing Greeks → partial state.
+
+20. Manual Refresh Plan Status.
+
+21. Verify duplicate lifecycle event not created twice.
+
+22. Verify activity timeline.
+
+23. Open Explain What Changed in Research Workspace.
+
+24. Verify AI cannot change lifecycle state.
+
+25. No-portfolio plan.
+
+26. No-goal plan.
+
+27. Cross-user plan → 404.
+
+28. Direct refresh.
+
+29. Browser back/forward.
+
+30. Mobile.
+
+31. Accessibility.
+
+32. Platform Health.
+
+33. Run formal smoke suite.
+
+34. Run formal regression suite.
+
+35. Run integration suite.
+
+36. Run security/ownership suite.
+
+37. Run compliance regression.
+
+38. npm run build.
+
+39. npx tsc --noEmit.
+
+40. Server startup.
+
+41. DB/schema readiness.
+
+42. No unexpected 500.
+
+======================================================================
+61. COMMERCIAL EXPERIENCE
+======================================================================
+
+Document only.
+
+FREE:
+
+basic saved plan monitoring
+
+RETAIL:
+
+full lifecycle intelligence
+
+saved-vs-current research
+
+research review states
+
+event/liquidity/freshness changes
+
+activity timeline
+
+Research Workspace explanation
+
+PROFESSIONAL:
+
+advanced monitoring
+
+longer lifecycle history
+
+multiple plan comparisons
+
+richer risk-change analytics
+
+RIA:
+
+advisor monitoring dashboard
+
+client plan review workflow
+
+firm methodology
+
+review/audit trail
+
+No suitability.
+
+INSTITUTIONAL:
+
+team monitoring
+
+policy-based research review
+
+desk workflows
+
+custom lifecycle rules
+
+ENTERPRISE:
+
+custom policies
+
+private data
+
+API
+
+white-label
+
+No entitlement enforcement.
+
+======================================================================
+62. 2.7.7 HANDOFF
+======================================================================
+
+At completion of 2.7.6 provide explicit handoff:
+
+Trade Intelligence & Planning v1.0 feature set:
+
+Discovery
+
+Research
+
+Goals
+
+Portfolio Context
+
+Trade Planning
+
+Equity Planning
+
+Options Strategy Matching
+
+Contract Research
+
+Risk Analysis
+
+Trade Plan
+
+Lifecycle Monitoring
+
+2.7.7 validates this full chain end-to-end.
+
+No Phase 2.8 work begins until 2.7.7 GO.
+
+======================================================================
+63. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Canonical lifecycle result exists.
+
+B. Saved vs current research works.
+
+C. Lifecycle states deterministic.
+
+D. Material change rules reuse existing intelligence.
+
+E. Canonical invalidation observed correctly.
+
+F. No exit recommendation.
+
+G. Equity plan monitoring works.
+
+H. Options lifecycle monitoring works.
+
+I. Expiration state works.
+
+J. Event monitoring works.
+
+K. Liquidity monitoring works.
+
+L. Missing Greeks remain missing.
+
+M. Planning constraint comparison works.
+
+N. Review reasons transparent.
+
+O. Activity timeline works.
+
+P. Deduplication works.
+
+Q. Partial failures degrade.
+
+R. No automatic plan mutation.
+
+S. No contract substitution.
+
+T. No strategy substitution.
+
+U. No broker execution.
+
+V. Privacy enforced.
+
+W. Platform Health updated.
+
+X. Structured logs safe.
+
+Y. Formal smoke suite exists and passes.
+
+Z. Formal regression suite exists and passes.
+
+AA. Integration suite exists and passes.
+
+AB. Route regression passes.
+
+AC. Compliance regression passes.
+
+AD. Security/ownership regression passes.
+
+AE. npm run build passes.
+
+AF. npx tsc --noEmit passes or no new errors according to established project baseline.
+
+AG. Server startup passes.
+
+AH. DB/schema readiness passes.
+
+AI. UAT passes.
+
+AJ. Operations Manual updated.
+
+AK. 2.7.7 roadmap entry added.
+
+AL. Roadmap alignment confirmed.
+
+======================================================================
+64. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing monitoring infrastructure
+3. Reusable components
+4. Legacy/alert/execution components isolated
+5. Files changed
+6. Schema impact
+7. TradePlanLifecycleResult
+8. Lifecycle states
+9. State rules
+10. Saved vs Current Research
+11. Research-change detection
+12. Thesis invalidation
+13. Equity monitoring
+14. Options monitoring
+15. Expiration lifecycle
+16. Event monitoring
+17. Liquidity monitoring
+18. Greeks monitoring
+19. Constraint monitoring
+20. Review reasons
+21. Activity timeline
+22. Deduplication
+23. Manual evaluation
+24. Batch evaluation
+25. Scheduler decision
+26. API
+27. Client UX
+28. Research Workspace integration
+29. Research Monitor integration
+30. Portfolio context
+31. Partial-data resilience
+32. Compliance audit
+33. Security/privacy
+34. Performance
+35. Platform Health
+36. Background jobs
+37. Structured logging
+38. Accessibility/mobile
+39. Routing regression
+40. Operations Manual updates
+
+QUALITY GATES:
+
+41. Unit / Feature Tests — count/result
+42. Integration Tests — count/result
+43. Smoke Tests — count/result
+44. Regression Tests — count/result
+45. Route Regression — result
+46. Compliance Regression — result
+47. Security / Ownership Regression — result
+48. npm run build — result
+49. npx tsc --noEmit — result
+50. Server Startup — result
+51. Database Migration / Schema — result
+52. Platform Health — result
+53. UAT — result
+54. Production Smoke — PASS / NOT_RUN / FAIL
+
+55. Full automated test count
+56. Test-category breakdown
+57. Commercial Experience Review
+58. 2.7.7 handoff
+59. Improvement suggestions
+60. Deferred backlog
+61. Roadmap Alignment
+62. Operations Manual Updated: YES/NO
+63. Operations Manual Files Updated
+64. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+65. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+NEXT:
+
+2.7.7
+End-to-End Platform Validation & Production Readiness Gate
+
+ONLY AFTER 2.7.7 GO:
+
+Phase 2.8
+Broker-Assisted Execution
+
+======================================================================
+66. PERMANENT QUALITY RULE
+======================================================================
+
+Document permanently:
+
+Every future sprint must execute and report:
+
+feature/unit tests
+
+integration tests
+
+smoke tests
+
+full regression tests
+
+route regression
+
+compliance regression
+
+security/ownership regression
+
+build
+
+typecheck
+
+startup
+
+schema readiness
+
+Platform Health
+
+UAT
+
+and post-deployment production smoke where applicable.
+
+A sprint-specific test suite passing alone is NOT sufficient for GO.
+
+======================================================================
+67. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not implement Phase 2.8 execution.
+
+Complete Sprint 2.7.6 and the permanent testing-quality framework on the
+current tree.
+
+Run all mandatory quality gates.
+
+Update the Operations Manual and master roadmap.
+
+Return the complete engineering report for review.
+
+Do not begin 2.7.7 until this completion report has been reviewed.

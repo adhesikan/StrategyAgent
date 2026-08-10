@@ -1,5 +1,62 @@
 # Sprint Change Log
 
+## Sprint 2.7.6 — Trade Monitoring & Lifecycle Intelligence (2026-08-10)
+
+### Summary
+Adds deterministic lifecycle monitoring to saved trade plans. Compares saved research snapshots against current opportunity intelligence and surfaces lifecycle state, review reasons, and activity events. No execution, no exit instructions, no automatic plan mutation, no suitability scoring. Introduces permanent quality gate framework (smoke, regression, integration, security test suites).
+
+### Key Architecture Decisions
+- **Lifecycle as separate domain**: new `trade_plan_activity` table (not overloading `research_watches`)
+- **Reuses existing intelligence**: `computeResearchChange`, `getCanonicalOpportunity` — no new scoring formulas
+- **24-hour dedup window**: fingerprinted on `planId|activityType|currentState|methodologyVersion`
+- **Scheduler not wired**: `evaluateAllActiveTradePlans()` is ready but not cron-wired until 2.7.7 validation
+- **In-process 5-min cache**: `userId:planId` keyed; force=true bypasses
+- **Structured logging**: 8 safe fields only; no userId/email/capital/PnL/symbol in logs
+
+### Files Added
+- `shared/trade-plan-lifecycle-types.ts` — canonical types, 7 lifecycle states, 5 expiration states, 17 activity event types, 10 review reason types, disclaimer, forbidden phrases, DTE thresholds
+- `server/services/trade-plan-lifecycle-service.ts` — evaluation engine, activity persistence, health metrics
+- `server/routes/__tests__/trade-plan-lifecycle.test.ts` — 121 tests (lifecycle, compliance, security, integration)
+- `server/routes/__tests__/smoke.test.ts` — 29 smoke checks (formal quality gate)
+- `server/routes/__tests__/regression.test.ts` — 37 regression checks (formal quality gate)
+- `server/routes/__tests__/integration.test.ts` — 14 integration layer checks (formal quality gate)
+- `server/routes/__tests__/security.test.ts` — 23 security checks (formal quality gate)
+- `docs/operations/34-trade-monitoring-lifecycle.md` — full ops doc
+
+### Files Modified
+- `shared/schema.ts` — `tradePlanActivity` Drizzle table
+- `shared/research-glossary.ts` — 10 lifecycle glossary terms in `LIFECYCLE_ENTRIES`
+- `server/services/job-status-store.ts` — `trade_plan_monitoring` added to `JobName`
+- `server/routes/trade-plans.ts` — 3 new routes: lifecycle, lifecycle/evaluate, activity; lifecycle/health admin route
+- `server/routes/platform-health.ts` — lifecycle monitoring health card (9 metrics)
+- `server/routes.ts` — `ensureTradePlanActivityTable()` wired at startup
+- `client/src/pages/trade-plan-detail.tsx` — Lifecycle Summary card, categorized change panels, invalidation/review CTAs, Activity Timeline with category filter
+- `package.json` — `test`, `test:smoke`, `test:regression`, `test:integration`, `test:security`, `test:lifecycle` scripts
+
+### Quality Gate Results
+- 224 tests passing across 5 suites (lifecycle: 121, smoke: 29, regression: 37, integration: 14, security: 23)
+- 0 new TypeScript errors introduced by Sprint 2.7.6
+- Build: successful (pre-existing warnings only)
+
+### Compliance Verified
+- LIFECYCLE_DISCLAIMER mandatory on all surfaces
+- No execution language in state labels, review reasons, activity labels, or CTAs
+- `LIFECYCLE_FORBIDDEN_PHRASES` enforced in regression test suite
+- Permitted review CTAs: "Review Research", "Open Research Workspace", "Compare Saved vs Current Research"
+
+### API Routes Added
+- `GET /api/trade-plans/:id/lifecycle` — cached lifecycle result
+- `POST /api/trade-plans/:id/lifecycle/evaluate` — manual re-evaluation
+- `GET /api/trade-plans/:id/activity` — paginated activity timeline
+- `GET /api/trade-plans/lifecycle/health` — admin aggregate health metrics
+
+### Known Limitations (2.7.6)
+- Event calendar not evaluated (requires event feed — 2.7.7)
+- Live liquidity comparison not evaluated (requires broker options chain)
+- Scheduler not wired (manual trigger only — wire in 2.7.7)
+
+---
+
 ## Sprint 2.7.5 — Trade Plan Workspace (2026-08-10)
 
 ### Summary

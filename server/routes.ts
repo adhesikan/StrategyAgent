@@ -284,6 +284,9 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // Ensure trade_plans + trade_plan_versions tables at startup (idempotent)
   { const { ensureTradePlanTables } = await import("./services/trade-plan-service");
     ensureTradePlanTables().catch((e: any) => console.error("[trade-plans] startup table init failed:", e?.message)); }
+  // Ensure trade_plan_activity table at startup (Sprint 2.7.6)
+  { const { ensureTradePlanActivityTable } = await import("./services/trade-plan-lifecycle-service");
+    ensureTradePlanActivityTable().catch((e: any) => console.error("[trade-plan-lifecycle] startup table init failed:", e?.message)); }
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

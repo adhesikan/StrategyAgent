@@ -3775,3 +3775,31 @@ export const tradePlanVersions = pgTable("trade_plan_versions", {
 
 export type TradePlanVersionRow    = typeof tradePlanVersions.$inferSelect;
 export type InsertTradePlanVersion = typeof tradePlanVersions.$inferInsert;
+
+/**
+ * trade_plan_activity — lifecycle event log for a trade plan.
+ * Persists observed lifecycle events (research changes, invalidation, expiration, etc.).
+ * Created by the lifecycle evaluation service.
+ * Deduplicated by fingerprint + dedup window to prevent repeated entries.
+ * User-owned. No capital, P/L, notes, option legs, or user identity in metadata.
+ */
+export const tradePlanActivity = pgTable("trade_plan_activity", {
+  id:            varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tradePlanId:   varchar("trade_plan_id").notNull(),
+  userId:        text("user_id").notNull(),
+  activityType:  text("activity_type").notNull(),  // ActivityEventType
+  observedAt:    timestamp("observed_at", { withTimezone: true }).defaultNow(),
+  previousState: text("previous_state"),
+  currentState:  text("current_state"),
+  summary:       text("summary").notNull(),
+  metadata:      jsonb("metadata").notNull().$type<Record<string, unknown>>().default({}),
+  fingerprint:   text("fingerprint").notNull(),
+}, (t) => ({
+  idxPlanId:      index("idx_tpa_plan_id").on(t.tradePlanId),
+  idxUserId:      index("idx_tpa_user_id").on(t.userId),
+  idxObservedAt:  index("idx_tpa_observed_at").on(t.tradePlanId, t.observedAt),
+  idxFingerprint: index("idx_tpa_fingerprint").on(t.fingerprint),
+}));
+
+export type TradePlanActivityRow    = typeof tradePlanActivity.$inferSelect;
+export type InsertTradePlanActivity = typeof tradePlanActivity.$inferInsert;

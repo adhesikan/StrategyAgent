@@ -1913,12 +1913,148 @@ const TRADE_PLAN_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   },
 ];
 
+// ============================================================================
+// Sprint 2.7.6 — Lifecycle & Monitoring Glossary Entries
+// ============================================================================
+
+const LIFECYCLE_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:             "lifecycle_state",
+    label:           "Research Lifecycle State",
+    shortDefinition: "The current observation state of a trade plan's research.",
+    fullDefinition:
+      "The Research Lifecycle State reflects whether the research underlying a saved " +
+      "trade plan is current, has changed, requires review, or shows thesis invalidation " +
+      "conditions. It is a deterministic observation based on comparing the saved research " +
+      "snapshot to the most recent research data. It is NOT a recommendation to act.",
+    category:        "research",
+    caution:         "Lifecycle state is a research observation tool only. It does not " +
+      "constitute investment advice or instructions to buy or sell.",
+  },
+  {
+    key:             "thesis_invalidation_observed",
+    label:           "Thesis Invalidation Observed",
+    shortDefinition: "One or more of the saved plan's invalidation conditions are currently observed.",
+    fullDefinition:
+      "When a trade plan is created, the researcher can document conditions that would " +
+      "suggest the original research thesis no longer holds. When Lifecycle Intelligence " +
+      "detects that one of these conditions is currently true — such as qualification loss " +
+      "or a major score decline — the lifecycle state becomes Thesis Invalidation Observed. " +
+      "This is a research signal only, not an instruction to close any position.",
+    category:        "research",
+    caution:         "Observing thesis invalidation does not mean a trade has failed or that " +
+      "any action is required. Review the evidence independently and consult current research.",
+  },
+  {
+    key:             "review_required",
+    label:           "Research Review Required",
+    shortDefinition: "Material research changes warrant a manual review of the plan.",
+    fullDefinition:
+      "When the lifecycle evaluation detects material changes in research scores, " +
+      "qualification status, institutional signals, or other plan-relevant data, " +
+      "the plan enters a Review Required state. The specific reasons are listed " +
+      "transparently in the review reasons section. This is an information signal — " +
+      "what the researcher does with it is their decision.",
+    category:        "research",
+  },
+  {
+    key:             "data_stale",
+    label:           "Data Stale",
+    shortDefinition: "The research data needed to evaluate this plan is outdated or unavailable.",
+    fullDefinition:
+      "When the lifecycle evaluation cannot access sufficiently current research data " +
+      "for a symbol, the plan enters a Data Stale state. In this state, the lifecycle " +
+      "evaluation is limited and may not reflect current market conditions. The stale " +
+      "state does not imply any directional research signal.",
+    category:        "research",
+    caution:         "A stale lifecycle evaluation should be resolved by triggering a fresh " +
+      "research scan before drawing any conclusions about the plan's current relevance.",
+  },
+  {
+    key:             "expiration_state",
+    label:           "Options Expiration State",
+    shortDefinition: "How far the saved options structure is from its expiration date.",
+    fullDefinition:
+      "For options-based trade plans, Lifecycle Intelligence tracks the days to " +
+      "expiration (DTE) of the saved structure. The expiration state moves from " +
+      "Far (> 45 DTE) → Approaching (21–45 DTE) → Near (1–20 DTE) → Expired (0 DTE). " +
+      "Approaching and Near states are surfaced as review reasons. The system observes " +
+      "these thresholds and does not recommend rolling or closing.",
+    category:        "options",
+    caution:         "Expiration state reflects the DTE of the saved plan structure. " +
+      "Current contract availability and pricing must be separately verified.",
+  },
+  {
+    key:             "activity_timeline",
+    label:           "Plan Activity Timeline",
+    shortDefinition: "A chronological log of lifecycle observations for a trade plan.",
+    fullDefinition:
+      "The Activity Timeline records significant lifecycle events for a trade plan — " +
+      "such as research weakening, thesis invalidation conditions, qualification changes, " +
+      "and regime changes. Events are deduplicated within a 24-hour window to prevent " +
+      "repeated noise. The timeline is a research observation record and does not represent " +
+      "trading history or account activity.",
+    category:        "research",
+  },
+  {
+    key:             "plan_monitoring",
+    label:           "Plan Monitoring",
+    shortDefinition: "Ongoing lifecycle observation for saved trade plans.",
+    fullDefinition:
+      "Plan Monitoring is the process of evaluating whether the research assumptions " +
+      "behind a saved trade plan remain valid over time. The system compares saved " +
+      "research snapshots to current data and surfaces material changes through the " +
+      "lifecycle state and activity timeline. Monitoring is observation-only — it does " +
+      "not execute orders, modify plans automatically, or recommend position changes.",
+    category:        "research",
+    caution:         "Plan Monitoring is a research intelligence tool. It does not constitute " +
+      "trade management, position tracking, or financial advice.",
+  },
+  {
+    key:             "research_change_type",
+    label:           "Research Change Type",
+    shortDefinition: "The specific type of research change detected against the saved snapshot.",
+    fullDefinition:
+      "When comparing saved and current research, the lifecycle service classifies " +
+      "each change by type: Research Strengthened / Weakened, Technical Strengthened / " +
+      "Weakened, Fundamental Changed, Institutional Changed, Newly Qualified / No Longer " +
+      "Qualified, Regime Changed, Sector Context Changed, and Theme Context Changed. " +
+      "Each change is marked as material (≥ 5 points) or non-material (< 5 points).",
+    category:        "research",
+  },
+  {
+    key:             "dedup_window",
+    label:           "Activity Deduplication Window",
+    shortDefinition: "The time window used to prevent duplicate lifecycle events.",
+    fullDefinition:
+      "Activity events are deduplicated using a 24-hour fingerprint window. A fingerprint " +
+      "is computed from the plan ID, event type, current lifecycle state, and methodology " +
+      "version. If an identical fingerprint already exists within the last 24 hours, " +
+      "the event is not re-recorded. This prevents notification fatigue when the plan " +
+      "is evaluated multiple times within a short period.",
+    category:        "research",
+  },
+  {
+    key:             "methodology_version",
+    label:           "Lifecycle Methodology Version",
+    shortDefinition: "The version of the lifecycle evaluation algorithm used for this result.",
+    fullDefinition:
+      "Each lifecycle evaluation result includes a methodology version string (e.g., " +
+      "'2.7.6'). This version identifies the specific scoring logic, thresholds, and " +
+      "change detection rules applied. Version changes may produce different lifecycle " +
+      "states for the same underlying data — stored results always reflect the methodology " +
+      "version at the time of evaluation.",
+    category:        "research",
+  },
+];
+
 export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   ..._extendedGlossary,
   ...OPTIONS_STRATEGY_ENTRIES,
   ...CONTRACT_RESEARCH_ENTRIES,
   ...RISK_SCENARIO_ENTRIES,
   ...TRADE_PLAN_ENTRIES,
+  ...LIFECYCLE_ENTRIES,
 ];
 
 /** Alias for backward compatibility */

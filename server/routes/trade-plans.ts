@@ -1,10 +1,20 @@
 /**
- * server/routes/trade-plans.ts — Sprint 2.7.5 Trade Plan Workspace
+ * server/routes/trade-plans.ts — Sprint 2.7.5 + 2.7.6 Trade Plan Workspace & Lifecycle
  *
  * All routes authenticated. Strict user ownership — cross-user plan ID → 404.
  * No broker fields. No execution CTA. No order model.
  *
- * Static routes (e.g. /api/trade-plans/health) MUST precede dynamic /:id routes.
+ * Static route ordering rule (MUST be preserved):
+ *   /api/trade-plans/health                  (static — before /:id)
+ *   /api/trade-plans/:id/lifecycle           (sub-static — before /:id/*)
+ *   /api/trade-plans/:id/lifecycle/evaluate  (deeper static — before /:id/lifecycle)
+ *   /api/trade-plans/:id/activity            (static sub-resource)
+ *   All other /:id/* routes
+ *
+ * Sprint 2.7.6 additions:
+ *   GET  /api/trade-plans/:id/lifecycle
+ *   POST /api/trade-plans/:id/lifecycle/evaluate
+ *   GET  /api/trade-plans/:id/activity
  */
 
 import type { Express, Request, Response } from "express";
@@ -21,6 +31,14 @@ import {
   getMonitoringContext,
   getTradePlanHealthMetrics,
 } from "../services/trade-plan-service";
+import {
+  evaluateTradePlanLifecycle,
+  getCachedLifecycleResult,
+  getTradePlanActivities,
+  persistLifecycleActivity,
+  buildActivitiesFromLifecycleResult,
+  getLifecycleHealth,
+} from "../services/trade-plan-lifecycle-service";
 import type {
   CreateTradePlanRequest,
   UpdateTradePlanRequest,
@@ -30,6 +48,7 @@ import type {
   TradePlanType,
 } from "../../shared/trade-plan-types";
 import { TRADE_PLAN_STATUSES, TRADE_PLAN_TYPES } from "../../shared/trade-plan-types";
+import type { LifecycleEvaluateRequest } from "../../shared/trade-plan-lifecycle-types";
 
 export function registerTradePlanRoutes(
   app: Express,
@@ -268,7 +287,7 @@ export function registerTradePlanRoutes(
     }
   });
 
-  // ── GET /api/trade-plans/:id/monitoring-context (2.7.6 handoff) ───────────
+  // ── GET /api/trade-plans/:id/monitoring-context ────────────────────────────
   app.get("/api/trade-plans/:id/monitoring-context", isAuthenticated, async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -280,10 +299,102 @@ export function registerTradePlanRoutes(
       return res.json({
         tradePlanId:     req.params.id,
         monitoringInput,
-        existingWatchId: null, // 2.7.6 will wire this up
+        existingWatchId: null, // 2.7.7 may wire research-watch link
       });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to get monitoring context." });
+    }
+  });
+
+  // ── POST /api/trade-plans/:id/lifecycle/evaluate (evaluate first — deeper static) ─
+  app.post("/api/trade-plans/:id/lifecycle/evaluate", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { force }: LifecycleEvaluateRequest = req.body ?? {};
+    const startMs = Date.now();
+
+    try {
+      const lifecycleResult = await evaluateTradePlanLifecycle(
+        userId,
+        req.params.id,
+        { force: !!force },
+      );
+
+      // Persist significant activity events (fire-and-forget)
+      const activityDrafts = buildActivitiesFromLifecycleResult(lifecycleResult, null);
+      const newActivities = await persistLifecycleActivity(
+        userId,
+        req.params.id,
+        activityDrafts,
+      ).catch(() => []);
+
+      return res.status(200).json({
+        tradePlanId:      req.params.id,
+        lifecycleResult,
+        newActivities,
+        durationMs:       Date.now() - startMs,
+      });
+    } catch (err: any) {
+      if (err?.message?.includes("not found")) {
+        return res.status(404).json({ message: "Trade plan not found." });
+      }
+      return res.status(500).json({ message: "Failed to evaluate trade plan lifecycle." });
+    }
+  });
+
+  // ── GET /api/trade-plans/:id/lifecycle ─────────────────────────────────────
+  app.get("/api/trade-plans/:id/lifecycle", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    try {
+      // Return cached result if available; otherwise evaluate fresh
+      const cached = getCachedLifecycleResult(userId, req.params.id);
+      if (cached) {
+        return res.json({ tradePlanId: req.params.id, cached: true, lifecycleResult: cached });
+      }
+
+      const lifecycleResult = await evaluateTradePlanLifecycle(userId, req.params.id);
+      return res.json({ tradePlanId: req.params.id, cached: false, lifecycleResult });
+    } catch (err: any) {
+      if (err?.message?.includes("not found")) {
+        return res.status(404).json({ message: "Trade plan not found." });
+      }
+      return res.status(500).json({ message: "Failed to get lifecycle." });
+    }
+  });
+
+  // ── GET /api/trade-plans/:id/activity ──────────────────────────────────────
+  app.get("/api/trade-plans/:id/activity", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const limit  = Math.min(Number(req.query.limit ?? 50), 200);
+    const offset = Number(req.query.offset ?? 0);
+    const category = req.query.category as string | undefined;
+
+    try {
+      const result = await getTradePlanActivities(userId, req.params.id, {
+        category: category as any,
+        limit,
+        offset,
+      });
+      return res.json({ tradePlanId: req.params.id, ...result });
+    } catch (err: any) {
+      if (err?.message?.includes("not found")) {
+        return res.status(404).json({ message: "Trade plan not found." });
+      }
+      return res.status(500).json({ message: "Failed to get activity." });
+    }
+  });
+
+  // ── GET /api/trade-plans/lifecycle/health (lifecycle health — admin aggregate) ─
+  app.get("/api/trade-plans/lifecycle/health", isAuthenticated, async (_req: Request, res: Response) => {
+    try {
+      return res.json({ ok: true, metrics: getLifecycleHealth() });
+    } catch {
+      return res.status(500).json({ message: "Failed to get lifecycle health." });
     }
   });
 }

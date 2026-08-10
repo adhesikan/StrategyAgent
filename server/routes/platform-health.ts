@@ -32,6 +32,7 @@ import { getOptionsMatchingHealth } from "../services/options-strategy-matching-
 import { getContractResearchHealth } from "../services/contract-research-service";
 import { getRiskAnalysisHealth } from "../services/trade-risk-scenario-service";
 import { getTradePlanHealthMetrics } from "../services/trade-plan-service";
+import { getLifecycleHealth } from "../services/trade-plan-lifecycle-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -974,6 +975,22 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
           })(),
           // Trade Plan Workspace metrics (2.7.5) — admin aggregate only, no PII
           // Populated asynchronously; platform health will show 0s until first plan is created
+
+          // Trade Plan Lifecycle metrics (2.7.6)
+          ...(() => {
+            const lh = getLifecycleHealth();
+            return {
+              plansEvaluated:              lh.plansEvaluated,
+              lifecycleCurrentPlans:       lh.currentPlans,
+              lifecycleChangedPlans:       lh.changedPlans,
+              lifecycleReviewRequired:     lh.reviewRequiredPlans,
+              lifecycleInvalidated:        lh.invalidatedPlans,
+              lifecycleStalePlans:         lh.stalePlans,
+              lifecycleFailedEvaluations:  lh.failedEvaluations,
+              avgLifecycleEvalMs:          lh.averageEvaluationDurationMs ?? "N/A",
+              lastLifecycleEvalAt:         lh.lastEvaluationAt ?? "Never",
+            };
+          })(),
         },
       } as HealthCard;
     })(),

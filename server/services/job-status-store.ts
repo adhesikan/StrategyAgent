@@ -32,7 +32,8 @@ export type JobName =
   | "mapping_pipeline"
   | "institutional_signal_rebuild"
   | "symbol_enrichment"
-  | "broker_sync";
+  | "broker_sync"
+  | "trade_plan_monitoring";  // Sprint 2.7.6 — lifecycle evaluation job
 
 // ---------------------------------------------------------------------------
 // Store — module-level singleton

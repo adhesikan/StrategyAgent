@@ -8,7 +8,13 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "test": "npx vitest run --root .",
+    "test:smoke": "npx vitest run --root . server/routes/__tests__/smoke.test.ts",
+    "test:regression": "npx vitest run --root .",
+    "test:integration": "npx vitest run --root . server/routes/__tests__/integration.test.ts",
+    "test:security": "npx vitest run --root . server/routes/__tests__/security.test.ts",
+    "test:lifecycle": "npx vitest run --root . server/routes/__tests__/trade-plan-lifecycle.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

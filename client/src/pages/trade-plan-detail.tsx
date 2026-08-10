@@ -1,12 +1,12 @@
 /**
- * client/src/pages/trade-plan-detail.tsx — Trade Plan Detail (Sprint 2.7.5)
+ * client/src/pages/trade-plan-detail.tsx — Trade Plan Detail (Sprint 2.7.5 + 2.7.6)
  *
- * Sections: Plan Header · Research Thesis · What Changed · Goal/Portfolio Context ·
- * Planning Structure · Equity/Options Snapshot · Risk Summary · Invalidation ·
- * Monitoring Plan · Research Review Checklist · User Notes · Data Freshness ·
- * Plan Timeline · Related Research · Compliance Disclaimer
+ * Sections: Lifecycle Summary (2.7.6) · Plan Header · Research Thesis · What Changed ·
+ * Goal/Portfolio Context · Planning Structure · Equity/Options Snapshot · Risk Summary ·
+ * Invalidation · Monitoring Plan · Research Review Checklist · User Notes · Data Freshness ·
+ * Activity Timeline (2.7.6) · Plan Timeline · Related Research · Compliance Disclaimer
  *
- * No execution CTA. No broker order. No "approved trade".
+ * No execution CTA. No broker order. No "approved trade". No exit language.
  */
 
 import { useState, useEffect } from "react";
@@ -28,6 +28,18 @@ import type {
   TradePlanChecklist,
   TradePlanChangesResponse,
 } from "../../../shared/trade-plan-types";
+import {
+  LIFECYCLE_STATE_LABELS,
+  EXPIRATION_STATE_LABELS,
+  ACTIVITY_EVENT_LABELS,
+  LIFECYCLE_DISCLAIMER,
+  REVIEW_STATES,
+} from "../../../shared/trade-plan-lifecycle-types";
+import type {
+  TradePlanLifecycleResult,
+  TradePlanActivity,
+  LifecycleState,
+} from "../../../shared/trade-plan-lifecycle-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,8 +50,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
-  AlertCircle, Archive, CheckSquare, ChevronLeft, Clock, Copy,
-  ExternalLink, Info, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
+  Activity, AlertCircle, Archive, CheckSquare, ChevronLeft, Clock, Copy,
+  ExternalLink, Filter, Info, RefreshCw, ShieldAlert, TrendingDown, TrendingUp
 } from "lucide-react";
 
 // ============================================================================
@@ -227,6 +239,51 @@ export default function TradePlanDetailPage() {
   const change = changesData?.change ?? null;
   const displayHealth: TradePlanHealth = changesData?.planHealth ?? plan.planHealth;
 
+  // Lifecycle data (Sprint 2.7.6)
+  const [activityCategory, setActivityCategory] = useState<string>("all");
+  const [isEvaluating, setIsEvaluating] = useState(false);
+
+  const { data: lifecycleData, refetch: refetchLifecycle } = useQuery<{
+    tradePlanId: string;
+    cached: boolean;
+    lifecycleResult: TradePlanLifecycleResult;
+  }>({
+    queryKey: ["/api/trade-plans", id, "lifecycle"],
+    queryFn:  () => apiRequest("GET", `/api/trade-plans/${id}/lifecycle`).then(r => r.json()),
+    enabled:  !!id && !!plan,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: activityData, refetch: refetchActivity } = useQuery<{
+    activities: TradePlanActivity[];
+    total: number;
+    hasMore: boolean;
+  }>({
+    queryKey: ["/api/trade-plans", id, "activity", activityCategory],
+    queryFn:  () => apiRequest("GET", `/api/trade-plans/${id}/activity?limit=20&category=${activityCategory === "all" ? "" : activityCategory}`).then(r => r.json()),
+    enabled:  !!id && !!plan,
+  });
+
+  const handleRefreshLifecycle = async () => {
+    setIsEvaluating(true);
+    try {
+      await apiRequest("POST", `/api/trade-plans/${id}/lifecycle/evaluate`, { force: true });
+      await refetchLifecycle();
+      await refetchActivity();
+      toast({ title: "Plan status refreshed" });
+    } catch {
+      toast({ title: "Refresh failed", variant: "destructive" });
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  const lifecycle = lifecycleData?.lifecycleResult ?? null;
+  const lifecycleState: LifecycleState | null = lifecycle?.lifecycleState ?? null;
+  const isReviewRequired = lifecycleState !== null && REVIEW_STATES.has(lifecycleState);
+  const isInvalidated = lifecycleState === "THESIS_INVALIDATED";
+  const isDataStale   = lifecycleState === "DATA_STALE";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
@@ -235,6 +292,195 @@ export default function TradePlanDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => navigate("/trade-plans")} className="gap-1.5">
           <ChevronLeft className="h-4 w-4" /> Trade Plans
         </Button>
+
+        {/* § Lifecycle Summary (Sprint 2.7.6) */}
+        {lifecycle && (
+          <section aria-labelledby="lifecycle-summary-heading">
+            <Card className={
+              isInvalidated ? "border-red-500/40" :
+              isReviewRequired ? "border-orange-500/40" :
+              isDataStale ? "border-gray-500/40" : ""
+            }>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle id="lifecycle-summary-heading" className="text-base flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Research Lifecycle Status
+                  </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRefreshLifecycle}
+                    disabled={isEvaluating}
+                    aria-label="Refresh plan status"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isEvaluating ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+
+                {/* Lifecycle state */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium border ${
+                    isInvalidated    ? "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30" :
+                    isReviewRequired ? "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30" :
+                    isDataStale      ? "bg-gray-500/20 text-gray-600 dark:text-gray-400 border-gray-500/30" :
+                    lifecycleState === "CHANGED" ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30" :
+                    "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30"
+                  }`}>
+                    {LIFECYCLE_STATE_LABELS[lifecycleState!] ?? lifecycleState}
+                  </span>
+                  {lifecycle.expirationState && lifecycle.expirationState !== "UNKNOWN" && (
+                    <span className="text-sm text-muted-foreground">
+                      {EXPIRATION_STATE_LABELS[lifecycle.expirationState]}
+                      {lifecycle.currentDTE !== null && lifecycle.currentDTE !== undefined && (
+                        <> ({lifecycle.currentDTE} DTE)</>
+                      )}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {lifecycleData?.cached ? "Cached" : "Evaluated"} {new Date(lifecycle.evaluatedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                {/* Thesis Invalidated — neutral banner */}
+                {isInvalidated && (
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-4 space-y-3">
+                    <p className="text-sm font-medium text-red-700 dark:text-red-400 flex items-start gap-2">
+                      <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+                      Research Thesis Invalidation Condition Observed
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-300">
+                      One or more saved invalidation conditions are currently observed. Review the evidence below before drawing conclusions.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/research/${plan.symbol}`)}>
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        Open Research Workspace
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/opportunities/${plan.symbol}`)}>
+                        <Info className="h-3.5 w-3.5 mr-1.5" />
+                        Compare Saved vs Current Research
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Review Required — CTA block */}
+                {isReviewRequired && !isInvalidated && (
+                  <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 p-4 space-y-3">
+                    <p className="text-sm font-medium text-orange-700 dark:text-orange-400 flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      Research Review Required
+                    </p>
+                    {lifecycle.reviewReasons.length > 0 && (
+                      <ul className="text-xs text-orange-600 dark:text-orange-300 space-y-1 list-disc list-inside">
+                        {lifecycle.reviewReasons.map((r, i) => (
+                          <li key={i}>{r.description}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/research/${plan.symbol}`)}>
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        Open Research Workspace
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/opportunities/${plan.symbol}`)}>
+                        <Info className="h-3.5 w-3.5 mr-1.5" />
+                        Review Research
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Stale notice */}
+                {isDataStale && (
+                  <div className="rounded-lg bg-gray-500/10 border border-gray-500/20 p-3">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                      <Clock className="h-4 w-4 shrink-0" />
+                      Current lifecycle analysis is limited — research data is stale or unavailable for this symbol.
+                    </p>
+                    {lifecycle.limitations.length > 0 && (
+                      <ul className="text-xs text-muted-foreground mt-2 list-disc list-inside space-y-0.5">
+                        {lifecycle.limitations.map((l, i) => <li key={i}>{l}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {/* Research Changes — categorized panels */}
+                {lifecycle.researchChanges.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Research Changes</p>
+                    <div className="space-y-1.5">
+                      {lifecycle.researchChanges.map((c, i) => (
+                        <div key={i} className={`flex items-start gap-2 p-2 rounded-md text-sm ${c.isMaterial ? "bg-orange-500/8 border border-orange-500/20" : "bg-muted/40"}`}>
+                          {c.delta !== null && c.delta > 0 ? <TrendingUp className="h-3.5 w-3.5 mt-0.5 text-green-600 dark:text-green-400 shrink-0" /> :
+                           c.delta !== null && c.delta < 0 ? <TrendingDown className="h-3.5 w-3.5 mt-0.5 text-red-600 dark:text-red-400 shrink-0" /> :
+                           <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />}
+                          <span className="text-sm">{c.description}</span>
+                          {c.isMaterial && <Badge variant="outline" className="ml-auto text-xs shrink-0">Material</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Invalidation Changes */}
+                {lifecycle.invalidationChanges.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Invalidation Evidence</p>
+                    <div className="space-y-1.5">
+                      {lifecycle.invalidationChanges.map((ic, i) => (
+                        <div key={i} className={`flex items-start gap-2 p-2 rounded-md text-sm ${ic.observationState === "observed" ? "bg-red-500/10 border border-red-500/20" : "bg-muted/40"}`}>
+                          <span className={`text-xs font-medium shrink-0 mt-0.5 ${ic.observationState === "observed" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                            {ic.observationState === "observed" ? "Observed" : ic.observationState === "notObserved" ? "Not Observed" : "Unknown"}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p>{ic.description}</p>
+                            {ic.evaluationNote && <p className="text-xs text-muted-foreground mt-0.5">{ic.evaluationNote}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Structure Changes (options) */}
+                {lifecycle.structureChanges.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Structure & Risk Changes</p>
+                    <div className="space-y-1.5">
+                      {lifecycle.structureChanges.map((sc, i) => (
+                        <div key={i} className={`flex items-start gap-2 p-2 rounded-md text-sm ${sc.isMaterial ? "bg-orange-500/8 border border-orange-500/20" : "bg-muted/40"}`}>
+                          <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                          <span>{sc.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Limitations */}
+                {lifecycle.limitations.length > 0 && !isDataStale && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer hover:text-foreground">Evaluation Limitations ({lifecycle.limitations.length})</summary>
+                    <ul className="mt-1.5 list-disc list-inside space-y-0.5 pl-2">
+                      {lifecycle.limitations.map((l, i) => <li key={i}>{l}</li>)}
+                    </ul>
+                  </details>
+                )}
+
+                {/* Lifecycle disclaimer */}
+                <p className="text-xs text-muted-foreground leading-relaxed border-t pt-3" role="note">
+                  {LIFECYCLE_DISCLAIMER}
+                </p>
+              </CardContent>
+            </Card>
+          </section>
+        )}
 
         {/* § Plan Header */}
         <section aria-labelledby="plan-header-heading">
@@ -802,6 +1048,68 @@ export default function TradePlanDetailPage() {
             </p>
           </CardContent>
         </Card>
+
+        {/* § Activity Timeline (Sprint 2.7.6) */}
+        <section aria-labelledby="activity-timeline-heading">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle id="activity-timeline-heading" className="text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Research Activity Timeline
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Select value={activityCategory} onValueChange={setActivityCategory}>
+                    <SelectTrigger className="w-[160px] h-8 text-xs" aria-label="Filter activity category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Events</SelectItem>
+                      <SelectItem value="research">Research</SelectItem>
+                      <SelectItem value="risk">Risk</SelectItem>
+                      <SelectItem value="events">Events</SelectItem>
+                      <SelectItem value="freshness">Freshness</SelectItem>
+                      <SelectItem value="user_action">User Actions</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!activityData || activityData.activities.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No activity events recorded yet. Refresh plan status to generate lifecycle events.
+                </p>
+              ) : (
+                <ol className="relative border-l border-border/60 space-y-4 pl-4" aria-label="Research activity timeline">
+                  {activityData.activities.map((act) => (
+                    <li key={act.id} className="relative">
+                      <div className="absolute -left-[1.3rem] top-1 h-2.5 w-2.5 rounded-full bg-primary/30 border border-primary/60" aria-hidden="true" />
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">
+                          {ACTIVITY_EVENT_LABELS[act.activityType] ?? act.activityType.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{act.summary}</p>
+                        <p className="text-xs text-muted-foreground/60">
+                          {new Date(act.observedAt).toLocaleString()}
+                          {act.previousState && act.currentState && (
+                            <> · {act.previousState} → {act.currentState}</>
+                          )}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {activityData?.hasMore && (
+                <p className="text-xs text-muted-foreground mt-3 text-center">
+                  Showing recent events. Earlier events available via API.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </section>
 
         {/* § Compliance Disclaimer */}
         <Separator />

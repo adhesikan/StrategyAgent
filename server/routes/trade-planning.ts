@@ -1,5 +1,5 @@
 /**
- * Trade Planning Routes — Sprint 2.7.0 / 2.7.1 / 2.7.2
+ * Trade Planning Routes — Sprint 2.7.0 / 2.7.1 / 2.7.2 / 2.7.3 / 2.7.4
  *
  * ROUTE ORDER CONTRACT (static before dynamic):
  *   GET  /api/trade-planning/health                             ← static
@@ -14,6 +14,10 @@
  *   POST /api/trade-planning/session/:id/options/contracts     ← 2.7.3 static (before dynamic)
  *   GET  /api/trade-planning/session/:id/options/contracts     ← 2.7.3 static
  *   GET  /api/trade-planning/session/:id/options/contracts/:id ← 2.7.3 static
+ *   POST /api/trade-planning/session/:id/risk-analysis         ← 2.7.4 static
+ *   GET  /api/trade-planning/session/:id/risk-analysis         ← 2.7.4 static
+ *   GET  /api/trade-planning/session/:id/risk-analysis/:aid    ← 2.7.4 static
+ *   POST /api/trade-planning/session/:id/risk-analysis/recalculate ← 2.7.4 static
  *   POST /api/trade-planning/session                           ← create
  *   POST /api/trade-planning/:symbol/equity                    ← 2.7.1 dynamic
  *   POST /api/trade-planning/:symbol/options/match             ← 2.7.2 dynamic
@@ -50,6 +54,16 @@ import {
   getContractResearchHealth,
   type ContractResearchInput,
 } from "../services/contract-research-service";
+import {
+  buildTradeRiskScenarioResult,
+  getCachedRiskAnalysis,
+  getRiskAnalysisHealth,
+  storeSessionContractResearch,
+  getSessionContractResearch,
+} from "../services/trade-risk-scenario-service";
+import {
+  RISK_SCENARIO_DISCLAIMER,
+} from "../../shared/trade-risk-scenario-types";
 import {
   DEFAULT_CONTRACT_RESEARCH_FILTERS,
 } from "../../shared/contract-research-types";
@@ -513,6 +527,9 @@ export function registerTradePlanningRoutes(
 
       const result = await buildContractResearchResult(input);
 
+      // Store for 2.7.4 risk analysis route (session-level cache — 30 min TTL)
+      storeSessionContractResearch(sessionId, result);
+
       res.json({ result, contractResearchVersion: result.methodologyVersion });
     } catch (err: any) {
       console.error("[trade-planning] contract research error:", err?.message);
@@ -593,6 +610,236 @@ export function registerTradePlanningRoutes(
     } catch (err: any) {
       console.error("[trade-planning] contract candidate detail error:", err?.message);
       res.status(500).json({ message: "Failed to retrieve contract candidate" });
+    }
+  });
+
+  // =========================================================================
+  // Static 2.7.4: POST /api/trade-planning/session/:id/risk-analysis
+  // Build a TradeRiskScenarioResult for a selected contract research candidate.
+  // Client provides: contractResearchCandidateId, optional customScenarioPcts/customIVChangePcts
+  // Server reconstructs: candidate, legs, metrics, context, constraints, underlyingPrice
+  // Client MUST NOT submit: legs, quotes, Greeks, underlying price, research thesis
+  // =========================================================================
+  app.post("/api/trade-planning/session/:id/risk-analysis", isAuthenticated, async (req: Request, res: Response) => {
+    const userId    = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId = req.params.id;
+
+    const { contractResearchCandidateId, customScenarioPcts, customIVChangePcts } = req.body ?? {};
+    if (!contractResearchCandidateId) {
+      return res.status(400).json({ message: "contractResearchCandidateId is required" });
+    }
+
+    // Validate custom scenario ranges if provided
+    const validatedScenarioPcts: number[] | undefined = Array.isArray(customScenarioPcts)
+      ? customScenarioPcts.filter((v: unknown) => typeof v === "number" && v >= -80 && v <= 80).slice(0, 20)
+      : undefined;
+    const validatedIVChangePcts: number[] | undefined = Array.isArray(customIVChangePcts)
+      ? customIVChangePcts.filter((v: unknown) => typeof v === "number" && v >= -80 && v <= 80).slice(0, 10)
+      : undefined;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      // Get the contract research result stored in session cache
+      const contractResearch = getSessionContractResearch(sessionId);
+      if (!contractResearch) {
+        return res.status(404).json({
+          message: "Contract research result not found for this session.",
+          hint: "Run POST /session/:id/options/contracts first to generate contract research, then select a candidate.",
+        });
+      }
+
+      // Find the selected candidate — server is authoritative
+      const candidate = contractResearch.structureCandidates.find(
+        c => c.id === contractResearchCandidateId,
+      );
+      if (!candidate) {
+        return res.status(404).json({
+          message: "Contract research candidate not found in current session research.",
+          hint: "The candidate ID must match one returned by the most recent POST /options/contracts call.",
+        });
+      }
+
+      // Server-side reference price (never from client)
+      const { getReferenceSnapshot } = await import("../services/daily-market-data/reference-snapshot");
+      const snapshot       = await getReferenceSnapshot(userId, session.symbol).catch(() => null);
+      const underlyingPrice = (snapshot as any)?.close ?? null;
+      const marketDataAsOf  = (snapshot as any)?.asOf ?? null;
+
+      // Option data timestamp from the most recent leg
+      const legTimestamps = candidate.legs.map(l => l.updatedAt).filter(Boolean);
+      const optionDataAsOf = legTimestamps.length > 0 ? legTimestamps.sort().pop() ?? null : null;
+
+      // Build risk scenario result (pure deterministic)
+      const t0 = Date.now();
+      const result = buildTradeRiskScenarioResult({
+        input:           candidate.riskScenarioInput,
+        userId,
+        sessionId,
+        underlyingPrice,
+        constraints:     session.constraints,
+        qualityCategory: candidate.qualityCategory,
+        eventExposure:   candidate.eventExposure,
+        marketDataAsOf,
+        optionDataAsOf,
+        customScenarioPcts: validatedScenarioPcts,
+        customIVChangePcts: validatedIVChangePcts,
+      });
+
+      // Overwrite symbol from session (input doesn't carry it)
+      (result as any).symbol = session.symbol;
+
+      const durationMs = Date.now() - t0;
+
+      // Structured log — no capital/symbol/user identity
+      console.log(JSON.stringify({
+        event:                "trade_risk_analysis_completed",
+        durationMs,
+        strategyFamily:       result.strategyFamily,
+        hasMaxLoss:           result.payoffProfile.maxLoss.type === "DEFINED",
+        hasMaxGain:           result.payoffProfile.maxGain.type === "DEFINED",
+        breakevenCount:       result.payoffProfile.breakevens.length,
+        greeksCoveragePercent: result.greekProfile.greeksCoveragePercent,
+        scenarioPointCount:   result.priceScenarios.length,
+        hasEventContext:      result.eventScenarios.length > 0,
+        isStale:              result.freshness.isStale,
+        probabilityMetricsEnabled: false,
+      }));
+
+      res.json({
+        result,
+        disclaimer: RISK_SCENARIO_DISCLAIMER,
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] risk analysis error:", err?.message);
+      res.status(500).json({ message: "Failed to build risk scenario analysis" });
+    }
+  });
+
+  // =========================================================================
+  // Static 2.7.4: GET /api/trade-planning/session/:id/risk-analysis
+  // Get latest cached risk analysis for this session
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/risk-analysis", isAuthenticated, async (req: Request, res: Response) => {
+    const userId    = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId = req.params.id;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      const { contractResearchCandidateId } = req.query;
+      if (!contractResearchCandidateId || typeof contractResearchCandidateId !== "string") {
+        return res.status(400).json({ message: "contractResearchCandidateId query param required" });
+      }
+
+      const cached = getCachedRiskAnalysis(userId, sessionId, contractResearchCandidateId);
+      if (!cached) {
+        return res.status(404).json({
+          message: "No cached risk analysis found for this candidate.",
+          hint: "Use POST /session/:id/risk-analysis to generate one.",
+        });
+      }
+
+      res.json({ result: cached });
+    } catch (err: any) {
+      console.error("[trade-planning] risk analysis GET error:", err?.message);
+      res.status(500).json({ message: "Failed to retrieve risk analysis" });
+    }
+  });
+
+  // =========================================================================
+  // Static 2.7.4: GET /api/trade-planning/session/:id/risk-analysis/:analysisId
+  // Get a specific risk analysis result (must belong to this session/user)
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/risk-analysis/:analysisId", isAuthenticated, async (req: Request, res: Response) => {
+    const userId     = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId  = req.params.id;
+    const analysisId = req.params.analysisId;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      // 2.7.4 uses in-memory cache only — no persistent lookup yet
+      // Return 404 with guidance so clients know to POST for a fresh result
+      res.status(404).json({
+        message: "Risk analysis results are cached in-memory for 5 minutes per session. Use POST /session/:id/risk-analysis to generate or refresh.",
+        analysisId,
+        hint: "Persistent risk analysis storage is planned for a future sprint.",
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] risk analysis GET by id error:", err?.message);
+      res.status(500).json({ message: "Failed to retrieve risk analysis" });
+    }
+  });
+
+  // =========================================================================
+  // Static 2.7.4: POST /api/trade-planning/session/:id/risk-analysis/recalculate
+  // Recalculate risk analysis with new custom scenarios
+  // Same auth rules as the original POST — server reconstructs all data
+  // =========================================================================
+  app.post("/api/trade-planning/session/:id/risk-analysis/recalculate", isAuthenticated, async (req: Request, res: Response) => {
+    const userId    = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId = req.params.id;
+
+    const { contractResearchCandidateId, customScenarioPcts, customIVChangePcts } = req.body ?? {};
+    if (!contractResearchCandidateId) {
+      return res.status(400).json({ message: "contractResearchCandidateId is required" });
+    }
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      const contractResearch = getSessionContractResearch(sessionId);
+      if (!contractResearch) {
+        return res.status(404).json({ message: "No contract research in session. Run POST /options/contracts first." });
+      }
+
+      const candidate = contractResearch.structureCandidates.find(c => c.id === contractResearchCandidateId);
+      if (!candidate) return res.status(404).json({ message: "Candidate not found in session research." });
+
+      const { getReferenceSnapshot } = await import("../services/daily-market-data/reference-snapshot");
+      const snapshot       = await getReferenceSnapshot(userId, session.symbol).catch(() => null);
+      const underlyingPrice = (snapshot as any)?.close ?? null;
+      const marketDataAsOf  = (snapshot as any)?.asOf ?? null;
+      const legTimestamps   = candidate.legs.map(l => l.updatedAt).filter(Boolean);
+      const optionDataAsOf  = legTimestamps.length > 0 ? legTimestamps.sort().pop() ?? null : null;
+
+      const validatedScenarioPcts = Array.isArray(customScenarioPcts)
+        ? customScenarioPcts.filter((v: unknown) => typeof v === "number" && v >= -80 && v <= 80).slice(0, 20) as number[]
+        : undefined;
+      const validatedIVChangePcts = Array.isArray(customIVChangePcts)
+        ? customIVChangePcts.filter((v: unknown) => typeof v === "number" && v >= -80 && v <= 80).slice(0, 10) as number[]
+        : undefined;
+
+      const result = buildTradeRiskScenarioResult({
+        input:           candidate.riskScenarioInput,
+        userId,
+        sessionId,
+        underlyingPrice,
+        constraints:     session.constraints,
+        qualityCategory: candidate.qualityCategory,
+        eventExposure:   candidate.eventExposure,
+        marketDataAsOf,
+        optionDataAsOf,
+        customScenarioPcts: validatedScenarioPcts,
+        customIVChangePcts: validatedIVChangePcts,
+      });
+      (result as any).symbol = session.symbol;
+
+      console.log(JSON.stringify({ event: "trade_risk_analysis_recalculated", strategyFamily: result.strategyFamily, scenarioPointCount: result.priceScenarios.length }));
+
+      res.json({ result, disclaimer: RISK_SCENARIO_DISCLAIMER });
+    } catch (err: any) {
+      console.error("[trade-planning] risk analysis recalculate error:", err?.message);
+      res.status(500).json({ message: "Failed to recalculate risk analysis" });
     }
   });
 

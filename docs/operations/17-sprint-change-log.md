@@ -1,5 +1,54 @@
 # Sprint Change Log
 
+## Sprint 2.7.4 — Trade Risk & Scenario Analysis (2026-08-10)
+
+### Summary
+Builds the deterministic Trade Risk & Scenario Analysis engine — the risk characterization layer of Trade Planning. Given a selected Contract Research candidate (Sprint 2.7.3), it computes maximum loss/gain, breakeven prices, payoff under hypothetical price/IV/time scenarios, Greek profile, liquidity/quote risk, constraint check, and thesis risk overlay. No recommendation, no POP, no probability language.
+
+### Key Architecture Decisions
+- **Probability metrics: OFF** — `probabilityMetricsEnabled: false` always; existing scorer is a heuristic, not a statistical model
+- **No Black-Scholes repricing** — price scenarios use expiration intrinsic payoff (exact) + delta approximation (labeled ≈); two separate values per row
+- **Server authoritative** — client sends only `contractResearchCandidateId`; server reconstructs all candidate/leg/quote/Greek data from 30-min session cache
+- **Missing Greeks → null, never zero** — `greeksCoveragePercent` tracks partial coverage
+- **No auto-substitution** — `EXCEEDS_CONSTRAINT` shown; user navigates back to contract research
+
+### New Features
+- **Payoff profile** — max loss, max gain, breakevens for all 15 families (calendar/diagonal → PATH_DEPENDENT)
+- **Price scenarios** — 11 default points (−40% to +40%); expiration intrinsic + delta approx per point
+- **IV sensitivity** — vega approximation across 5 relative IV change points
+- **Time decay checkpoints** — 6 points (1 day → 100% DTE elapsed); linear theta approx
+- **Event scenarios** — earnings / event window gaps, IV uncertainty, assignment risk notes
+- **Greek profile** — net delta/gamma/theta/vega/rho; coverage %; plain-language delta interpretation
+- **Capital profile** — net debit/credit, cash-secured capital, contract multiplier
+- **Liquidity & quote risk** — worst-leg bid-ask spread %, lowest OI, quote freshness
+- **Constraint check** — defined max loss vs user planning constraint (`WITHIN_CONSTRAINT` / `EXCEEDS_CONSTRAINT` / `NO_CONSTRAINT_SET` / `UNDEFINED_RISK`)
+- **Thesis risk** — invalidation note overlay from research context
+- **11 risk flag codes** — MAX_LOSS_EXCEEDS_CONSTRAINT, EVENT_WINDOW, STALE_QUOTE, WIDE_BID_ASK, LOW_OPEN_INTEREST, PARTIAL_GREEKS, PATH_DEPENDENT_PAYOFF, ASSIGNMENT_RISK, EARLY_EXERCISE_RISK, UNLIMITED_GAIN, SUBSTANTIAL_UNDERLYING_DOWNSIDE
+- **4 new static API routes** — POST/GET/GET+analysisId/POST-recalculate `/session/:id/risk-analysis/*`
+- **8 platform health metrics** — riskAnalysesRequested/Completed/partial/failed, avg latency, staleCount, probabilityMetricsEnabled, lastSuccessful
+- **17 glossary terms** added (`RISK_SCENARIO_ENTRIES` merged into `ALL_GLOSSARY_ENTRIES`)
+- **`RiskAnalysisPanel`** — full client panel with structure summary, payoff profile, price table, Greeks, IV table, time decay, event scenarios, risk flags, thesis risk, liquidity/quote risk, constraint check, freshness warning
+- **`ContractResearchAndRiskSection`** — state-machine wrapper toggling between ContractResearch and RiskAnalysis panels
+- **`storeSessionContractResearch`** called in POST `/options/contracts` so risk routes can look up candidates
+- **2.7.5 handoff** — `TradePlanInput` in every `TradeRiskScenarioResult.tradePlanHandoff`
+
+### Files Changed
+- `shared/trade-risk-scenario-types.ts` — canonical types (new file)
+- `server/services/trade-risk-scenario-service.ts` — pure deterministic engine, 5-min cache, 30-min session cache (new file)
+- `server/routes/trade-planning.ts` — 4 new static risk-analysis routes; `storeSessionContractResearch` call; route comment updated
+- `server/routes/platform-health.ts` — 8 risk analysis health metrics + `getRiskAnalysisHealth` import
+- `client/src/pages/trade-planning.tsx` — `RiskAnalysisPanel` + `ContractResearchAndRiskSection`; CTA button activated; 17 glossary imports
+- `shared/research-glossary.ts` — 17 new terms (`RISK_SCENARIO_ENTRIES`); merged into `ALL_GLOSSARY_ENTRIES`
+- `docs/operations/32-trade-risk-scenario-analysis.md` — new ops doc
+
+### Schema
+No new database tables. Risk analysis results are in-memory (5-min per-user cache). Session contract research is 30-min in-memory session cache. Persistence planned for a future sprint.
+
+### Tests
+`server/routes/__tests__/risk-scenario.test.ts` — 151 tests across 37 sections covering payoff math, Greek profiles, scenario tables, risk flags, constraint checks, caching, and health metrics.
+
+---
+
 ## Sprint 2.7.3 — Options Contract Research Engine (2026-08-10)
 
 ### Summary

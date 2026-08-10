@@ -1706,11 +1706,148 @@ const CONTRACT_RESEARCH_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   },
 ];
 
+// ===========================================================================
+// Sprint 2.7.4 — Trade Risk & Scenario Analysis Glossary Terms
+// Declared AFTER CONTRACT_RESEARCH_ENTRIES (same declaration-order rule)
+// ===========================================================================
+
+const RISK_SCENARIO_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:              "trade_risk_analysis",
+    label:            "Trade Risk & Scenario Analysis",
+    shortDefinition:  "Deterministic hypothetical scenario engine showing how a selected research structure reacts to price, volatility, and time changes.",
+    fullDefinition:   "Trade Risk & Scenario Analysis evaluates the economic and risk characteristics of a user-selected contract research candidate under deterministic scenarios. It answers: what is the maximum loss, maximum gain, breakeven, and how does the structure react to underlying price moves, implied volatility changes, and time decay? It does NOT provide a recommendation, a probability of profit, or an instruction to transact.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Scenarios are hypothetical and not forecasts. Actual outcomes depend on market conditions and execution prices.",
+  },
+  {
+    key:              "maximum_loss",
+    label:            "Maximum Loss",
+    shortDefinition:  "The worst-case dollar loss for a defined-risk structure — mathematically derived, not a prediction.",
+    fullDefinition:   "Maximum Loss is the largest possible loss on a structure where the payoff is mathematically defined at expiration. For debit structures (long call, long put, debit spreads), it equals the net premium paid. For credit spreads, it equals the spread width minus the credit received. Some structures (covered call, cash-secured put) carry substantial undefined downside that is not expressible as a single number.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "A defined maximum loss does not imply low risk — premiums can represent a large percentage of a position's cost basis.",
+  },
+  {
+    key:              "maximum_gain",
+    label:            "Maximum Gain",
+    shortDefinition:  "The largest possible gain for a defined or bounded structure — applicable only where mathematically derivable.",
+    fullDefinition:   "Maximum Gain is the theoretical upper bound on a structure's return where payoff is bounded at expiration. For debit verticals, it is the spread width minus the net debit. For credit structures, it is the net credit received. Long calls have theoretically unlimited upside. Calendar and diagonal spreads are path-dependent — a single maximum gain figure is not valid.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "breakeven",
+    label:            "Breakeven Price",
+    shortDefinition:  "The underlying price at which the structure neither gains nor loses at expiration.",
+    fullDefinition:   "Breakeven is the underlying price at which the structure's expiration payoff equals zero. For a long call, it is the strike plus the premium paid. For a credit spread, it depends on which short strike and the net credit. Iron condors and iron butterflies have two breakevens — one on the put side and one on the call side.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "payoff_profile",
+    label:            "Payoff Profile",
+    shortDefinition:  "The structure's gain/loss characteristics at expiration across different underlying prices.",
+    fullDefinition:   "A payoff profile shows how much a structure gains or loses at expiration for each underlying price scenario. It is computed from intrinsic value math — not a model price. For path-dependent structures like calendars and diagonals, a clean payoff profile cannot be derived without multi-expiration modeling.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "scenario_analysis",
+    label:            "Scenario Analysis",
+    shortDefinition:  "Hypothetical outcomes under a range of deterministic price, volatility, and time assumptions.",
+    fullDefinition:   "Scenario analysis presents how a selected structure would perform under a set of defined hypothetical conditions — for example, if the underlying falls 10%, or if implied volatility increases 20%. Results are labeled Hypothetical Price Scenario and are not forecasts. No probability of outcome is assigned.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Scenarios do not represent expected or likely outcomes. Actual market behavior is not captured by deterministic models.",
+  },
+  {
+    key:              "price_scenario",
+    label:            "Price Scenario",
+    shortDefinition:  "A hypothetical move in the underlying price and its estimated effect on the structure.",
+    fullDefinition:   "A price scenario sets the underlying to a specific hypothetical level and computes the structure's expiration intrinsic payoff at that level. A separate delta approximation is shown for pre-expiration estimates. The expiration payoff is mathematically exact; the pre-expiration estimate is a first-order approximation only.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "net_delta",
+    label:            "Net Delta",
+    shortDefinition:  "The structure's aggregate sensitivity to a $1 change in the underlying price, all else equal.",
+    fullDefinition:   "Net delta is the sum of signed delta contributions across all legs: long legs add their delta; short legs subtract theirs. A net delta of +0.40 means the structure's value is estimated to change by approximately $40 per 1-point move in the underlying (per contract). Delta is a directional sensitivity measure — it is NOT a probability of profit or finishing in-the-money.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Delta is a local, instantaneous sensitivity and changes as price and time change. It is not a stable forecast.",
+  },
+  {
+    key:              "net_theta",
+    label:            "Net Theta",
+    shortDefinition:  "The structure's estimated sensitivity to the passage of one calendar day, all else equal.",
+    fullDefinition:   "Net theta is the aggregate time-decay rate across all legs. A net theta of −0.05 means the structure is estimated to lose approximately $5 per calendar day from time decay alone, holding everything else constant. Actual daily P/L will differ from theta because theta itself changes over time — particularly accelerating as expiration approaches.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Theta is a local approximation. Linear theta extrapolation over many days is materially inaccurate.",
+  },
+  {
+    key:              "net_vega",
+    label:            "Net Vega",
+    shortDefinition:  "The structure's estimated sensitivity to a 1-percentage-point change in implied volatility, all else equal.",
+    fullDefinition:   "Net vega is the aggregate implied-volatility sensitivity across all legs. A net vega of +0.12 means the structure value is estimated to increase by approximately $12 per 1-pct-pt increase in IV. Long options have positive vega (gain from rising IV); short options have negative vega. Vega approximations are linear and local — actual non-linear IV behavior may differ.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "assignment_risk",
+    label:            "Assignment Risk",
+    shortDefinition:  "The possibility that a short option leg is exercised by the holder before or at expiration.",
+    fullDefinition:   "Assignment risk is the risk that the holder of a short option exercises it, obligating the seller to buy (short put) or sell (short call) the underlying at the strike price. For American-style equity options, early assignment is possible at any time prior to expiration, though it is uncommon for out-of-the-money options. Assignment at expiration is automatic when a short option is in-the-money.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Assignment risk is elevated around dividends, earnings, and when options are deep in-the-money.",
+  },
+  {
+    key:              "early_exercise_risk",
+    label:            "Early Exercise Risk",
+    shortDefinition:  "The risk of unexpected early assignment on short option legs for American-style equity options.",
+    fullDefinition:   "American-style equity options can be exercised at any time before expiration. Early exercise may occur when a short call or put is sufficiently in-the-money, especially around ex-dividend dates. Covered calls face early exercise if the call is deep in-the-money near a dividend date. Cash-secured puts can be assigned early if the put is deep in-the-money.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "path_dependent_payoff",
+    label:            "Path-Dependent Payoff",
+    shortDefinition:  "A payoff structure whose outcome depends on the price path and volatility over time, not just the final price.",
+    fullDefinition:   "Calendar and diagonal spreads are path-dependent because the value of the near-expiration short leg and the far-expiration long leg evolve at different rates depending on implied volatility and the time path. Unlike vertical spreads with a fixed max gain/loss at expiration, these structures cannot be characterized by a single closed-form maximum gain or loss figure.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Path-dependent strategies require dynamic monitoring. Static scenario analysis is indicative only.",
+  },
+  {
+    key:              "quote_risk",
+    label:            "Quote Risk",
+    shortDefinition:  "The risk that scenario values differ materially from actual execution prices due to bid-ask spreads and stale quotes.",
+    fullDefinition:   "Quote risk arises because scenario analysis uses midpoint references — the average of bid and ask prices — which may not reflect actual executable prices. Wide bid-ask spreads, low liquidity, and stale quotes all increase the gap between research midpoints and market fills. Scenarios based on stale quotes may not reflect current market conditions.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "planning_constraint_status",
+    label:            "Planning Constraint Status",
+    shortDefinition:  "A deterministic comparison of the structure's scenario maximum loss against the user's selected planning constraint.",
+    fullDefinition:   "Planning Constraint Status compares the scenario maximum loss (where defined) to the user-entered maximum capital-at-risk planning constraint. Status is WITHIN_CONSTRAINT if the defined max loss is within the constraint, EXCEEDS_CONSTRAINT if it exceeds it, NO_CONSTRAINT_SET if no constraint was entered, or UNDEFINED_RISK if the max loss is not a defined dollar amount. This is NOT a suitability determination.",
+    category:         "risk",
+    userFacing:       true,
+    caution:          "This comparison is mechanical — it does not account for individual financial circumstances or risk tolerance. It is not investment advice.",
+  },
+];
+
 /** Full merged glossary (all modules) — use this for full lookup */
 export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   ..._extendedGlossary,
   ...OPTIONS_STRATEGY_ENTRIES,
   ...CONTRACT_RESEARCH_ENTRIES,
+  ...RISK_SCENARIO_ENTRIES,
 ];
 
 /** Alias for backward compatibility */

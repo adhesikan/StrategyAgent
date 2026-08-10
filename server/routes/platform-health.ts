@@ -30,6 +30,7 @@ import { getTradePlanningHealth } from "../services/trade-planning-service";
 import { getEquityPlanningHealth } from "../services/equity-planning-service";
 import { getOptionsMatchingHealth } from "../services/options-strategy-matching-service";
 import { getContractResearchHealth } from "../services/contract-research-service";
+import { getRiskAnalysisHealth } from "../services/trade-risk-scenario-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -954,6 +955,20 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
               averageContractResearchLatencyMs: cr.averageContractResearchLatencyMs ?? "N/A",
               lastSuccessfulContractResearchAt: cr.lastSuccessfulContractResearchAt ?? "Never",
               optionChainProviderStatus:        cr.optionChainProviderStatus,
+            };
+          })(),
+          // Risk & Scenario Analysis metrics (2.7.4)
+          ...(() => {
+            const ra = getRiskAnalysisHealth();
+            return {
+              riskAnalysesRequested:        ra.riskAnalysesRequested,
+              riskAnalysesCompleted:        ra.riskAnalysesCompleted,
+              partialRiskAnalyses:          ra.partialRiskAnalyses,
+              failedRiskAnalyses:           ra.failedRiskAnalyses,
+              averageRiskAnalysisLatencyMs: ra.averageRiskAnalysisLatencyMs ?? "N/A",
+              staleRiskAnalyses:            ra.staleRiskAnalyses,
+              probabilityMetricsEnabled:    ra.probabilityMetricsEnabled,
+              lastSuccessfulRiskAnalysisAt: ra.lastSuccessfulRiskAnalysisAt ?? "Never",
             };
           })(),
         },

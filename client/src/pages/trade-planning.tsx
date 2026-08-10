@@ -62,6 +62,12 @@ import {
   CONTRACT_RESEARCH_DISCLAIMER, MIDPOINT_DISCLAIMER, OPTIONS_RISK_DISCLOSURE_EXTENDED,
   DEFAULT_CONTRACT_RESEARCH_FILTERS,
 } from "@shared/contract-research-types";
+import type {
+  TradeRiskScenarioResult, RiskFlag, ConstraintCheck,
+} from "@shared/trade-risk-scenario-types";
+import {
+  RISK_SCENARIO_DISCLAIMER, MIDPOINT_EXECUTION_NOTE,
+} from "@shared/trade-risk-scenario-types";
 
 // ---------------------------------------------------------------------------
 // Reserved route segments (defense-in-depth)
@@ -821,10 +827,519 @@ function StrategyFamilyCard({ match }: { match: OptionsStrategyMatch }) {
 }
 
 // ===========================================================================
+// Risk Analysis Panel — Sprint 2.7.4
+// ===========================================================================
+
+const CONSTRAINT_STATUS_LABELS: Record<string, string> = {
+  WITHIN_CONSTRAINT:  "Within Constraint",
+  EXCEEDS_CONSTRAINT: "Exceeds Constraint",
+  NO_CONSTRAINT_SET:  "No Constraint Set",
+  UNDEFINED_RISK:     "Undefined Risk",
+};
+
+const CRITICAL_FLAG_CODES = new Set(["MAX_LOSS_EXCEEDS_CONSTRAINT", "UNLIMITED_GAIN", "SUBSTANTIAL_UNDERLYING_DOWNSIDE"]);
+const WARNING_FLAG_CODES  = new Set(["EVENT_WINDOW", "STALE_QUOTE", "WIDE_BID_ASK", "ASSIGNMENT_RISK", "EARLY_EXERCISE_RISK"]);
+
+function ConstraintBadge({ check }: { check: ConstraintCheck }) {
+  const colors: Record<string, string> = {
+    WITHIN_CONSTRAINT:  "text-emerald-400 border-emerald-400/30",
+    EXCEEDS_CONSTRAINT: "text-red-400     border-red-400/30",
+    NO_CONSTRAINT_SET:  "text-muted-foreground border-border/50",
+    UNDEFINED_RISK:     "text-yellow-400  border-yellow-400/30",
+  };
+  return (
+    <Badge variant="outline" className={`text-xs ${colors[check.status] ?? "text-muted-foreground"}`}>
+      {CONSTRAINT_STATUS_LABELS[check.status] ?? check.status}
+    </Badge>
+  );
+}
+
+function RiskFlagItem({ flag }: { flag: RiskFlag }) {
+  const isCritical = CRITICAL_FLAG_CODES.has(flag.code);
+  const isWarning  = WARNING_FLAG_CODES.has(flag.code);
+  const cls = isCritical ? "text-red-400" : isWarning ? "text-yellow-400" : "text-muted-foreground";
+  return (
+    <div className={`flex items-start gap-1.5 text-xs ${cls}`}>
+      <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+      <span>{flag.note}</span>
+    </div>
+  );
+}
+
+function RiskAnalysisPanel({
+  sessionId,
+  candidateId,
+  onBack,
+}: {
+  sessionId: string;
+  candidateId: string;
+  onBack: () => void;
+}) {
+  const riskMutation = useMutation<{ result: TradeRiskScenarioResult }, Error, void>({
+    mutationFn: () =>
+      apiRequest("POST", `/api/trade-planning/session/${sessionId}/risk-analysis`, {
+        contractResearchCandidateId: candidateId,
+      }).then(r => r.json()),
+  });
+
+  useEffect(() => {
+    riskMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateId]);
+
+  const result = riskMutation.data?.result;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={onBack}>
+          <ArrowLeft className="h-3 w-3 mr-1" /> Back to Contract Research
+        </Button>
+        <span className="text-xs text-muted-foreground">Risk &amp; Scenario Analysis</span>
+      </div>
+
+      {/* Loading */}
+      {riskMutation.isPending && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground p-4">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Building risk scenario analysis…
+        </div>
+      )}
+
+      {/* Error */}
+      {riskMutation.isError && (
+        <Card className="border-red-400/30">
+          <CardContent className="p-3 text-xs text-red-400 flex items-center gap-2">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {riskMutation.error?.message ?? "Failed to build risk analysis."}
+          </CardContent>
+        </Card>
+      )}
+
+      {result && (
+        <>
+          {/* Structure Summary */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <CardTitle className="text-sm">{result.structureSummary.strategyLabel}</CardTitle>
+                <ConstraintBadge check={result.constraintCheck} />
+              </div>
+              {result.structureSummary.expirations.length > 0 && (
+                <CardDescription className="text-xs">Expiration: {result.structureSummary.expirations.join(" / ")}</CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              {result.structureSummary.legs.map((l, i) => (
+                <div key={i} className="flex items-center justify-between bg-muted/20 rounded px-2 py-1.5">
+                  <span>{l.roleLabel} {l.optionType.toUpperCase()} ${l.strike}</span>
+                  {l.midpoint !== null && <span className="text-muted-foreground">Mid ${l.midpoint.toFixed(2)}</span>}
+                </div>
+              ))}
+              {result.structureSummary.liquidityCategoryLabel && (
+                <p className="text-muted-foreground">Liquidity: {result.structureSummary.liquidityCategoryLabel}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Payoff Profile */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Payoff Profile (at Expiration)</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-muted/20 rounded px-2 py-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Max Loss</p>
+                  <p className="font-medium">
+                    {result.payoffProfile.maxLoss.type === "DEFINED"
+                      ? (result.payoffProfile.maxLoss.perContractDollars !== null ? `$${result.payoffProfile.maxLoss.perContractDollars.toLocaleString()}` : "Defined")
+                      : result.payoffProfile.maxLoss.type === "SUBSTANTIAL"
+                      ? "Substantial"
+                      : result.payoffProfile.maxLoss.type === "UNLIMITED"
+                      ? "Unlimited"
+                      : result.payoffProfile.maxLoss.type}
+                  </p>
+                  {result.payoffProfile.maxLoss.note && (
+                    <p className="text-muted-foreground mt-0.5">{result.payoffProfile.maxLoss.note}</p>
+                  )}
+                </div>
+                <div className="bg-muted/20 rounded px-2 py-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Max Gain</p>
+                  <p className="font-medium">
+                    {result.payoffProfile.maxGain.type === "DEFINED"
+                      ? (result.payoffProfile.maxGain.perContractDollars !== null ? `$${result.payoffProfile.maxGain.perContractDollars.toLocaleString()}` : "Defined")
+                      : result.payoffProfile.maxGain.type === "SUBSTANTIAL"
+                      ? "Substantial"
+                      : result.payoffProfile.maxGain.type === "UNLIMITED"
+                      ? "Unlimited (theoretical)"
+                      : result.payoffProfile.maxGain.type}
+                  </p>
+                </div>
+              </div>
+              {result.payoffProfile.breakevens.length > 0 && (
+                <div>
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-1">Breakeven{result.payoffProfile.breakevens.length > 1 ? "s" : ""}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.payoffProfile.breakevens.map((be, i) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        ${be.price.toFixed(2)} · {be.label}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {result.payoffProfile.payoffNote && (
+                <p className="text-muted-foreground">{result.payoffProfile.payoffNote}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Capital Profile */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Capital Profile</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs grid grid-cols-2 gap-2">
+              {result.capitalProfile.netDebitPerContract !== null && (
+                <div className="bg-muted/20 rounded px-2 py-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Est. Debit</p>
+                  <p className="font-medium">${result.capitalProfile.netDebitPerContract.toFixed(2)}/share · ${(result.capitalProfile.netDebitPerContract * 100).toLocaleString()}/contract</p>
+                </div>
+              )}
+              {result.capitalProfile.netCreditPerContract !== null && (
+                <div className="bg-muted/20 rounded px-2 py-1.5">
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Est. Credit</p>
+                  <p className="font-medium">${result.capitalProfile.netCreditPerContract.toFixed(2)}/share · ${(result.capitalProfile.netCreditPerContract * 100).toLocaleString()}/contract</p>
+                </div>
+              )}
+              {result.capitalProfile.estimatedScenarioCapital !== null && (
+                <div className="bg-muted/20 rounded px-2 py-1.5 col-span-2">
+                  <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">
+                    {result.capitalProfile.estimatedScenarioCapitalNote || "Est. Capital"}
+                  </p>
+                  <p className="font-medium">${result.capitalProfile.estimatedScenarioCapital.toLocaleString()}/contract</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Price Scenarios */}
+          {result.priceScenarios.length > 0 && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Price Scenarios — Hypothetical</CardTitle>
+                <CardDescription className="text-xs">Expiration intrinsic payoff (exact) · Pre-expiration estimate (Δ approx)</CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs overflow-x-auto">
+                <table className="w-full min-w-[420px]">
+                  <thead>
+                    <tr className="text-muted-foreground text-[10px] uppercase tracking-wide border-b border-border/30">
+                      <th className="text-left py-1 font-normal">Underlying</th>
+                      <th className="text-left py-1 font-normal">Chg%</th>
+                      <th className="text-right py-1 font-normal">Expiry P/L</th>
+                      <th className="text-right py-1 font-normal">Pre-Expiry Est.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.priceScenarios.map((sc, i) => (
+                      <tr key={i} className={`border-b border-border/10 last:border-0 ${sc.isCurrent ? "bg-muted/20" : ""}`}>
+                        <td className="py-1">${sc.scenarioPrice.toFixed(2)}</td>
+                        <td className={`py-1 ${sc.movePct > 0 ? "text-emerald-400" : sc.movePct < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                          {sc.movePct > 0 ? "+" : ""}{sc.movePct}%
+                        </td>
+                        <td className={`py-1 text-right font-medium ${sc.expirationIntrinsicPnlPerContract >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {sc.expirationIntrinsicPnlPerContract >= 0 ? "+" : ""}${sc.expirationIntrinsicPnlPerContract.toLocaleString()}
+                        </td>
+                        <td className="py-1 text-right text-muted-foreground">
+                          {sc.deltaApproxPnlPerContract !== null
+                            ? `${sc.deltaApproxPnlPerContract >= 0 ? "+" : ""}$${sc.deltaApproxPnlPerContract.toLocaleString()} ≈`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Greek Profile */}
+          {(result.greekProfile.netDelta !== null || result.greekProfile.netTheta !== null) && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Greek Profile</CardTitle>
+                {result.greekProfile.greeksCoveragePercent < 100 && (
+                  <CardDescription className="text-xs">
+                    {result.greekProfile.greeksCoveragePercent}% Greek coverage — some legs have unavailable data
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent className="text-xs space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  {result.greekProfile.netDelta !== null && (
+                    <div className="bg-muted/20 rounded px-2 py-1.5">
+                      <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Net Delta</p>
+                      <p className="font-medium">{result.greekProfile.netDelta.toFixed(3)}</p>
+                    </div>
+                  )}
+                  {result.greekProfile.netTheta !== null && (
+                    <div className="bg-muted/20 rounded px-2 py-1.5">
+                      <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Net Θ/day</p>
+                      <p className="font-medium text-orange-300">{result.greekProfile.netTheta.toFixed(3)}</p>
+                    </div>
+                  )}
+                  {result.greekProfile.netVega !== null && (
+                    <div className="bg-muted/20 rounded px-2 py-1.5">
+                      <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Net Vega</p>
+                      <p className="font-medium text-blue-300">{result.greekProfile.netVega.toFixed(3)}</p>
+                    </div>
+                  )}
+                </div>
+                {result.greekProfile.deltaInterpretation && (
+                  <p className="text-muted-foreground">{result.greekProfile.deltaInterpretation}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* IV Sensitivity */}
+          {result.volatilityScenarios.length > 0 && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">IV Sensitivity — Hypothetical</CardTitle>
+                <CardDescription className="text-xs">Vega approximation (labeled ≈)</CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs overflow-x-auto">
+                <table className="w-full min-w-[300px]">
+                  <thead>
+                    <tr className="text-muted-foreground text-[10px] uppercase tracking-wide border-b border-border/30">
+                      <th className="text-left py-1 font-normal">IV Change</th>
+                      <th className="text-right py-1 font-normal">Est. P/L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.volatilityScenarios.map((sc, i) => (
+                      <tr key={i} className="border-b border-border/10 last:border-0">
+                        <td className={`py-1 ${sc.ivRelativeChangePct > 0 ? "text-emerald-400" : sc.ivRelativeChangePct < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                          {sc.ivRelativeChangePct > 0 ? "+" : ""}{sc.ivRelativeChangePct}% <span className="text-muted-foreground text-[10px]">({sc.ivRelativeChangePctLabel})</span>
+                        </td>
+                        <td className={`py-1 text-right ${(sc.estimatedValueChangePerContract ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {sc.estimatedValueChangePerContract !== null
+                            ? `${sc.estimatedValueChangePerContract >= 0 ? "+" : ""}$${sc.estimatedValueChangePerContract.toLocaleString()} ≈`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Time Decay */}
+          {result.timeDecayScenarios.length > 0 && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Time Decay Checkpoints — Hypothetical</CardTitle>
+                <CardDescription className="text-xs">Price held constant, theta approximation</CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs space-y-1">
+                {result.timeDecayScenarios.map((sc, i) => (
+                  <div key={i} className="flex items-center justify-between py-1 border-b border-border/10 last:border-0">
+                    <span className="text-muted-foreground">{sc.label}</span>
+                    <span className={`font-medium ${(sc.cumulativeEstimatedDecayPerContract ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {sc.cumulativeEstimatedDecayPerContract !== null
+                        ? `${sc.cumulativeEstimatedDecayPerContract >= 0 ? "+" : ""}$${sc.cumulativeEstimatedDecayPerContract.toLocaleString()} ≈`
+                        : "—"}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Event Scenarios */}
+          {result.eventScenarios.length > 0 && (
+            <Card className="border-yellow-400/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-yellow-400">Event Exposure Scenarios</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs space-y-2">
+                {result.eventScenarios.map((ev, i) => (
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-start gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-yellow-400" />
+                      <span className="font-medium text-yellow-400">{ev.eventType}{ev.eventDate ? ` (${ev.eventDate})` : ""}</span>
+                    </div>
+                    {ev.gapRiskNote && <p className="text-muted-foreground ml-5">{ev.gapRiskNote}</p>}
+                    {ev.ivUncertaintyNote && <p className="text-muted-foreground ml-5">{ev.ivUncertaintyNote}</p>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Risk Flags */}
+          {result.riskFlags.length > 0 && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Risk Flags</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs space-y-2">
+                {result.riskFlags.map((f, i) => <RiskFlagItem key={i} flag={f} />)}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Thesis Risk */}
+          {(result.thesisRisk.invalidationNote || result.thesisRisk.researchThesisSummary) && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Thesis Risk</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs space-y-1.5">
+                {result.thesisRisk.researchThesisSummary && (
+                  <p className="text-muted-foreground">{result.thesisRisk.researchThesisSummary}</p>
+                )}
+                {result.thesisRisk.invalidationNote && (
+                  <div className="flex items-start gap-1.5 text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 rounded p-2">
+                    <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                    <span>{result.thesisRisk.invalidationNote}</span>
+                  </div>
+                )}
+                {result.thesisRisk.thesisIntegrationNote && (
+                  <p className="text-muted-foreground">{result.thesisRisk.thesisIntegrationNote}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Liquidity & Quote Risk */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Liquidity &amp; Quote Risk</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Liquidity category</span>
+                <span>{result.liquidityRisk.overallLiquidityCategory}</span>
+              </div>
+              {result.liquidityRisk.widestBidAskSpreadPct !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Widest bid-ask spread</span>
+                  <span>{(result.liquidityRisk.widestBidAskSpreadPct * 100).toFixed(1)}%</span>
+                </div>
+              )}
+              {result.liquidityRisk.lowestOpenInterest !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Lowest open interest</span>
+                  <span>{result.liquidityRisk.lowestOpenInterest.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Quote freshness</span>
+                <span className={result.freshness.isStale ? "text-yellow-400" : "text-muted-foreground"}>
+                  {result.freshness.isStale
+                    ? `Stale${result.freshness.optionDataAge ? ` (${result.freshness.optionDataAge})` : ""}`
+                    : "Current"}
+                </span>
+              </div>
+              {result.liquidityRisk.executionNote && (
+                <p className="text-muted-foreground pt-1 border-t border-border/30">{result.liquidityRisk.executionNote}</p>
+              )}
+              {result.quoteRisk.midpointNote && (
+                <p className="text-muted-foreground">{result.quoteRisk.midpointNote}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Constraint Check */}
+          {result.constraintCheck.status !== "NO_CONSTRAINT_SET" && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  Planning Constraint Check
+                  <ConstraintBadge check={result.constraintCheck} />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs space-y-1 text-muted-foreground">
+                {result.constraintCheck.statusNote && <p>{result.constraintCheck.statusNote}</p>}
+                {result.constraintCheck.status === "EXCEEDS_CONSTRAINT" && (
+                  <p className="text-yellow-400">
+                    This structure's defined maximum loss exceeds your planning constraint. Consider reviewing contract research to find a structure with lower capital at risk.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Freshness */}
+          {result.freshness.isStale && (
+            <div className="flex items-start gap-1.5 text-xs text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 rounded p-2">
+              <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+              <span>Market data may be stale{result.freshness.optionDataAge ? ` (${result.freshness.optionDataAge})` : ""}. Re-run contract research for fresh quotes before transacting.</span>
+            </div>
+          )}
+
+          {/* Disclaimers */}
+          <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-[10px] text-muted-foreground space-y-1">
+            <p><Info className="h-3 w-3 inline mr-1" />{RISK_SCENARIO_DISCLAIMER}</p>
+            <p>{MIDPOINT_EXECUTION_NOTE}</p>
+          </div>
+
+          {/* Recalculate */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-xs"
+            onClick={() => riskMutation.mutate()}
+            disabled={riskMutation.isPending}
+          >
+            {riskMutation.isPending
+              ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Recalculating…</>
+              : <><RefreshCw className="h-3 w-3 mr-1.5" />Refresh Scenarios</>}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Wrapper that manages the "is analyzing risk" state between panels
+function ContractResearchAndRiskSection({ symbol, sessionId }: { symbol: string; sessionId: string }) {
+  const [analysisCandidateId, setAnalysisCandidateId] = useState<string | null>(null);
+
+  if (analysisCandidateId) {
+    return (
+      <RiskAnalysisPanel
+        sessionId={sessionId}
+        candidateId={analysisCandidateId}
+        onBack={() => setAnalysisCandidateId(null)}
+      />
+    );
+  }
+  return (
+    <ContractResearchPanel
+      symbol={symbol}
+      sessionId={sessionId}
+      onAnalyzeRisk={(id) => setAnalysisCandidateId(id)}
+    />
+  );
+}
+
+// ===========================================================================
 // Contract Research Panel — Sprint 2.7.3
 // ===========================================================================
 
-function ContractResearchCandidateCard({ candidate }: { candidate: OptionsStructureResearchCandidate }) {
+function ContractResearchCandidateCard({
+  candidate,
+  onAnalyzeRisk,
+}: {
+  candidate: OptionsStructureResearchCandidate;
+  onAnalyzeRisk: (candidateId: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const qualityColors: Record<string, string> = {
     EXCELLENT_DATA_QUALITY: "text-emerald-400 border-emerald-400/30 bg-emerald-400/5",
@@ -938,11 +1453,16 @@ function ContractResearchCandidateCard({ candidate }: { candidate: OptionsStruct
             </div>
           ))}
 
-          {/* 2.7.4 CTA */}
+          {/* 2.7.4 CTA — active */}
           <div className="pt-1 border-t border-border/30">
-            <Button variant="outline" size="sm" className="w-full text-xs opacity-50 cursor-not-allowed" disabled>
-              <Lock className="h-3 w-3 mr-1.5" />
-              Analyze Risk &amp; Scenarios (Sprint 2.7.4)
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+              onClick={() => onAnalyzeRisk(candidate.id)}
+            >
+              <BarChart2 className="h-3 w-3 mr-1.5" />
+              Analyze Risk &amp; Scenarios
             </Button>
           </div>
         </div>
@@ -951,7 +1471,11 @@ function ContractResearchCandidateCard({ candidate }: { candidate: OptionsStruct
   );
 }
 
-function ContractResearchPanel({ symbol, sessionId }: { symbol: string; sessionId: string }) {
+function ContractResearchPanel({ symbol, sessionId, onAnalyzeRisk }: {
+  symbol: string;
+  sessionId: string;
+  onAnalyzeRisk: (candidateId: string) => void;
+}) {
   const [strategyFamily, setStrategyFamily] = useState<string | null>(null);
   const [filtersOpen,    setFiltersOpen]    = useState(false);
   const [minOI,         setMinOI]          = useState<string>("10");
@@ -1181,7 +1705,7 @@ function ContractResearchPanel({ symbol, sessionId }: { symbol: string; sessionI
                     Structure Candidates ({result.structureCandidates.length})
                   </p>
                   {result.structureCandidates.map(c => (
-                    <ContractResearchCandidateCard key={c.id} candidate={c} />
+                    <ContractResearchCandidateCard key={c.id} candidate={c} onAnalyzeRisk={onAnalyzeRisk} />
                   ))}
                 </div>
               ) : (
@@ -2219,7 +2743,7 @@ export default function TradePlanningPage() {
               <OptionsStrategyPanel symbol={symbol} sessionId={sessionId} constraints={constraints} />
             )}
 
-            {/* Contract Research Panel — shown after Options Strategy Panel */}
+            {/* Contract Research Panel + Risk Analysis Panel */}
             {selectedFamily && sessionId && (
               selectedFamily === "income" ||
               selectedFamily === "defined_risk_directional" ||
@@ -2229,7 +2753,7 @@ export default function TradePlanningPage() {
               selectedFamily === "long_option" ||
               selectedFamily === "neutral_options"
             ) && (
-              <ContractResearchPanel symbol={symbol} sessionId={sessionId} />
+              <ContractResearchAndRiskSection symbol={symbol} sessionId={sessionId} />
             )}
 
             {/* Future Planning Steps */}
@@ -2239,7 +2763,6 @@ export default function TradePlanningPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 <p className="text-foreground font-medium">Coming in future sprints:</p>
-                <p>• <strong className="text-foreground">Risk &amp; Scenario Analysis (2.7.4)</strong> — Model payoff diagrams, breakeven, max loss for a selected structure.</p>
                 <p>• <strong className="text-foreground">Trade Plan Workspace (2.7.5)</strong> — Full trade plan review before any order preparation.</p>
               </CardContent>
             </Card>

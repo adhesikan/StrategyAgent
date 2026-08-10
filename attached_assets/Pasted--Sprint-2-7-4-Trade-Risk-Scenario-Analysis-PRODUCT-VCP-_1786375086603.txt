@@ -1,0 +1,2507 @@
+# Sprint 2.7.4 — Trade Risk & Scenario Analysis
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.4 — Trade Risk & Scenario Analysis
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Workspace v2
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Trade Planning Foundation
+✓ Equity Trade Planning Engine
+✓ Options Strategy Matching Engine
+✓ Options Contract Research Engine
+✓ Platform Operations Center
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to the user?
+
+Portfolio Intelligence answers:
+
+HOW the research relates to current exposure?
+
+Trade Planning Foundation answers:
+
+HOW the thesis could potentially be expressed?
+
+Options Strategy Matching answers:
+
+WHICH strategy family is structurally compatible?
+
+Options Contract Research answers:
+
+WHICH contracts / expirations / strikes are worth researching?
+
+Trade Risk & Scenario Analysis answers:
+
+WHAT are the economic and risk characteristics of a user-selected
+contract research candidate under deterministic scenarios?
+
+This sprint MUST NOT:
+
+- change the selected underlying
+- change the strategy family
+- substitute a different contract candidate automatically
+- rank candidates as personalized recommendations
+- construct a broker order
+- submit an order
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker order ticket
+- order submission
+- automated execution
+- auto trading
+- autonomous agents
+- portfolio rebalancing
+- suitability scoring
+- personalized trade recommendations
+- "best trade"
+- "highest probability trade"
+- guaranteed returns
+- expected-return predictions
+- auto-selection of another contract
+- auto-selection of another strategy
+
+DO NOT change:
+
+- Scanner logic
+- Opportunity Ranking
+- Opportunity Intelligence scoring
+- Options Strategy Matching rules
+- Contract Research methodology
+- Equity Planning methodology
+- Goal Matching
+- Portfolio Intelligence methodology
+
+This sprint is RISK ANALYSIS + SCENARIO ANALYSIS only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a reusable deterministic risk engine that takes:
+
+TradeRiskScenarioInput
+        +
+Selected Contract Research Candidate
+        +
+Current Structure Metrics
+        +
+Research Thesis
+        +
+Planning Constraints
+        +
+Underlying Reference Price
+        +
+Option Quotes / Greeks
+        +
+Event Context
+        +
+Volatility Context
+        ↓
+TradeRiskScenarioResult
+
+The engine should answer:
+
+- What is the structure's current economic profile?
+- What is the maximum loss if mathematically defined?
+- What is the maximum gain if mathematically defined?
+- What is the breakeven?
+- How does the structure react to changes in underlying price?
+- How does time decay affect it?
+- How does implied volatility expansion/contraction affect it?
+- What are the net Greeks?
+- What happens near earnings/events?
+- How sensitive is this structure to liquidity and stale quotes?
+- What assumptions and limitations matter?
+
+It must NOT answer:
+
+"Should I place this trade?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+TradeRiskScenarioInput
+
+contract-research-service.ts
+
+shared/contract-research-types.ts
+
+existing Probability Engine
+
+existing options P/L calculators
+
+existing max-gain/max-loss helpers
+
+existing breakeven calculators
+
+existing Greeks aggregators
+
+existing IV scenario logic
+
+existing theta/time-decay logic
+
+existing options strategy payoff code
+
+existing option pricing helpers
+
+existing Black-Scholes or theoretical-pricing code
+
+existing implied-volatility functions
+
+existing assignment/exercise handling
+
+existing covered-call / cash-secured-put P/L code
+
+existing multi-leg payoff logic
+
+existing option chain models
+
+existing scenario-analysis components
+
+best-trade-finder.ts
+
+portfolio-trade-plan.ts
+
+live-contract-resolver.ts
+
+TradePlanningContext
+
+OptionsStrategyMatchResult
+
+OptionsContractResearchResult
+
+EquityPlanningScenario
+
+Research Glossary
+
+Platform Health
+
+Operations Manual
+
+Classify discovered components as:
+
+SAFE REUSABLE FOUNDATION
+
+REQUIRES REFACTOR BEFORE REUSE
+
+2.7.4 RISK/SCENARIO COMPONENT
+
+FUTURE TRADE PLAN COMPONENT
+
+FUTURE EXECUTION COMPONENT
+
+LEGACY / DO NOT REUSE
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL RISK RESULT MODEL
+======================================================================
+
+Create canonical shared types.
+
+Suggested:
+
+TradeRiskScenarioResult {
+  id
+  userId
+  planningContextId
+  contractResearchCandidateId
+
+  symbol
+  strategyFamily
+
+  generatedAt
+  marketDataAsOf
+  optionDataAsOf
+
+  structureSummary
+
+  capitalProfile
+  payoffProfile
+  breakevenProfile
+  greekProfile
+  priceScenarios[]
+  volatilityScenarios[]
+  timeDecayScenarios[]
+  eventScenarios[]
+
+  liquidityRisk
+  quoteRisk
+  thesisRisk
+  portfolioContext?
+
+  assumptions[]
+  limitations[]
+  warnings[]
+
+  freshness
+  methodologyVersion
+}
+
+Do not make this UI-specific.
+
+======================================================================
+3. STRUCTURE SUMMARY
+======================================================================
+
+Show:
+
+strategy family
+
+expiration(s)
+
+DTE
+
+legs
+
+reference price
+
+estimated midpoint
+
+debit/credit
+
+contract multiplier
+
+current IV
+
+event window
+
+liquidity category
+
+Data must come from selected contract candidate.
+
+Do not rebuild contract selection.
+
+======================================================================
+4. MAX LOSS
+======================================================================
+
+Calculate max loss ONLY where mathematically valid.
+
+Examples:
+
+Long Call:
+premium paid
+
+Long Put:
+premium paid
+
+Bull Call Spread:
+net debit
+
+Bear Put Spread:
+net debit
+
+Credit Vertical:
+spread width - net credit
+
+Iron Condor:
+max wing width - net credit, adjusted correctly if wings differ
+
+Iron Butterfly:
+defined structure math
+
+Covered Call:
+underlying downside remains substantial; max loss is NOT just option premium
+
+Cash-Secured Put:
+substantial downside to zero less premium
+
+Protective Put:
+bounded downside depending on put strike + premium
+
+Collar:
+calculate based on stock + put + call structure
+
+Calendar / Diagonal:
+do not claim simple fixed max loss/max gain unless mathematically valid.
+
+If no clean closed-form max loss exists:
+
+maxLoss.available = false
+
+with explanation.
+
+Never fabricate.
+
+======================================================================
+5. MAX GAIN
+======================================================================
+
+Calculate only where mathematically defined.
+
+Examples:
+
+Debit Vertical:
+spread width - debit
+
+Credit Vertical:
+credit
+
+Covered Call:
+finite upside due to call strike plus stock basis assumptions
+
+Cash-Secured Put:
+premium is max option-side gain
+
+Long Call:
+theoretically unlimited upside
+
+Long Put:
+bounded by underlying reaching zero
+
+Iron Condor:
+net credit
+
+Calendar/Diagonal:
+often path/volatility-dependent
+
+For unlimited:
+
+maxGain.type = UNLIMITED
+
+Do not convert to arbitrary number.
+
+For path-dependent:
+
+maxGain.type = PATH_DEPENDENT
+
+with explanation.
+
+======================================================================
+6. BREAKEVEN
+======================================================================
+
+Calculate deterministic breakeven(s) when valid.
+
+Examples:
+
+Long Call:
+strike + premium
+
+Long Put:
+strike - premium
+
+Covered Call:
+stock basis - premium if actual cost basis known;
+otherwise use scenario reference and label clearly.
+
+Cash-Secured Put:
+strike - premium
+
+Debit Spreads:
+strategy-specific breakeven
+
+Credit Spreads:
+strategy-specific
+
+Iron Condor:
+two breakevens
+
+Iron Butterfly:
+two breakevens
+
+Calendar/Diagonal:
+do not oversimplify if expiration mismatch makes simple breakeven invalid.
+
+Return multiple breakevens if appropriate.
+
+======================================================================
+7. CAPITAL PROFILE
+======================================================================
+
+Calculate transparent scenario capital metrics.
+
+Possible:
+
+netDebit
+
+netCredit
+
+grossContractNotional
+
+estimatedCashSecuredCapital
+
+estimatedCoveredSharesRequired
+
+definedRiskCapital
+
+maximumScenarioLoss
+
+capitalEfficiencyRatio if mathematically clear
+
+Avoid:
+
+Recommended Capital
+
+Optimal Capital
+
+Use:
+
+Estimated Scenario Capital
+
+======================================================================
+8. PRICE SCENARIO ENGINE
+======================================================================
+
+Create deterministic underlying-price scenarios.
+
+Suggested relative moves:
+
+-30%
+-20%
+-15%
+-10%
+-5%
+0%
++5%
++10%
++15%
++20%
++30%
+
+Allow user-customized range if existing UX permits.
+
+For each:
+
+underlyingPrice
+
+estimatedStructureValue
+
+estimatedPnl
+
+estimatedPnlPct where meaningful
+
+distanceToBreakeven
+
+thesisState if deterministically mapped
+
+Do not label as forecast.
+
+Use:
+
+Hypothetical Price Scenario
+
+======================================================================
+9. EXPIRATION PAYOFF VS PRE-EXPIRATION ESTIMATE
+======================================================================
+
+Critical distinction.
+
+At expiration:
+
+use intrinsic payoff math.
+
+Before expiration:
+
+do NOT pretend intrinsic payoff equals option market value.
+
+If theoretical pricing model is available and validated:
+
+use it.
+
+Otherwise:
+
+clearly separate:
+
+Expiration Payoff Scenario
+
+from:
+
+Current Greeks Sensitivity Approximation
+
+Do not misrepresent.
+
+======================================================================
+10. THEORETICAL PRICING AUDIT
+======================================================================
+
+Audit existing pricing models.
+
+If validated Black-Scholes or equivalent exists:
+
+determine supported contract types.
+
+Remember:
+
+American-style equity options may have early-exercise effects.
+
+Black-Scholes limitations must be documented.
+
+Do not present model value as expected future price.
+
+If no safe model exists:
+
+defer detailed pre-expiration repricing.
+
+Use Greek approximations only.
+
+======================================================================
+11. GREEKS PROFILE
+======================================================================
+
+Aggregate where valid:
+
+netDelta
+
+netGamma
+
+netTheta
+
+netVega
+
+netRho if available
+
+For multi-leg:
+
+LONG leg contributes sign appropriately.
+
+SHORT leg contributes inverse sign.
+
+Missing Greek:
+
+result should show partial coverage.
+
+Never convert missing Greek to zero.
+
+Provide:
+
+greeksCoveragePercent
+
+======================================================================
+12. DELTA INTERPRETATION
+======================================================================
+
+Explain:
+
+directional sensitivity
+
+not probability.
+
+Do NOT describe delta as:
+
+chance of finishing ITM
+
+unless separately approved methodology explicitly uses that approximation
+with caveats.
+
+Preferred:
+
+"Delta estimates the option structure's sensitivity to a small change in
+the underlying price, all else equal."
+
+======================================================================
+13. GAMMA INTERPRETATION
+======================================================================
+
+Explain:
+
+how delta may change with underlying price.
+
+No predictive wording.
+
+======================================================================
+14. THETA INTERPRETATION
+======================================================================
+
+Explain:
+
+estimated time-decay sensitivity, all else equal.
+
+Do not imply actual daily P/L will exactly equal theta.
+
+======================================================================
+15. VEGA INTERPRETATION
+======================================================================
+
+Explain:
+
+sensitivity to implied-volatility change.
+
+No guarantee.
+
+======================================================================
+16. VOLATILITY SCENARIO ENGINE
+======================================================================
+
+Create hypothetical IV-change scenarios where pricing support is valid.
+
+Suggested:
+
+-20 IV points relative? NO — avoid if current IV varies materially.
+
+Prefer percentage/absolute scenarios carefully.
+
+Example:
+
+IV -20% relative
+
+IV -10% relative
+
+Current IV
+
+IV +10% relative
+
+IV +20% relative
+
+Or use clearly documented absolute IV changes if methodology supports it.
+
+Return:
+
+estimated structure change
+
+not forecast.
+
+If pricing model insufficient:
+
+use vega approximation.
+
+Clearly label approximation.
+
+======================================================================
+17. TIME DECAY SCENARIOS
+======================================================================
+
+Create deterministic time checkpoints:
+
+Today
+
+25% of time elapsed
+
+50%
+
+75%
+
+Near Expiration
+
+At Expiration
+
+Only where data/model supports it.
+
+If using theta approximation:
+
+state that theta itself changes over time and estimate is local.
+
+Do not linearly extrapolate theta without disclosure.
+
+======================================================================
+18. COMBINED PRICE + IV SCENARIOS
+======================================================================
+
+If safe:
+
+support 2D scenario matrix:
+
+Underlying Move
+
+IV Change
+
+Example:
+
+Underlying -10%, IV +20%
+
+Underlying -5%, IV +10%
+
+Underlying unchanged, IV -10%
+
+Underlying +5%, IV -10%
+
+Underlying +10%, IV -20%
+
+Do NOT explode into huge grid.
+
+Keep user-comprehensible.
+
+======================================================================
+19. EVENT / EARNINGS SCENARIOS
+======================================================================
+
+If expiration includes earnings/event:
+
+show event-risk section.
+
+Possible:
+
+Event Within Structure Life
+
+Expected IV uncertainty
+
+Gap-risk consideration
+
+Do not forecast earnings move.
+
+If existing expected-move logic exists:
+
+audit it.
+
+Do NOT add expected-move prediction unless methodology is explicitly approved.
+
+======================================================================
+20. ASSIGNMENT / EXERCISE RISK
+======================================================================
+
+For short option legs:
+
+display general assignment risk.
+
+For covered calls:
+
+early assignment possibility.
+
+For short puts:
+
+assignment may result in underlying acquisition.
+
+For dividend-sensitive calls:
+
+if ex-dividend data unavailable:
+
+state limitation.
+
+Do not implement full assignment-probability model.
+
+======================================================================
+21. CASH-SECURED PUT RISK
+======================================================================
+
+Show:
+
+strike
+
+premium
+
+breakeven
+
+estimated secured capital
+
+scenario loss if underlying declines
+
+assignment implication
+
+Do not describe premium as guaranteed income.
+
+======================================================================
+22. COVERED CALL RISK
+======================================================================
+
+Show:
+
+underlying downside remains
+
+upside capped above strike
+
+early assignment possible
+
+premium offsets some downside only
+
+Use actual portfolio/cost-basis context only if available.
+
+======================================================================
+23. LONG OPTION RISK
+======================================================================
+
+Long Call / Put:
+
+maximum premium at risk
+
+time decay
+
+IV sensitivity
+
+expiration risk
+
+Do not imply defined loss means low risk.
+
+======================================================================
+24. VERTICAL SPREAD RISK
+======================================================================
+
+Show:
+
+defined max gain/loss where valid
+
+breakeven
+
+width
+
+debit/credit
+
+assignment risk for short leg
+
+expiration pin risk where appropriate
+
+======================================================================
+25. IRON CONDOR / BUTTERFLY RISK
+======================================================================
+
+Show:
+
+profit zone
+
+lower/upper breakeven
+
+defined max loss if correctly winged
+
+max gain
+
+short-strike event exposure
+
+pin/assignment considerations
+
+No probability claims.
+
+======================================================================
+26. CALENDAR / DIAGONAL RISK
+======================================================================
+
+Do NOT oversimplify.
+
+These structures are path-, volatility-, and time-dependent.
+
+If max gain/loss cannot be determined cleanly:
+
+state:
+
+PATH_DEPENDENT
+
+Use scenario analysis rather than fake closed-form values.
+
+======================================================================
+27. PROBABILITY ENGINE AUDIT
+======================================================================
+
+Perform dedicated audit of existing Probability Engine.
+
+Document:
+
+methodology
+
+inputs
+
+assumptions
+
+historical calibration if any
+
+whether it computes:
+
+Probability ITM
+
+Probability Touch
+
+Probability Profit
+
+model-implied probability
+
+historical empirical probability
+
+Determine if safe to reuse.
+
+DO NOT automatically expose it.
+
+Default decision for 2.7.4:
+
+PROBABILITY METRICS OFF
+
+unless methodology passes explicit review.
+
+======================================================================
+28. IF PROBABILITY METRICS ARE REJECTED
+======================================================================
+
+Document why.
+
+Continue without them.
+
+Risk/scenario engine remains valuable.
+
+No acceptance criterion requires probability.
+
+======================================================================
+29. IF ANY PROBABILITY METRIC IS APPROVED
+======================================================================
+
+It must have:
+
+precise name
+
+methodology
+
+assumptions
+
+limitations
+
+data source
+
+calibration information if relevant
+
+No:
+
+Chance of Winning
+
+Win Rate
+
+Trade Success Probability
+
+unless truly supported.
+
+Prefer mathematically precise terms.
+
+Do not expose a composite "Probability Score."
+
+======================================================================
+30. THESIS INTEGRATION
+======================================================================
+
+Show research thesis alongside risk.
+
+Examples:
+
+Current Thesis Direction
+
+Why Qualified
+
+Key Evidence
+
+Risk Factors
+
+What Invalidates Thesis
+
+The risk engine may show:
+
+scenario crosses research invalidation level.
+
+Example:
+
+Underlying -12% scenario:
+below technical invalidation level.
+
+Do not change thesis.
+
+======================================================================
+31. INVALIDATION OVERLAY
+======================================================================
+
+Overlay known thesis invalidation reference levels onto scenario chart/table.
+
+Example:
+
+Research Invalidation Level:
+$142
+
+Scenario:
+$140
+
+Status:
+Below current research invalidation reference.
+
+This is valuable and deterministic.
+
+======================================================================
+32. PORTFOLIO CONTEXT
+======================================================================
+
+Optional.
+
+If existing position:
+
+show:
+
+current portfolio weight
+
+current quantity
+
+hypothetical incremental exposure if relevant
+
+current concentration
+
+Do NOT recommend changing exposure.
+
+Future portfolio-level risk belongs later if not already supported.
+
+======================================================================
+33. USER CONSTRAINT CHECK
+======================================================================
+
+Compare selected structure against user planning constraints.
+
+Examples:
+
+Scenario Max Loss:
+$450
+
+User-entered Max Loss:
+$500
+
+Status:
+Within Selected Planning Constraint
+
+Or:
+
+Exceeds Selected Planning Constraint
+
+Do not say:
+
+Suitable
+
+Unsuitable
+
+Recommended
+
+======================================================================
+34. RISK FLAGS
+======================================================================
+
+Create deterministic flags such as:
+
+MAX_LOSS_EXCEEDS_CONSTRAINT
+
+EVENT_WINDOW
+
+STALE_QUOTE
+
+WIDE_BID_ASK
+
+LOW_OPEN_INTEREST
+
+PARTIAL_GREEKS
+
+PATH_DEPENDENT_PAYOFF
+
+ASSIGNMENT_RISK
+
+EARLY_EXERCISE_RISK
+
+UNLIMITED_GAIN
+
+SUBSTANTIAL_UNDERLYING_DOWNSIDE
+
+Do not invent severity without documented rules.
+
+======================================================================
+35. LIQUIDITY / QUOTE RISK
+======================================================================
+
+Carry forward:
+
+liquidity category
+
+bid/ask width
+
+quote freshness
+
+OI
+
+volume
+
+Show:
+
+"Scenario values are based on research midpoint references and may not
+reflect executable prices."
+
+======================================================================
+36. QUOTE SENSITIVITY
+======================================================================
+
+Optional:
+
+show scenario using:
+
+bid-side
+
+midpoint
+
+ask-side
+
+for initial structure cost/value.
+
+This illustrates execution uncertainty.
+
+Do not call it execution simulation.
+
+======================================================================
+37. RISK SUMMARY
+======================================================================
+
+Create concise top card:
+
+Strategy
+
+Capital Profile
+
+Max Loss
+
+Max Gain
+
+Breakeven(s)
+
+Net Delta
+
+Net Theta
+
+Net Vega
+
+Event Exposure
+
+Liquidity
+
+Planning Constraint Status
+
+Data Freshness
+
+No "Trade Score."
+
+======================================================================
+38. RISK VISUALIZATION
+======================================================================
+
+Create payoff chart if existing chart library supports it.
+
+X-axis:
+underlying price
+
+Y-axis:
+expiration P/L
+
+Overlay:
+
+current underlying
+
+breakeven(s)
+
+invalidation level
+
+short strikes / long strikes where useful
+
+No visual claim of expected path.
+
+Add textual equivalent.
+
+======================================================================
+39. SCENARIO TABLE
+======================================================================
+
+Include accessible tabular view.
+
+Columns:
+
+Underlying Scenario
+
+Underlying Price
+
+Structure Value / Expiration Payoff
+
+P/L
+
+Breakeven Relation
+
+Thesis Invalidation Relation
+
+No forecast probability.
+
+======================================================================
+40. VOLATILITY TABLE
+======================================================================
+
+Show:
+
+IV scenario
+
+estimated structure sensitivity
+
+method:
+
+theoretical model
+
+or:
+
+vega approximation
+
+Clearly identify method.
+
+======================================================================
+41. TIME DECAY TABLE
+======================================================================
+
+Show:
+
+time checkpoint
+
+days remaining
+
+estimated theta sensitivity
+
+limitations
+
+Do not pretend linear theta.
+
+======================================================================
+42. RISK ANALYSIS API
+======================================================================
+
+Suggested authenticated endpoints:
+
+POST /api/trade-planning/session/:id/risk-analysis
+
+GET /api/trade-planning/session/:id/risk-analysis
+
+GET /api/trade-planning/session/:id/risk-analysis/:analysisId
+
+POST /api/trade-planning/session/:id/risk-analysis/recalculate
+
+or clean equivalent.
+
+Static route rules apply.
+
+======================================================================
+43. CLIENT INPUT
+======================================================================
+
+Client may submit:
+
+selected contractResearchCandidateId
+
+custom scenario percentages
+
+custom IV scenarios
+
+custom time checkpoints
+
+Client may NOT submit authoritative:
+
+quotes
+
+Greeks
+
+legs
+
+market price
+
+research thesis
+
+portfolio context
+
+Server reconstructs from canonical candidate/context.
+
+======================================================================
+44. PERSISTENCE
+======================================================================
+
+Decide after audit.
+
+Prefer storing:
+
+analysis configuration
+
+candidate reference
+
+data timestamps
+
+methodology version
+
+not duplicating raw chains.
+
+If persisted:
+
+strict user ownership.
+
+======================================================================
+45. CACHE
+======================================================================
+
+Potential cache key:
+
+userId
+
+candidateId
+
+option-chain timestamp
+
+market timestamp
+
+scenario config fingerprint
+
+methodology version
+
+No cross-user sharing of personalized constraints.
+
+======================================================================
+46. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Actions:
+
+Explain Risk Profile
+
+Explain Max Loss
+
+Explain Breakeven
+
+Explain Greeks
+
+Explain IV Sensitivity
+
+Explain Time Decay
+
+Challenge Risk Assumptions
+
+Explain Event Exposure
+
+AI receives authoritative TradeRiskScenarioResult.
+
+AI may explain.
+
+AI may not:
+
+change math
+
+change selected structure
+
+replace candidate
+
+claim suitability
+
+======================================================================
+47. RESEARCH GLOSSARY
+======================================================================
+
+Add canonical terms if needed:
+
+trade_risk_analysis
+
+maximum_loss
+
+maximum_gain
+
+breakeven
+
+payoff_profile
+
+scenario_analysis
+
+price_scenario
+
+volatility_scenario
+
+time_decay
+
+net_delta
+
+net_gamma
+
+net_theta
+
+net_vega
+
+assignment_risk
+
+early_exercise_risk
+
+path_dependent_payoff
+
+quote_risk
+
+planning_constraint_status
+
+Do not duplicate existing Greeks definitions.
+
+======================================================================
+48. COMPLIANCE
+======================================================================
+
+Canonical disclaimer:
+
+"Trade Risk & Scenario Analysis presents deterministic and hypothetical
+risk scenarios for a user-selected research structure. Scenario results
+are not forecasts, guarantees, personalized recommendations, or
+instructions to transact. Actual outcomes and execution prices may
+differ materially."
+
+Use:
+
+Hypothetical Scenario
+
+Risk Analysis
+
+Scenario P/L
+
+Maximum Loss
+
+Maximum Gain
+
+Breakeven
+
+Planning Constraint
+
+Avoid:
+
+Expected Profit
+
+Expected Return
+
+Chance of Winning
+
+Safe Trade
+
+Recommended Trade
+
+Best Risk/Reward Trade
+
+Guaranteed Loss Limit unless contract truly defines it
+
+======================================================================
+49. OPTIONS DISCLOSURE
+======================================================================
+
+Maintain general options-risk disclosure.
+
+Also provide strategy-specific risk.
+
+Do not assume all strategies have defined risk.
+
+======================================================================
+50. PARTIAL DATA RESILIENCE
+======================================================================
+
+Missing Greek:
+
+partial Greek analysis.
+
+Missing IV:
+
+no IV scenario or limited approximation.
+
+Stale quote:
+
+risk analysis marked stale.
+
+No event data:
+
+event scenario unavailable.
+
+Path-dependent strategy:
+
+max gain/loss may be unavailable.
+
+No portfolio:
+
+normal analysis.
+
+No goal:
+
+normal analysis.
+
+Do not fail entire page.
+
+======================================================================
+51. NO AUTO-SUBSTITUTION
+======================================================================
+
+If selected candidate violates user max-loss constraint:
+
+show:
+
+"Exceeds selected planning constraint."
+
+Do NOT automatically switch to another contract.
+
+User may return to Contract Research to choose another candidate.
+
+======================================================================
+52. BACK-NAVIGATION
+======================================================================
+
+Provide:
+
+Back to Contract Research
+
+Compare Another Candidate
+
+Do not silently change selection.
+
+======================================================================
+53. CONTRACT COMPARISON PREP
+======================================================================
+
+2.7.4 may optionally allow side-by-side comparison of 2–3 user-selected
+contract research candidates if manageable.
+
+If implemented:
+
+same metrics
+
+no "winner"
+
+Use:
+
+Compare Risk Profiles
+
+not:
+
+Choose Best Trade
+
+Do not make comparison required for GO.
+
+======================================================================
+54. PLATFORM HEALTH
+======================================================================
+
+Extend Trade Planning health.
+
+Metrics:
+
+riskAnalysesRequested
+
+riskAnalysesCompleted
+
+partialRiskAnalyses
+
+failedRiskAnalyses
+
+averageRiskAnalysisLatencyMs
+
+staleRiskAnalyses
+
+probabilityMetricsEnabled
+
+lastSuccessfulRiskAnalysisAt
+
+Admin aggregate only.
+
+======================================================================
+55. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+trade_risk_analysis_started
+
+trade_risk_analysis_completed
+
+trade_risk_analysis_partial
+
+trade_risk_analysis_failed
+
+trade_risk_analysis_recalculated
+
+Safe metadata:
+
+durationMs
+
+strategyFamily
+
+hasMaxLoss
+
+hasMaxGain
+
+breakevenCount
+
+greeksCoveragePercent
+
+scenarioPointCount
+
+hasEventContext
+
+isStale
+
+Do NOT log:
+
+capital constraints
+
+specific P/L amounts
+
+portfolio values
+
+raw option chain
+
+user identity
+
+======================================================================
+56. SECURITY
+======================================================================
+
+Authenticated.
+
+Session ownership.
+
+Contract candidate belongs to session/user.
+
+Cross-user analysis → 404.
+
+Server reconstructs all authoritative structure data.
+
+No client leg injection.
+
+No quote injection.
+
+No Greek injection.
+
+======================================================================
+57. PERFORMANCE
+======================================================================
+
+No new option-chain fetch if selected contract candidate has sufficiently
+fresh normalized quote data and architecture supports reuse.
+
+If fresh data must be revalidated:
+
+use one bounded refresh path.
+
+No N+1.
+
+No AI.
+
+Target pure risk computation:
+
+<200ms typical.
+
+Report actual.
+
+======================================================================
+58. ACCESSIBILITY
+======================================================================
+
+Charts have table/text alternative.
+
+Tooltips keyboard accessible.
+
+Risk flags readable without color.
+
+Scenario controls labeled.
+
+Mobile touch-friendly.
+
+======================================================================
+59. MOBILE
+======================================================================
+
+At 375px:
+
+risk summary stacks
+
+payoff chart responsive
+
+scenario tables horizontally scroll or cardify
+
+Greeks readable
+
+disclosures not clipped
+
+controls full width
+
+======================================================================
+60. ROUTING REGRESSION
+======================================================================
+
+Permanent route rule applies.
+
+Test all new static/session routes.
+
+Direct refresh.
+
+Back/forward.
+
+No static route interpreted as ID/symbol.
+
+======================================================================
+61. COMMERCIAL EXPERIENCE
+======================================================================
+
+Document only.
+
+FREE:
+
+basic max-loss/breakeven preview where applicable
+
+RETAIL:
+
+full risk profile
+
+price scenarios
+
+Greeks
+
+IV sensitivity
+
+time decay
+
+event context
+
+Research Workspace explanations
+
+PROFESSIONAL:
+
+advanced custom scenario grids
+
+candidate comparisons
+
+historical volatility overlays later
+
+advanced risk constraints
+
+RIA:
+
+firm-approved risk methodology
+
+client/account policy context
+
+audit history
+
+Do not implement suitability.
+
+INSTITUTIONAL:
+
+custom stress scenarios
+
+portfolio Greeks later
+
+liquidity policies
+
+desk risk workflows
+
+ENTERPRISE:
+
+custom risk engines
+
+private analytics
+
+API
+
+white-label
+
+No entitlement enforcement.
+
+======================================================================
+62. RIA / INSTITUTIONAL EXTENSION
+======================================================================
+
+Document future:
+
+RiskScenarioPolicy {
+  maxAllowedScenarioLoss?
+  requiredStressMoves[]
+  requiredIvShocks[]
+  requireEventAnalysis
+  requireDefinedRisk?
+  requiredLiquidityStatus?
+  customDisclosures[]
+}
+
+Do not implement firm policy engine now.
+
+======================================================================
+63. 2.7.5 HANDOFF CONTRACT
+======================================================================
+
+Create:
+
+TradePlanInput {
+  planningContextId
+  selectedExpressionFamily
+  contractResearchCandidateId?
+  equityPlanningScenarioId?
+  riskScenarioAnalysisId
+
+  researchThesis
+  planningConstraints
+  monitoringPlan
+  riskFlags
+  invalidationContext
+}
+
+2.7.5 Trade Plan Workspace will combine:
+
+Research Thesis
+
+Planning Structure
+
+Contract Candidate
+
+Risk Analysis
+
+Monitoring Plan
+
+User Notes
+
+No execution yet.
+
+======================================================================
+64. NO EXECUTION
+======================================================================
+
+Do not create:
+
+order type
+
+limit price
+
+market order
+
+broker payload
+
+buy/sell instruction
+
+execution preview
+
+Those belong later.
+
+======================================================================
+65. TESTS
+======================================================================
+
+Target 200+ meaningful assertions where appropriate.
+
+Cover:
+
+canonical model
+
+long call max loss
+
+long call max gain unlimited
+
+long put math
+
+debit vertical
+
+credit vertical
+
+bull call spread
+
+bear put spread
+
+bull put spread
+
+bear call spread
+
+covered call
+
+cash secured put
+
+protective put
+
+collar
+
+iron condor
+
+unequal wings
+
+iron butterfly
+
+calendar path dependent
+
+diagonal path dependent
+
+breakeven single
+
+breakeven multiple
+
+debit
+
+credit
+
+capital estimate
+
+price scenarios
+
+expiration payoff
+
+pre-expiration distinction
+
+net delta
+
+gamma
+
+theta
+
+vega
+
+missing Greek
+
+IV scenarios
+
+vega approximation
+
+time decay
+
+theta limitation
+
+event window
+
+assignment risk
+
+early exercise risk
+
+planning max-loss constraint
+
+exceeds constraint
+
+within constraint
+
+stale quote
+
+liquidity risk
+
+quote spread
+
+invalidations
+
+research thesis integration
+
+portfolio optional
+
+goal optional
+
+probability engine audit
+
+probability disabled by default
+
+no expected return
+
+no win probability
+
+no best trade
+
+no recommendation
+
+no auto-substitution
+
+server authoritative data
+
+client cannot inject legs
+
+client cannot inject quote
+
+client cannot inject Greeks
+
+cross-user 404
+
+cache isolation
+
+Platform Health
+
+structured logging privacy
+
+Research Workspace integration
+
+glossary
+
+compliance
+
+options risk disclosure
+
+routing
+
+accessibility
+
+mobile
+
+Operations Manual
+
+commercial review
+
+2.7.5 handoff
+
+roadmap discipline
+
+======================================================================
+66. UAT
+======================================================================
+
+Document and run:
+
+1. Open qualified opportunity.
+2. Trade Planning.
+3. Options Strategy Research.
+4. Contract Research.
+5. Select Contract Research Candidate.
+6. Open Analyze Risk & Scenarios.
+7. Verify structure summary.
+8. Verify quote freshness.
+9. Verify max loss.
+10. Verify max gain.
+11. Verify unlimited/path-dependent handling.
+12. Verify breakeven(s).
+13. Verify capital profile.
+14. Verify payoff chart.
+15. Verify -20% scenario.
+16. Verify -10%.
+17. Verify 0%.
+18. Verify +10%.
+19. Verify +20%.
+20. Verify invalidation overlay.
+21. Verify net Greeks.
+22. Verify missing Greek behavior.
+23. Verify IV down scenario.
+24. Verify IV up scenario.
+25. Verify time-decay scenarios.
+26. Verify event exposure.
+27. Verify assignment risk where applicable.
+28. Verify planning constraint status.
+29. Change hypothetical price scenario.
+30. Recalculate.
+31. Verify no contract substitution.
+32. Explain risk in Research Workspace.
+33. Verify AI cannot alter math.
+34. Verify probability metrics absent unless explicitly approved.
+35. Verify no Expected Profit.
+36. Verify no order ticket.
+37. Verify no broker submission.
+38. Verify stale quote state.
+39. Verify path-dependent strategy.
+40. No-portfolio user.
+41. No-goal user.
+42. Cross-user analysis → 404.
+43. Direct refresh.
+44. Browser back.
+45. Mobile.
+46. Accessibility.
+47. Platform Health.
+48. No unexpected 500.
+49. No N+1 provider calls.
+50. No scanner/ranking execution.
+
+======================================================================
+67. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/32-trade-risk-scenario-analysis.md
+
+Document:
+
+architecture
+
+TradeRiskScenarioInput
+
+TradeRiskScenarioResult
+
+strategy payoff methodology
+
+max loss
+
+max gain
+
+breakeven
+
+capital profile
+
+price scenarios
+
+expiration vs pre-expiration analysis
+
+theoretical pricing model
+
+Greeks
+
+IV scenarios
+
+time-decay methodology
+
+event risk
+
+assignment/exercise risk
+
+covered call
+
+cash-secured put
+
+vertical spreads
+
+iron condor
+
+iron butterfly
+
+calendar/diagonal limitations
+
+Probability Engine audit
+
+probability enable/disable decision
+
+quote/liquidity risk
+
+thesis invalidation overlay
+
+planning constraints
+
+API
+
+security
+
+cache
+
+performance
+
+health
+
+logging
+
+compliance
+
+options disclosure
+
+routing
+
+UAT
+
+troubleshooting
+
+2.7.5 handoff
+
+future execution
+
+RIA/Institutional extension
+
+commercialization
+
+Update Research Glossary docs.
+
+======================================================================
+68. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Canonical TradeRiskScenarioResult exists.
+
+B. Requires selected contract research candidate or equity scenario.
+
+C. No underlying/strategy substitution.
+
+D. Max loss correct where defined.
+
+E. Undefined/path-dependent loss correctly represented.
+
+F. Max gain correct where defined.
+
+G. Unlimited gain represented properly.
+
+H. Breakeven correct.
+
+I. Multi-breakeven structures supported.
+
+J. Price scenarios work.
+
+K. Scenarios clearly labeled hypothetical.
+
+L. Expiration payoff separated from pre-expiration estimate.
+
+M. Greeks aggregated correctly.
+
+N. Missing Greeks remain missing.
+
+O. IV analysis valid/limited clearly.
+
+P. Time-decay limitations disclosed.
+
+Q. Event analysis works.
+
+R. Assignment risk disclosed.
+
+S. Quote/liquidity risk visible.
+
+T. Planning constraints compared deterministically.
+
+U. No suitability language.
+
+V. No auto-substitution.
+
+W. Probability Engine audited.
+
+X. Probability metrics disabled unless explicitly approved.
+
+Y. No Expected Return.
+
+Z. No Chance of Winning.
+
+AA. No Best Trade.
+
+AB. No recommendation.
+
+AC. No order ticket.
+
+AD. No broker submission.
+
+AE. Server authoritative data.
+
+AF. Cross-user isolation.
+
+AG. Partial data works.
+
+AH. Platform Health updated.
+
+AI. Structured logging safe.
+
+AJ. Full tests pass.
+
+AK. npm run build passes.
+
+AL. Zero new TS errors.
+
+AM. Operations Manual updated.
+
+AN. 2.7.5 handoff exists.
+
+AO. Roadmap alignment confirmed.
+
+======================================================================
+69. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing risk/pricing infrastructure discovered
+3. Component classification
+4. Probability Engine audit
+5. Probability metric decision
+6. Files changed
+7. Schema impact
+8. TradeRiskScenarioResult
+9. Structure summary
+10. Max-loss methodology
+11. Max-gain methodology
+12. Breakeven methodology
+13. Capital profile
+14. Price scenario engine
+15. Expiration payoff methodology
+16. Pre-expiration methodology
+17. Pricing-model audit
+18. Greeks aggregation
+19. Delta interpretation
+20. Gamma interpretation
+21. Theta interpretation
+22. Vega interpretation
+23. IV scenario engine
+24. Time-decay scenarios
+25. Combined scenarios
+26. Event analysis
+27. Assignment/exercise risk
+28. Covered Call risk
+29. Cash-Secured Put risk
+30. Vertical spread risk
+31. Iron Condor/Butterfly risk
+32. Calendar/Diagonal handling
+33. Thesis/invalidation integration
+34. Portfolio context
+35. Planning constraint checks
+36. Risk flags
+37. Liquidity/quote risk
+38. Client UX
+39. Research Workspace integration
+40. Research Glossary
+41. API
+42. Persistence/cache
+43. Partial-data resilience
+44. Compliance audit
+45. Security
+46. Performance
+47. Platform Health
+48. Structured logging
+49. Accessibility/mobile
+50. Routing regression
+51. Tests added
+52. Full test count
+53. npm run build
+54. Typecheck
+55. Production UAT
+56. Free value
+57. Retail value
+58. Professional value
+59. RIA extension
+60. Institutional extension
+61. Enterprise extension
+62. 2.7.5 Trade Plan handoff
+63. Future execution handoff
+64. Improvement suggestions
+65. Deferred backlog
+66. Roadmap Alignment
+67. Operations Manual Updated: YES/NO
+68. Operations Manual Files Updated
+69. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+70. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.4
+Trade Risk & Scenario Analysis
+
+NEXT:
+
+2.7.5
+Trade Plan Workspace
+
+THEN:
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+LATER:
+
+Broker-Assisted Execution
+
+AI Agents
+
+Professional / RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+======================================================================
+71. IMPROVEMENT CAPTURE RULE
+======================================================================
+
+Do not implement unrelated discoveries automatically.
+
+Classify them as:
+
+Critical Production Fix
+
+2.7.4 Requirement
+
+2.7.5 Trade Plan Requirement
+
+2.7.6 Monitoring Requirement
+
+Future Execution
+
+Professional/RIA
+
+Institutional
+
+Backlog
+
+Likely backlog/future candidates:
+
+Probability-of-profit methodology
+
+Expected move
+
+Volatility surface
+
+Skew analysis
+
+Term structure charts
+
+Monte Carlo
+
+Historical stress testing
+
+Slippage model
+
+Commission model
+
+Assignment-probability model
+
+Dividend/ex-date analysis
+
+Portfolio Greeks
+
+Cross-position correlation
+
+Portfolio-level scenario stress
+
+Tax effects
+
+Do not pull forward unless required for correctness.
+
+======================================================================
+72. PERMANENT ARCHITECTURE RULE
+======================================================================
+
+Document permanently:
+
+Trade Risk & Scenario Analysis evaluates the consequences and
+sensitivities of a user-selected research structure.
+
+It may:
+
+calculate deterministic payoff characteristics
+
+stress price / volatility / time assumptions
+
+compare results with user-selected planning constraints
+
+surface risks and limitations
+
+It may NEVER:
+
+replace the selected contract automatically
+
+switch strategy families
+
+rewrite the research thesis
+
+promote an unqualified security
+
+convert a scenario into a recommendation
+
+or create an executable broker order.
+
+======================================================================
+73. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Audit the existing Probability Engine rigorously.
+
+Default to excluding probability claims unless methodology is clearly
+defined and defensible.
+
+Do not allow the desire for a "cool" metric to compromise analytical
+integrity.
+
+Complete Sprint 2.7.4 on the current tree.
+
+Run:
+
+full project tests
+
+npm run build
+
+npx tsc --noEmit
+
+Update the Operations Manual.
+
+Return the complete engineering report for review before beginning
+Sprint 2.7.5.

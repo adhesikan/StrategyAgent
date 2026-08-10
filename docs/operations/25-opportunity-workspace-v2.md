@@ -383,6 +383,56 @@ Partial responses are counted in `workspacePartials` health metric.
 
 ## Runbooks
 
+### Incident: Static opportunity route interpreted as ticker symbol
+
+**Symptom:** Navigating to `/opportunities/today` or `/opportunities/changes` shows
+"TODAY not in current ranking" or "CHANGES not in current ranking" instead of the expected page.
+
+**Root cause:** Wouter's dynamic `<Route path="/opportunities/:symbol">` catches any path segment
+under `/opportunities/*` when no explicit static route is registered first. The strings "today"
+and "changes" were being treated as ticker symbols.
+
+**Fix applied (Sprint 2.6.3 blocking defect fix):**
+
+1. Two new static pages registered in `client/src/App.tsx` BEFORE the dynamic route:
+   - `/opportunities/today` → `OpportunityTodayPage` (`client/src/pages/opportunity-today.tsx`)
+   - `/opportunities/changes` → `OpportunityChangesPage` (`client/src/pages/opportunity-changes.tsx`)
+
+2. Reserved segment denylist in `OpportunityWorkspacePage` as defense-in-depth:
+   ```ts
+   const RESERVED_OPPORTUNITY_SEGMENTS = new Set([
+     "TODAY", "CHANGES", "GROWTH", "INCOME",
+     "WATCH", "WATCHLIST", "HISTORY", "MONITOR", "RESEARCH",
+   ]);
+   ```
+   Matches are redirected to their canonical routes before any API calls fire.
+
+3. Bug fix in `market-research-hub.tsx`: "See What Changed" button was linked to
+   `/opportunities/today` instead of `/opportunities/changes`. Now correct.
+
+**Canonical opportunity URL table:**
+
+| URL | Destination | Component |
+|-----|-------------|-----------|
+| `/opportunities/today` | All ranked opportunities | `OpportunityTodayPage` |
+| `/opportunities/changes` | Change intelligence feed | `OpportunityChangesPage` |
+| `/opportunities/:symbol` | Single-security workspace | `OpportunityWorkspacePage` |
+
+**Regression tests:** `client/src/pages/__tests__/opportunity-routing.test.ts` — 45 assertions
+covering: reserved segment set, canonical URLs, Research Hub link correctness, unranked ticker
+behavior, route ordering, symbol link construction, data contracts, compliance, portfolio links.
+
+**UAT sequence:**
+1. Open `/research` → click "View All Opportunities" → must land on `/opportunities/today`
+2. Return to `/research` → click "See What Changed" → must land on `/opportunities/changes`
+3. Click any ranked symbol → must land on `/opportunities/:symbol` workspace
+4. Direct open `/opportunities/NVDA` → Workspace v2 for NVDA
+5. Direct open `/opportunities/today` → All Ranked Opportunities page
+6. Direct open `/opportunities/changes` → Change Intelligence page
+7. Valid unranked ticker (e.g. `/opportunities/XYZ`) → not-ranked workspace state, not a redirect
+
+---
+
 ### "Workspace shows limitations for institutional data"
 
 1. Check `getInstitutionalSignal(symbol)` is returning non-null.
@@ -450,7 +500,11 @@ See `docs/operations/16-api-and-uat-reference.md` Sprint 2.6.3 section for 27-st
 
 | File | Role |
 |------|------|
-| `client/src/pages/opportunity-workspace.tsx` | Canonical client page (full rewrite) |
+| `client/src/pages/opportunity-workspace.tsx` | Canonical client page (full rewrite) + reserved-segment guard |
+| `client/src/pages/opportunity-today.tsx` | Static `/opportunities/today` — all ranked opportunities |
+| `client/src/pages/opportunity-changes.tsx` | Static `/opportunities/changes` — change intelligence feed |
+| `client/src/App.tsx` | Route registration (static routes before dynamic `:symbol`) |
 | `server/routes/opportunity-workspace.ts` | Aggregated server endpoint (extended) |
-| `server/routes/__tests__/opportunity-workspace-v2.test.ts` | 175+ pure assertions |
+| `server/routes/__tests__/opportunity-workspace-v2.test.ts` | 127 pure server assertions |
+| `client/src/pages/__tests__/opportunity-routing.test.ts` | 45 pure routing regression tests |
 | `docs/operations/25-opportunity-workspace-v2.md` | This document |

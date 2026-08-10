@@ -1,0 +1,550 @@
+2.6.3 BLOCKING DEFECT FIX — Opportunity Static Route Collision
+
+IMPORTANT
+
+Sprint 2.6.3 Opportunity Workspace v2 is already in progress.
+
+DO NOT create a new sprint.
+
+DO NOT abandon or restart 2.6.3.
+
+Treat this as a BLOCKING DEFECT that must be resolved on the current 2.6.3 tree before the sprint can receive GO.
+
+Do not alter 2.6.3 product scope beyond fixing this routing defect.
+
+============================================================
+CONFIRMED PRODUCTION SYMPTOM
+============================================================
+
+From /research:
+
+Clicking:
+
+"View All Opportunities"
+
+navigates to a page showing:
+
+"TODAY not in current ranking"
+
+This indicates:
+
+/opportunities/today
+
+is being interpreted by:
+
+/opportunities/:symbol
+
+with:
+
+symbol = TODAY
+
+The same risk likely exists for:
+
+/opportunities/changes
+
+and any other static segment underneath /opportunities.
+
+============================================================
+OBJECTIVE
+============================================================
+
+Fix route ownership so:
+
+/opportunities/today
+
+resolves to the all-opportunities experience.
+
+/opportunities/changes
+
+resolves to the change-intelligence experience.
+
+/opportunities/:symbol
+
+is used only for genuine security symbols.
+
+Examples:
+
+/opportunities/NVDA
+/opportunities/JPM
+/opportunities/MSFT
+
+must continue to open Opportunity Workspace v2.
+
+============================================================
+1. AUDIT CURRENT 2.6.3 ROUTING
+============================================================
+
+Inspect the CURRENT tree, including all changes already made by Sprint 2.6.3.
+
+Audit:
+
+client/src/App.tsx
+
+Opportunity Workspace route
+
+Today Opportunities page
+
+Changes page / change intelligence route
+
+Research Hub
+
+Dashboard
+
+Command Center
+
+Research Monitor
+
+Collections
+
+Research Reports
+
+AI Research Workspace
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+List every route beginning with:
+
+/opportunities
+
+Include:
+
+static routes
+
+dynamic routes
+
+route ordering
+
+component ownership
+
+current href/navigation call sites
+
+Do NOT rely on assumptions from pre-2.6.3 code.
+
+============================================================
+2. IDENTIFY EXACT ROOT CAUSE
+============================================================
+
+Determine whether the bug comes from:
+
+A. route ordering
+
+B. static route missing entirely
+
+C. wrong link target
+
+D. Wouter/router matching behavior
+
+E. multiple issues
+
+Report exact cause before fixing.
+
+============================================================
+3. CORRECT STATIC ROUTE OWNERSHIP
+============================================================
+
+Ensure explicit routes exist for all legitimate static opportunity destinations.
+
+At minimum investigate:
+
+/opportunities/today
+
+/opportunities/changes
+
+If these are approved/current destinations, make them explicit.
+
+Static routes must resolve before the dynamic symbol workspace.
+
+Canonical security route remains:
+
+/opportunities/:symbol
+
+Do NOT create:
+
+/opportunity-v2/:symbol
+
+or another duplicate symbol route.
+
+============================================================
+4. RESERVED SEGMENT DEFENSE
+============================================================
+
+Add defense-in-depth if appropriate.
+
+Potential reserved segments:
+
+today
+changes
+growth
+income
+watch
+watchlist
+history
+monitor
+research
+
+Do NOT treat these strings as ticker symbols when they are application routes.
+
+However:
+
+routing correctness is the primary fix.
+
+Do not hide broken routing behind only a symbol validator.
+
+============================================================
+5. AUDIT "VIEW ALL OPPORTUNITIES"
+============================================================
+
+From /research:
+
+"View All Opportunities"
+
+must navigate to the intended all-opportunities page.
+
+Determine the intended existing page/component from the current codebase.
+
+Do not invent a new page if one already exists.
+
+If the intended page was previously called something else:
+
+use the canonical current route consistently.
+
+============================================================
+6. AUDIT "SEE WHAT CHANGED"
+============================================================
+
+From /research:
+
+"See What Changed"
+
+must navigate to the existing opportunity-change experience.
+
+Reuse existing:
+
+Change Intelligence Engine
+
+EnrichedRankingChangesPanel
+
+or corresponding dedicated page.
+
+Do not create duplicate change logic.
+
+============================================================
+7. AUDIT ALL SYMBOL LINKS
+============================================================
+
+Individual security links must point to:
+
+/opportunities/{SYMBOL}
+
+Examples:
+
+JPM
+AAPL
+NVDA
+MSFT
+COST
+PLTR
+
+These should open the Opportunity Workspace v2 currently being built.
+
+============================================================
+8. 2.6.3 INTEGRATION
+============================================================
+
+Because Opportunity Workspace v2 is currently being upgraded:
+
+make sure this fix works with the NEW workspace architecture.
+
+Specifically verify:
+
+aggregated workspace endpoint
+
+loading state
+
+not-ranked state
+
+partial-data state
+
+direct navigation
+
+related opportunity links
+
+portfolio-context links
+
+collection links
+
+monitor links
+
+report links
+
+Do not regress any 2.6.3 work.
+
+============================================================
+9. NOT-RANKED SYMBOL BEHAVIOR
+============================================================
+
+Actual legitimate symbols that are not ranked should still receive the intended 2.6.3 not-ranked experience.
+
+Example:
+
+/opportunities/XYZ
+
+if XYZ is a valid ticker but absent from ranking:
+
+show the legitimate not-ranked state.
+
+Do NOT redirect every unknown symbol.
+
+The bug is static application segments being mistaken for tickers.
+
+============================================================
+10. REGRESSION TESTS
+============================================================
+
+Add explicit tests.
+
+Required:
+
+/opportunities/today
+→ static Today Opportunities page
+
+NOT symbol TODAY.
+
+/opportunities/changes
+→ static Changes page
+
+NOT symbol CHANGES.
+
+/opportunities/NVDA
+→ Opportunity Workspace symbol NVDA.
+
+/opportunities/MSFT
+→ Opportunity Workspace symbol MSFT.
+
+Valid unranked ticker
+→ legitimate unranked-symbol workspace state.
+
+Static routes registered correctly relative to dynamic symbol route.
+
+Research Hub:
+View All Opportunities href correct.
+
+Research Hub:
+See What Changed href correct.
+
+Dashboard opportunity links correct.
+
+Command Center symbol links correct.
+
+Collections symbol links correct.
+
+Research Monitor symbol links correct.
+
+Research Reports symbol links correct.
+
+Portfolio Intelligence links correct.
+
+Portfolio Analytics links correct if present.
+
+============================================================
+11. FULL LINK AUDIT
+============================================================
+
+Search for:
+
+"/opportunities/"
+
+navigate("/opportunities
+
+href="/opportunities
+
+setLocation("/opportunities
+
+Link href="/opportunities
+
+Audit every result.
+
+Classify:
+
+static destination
+
+symbol destination
+
+obsolete route
+
+incorrect route
+
+Do not change unrelated URLs.
+
+============================================================
+12. OPERATIONS MANUAL
+============================================================
+
+Update troubleshooting documentation.
+
+Incident:
+
+Static opportunity route interpreted as ticker symbol.
+
+Symptom:
+
+"TODAY not in current ranking"
+
+and potentially:
+
+"CHANGES not in current ranking"
+
+Document:
+
+root cause
+
+route ownership
+
+canonical opportunity URLs
+
+fix
+
+regression tests
+
+UAT sequence
+
+Add canonical URLs to API/UAT reference:
+
+/opportunities/today
+
+/opportunities/changes
+
+/opportunities/NVDA
+
+Use actual route names discovered from current code if they differ.
+
+============================================================
+13. PRODUCTION UAT
+============================================================
+
+Before Sprint 2.6.3 can receive GO:
+
+1. Open /research.
+
+2. Click View All Opportunities.
+
+Expected:
+all-opportunities page.
+
+3. Return to /research.
+
+4. Click See What Changed.
+
+Expected:
+opportunity change page.
+
+5. Click JPM.
+
+Expected:
+Opportunity Workspace v2 for JPM.
+
+6. Click NVDA.
+
+Expected:
+Opportunity Workspace v2 for NVDA.
+
+7. Direct open:
+/opportunities/today
+
+8. Direct open:
+/opportunities/changes
+
+9. Direct open:
+/opportunities/NVDA
+
+10. Direct open a legitimate ticker absent from current ranking.
+
+Expected:
+legitimate not-ranked security state.
+
+11. Verify browser Back works.
+
+12. Verify refresh/direct deep-link works.
+
+13. Verify mobile routing.
+
+14. Verify no unexpected 404/500.
+
+============================================================
+14. VALIDATION
+============================================================
+
+Run after ALL current Sprint 2.6.3 code and this fix are present:
+
+full project tests
+
+npm run build
+
+npx tsc --noEmit
+
+Report:
+
+new errors
+
+pre-existing errors
+
+test count
+
+failures
+
+build warnings
+
+============================================================
+15. SPRINT 2.6.3 COMPLETION GATE
+============================================================
+
+This bug is BLOCKING for 2.6.3 GO.
+
+2.6.3 cannot be declared GO unless:
+
+View All Opportunities works.
+
+See What Changed works.
+
+Real symbol links work.
+
+Valid unranked symbols still behave correctly.
+
+No static route is interpreted as ticker.
+
+Full tests pass.
+
+Build passes.
+
+No new TypeScript errors.
+
+Operations Manual updated.
+
+============================================================
+16. COMPLETION REPORT ADDENDUM
+============================================================
+
+Include within the FINAL Sprint 2.6.3 completion report:
+
+Blocking Defect Resolved:
+Opportunity Static Route Collision
+
+Report:
+
+1. Exact root cause
+2. Route table before
+3. Route table after
+4. Static routes protected
+5. Link audit results
+6. Files changed
+7. Tests added
+8. UAT results
+9. Operations Manual updates
+10. Regression confirmation
+11. GO / CONDITIONAL_GO / NO_GO
+
+Do not deploy automatically.
+
+Finish current 2.6.3 work, apply this fix on the same tree, then perform one combined final validation.

@@ -2640,14 +2640,68 @@ New response fields:
 
 ---
 
-## Opportunity Workspace v2 UAT Checklist (Sprint 2.6.3)
+## Opportunity Workspace v2 UAT Checklist (Sprint 2.6.3 + Blocking Defect Fix)
 
-**Pre-conditions:**
+### Canonical Opportunity Route Table
+
+| URL | Expected Page | Must NOT show |
+|-----|---------------|---------------|
+| `/opportunities/today` | All Ranked Opportunities | "TODAY not in current ranking" |
+| `/opportunities/changes` | Change Intelligence | "CHANGES not in current ranking" |
+| `/opportunities/NVDA` | Workspace v2 for NVDA | Any redirect or error |
+| `/opportunities/XYZ` (unranked) | Not-ranked workspace state | Redirect or 404 |
+
+### Routing Regression UAT (Blocking Defect Fix)
+
+Run this sequence FIRST before the workspace UAT steps.
+
+1. Open `/research`.  
+   ✓ Research Hub loads.
+
+2. Click **"View All Opportunities"**.  
+   ✓ Browser navigates to `/opportunities/today`.  
+   ✓ Page title: "All Ranked Opportunities" (or "Rankings not yet available").  
+   ✗ Must NOT show "TODAY not in current ranking".
+
+3. Return to `/research`.  
+   Click **"See What Changed"**.  
+   ✓ Browser navigates to `/opportunities/changes`.  
+   ✓ Page title: "What Changed" (or "Change data not yet available").  
+   ✗ Must NOT show "CHANGES not in current ranking".  
+   ✗ Must NOT land on `/opportunities/today`.
+
+4. Direct open: `/opportunities/today`  
+   ✓ All Ranked Opportunities page loads.  
+   ✓ Four buckets visible (or empty state): Top Growth, Income, Research Watchlist, Approaching.  
+   ✓ Each symbol chip links to `/opportunities/:symbol`.
+
+5. Direct open: `/opportunities/changes`  
+   ✓ Change Intelligence page loads.  
+   ✓ Sections: Major Movers, Upgrades, New Entries, Downgrades, Removed (or empty state).  
+   ✓ Each symbol card links to `/opportunities/:symbol`.
+
+6. Direct open: `/opportunities/NVDA`  
+   ✓ Workspace v2 loads for NVDA.  
+   ✗ Must NOT redirect.
+
+7. Direct open a valid ticker absent from ranking (e.g. `/opportunities/XYZ`)  
+   ✓ Shows not-ranked workspace state ("Research Not Available").  
+   ✗ Must NOT show "TODAY/CHANGES not in current ranking".
+
+8. Verify browser Back from `/opportunities/today` returns to `/research`.
+
+9. Verify browser Back from `/opportunities/changes` returns to `/research`.
+
+10. Verify refresh/direct deep-link for all three URL types works.
+
+---
+
+**Pre-conditions (workspace):**
 - Authenticated as a trader
 - Opportunity Intelligence scan has run at least once (ranking available)
 - Optional: user has at least one portfolio containing the symbol being viewed
 
-### UAT Steps
+### Workspace UAT Steps
 
 1. Open a ranked symbol from the Dashboard.  
    ✓ Page loads at `/opportunities/{SYMBOL}` (canonical route, no -v2 suffix).

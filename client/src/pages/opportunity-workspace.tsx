@@ -1643,10 +1643,31 @@ function TradePlanningHandoff({ opportunity }: { opportunity: CanonicalOpportuni
 // Main page component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Reserved route segments — defense-in-depth
+// These are static application paths under /opportunities/* that must never
+// be treated as ticker symbols. Routing fixes in App.tsx are the primary guard;
+// this list provides a second layer in case a link bypasses Wouter ordering.
+// ---------------------------------------------------------------------------
+const RESERVED_OPPORTUNITY_SEGMENTS = new Set([
+  "TODAY", "CHANGES", "GROWTH", "INCOME",
+  "WATCH", "WATCHLIST", "HISTORY", "MONITOR", "RESEARCH",
+]);
+
 export default function OpportunityWorkspacePage() {
   const params = useParams<{ symbol: string }>();
   const [, navigate] = useLocation();
   const symbol = (params.symbol ?? "").toUpperCase();
+
+  // Guard: reserved segment reached the workspace — redirect to canonical route.
+  // Primary fix is route ordering in App.tsx; this prevents a confusing error page.
+  if (RESERVED_OPPORTUNITY_SEGMENTS.has(symbol)) {
+    if (symbol === "TODAY")    { navigate("/opportunities/today",    { replace: true }); return null; }
+    if (symbol === "CHANGES")  { navigate("/opportunities/changes",  { replace: true }); return null; }
+    // All other reserved words → research hub
+    navigate("/research", { replace: true });
+    return null;
+  }
 
   // Call 1: In-memory ranking
   const todayQuery = useQuery<OpportunityTodayResponse>({

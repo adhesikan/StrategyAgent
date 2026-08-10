@@ -88,6 +88,84 @@ company name resolution, security/privacy, AI contract, route structure, edge ca
 
 ---
 
+## Sprint 2.6.3 — Blocking Defect Fix: Opportunity Static Route Collision (2026-08-10)
+
+**Applies to:** Sprint 2.6.3 tree (same branch, not a new sprint)
+
+**Defect:** `/opportunities/today` and `/opportunities/changes` were matching Wouter's dynamic
+`/opportunities/:symbol` route, with `symbol` set to `"today"` or `"changes"`. This produced
+"TODAY not in current ranking" errors and made both static destinations unreachable.
+
+**Root cause:** Both A and B simultaneously:
+- **A (route ordering):** Dynamic route registered without any static counterpart before it
+- **B (static routes missing):** No explicit routes registered for `/opportunities/today` or `/opportunities/changes`
+- **Bonus:** "See What Changed" link in Research Hub incorrectly pointed to `/opportunities/today`
+  instead of `/opportunities/changes`
+
+### Route Table Before Fix
+
+| Route | Component |
+|-------|-----------|
+| `/opportunity/:symbol` | OpportunityResearchPage |
+| `/opportunities/:symbol` ← catches everything | OpportunityWorkspacePage |
+| `/opportunities` | Admin redirect |
+
+### Route Table After Fix
+
+| Route | Component |
+|-------|-----------|
+| `/opportunity/:symbol` | OpportunityResearchPage |
+| `/opportunities/today` ← NEW, static | OpportunityTodayPage |
+| `/opportunities/changes` ← NEW, static | OpportunityChangesPage |
+| `/opportunities/:symbol` ← genuine symbols only | OpportunityWorkspacePage |
+| `/opportunities` | Admin redirect |
+
+### Static Routes Protected
+
+`today`, `changes` — explicit Wouter routes registered before dynamic `:symbol`.
+
+Defense-in-depth reserved segment set in `OpportunityWorkspacePage`:
+`TODAY`, `CHANGES`, `GROWTH`, `INCOME`, `WATCH`, `WATCHLIST`, `HISTORY`, `MONITOR`, `RESEARCH`
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `client/src/pages/opportunity-today.tsx` | Full-view all-ranked-opportunities page at `/opportunities/today` |
+| `client/src/pages/opportunity-changes.tsx` | Full-view change intelligence page at `/opportunities/changes` |
+| `client/src/pages/__tests__/opportunity-routing.test.ts` | 45 routing regression tests |
+
+### Modified Files
+
+| File | Change |
+|------|-------|
+| `client/src/App.tsx` | Two static route imports + registrations before dynamic `:symbol` route; added inline comment |
+| `client/src/pages/opportunity-workspace.tsx` | Reserved segment denylist + redirect guard at component entry |
+| `client/src/pages/market-research-hub.tsx` | Fixed "See What Changed" href from `/opportunities/today` → `/opportunities/changes` |
+| `docs/operations/25-opportunity-workspace-v2.md` | Routing incident runbook + canonical URL table + files table |
+| `docs/operations/16-api-and-uat-reference.md` | Canonical route table + UAT sequence added to Sprint 2.6.3 UAT checklist |
+
+### Tests
+
+45 new assertions:
+- Reserved segment set membership (TODAY, CHANGES, NVDA, MSFT, XYZ, etc.)
+- Canonical URL construction
+- Research Hub link correctness (View All Opportunities, See What Changed)
+- Route ordering simulation (static before dynamic)
+- Symbol link construction for all surfaces
+- OpportunityTodayPage and OpportunityChangesPage data contract
+- Compliance: no buy/sell language in nav labels
+- Portfolio symbol links
+
+### Validation Results
+
+- TS: zero new errors introduced by defect fix
+- Server tests: 127/127 passing (opportunity-workspace-v2.test.ts unchanged)
+- Client routing tests: 45/45 passing (new)
+- Full client suite: 1968/1968 passing (no regressions)
+
+---
+
 ## Sprint 2.6.2 — Portfolio Analytics (2026-08-09)
 
 **Phase:** Portfolio Intelligence Track — Phase 3

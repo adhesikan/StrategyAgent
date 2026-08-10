@@ -89,6 +89,8 @@ import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
 import OpportunityResearchPage from "@/pages/opportunity-research";
 import OpportunityWorkspacePage from "@/pages/opportunity-workspace";
+import OpportunityTodayPage from "@/pages/opportunity-today";
+import OpportunityChangesPage from "@/pages/opportunity-changes";
 import InstitutionalFundsPage from "@/pages/institutional-funds";
 import InstitutionalFundDetailPage from "@/pages/institutional-fund-detail";
 import IntelligencePage from "@/pages/intelligence";
@@ -152,6 +154,10 @@ function AppRouter() {
       <Route path="/research-workspace" component={ResearchWorkspacePage} />
       <Route path="/market-research-command-center" component={MarketResearchCommandCenterPage} />
       <Route path="/opportunity/:symbol" component={OpportunityResearchPage} />
+      {/* Static /opportunities/* routes MUST come before the dynamic /:symbol route.
+          Without explicit ordering, Wouter matches /opportunities/today → symbol="today" */}
+      <Route path="/opportunities/today" component={OpportunityTodayPage} />
+      <Route path="/opportunities/changes" component={OpportunityChangesPage} />
       <Route path="/opportunities/:symbol" component={OpportunityWorkspacePage} />
       <Route path="/institutional/funds" component={InstitutionalFundsPage} />
       <Route path="/institutional/funds/:managerId" component={InstitutionalFundDetailPage} />

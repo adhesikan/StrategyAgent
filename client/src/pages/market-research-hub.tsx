@@ -542,7 +542,7 @@ function ChangesModule({ data }: { data: ChangesResponse | undefined }) {
         {items.map(c => <ChangeRow key={c.symbol} c={c} />)}
 
         <div className="pt-2 border-t border-border/50">
-          <Link href="/opportunities/today">
+          <Link href="/opportunities/changes">
             <Button variant="ghost" size="sm" className="w-full text-xs h-7 text-primary">
               See What Changed <ChevronRight className="w-3 h-3 ml-1" />
             </Button>

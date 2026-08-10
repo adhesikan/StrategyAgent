@@ -62,7 +62,13 @@
 
 ---
 
-### KI-006: drizzle-orm 0.39.3 — HIGH Vulnerability (SQL Injection)
+### KI-006: drizzle-orm — ✅ RESOLVED (Sprint 2.7.7A)
+
+Upgraded from 0.39.3 to 0.45.2. GHSA-gpj5-g38j-94v9 resolved. All 313 tests pass after upgrade.
+
+---
+
+### [ARCHIVED] KI-006 original: drizzle-orm 0.39.3 — HIGH Vulnerability (SQL Injection)
 
 **Status:** HIGH severity advisory (< 0.45.2). Mitigated.
 
@@ -74,7 +80,13 @@
 
 ---
 
-### KI-007: adm-zip 0.5.16 — HIGH Vulnerability (Memory Exhaustion)
+### KI-007: adm-zip — ✅ RESOLVED (Sprint 2.7.7A)
+
+Upgraded from 0.5.16 to 0.6.0. GHSA-xcpc-8h2w-3j85 resolved.
+
+---
+
+### [ARCHIVED] KI-007 original: adm-zip 0.5.16 — HIGH Vulnerability (Memory Exhaustion)
 
 **Status:** HIGH severity advisory (< 0.6.0). Mitigated.
 

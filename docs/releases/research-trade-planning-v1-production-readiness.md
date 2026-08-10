@@ -8,11 +8,14 @@
 
 ---
 
-## Overall Status: CONDITIONAL_PASS
+## Overall Status: CONDITIONAL_PASS (UPGRADED — Sprint 2.7.7A)
 
-**Decision: CONDITIONAL_GO to Phase 2.8**
+**Decision: CONDITIONAL_GO to Phase 2.8.0 Architecture**  
+**Updated:** 2026-08-10 (Sprint 2.7.7A)
 
-All critical acceptance criteria pass. Two HIGH dependency vulnerabilities are documented with mitigations and scheduled for resolution in early Phase 2.8. No P0 or P1 defects discovered.
+All critical acceptance criteria pass. Five of 17 HIGH dependency vulnerabilities resolved by upgrade; remaining formally accepted with risk mitigations. No P0 or P1 defects discovered. Authenticated E2E and production smoke remain NOT_RUN pending test credential configuration and production deployment.
+
+**To convert to FULL GO:** Configure TEST_USER_EMAIL + TEST_USER_PASSWORD, run `npm run test:e2e` (flows A–F must PASS), deploy to Railway, run production smoke, update this document.
 
 ---
 

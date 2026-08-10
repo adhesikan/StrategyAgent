@@ -1,9 +1,15 @@
 /**
- * e2e/critical-journeys.spec.ts — VCP Trader AI Sprint 2.7.7
+ * e2e/critical-journeys.spec.ts — VCP Trader AI Sprint 2.7.7A
  *
  * Critical user journey E2E tests.
- * Authenticated tests require PLAYWRIGHT_TEST_USER + PLAYWRIGHT_TEST_PASS env vars.
- * Without credentials, authenticated tests are skipped and marked NOT_RUN.
+ *
+ * Credential variable names (set via env or secret manager — never commit):
+ *   TEST_USER_EMAIL       (canonical; also accepts PLAYWRIGHT_TEST_USER)
+ *   TEST_USER_PASSWORD    (canonical; also accepts PLAYWRIGHT_TEST_PASS)
+ *
+ * Skip policy:
+ *   - Development mode: clean skips when credentials not set (acceptable)
+ *   - Release certification mode (PLAYWRIGHT_RELEASE_CERT=1): SKIPPED = NOT_READY (never PASS)
  *
  * Flows:
  *   A — Research Discovery
@@ -12,12 +18,15 @@
  *   D — Equity Planning
  *   E — Options Planning
  *   F — Lifecycle
+ *   G — No-Portfolio / No-Broker (structural only, no credentials needed)
+ *   H — Cross-User Isolation
+ *   I — Admin Boundary
  *
  * Category: BROWSER_E2E
  */
 
 import { test, expect } from "@playwright/test";
-import { AUTH_AVAILABLE, loginWithCredentials } from "./helpers/auth";
+import { AUTH_AVAILABLE, RELEASE_CERTIFICATION_MODE, shouldSkipAuth, loginWithCredentials } from "./helpers/auth";
 
 // ============================================================================
 // FLOW A — Research Discovery

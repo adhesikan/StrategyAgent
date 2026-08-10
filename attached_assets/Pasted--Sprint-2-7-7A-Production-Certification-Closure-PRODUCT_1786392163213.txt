@@ -1,0 +1,1999 @@
+# Sprint 2.7.7A — Production Certification Closure
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.7A — Production Certification Closure
+
+CURRENT RELEASE STATUS:
+Sprint 2.7.7 = CONDITIONAL_GO
+
+WHY THIS SPRINT EXISTS:
+
+Sprint 2.7.7 successfully established the full release-certification
+framework and all pre-deploy quality gates passed.
+
+However, full production certification remains incomplete because:
+
+1. Authenticated Playwright critical journeys can currently skip when
+   test credentials are unavailable.
+
+2. Production smoke runner exists but production PASS has not yet been
+   confirmed against the deployed release.
+
+3. Two HIGH dependency findings remain documented:
+   - drizzle-orm
+   - adm-zip
+
+4. Phase 2.8 will eventually introduce broker-assisted execution, so the
+   release bar must be materially higher before that phase begins.
+
+THIS IS NOT A FEATURE SPRINT.
+
+Do not add product functionality.
+
+======================================================================
+PRIMARY OBJECTIVE
+======================================================================
+
+Convert:
+
+2.7.7 CONDITIONAL_GO
+
+into either:
+
+FULL GO
+
+or
+
+NO_GO
+
+by closing all remaining production-certification gaps.
+
+This sprint must validate the EXACT release tree that will become the
+baseline for Phase 2.8.
+
+======================================================================
+PHASE 2.8 BLOCK
+======================================================================
+
+DO NOT begin:
+
+2.8.0 Execution Architecture
+
+2.8.1 Order Preparation
+
+2.8.2 Equity Order Preview
+
+2.8.3 Options Order Preview
+
+2.8.4 Broker Permission / Buying Power Validation
+
+2.8.5 Broker Submission
+
+or any other execution functionality
+
+until 2.7.7A receives FULL GO.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+Allowed work:
+
+- release validation
+- production smoke
+- authenticated E2E
+- dependency remediation
+- security fixes
+- deployment fixes
+- schema fixes
+- production configuration fixes
+- regression tests
+- documentation
+- release artifact updates
+
+Not allowed:
+
+- new research features
+- new portfolio features
+- new trade-planning functionality
+- new strategy logic
+- broker order creation
+- execution code
+- new AI agents
+- new commercial-edition functionality
+
+Any feature request discovered during validation goes to backlog.
+
+======================================================================
+1. AUDIT CURRENT CERTIFICATION STATE FIRST
+======================================================================
+
+Before changing code, inspect:
+
+docs/releases/research-trade-planning-v1-production-readiness.md
+
+docs/operations/35-end-to-end-validation-and-production-readiness.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+package.json
+
+package-lock.json
+
+playwright.config.ts
+
+e2e/structural.spec.ts
+
+e2e/critical-journeys.spec.ts
+
+scripts/smoke-production.ts
+
+all current test commands
+
+Platform Health implementation
+
+production migration/startup process
+
+Railway configuration
+
+dependency audit results
+
+Tasks #131, #132, #133
+
+Report before implementation:
+
+A. Exact gates currently PASS
+B. Exact gates currently NOT_RUN
+C. Exact gates currently CONDITIONAL
+D. Current production deployment status
+E. Current release commit/SHA if available
+F. Required production environment variables by NAME only
+G. E2E credential requirements
+H. Production smoke credential requirements
+I. HIGH vulnerability details
+J. Whether safe package updates exist
+K. Any certification blocker not previously documented
+
+======================================================================
+2. FREEZE RELEASE CANDIDATE
+======================================================================
+
+Identify the release candidate commit/build.
+
+Record:
+
+release name
+version
+git SHA
+build timestamp
+environment
+
+No unrelated code changes after release freeze.
+
+Any fix made during this sprint must:
+
+1. be narrowly scoped
+2. receive regression coverage
+3. trigger full release-gate rerun
+4. update release SHA/build identity
+
+======================================================================
+3. AUTHENTICATED E2E CREDENTIALS
+======================================================================
+
+Configure safe isolated E2E test accounts.
+
+Preferred:
+
+TEST_USER_EMAIL
+TEST_USER_PASSWORD
+
+and if required:
+
+TEST_ADMIN_EMAIL
+TEST_ADMIN_PASSWORD
+
+or existing secure auth fixture mechanism.
+
+Do NOT:
+
+hardcode credentials
+commit passwords
+commit session cookies
+commit auth tokens
+
+Use environment variables / secret manager.
+
+Document variable names only.
+
+======================================================================
+4. AUTHENTICATED PLAYWRIGHT MUST NOT SKIP
+======================================================================
+
+Update certification behavior so release execution can distinguish:
+
+PASS
+
+FAIL
+
+SKIPPED
+
+For RELEASE CERTIFICATION:
+
+critical authenticated E2E flows A–F MUST run.
+
+A skip is NOT a PASS.
+
+If credentials missing:
+
+release certification should return:
+
+CONDITIONAL / NOT_READY
+
+not GO.
+
+Development mode may still permit clean skips.
+
+======================================================================
+5. RUN CRITICAL E2E FLOW A — RESEARCH
+======================================================================
+
+Real browser flow:
+
+Login
+
+→ Research Hub / Dashboard
+
+→ View All Opportunities
+
+→ verify /opportunities/today
+
+→ open real/fixture candidate
+
+→ Opportunity Workspace v2
+
+→ Why This Qualified
+
+→ What Changed
+
+→ Research Workspace
+
+→ verify context retained
+
+→ return to Opportunity Workspace
+
+Verify:
+
+no route collision
+no unexpected 500
+research data visible
+disclaimer visible
+browser back works
+
+======================================================================
+6. RUN CRITICAL E2E FLOW B — GOALS
+======================================================================
+
+Login
+
+→ Research Goals
+
+→ create or use isolated E2E goal
+
+→ view matches
+
+→ open candidate
+
+→ open Research Workspace under goal context
+
+→ verify context persistence
+
+Clean up created E2E goal if appropriate.
+
+No interference with real user data.
+
+======================================================================
+7. RUN CRITICAL E2E FLOW C — PORTFOLIO
+======================================================================
+
+Use dedicated E2E portfolio fixture/test account.
+
+Validate:
+
+Portfolio Holdings
+
+History
+
+Intelligence
+
+Analytics
+
+If no real portfolio fixture exists:
+
+create deterministic test portfolio through approved API/UI.
+
+Do not use production user portfolio data.
+
+Clean up if safe.
+
+======================================================================
+8. RUN CRITICAL E2E FLOW D — EQUITY PLANNING
+======================================================================
+
+Opportunity
+
+→ Trade Planning
+
+→ Equity Research
+
+→ verify Entry Framework
+
+→ enter safe scenario planning constraints
+
+→ verify hypothetical sizing
+
+→ Scenario Analysis
+
+→ Save Trade Plan
+
+→ open Trade Plan
+
+No execution CTA.
+
+No broker interaction.
+
+Use isolated test data.
+
+======================================================================
+9. RUN CRITICAL E2E FLOW E — OPTIONS PLANNING
+======================================================================
+
+Opportunity
+
+→ Trade Planning
+
+→ Options Strategy Matching
+
+→ select APPLICABLE family
+
+→ Contract Research
+
+→ select Contract Research Candidate
+
+→ Risk Analysis
+
+→ Save Trade Plan
+
+Verify:
+
+no "Best Contract"
+no probability metric
+no order ticket
+no broker call
+
+If live options provider is not safe/reliable for certification:
+
+use deterministic approved provider fixture for browser E2E
+
+AND separately run bounded live provider validation.
+
+======================================================================
+10. RUN CRITICAL E2E FLOW F — LIFECYCLE
+======================================================================
+
+Open saved Trade Plan
+
+→ Lifecycle Summary
+
+→ Refresh Plan Status
+
+→ Activity Timeline
+
+→ Saved vs Current Research
+
+Verify:
+
+state visible
+
+no exit instruction
+
+no automatic mutation
+
+no order CTA
+
+======================================================================
+11. NO-PORTFOLIO E2E
+======================================================================
+
+Use a test user with:
+
+no portfolio
+
+no broker
+
+Validate:
+
+Research
+
+Opportunity
+
+Goal
+
+Trade Planning
+
+Equity Planning
+
+Options Strategy Matching
+
+Contract Research if provider fixture allows
+
+Risk Analysis
+
+Trade Plan
+
+Lifecycle
+
+Portfolio must remain optional.
+
+======================================================================
+12. NO-BROKER E2E
+======================================================================
+
+Use authenticated user with no connected broker.
+
+Everything through:
+
+Trade Plan
+Lifecycle
+
+must work.
+
+Broker connection must not be required until execution phase.
+
+======================================================================
+13. CROSS-USER E2E
+======================================================================
+
+Use User A and User B.
+
+Validate User A cannot access User B:
+
+portfolio
+
+goal
+
+collection
+
+research conversation
+
+trade planning session
+
+trade plan
+
+lifecycle activity
+
+Expected:
+
+404
+
+where current existence-protection architecture requires it.
+
+======================================================================
+14. ADMIN E2E
+======================================================================
+
+Normal user:
+
+/admin/platform-health
+→ denied
+
+/admin/operations-manual
+→ denied
+
+Admin:
+
+can access both.
+
+Verify no admin route leaks into regular user navigation.
+
+======================================================================
+15. PRODUCTION DEPLOYMENT
+======================================================================
+
+Deploy ONLY the frozen certified release candidate using existing approved
+deployment process.
+
+Do not automatically deploy before pre-deploy gates pass.
+
+Before deploy:
+
+npm run test:release
+
+must PASS.
+
+Record:
+
+deployment timestamp
+release SHA
+Railway deployment/build identifier if available
+
+======================================================================
+16. PRODUCTION DATABASE READINESS
+======================================================================
+
+After deploy verify production schema.
+
+At minimum confirm presence/readiness of:
+
+portfolio tables
+
+portfolio history
+
+research goals
+
+research workspace context columns
+
+trade_planning_sessions
+
+trade_plans
+
+trade_plan_versions
+
+trade_plan_activity
+
+research monitor tables
+
+research reports
+
+all other critical tables identified by 2.7.7 audit
+
+Do not display DATABASE_URL.
+
+No destructive migration.
+
+======================================================================
+17. PRODUCTION STARTUP
+======================================================================
+
+Verify production logs show clean startup.
+
+Check:
+
+schema ensures/migrations complete
+
+routes register
+
+no migration failure
+
+no unhandled rejection
+
+no dependency initialization crash
+
+no secrets logged
+
+server serving traffic
+
+======================================================================
+18. PRODUCTION PLATFORM HEALTH
+======================================================================
+
+Open:
+
+/admin/platform-health
+
+in production.
+
+Verify:
+
+Operations Summary
+
+Research Pipeline
+
+Data Freshness
+
+Application
+
+Database
+
+Market Data
+
+MCP
+
+Scanner
+
+Ranking
+
+Opportunity Intelligence
+
+Sector/Theme Intelligence
+
+Research Workspace
+
+Collections
+
+Monitoring
+
+Reports
+
+Portfolio services
+
+Trade Planning
+
+Trade Plans
+
+Lifecycle
+
+Background Jobs
+
+Expected DISABLED values must not be treated as failure.
+
+Record actual production states.
+
+======================================================================
+19. RUN PRODUCTION SMOKE
+======================================================================
+
+Run:
+
+npm run test:smoke:production
+
+with:
+
+SMOKE_BASE_URL
+
+and authenticated smoke setup if required.
+
+All 18 production smoke checks should execute.
+
+Report:
+
+PASS
+FAIL
+NOT_RUN
+
+Production certification cannot be FULL GO if production smoke is NOT_RUN.
+
+======================================================================
+20. PRODUCTION SMOKE SAFETY
+======================================================================
+
+Smoke runner must remain:
+
+read-only
+or safely reversible
+
+It must NOT:
+
+place broker orders
+modify real user holdings
+generate high provider traffic
+change user preferences
+create permanent unwanted plans
+expose auth secrets
+
+If authenticated write-like test setup is needed:
+
+use isolated test account/data only.
+
+======================================================================
+21. PRODUCTION CRITICAL ROUTES
+======================================================================
+
+Directly validate:
+
+/
+
+ /research
+
+/opportunities/today
+
+/opportunities/changes
+
+/opportunities/{known-test-symbol}
+
+/research-workspace
+
+/goals
+
+/portfolio
+
+/trade-planning/{known-test-symbol}
+
+/trade-plans
+
+/admin/platform-health
+
+Verify no unexpected 404/500.
+
+======================================================================
+22. PRODUCTION ROUTE COLLISION TEST
+======================================================================
+
+Explicitly verify:
+
+/opportunities/today
+
+does NOT become ticker TODAY.
+
+/opportunities/changes
+
+does NOT become ticker CHANGES.
+
+Also test:
+
+/trade-plans static routes
+
+/goals static routes
+
+/trade-planning static/session routes
+
+Permanent regression remains mandatory.
+
+======================================================================
+23. LIVE MARKET DATA VALIDATION
+======================================================================
+
+Run bounded production/live validation.
+
+Use a very small number of known liquid symbols.
+
+Verify:
+
+quote timestamp
+
+historical bars
+
+company metadata
+
+provider identity
+
+data normalization
+
+freshness
+
+cache behavior
+
+No universe-scale fetch.
+
+No excessive Twelve Data usage.
+
+======================================================================
+24. LIVE OPTIONS DATA VALIDATION
+======================================================================
+
+Use one liquid supported symbol.
+
+Verify:
+
+expirations
+
+one chain
+
+normalized contracts
+
+bid/ask
+
+OI/volume
+
+Greeks null-safety
+
+Contract Research
+
+Risk Analysis
+
+No order generation.
+
+Bound provider usage.
+
+======================================================================
+25. LIVE OPENAI VALIDATION
+======================================================================
+
+Run one bounded authenticated Research Workspace request.
+
+Verify:
+
+context grounded
+
+response generated
+
+sources/context preserved
+
+no invented score
+
+no invented candidate
+
+fallback still works through separate test fixture
+
+Do not send private financial information unnecessarily.
+
+======================================================================
+26. BROKER READ-ONLY VALIDATION
+======================================================================
+
+If Tradier or TradeStation sandbox/test account exists:
+
+validate READ ONLY:
+
+connection state
+
+account metadata permitted by architecture
+
+positions sync
+
+reauth handling where safe
+
+No order placement.
+
+If unavailable:
+
+mark:
+
+NOT_RUN
+
+but document whether this blocks Phase 2.8.0 architecture work.
+
+Actual execution capability remains blocked regardless.
+
+======================================================================
+27. HIGH DEPENDENCY FINDING — DRIZZLE-ORM
+======================================================================
+
+Investigate documented HIGH finding.
+
+Determine:
+
+exact advisory/CVE
+
+affected version
+
+fixed version
+
+runtime exploitability
+
+affected VCP Trader code path
+
+whether vulnerability is production-reachable
+
+breaking-change risk of upgrade
+
+available safe patch/minor upgrade
+
+Do NOT simply suppress audit.
+
+If safe upgrade exists:
+
+upgrade
+
+run full release suite
+
+build
+
+typecheck
+
+migration tests
+
+E2E
+
+production smoke again after deploy
+
+If upgrade is unsafe now:
+
+document formal risk acceptance including:
+
+reason
+compensating controls
+affected surface
+owner
+deadline
+must-fix-before phase
+
+Broker submission must not proceed with unresolved HIGH runtime-reachable
+dependency risk unless explicitly reviewed.
+
+======================================================================
+28. HIGH DEPENDENCY FINDING — ADM-ZIP
+======================================================================
+
+Perform same analysis:
+
+exact advisory/CVE
+
+current version
+
+fixed version
+
+dependency path
+
+is it direct/transitive?
+
+what functionality uses it?
+
+does VCP Trader process attacker-controlled zip content through it?
+
+runtime exposure?
+
+safe upgrade?
+
+If safe:
+
+upgrade + full certification rerun.
+
+If unused:
+
+remove dependency if safe.
+
+If transitive:
+
+consider override only after compatibility testing.
+
+Do not blindly force version.
+
+======================================================================
+29. TASKS #131 / #132 / #133
+======================================================================
+
+Audit exact task definitions.
+
+Classify each:
+
+MUST FIX FOR FULL GO
+
+MUST FIX BEFORE ORDER SUBMISSION
+
+CAN DEFER WITH RISK ACCEPTANCE
+
+DUPLICATE / CLOSE
+
+Record final disposition.
+
+Do not leave vague "Phase 2.8.x" ownership.
+
+Assign exact sprint.
+
+======================================================================
+30. DEPENDENCY AUDIT
+======================================================================
+
+Re-run approved dependency audit after remediation.
+
+Return:
+
+critical count
+
+high count
+
+moderate count
+
+low count
+
+runtime vs dev-only
+
+direct vs transitive
+
+Known HIGH findings must have explicit disposition.
+
+======================================================================
+31. CLEAN INSTALL
+======================================================================
+
+Run:
+
+npm ci
+
+from clean dependency state where environment permits.
+
+Verify:
+
+no firewall block
+
+no missing production dependency
+
+no lockfile inconsistency
+
+no tsx startup issue recurrence
+
+Then run:
+
+npm run build
+
+======================================================================
+32. FULL RELEASE GATE
+======================================================================
+
+Run exact release candidate through:
+
+npm run test:release
+
+This must include the 10 mandatory suites established in 2.7.7.
+
+Report individual suite counts/results.
+
+Do not report only aggregate 313/313 if counts changed.
+
+======================================================================
+33. RUN TEST:SMOKE
+======================================================================
+
+Run:
+
+npm run test:smoke
+
+Report:
+
+count
+
+PASS/FAIL
+
+runtime
+
+======================================================================
+34. RUN TEST:REGRESSION
+======================================================================
+
+Run:
+
+npm run test:regression
+
+Report:
+
+count
+
+PASS/FAIL
+
+runtime
+
+This must include prior regressions, not only current changes.
+
+======================================================================
+35. RUN TEST:INTEGRATION
+======================================================================
+
+Run:
+
+npm run test:integration
+
+Report:
+
+count
+
+PASS/FAIL
+
+runtime
+
+Ensure tests use real service boundaries.
+
+======================================================================
+36. RUN TEST:SECURITY
+======================================================================
+
+Run:
+
+npm run test:security
+
+Report:
+
+count
+
+PASS/FAIL
+
+runtime
+
+Include ownership/privacy invariants.
+
+======================================================================
+37. RUN TEST:LIFECYCLE
+======================================================================
+
+Run:
+
+npm run test:lifecycle
+
+Report:
+
+count
+
+PASS/FAIL
+
+runtime
+
+======================================================================
+38. RUN TEST:MIGRATIONS
+======================================================================
+
+Run:
+
+npm run test:migrations
+
+Report:
+
+PASS/FAIL
+
+Verify schema upgrade remains safe after any dependency changes.
+
+======================================================================
+39. RUN TEST:COMPLIANCE
+======================================================================
+
+Run:
+
+npm run test:compliance
+
+Report:
+
+PASS/FAIL
+
+Context-aware patterns only.
+
+======================================================================
+40. RUN TEST:DB
+======================================================================
+
+Run:
+
+npm run test:db
+
+Report:
+
+PASS/FAIL
+
+Verify critical columns/tables.
+
+======================================================================
+41. RUN TEST:PERFORMANCE
+======================================================================
+
+Run:
+
+npm run test:performance
+
+Report baseline.
+
+Compare with 2.7.7 baseline if available.
+
+Flag material regression.
+
+Do not invent thresholds after the fact.
+
+======================================================================
+42. RUN TEST:INVARIANTS
+======================================================================
+
+Run:
+
+npm run test:invariants
+
+Verify permanent architectural pins.
+
+Especially:
+
+Opportunity Intelligence owns qualification.
+
+Trade Planning cannot promote unqualified symbol.
+
+Strategy Matching cannot change underlying.
+
+Contract Research cannot switch strategy family.
+
+Risk Analysis cannot substitute contract.
+
+Trade Plan cannot silently rewrite saved research.
+
+Lifecycle cannot generate execution instruction.
+
+======================================================================
+43. RUN TEST:IDEMPOTENCY
+======================================================================
+
+Run:
+
+npm run test:idempotency
+
+Verify:
+
+migration idempotency
+
+fingerprints
+
+cache isolation
+
+concurrency state
+
+duplicate event protection
+
+======================================================================
+44. RUN PLAYWRIGHT STRUCTURAL E2E
+======================================================================
+
+Run all structural tests.
+
+No skip unless explicitly designed.
+
+Report:
+
+passed
+failed
+skipped
+
+======================================================================
+45. RUN PLAYWRIGHT AUTHENTICATED E2E
+======================================================================
+
+Run ALL critical A–F journeys.
+
+For release certification:
+
+SKIPPED = NOT_READY
+
+Report every flow separately.
+
+Example:
+
+A Research Discovery — PASS
+
+B Research Goal — PASS
+
+C Portfolio — PASS
+
+D Equity Planning — PASS
+
+E Options Planning — PASS
+
+F Lifecycle — PASS
+
+======================================================================
+46. TYPESCRIPT
+======================================================================
+
+Run:
+
+npx tsc --noEmit
+
+Target:
+
+zero errors.
+
+If pre-existing baseline still exists:
+
+list exact errors
+
+verify unchanged
+
+But before Phase 2.8 begins, strongly prefer eliminating remaining
+TypeScript errors rather than carrying them into execution code.
+
+Do not introduce new ones.
+
+======================================================================
+47. SERVER STARTUP / RESTART
+======================================================================
+
+Start server.
+
+Verify clean.
+
+Restart server.
+
+Verify:
+
+Trade Plans persist
+
+Goals persist
+
+Portfolio persists
+
+Lifecycle activity persists
+
+Research conversations persist according to architecture
+
+Caches rebuild
+
+No schema duplicate errors
+
+No stale lock remains
+
+======================================================================
+48. PRODUCTION LOG REVIEW
+======================================================================
+
+Review recent startup + smoke window logs.
+
+Look for:
+
+500s
+
+unhandled rejection
+
+DB errors
+
+provider rate limits
+
+auth errors
+
+MCP failures
+
+schema errors
+
+repeated retries
+
+secret leakage
+
+Do not expose log secrets in report.
+
+======================================================================
+49. ERROR RATE CHECK
+======================================================================
+
+During production smoke/E2E window:
+
+identify unexpected:
+
+HTTP 500
+
+502
+
+503
+
+429
+
+auth failures
+
+Report them.
+
+Expected test auth denials can be excluded with explanation.
+
+======================================================================
+50. PLATFORM HEALTH AFTER SMOKE
+======================================================================
+
+Recheck Platform Health AFTER production smoke.
+
+Verify testing did not leave:
+
+stuck background job
+
+stuck concurrency lock
+
+degraded cache
+
+unexpected data freshness regression
+
+======================================================================
+51. RELEASE UAT
+======================================================================
+
+Run the concise production UAT from 2.7.7.
+
+At minimum:
+
+Research
+
+Opportunity
+
+Research Workspace
+
+Goal
+
+Portfolio
+
+Trade Planning
+
+Equity
+
+Options Strategy
+
+Contract Research
+
+Risk Analysis
+
+Trade Plan
+
+Lifecycle
+
+Operations Center
+
+Security boundaries
+
+No execution
+
+No unexpected 500
+
+======================================================================
+52. KNOWN LIMITATIONS REVIEW
+======================================================================
+
+Review all 10 known limitations documented in 2.7.7.
+
+For each:
+
+still valid?
+
+resolved?
+
+severity changed?
+
+workaround accurate?
+
+assigned sprint accurate?
+
+Any limitation touching future order safety must be assigned before broker
+submission sprint.
+
+======================================================================
+53. LIFECYCLE SCHEDULER LIMITATION
+======================================================================
+
+Review KI-005.
+
+Current lifecycle evaluator is scheduler-ready but not cron-wired.
+
+Decide whether:
+
+A. acceptable for Research + Trade Planning v1 release
+
+and
+
+B. when it should be implemented.
+
+Do not add scheduler automatically unless needed for certification.
+
+Likely assign to future monitoring/operations enhancement rather than
+block current release.
+
+======================================================================
+54. PRODUCTION ROLLBACK VALIDATION
+======================================================================
+
+Review rollback procedure against actual deployed release.
+
+Verify operator knows:
+
+how to roll back application
+
+how to identify previous deploy
+
+how schema compatibility affects rollback
+
+how to validate rollback
+
+what must not be reversed
+
+No destructive rollback test in production.
+
+======================================================================
+55. RELEASE ARTIFACT UPDATE
+======================================================================
+
+Update:
+
+docs/releases/research-trade-planning-v1-production-readiness.md
+
+Change status from:
+
+CONDITIONAL_GO
+
+to final:
+
+GO
+
+or:
+
+NO_GO
+
+Include:
+
+release SHA
+
+deployment identifier
+
+authenticated E2E result
+
+production smoke result
+
+production UAT result
+
+dependency vulnerability disposition
+
+known limitations
+
+final blocker count
+
+======================================================================
+56. P0 / P1 / P2 DEFECT GATE
+======================================================================
+
+For FULL GO:
+
+P0 = 0
+
+P1 = 0
+
+P2 = 0
+
+Any newly discovered defect must have:
+
+severity
+
+root cause
+
+fix
+
+regression test
+
+validation
+
+======================================================================
+57. SECURITY RELEASE GATE
+======================================================================
+
+FULL GO requires:
+
+auth PASS
+
+ownership PASS
+
+admin isolation PASS
+
+secret scan PASS
+
+log redaction PASS
+
+cache isolation PASS
+
+input validation PASS
+
+dependency findings explicitly resolved/accepted
+
+No known runtime-reachable Critical vulnerability.
+
+Any HIGH vulnerability affecting future execution must have exact
+remediation milestone.
+
+======================================================================
+58. PRODUCTION CERTIFICATION DECISION
+======================================================================
+
+FULL GO only if:
+
+authenticated E2E A–F PASS
+
+production smoke PASS
+
+production schema PASS
+
+production startup PASS
+
+Platform Health acceptable
+
+release test suite PASS
+
+build PASS
+
+typecheck acceptable/clean
+
+security PASS
+
+compliance PASS
+
+migration PASS
+
+P0/P1/P2 = 0
+
+dependency HIGH findings resolved or formally accepted with explicit
+pre-execution remediation
+
+production UAT PASS
+
+======================================================================
+59. PHASE 2.8 READINESS
+======================================================================
+
+Separate two decisions:
+
+RESEARCH + TRADE PLANNING V1 PRODUCTION READY?
+
+YES / NO
+
+READY TO BEGIN IMPLEMENTING PHASE 2.8.0 ARCHITECTURE?
+
+YES / NO
+
+These are related but not identical.
+
+2.8.0 is architecture/preflight only.
+
+Actual order submission remains much later.
+
+======================================================================
+60. EXECUTION SECURITY GATE
+======================================================================
+
+Even if 2.8.0 architecture work is allowed:
+
+actual order submission in future 2.8.5 cannot proceed until:
+
+dependency security issues cleared
+
+broker sandbox E2E passes
+
+order idempotency exists
+
+duplicate-submit protection exists
+
+fresh quote revalidation exists
+
+account ownership verified
+
+broker permissions verified
+
+buying power verified
+
+explicit confirmation tested
+
+audit trail tested
+
+rollback/recovery behavior understood
+
+Document this now.
+
+======================================================================
+61. NO ORDER TEST
+======================================================================
+
+Assert entire current release still has NO new order submission path added
+by this sprint.
+
+No accidental broker POST order call.
+
+No hidden execution endpoint.
+
+No auto execution.
+
+======================================================================
+62. OPERATIONS MANUAL UPDATE
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/35-end-to-end-validation-and-production-readiness.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/14-disaster-recovery.md if needed
+
+Create:
+
+docs/operations/36-production-certification-closure.md
+
+Document:
+
+purpose
+
+release freeze
+
+authenticated E2E setup
+
+production smoke
+
+production health verification
+
+dependency remediation decisions
+
+final quality gates
+
+rollback validation
+
+known limitations
+
+Phase 2.8 entry criteria
+
+future execution security gates
+
+======================================================================
+63. PERMANENT RELEASE RULE UPDATE
+======================================================================
+
+Document:
+
+A release certification cannot treat a skipped critical authenticated
+browser journey as PASS.
+
+For production certification:
+
+Critical E2E must run.
+
+Production Smoke must run after deployment.
+
+Release decision must reference the exact deployed SHA/build.
+
+======================================================================
+64. TEST REPORT FORMAT
+======================================================================
+
+Return:
+
+QUALITY GATES
+
+Feature / Unit:
+PASS / FAIL
+count
+
+Integration:
+PASS / FAIL
+count
+
+Smoke:
+PASS / FAIL
+count
+
+Regression:
+PASS / FAIL
+count
+
+Lifecycle:
+PASS / FAIL
+count
+
+Security:
+PASS / FAIL
+count
+
+Compliance:
+PASS / FAIL
+count
+
+DB:
+PASS / FAIL
+count
+
+Migrations:
+PASS / FAIL
+count
+
+Performance:
+PASS / FAIL
+count
+
+Invariants:
+PASS / FAIL
+count
+
+Idempotency:
+PASS / FAIL
+count
+
+Playwright Structural:
+PASS / FAIL
+passed / failed / skipped
+
+Playwright Authenticated:
+PASS / FAIL
+passed / failed / skipped
+
+Build:
+PASS / FAIL
+
+TypeScript:
+PASS / FAIL / BASELINE
+
+Server Startup:
+PASS / FAIL
+
+Server Restart:
+PASS / FAIL
+
+Production Schema:
+PASS / FAIL
+
+Production Platform Health:
+PASS / DEGRADED / FAIL
+
+Live Market Data:
+PASS / FAIL / NOT_RUN
+
+Live Options Data:
+PASS / FAIL / NOT_RUN
+
+Live AI:
+PASS / FAIL / NOT_RUN
+
+Broker Read-Only:
+PASS / FAIL / NOT_RUN
+
+Production Smoke:
+PASS / FAIL
+
+Production UAT:
+PASS / CONDITIONAL / FAIL
+
+======================================================================
+65. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Executive Certification Closure Summary
+2. Initial conditional gates discovered
+3. Release candidate SHA/build
+4. Files changed
+5. Authenticated E2E credential architecture
+6. E2E skip-policy update
+7. Research E2E result
+8. Goals E2E result
+9. Portfolio E2E result
+10. Equity Planning E2E result
+11. Options Planning E2E result
+12. Lifecycle E2E result
+13. No-portfolio E2E result
+14. No-broker E2E result
+15. Cross-user E2E result
+16. Admin E2E result
+17. Pre-deploy release suite
+18. Production deployment result
+19. Production schema validation
+20. Production startup validation
+21. Production Platform Health
+22. Production smoke result
+23. Route regression result
+24. Live Market Data result
+25. Live Options Data result
+26. Live AI result
+27. Broker read-only result
+28. drizzle-orm HIGH analysis
+29. adm-zip HIGH analysis
+30. Tasks #131/#132/#133 disposition
+31. Dependency remediation changes
+32. Dependency audit after remediation
+33. Clean npm ci
+34. Build
+35. Typecheck
+36. Server restart
+37. Production log review
+38. HTTP error review
+39. Post-smoke Platform Health
+40. Production UAT
+41. Known limitations review
+42. KI-005 scheduler decision
+43. Rollback validation
+44. P0 count
+45. P1 count
+46. P2 count
+47. Security release gate
+48. Compliance release gate
+49. Release artifact update
+50. Research + Trade Planning v1 production readiness
+51. Phase 2.8.0 readiness
+52. Future broker submission security gate
+53. No-order-path confirmation
+
+QUALITY GATES:
+
+54. Feature/Unit
+55. Integration
+56. Smoke
+57. Regression
+58. Lifecycle
+59. Security
+60. Compliance
+61. DB
+62. Migrations
+63. Performance
+64. Invariants
+65. Idempotency
+66. Playwright Structural
+67. Playwright Authenticated
+68. Build
+69. TypeScript
+70. Startup
+71. Restart
+72. Production Schema
+73. Platform Health
+74. Live Market Data
+75. Live Options
+76. Live AI
+77. Broker Read-Only
+78. Production Smoke
+79. Production UAT
+
+80. Full automated test count
+81. Total skipped critical tests
+82. Operations Manual Updated: YES / NO
+83. Operations Manual Files Updated
+84. Release Artifact Updated: YES / NO
+85. Final Release Decision: GO / NO_GO
+86. Phase 2.8.0 Entry: APPROVED / BLOCKED
+
+======================================================================
+66. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.7A
+Production Certification Closure
+
+NEXT ONLY AFTER FULL GO:
+
+2.8.0
+Execution Architecture, Compliance & Broker Preflight
+
+Then planned:
+
+2.8.1
+Order Preparation Engine
+
+2.8.2
+Equity Order Preview
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+2.8.4
+Buying Power, Broker Permissions & Execution Validation
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+======================================================================
+67. IMPROVEMENT CAPTURE
+======================================================================
+
+Do not implement unrelated improvements.
+
+Classify:
+
+Certification Blocker
+
+Security Blocker
+
+Pre-Execution Requirement
+
+Phase 2.8 Requirement
+
+Operations Backlog
+
+Commercial/RIA Future
+
+General Backlog
+
+Any dependency/security issue that can affect broker submission must be
+assigned to an exact pre-submission sprint.
+
+======================================================================
+68. FINAL INSTRUCTION
+======================================================================
+
+Do not begin Phase 2.8 automatically.
+
+Do not add order submission code.
+
+Do not weaken E2E gates to achieve a green result.
+
+Do not count skipped authenticated E2E as PASS.
+
+Do not count an unexecuted production smoke runner as PASS.
+
+Run this sprint as the final certification closure for Research + Trade
+Planning v1.
+
+Return the full report for review.
+
+Only explicit FULL GO authorizes the start of Sprint 2.8.0.

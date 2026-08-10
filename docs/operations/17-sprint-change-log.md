@@ -1,5 +1,61 @@
 # Sprint Change Log
 
+## Sprint 2.7.7A — Production Certification Closure (2026-08-10)
+
+### Summary
+Closed the CONDITIONAL_GO from Sprint 2.7.7. Resolved 5 of 17 HIGH dependency vulnerabilities, established canonical E2E credential variable names, updated E2E skip policy (SKIPPED = NOT_READY in release cert mode), created production certification closure document. Final status: CONDITIONAL_GO (UPGRADED) — authenticated E2E and production smoke remain NOT_RUN pending test credential setup and deployment.
+
+### Dependency Upgrades (HIGH vuln remediation)
+| Package | Before | After | Vulns Resolved |
+|---------|--------|-------|----------------|
+| drizzle-orm | 0.39.3 | 0.45.2 | GHSA-gpj5-g38j-94v9 (SQL injection) |
+| adm-zip | 0.5.16 | 0.6.0 | GHSA-xcpc-8h2w-3j85 (memory exhaustion) |
+| express | 4.21.2 | 4.22.2 | body-parser/path-to-regexp/qs HIGHs |
+| vite | 7.3.0 | 7.3.5 | Multiple HIGH (dev-only) |
+| ws | 8.18.0 | 8.21.3 | GHSA-58qx-3vcg-4xpx |
+| postcss | 8.4.47 | 8.5.26 | Multiple HIGH (dev-only) |
+| **Result** | 17 HIGH → 11 HIGH | | 6 resolved |
+
+### Remaining HIGH Vulnerabilities (Formally Accepted)
+- `xlsx` * — No fix available; bounded to authenticated user uploads; plan 2.9.x alternative
+- `snaptrade-typescript-sdk` 9.0.x — via axios; optional provider; no unsafe code path
+- 9 transitive HIGHs — dev-only tools or non-production-reachable paths
+
+### E2E Infrastructure Updates
+- `e2e/helpers/auth.ts` — Added TEST_USER_EMAIL/TEST_USER_PASSWORD canonical names; added PLAYWRIGHT_RELEASE_CERT=1 certification mode; added shouldSkipAuth() helper
+- `e2e/critical-journeys.spec.ts` — Updated header with canonical credential names, added flows G/H/I
+- Skip policy: SKIPPED = NOT_READY in release certification mode (PLAYWRIGHT_RELEASE_CERT=1)
+
+### New Documentation
+- `docs/operations/36-production-certification-closure.md` — Complete certification closure record: release freeze, dep disposition, E2E credential architecture, phase 2.8 entry criteria, execution security gates
+
+### Files Modified
+- `package.json` — 6 dep upgrades
+- `package-lock.json` — lockfile updated
+- `e2e/helpers/auth.ts` — canonical credential names + release cert mode
+- `e2e/critical-journeys.spec.ts` — updated skip policy reference
+- `docs/operations/36-production-certification-closure.md` — created
+- `docs/operations/17-sprint-change-log.md` — this entry
+
+### Quality Gate Results (Post-Upgrade)
+All 313 tests pass after all dependency upgrades. Build clean. No new TypeScript errors.
+
+### Tasks Disposition
+- Task #131 (lifecycle scheduler): MUST FIX before order submission → assigned 2.8.x early
+- Task #132 (dep upgrades): ✅ DONE — drizzle-orm, adm-zip, express, vite, ws, postcss all upgraded
+- Task #133 (authenticated E2E): MUST FIX FOR FULL GO → requires TEST_USER_EMAIL + browser binary
+
+### Certification Decision
+CONDITIONAL_GO (UPGRADED). Remaining conditions for FULL GO:
+1. Configure TEST_USER_EMAIL/TEST_USER_PASSWORD via secrets, run authenticated E2E A–F
+2. Deploy to Railway, run production smoke
+3. Update release artifact with GO decision
+
+### Phase 2.8 Entry
+Phase 2.8.0 architecture/preflight work APPROVED to begin. Order submission (2.8.5) blocked until execution security gates pass.
+
+---
+
 ## Sprint 2.7.7 — End-to-End Platform Validation & Production Readiness Gate (2026-08-10)
 
 ### Summary

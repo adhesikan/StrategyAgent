@@ -1,0 +1,2439 @@
+# Sprint 2.7.3 — Options Contract / Expiration / Strike Research
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.3 — Options Contract / Expiration / Strike Research
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Workspace v2
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Trade Planning Foundation
+✓ Equity Trade Planning Engine
+✓ Options Strategy Matching Engine
+✓ Platform Operations Center
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to this user?
+
+Portfolio Intelligence answers:
+
+HOW does this research relate to current exposure?
+
+Trade Planning Foundation answers:
+
+HOW could this research thesis potentially be expressed?
+
+Options Strategy Matching answers:
+
+WHICH strategy family is structurally compatible?
+
+Options Contract Research answers:
+
+WHICH expirations, strikes, and contracts are worth researching
+within the already-selected strategy family?
+
+This sprint may NOT:
+
+promote a security into research
+
+choose the strategy family from scratch
+
+rewrite the research thesis
+
+construct a broker order
+
+submit a trade
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker order tickets
+- broker submission
+- automated execution
+- one-click trade placement
+- autonomous trading
+- trade recommendations
+- "best trade"
+- "highest probability trade"
+- guaranteed outcomes
+- personalized suitability decisions
+- portfolio rebalancing
+- tax optimization
+- AI agents
+- RIA workflows
+- Institutional workflows
+- Enterprise customization
+
+DO NOT change:
+
+- Scanner logic
+- Ranking formulas
+- Opportunity Intelligence scoring
+- Options Strategy Matching methodology
+- Equity Planning methodology
+- Goal Matching
+- Portfolio Intelligence
+
+This sprint is CONTRACT RESEARCH only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a deterministic Options Contract Research Engine that takes:
+
+TradePlanningContext
++
+selected OptionsStrategyMatch
++
+current options-chain data
++
+expiration data
++
+strike data
++
+Greeks
++
+liquidity metrics
++
+volatility context
++
+event/earnings context
++
+user-selected planning constraints
+        ↓
+OptionsContractResearchResult
+        ↓
+Contract Research Candidates
+
+The engine should answer:
+
+"Which specific options structures deserve further research?"
+
+NOT:
+
+"Which trade should I place?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+existing live-contract-resolver.ts
+
+existing best-trade-finder.ts
+
+existing Smart Instrument Selector
+
+existing Probability Engine
+
+existing option-chain services
+
+Tradier option chain endpoints
+
+TradeStation option chain endpoints
+
+existing options scanner
+
+existing options analytics
+
+existing Greeks calculations
+
+IV Rank / IV Percentile logic
+
+existing DTE filters
+
+liquidity rules
+
+open interest filters
+
+volume filters
+
+bid/ask filters
+
+existing earnings/event service
+
+existing commission/slippage assumptions
+
+existing spread builders
+
+existing multi-leg structure models
+
+existing contract-selection code
+
+existing broker execution objects
+
+OptionsStrategyMatchResult
+
+OptionsContractResearchInput
+
+TradePlanningContext
+
+Research Glossary
+
+Platform Health
+
+Operations Manual
+
+Classify every discovered options component as:
+
+SAFE REUSABLE FOUNDATION
+
+REQUIRES REFACTOR BEFORE REUSE
+
+2.7.3 CONTRACT RESEARCH COMPONENT
+
+2.7.4 RISK/SCENARIO COMPONENT
+
+FUTURE EXECUTION COMPONENT
+
+LEGACY / DO NOT REUSE
+
+Pay particular attention to any component containing terms or behavior like:
+
+best trade
+recommended
+highest probability
+optimal
+top trade
+
+Do NOT import recommendation-oriented behavior into the new architecture.
+
+Report audit before coding.
+
+======================================================================
+2. CANONICAL CONTRACT RESEARCH MODEL
+======================================================================
+
+Create shared canonical types.
+
+Suggested:
+
+OptionsContractResearchResult {
+  id
+  userId
+  planningContextId
+  symbol
+  strategyFamily
+
+  generatedAt
+  marketDataAsOf
+  optionChainAsOf
+
+  thesisDirection
+  researchHorizon
+  volatilityContext
+  eventContext
+
+  expirationCandidates[]
+  structureCandidates[]
+
+  limitations[]
+  freshness
+  methodologyVersion
+}
+
+ExpirationResearchCandidate {
+  expiration
+  dte
+  status
+  reasons[]
+  eventFlags[]
+  liquidityCoverage
+  contractCount
+  volatilitySummary
+}
+
+OptionsStructureResearchCandidate {
+  id
+  strategyFamily
+  expiration
+  legs[]
+  structureMetrics
+  liquidityMetrics
+  greekMetrics
+  volatilityMetrics
+  eventContext
+  researchReasons[]
+  warnings[]
+  rejectionReasons[]
+  freshness
+}
+
+======================================================================
+3. CONTRACT CANDIDATE TERMINOLOGY
+======================================================================
+
+Use:
+
+Contract Research Candidate
+
+Expiration Research Candidate
+
+Strike Research Candidate
+
+Structure Research Candidate
+
+Potential Research Structure
+
+Avoid:
+
+Recommended Contract
+
+Best Contract
+
+Best Spread
+
+Best Strike
+
+Best Expiration
+
+Trade This
+
+Top Trade
+
+Winning Trade
+
+======================================================================
+4. USER-SELECTED STRATEGY FAMILY REQUIRED
+======================================================================
+
+2.7.3 MUST require:
+
+selected OptionsStrategyMatch
+
+Example:
+
+bull_call_spread
+
+The contract engine must NOT independently switch to:
+
+cash_secured_put
+covered_call
+iron_condor
+
+because it finds better pricing.
+
+If selected family cannot produce valid candidates:
+
+return:
+
+NO_VALID_CONTRACT_RESEARCH_CANDIDATES
+
+with transparent reasons.
+
+Do NOT substitute another strategy automatically.
+
+======================================================================
+5. OPTIONS DATA SOURCE
+======================================================================
+
+Audit existing provider architecture.
+
+Prefer existing normalized option-chain service.
+
+Do not make the client call Tradier/TradeStation directly.
+
+Server owns provider interaction.
+
+Normalize provider-specific data into one canonical contract model.
+
+Suggested:
+
+NormalizedOptionContract {
+  symbol
+  underlying
+  expiration
+  strike
+  optionType
+  bid
+  ask
+  midpoint
+  last
+  volume
+  openInterest
+  impliedVolatility
+  delta
+  gamma
+  theta
+  vega
+  rho?
+  updatedAt
+}
+
+Reuse existing normalized model if already present.
+
+Do not create duplicate normalization layers.
+
+======================================================================
+6. PROVIDER FALLBACK / OWNERSHIP
+======================================================================
+
+Follow existing architecture.
+
+Do not put provider credentials into MCP if architecture says provider credentials remain in VCP Trader.
+
+Use existing internal service boundaries.
+
+Do not create a new credential path.
+
+If multiple providers exist:
+
+respect existing provider-selection configuration.
+
+Do not silently combine inconsistent chains.
+
+======================================================================
+7. OPTION CHAIN FRESHNESS
+======================================================================
+
+Every result must expose:
+
+optionChainAsOf
+
+marketDataAsOf
+
+provider
+
+freshnessStatus
+
+If chain is stale beyond current approved trading-data threshold:
+
+show:
+
+STALE OPTIONS DATA
+
+and either:
+
+degrade result
+
+or block contract research
+
+depending on existing freshness policy.
+
+Do NOT present stale intraday contracts as current.
+
+======================================================================
+8. EXPIRATION RESEARCH
+======================================================================
+
+Create deterministic expiration filtering.
+
+Inputs:
+
+research horizon
+
+selected strategy family
+
+user planning horizon
+
+earnings/event date
+
+available expirations
+
+DTE constraints
+
+Do NOT simply choose nearest expiration.
+
+Potential research DTE buckets:
+
+very_short
+short
+medium
+long
+leaps
+
+Map strategy family and research horizon transparently.
+
+Example:
+
+medium-term bullish thesis
+
+may examine:
+
+30–60 DTE
+
+and possibly:
+
+60–90 DTE
+
+but exact ranges must be documented.
+
+Do not claim the range is universally optimal.
+
+======================================================================
+9. EARNINGS / EVENT HANDLING
+======================================================================
+
+Critical.
+
+For each expiration determine:
+
+beforeEvent
+containsEvent
+afterEvent
+
+If:
+
+avoidEarningsWindow = true
+
+exclude or flag expirations containing earnings.
+
+If user allows event exposure:
+
+retain candidates but display:
+
+EVENT WINDOW INCLUDED
+
+Do not hide earnings exposure.
+
+======================================================================
+10. EXPIRATION EXPLANATION
+======================================================================
+
+Each expiration candidate explains:
+
+Why included
+
+Why excluded
+
+DTE
+
+Research horizon relationship
+
+Event exposure
+
+Liquidity coverage
+
+IV context
+
+Example:
+
+Expiration:
+Sep 20
+
+DTE:
+42
+
+Status:
+RESEARCH_CANDIDATE
+
+Reasons:
+
+- aligns with medium-term research horizon
+- outside earnings window
+- adequate contract coverage
+- current options data available
+
+======================================================================
+11. STRIKE RESEARCH
+======================================================================
+
+Within a selected expiration:
+
+evaluate strikes using deterministic filters.
+
+Possible inputs:
+
+delta
+moneyness
+distance from underlying
+bid/ask
+volume
+open interest
+IV
+strategy family
+
+Do not select strike from a single heuristic.
+
+Return multiple candidates where appropriate.
+
+======================================================================
+12. DELTA-BASED RESEARCH
+======================================================================
+
+If reliable Greeks exist:
+
+support delta bands.
+
+Examples only:
+
+long directional leg:
+higher absolute delta research band
+
+short spread leg:
+lower delta than long leg
+
+income structures:
+strategy-specific ranges
+
+Do not hardcode legacy assumptions without audit.
+
+Document exact methodology.
+
+If Greeks unavailable:
+
+fall back only if a validated alternate methodology exists.
+
+Otherwise mark candidate unavailable.
+
+======================================================================
+13. MONEYNESS
+======================================================================
+
+Classify:
+
+ITM
+
+ATM
+
+OTM
+
+Use deterministic definition from underlying reference price.
+
+Expose distance:
+
+strikeDistancePct
+
+Do not imply ATM/OTM is inherently superior.
+
+======================================================================
+14. LIQUIDITY FILTERS
+======================================================================
+
+Contract research must consider:
+
+bid
+
+ask
+
+bid/ask spread
+
+spread percentage
+
+volume
+
+open interest
+
+quote freshness
+
+Possible statuses:
+
+STRONG
+
+ACCEPTABLE
+
+LIMITED
+
+POOR
+
+UNKNOWN
+
+Thresholds must be transparent and documented.
+
+Do not hide rejected contracts.
+
+Return aggregate rejection reasons.
+
+Example:
+
+34 contracts rejected:
+
+18 insufficient open interest
+10 excessive bid/ask spread
+6 stale quotes
+
+======================================================================
+15. BID/ASK QUALITY
+======================================================================
+
+Calculate:
+
+absoluteSpread = ask - bid
+
+spreadPct relative to midpoint where valid.
+
+Guard:
+
+zero bid
+
+zero midpoint
+
+negative / crossed quote
+
+stale quote
+
+Do not treat invalid quotes as liquid.
+
+======================================================================
+16. OPEN INTEREST / VOLUME
+======================================================================
+
+Use existing thresholds if present.
+
+If introducing new thresholds:
+
+document methodology.
+
+Do NOT imply high OI guarantees fill quality.
+
+These are contract-quality research filters.
+
+======================================================================
+17. IV CONTEXT
+======================================================================
+
+For each contract show:
+
+impliedVolatility
+
+relative context if available
+
+expiration IV
+
+term structure if available
+
+Do not call high/low IV good or bad universally.
+
+Interpret relative to strategy family.
+
+======================================================================
+18. GREEKS
+======================================================================
+
+Expose where available:
+
+delta
+
+gamma
+
+theta
+
+vega
+
+Maybe rho.
+
+For multi-leg structures:
+
+calculate net Greeks when mathematically valid.
+
+Do not fabricate missing Greeks.
+
+Do not replace missing Greek with zero.
+
+NULL means unavailable.
+
+======================================================================
+19. MULTI-LEG STRUCTURE BUILDER
+======================================================================
+
+Now that strategy family is selected, build actual RESEARCH structures.
+
+Supported examples:
+
+Bull Call Spread
+Bear Put Spread
+Bull Put Spread
+Bear Call Spread
+Iron Condor
+Iron Butterfly
+Calendar Spread
+Diagonal Spread
+Collar
+Protective Put
+
+and single-leg:
+
+Long Call
+Long Put
+
+Covered Call
+Cash-Secured Put
+
+Build legs deterministically.
+
+Each leg includes:
+
+optionType
+actionRole
+strike
+expiration
+contract symbol
+quantity ratio
+
+Do NOT create broker order instructions yet.
+
+Use:
+
+LONG / SHORT research leg
+
+not:
+
+BUY / SELL order
+
+where feasible.
+
+======================================================================
+20. MULTI-LEG CONSISTENCY
+======================================================================
+
+Validate:
+
+same expiration where strategy requires it
+
+strike ordering
+
+call/put direction
+
+spread width
+
+wing ordering
+
+calendar expiration ordering
+
+diagonal structure ordering
+
+No invalid leg combinations.
+
+Reject malformed structure.
+
+======================================================================
+21. COVERED CALL REQUIREMENT
+======================================================================
+
+Covered Call requires sufficient underlying share context.
+
+If 100-share coverage is required by standard contract multiplier:
+
+validate share coverage.
+
+If user owns fewer shares:
+
+do NOT call structure covered.
+
+Return unavailable or partial limitation.
+
+Do not accidentally construct naked call exposure.
+
+======================================================================
+22. CASH-SECURED PUT
+======================================================================
+
+Estimate future collateral only after actual strike selected.
+
+Collateral research estimate:
+
+strike × contractMultiplier × contractCount
+
+subject to provider/broker rules later.
+
+Label:
+
+Estimated Cash-Secured Capital
+
+not:
+
+Required Broker Buying Power
+
+because broker calculations may differ.
+
+======================================================================
+23. STRUCTURE PRICING
+======================================================================
+
+Calculate research midpoint pricing from leg quotes.
+
+Examples:
+
+netDebit
+
+netCredit
+
+Use bid/ask context.
+
+Do not imply midpoint is fill price.
+
+Display:
+
+Estimated Midpoint
+
+Quote Range
+
+Quote Freshness
+
+Disclaimer:
+
+"Actual execution price may differ materially."
+
+======================================================================
+24. SLIPPAGE / FILL QUALITY
+======================================================================
+
+Do NOT implement sophisticated execution simulation yet.
+
+Expose:
+
+bid/ask width
+
+midpoint
+
+liquidity quality
+
+execution uncertainty
+
+Future 2.7.4/Execution may model slippage.
+
+======================================================================
+25. DEBIT / CREDIT
+======================================================================
+
+Classify:
+
+DEBIT
+
+CREDIT
+
+where mathematically valid.
+
+Do not use "income" as synonym for guaranteed cash generation.
+
+======================================================================
+26. CONTRACT MULTIPLIER
+======================================================================
+
+Use actual normalized multiplier if available.
+
+Default 100 only if underlying contract specification supports standard
+equity option multiplier and architecture already assumes it.
+
+Do not blindly assume 100 for all future instruments.
+
+======================================================================
+27. STRUCTURE RESEARCH METRICS
+======================================================================
+
+Calculate only deterministic current-structure metrics.
+
+Examples:
+
+estimatedDebit
+
+estimatedCredit
+
+width
+
+capitalEstimate
+
+intrinsicValue
+
+extrinsicValue
+
+netDelta
+
+netTheta
+
+netVega
+
+contractLiquidity
+
+No probability of profit unless a validated approved methodology exists.
+
+Do not add POP in this sprint just because existing Probability Engine exists.
+
+Audit it first.
+
+======================================================================
+28. PROBABILITY ENGINE
+======================================================================
+
+Audit existing Probability Engine.
+
+Classify:
+
+SAFE REUSABLE
+
+2.7.4 CANDIDATE
+
+LEGACY
+
+Do NOT automatically expose:
+
+Probability of Profit
+
+Chance of Winning
+
+Win Probability
+
+in 2.7.3.
+
+Those metrics require separate methodology/compliance review.
+
+Prefer deferring to 2.7.4.
+
+======================================================================
+29. CONTRACT RESEARCH FILTER PIPELINE
+======================================================================
+
+Suggested deterministic pipeline:
+
+1. Load authoritative planning context
+2. Validate selected strategy family
+3. Load normalized option chain
+4. Validate freshness
+5. Filter expirations
+6. Apply event rules
+7. Evaluate strike universe
+8. Apply liquidity rules
+9. Apply Greek/moneyness rules
+10. Construct valid strategy structures
+11. Validate legs
+12. Compute current structure metrics
+13. Explain inclusion/rejection
+14. Return candidate set
+
+No LLM.
+
+======================================================================
+30. CANDIDATE COUNT
+======================================================================
+
+Do not overwhelm user.
+
+Return a bounded number of research structures per expiration.
+
+Example:
+
+top 3–5 by transparent contract-quality ordering.
+
+IMPORTANT:
+
+If ordering/ranking is introduced, it must be based ONLY on transparent
+contract research quality metrics such as:
+
+liquidity quality
+
+fit to selected delta/moneyness criteria
+
+data completeness
+
+event alignment
+
+constraint compliance
+
+It must NOT be called:
+
+recommendation score
+trade score
+best trade score
+
+======================================================================
+31. CONTRACT QUALITY ORDERING
+======================================================================
+
+If ordering required:
+
+create:
+
+ContractResearchQuality
+
+Possible categorical dimensions:
+
+EXCELLENT_DATA_QUALITY
+
+STRONG_DATA_QUALITY
+
+ACCEPTABLE_DATA_QUALITY
+
+LIMITED_DATA
+
+or transparent tuple sorting.
+
+Do not create opaque 0–100 "trade score" unless separately approved.
+
+======================================================================
+32. REJECTION TRANSPARENCY
+======================================================================
+
+Return:
+
+contractsEvaluated
+
+contractsRejected
+
+structuresBuilt
+
+structuresRejected
+
+topRejectionReasons[]
+
+This is extremely useful for trust/debugging.
+
+Example:
+
+186 contracts evaluated
+
+142 removed for liquidity
+
+21 removed for delta criteria
+
+8 removed for event window
+
+15 structures constructed
+
+======================================================================
+33. CONTRACT RESEARCH UI
+======================================================================
+
+When user selects an applicable strategy family:
+
+show:
+
+Contract Research
+
+Sections:
+
+Selected Strategy
+
+Options Data Freshness
+
+Expiration Research
+
+Contract Filters
+
+Structure Candidates
+
+Liquidity
+
+Greeks
+
+Volatility
+
+Event Exposure
+
+Why Included
+
+Why Rejected
+
+Research Limitations
+
+No broker button.
+
+======================================================================
+34. EXPIRATION SELECTOR
+======================================================================
+
+Display research candidate expirations.
+
+User may select:
+
+one expiration
+
+or compare a few candidate expirations.
+
+Do not label:
+
+Best Expiration
+
+Use:
+
+Expiration Research Candidates
+
+======================================================================
+35. STRUCTURE CANDIDATE CARD
+======================================================================
+
+Example:
+
+Bull Call Spread Research Candidate
+
+Expiration:
+Sep 20
+
+DTE:
+42
+
+Long Research Leg:
+150 Call
+
+Short Research Leg:
+165 Call
+
+Estimated Midpoint Debit:
+$X
+
+Liquidity:
+Acceptable
+
+Net Delta:
+...
+
+Event Exposure:
+No earnings in holding window
+
+Why Included:
+...
+
+Warnings:
+...
+
+CTA:
+
+Analyze Risk & Scenarios
+
+2.7.4 upcoming.
+
+No:
+
+Place Trade
+
+======================================================================
+36. SINGLE-LEG CANDIDATE CARD
+======================================================================
+
+Long Call / Long Put:
+
+strike
+
+expiration
+
+DTE
+
+delta
+
+IV
+
+theta
+
+volume
+
+OI
+
+bid/ask quality
+
+event exposure
+
+reasons
+
+Again:
+
+Research Candidate
+
+not:
+
+recommended contract.
+
+======================================================================
+37. USER FILTERS
+======================================================================
+
+Allow optional research filters such as:
+
+DTE range
+
+delta range
+
+minimum OI
+
+minimum volume
+
+maximum bid/ask spread
+
+avoid earnings
+
+defined-risk only where applicable
+
+Do not allow filters to override structural validity.
+
+======================================================================
+38. FILTER DEFAULTS
+======================================================================
+
+Defaults must come from:
+
+existing methodology
+
+or documented research defaults.
+
+Do not silently use arbitrary magic numbers.
+
+Expose defaults in Operations Manual.
+
+======================================================================
+39. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Contextual actions:
+
+Explain This Contract Candidate
+
+Compare These Expirations
+
+Explain Liquidity
+
+Explain Greeks
+
+Explain Why This Candidate Passed
+
+Explain Why Contracts Were Rejected
+
+AI receives deterministic contract result.
+
+AI cannot change selected contract set.
+
+======================================================================
+40. RESEARCH GLOSSARY
+======================================================================
+
+Add terms if needed:
+
+contract_research_candidate
+
+expiration_research
+
+strike_research
+
+moneyness
+
+open_interest
+
+bid_ask_spread
+
+implied_volatility
+
+delta
+
+gamma
+
+theta
+
+vega
+
+net_debit
+
+net_credit
+
+estimated_midpoint
+
+liquidity_quality
+
+event_window
+
+Do not duplicate existing educational definitions.
+
+======================================================================
+41. COMPLIANCE
+======================================================================
+
+Canonical disclaimer:
+
+"Options Contract Research identifies contract and structure candidates
+that satisfy deterministic research filters within a strategy family
+selected for further analysis. It does not recommend a specific
+contract or trade and does not constitute investment advice,
+a suitability determination, or an instruction to transact."
+
+Also:
+
+"Quoted prices and calculated midpoint values are research references.
+Actual execution prices may differ."
+
+Use:
+
+Research Candidate
+
+Contract Research
+
+Structure Research
+
+Avoid:
+
+Recommended Contract
+
+Best Contract
+
+Best Strike
+
+Best Expiration
+
+Trade Now
+
+High Probability Trade
+
+Expected Profit
+
+Guaranteed Income
+
+======================================================================
+42. OPTIONS RISK DISCLOSURE
+======================================================================
+
+General options disclosure required.
+
+Specific strategy risk descriptions preserved.
+
+Multi-leg structures must state whether risk is:
+
+defined
+
+underlying-dependent
+
+capital-intensive
+
+or potentially substantial.
+
+No blanket "defined risk" if false.
+
+======================================================================
+43. PRIVACY / SECURITY
+======================================================================
+
+Authenticated.
+
+Planning session ownership.
+
+Portfolio context ownership.
+
+Cross-user session:
+
+404.
+
+Client cannot submit authoritative:
+
+option quote
+Greeks
+market price
+earnings date
+portfolio ownership
+qualification
+
+Server obtains/validates.
+
+======================================================================
+44. PROVIDER ERRORS
+======================================================================
+
+Handle:
+
+provider unavailable
+
+rate limit
+
+chain empty
+
+symbol unsupported
+
+stale chain
+
+partial Greeks
+
+missing bid/ask
+
+Do not return fake contracts.
+
+Each should produce clear limitation/error state.
+
+======================================================================
+45. CACHING
+======================================================================
+
+Option chains may be cached according to existing market-data policy.
+
+Do not violate provider terms.
+
+Cache key should include:
+
+symbol
+provider
+chain timestamp / expiration where needed
+
+Personalized structure result cache:
+
+userId
+planningContextId
+strategyFamily
+filters fingerprint
+chain version
+
+Do not cross-share personalized filter results.
+
+======================================================================
+46. EXTERNAL API EFFICIENCY
+======================================================================
+
+CRITICAL.
+
+Do not call provider once per contract.
+
+One normalized chain request should feed all filters.
+
+No N+1.
+
+Where provider API requires expiration-specific fetch:
+
+batch within provider constraints.
+
+Report provider-call count.
+
+======================================================================
+47. RATE LIMIT SAFETY
+======================================================================
+
+Respect existing Twelve Data / Tradier / TradeStation architecture.
+
+Do not make unrelated market-data calls.
+
+Use broker/options provider appropriate to options data.
+
+Handle 429 explicitly.
+
+No uncontrolled retry loops.
+
+======================================================================
+48. PERFORMANCE
+======================================================================
+
+Measure:
+
+chain retrieval latency
+
+filtering latency
+
+structure-building latency
+
+total endpoint latency
+
+warm-cache latency
+
+Target pure evaluation after chain load:
+
+<250ms for typical chain.
+
+Do not block on AI.
+
+======================================================================
+49. PLATFORM HEALTH
+======================================================================
+
+Extend Trade Planning health.
+
+Metrics:
+
+contractResearchRequests
+
+successfulContractResearch
+
+partialContractResearch
+
+failedContractResearch
+
+averageContractResearchLatencyMs
+
+optionChainProviderStatus
+
+staleChainCount
+
+emptyChainCount
+
+lastSuccessfulContractResearchAt
+
+Admin aggregate only.
+
+No user constraints/portfolio data.
+
+======================================================================
+50. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+options_contract_research_started
+
+options_chain_loaded
+
+options_contract_research_completed
+
+options_contract_research_partial
+
+options_contract_research_failed
+
+Safe metadata:
+
+durationMs
+
+provider
+
+contractCount
+
+expirationCount
+
+structuresBuilt
+
+rejectionCounts
+
+hasEventContext
+
+hasGreeksCoverage
+
+Do not log:
+
+user identity
+
+capital
+
+portfolio value
+
+raw broker credentials
+
+full raw option chain
+
+======================================================================
+51. ROUTING
+======================================================================
+
+Potential APIs:
+
+POST /api/trade-planning/session/:id/options/contracts
+
+GET /api/trade-planning/session/:id/options/contracts
+
+GET /api/trade-planning/session/:id/options/contracts/:candidateId
+
+or equivalent clean architecture.
+
+Protect static/dynamic route ordering.
+
+Permanent route regression rule applies.
+
+======================================================================
+52. PERSISTENCE
+======================================================================
+
+Do not persist raw full option chains unless existing architecture already
+does so and licensing allows it.
+
+Persist:
+
+selected candidate reference
+
+research filters
+
+chain timestamp
+
+provider
+
+if needed for planning continuity.
+
+Do not create unnecessary storage.
+
+======================================================================
+53. 2.7.4 HANDOFF
+======================================================================
+
+Create canonical:
+
+TradeRiskScenarioInput {
+  planningContextId
+  contractResearchCandidateId
+  strategyFamily
+  legs
+  currentStructureMetrics
+  researchThesis
+  invalidationContext
+  planningConstraints
+}
+
+2.7.4 will calculate:
+
+max gain/loss
+
+breakeven
+
+scenario P/L
+
+Greeks sensitivity
+
+time decay
+
+IV change
+
+underlying-price scenarios
+
+possibly probability metrics only if separately approved
+
+Do NOT implement full 2.7.4 here.
+
+======================================================================
+54. NO ORDER MODEL HANDOFF YET
+======================================================================
+
+Contract Research Candidate is NOT an order.
+
+Do not create execution instructions.
+
+Future order preparation must revalidate:
+
+quotes
+
+contracts
+
+position state
+
+buying power
+
+broker permissions
+
+user confirmation
+
+======================================================================
+55. COMMERCIAL EXPERIENCE
+======================================================================
+
+Document only.
+
+FREE:
+
+basic strategy education
+
+limited contract research preview
+
+RETAIL:
+
+full expiration/strike research
+
+liquidity filters
+
+Greeks
+
+multiple contract candidates
+
+Research Workspace explanation
+
+PROFESSIONAL:
+
+advanced filters
+
+more candidate comparison
+
+historical volatility context
+
+advanced chain analysis
+
+RIA:
+
+approved contract methodology
+
+firm liquidity standards
+
+client/account policy integration
+
+Do NOT implement suitability.
+
+INSTITUTIONAL:
+
+custom liquidity rules
+
+large-order considerations
+
+custom option universes
+
+desk workflows
+
+ENTERPRISE:
+
+private options data
+
+custom analytics
+
+API
+
+white-label
+
+No entitlement enforcement.
+
+======================================================================
+56. RIA / INSTITUTIONAL EXTENSION
+======================================================================
+
+Document future:
+
+OptionsContractPolicy {
+  minOpenInterest
+  minVolume
+  maxBidAskSpreadPct
+  allowedDteRanges
+  allowedDeltaRanges
+  prohibitedEventWindows
+  allowedStrategyFamilies
+  requireDefinedRisk
+  customDisclosures
+}
+
+Do not implement firm policy engine now.
+
+======================================================================
+57. ACCESSIBILITY
+======================================================================
+
+Expiration selector keyboard accessible.
+
+Contract table screen-reader compatible.
+
+Strategy cards semantic.
+
+No status by color only.
+
+Risk disclosure accessible.
+
+Mobile touch friendly.
+
+======================================================================
+58. MOBILE
+======================================================================
+
+At 375px:
+
+expiration filters stack
+
+candidate structures become cards
+
+leg tables scroll safely
+
+Greeks readable
+
+liquidity details collapse cleanly
+
+no clipped disclaimers
+
+======================================================================
+59. TESTS
+======================================================================
+
+Target 200+ meaningful assertions where appropriate.
+
+Cover:
+
+canonical types
+
+selected strategy required
+
+no strategy substitution
+
+normalized chain
+
+expiration filtering
+
+DTE
+
+event before expiration
+
+event inside expiration
+
+avoid earnings
+
+strike filtering
+
+ITM
+
+ATM
+
+OTM
+
+delta
+
+missing delta
+
+volume
+
+open interest
+
+bid/ask
+
+spread %
+
+zero bid
+
+invalid quote
+
+stale quote
+
+IV
+
+missing IV
+
+Greeks
+
+missing Greeks
+
+multi-leg construction
+
+bull call spread ordering
+
+bear put spread ordering
+
+bull put spread ordering
+
+bear call spread ordering
+
+iron condor wings
+
+iron butterfly
+
+calendar expirations
+
+diagonal
+
+covered call ownership
+
+protective put ownership
+
+collar ownership
+
+cash-secured capital estimate
+
+long call
+
+long put
+
+debit
+
+credit
+
+midpoint
+
+contract multiplier
+
+liquidity classifications
+
+rejection reasons
+
+candidate limits
+
+contract-quality ordering
+
+no recommendation score
+
+no best contract
+
+no best strike
+
+no best expiration
+
+no expected profit
+
+no POP
+
+no order
+
+server authoritative data
+
+cross-user 404
+
+provider failure
+
+429 handling
+
+empty chain
+
+cache
+
+no N+1
+
+Platform Health
+
+structured logs
+
+glossary
+
+compliance
+
+options disclosure
+
+routing
+
+accessibility
+
+mobile
+
+Operations Manual
+
+commercial review
+
+RIA extension
+
+2.7.4 handoff
+
+roadmap discipline
+
+======================================================================
+60. UAT
+======================================================================
+
+Document and run:
+
+1. Open qualified opportunity.
+2. Open Trade Planning.
+3. Select Options Research.
+4. Select an APPLICABLE strategy family.
+5. Continue to Contract Research.
+6. Verify option chain freshness.
+7. Verify expiration candidates.
+8. Verify DTE.
+9. Verify earnings/event labels.
+10. Select expiration.
+11. Verify strike candidates.
+12. Verify liquidity.
+13. Verify OI.
+14. Verify volume.
+15. Verify bid/ask.
+16. Verify IV.
+17. Verify Greeks.
+18. Verify structure candidate.
+19. Verify multi-leg ordering.
+20. Verify estimated midpoint.
+21. Verify actual fill disclaimer.
+22. Verify rejection reasons.
+23. Modify DTE filter.
+24. Modify delta filter.
+25. Modify liquidity filter.
+26. Avoid earnings.
+27. Compare expirations.
+28. Explain candidate in Research Workspace.
+29. Verify AI cannot substitute contract.
+30. Verify no Best Contract.
+31. Verify no Recommended Contract.
+32. Verify no probability-of-profit.
+33. Verify no order ticket.
+34. Verify no broker submission.
+35. Provider unavailable state.
+36. Empty chain state.
+37. Stale chain state.
+38. Missing Greeks state.
+39. No-portfolio user.
+40. Cross-user session → 404.
+41. Direct refresh.
+42. Browser navigation.
+43. Mobile.
+44. Accessibility.
+45. Platform Health.
+46. No unexpected 500.
+47. Verify provider-call count.
+48. Verify no N+1.
+
+======================================================================
+61. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/31-options-contract-research.md
+
+Document:
+
+architecture
+
+provider ownership
+
+normalized contract model
+
+option-chain retrieval
+
+freshness
+
+expiration methodology
+
+DTE methodology
+
+event handling
+
+strike methodology
+
+delta/moneyness
+
+liquidity rules
+
+bid/ask
+
+open interest
+
+volume
+
+IV
+
+Greeks
+
+multi-leg construction
+
+covered-call ownership
+
+cash-secured capital
+
+pricing/midpoint limitations
+
+contract-quality ordering
+
+rejection transparency
+
+API
+
+cache
+
+provider errors
+
+rate limits
+
+performance
+
+security
+
+compliance
+
+options risk disclosure
+
+Platform Health
+
+logging
+
+UAT
+
+troubleshooting
+
+2.7.4 handoff
+
+future execution handoff
+
+RIA/Institutional extension
+
+commercialization
+
+Update Research Glossary documentation.
+
+======================================================================
+62. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Selected strategy family required.
+
+B. Engine does not choose strategy family.
+
+C. Canonical contract research model exists.
+
+D. One normalized options data path.
+
+E. Options data freshness exposed.
+
+F. Expiration research deterministic.
+
+G. Event handling deterministic.
+
+H. Strike research deterministic.
+
+I. Liquidity filters work.
+
+J. Invalid quotes rejected.
+
+K. Greeks handled correctly.
+
+L. Missing Greeks remain missing.
+
+M. Multi-leg structures valid.
+
+N. Covered Call requires ownership.
+
+O. Protective structures require ownership.
+
+P. Cash-secured estimate transparent.
+
+Q. Midpoint not represented as execution price.
+
+R. Rejection reasons exposed.
+
+S. No opaque recommendation score.
+
+T. No Best Contract.
+
+U. No Best Strike.
+
+V. No Best Expiration.
+
+W. No Expected Profit language.
+
+X. No unapproved probability metric.
+
+Y. No order ticket.
+
+Z. No broker submission.
+
+AA. Server authoritative data.
+
+AB. Cross-user isolation.
+
+AC. Provider errors handled.
+
+AD. 429 handled.
+
+AE. No N+1.
+
+AF. Platform Health updated.
+
+AG. Structured logs safe.
+
+AH. Full tests pass.
+
+AI. npm run build passes.
+
+AJ. Zero new TS errors.
+
+AK. Operations Manual updated.
+
+AL. 2.7.4 handoff exists.
+
+AM. Roadmap alignment confirmed.
+
+======================================================================
+63. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing options infrastructure discovered
+3. Component classification
+4. Safe reusable components
+5. Legacy components avoided
+6. Files changed
+7. Schema impact
+8. Options data provider architecture
+9. Normalized contract model
+10. Contract Research model
+11. Options chain retrieval
+12. Provider-call count
+13. Freshness handling
+14. Expiration methodology
+15. DTE rules
+16. Event handling
+17. Strike methodology
+18. Delta/moneyness
+19. Liquidity methodology
+20. Bid/ask methodology
+21. Open interest/volume
+22. IV context
+23. Greeks
+24. Multi-leg construction
+25. Covered Call handling
+26. Protective strategies
+27. Cash-Secured Put capital estimate
+28. Structure pricing
+29. Contract-quality ordering
+30. Rejection transparency
+31. Client UX
+32. Research Workspace integration
+33. Research Glossary
+34. API
+35. Persistence/cache
+36. Provider errors/rate limits
+37. Partial-data resilience
+38. Compliance audit
+39. Options risk disclosure
+40. Security
+41. Performance
+42. Platform Health
+43. Structured logging
+44. Routing regression
+45. Accessibility/mobile
+46. Tests added
+47. Full test count
+48. npm run build
+49. Typecheck
+50. Production UAT
+51. Free value
+52. Retail value
+53. Professional value
+54. RIA extension
+55. Institutional extension
+56. Enterprise extension
+57. 2.7.4 handoff
+58. Future execution handoff
+59. Improvement suggestions
+60. Deferred backlog
+61. Roadmap Alignment
+62. Operations Manual Updated: YES/NO
+63. Operations Manual Files Updated
+64. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+64. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.3
+Options Contract / Expiration / Strike Research
+
+NEXT:
+
+2.7.4
+Trade Risk & Scenario Analysis
+
+THEN:
+
+2.7.5
+Trade Plan Workspace
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+LATER:
+
+Broker-Assisted Execution
+
+AI Agents
+
+Professional / RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+======================================================================
+65. IMPROVEMENT CAPTURE RULE
+======================================================================
+
+Do not implement unrelated discoveries automatically.
+
+Classify:
+
+Critical Production Fix
+
+2.7.3 Requirement
+
+2.7.4 Risk Analysis Requirement
+
+2.7.5 Trade Plan Requirement
+
+Future Execution
+
+Professional / RIA
+
+Institutional
+
+Backlog
+
+Likely future candidates:
+
+probability metrics
+
+expected-move calculations
+
+volatility surface
+
+skew analysis
+
+term structure visualization
+
+slippage estimates
+
+commission modeling
+
+assignment/exercise scenarios
+
+early exercise risk
+
+dividend/ex-date effects
+
+portfolio Greeks
+
+correlation
+
+tax implications
+
+Do not pull these forward unless needed for correctness.
+
+======================================================================
+66. PERMANENT ARCHITECTURE RULE
+======================================================================
+
+Document:
+
+Contract Research may rank or order candidates only WITHIN a
+user-selected strategy family and only using transparent contract-quality
+criteria such as:
+
+data freshness
+
+liquidity
+
+constraint compliance
+
+delta/moneyness fit
+
+event alignment
+
+data completeness
+
+It may NEVER:
+
+choose the underlying security
+
+change the research thesis
+
+choose a different strategy family automatically
+
+represent contract quality as a personalized recommendation
+
+or convert a research candidate into an order.
+
+======================================================================
+67. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not implement 2.7.4 risk/scenario analytics beyond the minimum
+current-structure metrics required for contract research.
+
+Do not implement execution.
+
+Complete Sprint 2.7.3 on the current tree.
+
+Run:
+
+full project tests
+
+npm run build
+
+npx tsc --noEmit
+
+Update the Operations Manual.
+
+Return the full completion report for review before beginning Sprint 2.7.4.

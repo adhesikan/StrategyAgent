@@ -3700,3 +3700,78 @@ export const tradePlanningSessions = pgTable("trade_planning_sessions", {
 
 export type TradePlanningSessionRow    = typeof tradePlanningSessions.$inferSelect;
 export type InsertTradePlanningSession = typeof tradePlanningSessions.$inferInsert;
+
+// ============================================================================
+// Trade Plan Workspace — Sprint 2.7.5
+// ============================================================================
+
+/**
+ * trade_plans — canonical user-saved research plans.
+ * Strict user ownership. No broker/order fields.
+ * Snapshots preserve what the user saw at plan creation (immutable).
+ */
+export const tradePlans = pgTable("trade_plans", {
+  id:                    varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:                text("user_id").notNull(),
+  symbol:                varchar("symbol", { length: 20 }).notNull(),
+  companyName:           text("company_name"),
+  planType:              text("plan_type").notNull(),               // EQUITY | OPTIONS
+  status:                text("status").notNull().default("DRAFT"), // TradePlanStatus
+  planHealth:            text("plan_health").notNull().default("UNKNOWN"), // TradePlanHealth
+  planningContextId:     text("planning_context_id").notNull(),
+  researchGoalId:        text("research_goal_id"),
+  portfolioId:           text("portfolio_id"),
+  selectedExpressionFamily: text("selected_expression_family").notNull(),
+  // Immutable snapshots (JSONB — preserved at plan creation)
+  researchSnapshot:      jsonb("research_snapshot").notNull().$type<Record<string, unknown>>(),
+  planningSnapshot:      jsonb("planning_snapshot").notNull().$type<Record<string, unknown>>(),
+  structureSnapshot:     jsonb("structure_snapshot").$type<Record<string, unknown>>(),
+  riskSnapshot:          jsonb("risk_snapshot").$type<Record<string, unknown>>(),
+  // Mutable user data
+  monitoringSnapshot:    jsonb("monitoring_snapshot").notNull().$type<Record<string, unknown>>().default({}),
+  userNotes:             text("user_notes"),                        // private; never logged
+  reviewChecklist:       jsonb("review_checklist").notNull().$type<Record<string, unknown>>().default({}),
+  // Versioning
+  version:               integer("version").notNull().default(1),
+  // Timestamps
+  createdAt:             timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt:             timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  archivedAt:            timestamp("archived_at", { withTimezone: true }),
+  completedResearchAt:   timestamp("completed_research_at", { withTimezone: true }),
+  monitoringStartedAt:   timestamp("monitoring_started_at", { withTimezone: true }),
+  // Creation-time context
+  freshnessAtCreation:   text("freshness_at_creation").notNull().default("unknown"),
+  limitations:           jsonb("limitations").notNull().$type<string[]>().default([]),
+}, (t) => ({
+  idxUserId:        index("idx_trade_plans_user_id").on(t.userId),
+  idxUserStatus:    index("idx_trade_plans_user_status").on(t.userId, t.status),
+  idxUserSymbol:    index("idx_trade_plans_user_symbol").on(t.userId, t.symbol),
+  idxCreatedAt:     index("idx_trade_plans_created_at").on(t.createdAt),
+}));
+
+export type TradePlanRow    = typeof tradePlans.$inferSelect;
+export type InsertTradePlan = typeof tradePlans.$inferInsert;
+
+/**
+ * trade_plan_versions — immutable version history.
+ * Created when user explicitly updates authoritative plan components.
+ * Preserves created snapshot + latest snapshot for traceability.
+ */
+export const tradePlanVersions = pgTable("trade_plan_versions", {
+  id:               varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tradePlanId:      varchar("trade_plan_id").notNull(),
+  userId:           text("user_id").notNull(),           // for ownership validation
+  version:          integer("version").notNull(),
+  changeReason:     text("change_reason"),
+  researchSnapshot: jsonb("research_snapshot").notNull().$type<Record<string, unknown>>(),
+  planningSnapshot: jsonb("planning_snapshot").notNull().$type<Record<string, unknown>>(),
+  structureSnapshot: jsonb("structure_snapshot").$type<Record<string, unknown>>(),
+  riskSnapshot:     jsonb("risk_snapshot").$type<Record<string, unknown>>(),
+  createdAt:        timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  idxPlanId:        index("idx_tpv_plan_id").on(t.tradePlanId),
+  idxUserId:        index("idx_tpv_user_id").on(t.userId),
+}));
+
+export type TradePlanVersionRow    = typeof tradePlanVersions.$inferSelect;
+export type InsertTradePlanVersion = typeof tradePlanVersions.$inferInsert;

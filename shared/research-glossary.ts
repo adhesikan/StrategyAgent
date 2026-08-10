@@ -1843,11 +1843,82 @@ const RISK_SCENARIO_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
 ];
 
 /** Full merged glossary (all modules) — use this for full lookup */
+// ============================================================================
+// Trade Plan Workspace Glossary (Sprint 2.7.5)
+// ============================================================================
+
+const TRADE_PLAN_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:             "trade_plan",
+    label:           "Trade Plan",
+    shortDefinition: "A user-saved research record combining thesis, structure, risk analysis, and monitoring conditions.",
+    fullDefinition:  "A Trade Plan is a user-saved research record that preserves the research evidence, planning assumptions, selected hypothetical structure, risk analysis, and monitoring conditions the user reviewed at a point in time. It does not constitute investment advice, a personalized recommendation, suitability determination, or instruction to transact.",
+    caution:         "A Trade Plan is a personal research record — not a system recommendation or authorization to trade.",
+  },
+  {
+    key:             "trade_plan_status",
+    label:           "Trade Plan Status",
+    shortDefinition: "The lifecycle state of a trade plan: Draft, Research Complete, Monitoring, Archived, or Invalidated.",
+    fullDefinition:  "Trade Plan Status tracks where a user is in their research process. DRAFT: still assembling the plan. RESEARCH_COMPLETE: research reviewed and plan saved. MONITORING: watching research conditions over time. ARCHIVED: no longer active. INVALIDATED: a documented thesis invalidation condition was observed.",
+    caution:         "Status does not imply a trade recommendation or authorization. INVALIDATED means a research condition was observed — not an instruction to exit a position.",
+  },
+  {
+    key:             "research_review_checklist",
+    label:           "Research Review Checklist",
+    shortDefinition: "A personal research aid tracking which research areas the user has reviewed.",
+    fullDefinition:  "The Research Review Checklist helps users track which research areas they have personally reviewed before saving a plan. It covers research evidence, risk factors, thesis invalidation conditions, data freshness, event/earnings exposure, liquidity, and planning constraints. It is not an approval, compliance certification, or determination that a trade is appropriate.",
+    caution:         "The checklist is a personal aid — not a regulatory approval or compliance certification.",
+  },
+  {
+    key:             "saved_research_snapshot",
+    label:           "Saved Research Snapshot",
+    shortDefinition: "An immutable record of research evidence captured at the time the plan was created.",
+    fullDefinition:  "The Saved Research Snapshot preserves research scores, evidence items, risk factors, and invalidation conditions as they existed when the user saved the plan. It is never automatically updated when current research changes. The snapshot enables comparison between creation-time evidence and current evidence.",
+    caution:         "Snapshot data reflects what was available at plan creation. Current market data may differ.",
+  },
+  {
+    key:             "current_research_comparison",
+    label:           "Current Research Comparison",
+    shortDefinition: "Deterministic comparison between saved research snapshot and current authoritative research.",
+    fullDefinition:  "The Current Research Comparison shows how research evidence has changed since the plan was created. It computes score changes, risk level changes, market regime changes, qualification changes, and whether any thesis invalidation conditions are now observed. It uses existing Change Intelligence thresholds — no new scoring formulas.",
+    caution:         "Changes in research evidence are informational. They do not constitute advice to act or exit a position.",
+  },
+  {
+    key:             "plan_health",
+    label:           "Plan Health",
+    shortDefinition: "Deterministic research state indicating how current evidence compares to evidence at plan creation.",
+    fullDefinition:  "Plan Health is a deterministic, non-prescriptive assessment of how current research evidence compares to the saved snapshot. States: CURRENT (research consistent), CHANGED (minor change), REQUIRES_REVIEW (material change detected), THESIS_INVALIDATED (invalidation condition observed), DATA_STALE (data too old to evaluate reliably), UNKNOWN (current research unavailable).",
+    caution:         "Plan Health is a research state — not a trade status or instruction. THESIS_INVALIDATED does not mean exit a position.",
+  },
+  {
+    key:             "research_requires_review",
+    label:           "Research Requires Review",
+    shortDefinition: "Plan health state indicating a material evidence change since plan creation.",
+    fullDefinition:  "REQUIRES_REVIEW is triggered when a material evidence change is detected: research score changed by 5+ points, qualification status changed, or a material risk level or market regime shift occurred. The user should compare current and saved research to decide how to proceed.",
+    caution:         "Requires Review is informational — it is not a recommendation to act.",
+  },
+  {
+    key:             "thesis_invalidated",
+    label:           "Thesis Invalidation Observed",
+    shortDefinition: "A documented research thesis invalidation condition was observed in current research.",
+    fullDefinition:  "THESIS_INVALIDATED is triggered when a canonical invalidation condition — previously documented by the research engine — is now observed in current authoritative research. Examples include a stock closing below a key level documented as an invalidation condition at plan creation.",
+    caution:         "Thesis Invalidation is a research observation — not an instruction to exit a position or take any action. If you have an open position, consult your risk management plan.",
+  },
+  {
+    key:             "plan_version",
+    label:           "Plan Version",
+    shortDefinition: "An integer counter incremented when the user explicitly updates authoritative plan components.",
+    fullDefinition:  "Plan versioning allows users to track when they have materially updated a trade plan. When a user creates a new version, the previous snapshot is preserved in the version history before updating. The version integer starts at 1 and increments with each explicit update. This ensures traceability without silently overwriting the original research record.",
+    caution:         "Versions preserve research records — not trade performance records.",
+  },
+];
+
 export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   ..._extendedGlossary,
   ...OPTIONS_STRATEGY_ENTRIES,
   ...CONTRACT_RESEARCH_ENTRIES,
   ...RISK_SCENARIO_ENTRIES,
+  ...TRADE_PLAN_ENTRIES,
 ];
 
 /** Alias for backward compatibility */

@@ -1,0 +1,2579 @@
+# Sprint 2.7.5 — Trade Plan Workspace
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.5 — Trade Plan Workspace
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Workspace v2
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Trade Planning Foundation
+✓ Equity Trade Planning Engine
+✓ Options Strategy Matching Engine
+✓ Options Contract Research Engine
+✓ Trade Risk & Scenario Analysis
+✓ Platform Operations Center
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to the user?
+
+Portfolio Intelligence answers:
+
+HOW the research relates to current exposure?
+
+Trade Planning Foundation answers:
+
+HOW the thesis could potentially be expressed?
+
+Equity Planning answers:
+
+HOW an equity research scenario could be structured.
+
+Options Strategy Matching answers:
+
+WHICH options strategy families are structurally compatible.
+
+Options Contract Research answers:
+
+WHICH contracts / expirations / strikes are worth researching.
+
+Trade Risk & Scenario Analysis answers:
+
+WHAT the economic/risk consequences of a selected structure look like.
+
+Trade Plan Workspace answers:
+
+HOW do we assemble all of that evidence into one persistent,
+user-reviewed research plan?
+
+Execution remains separate.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker order ticket
+- broker order submission
+- one-click execution
+- automated execution
+- auto trading
+- order type selection
+- live execution price
+- autonomous agents
+- portfolio rebalancing
+- suitability scoring
+- personalized trade recommendations
+- "best trade"
+- "approved trade"
+- automatic strategy substitution
+- automatic contract substitution
+- probability of profit
+- expected return
+- tax optimization
+
+DO NOT change:
+
+- Opportunity Intelligence scoring
+- TradePlanningContext semantics
+- Equity Planning methodology
+- Options Strategy Matching rules
+- Contract Research methodology
+- Risk & Scenario Analysis methodology
+- Goal Matching methodology
+- Portfolio Intelligence methodology
+- Research Glossary meanings
+
+This sprint is ASSEMBLY + PERSISTENCE + USER WORKFLOW only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a canonical Trade Plan Workspace that allows a user to:
+
+1. Start from an existing qualified research candidate.
+2. Review the authoritative research thesis.
+3. Attach goal context if relevant.
+4. Attach portfolio context if relevant.
+5. Select an existing planning expression.
+6. Review equity or options planning output.
+7. Review risk/scenario analysis.
+8. Record user notes.
+9. Record monitoring criteria.
+10. Save the plan.
+11. Reopen the plan later.
+12. Track plan status/history.
+13. Compare current evidence with evidence at plan creation.
+14. Continue research without re-entering context.
+
+The key user question is:
+
+"What is the complete research plan I created around this candidate?"
+
+NOT:
+
+"Should I place this trade?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+trade_planning_sessions
+
+TradePlanningContext
+
+EquityPlanningScenario
+
+OptionsStrategyMatchResult
+
+OptionsContractResearchResult
+
+TradeRiskScenarioResult
+
+TradePlanInput
+
+Opportunity Intelligence
+
+Opportunity Workspace v2
+
+Research Workspace v2
+
+Research Goals
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Research Monitoring
+
+Research Reports
+
+existing journals / trade notes
+
+existing trade journal tables
+
+existing execution/order records
+
+existing position protection plans
+
+existing InstaTrade ticket
+
+existing broker order UI
+
+existing trade plan code
+
+portfolio-trade-plan.ts
+
+best-trade-finder.ts
+
+Research Glossary
+
+Platform Health
+
+Operations Manual
+
+Report:
+
+A. Existing trade plan persistence
+B. Existing note/journal persistence
+C. Existing status concepts
+D. Existing execution-oriented models to isolate
+E. Existing broker/order fields that must not leak into this sprint
+F. Existing monitoring models safe to reuse
+G. Existing version/history infrastructure
+H. Existing user ownership patterns
+I. Schema changes actually required
+J. Legacy components to avoid
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL TRADE PLAN MODEL
+======================================================================
+
+Create a reusable canonical model.
+
+Suggested:
+
+TradePlan {
+  id
+  userId
+
+  symbol
+  planningContextId
+
+  planType
+  status
+
+  researchGoalId?
+  portfolioId?
+
+  researchSnapshot
+  planningSnapshot
+  structureSnapshot?
+  riskSnapshot?
+
+  monitoringPlan
+  userNotes?
+
+  createdAt
+  updatedAt
+  completedResearchAt?
+  monitoringStartedAt?
+  archivedAt?
+
+  version
+
+  freshnessAtCreation
+  limitations[]
+}
+
+Plan types:
+
+EQUITY
+OPTIONS
+
+No EXECUTION type.
+
+======================================================================
+3. STATUS MODEL
+======================================================================
+
+Use non-prescriptive statuses.
+
+Suggested:
+
+DRAFT
+
+RESEARCH_COMPLETE
+
+MONITORING
+
+ARCHIVED
+
+OPTIONAL:
+INVALIDATED
+
+if implemented only as a deterministic research-thesis state.
+
+Avoid:
+
+RECOMMENDED
+
+APPROVED
+
+READY_TO_BUY
+
+TRADE_NOW
+
+EXECUTABLE
+
+AUTHORIZED
+
+FILLED
+
+======================================================================
+4. STATUS SEMANTICS
+======================================================================
+
+DRAFT:
+
+User is still assembling/reviewing research plan.
+
+RESEARCH_COMPLETE:
+
+User has reviewed the available research, selected planning structure,
+and saved the plan.
+
+MONITORING:
+
+User wants to monitor research conditions over time.
+
+ARCHIVED:
+
+No longer active.
+
+INVALIDATED:
+
+Only if current authoritative research evidence has crossed a documented
+thesis invalidation condition.
+
+Do NOT mark INVALIDATED merely because price moved adversely.
+
+Use canonical invalidation evidence.
+
+======================================================================
+5. PLAN SNAPSHOTS
+======================================================================
+
+Critical architecture decision:
+
+The plan should preserve what the user saw AT THE TIME the plan was saved.
+
+Do not merely point to mutable current data.
+
+Persist compact snapshots of:
+
+research thesis
+
+research score context
+
+selected expression family
+
+selected equity scenario OR contract candidate
+
+risk analysis summary
+
+monitoring criteria
+
+freshness timestamps
+
+methodology versions
+
+Do NOT duplicate raw full option chains.
+
+Do NOT persist raw provider payloads unnecessarily.
+
+======================================================================
+6. RESEARCH SNAPSHOT
+======================================================================
+
+Persist compact research snapshot.
+
+Suggested:
+
+TradePlanResearchSnapshot {
+  opportunityId
+  opportunityType
+  researchScore
+  technicalScore
+  fundamentalScore
+  institutionalScore
+  evidenceConfidence
+  riskLevel
+  marketRegime
+
+  primaryEvidence[]
+  secondaryEvidence[]
+  riskFactors[]
+  invalidatesThesis[]
+
+  generatedAt
+}
+
+This allows later comparison:
+
+Plan Creation Research
+vs
+Current Research
+
+======================================================================
+7. PLANNING SNAPSHOT
+======================================================================
+
+Persist:
+
+planning constraints
+
+research horizon
+
+selected expression family
+
+goal context summary
+
+portfolio context summary if used
+
+Do not persist sensitive unrelated account information.
+
+======================================================================
+8. EQUITY PLAN SNAPSHOT
+======================================================================
+
+For EQUITY plan:
+
+persist selected EquityPlanningScenario summary.
+
+Suggested:
+
+referencePrice
+
+entryFramework
+
+invalidationFramework
+
+hypotheticalSizing
+
+scenarioSummary
+
+monitoringPlan
+
+marketDataAsOf
+
+Do not create an order quantity field.
+
+If hypothetical shares are present:
+
+label clearly as scenario quantity.
+
+======================================================================
+9. OPTIONS PLAN SNAPSHOT
+======================================================================
+
+For OPTIONS plan:
+
+persist selected:
+
+strategy family
+
+Contract Research Candidate
+
+legs
+
+expiration
+
+strikes
+
+estimated midpoint
+
+liquidity quality
+
+Greeks
+
+event context
+
+risk analysis summary
+
+Do NOT persist broker order instructions.
+
+Legs are RESEARCH STRUCTURE LEGS.
+
+Not order legs.
+
+======================================================================
+10. RISK SNAPSHOT
+======================================================================
+
+Persist compact risk-analysis summary.
+
+Possible:
+
+maxLoss
+maxGain
+breakevens
+capitalProfile
+netGreeks
+riskFlags
+eventExposure
+liquidityRisk
+constraintStatus
+scenarioConfig
+generatedAt
+methodologyVersion
+
+Do not persist huge scenario grids unless required.
+
+If full scenario results needed:
+store compressed/JSONB intentionally.
+
+======================================================================
+11. USER NOTES
+======================================================================
+
+Allow user to add notes such as:
+
+Why I am researching this
+
+What I want to monitor
+
+Questions to revisit
+
+Personal observations
+
+User notes are private.
+
+Do not send notes to admin telemetry.
+
+Do not log note contents.
+
+======================================================================
+12. USER CHECKLIST
+======================================================================
+
+Optional but valuable.
+
+Create simple user checklist.
+
+Examples:
+
+Reviewed research evidence
+
+Reviewed risk factors
+
+Reviewed thesis invalidation
+
+Reviewed data freshness
+
+Reviewed event/earnings exposure
+
+Reviewed liquidity
+
+Reviewed planning constraints
+
+This checklist must NOT imply regulatory approval.
+
+Do not call it:
+
+Trade Approval Checklist
+
+Use:
+
+Research Review Checklist
+
+======================================================================
+13. PLAN CREATION FLOW
+======================================================================
+
+From:
+
+/trade-planning/:symbol
+
+after the user has selected an equity or options planning path and reviewed
+risk:
+
+CTA:
+
+Save Research Plan
+
+or:
+
+Create Trade Plan
+
+Preferred page language:
+
+Trade Plan
+
+Subtitle:
+
+"A saved research plan that brings together the thesis, planning
+structure, risk analysis, and monitoring conditions you selected."
+
+======================================================================
+14. PLAN ROUTES
+======================================================================
+
+Create canonical routes.
+
+Suggested:
+
+/trade-plans
+
+/trade-plans/:id
+
+Potential future static routes:
+
+/trade-plans/active
+/trade-plans/archived
+
+If added:
+
+static before dynamic.
+
+Permanent route regression rule applies.
+
+======================================================================
+15. PLAN LIBRARY
+======================================================================
+
+Create:
+
+/trade-plans
+
+Show:
+
+Active Plans
+
+Research Complete
+
+Monitoring
+
+Archived
+
+Search
+
+Filters
+
+Possible filters:
+
+symbol
+
+planType
+
+status
+
+strategyFamily
+
+goal
+
+portfolio
+
+date
+
+No P/L performance ranking.
+
+No "best performing plans."
+
+======================================================================
+16. PLAN CARD
+======================================================================
+
+Each card:
+
+Symbol
+
+Company Name
+
+Plan Type
+
+Expression / Strategy
+
+Research Score at Creation
+
+Current Research Score
+
+Research Change Direction
+
+Risk Summary
+
+Created At
+
+Current Status
+
+Freshness
+
+Actions:
+
+Open
+
+Continue Research
+
+Monitor
+
+Archive
+
+No:
+
+Execute
+
+Trade Now
+
+======================================================================
+17. PLAN DETAIL PAGE
+======================================================================
+
+Sections:
+
+Plan Header
+
+Research Thesis
+
+Why This Qualified
+
+What Has Changed Since Plan Creation
+
+Goal Context
+
+Portfolio Context
+
+Planning Structure
+
+Equity Scenario OR Options Structure
+
+Risk & Scenario Summary
+
+Thesis Invalidation
+
+Monitoring Plan
+
+Research Review Checklist
+
+User Notes
+
+Data Freshness
+
+Research History
+
+Related Research
+
+Compliance Disclaimer
+
+======================================================================
+18. WHAT CHANGED SINCE PLAN CREATION
+======================================================================
+
+One of the most valuable features.
+
+Compare saved snapshot against current authoritative research.
+
+Show:
+
+Research Score change
+
+Technical Score change
+
+Fundamental Score change
+
+Institutional Score change
+
+Risk changes
+
+Qualification changes
+
+Market regime change
+
+Theme/sector changes
+
+Thesis invalidation state
+
+Event changes if available
+
+Use existing Change Intelligence.
+
+Do not invent new formulas.
+
+======================================================================
+19. PLAN HEALTH
+======================================================================
+
+Create deterministic plan research state.
+
+Suggested:
+
+CURRENT
+
+CHANGED
+
+REQUIRES_REVIEW
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+UNKNOWN
+
+This is NOT a trade status.
+
+Examples:
+
+Research unchanged:
+CURRENT
+
+Material evidence change:
+REQUIRES_REVIEW
+
+Canonical invalidation triggered:
+THESIS_INVALIDATED
+
+Critical stale data:
+DATA_STALE
+
+Document rules.
+
+======================================================================
+20. NO AUTOMATIC PLAN MUTATION
+======================================================================
+
+If research changes:
+
+do NOT rewrite saved plan snapshot.
+
+Instead show:
+
+Saved Research
+
+Current Research
+
+Difference
+
+User may choose:
+
+Update Plan
+
+Create New Version
+
+Archive
+
+Keep Existing Plan
+
+======================================================================
+21. VERSIONING
+======================================================================
+
+Implement basic plan versioning if architecture permits cleanly.
+
+Preferred:
+
+TradePlan version integer
+
+When user explicitly updates authoritative plan components:
+
+version += 1
+
+Preserve previous version.
+
+At minimum preserve:
+
+created snapshot
+
+latest snapshot
+
+If full version history is too large:
+
+create clean interface and defer storage expansion.
+
+But do not silently overwrite without traceability.
+
+======================================================================
+22. VERSION HISTORY UI
+======================================================================
+
+If implemented:
+
+Version 1 — Aug 10
+
+Version 2 — Aug 12
+
+Show:
+
+what changed
+
+reason if user supplied
+
+research snapshot time
+
+No Git-like complexity needed.
+
+======================================================================
+23. MONITORING PLAN INTEGRATION
+======================================================================
+
+Reuse existing Research Monitor architecture where possible.
+
+A plan may monitor:
+
+Research Score changes
+
+Qualification changes
+
+Technical structure
+
+Fundamental evidence
+
+Institutional evidence
+
+Sector/theme leadership
+
+Market regime
+
+Thesis invalidation
+
+Event window
+
+Data freshness
+
+Do NOT build 2.7.6 lifecycle engine yet.
+
+Only create the clean handoff.
+
+======================================================================
+24. 2.7.6 HANDOFF MODEL
+======================================================================
+
+Create canonical:
+
+TradePlanMonitoringInput {
+  tradePlanId
+  symbol
+  researchSnapshot
+  invalidationConditions
+  monitoringPlan
+  structureSummary
+  riskFlags
+  freshnessRequirements
+}
+
+2.7.6 will consume this.
+
+Do not implement lifecycle monitoring here.
+
+======================================================================
+25. RESEARCH MONITOR LINK
+======================================================================
+
+If a symbol/goal is already monitored:
+
+show monitoring state.
+
+Allow:
+
+Open Research Monitor
+
+Potentially:
+
+Start Monitoring Plan
+
+only if it reuses existing monitoring service safely.
+
+Do not create duplicate monitoring engine.
+
+======================================================================
+26. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Contextual actions:
+
+Explain This Plan
+
+Challenge the Thesis
+
+Explain What Changed
+
+Explain Risk Analysis
+
+Compare Saved vs Current Research
+
+Explain Invalidation
+
+AI receives authoritative TradePlan + current research comparison.
+
+AI may explain.
+
+AI may NOT:
+
+change plan data
+
+select another contract automatically
+
+recommend execution
+
+generate broker order
+
+======================================================================
+27. OPPORTUNITY WORKSPACE INTEGRATION
+======================================================================
+
+For a symbol with active trade plans:
+
+Opportunity Workspace may show:
+
+Saved Research Plans
+
+Plan Type
+
+Status
+
+Created
+
+Research Change
+
+CTA:
+
+Open Plan
+
+Keep lightweight.
+
+No duplicate plan UI.
+
+======================================================================
+28. GOALS INTEGRATION
+======================================================================
+
+Show associated Research Goal if present.
+
+If goal changes later:
+
+do not rewrite old plan.
+
+Show:
+
+Goal at Plan Creation
+
+Current Goal Context
+
+only if relevant.
+
+======================================================================
+29. PORTFOLIO CONTEXT
+======================================================================
+
+If portfolio used at creation:
+
+preserve compact context.
+
+Possible:
+
+portfolio weight
+
+position status
+
+concentration context
+
+Do not persist whole portfolio.
+
+Current portfolio state may be compared separately.
+
+Do NOT recommend changes.
+
+======================================================================
+30. PLAN DUPLICATION
+======================================================================
+
+Allow:
+
+Duplicate Plan
+
+Useful for exploring another structure.
+
+New plan gets:
+
+new ID
+
+new timestamp
+
+same starting context where still valid
+
+But authoritative market/research context should be refreshed on opening
+or creation.
+
+Do not blindly clone stale quotes as current.
+
+======================================================================
+31. ARCHIVE / DELETE
+======================================================================
+
+Prefer archive.
+
+User can archive plan.
+
+Hard delete only if consistent with product data policy.
+
+If delete exists:
+
+ownership enforced.
+
+Document retention.
+
+======================================================================
+32. PRIVACY
+======================================================================
+
+Trade plans may contain private financial/planning data.
+
+Requirements:
+
+authenticated
+
+strict user ownership
+
+no public share links
+
+no admin exposure of plan contents
+
+no user notes in logs
+
+no capital values in health metrics
+
+no portfolio values in admin views
+
+Cross-user ID:
+404.
+
+======================================================================
+33. DATABASE
+======================================================================
+
+Create minimum necessary schema.
+
+Possible:
+
+trade_plans
+
+trade_plan_versions if versioning implemented
+
+Suggested fields:
+
+id
+user_id
+symbol
+plan_type
+status
+planning_context_id
+research_goal_id
+portfolio_id
+selected_expression_family
+research_snapshot JSONB
+planning_snapshot JSONB
+structure_snapshot JSONB
+risk_snapshot JSONB
+monitoring_snapshot JSONB
+user_notes TEXT
+review_checklist JSONB
+version
+plan_health
+created_at
+updated_at
+archived_at
+
+Use indexes:
+
+user_id
+user_id + status
+user_id + symbol
+created_at
+
+No broker order fields.
+
+======================================================================
+34. MIGRATION SAFETY
+======================================================================
+
+Additive only.
+
+No DROP.
+
+No TRUNCATE.
+
+Idempotent/startup safe according to current Railway architecture.
+
+Document production migration.
+
+======================================================================
+35. API
+======================================================================
+
+Suggested authenticated endpoints:
+
+GET /api/trade-plans
+
+POST /api/trade-plans
+
+GET /api/trade-plans/:id
+
+PATCH /api/trade-plans/:id
+
+DELETE or archive /api/trade-plans/:id
+
+POST /api/trade-plans/:id/archive
+
+POST /api/trade-plans/:id/duplicate
+
+GET /api/trade-plans/:id/changes
+
+GET /api/trade-plans/:id/versions
+
+POST /api/trade-plans/:id/version
+
+GET /api/trade-plans/:id/monitoring-context
+
+Use clean minimal set based on architecture audit.
+
+Static routes first where necessary.
+
+======================================================================
+36. SERVER AUTHORITATIVE CREATION
+======================================================================
+
+Client should submit:
+
+planningSessionId
+
+selected equity scenario reference
+OR
+selected contract research candidate reference
+
+risk analysis reference
+
+notes
+
+checklist
+
+Client may NOT submit authoritative:
+
+research scores
+
+canonical evidence
+
+market prices
+
+portfolio weights
+
+option quotes
+
+Greeks
+
+risk analysis values
+
+Server reconstructs them.
+
+======================================================================
+37. PLAN CREATION VALIDATION
+======================================================================
+
+Before saving:
+
+qualified authoritative research exists
+
+planning context exists
+
+selected structure belongs to user/session
+
+risk analysis belongs to selected structure where required
+
+critical references valid
+
+If data is stale:
+
+allow save with clear stale warning where appropriate
+
+or block only if methodology requires current data.
+
+Do not silently refresh into a different structure.
+
+======================================================================
+38. EQUITY PLAN CREATION
+======================================================================
+
+Equity plan requires:
+
+TradePlanningContext
+
+EquityPlanningScenario
+
+Research thesis
+
+Risk/invalidation context
+
+No contract candidate.
+
+No option fields.
+
+======================================================================
+39. OPTIONS PLAN CREATION
+======================================================================
+
+Options plan requires:
+
+TradePlanningContext
+
+selected strategy family
+
+Contract Research Candidate
+
+TradeRiskScenarioResult
+
+No order fields.
+
+No broker instruction.
+
+======================================================================
+40. PLAN UPDATE
+======================================================================
+
+Editable:
+
+status
+
+notes
+
+checklist
+
+monitoring preferences
+
+selected planning assumptions only through explicit rebuild/version flow
+
+Do NOT permit direct edit of canonical saved research fields.
+
+If user wants new contract:
+
+return to Contract Research
+
+then create new version/plan.
+
+======================================================================
+41. DATA FRESHNESS
+======================================================================
+
+Show:
+
+Research at Creation
+
+Current Research
+
+Market Data at Creation
+
+Current Market Data
+
+Option Chain at Creation
+
+Current Option Data if options plan
+
+Risk Analysis timestamp
+
+Portfolio Context timestamp
+
+Goal Context timestamp
+
+Do not misrepresent snapshot data as live.
+
+======================================================================
+42. COMPLIANCE
+======================================================================
+
+Canonical disclaimer:
+
+"A Trade Plan is a user-saved research record that combines research
+evidence, planning assumptions, hypothetical structures, risk analysis,
+and monitoring conditions. It does not constitute investment advice,
+a personalized recommendation, suitability determination, or instruction
+to transact."
+
+Avoid:
+
+Approved Trade
+
+Recommended Trade
+
+Trade Ready
+
+Execution Ready
+
+Buy Plan
+
+Sell Plan
+
+Best Trade
+
+High Conviction Trade
+
+Guaranteed
+
+Expected Return
+
+======================================================================
+43. USER-INITIATED PLAN
+======================================================================
+
+Make clear:
+
+the user selected the research structure / scenario to save.
+
+VCP Trader AI assembled the supporting research.
+
+Do not imply system authorization.
+
+======================================================================
+44. RESEARCH REVIEW CHECKLIST DISCLAIMER
+======================================================================
+
+The checklist is a personal research aid.
+
+Text:
+
+"This checklist helps you track which research areas you have reviewed.
+It is not an approval, compliance certification, or determination that a
+trade is appropriate."
+
+======================================================================
+45. NO EXECUTION CTA
+======================================================================
+
+Do not add:
+
+Place Trade
+
+Send to Broker
+
+Preview Order
+
+InstaTrade
+
+in this sprint.
+
+Future execution handoff remains disabled/upcoming.
+
+If useful:
+
+Future Step:
+Order Preparation — Upcoming
+
+======================================================================
+46. PLAN SEARCH
+======================================================================
+
+Search/filter by:
+
+symbol
+
+company name if indexed/available
+
+status
+
+planType
+
+strategy family
+
+goal
+
+portfolio
+
+date
+
+No AI needed.
+
+======================================================================
+47. PLAN SORT
+======================================================================
+
+Useful sorts:
+
+Newest
+
+Oldest
+
+Recently Updated
+
+Symbol
+
+Status
+
+No:
+
+Best
+
+Highest Return
+
+Most Profitable
+
+======================================================================
+48. PLAN HEALTH COMPUTATION
+======================================================================
+
+Create pure deterministic helper.
+
+Possible inputs:
+
+current research snapshot
+
+saved research snapshot
+
+current freshness
+
+canonical invalidation conditions
+
+Output:
+
+CURRENT
+
+CHANGED
+
+REQUIRES_REVIEW
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+UNKNOWN
+
+Rules transparent.
+
+No score.
+
+======================================================================
+49. MATERIAL CHANGE RULES
+======================================================================
+
+Reuse existing Change Intelligence thresholds wherever possible.
+
+Examples:
+
+qualification lost
+
+research score materially changed
+
+technical state changed
+
+institutional evidence changed materially
+
+market regime changed
+
+invalidation condition triggered
+
+Do not invent new arbitrary thresholds if existing engine owns change rules.
+
+======================================================================
+50. THESIS INVALIDATION
+======================================================================
+
+If canonical invalidation condition fires:
+
+show:
+
+Research Thesis Invalidation Condition Observed
+
+Not:
+
+Exit Trade Now
+
+If an actual position exists later, lifecycle monitoring may handle
+additional context.
+
+2.7.6.
+
+======================================================================
+51. PLAN TIMELINE
+======================================================================
+
+Show deterministic timeline:
+
+Plan created
+
+Research marked complete
+
+Version updated
+
+Monitoring started
+
+Research materially changed
+
+Invalidation observed
+
+Archived
+
+No fabricated events.
+
+======================================================================
+52. RELATED RESEARCH
+======================================================================
+
+Links:
+
+Opportunity Workspace
+
+Research Workspace
+
+Research Reports
+
+Research Monitor
+
+Goal
+
+Portfolio Intelligence
+
+Sector/Theme detail
+
+Do not duplicate content.
+
+======================================================================
+53. REPORT INTEGRATION
+======================================================================
+
+Future reports may consume TradePlan.
+
+Do NOT implement full Trade Plan report unless trivial reuse is already
+supported and within scope.
+
+Expose reusable domain model.
+
+Potential later:
+
+Trade Plan Research Report
+
+======================================================================
+54. EXPORT
+======================================================================
+
+If existing report/export architecture makes it trivial:
+
+allow structured JSON/print view.
+
+Do NOT spend sprint building PDF/PPT export.
+
+Defer if necessary.
+
+======================================================================
+55. ETHICAL MONETIZATION
+======================================================================
+
+Document only.
+
+FREE:
+
+limited saved plans
+basic research-plan summary
+
+RETAIL:
+
+multiple saved plans
+full equity/options plan
+risk snapshots
+research-change comparison
+monitoring handoff
+user notes
+
+PROFESSIONAL:
+
+more plan history
+version comparison
+advanced monitoring
+plan comparisons
+
+RIA:
+
+advisor-authored research plans
+firm templates
+review workflow
+audit history
+
+Do NOT implement suitability.
+
+INSTITUTIONAL:
+
+team research plans
+approval workflows
+custom policy
+shared research
+
+ENTERPRISE:
+
+custom plan schemas
+private methodology
+API
+white-label
+
+No entitlement enforcement.
+
+======================================================================
+56. RIA / INSTITUTIONAL EXTENSION
+======================================================================
+
+Future fields may include:
+
+createdBy
+
+reviewedBy
+
+organizationId
+
+policyVersion
+
+approvalState
+
+But DO NOT implement now unless schema extensibility requires placeholder
+documentation.
+
+Do not call current user plan "approved."
+
+======================================================================
+57. PLATFORM HEALTH
+======================================================================
+
+Add/extend Trade Planning health.
+
+Metrics:
+
+tradePlansCreated
+
+activeTradePlans
+
+monitoringTradePlans
+
+archivedTradePlans
+
+plansRequiringReview
+
+invalidatedPlans
+
+planCreationFailures
+
+averagePlanCreationLatencyMs
+
+lastTradePlanCreatedAt
+
+Admin aggregates only.
+
+No:
+
+symbols
+
+capital
+
+P/L
+
+strategy details by user
+
+notes
+
+user IDs
+
+======================================================================
+58. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+trade_plan_created
+
+trade_plan_updated
+
+trade_plan_archived
+
+trade_plan_duplicated
+
+trade_plan_version_created
+
+trade_plan_health_changed
+
+Safe metadata:
+
+planType
+
+status
+
+version
+
+hasGoalContext
+
+hasPortfolioContext
+
+hasRiskAnalysis
+
+durationMs
+
+Do NOT log:
+
+user notes
+
+symbol if policy avoids it
+
+capital
+
+P/L
+
+portfolio values
+
+option legs
+
+private context
+
+======================================================================
+59. CACHE
+======================================================================
+
+Trade plans are persisted.
+
+Do not over-cache.
+
+Current-research comparison may use existing caches.
+
+If plan-detail cache exists:
+
+must be user-scoped.
+
+Invalidate on:
+
+plan update
+
+version change
+
+archive
+
+current research generation affecting computed health
+
+======================================================================
+60. PERFORMANCE
+======================================================================
+
+Plan creation should reuse existing persisted/cached upstream results.
+
+Do not:
+
+rerun scanner
+
+rerank
+
+reload full option chain unnecessarily
+
+rerun risk analysis unless requested/current reference invalid
+
+Target:
+
+plan creation <500ms excluding any unavoidable upstream refresh.
+
+plan detail <500ms warm.
+
+Measure actual.
+
+======================================================================
+61. FAILURE ISOLATION
+======================================================================
+
+Saved plan must still open even if current:
+
+Opportunity Intelligence unavailable
+
+institutional subsystem unavailable
+
+portfolio unavailable
+
+reports unavailable
+
+Current comparison sections degrade.
+
+Saved snapshot remains readable.
+
+This is a critical reason to persist compact snapshots.
+
+======================================================================
+62. ACCESSIBILITY
+======================================================================
+
+Tabs keyboard accessible.
+
+Checklist accessible.
+
+Notes field labeled.
+
+Timeline semantic.
+
+Status not color-only.
+
+Diffs screen-reader understandable.
+
+Mobile touch-friendly.
+
+======================================================================
+63. MOBILE
+======================================================================
+
+At 375px:
+
+plan header stacks
+
+research/risk cards stack
+
+option legs horizontally safe
+
+checklist full-width
+
+notes usable
+
+timeline readable
+
+no clipped warnings/disclaimers
+
+======================================================================
+64. ROUTING REGRESSION
+======================================================================
+
+Permanent rule applies.
+
+If:
+
+/trade-plans/:id
+
+plus:
+
+/trade-plans/active
+/trade-plans/archived
+
+static routes must precede dynamic.
+
+Tests required.
+
+Direct refresh.
+
+Back/forward.
+
+No static segment interpreted as plan ID.
+
+======================================================================
+65. SECURITY
+======================================================================
+
+Authenticated.
+
+Strict user ownership.
+
+Every route uses session userId.
+
+Cross-user plan ID:
+
+404.
+
+Referenced:
+
+planning session
+
+goal
+
+portfolio
+
+risk analysis
+
+contract candidate
+
+must belong to user.
+
+No existence leakage.
+
+======================================================================
+66. MIGRATION / STARTUP
+======================================================================
+
+Ensure tables created through approved migration/startup process.
+
+Do not rely only on local DB.
+
+Document required production migration.
+
+======================================================================
+67. TESTS
+======================================================================
+
+Target 175+ meaningful assertions.
+
+Cover:
+
+TradePlan type
+
+equity plan
+
+options plan
+
+status model
+
+draft
+
+research complete
+
+monitoring
+
+archived
+
+invalidated semantics
+
+research snapshot
+
+planning snapshot
+
+equity snapshot
+
+options snapshot
+
+risk snapshot
+
+notes
+
+checklist
+
+server-authoritative creation
+
+client score injection rejected
+
+client quote injection rejected
+
+client Greek injection rejected
+
+equity plan references valid
+
+options candidate references valid
+
+risk analysis references valid
+
+plan creation
+
+get plan
+
+update plan
+
+archive
+
+duplicate
+
+search
+
+filter
+
+sort
+
+current research comparison
+
+research strengthened
+
+research weakened
+
+qualification lost
+
+market regime change
+
+thesis invalidation
+
+stale data
+
+plan health
+
+saved snapshot survives upstream failure
+
+versioning
+
+version history
+
+monitoring handoff
+
+Research Workspace link
+
+Opportunity Workspace link
+
+goal context
+
+portfolio context
+
+no goal
+
+no portfolio
+
+cross-user 404
+
+ownership references
+
+no execution fields
+
+no order fields
+
+no broker fields
+
+no "approved trade"
+
+no recommendation language
+
+no expected return
+
+privacy
+
+logging privacy
+
+Platform Health
+
+route regression
+
+accessibility structure
+
+mobile structure
+
+Operations Manual
+
+commercial review
+
+RIA extension
+
+2.7.6 handoff
+
+roadmap discipline
+
+======================================================================
+68. UAT
+======================================================================
+
+Document and run:
+
+1. Open qualified opportunity.
+2. Open Trade Planning.
+3. Complete Equity research path.
+4. Save Equity Trade Plan.
+5. Verify plan appears in /trade-plans.
+6. Open plan.
+7. Verify research snapshot.
+8. Verify equity planning snapshot.
+9. Verify risk/invalidation.
+10. Add user notes.
+11. Complete research checklist.
+12. Mark Research Complete.
+13. Open Research Workspace.
+14. Return to plan.
+15. Duplicate plan.
+16. Archive duplicate.
+17. Complete Options research path.
+18. Select strategy.
+19. Select contract research candidate.
+20. Run risk analysis.
+21. Save Options Trade Plan.
+22. Verify selected legs.
+23. Verify risk snapshot.
+24. Verify event/liquidity context.
+25. Verify no execution CTA.
+26. Verify no broker order.
+27. Run new Opportunity Intelligence cycle or simulate changed current research.
+28. Reopen plan.
+29. Verify Saved vs Current Research.
+30. Verify REQUIRES_REVIEW if appropriate.
+31. Trigger canonical thesis invalidation in test fixture.
+32. Verify THESIS_INVALIDATED.
+33. Verify no instruction to exit.
+34. Start Monitoring.
+35. Verify monitoring handoff.
+36. Verify plan timeline.
+37. Verify no-goal plan.
+38. Verify no-portfolio plan.
+39. Verify saved plan opens if optional upstream service unavailable.
+40. Search plans.
+41. Filter by status.
+42. Filter Equity/Options.
+43. Direct refresh.
+44. Browser back/forward.
+45. Cross-user plan → 404.
+46. Mobile.
+47. Accessibility.
+48. Platform Health.
+49. No unexpected 500.
+50. No scanner/ranking execution.
+51. No unnecessary option-chain reload.
+
+======================================================================
+69. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/33-trade-plan-workspace.md
+
+Document:
+
+architecture
+
+TradePlan model
+
+status model
+
+plan health
+
+research snapshots
+
+planning snapshots
+
+equity plan snapshots
+
+options plan snapshots
+
+risk snapshots
+
+notes
+
+review checklist
+
+versioning
+
+Saved vs Current Research
+
+material-change methodology
+
+thesis invalidation handling
+
+monitoring handoff
+
+Research Workspace integration
+
+Opportunity Workspace integration
+
+Goals
+
+Portfolio
+
+data freshness
+
+failure isolation
+
+API
+
+database schema
+
+migration
+
+security
+
+privacy
+
+cache
+
+performance
+
+health
+
+logging
+
+routing
+
+compliance
+
+UAT
+
+troubleshooting
+
+2.7.6 handoff
+
+future execution
+
+RIA/Institutional extension
+
+commercialization
+
+Update glossary docs if new terms added.
+
+======================================================================
+70. RESEARCH GLOSSARY
+======================================================================
+
+Add only new terms genuinely needed.
+
+Potential:
+
+trade_plan
+
+trade_plan_status
+
+research_review_checklist
+
+saved_research_snapshot
+
+current_research_comparison
+
+plan_health
+
+research_requires_review
+
+thesis_invalidated
+
+plan_version
+
+Do not duplicate existing research/thesis definitions.
+
+======================================================================
+71. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Canonical TradePlan exists.
+
+B. Equity plans supported.
+
+C. Options plans supported.
+
+D. Upstream results assembled, not recomputed.
+
+E. Research snapshot persisted.
+
+F. Planning snapshot persisted.
+
+G. Structure snapshot persisted.
+
+H. Risk snapshot persisted where available.
+
+I. User notes private.
+
+J. Review checklist implemented appropriately.
+
+K. Status model non-prescriptive.
+
+L. Saved vs Current Research works.
+
+M. Plan health deterministic.
+
+N. Canonical invalidation supported.
+
+O. Invalidation does not generate exit advice.
+
+P. Saved snapshot survives upstream failure.
+
+Q. Versioning safe or explicitly designed/deferred.
+
+R. Monitoring handoff exists.
+
+S. No portfolio required.
+
+T. No goal required.
+
+U. No execution CTA.
+
+V. No order model.
+
+W. No broker submission.
+
+X. No recommendation language.
+
+Y. No "approved trade."
+
+Z. No expected-return claims.
+
+AA. Server authoritative creation.
+
+AB. Cross-user isolation.
+
+AC. Migration safe.
+
+AD. Platform Health updated.
+
+AE. Structured logs safe.
+
+AF. Accessibility/mobile.
+
+AG. Route-contract tests.
+
+AH. Full tests pass.
+
+AI. npm run build passes.
+
+AJ. Zero new TS errors.
+
+AK. Operations Manual updated.
+
+AL. 2.7.6 handoff exists.
+
+AM. Roadmap alignment confirmed.
+
+======================================================================
+72. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing persistence/journal architecture discovered
+3. Legacy execution components isolated
+4. Files changed
+5. Schema impact
+6. Migration details
+7. Canonical TradePlan
+8. Status model
+9. Plan Health model
+10. Research snapshot
+11. Planning snapshot
+12. Equity plan snapshot
+13. Options plan snapshot
+14. Risk snapshot
+15. User notes
+16. Research Review Checklist
+17. Plan creation flow
+18. Trade Plan Library
+19. Trade Plan Detail
+20. Saved vs Current Research
+21. Material-change rules
+22. Thesis invalidation behavior
+23. Versioning
+24. Plan timeline
+25. Monitoring integration
+26. 2.7.6 handoff
+27. Research Workspace integration
+28. Opportunity Workspace integration
+29. Goal integration
+30. Portfolio integration
+31. Search/filter/sort
+32. APIs
+33. Server-authoritative creation
+34. Data freshness
+35. Failure isolation
+36. Security/privacy
+37. Cache
+38. Performance
+39. Platform Health
+40. Structured logging
+41. Routing regression
+42. Accessibility/mobile
+43. Compliance audit
+44. Tests added
+45. Full test count
+46. npm run build
+47. Typecheck
+48. Production UAT
+49. Free value
+50. Retail value
+51. Professional value
+52. RIA extension
+53. Institutional extension
+54. Enterprise extension
+55. Future execution handoff
+56. Improvement suggestions
+57. Deferred backlog
+58. Roadmap Alignment
+59. Operations Manual Updated: YES/NO
+60. Operations Manual Files Updated
+61. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+73. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.5
+Trade Plan Workspace
+
+NEXT:
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+THEN:
+
+Broker-Assisted Execution phase
+
+LATER:
+
+AI Agents
+
+Professional / RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+======================================================================
+74. IMPROVEMENT CAPTURE RULE
+======================================================================
+
+Do not pull unrelated improvements into this sprint.
+
+Classify as:
+
+Critical Production Fix
+
+2.7.5 Requirement
+
+2.7.6 Monitoring Requirement
+
+Future Execution
+
+Professional/RIA
+
+Institutional
+
+Backlog
+
+Likely discoveries:
+
+trade-plan export
+
+plan comparisons
+
+team review
+
+approval workflows
+
+broker preflight
+
+slippage estimates
+
+commission modeling
+
+position opening linkage
+
+actual-vs-plan analysis
+
+post-trade journaling
+
+tax considerations
+
+portfolio-level risk budgeting
+
+Do not implement unless required for 2.7.5 correctness.
+
+======================================================================
+75. PERMANENT ARCHITECTURE RULE
+======================================================================
+
+Document permanently:
+
+The Trade Plan Workspace is the system of record for a USER-SAVED
+RESEARCH PLAN.
+
+It may preserve:
+
+research evidence
+
+planning assumptions
+
+selected research structure
+
+risk analysis
+
+monitoring conditions
+
+notes
+
+It may compare saved research with current research.
+
+It may NEVER silently:
+
+rewrite the original research snapshot
+
+replace a user-selected strategy
+
+replace a selected contract candidate
+
+change risk-analysis results
+
+turn a research plan into an executable broker order
+
+or represent the saved plan as a system recommendation.
+
+======================================================================
+76. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not implement broker execution.
+
+Do not pull 2.7.6 lifecycle monitoring forward beyond the clean handoff
+interface.
+
+Complete Sprint 2.7.5 on the current tree.
+
+Run:
+
+full project tests
+
+npm run build
+
+npx tsc --noEmit
+
+Update the Operations Manual.
+
+Return the full completion report for review before beginning Sprint 2.7.6.

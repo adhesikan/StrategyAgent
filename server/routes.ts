@@ -98,6 +98,7 @@ import { registerPortfolioIntelligenceRoutes } from "./routes/portfolio-intellig
 import { registerPortfolioAnalyticsRoutes } from "./routes/portfolio-analytics";
 import { registerResearchGoalRoutes } from "./routes/research-goals";
 import { registerTradePlanningRoutes } from "./routes/trade-planning";
+import { registerTradePlanRoutes } from "./routes/trade-plans";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -278,6 +279,11 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerResearchGoalRoutes(app, isAuthenticated);
   // Trade Planning — static routes (/health, /session/*) registered before dynamic /:symbol/*
   registerTradePlanningRoutes(app, isAuthenticated);
+  // Trade Plan Workspace (Sprint 2.7.5) — static /health before dynamic /:id
+  registerTradePlanRoutes(app, isAuthenticated);
+  // Ensure trade_plans + trade_plan_versions tables at startup (idempotent)
+  { const { ensureTradePlanTables } = await import("./services/trade-plan-service");
+    ensureTradePlanTables().catch((e: any) => console.error("[trade-plans] startup table init failed:", e?.message)); }
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

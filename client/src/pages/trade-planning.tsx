@@ -2756,14 +2756,36 @@ export default function TradePlanningPage() {
               <ContractResearchAndRiskSection symbol={symbol} sessionId={sessionId} />
             )}
 
+            {/* Save Research Plan CTA — Sprint 2.7.5 */}
+            {sessionId && (
+              <Card className="border-primary/30 bg-primary/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Save Research Plan</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    A Trade Plan saves the thesis, planning structure, risk analysis, and monitoring conditions you selected — as a persistent research record.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => window.location.href = "/trade-plans"}
+                    >
+                      View Trade Plans
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Future Planning Steps */}
-            <Card className="border-border/50">
+            <Card className="border-border/50 opacity-70">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Future Planning Steps</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 <p className="text-foreground font-medium">Coming in future sprints:</p>
-                <p>• <strong className="text-foreground">Trade Plan Workspace (2.7.5)</strong> — Full trade plan review before any order preparation.</p>
+                <p>• <strong className="text-foreground">Order Preparation</strong> — Upcoming</p>
               </CardContent>
             </Card>
 

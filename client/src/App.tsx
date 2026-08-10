@@ -88,6 +88,8 @@ import MarketResearchCommandCenterPage from "@/pages/market-research-command-cen
 import GoalsPage from "@/pages/goals";
 import GoalDetailPage from "@/pages/goal-detail";
 import TradePlanningPage from "@/pages/trade-planning";
+import TradePlansPage from "@/pages/trade-plans";
+import TradePlanDetailPage from "@/pages/trade-plan-detail";
 import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
 import OpportunityResearchPage from "@/pages/opportunity-research";
@@ -162,6 +164,9 @@ function AppRouter() {
       {/* Trade Planning — static /history guard before dynamic /:symbol */}
       <Route path="/trade-planning/history">{() => <TradePlanningPage />}</Route>
       <Route path="/trade-planning/:symbol" component={TradePlanningPage} />
+      {/* Trade Plans — static list before dynamic /:id (route regression rule) */}
+      <Route path="/trade-plans" component={TradePlansPage} />
+      <Route path="/trade-plans/:id" component={TradePlanDetailPage} />
       <Route path="/market-research-command-center" component={MarketResearchCommandCenterPage} />
       <Route path="/opportunity/:symbol" component={OpportunityResearchPage} />
       {/* Static /opportunities/* routes MUST come before the dynamic /:symbol route.

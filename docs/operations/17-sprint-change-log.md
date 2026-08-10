@@ -1,5 +1,79 @@
 # Sprint Change Log
 
+## Sprint 2.7.5 — Trade Plan Workspace (2026-08-10)
+
+### Summary
+Assembles all upstream Trade Planning outputs (Research → Goals → Portfolio → Planning Foundation → Equity Planning → Options Strategy Matching → Contract Research → Risk Analysis) into a persistent, user-reviewed research plan. No execution, no broker orders, no probability of profit, no recommendation language.
+
+### Key Architecture Decisions
+- **Server-authoritative creation** — client submits only reference IDs; server reconstructs all scores, snapshots, Greeks, risk values
+- **Immutable snapshots** — research, planning, equity/options structure, and risk snapshots are preserved at plan creation and never silently overwritten
+- **Cross-user isolation** — wrong-user plan ID returns 404 (not 403) to avoid existence leakage
+- **Private notes** — `user_notes` never logged, never in admin metrics
+- **Plan Health is deterministic** — 5-pt threshold for MATERIAL score change; qualification loss → REQUIRES_REVIEW; new invalidation condition → THESIS_INVALIDATED; stale freshness → DATA_STALE
+- **Versioning** — `trade_plan_versions` table preserves previous state when user explicitly bumps; version integer increments by 1
+- **2.7.6 handoff model** — `TradePlanMonitoringInput` defined; `getMonitoringContext()` implemented but not yet wired to monitoring lifecycle
+
+### New Features
+- **TradePlan model** — 17-column DB table with 4 JSONB snapshot columns, version integer, timestamps, user notes
+- **5 plan statuses** — DRAFT, RESEARCH_COMPLETE, MONITORING, ARCHIVED, INVALIDATED
+- **6 plan health states** — CURRENT, CHANGED, REQUIRES_REVIEW, THESIS_INVALIDATED, DATA_STALE, UNKNOWN
+- **Plan Health computation** — deterministic, no new scoring formulas; uses existing Change Intelligence thresholds
+- **Saved vs Current Research comparison** — `GET /api/trade-plans/:id/changes`; updates stored health if changed
+- **Review Checklist** — 7-field personal research aid; mutable; non-prescriptive
+- **Versioning** — explicit user-bump creates snapshot in `trade_plan_versions`; version integer counts up
+- **Duplicate + Archive** — idempotent operations; duplicate resets notes/checklist
+- **Plan Library** (`/trade-plans`) — search by symbol, filter by status/type, sort; grouped by lifecycle state
+- **Plan Detail** (`/trade-plans/:id`) — 14 sections covering all plan data, comparison, checklist, notes, timeline, related research; no execution CTA; "Order Preparation — Upcoming" placeholder only
+- **Trade Planning CTA** — "View Trade Plans" button in trade-planning.tsx for sessions that have started
+- **9 glossary terms** — `trade_plan`, `trade_plan_status`, `research_review_checklist`, `saved_research_snapshot`, `current_research_comparison`, `plan_health`, `research_requires_review`, `thesis_invalidated`, `plan_version`
+- **Platform health integration** — `getTradePlanHealthMetrics` imported into platform-health.ts
+- **Startup table migration** — `ensureTradePlanTables()` creates `trade_plans` + `trade_plan_versions` at startup (idempotent `CREATE TABLE IF NOT EXISTS`)
+- **Ops doc** — `docs/operations/33-trade-plan-workspace.md`
+
+### API
+| Method | Path | Description |
+|--------|------|-------------|
+| GET  | /api/trade-plans/health | Platform health aggregate |
+| GET  | /api/trade-plans | List/search/filter plans |
+| POST | /api/trade-plans | Create (server-authoritative) |
+| GET  | /api/trade-plans/:id | Plan detail |
+| PATCH | /api/trade-plans/:id | Update mutable fields |
+| POST | /api/trade-plans/:id/archive | Archive |
+| POST | /api/trade-plans/:id/duplicate | Duplicate |
+| GET  | /api/trade-plans/:id/changes | Saved vs Current comparison |
+| GET  | /api/trade-plans/:id/versions | Version history |
+| POST | /api/trade-plans/:id/version | Create new version |
+| GET  | /api/trade-plans/:id/monitoring-context | 2.7.6 handoff |
+
+**Route regression:** `/api/trade-plans/health` (static) registered BEFORE `/api/trade-plans/:id` (dynamic).
+
+### Schema
+`trade_plans` — 17 columns, 4 indexes (user_id, user+status, user+symbol, created_at DESC)
+`trade_plan_versions` — 10 columns, 2 indexes (trade_plan_id, user_id)
+
+Tables created via Drizzle schema (`shared/schema.ts`) and idempotent `ensureTradePlanTables()` on startup.
+
+### Files Changed
+- `shared/trade-plan-types.ts` — all canonical types (new file)
+- `shared/schema.ts` — `tradePlans` + `tradePlanVersions` Drizzle table definitions
+- `server/services/trade-plan-service.ts` — CRUD + health engine + monitoring handoff + `ensureTradePlanTables()` (new file)
+- `server/routes/trade-plans.ts` — 11 authenticated endpoints (new file)
+- `server/routes/__tests__/trade-plan.test.ts` — 88 tests, 30 describe blocks (new file)
+- `client/src/pages/trade-plans.tsx` — Trade Plan Library page (new file)
+- `client/src/pages/trade-plan-detail.tsx` — Plan Detail page, 14 sections (new file)
+- `client/src/App.tsx` — `/trade-plans` + `/trade-plans/:id` routes added
+- `server/routes.ts` — `registerTradePlanRoutes` + `ensureTradePlanTables` wired
+- `server/routes/platform-health.ts` — `getTradePlanHealthMetrics` import
+- `shared/research-glossary.ts` — 9 new terms in `TRADE_PLAN_ENTRIES`
+- `client/src/pages/trade-planning.tsx` — "View Trade Plans" CTA; "Order Preparation — Upcoming" placeholder
+- `docs/operations/33-trade-plan-workspace.md` — new ops doc
+
+### Tests
+88 tests passing. 30 describe blocks covering: type system, status/health models, checklist semantics, compliance, `computePlanHealth` (pure), `computeResearchChange` (pure), snapshot structure, no-execution fields, versioning, privacy, cross-user isolation, server-authoritative creation, accessibility, route regression, 2.7.6 handoff.
+
+---
+
 ## Sprint 2.7.4 — Trade Risk & Scenario Analysis (2026-08-10)
 
 ### Summary

@@ -3060,6 +3060,113 @@ Run this sequence FIRST before the workspace UAT steps.
 
 ---
 
+## Trade Plan Workspace (Sprint 2.7.5)
+
+### `GET /api/trade-plans`
+**Auth:** Required  
+**Query params:** `symbol`, `status` (comma-separated), `planType`, `sort`, `limit`, `offset`  
+**Expected status:** 200  
+**Healthy response:** `{ plans[], total, hasMore }`  
+**Empty response:** `{ plans: [], total: 0, hasMore: false }`  
+
+### `POST /api/trade-plans`
+**Auth:** Required  
+**Body:** `{ planningSessionId, planType, equityPlanningScenarioId?, contractResearchCandidateId?, riskScenarioAnalysisId?, userNotes?, reviewChecklist?, researchGoalId?, portfolioId? }`  
+**Expected status:** 201  
+**Error states:** 400 (missing sessionId/planType), 404 (session not found or wrong user), 500 (DB failure)
+
+### `GET /api/trade-plans/:id`
+**Auth:** Required  
+**Expected status:** 200  
+**404:** Plan not found OR plan belongs to different user (cross-user existence leakage prevention)
+
+### `PATCH /api/trade-plans/:id`
+**Auth:** Required  
+**Mutable fields only:** `status`, `userNotes`, `reviewChecklist`, `monitoringSnapshot`  
+**Expected status:** 200  
+
+### `GET /api/trade-plans/:id/changes`
+**Auth:** Required  
+**Expected status:** 200  
+**Response:** `{ savedSnapshot, change: TradePlanResearchChange, planHealth, healthReason }`  
+**Note:** Updates stored `planHealth` in DB if changed
+
+### `POST /api/trade-plans/:id/archive`
+**Auth:** Required  
+**Expected status:** 200  
+**Idempotent:** archiving an archived plan returns 200
+
+### `POST /api/trade-plans/:id/duplicate`
+**Auth:** Required  
+**Expected status:** 201  
+**Note:** Duplicate resets `userNotes` to `""` and `reviewChecklist` to all-false defaults
+
+### `GET /api/trade-plans/:id/versions`
+**Auth:** Required  
+**Expected status:** 200  
+**Response:** `{ versions: TradePlanVersion[] }`
+
+### `POST /api/trade-plans/:id/version`
+**Auth:** Required  
+**Body:** `{ changeReason? }`  
+**Expected status:** 201  
+**Note:** Preserves current snapshot in `trade_plan_versions`, increments `version`
+
+### `GET /api/trade-plans/:id/monitoring-context`
+**Auth:** Required  
+**Expected status:** 200  
+**Response:** `TradePlanMonitoringInput` — 2.7.6 handoff shape
+
+### UAT: Trade Plan Library (`/trade-plans`)
+
+1. Page loads without errors
+2. "Trade Plans" heading visible
+3. Search field accepts uppercase symbols; filters results
+4. Status filter works: All / Draft / Research Complete / Monitoring / Archived / Invalidated
+5. Plan type filter works: All / Equity / Options
+6. Sort works: Newest / Oldest / Recently Updated / Symbol A–Z / Status
+7. Plan cards show: symbol, company name (if available), plan type badge, status badge, plan health badge, expression family, creation score, current score with delta (if available), risk level, version, created date
+8. "Open" button navigates to `/trade-plans/:id`
+9. "Research" button navigates to `/opportunities/:symbol`
+10. "Duplicate" button creates a duplicate (confirmed by toast)
+11. "Archive" button archives plan (disappears from active section)
+12. Compliance disclaimer visible at bottom
+13. Empty state shows when no plans exist
+14. Zero execution CTA: no "Buy", "Sell", "Trade", "Order" buttons
+
+### UAT: Trade Plan Detail (`/trade-plans/:id`)
+
+15. Plan header shows symbol, company name, plan type, status badge, plan health badge
+16. Version number and created date visible
+17. Status dropdown updates plan status (DRAFT / RESEARCH COMPLETE / MONITORING / ARCHIVED)
+18. "Duplicate" and "Archive" buttons functional
+19. "Research Thesis — Saved at Creation" shows saved scores (research, technical, fundamental, institutional)
+20. Score grid shows 4 score cards with values
+21. "What Changed Since Plan Creation" section loads with score rows
+22. Score rows show: saved value, current value, delta arrow
+23. "Refresh" button re-fetches current comparison
+24. THESIS_INVALIDATED alert visible if applicable
+25. Planning Structure section shows expression family, horizon (if available)
+26. Equity Scenario OR Options Structure section visible (if plan has structure snapshot)
+27. Options snapshot shows: strategy, expiration, DTE, estimated midpoint, liquidity quality
+28. Options legs labeled "Research Structure Legs (not order legs)"
+29. Risk Summary section visible (if options plan with risk snapshot)
+30. Risk flags shown as outline badges
+31. Thesis Invalidation Conditions section lists conditions (if any)
+32. Invalidation section note: "This does not constitute exit advice"
+33. Research Review Checklist: all 7 items present; checkboxes functional; auto-saves on click
+34. Checklist disclaimer visible and contains "not an approval"
+35. User Notes textarea: edits save via "Save Notes" button
+36. Notes area does NOT appear in platform health / admin metrics
+37. Data Freshness section shows timestamps for all relevant data points
+38. Plan Timeline shows creation event; additional events when present
+39. Related Research links to: Opportunity Workspace, Research Workspace, Research Monitor, Research Reports
+40. "Future Step: Order Preparation — Upcoming" placeholder (dashed card, no CTA)
+41. Compliance disclaimer at bottom
+42. Zero execution CTA: no "Buy", "Sell", "Trade", "Order", "Submit" buttons
+
+---
+
 **Operational Readiness (operationsSummary):** READY | DEGRADED | WAITING | FAILED | UNKNOWN | DISABLED
 
 **Pipeline Stage:** HEALTHY | RUNNING | WAITING | DEGRADED | FAILED | UNKNOWN | DISABLED

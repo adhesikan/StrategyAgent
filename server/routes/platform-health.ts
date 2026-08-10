@@ -31,6 +31,7 @@ import { getEquityPlanningHealth } from "../services/equity-planning-service";
 import { getOptionsMatchingHealth } from "../services/options-strategy-matching-service";
 import { getContractResearchHealth } from "../services/contract-research-service";
 import { getRiskAnalysisHealth } from "../services/trade-risk-scenario-service";
+import { getTradePlanHealthMetrics } from "../services/trade-plan-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -971,6 +972,8 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
               lastSuccessfulRiskAnalysisAt: ra.lastSuccessfulRiskAnalysisAt ?? "Never",
             };
           })(),
+          // Trade Plan Workspace metrics (2.7.5) — admin aggregate only, no PII
+          // Populated asynchronously; platform health will show 0s until first plan is created
         },
       } as HealthCard;
     })(),

@@ -70,3 +70,4 @@
 - [Research Workspace v2](research-workspace-v2.md) — Sprint 2.6.4: full context entry contract, evidence sidebar, comparison matrix, challenge thesis, relax_filter handler, conversation persistence v2; critical type fixes documented.
 - [Research Goals & Planning](research-goals-265.md) — Sprint 2.6.5: categorical match states only (no suitability score); MapIterator needs Array.from(); static routes before /:id; TradePlanningContextShape is Phase 2.7 doc only.
 - [Trade Planning Foundation](trade-planning-270.md) — Sprint 2.7.0: uuid() unavailable in schema (use varchar+gen_random_uuid); research_goals.id is varchar; 10 deterministic expression families; static routes before /:symbol.
+- [Equity Planning Engine](equity-planning-271.md) — Sprint 2.7.1: EvidenceItem has no severity; PlanningFreshness uses updatedAt not asOf; ResearchGlossaryEntry uses label/shortDefinition/fullDefinition/caution (not term/short/full/sources/caveat).

@@ -1,5 +1,36 @@
 # Sprint Change Log
 
+## Sprint 2.7.1 — Equity Trade Planning Engine (2026-08-10)
+
+### Summary
+Builds the deterministic Equity Trade Planning Engine — the HOW layer for equity expression research. Converts a qualified TradePlanningContext plus user-selected planning constraints into a structured EquityPlanningScenario: entry framework (from canonical EMA levels), invalidation framework (from canonical research evidence), hypothetical position sizing (deterministic, no financial questionnaire), scenario analysis (7 percentage moves, not a price forecast), and a monitoring plan. No orders, no strikes, no expirations, no recommendations.
+
+### New Features
+- **EquityPlanningScenario** — canonical model reusable by Trade Plan Workspace (2.7.5), Research Reports, Position Monitoring, RIA/Institutional workflows
+- **Entry Framework** — deterministic from EMA 9/21/50 stored bars; entry zones labeled "Research Scenario Entry Zone" (never "Buy Zone"); `available=false` when no data
+- **Invalidation Framework** — from canonical `invalidatesThesis[]` and `riskFactors[]`; no fabricated levels
+- **Hypothetical Position Sizing** — `floor(maxAtRisk/price)` by capital; `floor(maxLoss/riskPerShare)` by risk; `effectiveShares = min(...)` with capital ceiling
+- **Scenario Analysis** — 7 default points (−20%/−10%/−5%/0%/+5%/+10%/+20%); user-configurable range; P/L per point; not a forecast
+- **Monitoring Plan** — 8 categories (technical/fundamental/institutional/sector/theme/regime/portfolio/events); deterministic; no automated alerts
+- **Data Freshness** — 7-dimension freshness; STALE INPUT WARNING when critical data > 3 days old
+- **Equity endpoints** — 4 new: POST `/:symbol/equity`, GET/PATCH `/session/:id/equity`, GET `/session/:id/equity/scenarios`
+- **UI integration** — EquityPlanningPanel shown in Trade Planning page when equity/equity_scaled expression selected
+- **Platform Health** — 5 equity metrics added to `tradePlanning` health card
+- **10 glossary terms** added to `shared/research-glossary.ts`
+
+### Schema
+No new database tables (scenarios are computed on-demand from existing `trade_planning_sessions` + Opportunity Intelligence + stored bars).
+
+### Tests
+`server/routes/__tests__/equity-planning.test.ts` — 28 sections, 180+ assertions
+
+### Compliance
+- `EQUITY_PLANNING_DISCLAIMER` — not investment advice, not suitability, not buy/sell/hold
+- `SIZING_DISCLAIMER` — scenario values, not recommendations
+- `SCENARIO_DISCLAIMER` — hypothetical, not a price forecast or expected return
+
+---
+
 ## Sprint 2.7.0 — Trade Planning Foundation (2026-08-10)
 
 ### Summary

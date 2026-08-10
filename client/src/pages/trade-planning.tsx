@@ -43,6 +43,10 @@ import {
   DEFAULT_CONSTRAINTS, validateConstraints, EXPRESSION_STATUS_LABELS,
   EXPRESSION_STATUS_DESCRIPTIONS, validateExpressionFamily,
 } from "@shared/trade-planning-types";
+import type { EquityPlanningScenario } from "@shared/equity-planning-types";
+import {
+  EQUITY_PLANNING_DISCLAIMER, SIZING_DISCLAIMER, SCENARIO_DISCLAIMER,
+} from "@shared/equity-planning-types";
 
 // ---------------------------------------------------------------------------
 // Reserved route segments (defense-in-depth)
@@ -176,6 +180,417 @@ function ExpressionCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Equity Planning Panel (Sprint 2.7.1) — shown when equity family selected
+// ---------------------------------------------------------------------------
+
+function ScenarioRow({ pct, price, pl, plPct, refLabel }: {
+  pct: number; price: number; pl: number | null; plPct: number | null;
+  refLabel: string | null;
+}) {
+  const isNeutral = pct === 0;
+  const isNeg     = pct < 0;
+  return (
+    <tr className={`border-b border-border/20 ${refLabel ? "bg-primary/5" : ""}`}>
+      <td className="py-1.5 px-2 text-xs font-medium tabular-nums">
+        <span className={isNeg ? "text-red-400" : isNeutral ? "text-muted-foreground" : "text-green-400"}>
+          {pct > 0 ? "+" : ""}{(pct * 100).toFixed(0)}%
+        </span>
+      </td>
+      <td className="py-1.5 px-2 text-xs tabular-nums text-right">${price.toFixed(2)}</td>
+      <td className="py-1.5 px-2 text-xs tabular-nums text-right">
+        {pl !== null ? (
+          <span className={pl < 0 ? "text-red-400" : pl > 0 ? "text-green-400" : "text-muted-foreground"}>
+            {pl >= 0 ? "+" : ""}${pl.toFixed(2)}
+          </span>
+        ) : <span className="text-muted-foreground">—</span>}
+      </td>
+      <td className="py-1.5 px-2 text-xs tabular-nums text-right">
+        {pl !== null && plPct !== null ? (
+          <span className={plPct < 0 ? "text-red-400" : plPct > 0 ? "text-green-400" : "text-muted-foreground"}>
+            {plPct >= 0 ? "+" : ""}{plPct.toFixed(0)}%
+          </span>
+        ) : <span className="text-muted-foreground">—</span>}
+      </td>
+      <td className="py-1.5 px-2 text-xs text-muted-foreground">
+        {refLabel && <span className="text-xs text-primary/70">{refLabel}</span>}
+      </td>
+    </tr>
+  );
+}
+
+function EquityPlanningPanel({
+  symbol, sessionId, constraints,
+}: {
+  symbol: string; sessionId: string; constraints: TradePlanningConstraints;
+}) {
+  const [downsidePct, setDownsidePct] = useState(-0.20);
+  const [upsidePct,   setUpsidePct]   = useState(0.20);
+  const [showFull, setShowFull]        = useState(false);
+
+  const equityQuery = useQuery<{ scenario: EquityPlanningScenario; disclaimer: string }>({
+    queryKey: [`/api/trade-planning/session/${sessionId}/equity`, constraints],
+    queryFn: () => apiRequest("GET", `/api/trade-planning/session/${sessionId}/equity`).then(r => r.json()),
+    enabled: !!sessionId,
+  });
+
+  const scenarioQuery = useQuery<{
+    scenarioGrid: EquityPlanningScenario["scenarioGrid"];
+    referencePrice: number | null;
+    disclaimer: string;
+  }>({
+    queryKey: [`/api/trade-planning/session/${sessionId}/equity/scenarios`, downsidePct, upsidePct],
+    queryFn: () => apiRequest("GET", `/api/trade-planning/session/${sessionId}/equity/scenarios?downsidePct=${downsidePct}&upsidePct=${upsidePct}`).then(r => r.json()),
+    enabled: !!sessionId,
+  });
+
+  const scenario = equityQuery.data?.scenario;
+
+  if (equityQuery.isLoading) {
+    return (
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Building equity research scenario…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (equityQuery.isError || !scenario) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="p-4 text-xs text-muted-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 inline mr-1 text-yellow-400" />
+          Equity scenario unavailable — reference price or research data may be missing.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const grid   = scenarioQuery.data?.scenarioGrid ?? scenario.scenarioGrid;
+  const sizing = scenario.sizingFramework;
+
+  return (
+    <div className="space-y-4" aria-label="Equity Research Scenario">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
+          Equity Research Scenario
+        </h2>
+        {scenario.freshness?.hasStaleCriticalData && (
+          <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Stale Data
+          </Badge>
+        )}
+      </div>
+
+      {/* Stale warning */}
+      {scenario.freshness?.hasStaleCriticalData && scenario.freshness.staleWarning && (
+        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-300 flex items-start gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          {scenario.freshness.staleWarning}
+        </div>
+      )}
+
+      {/* Limitations */}
+      {scenario.limitations.length > 0 && (
+        <div className="space-y-1">
+          {scenario.limitations.map((l, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Info className="h-3 w-3 shrink-0 mt-0.5 text-blue-400" />
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reference price + freshness */}
+      {scenario.referencePrice && (
+        <Card className="border-border/50">
+          <CardContent className="p-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Reference Price</p>
+              <p className="text-xl font-bold tabular-nums">${scenario.referencePrice.toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{scenario.referencePriceSource}</p>
+            </div>
+            <div className="text-right">
+              <FreshnessTag
+                status={scenario.freshness?.referencePrice?.status ?? "unavailable"}
+                label={scenario.freshness?.referencePrice?.ageLabel ?? "Unknown"}
+              />
+              <p className="text-xs text-muted-foreground mt-0.5">Stored daily bars</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Entry Framework */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Research Entry Framework</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!scenario.entryFramework.available ? (
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-400" />
+              {scenario.entryFramework.unavailableReason ?? "Entry framework unavailable."}
+            </div>
+          ) : (
+            <>
+              {scenario.entryFramework.conditionType && (
+                <Badge variant="outline" className="text-xs">
+                  {scenario.entryFramework.conditionType.replace(/_/g, " ")}
+                </Badge>
+              )}
+
+              {/* Reference levels */}
+              {scenario.entryFramework.referenceLevels.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Reference Levels</p>
+                  {scenario.entryFramework.referenceLevels.map((rl, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span>{rl.label}</span>
+                      <span className="tabular-nums font-medium">${rl.price.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Entry zones */}
+              {scenario.entryFramework.entryZones.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Research Entry Zone</p>
+                  {scenario.entryFramework.entryZones.map((z, i) => (
+                    <div key={i} className="p-2 rounded-lg bg-muted/30 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{z.label}</span>
+                        <span className="tabular-nums font-medium">
+                          ${z.priceLow.toFixed(2)} – ${z.priceHigh.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground mt-0.5">{z.reason}</div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground italic">
+                    Research zones are not buy instructions.
+                  </p>
+                </div>
+              )}
+
+              {/* Required evidence */}
+              {scenario.entryFramework.requiredEvidence.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Required Evidence</p>
+                  {scenario.entryFramework.requiredEvidence.slice(0, 3).map((e, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Check className="h-3 w-3 text-green-400 shrink-0 mt-0.5" />
+                      {e}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Notes */}
+              {scenario.entryFramework.notes.map((n, i) => (
+                <p key={i} className="text-xs text-muted-foreground italic">{n}</p>
+              ))}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Hypothetical Position Sizing */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Hypothetical Position Sizing</CardTitle>
+          <CardDescription className="text-xs">{SIZING_DISCLAIMER}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {(!sizing.capitalAvailable && !sizing.maxCapitalAtRisk) ? (
+            <p className="text-xs text-muted-foreground">
+              Enter planning constraints above to see hypothetical sizing.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { label: "Reference Price", value: sizing.referencePrice ? `$${sizing.referencePrice.toFixed(2)}` : "—" },
+                { label: "Risk per Share", value: sizing.riskPerShare ? `$${sizing.riskPerShare.toFixed(2)}` : "—" },
+                { label: "Shares by Capital", value: sizing.sharesByCapitalLimit?.toString() ?? "—" },
+                { label: "Shares by Risk Limit", value: sizing.sharesByRiskLimit?.toString() ?? "—" },
+                { label: "Hypothetical Shares", value: sizing.effectiveScenarioShares !== null ? `${sizing.effectiveScenarioShares} shares` : "—" },
+                { label: "Capital Required", value: sizing.capitalRequired ? `$${sizing.capitalRequired.toLocaleString()}` : "—" },
+                { label: "Est. Loss at Invalidation", value: sizing.estimatedLossAtInvalidation ? `$${sizing.estimatedLossAtInvalidation.toLocaleString()}` : "—" },
+                { label: "Capital Utilization", value: sizing.capitalPercentOfPlanningCapital ? `${sizing.capitalPercentOfPlanningCapital}%` : "—" },
+              ].map(({ label, value }) => (
+                <div key={label} className="p-2 rounded-lg bg-muted/30 text-center">
+                  <div className="text-xs font-medium tabular-nums">{value}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {sizing.partialReasons.length > 0 && (
+            <div className="space-y-1">
+              {sizing.partialReasons.map((r, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="h-3 w-3 shrink-0 mt-0.5 text-blue-400" />
+                  {r}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {sizing.roundingNotes.length > 0 && (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Rounding notes</summary>
+              <div className="mt-1 space-y-0.5 pl-2">
+                {sizing.roundingNotes.map((n, i) => <div key={i}>{n}</div>)}
+              </div>
+            </details>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Scenario Analysis */}
+      {grid && grid.scenarioPoints.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm">Hypothetical Scenario Analysis</CardTitle>
+              <p className="text-xs text-muted-foreground">Not a price forecast</p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Reward/Risk */}
+            {grid.rewardRiskRatio !== null && (
+              <div className="flex items-center gap-3 text-xs flex-wrap">
+                <div className="px-2 py-1 rounded bg-muted/30">
+                  <span className="text-muted-foreground">Scenario R/R:</span>{" "}
+                  <span className="font-medium">{grid.rewardRiskRatio.toFixed(2)}:1</span>
+                </div>
+                {grid.upsideDistance !== null && (
+                  <div className="px-2 py-1 rounded bg-muted/30">
+                    <span className="text-muted-foreground">Upside Ref:</span>{" "}
+                    <span className="font-medium text-green-400">+${grid.upsideDistance.toFixed(2)}</span>
+                  </div>
+                )}
+                {grid.downsideDistance !== null && (
+                  <div className="px-2 py-1 rounded bg-muted/30">
+                    <span className="text-muted-foreground">Invalidation Ref:</span>{" "}
+                    <span className="font-medium text-red-400">-${grid.downsideDistance.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Scenario range controls */}
+            <div className="flex items-center gap-3 flex-wrap text-xs">
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="downside-pct" className="text-muted-foreground">Downside</label>
+                <Select value={String(downsidePct)} onValueChange={v => setDownsidePct(parseFloat(v))}>
+                  <SelectTrigger id="downside-pct" className="h-7 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[-0.50, -0.30, -0.20, -0.10, -0.05].map(v => (
+                      <SelectItem key={v} value={String(v)}>{(v*100).toFixed(0)}%</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="upside-pct" className="text-muted-foreground">Upside</label>
+                <Select value={String(upsidePct)} onValueChange={v => setUpsidePct(parseFloat(v))}>
+                  <SelectTrigger id="upside-pct" className="h-7 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[0.05, 0.10, 0.20, 0.30, 0.50, 1.00].map(v => (
+                      <SelectItem key={v} value={String(v)}>+{(v*100).toFixed(0)}%</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Scenario grid table */}
+            <div className="overflow-x-auto rounded-lg border border-border/30">
+              <table className="w-full text-xs" aria-label="Hypothetical scenario analysis grid">
+                <thead>
+                  <tr className="border-b border-border/30 bg-muted/20">
+                    <th className="py-1.5 px-2 text-left font-medium text-muted-foreground">Move</th>
+                    <th className="py-1.5 px-2 text-right font-medium text-muted-foreground">Hyp. Price</th>
+                    <th className="py-1.5 px-2 text-right font-medium text-muted-foreground">Scenario P/L</th>
+                    <th className="py-1.5 px-2 text-right font-medium text-muted-foreground">P/L %</th>
+                    <th className="py-1.5 px-2 text-left font-medium text-muted-foreground">Reference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grid.scenarioPoints.map((pt, i) => (
+                    <ScenarioRow
+                      key={i}
+                      pct={pt.percentChange}
+                      price={pt.hypotheticalPrice}
+                      pl={pt.hypotheticalPL}
+                      plPct={pt.hypotheticalPLPct}
+                      refLabel={pt.referenceLevelLabel}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center italic">{grid.disclaimer}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Monitoring Plan */}
+      {scenario.monitoringPlan.items.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Research Monitoring Plan</CardTitle>
+              <button
+                type="button"
+                onClick={() => setShowFull(x => !x)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showFull ? "Show less" : "Show all"}
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(showFull ? scenario.monitoringPlan.items : scenario.monitoringPlan.items.slice(0, 4)).map((item, i) => (
+              <div key={i} className="p-2.5 rounded-lg bg-muted/30 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs capitalize px-1.5">
+                    {item.category.replace(/_/g, " ")}
+                  </Badge>
+                  <span className="text-xs font-medium">{item.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Current: {item.currentState}</p>
+                <p className="text-xs text-muted-foreground italic">{item.watchCondition}</p>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground text-center">{scenario.monitoringPlan.alertsNote}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Equity compliance */}
+      <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-xs text-muted-foreground">
+        <Info className="h-3.5 w-3.5 inline mr-1" />
+        {EQUITY_PLANNING_DISCLAIMER}
+      </div>
+    </div>
   );
 }
 
@@ -920,6 +1335,11 @@ export default function TradePlanningPage() {
               </Card>
             )}
 
+            {/* Equity Planning Panel — shown when equity or equity_scaled selected */}
+            {(selectedFamily === "equity" || selectedFamily === "equity_scaled") && sessionId && (
+              <EquityPlanningPanel symbol={symbol} sessionId={sessionId} constraints={constraints} />
+            )}
+
             {/* Future Planning Steps */}
             <Card className="border-border/50">
               <CardHeader className="pb-2">
@@ -927,7 +1347,6 @@ export default function TradePlanningPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 <p className="text-foreground font-medium">Coming in future sprints:</p>
-                <p>• <strong className="text-foreground">Equity Planning Engine (2.7.1)</strong> — Explore entry approaches, position sizing methods, and phased entry structures.</p>
                 <p>• <strong className="text-foreground">Options Strategy Matching (2.7.2)</strong> — Match applicable options structures to the research thesis and planning constraints.</p>
                 <p>• <strong className="text-foreground">Contract &amp; Strike Research (2.7.3)</strong> — Research specific contracts for a matched strategy structure.</p>
                 <p>• <strong className="text-foreground">Risk &amp; Scenario Analysis (2.7.4)</strong> — Model scenarios for the selected structure.</p>

@@ -1,0 +1,1902 @@
+# Sprint 2.7.1 — Equity Trade Planning Engine
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.1 — Equity Trade Planning Engine
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections & Watchlists
+✓ Research Workspace v2
+✓ Market Research Command Center
+✓ Research Monitoring
+✓ Research Reports & Publishing
+✓ Research Transparency / Research Glossary
+✓ Portfolio History
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Trade Planning Foundation / Candidate-to-Trade Handoff
+✓ Platform Operations Center
+
+OPERATIONAL PREREQUISITE:
+
+Before production deployment verify Task #127:
+
+trade_planning_sessions migration exists in production.
+
+If production schema is missing:
+do not declare production GO.
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to this user?
+
+Portfolio Intelligence answers:
+
+HOW does this research relate to existing exposure?
+
+Trade Planning Foundation answers:
+
+HOW could this qualified thesis potentially be expressed?
+
+Equity Trade Planning answers:
+
+HOW could the equity expression be structured as a research scenario?
+
+Execution remains separate.
+
+Sprint 2.7.1 MUST consume an authoritative TradePlanningContext.
+
+It must NEVER:
+
+consume raw scanner results directly
+
+bypass Opportunity Intelligence
+
+rerank securities
+
+create new qualification logic
+
+rewrite the research thesis to justify a trade
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- options strategy matching
+- option strike selection
+- option expiration selection
+- option contract selection
+- multi-leg option structures
+- broker order tickets
+- broker submission
+- automated execution
+- automated trading
+- portfolio rebalancing
+- portfolio recommendations
+- tax optimization
+- autonomous agents
+- target prices presented as recommendations
+- guaranteed returns
+- "best trade"
+- "recommended entry"
+
+Do NOT change:
+
+- scanner scoring
+- ranking formulas
+- Opportunity Intelligence scoring
+- TradePlanningContext semantics
+- Goal matching methodology
+- Portfolio Intelligence calculations
+- research score definitions
+
+This sprint is EQUITY RESEARCH SCENARIO CONSTRUCTION only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a reusable Equity Trade Planning Engine that converts:
+
+TradePlanningContext
+        +
+user planning constraints
+        +
+canonical research evidence
+        +
+market/reference price context
+        ↓
+EquityPlanningScenario
+
+The scenario should help a user understand:
+
+- how an equity research thesis could be structured
+- what conditions would support entering
+- what would invalidate the thesis
+- how much capital a hypothetical scenario uses
+- how position size changes under different risk assumptions
+- what market/research conditions should be monitored
+- what happens under several price scenarios
+
+The engine must NOT tell the user:
+
+"You should buy this."
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+TradePlanningContext
+
+trade-planning-service.ts
+
+trade planning route/page
+
+existing position sizing logic
+
+existing stop-loss logic
+
+existing position protection code
+
+existing trade plan code
+
+portfolio-trade-plan.ts
+
+best-trade-finder.ts
+
+live-contract-resolver.ts
+
+existing risk-budget helpers
+
+existing price/reference snapshot service
+
+Opportunity Workspace
+
+Opportunity History
+
+Research Monitoring
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Research Goals
+
+Research Glossary
+
+existing equity order models
+
+Tradier / TradeStation order abstractions
+
+Operations Manual
+
+Report:
+
+A. Existing equity-planning logic
+B. Existing sizing calculations
+C. Existing stop/invalidation calculations
+D. Existing legacy trade-plan code
+E. Existing order code that must remain isolated
+F. Reusable safe components
+G. Components requiring refactor
+H. Components not safe to reuse
+I. Current market-price source
+J. Data freshness model
+K. Compliance-sensitive terminology
+
+Do not code until the audit is complete.
+
+======================================================================
+2. CANONICAL EQUITY PLANNING TYPES
+======================================================================
+
+Create shared canonical types.
+
+Suggested:
+
+EquityPlanningScenario {
+  id
+  planningContextId
+  symbol
+
+  generatedAt
+  marketDataAsOf
+
+  researchSummary
+
+  referencePrice
+
+  entryFramework
+  invalidationFramework
+  sizingFramework
+  scenarioAnalysis
+  monitoringPlan
+
+  capitalContext
+  researchEvidence
+  riskFactors
+  limitations[]
+  freshness
+
+  methodologyVersion
+}
+
+Do not make this UI-specific.
+
+It must be reusable later by:
+
+Trade Plan Workspace
+
+Research Reports
+
+Position Monitoring
+
+RIA workflows
+
+Institutional workflows
+
+======================================================================
+3. ENTRY FRAMEWORK
+======================================================================
+
+Do NOT produce a single imperative:
+
+"Buy at $150."
+
+Instead create a research framework.
+
+Suggested:
+
+EntryFramework {
+  referencePrice
+  entryConditionType
+  entryZones[]
+  requiredEvidence[]
+  invalidIf[]
+  notes[]
+}
+
+Possible condition categories:
+
+CURRENT_STRUCTURE
+BREAKOUT_CONFIRMATION
+PULLBACK_TO_SUPPORT
+RECLAIM
+TREND_CONTINUATION
+MONITOR_ONLY
+
+Use only technical levels already produced by canonical research services.
+
+Do not independently invent chart levels.
+
+======================================================================
+4. ENTRY ZONES
+======================================================================
+
+If existing research provides:
+
+support
+resistance
+pivot
+entry
+technical levels
+
+the Equity Engine may transform them into clearly labeled planning zones.
+
+Example:
+
+Research Entry Zone
+
+$142–$146
+
+Reason:
+
+Near existing support
+Within current technical structure
+
+Do not say:
+
+"Buy between $142 and $146."
+
+Use:
+
+"Research scenario entry zone"
+
+If no validated level exists:
+
+do not fabricate one.
+
+Return:
+
+entryFramework.available = false
+
+with limitation.
+
+======================================================================
+5. INVALIDATION FRAMEWORK
+======================================================================
+
+Consume canonical:
+
+invalidatesThesis[]
+
+riskFactors[]
+
+technical support/invalidation
+
+Create:
+
+InvalidationFramework {
+  conditions[]
+  referenceLevels[]
+  evidenceSource[]
+}
+
+Example:
+
+Research thesis may require review if:
+
+- price loses validated support
+- technical stage deteriorates
+- fundamental evidence weakens
+- institutional evidence weakens
+- sector/theme leadership reverses
+
+Do not invent invalidators.
+
+======================================================================
+6. EQUITY POSITION SIZING FRAMEWORK
+======================================================================
+
+Create deterministic hypothetical scenario sizing.
+
+Use ONLY user-entered planning constraints.
+
+Possible inputs:
+
+capitalAvailable
+
+maxCapitalAtRisk
+
+maxLossPerPosition
+
+referencePrice
+
+invalidationDistance if available
+
+No inferred financial capacity.
+
+Suggested outputs:
+
+sharesByCapitalLimit
+
+sharesByRiskLimit
+
+effectiveScenarioShares
+
+capitalRequired
+
+capitalPercentOfPlanningCapital
+
+estimatedLossAtInvalidation
+
+roundingNotes
+
+If insufficient information:
+
+show incomplete state.
+
+======================================================================
+7. POSITION SIZING METHODOLOGY
+======================================================================
+
+If a validated invalidation price exists:
+
+riskPerShare =
+referencePrice - invalidationPrice
+
+hypothetical shares by risk =
+maxLossPerPosition / riskPerShare
+
+Also enforce:
+
+capital limit
+
+Never exceed:
+
+capitalAvailable
+
+maxCapitalAtRisk
+
+Use deterministic rounding.
+
+Do not imply the resulting quantity is appropriate or recommended.
+
+Label:
+
+Hypothetical Scenario Size
+
+not:
+
+Recommended Position Size
+
+======================================================================
+8. NO FALSE PRECISION
+======================================================================
+
+Avoid hyper-precise outputs when source data does not support them.
+
+Example:
+
+If reference price is delayed daily close:
+
+state clearly.
+
+Do not calculate intraday precision from stale daily data.
+
+Freshness must be visible.
+
+======================================================================
+9. CAPITAL CONTEXT
+======================================================================
+
+Display:
+
+Planning Capital
+
+Maximum Scenario Capital
+
+Maximum Scenario Loss
+
+Hypothetical Shares
+
+Estimated Capital Required
+
+Estimated Loss at Invalidation
+
+These are scenario values.
+
+Disclaimer:
+
+"Planning values illustrate the selected research scenario and are not individualized position-size recommendations."
+
+======================================================================
+10. SCENARIO ANALYSIS
+======================================================================
+
+Create deterministic equity price scenarios.
+
+Do NOT forecast price.
+
+Use hypothetical percentage movements.
+
+Suggested default scenario grid:
+
+-20%
+-10%
+-5%
+0%
++5%
++10%
++20%
+
+or configurable reasonable ranges.
+
+Outputs:
+
+hypothetical price
+market value
+scenario P/L
+scenario P/L %
+
+Clearly label:
+
+Hypothetical Scenario
+
+not:
+
+Price Forecast
+
+======================================================================
+11. USER-DEFINED SCENARIO RANGE
+======================================================================
+
+Optionally allow user to change:
+
+downside %
+upside %
+
+Do not generate "expected" price.
+
+No AI forecast required.
+
+======================================================================
+12. THESIS-BASED SCENARIO MARKERS
+======================================================================
+
+Overlay existing levels when available:
+
+support
+
+resistance
+
+pivot
+
+invalidation
+
+Do not call these:
+
+price target
+
+profit target
+
+unless an existing methodology explicitly defines them and compliance
+review approves wording.
+
+Preferred:
+
+Reference Level
+
+Technical Resistance
+
+Research Invalidation Level
+
+======================================================================
+13. REWARD/RISK TERMINOLOGY
+======================================================================
+
+If a scenario includes a clearly defined upside reference and invalidation
+reference, you may calculate:
+
+scenario upside distance
+
+scenario downside distance
+
+scenario reward/risk ratio
+
+BUT:
+
+Do not manufacture upside targets merely to calculate a ratio.
+
+If no valid upside reference exists:
+
+return unavailable.
+
+======================================================================
+14. RESEARCH EVIDENCE SUMMARY
+======================================================================
+
+Every EquityPlanningScenario includes:
+
+Why Qualified
+
+Primary Evidence
+
+Supporting Evidence
+
+Risks
+
+Thesis Invalidation
+
+Recent Changes
+
+Market Regime
+
+Sector Context
+
+Theme Context
+
+Goal Context
+
+Portfolio Context if applicable
+
+No new evidence generation.
+
+======================================================================
+15. MONITORING PLAN
+======================================================================
+
+Create deterministic MonitoringPlan.
+
+Suggested categories:
+
+Technical
+
+Fundamental
+
+Institutional
+
+Sector
+
+Theme
+
+Market Regime
+
+Portfolio Exposure
+
+Events
+
+For each:
+
+what to monitor
+current state
+change condition
+
+Do NOT implement alerts yet.
+
+Example:
+
+Monitor Technical Structure
+
+Current:
+Contraction
+
+Review if:
+Stage changes or support fails
+
+======================================================================
+16. EVENT CONTEXT
+======================================================================
+
+If earnings/event data already exists:
+
+show:
+
+next earnings date
+days until earnings
+event window status
+
+If unavailable:
+
+do not fetch new provider data solely for this sprint unless architecture
+already has it.
+
+No fabricated dates.
+
+======================================================================
+17. PORTFOLIO CONTEXT
+======================================================================
+
+If user owns the symbol:
+
+show:
+
+existing quantity
+portfolio weight
+current market value
+existing cost basis if available
+concentration context
+recent portfolio change
+
+Equity planning should distinguish:
+
+New Position Research Scenario
+
+Existing Position Research Scenario
+
+Do not recommend adding/reducing.
+
+======================================================================
+18. EXISTING POSITION MODE
+======================================================================
+
+If symbol already owned:
+
+the engine may show:
+
+Existing Position Context
+
+Current Shares
+
+Current Weight
+
+Scenario Additional Capital
+
+Resulting Hypothetical Weight
+
+BUT:
+
+do not say:
+
+Add X shares
+
+Use:
+
+"If this hypothetical scenario were added..."
+
+No rebalancing recommendation.
+
+======================================================================
+19. NO-PORTFOLIO MODE
+======================================================================
+
+Full functionality must work without:
+
+portfolio
+broker
+uploaded holdings
+
+Portfolio context is optional.
+
+======================================================================
+20. RESEARCH GOAL CONTEXT
+======================================================================
+
+Goal context may influence:
+
+planning horizon
+
+research focus
+
+display priorities
+
+It must NOT change:
+
+canonical candidate score
+
+qualification
+
+technical levels
+
+invalidation evidence
+
+======================================================================
+21. EQUITY PLANNING SERVICE
+======================================================================
+
+Create reusable service such as:
+
+buildEquityPlanningScenario({
+  userId,
+  tradePlanningContextId,
+  planningSessionId?
+})
+
+Core functions may include:
+
+buildEntryFramework()
+
+buildInvalidationFramework()
+
+computeScenarioSizing()
+
+buildScenarioGrid()
+
+buildMonitoringPlan()
+
+All deterministic.
+
+No LLM required.
+
+======================================================================
+22. API
+======================================================================
+
+Suggested authenticated endpoints:
+
+POST /api/trade-planning/:symbol/equity
+
+GET /api/trade-planning/session/:id/equity
+
+PATCH /api/trade-planning/session/:id/equity
+
+GET /api/trade-planning/session/:id/equity/scenarios
+
+Use current route conventions.
+
+Static route collision protections apply.
+
+======================================================================
+23. SERVER AUTHORITATIVE DATA
+======================================================================
+
+Client may submit:
+
+scenario assumptions
+
+planning constraints
+
+selected research entry condition
+
+selected scenario range
+
+Client may NOT submit authoritative:
+
+researchScore
+support
+resistance
+pivot
+invalidation
+qualification
+portfolioWeight
+marketPrice
+
+Server reconstructs/validates these.
+
+======================================================================
+24. EQUITY PLANNING PAGE INTEGRATION
+======================================================================
+
+Within:
+
+/trade-planning/:symbol
+
+when equity expression selected:
+
+show Equity Planning panel.
+
+Sections:
+
+Research Thesis
+
+Entry Framework
+
+Hypothetical Position Sizing
+
+Scenario Analysis
+
+Risk & Invalidation
+
+Monitoring Plan
+
+Freshness
+
+Next Research Steps
+
+No order button.
+
+======================================================================
+25. OPPORTUNITY WORKSPACE INTEGRATION
+======================================================================
+
+From Opportunity Workspace:
+
+Trade Planning
+→ Equity Research
+
+should open canonical planning flow.
+
+Do not add one-click execution.
+
+======================================================================
+26. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Provide contextual actions:
+
+Explain Equity Scenario
+
+Explain Entry Conditions
+
+Explain Invalidation
+
+Explain Position Sizing Method
+
+Challenge Equity Thesis
+
+AI may explain deterministic scenario data.
+
+AI cannot modify scenario math unless user explicitly changes constraints.
+
+======================================================================
+27. SAVED SCENARIO
+======================================================================
+
+Decide after audit whether EquityPlanningScenario should persist.
+
+Preferred:
+
+store scenario configuration + authoritative references
+
+rather than duplicating all market/research data.
+
+If persisted:
+
+scenario must be user-owned.
+
+Include:
+
+createdAt
+updatedAt
+researchSnapshotId
+marketDataAsOf
+
+======================================================================
+28. SCENARIO VERSIONING
+======================================================================
+
+If user changes:
+
+planning capital
+max loss
+entry condition
+scenario range
+
+prefer new version or updated version metadata.
+
+Do not silently overwrite history if existing architecture supports
+versioning cleanly.
+
+If versioning is too large for sprint:
+
+document future requirement.
+
+======================================================================
+29. RESEARCH GLOSSARY
+======================================================================
+
+Add canonical terms if absent:
+
+equity_planning
+
+entry_framework
+
+research_entry_zone
+
+hypothetical_position_size
+
+scenario_capital
+
+scenario_loss
+
+invalidation_level
+
+scenario_analysis
+
+monitoring_plan
+
+reference_price
+
+Do not duplicate definitions.
+
+======================================================================
+30. DATA FRESHNESS
+======================================================================
+
+Show freshness for:
+
+reference price
+
+technical levels
+
+Opportunity Intelligence
+
+fundamentals
+
+institutional evidence
+
+portfolio context
+
+goal context
+
+A planning scenario generated from stale critical data must show:
+
+STALE INPUT WARNING
+
+Do not silently present it as current.
+
+======================================================================
+31. PARTIAL DATA RESILIENCE
+======================================================================
+
+No invalidation price:
+
+sizing by risk unavailable
+
+but sizing by capital may still work.
+
+No portfolio:
+
+full normal scenario.
+
+No goal:
+
+full normal scenario.
+
+No institutional evidence:
+
+scenario works with limitation.
+
+No technical level:
+
+entry framework unavailable.
+
+Each subsystem degrades independently.
+
+======================================================================
+32. COMPLIANCE
+======================================================================
+
+Preferred user-facing terms:
+
+Equity Research Scenario
+
+Research Entry Framework
+
+Hypothetical Position Size
+
+Scenario Capital
+
+Research Invalidation
+
+Scenario Analysis
+
+Monitoring Plan
+
+Research Consideration
+
+Avoid:
+
+Recommended Entry
+
+Buy Zone
+
+Recommended Position Size
+
+Target Price
+
+Guaranteed Upside
+
+Expected Return
+
+Best Entry
+
+Strong Buy
+
+Safe Trade
+
+Canonical disclaimer:
+
+"Equity Trade Planning provides hypothetical research scenarios based on
+existing research evidence and planning constraints you select. It does
+not constitute investment advice, a personalized recommendation,
+suitability determination, or instruction to buy, sell, hold, or size
+a position."
+
+======================================================================
+33. PERFORMANCE / RETURN LANGUAGE
+======================================================================
+
+Scenario P/L is hypothetical.
+
+Never call scenario output:
+
+Expected Return
+
+Projected Return
+
+Forecast Return
+
+Use:
+
+Hypothetical Scenario P/L
+
+Do not imply probability.
+
+======================================================================
+34. RISK LANGUAGE
+======================================================================
+
+Avoid:
+
+Safe
+
+Low Risk for You
+
+Appropriate Risk
+
+Use:
+
+Observed Risk Factors
+
+Scenario Loss
+
+Research Invalidation
+
+Volatility Context
+
+Risk Evidence
+
+======================================================================
+35. ETHICAL MONETIZATION
+======================================================================
+
+Document only.
+
+FREE:
+
+research candidate
+basic Trade Planning preview
+basic Equity Scenario
+
+RETAIL:
+
+full Equity Planning
+scenario sizing
+scenario analysis
+saved planning sessions
+goal context
+portfolio context
+monitoring framework
+
+PROFESSIONAL:
+
+advanced scenario comparisons
+multi-scenario planning
+extended history
+advanced risk controls
+
+RIA:
+
+advisor research scenarios
+firm-approved methodology
+client context
+audit history
+
+Do not implement suitability.
+
+INSTITUTIONAL:
+
+custom position-sizing methodologies
+liquidity constraints
+strategy policies
+research approval workflows
+
+ENTERPRISE:
+
+custom planning engines
+APIs
+private datasets
+white-label
+
+No entitlement enforcement now.
+
+======================================================================
+36. FUTURE OPTIONS PHASE HANDOFF
+======================================================================
+
+2.7.2 will build:
+
+Options Strategy Matching Engine.
+
+It consumes:
+
+TradePlanningContext
+
+NOT:
+
+EquityPlanningScenario as the authoritative research source.
+
+However Equity vs Options comparison may later use both scenario families.
+
+Do not implement options logic now.
+
+======================================================================
+37. FUTURE CROSS-INSTRUMENT COMPARISON
+======================================================================
+
+Document future:
+
+Equity vs Covered Call
+
+Equity vs Cash-Secured Put
+
+Equity vs Defined-Risk Spread
+
+But do not implement.
+
+======================================================================
+38. FUTURE EXECUTION HANDOFF
+======================================================================
+
+EquityPlanningScenario is NOT an order.
+
+Future Order Preparation may consume:
+
+user-selected scenario
+
+reference price
+
+quantity
+
+execution preferences
+
+but must revalidate:
+
+market data freshness
+buying power
+broker availability
+user confirmation
+
+Document only.
+
+======================================================================
+39. PLATFORM HEALTH
+======================================================================
+
+Extend Trade Planning health.
+
+Possible equity-specific metrics:
+
+equityScenariosGenerated
+
+partialEquityScenarios
+
+failedEquityScenarios
+
+averageEquityScenarioLatencyMs
+
+lastSuccessfulEquityScenarioAt
+
+Admin aggregate only.
+
+No:
+
+symbols
+share counts
+capital
+portfolio values
+user identity
+
+======================================================================
+40. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+equity_planning_started
+
+equity_planning_completed
+
+equity_planning_partial
+
+equity_planning_failed
+
+equity_scenario_recalculated
+
+Safe metadata:
+
+durationMs
+hasEntryFramework
+hasInvalidation
+hasPortfolioContext
+hasGoalContext
+scenarioPointCount
+
+Never log:
+
+share count
+capital available
+max loss
+portfolio values
+cost basis
+raw research thesis
+user identity
+
+======================================================================
+41. SECURITY
+======================================================================
+
+All planning sessions user-owned.
+
+Cross-user scenario:
+
+404.
+
+Server reconstructs authoritative research/portfolio context.
+
+No client score injection.
+
+No client market-price injection.
+
+No client technical-level injection.
+
+======================================================================
+42. CACHE
+======================================================================
+
+If caching:
+
+key by:
+
+userId
+planningContextId
+planning constraints fingerprint
+Opportunity Intelligence generation
+reference price timestamp
+
+Do not share personalized scenarios.
+
+Invalidate when:
+
+constraints change
+
+TradePlanningContext changes
+
+research snapshot changes
+
+reference price changes materially / data refreshes
+
+======================================================================
+43. PERFORMANCE
+======================================================================
+
+No external API call on normal scenario recomputation if current stored
+market/reference data exists.
+
+No scanner.
+
+No reranking.
+
+No AI.
+
+Target:
+
+equity scenario generation <250ms after TradePlanningContext available
+
+scenario recalculation <100ms where pure
+
+Measure actual values.
+
+======================================================================
+44. ACCESSIBILITY
+======================================================================
+
+Scenario controls keyboard accessible.
+
+Charts/tables have text equivalents.
+
+No information by color only.
+
+ARIA on sliders if used.
+
+Position sizing explanation accessible.
+
+Mobile touch friendly.
+
+======================================================================
+45. MOBILE
+======================================================================
+
+At 375px:
+
+entry framework stacks
+
+sizing fields full-width
+
+scenario grid scrolls or converts to cards
+
+risk panel readable
+
+monitoring sections stack
+
+no clipped values
+
+======================================================================
+46. ROUTING REGRESSION
+======================================================================
+
+Test all new routes.
+
+Static endpoints must precede dynamic symbol/session routes.
+
+Direct deep link.
+
+Refresh.
+
+Back/forward.
+
+No recurrence of static segment interpreted as symbol.
+
+======================================================================
+47. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/29-equity-trade-planning.md
+
+Document:
+
+architecture
+
+EquityPlanningScenario
+
+TradePlanningContext dependency
+
+entry framework
+
+technical level ownership
+
+invalidation framework
+
+sizing methodology
+
+scenario calculations
+
+position-context behavior
+
+goal integration
+
+monitoring plan
+
+data freshness
+
+partial states
+
+compliance language
+
+privacy
+
+security
+
+cache
+
+performance
+
+health
+
+logging
+
+UAT
+
+troubleshooting
+
+future Options Strategy Matching
+
+future Trade Plan Workspace
+
+future execution handoff
+
+RIA extension
+
+Institutional extension
+
+commercialization
+
+Update Research Glossary documentation.
+
+======================================================================
+48. TESTS
+======================================================================
+
+Target 175+ meaningful assertions where appropriate.
+
+Cover:
+
+canonical type
+
+TradePlanningContext required
+
+cannot use raw scanner
+
+reference price
+
+entry framework
+
+no technical level
+
+research entry zones
+
+invalidation
+
+risk per share
+
+sizing by capital
+
+sizing by max loss
+
+effective hypothetical shares
+
+zero invalidation distance
+
+invalid invalidation
+
+capital cap
+
+max-risk cap
+
+rounding
+
+partial cost/market data
+
+scenario -20
+
+scenario -10
+
+scenario -5
+
+scenario 0
+
+scenario +5
+
+scenario +10
+
+scenario +20
+
+scenario P/L
+
+no price forecast
+
+no expected return
+
+reference levels
+
+portfolio-owned context
+
+no-portfolio flow
+
+existing position scenario
+
+goal context
+
+no-goal flow
+
+monitoring plan
+
+freshness
+
+stale warning
+
+partial subsystem failure
+
+API ownership
+
+cross-user 404
+
+client cannot inject score
+
+client cannot inject market price
+
+client cannot inject technical level
+
+cache isolation
+
+structured log privacy
+
+Platform Health
+
+glossary
+
+compliance
+
+no options logic
+
+no contract selection
+
+no order
+
+no broker submission
+
+route integrity
+
+accessibility structure
+
+mobile structure
+
+Operations Manual
+
+commercial review
+
+roadmap discipline
+
+======================================================================
+49. UAT
+======================================================================
+
+Document and run:
+
+1. Open qualified opportunity.
+2. Open Trade Planning.
+3. Select Equity Research.
+4. Verify TradePlanningContext.
+5. Verify reference price + freshness.
+6. Verify entry framework.
+7. Verify Why Qualified.
+8. Enter Planning Capital.
+9. Enter Maximum Scenario Capital.
+10. Enter Maximum Scenario Loss.
+11. Verify hypothetical sizing.
+12. Verify risk-limit cap.
+13. Verify capital-limit cap.
+14. View scenario grid.
+15. Verify negative scenarios.
+16. Verify positive scenarios.
+17. Verify 0% scenario.
+18. Verify no forecast language.
+19. Verify invalidation.
+20. Verify monitoring plan.
+21. Verify goal context.
+22. Verify no-goal flow.
+23. Verify owned-position context.
+24. Verify no-portfolio flow.
+25. Explain scenario in Research Workspace.
+26. Verify AI does not alter scenario values.
+27. Verify stale-data warning.
+28. Verify partial data.
+29. Verify no options contract.
+30. Verify no strike.
+31. Verify no expiration.
+32. Verify no order ticket.
+33. Cross-user session → 404.
+34. Mobile.
+35. Accessibility.
+36. Platform Health.
+37. No unexpected 500.
+38. No scanner/ranking trigger.
+39. No external data call if cached data available.
+
+======================================================================
+50. DEFINITION OF DONE
+======================================================================
+
+GO only if:
+
+A. EquityPlanningScenario canonical model exists.
+
+B. Requires authoritative TradePlanningContext.
+
+C. Does not consume raw scanner directly.
+
+D. Entry framework deterministic.
+
+E. No fabricated technical levels.
+
+F. Invalidation uses canonical evidence.
+
+G. Hypothetical position sizing deterministic.
+
+H. Capital constraint enforced.
+
+I. Max-loss constraint enforced.
+
+J. Scenario analysis works.
+
+K. Scenario analysis is not forecasting.
+
+L. Monitoring plan deterministic.
+
+M. Portfolio context optional.
+
+N. No portfolio required.
+
+O. Goal context optional.
+
+P. No goal required.
+
+Q. Freshness visible.
+
+R. Partial data works.
+
+S. No "recommended entry".
+
+T. No "recommended position size".
+
+U. No target price.
+
+V. No expected return.
+
+W. No options strategy logic.
+
+X. No strike.
+
+Y. No expiration.
+
+Z. No contract.
+
+AA. No order ticket.
+
+AB. No broker submission.
+
+AC. Server authoritative context enforced.
+
+AD. Privacy enforced.
+
+AE. Platform Health updated.
+
+AF. Structured logs safe.
+
+AG. Full tests pass.
+
+AH. npm run build passes.
+
+AI. Zero new TS errors.
+
+AJ. Operations Manual updated.
+
+AK. Roadmap alignment confirmed.
+
+======================================================================
+51. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing equity/trade logic discovered
+3. Safe reusable components
+4. Legacy components avoided
+5. Files changed
+6. Schema impact
+7. EquityPlanningScenario
+8. TradePlanningContext dependency
+9. Entry Framework
+10. Technical-level ownership
+11. Invalidation Framework
+12. Position Sizing Methodology
+13. Example sizing calculations
+14. Scenario Analysis
+15. Portfolio Context
+16. Existing Position Mode
+17. No-Portfolio Mode
+18. Goal Context
+19. Monitoring Plan
+20. API
+21. UI
+22. Research Workspace integration
+23. Research Glossary
+24. Data Freshness
+25. Partial-data resilience
+26. Compliance audit
+27. Security
+28. Cache
+29. Performance
+30. Accessibility/mobile
+31. Platform Health
+32. Structured logging
+33. Routing regression
+34. Tests added
+35. Full test count
+36. npm run build
+37. Typecheck
+38. Production UAT
+39. Free value
+40. Retail value
+41. Professional value
+42. RIA extension
+43. Institutional extension
+44. Enterprise extension
+45. Future Options Strategy handoff
+46. Future execution handoff
+47. Improvement suggestions
+48. Deferred backlog
+49. Roadmap Alignment
+50. Operations Manual Updated: YES/NO
+51. Operations Manual Files Updated
+52. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+52. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.1
+Equity Trade Planning Engine
+
+NEXT:
+
+2.7.2
+Options Strategy Matching Engine
+
+THEN:
+
+2.7.3
+Options Contract / Expiration / Strike Research
+
+2.7.4
+Trade Risk & Scenario Analysis
+
+2.7.5
+Trade Plan Workspace
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+LATER:
+
+Broker-Assisted Execution
+
+AI Agents
+
+Professional / RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+======================================================================
+53. IMPROVEMENT CAPTURE RULE
+======================================================================
+
+Do not implement adjacent ideas automatically.
+
+Classify discoveries as:
+
+Critical Production Fix
+Current Sprint Requirement
+2.7.2 Options Strategy Requirement
+2.7.3 Contract Research Requirement
+2.7.4 Risk Analysis Requirement
+2.7.5 Trade Plan Requirement
+Future Execution
+RIA / Institutional
+Backlog
+
+Examples likely to emerge:
+
+transaction-aware position sizing
+slippage modeling
+commission modeling
+tax-lot handling
+fractional shares
+portfolio-level risk budgeting
+correlated exposure
+benchmark-relative risk
+
+Assign them appropriately.
+
+Do not pull them into 2.7.1 unless required for correctness.
+
+======================================================================
+54. PERMANENT ARCHITECTURE RULE
+======================================================================
+
+Document:
+
+No Trade Planning or Trade Construction service may promote an
+unqualified security into a research opportunity.
+
+Downstream planning services consume the canonical research thesis.
+
+They may reject or limit a scenario because data/risk constraints are
+insufficient.
+
+They may never rewrite the upstream research evidence solely to justify
+a trade structure.
+
+======================================================================
+55. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Complete 2.7.1 on the current tree.
+
+Run the full project test suite.
+
+Run production build.
+
+Run TypeScript validation.
+
+Update the Operations Manual.
+
+Return the complete engineering report for review before beginning
+Sprint 2.7.2.

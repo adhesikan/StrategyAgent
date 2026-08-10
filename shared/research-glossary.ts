@@ -1236,11 +1236,157 @@ const TRADE_PLANNING_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   },
 ];
 
+// ===========================================================================
+// Equity Trade Planning Terms — Sprint 2.7.1
+// ===========================================================================
+
+const EQUITY_PLANNING_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:             "equity_planning",
+    label:           "Equity Trade Planning",
+    shortDefinition: "Exploring how a qualified research thesis could be structured as an equity research scenario.",
+    fullDefinition:  "Equity Trade Planning converts a qualified research candidate and user-selected planning " +
+                     "constraints into a hypothetical equity research scenario. It shows potential entry " +
+                     "frameworks, research invalidation conditions, hypothetical sizing, scenario analysis, and " +
+                     "monitoring considerations. It does not constitute investment advice, a recommendation, " +
+                     "a suitability determination, or an instruction to buy, sell, or hold.",
+    methodologySummary: "Deterministic computation from TradePlanningContext, user constraints, and stored daily bars.",
+    caution:         "Equity Trade Planning provides hypothetical research scenarios only. It is not " +
+                     "investment advice, a recommendation, or a suitability determination.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "entry_framework",
+    label:           "Research Entry Framework",
+    shortDefinition: "A structured view of conditions under which an equity research thesis may warrant consideration.",
+    fullDefinition:  "A Research Entry Framework describes the entry condition type (e.g. current structure, " +
+                     "breakout confirmation, pullback to support), available research entry zones derived from " +
+                     "canonical technical reference levels, required evidence, and conditions that would negate " +
+                     "entry consideration. It is derived only from canonical research evidence and stored " +
+                     "technical data — never fabricated.",
+    methodologySummary: "Sourced from canonical research evidence and stored EMA technical bars only.",
+    caution:         "Entry zones are research reference zones, not buy instructions. If no validated technical " +
+                     "level exists, the entry framework is unavailable.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "research_entry_zone",
+    label:           "Research Scenario Entry Zone",
+    shortDefinition: "A price range around a canonical technical reference level used for research scenario modeling.",
+    fullDefinition:  "A Research Scenario Entry Zone is a price range derived from canonical technical reference " +
+                     "levels (e.g. EMA 21, stored support) that a research scenario uses to model hypothetical " +
+                     "entry. It is not a \'buy zone\', a recommended entry, or an instruction to trade. If no " +
+                     "validated level exists, no zone is presented.",
+    methodologySummary: "Zone = ±2% around the nearest EMA level below reference price.",
+    caution:         "Research entry zones are not buy instructions or recommended entry prices.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "hypothetical_position_size",
+    label:           "Hypothetical Scenario Size",
+    shortDefinition: "The share count computed from user-entered planning constraints for a research scenario.",
+    fullDefinition:  "Hypothetical Scenario Size is determined by applying user-entered planning constraints " +
+                     "(maximum capital at risk, maximum loss per position) to a reference price. It uses the " +
+                     "lesser of: shares by capital limit and shares by risk limit. It is labeled \'Hypothetical\' " +
+                     "because it is a planning scenario, not a position-size recommendation.",
+    methodologySummary: "effectiveShares = min(floor(maxCapital/price), floor(maxLoss/riskPerShare)). Floor-rounded.",
+    caution:         "Planning values illustrate the selected research scenario and are not individualized " +
+                     "position-size recommendations.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "scenario_capital",
+    label:           "Scenario Capital",
+    shortDefinition: "The planning capital used to construct a hypothetical research scenario.",
+    fullDefinition:  "Scenario Capital is the user-entered capital available for planning scenario construction. " +
+                     "It is used only to compute scenario parameters such as hypothetical share count and " +
+                     "estimated capital required. It is not an account balance, buying power, or broker " +
+                     "instruction.",
+    caution:         "Scenario Capital is a planning parameter, not a broker instruction or account balance.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "scenario_loss",
+    label:           "Estimated Scenario Loss",
+    shortDefinition: "The estimated hypothetical loss if the research thesis is invalidated at the invalidation level.",
+    fullDefinition:  "Estimated Scenario Loss is computed as: Hypothetical Shares x Risk Per Share, where " +
+                     "Risk Per Share = Reference Price minus Invalidation Level. It is a planning scenario value, " +
+                     "not a guaranteed loss or a maximum account drawdown. It requires a validated invalidation " +
+                     "level from the research thesis.",
+    methodologySummary: "estimatedLoss = effectiveShares x (referencePrice - invalidationPrice).",
+    caution:         "Scenario loss is a hypothetical planning estimate, not a guaranteed or expected loss.",
+    category:        "risk",
+    userFacing:      true,
+  },
+  {
+    key:             "invalidation_level",
+    label:           "Research Invalidation Level",
+    shortDefinition: "A reference price level derived from canonical research evidence at which the thesis would warrant review.",
+    fullDefinition:  "A Research Invalidation Level marks a price or condition at which the research thesis may " +
+                     "need to be re-evaluated. It is sourced exclusively from canonical research evidence " +
+                     "(invalidatesThesis[], riskFactors[], technical reference levels) -- never fabricated. " +
+                     "Breaching the invalidation level does not trigger any automated action.",
+    methodologySummary: "Derived from invalidatesThesis[] and riskFactors[] in canonical Opportunity Intelligence.",
+    caution:         "Research invalidation levels are thesis review triggers, not stop-loss orders.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "scenario_analysis",
+    label:           "Scenario Analysis",
+    shortDefinition: "A grid of hypothetical price moves showing market value and scenario P/L at each level.",
+    fullDefinition:  "Scenario Analysis applies a set of percentage price moves (e.g. -20%, -10%, 0%, +10%, " +
+                     "+20%) to the reference price to show hypothetical market values and scenario P/L. It is " +
+                     "not a price forecast, expected return, or projection. No probability is implied for any " +
+                     "scenario point.",
+    methodologySummary: "7 default points: -20%, -10%, -5%, 0%, +5%, +10%, +20%. User-configurable range.",
+    caution:         "Hypothetical Scenario -- these figures are not a price forecast, projected return, or " +
+                     "prediction. No probability is implied.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "monitoring_plan",
+    label:           "Research Monitoring Plan",
+    shortDefinition: "A structured set of research conditions to watch after identifying a research candidate.",
+    fullDefinition:  "A Research Monitoring Plan organizes the key signals to watch across technical, fundamental, " +
+                     "institutional, sector, theme, market regime, portfolio exposure, and event categories. " +
+                     "For each item it shows the current state and the condition that would trigger a thesis " +
+                     "review. Monitoring plans are research references only -- no automated alerts are configured " +
+                     "at this stage.",
+    methodologySummary: "8 categories: technical, fundamental, institutional, sector, theme, regime, portfolio, events.",
+    caution:         "Alert implementation is a future feature. This monitoring plan is a research reference only.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "reference_price",
+    label:           "Reference Price",
+    shortDefinition: "The stored daily close price used as the basis for equity planning scenario calculations.",
+    fullDefinition:  "The Reference Price is the last stored daily close price from the market data database. " +
+                     "It is used as the basis for entry zone calculations, hypothetical sizing, and scenario " +
+                     "analysis. It is not a real-time quote and may be delayed by one or more trading days. " +
+                     "Data freshness is always disclosed. Planning scenarios generated from stale reference " +
+                     "prices display a STALE INPUT WARNING.",
+    methodologySummary: "Sourced from stored daily bars via getReferenceSnapshot(). Zero provider credits.",
+    caution:         "Reference Price is a stored daily close. It may not reflect current market conditions. " +
+                     "Always check the data freshness indicator.",
+    category:        "data_quality",
+    userFacing:      true,
+  },
+];
+
 // Merge portfolio terms into the main glossary
 const _extendedGlossary = [
   ...PORTFOLIO_INTELLIGENCE_ENTRIES,
   ...PORTFOLIO_ANALYTICS_ENTRIES,
   ...TRADE_PLANNING_ENTRIES,
+  ...EQUITY_PLANNING_ENTRIES,
 ];
 
 // Expose portfolio-specific lookup
@@ -1254,6 +1400,13 @@ export function getTradePlanningGlossaryEntry(key: string): ResearchGlossaryEntr
 }
 
 export { TRADE_PLANNING_ENTRIES };
+export { EQUITY_PLANNING_ENTRIES };
+
+/** Full merged glossary (all modules) — use this for full lookup */
+export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = _extendedGlossary;
+
+/** Alias for backward compatibility */
+export const RESEARCH_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = _extendedGlossary;
 
 /** Map from a score display label to its glossary key. */
 export const SCORE_LABEL_TO_GLOSSARY_KEY: Readonly<Record<string, string>> = {

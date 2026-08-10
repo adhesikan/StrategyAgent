@@ -27,6 +27,7 @@ import { getPortfolioIntelligenceHealth } from "../services/portfolio-intelligen
 import { getPortfolioAnalyticsHealth } from "../services/portfolio-analytics-service";
 import { getWorkspaceV2Health } from "./opportunity-workspace";
 import { getTradePlanningHealth } from "../services/trade-planning-service";
+import { getEquityPlanningHealth } from "../services/equity-planning-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -902,13 +903,15 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
     opportunityWorkspaceV2:      opportunityWorkspaceV2_,
     tradePlanning: (() => {
       const tp = getTradePlanningHealth();
+      const eq = getEquityPlanningHealth();
       return {
         status:  tp.failedContexts > 0 && tp.contextsBuilt === 0 ? "DEGRADED" : "HEALTHY",
         summary: tp.contextsBuilt === 0
           ? "No trade planning contexts built this session"
-          : `${tp.contextsBuilt} contexts — ${tp.sessionsCreated} sessions — ${tp.expressionEvaluations} evaluations`,
-        lastSuccessAt: tp.lastSuccessfulContextAt,
+          : `${tp.contextsBuilt} contexts — ${tp.sessionsCreated} sessions — ${eq.equityScenariosGenerated} equity scenarios`,
+        lastSuccessAt: eq.lastSuccessfulEquityScenarioAt ?? tp.lastSuccessfulContextAt,
         details: {
+          // Context metrics
           contextsBuilt:           tp.contextsBuilt,
           sessionsCreated:         tp.sessionsCreated,
           expressionEvaluations:   tp.expressionEvaluations,
@@ -916,6 +919,12 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
           failedContexts:          tp.failedContexts,
           averageContextLatencyMs: tp.averageContextLatencyMs ?? "N/A",
           lastSuccessfulContextAt: tp.lastSuccessfulContextAt ?? "Never",
+          // Equity scenario metrics
+          equityScenariosGenerated:       eq.equityScenariosGenerated,
+          partialEquityScenarios:         eq.partialEquityScenarios,
+          failedEquityScenarios:          eq.failedEquityScenarios,
+          averageEquityScenarioLatencyMs: eq.averageEquityScenarioLatencyMs ?? "N/A",
+          lastSuccessfulEquityScenarioAt: eq.lastSuccessfulEquityScenarioAt ?? "Never",
         },
       } as HealthCard;
     })(),

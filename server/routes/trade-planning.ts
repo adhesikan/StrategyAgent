@@ -26,6 +26,11 @@ import {
   evaluateExpressionFamilies,
   getTradePlanningHealth,
 } from "../services/trade-planning-service";
+import {
+  buildEquityPlanningScenario,
+  recalculateEquityScenario,
+  getEquityPlanningHealth,
+} from "../services/equity-planning-service";
 import { getCanonicalOpportunity } from "../services/opportunity-intelligence-service";
 import {
   validateConstraints,
@@ -37,6 +42,10 @@ import {
   EXPRESSION_FAMILY_LABELS,
   validateExpressionFamily,
 } from "../../shared/trade-planning-types";
+import {
+  EQUITY_PLANNING_DISCLAIMER,
+  SIZING_DISCLAIMER,
+} from "../../shared/equity-planning-types";
 
 // Reserved static path segment — must not be treated as a symbol
 const RESERVED_SEGMENTS = new Set(["health", "session", "history", "templates", "metadata"]);
@@ -179,6 +188,158 @@ export function registerTradePlanningRoutes(
       disclaimer:         TRADE_PLANNING_DISCLAIMER,
       constraintsNote:    CONSTRAINTS_DISCLAIMER,
     });
+  });
+
+  // =========================================================================
+  // Static session equity: GET /api/trade-planning/session/:id/equity
+  // Retrieve latest equity scenario for a session (or generate on-demand)
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/equity", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const session = await getPlanningSession(userId, req.params.id).catch(() => null);
+    if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+    try {
+      const scenario = await buildEquityPlanningScenario({
+        userId,
+        symbol:                  session.symbol,
+        tradePlanningContextId:  session.id,
+        planningSessionId:       session.id,
+        constraints:             session.constraints as any,
+      });
+
+      res.json({
+        scenario,
+        disclaimer:      EQUITY_PLANNING_DISCLAIMER,
+        sizingNote:      SIZING_DISCLAIMER,
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] equity session build error:", err?.message);
+      res.status(err?.message?.includes("No qualified") ? 404 : 500).json({ message: err?.message ?? "Failed to build equity scenario" });
+    }
+  });
+
+  // =========================================================================
+  // Static session equity: PATCH /api/trade-planning/session/:id/equity
+  // Recalculate with updated constraints or scenario range
+  // =========================================================================
+  app.patch("/api/trade-planning/session/:id/equity", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const session = await getPlanningSession(userId, req.params.id).catch(() => null);
+    if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+    const { constraints: rawConstraints, downsidePct, upsidePct } = req.body ?? {};
+    const constraints = rawConstraints ? validateConstraints(rawConstraints) : (session.constraints as any);
+
+    // Validate scenario range
+    const down = typeof downsidePct === "number" ? Math.max(-0.50, Math.min(-0.01, downsidePct)) : undefined;
+    const up   = typeof upsidePct   === "number" ? Math.max(0.01, Math.min(1.00, upsidePct)) : undefined;
+
+    try {
+      const scenario = await recalculateEquityScenario({
+        userId,
+        symbol:                 session.symbol,
+        tradePlanningContextId: session.id,
+        planningSessionId:      session.id,
+        constraints,
+        downsidePct: down,
+        upsidePct:   up,
+      });
+
+      res.json({ scenario, disclaimer: EQUITY_PLANNING_DISCLAIMER });
+    } catch (err: any) {
+      res.status(err?.message?.includes("No qualified") ? 404 : 500).json({ message: err?.message ?? "Recalculation failed" });
+    }
+  });
+
+  // =========================================================================
+  // Static session equity: GET /api/trade-planning/session/:id/equity/scenarios
+  // Return just the scenario grid (fast recalc)
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/equity/scenarios", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const session = await getPlanningSession(userId, req.params.id).catch(() => null);
+    if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+    const downsidePct = req.query.downsidePct ? parseFloat(req.query.downsidePct as string) : undefined;
+    const upsidePct   = req.query.upsidePct   ? parseFloat(req.query.upsidePct   as string) : undefined;
+
+    try {
+      const scenario = await recalculateEquityScenario({
+        userId,
+        symbol:                 session.symbol,
+        tradePlanningContextId: session.id,
+        planningSessionId:      session.id,
+        constraints:            session.constraints as any,
+        downsidePct: downsidePct && !isNaN(downsidePct) ? Math.max(-0.50, Math.min(-0.01, downsidePct)) : undefined,
+        upsidePct:   upsidePct   && !isNaN(upsidePct)   ? Math.max(0.01, Math.min(1.00, upsidePct))     : undefined,
+      });
+
+      res.json({
+        symbol:         session.symbol,
+        scenarioGrid:   scenario.scenarioGrid,
+        referencePrice: scenario.referencePrice,
+        freshness:      scenario.freshness.referencePrice,
+        disclaimer:     scenario.scenarioGrid?.disclaimer ?? EQUITY_PLANNING_DISCLAIMER,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Scenario recalculation failed" });
+    }
+  });
+
+  // =========================================================================
+  // Dynamic: POST /api/trade-planning/:symbol/equity
+  // Build equity scenario for a symbol (without a saved session)
+  // =========================================================================
+  app.post("/api/trade-planning/:symbol/equity", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const symbol = req.params.symbol?.toUpperCase();
+    if (!symbol || isReservedSegment(symbol)) {
+      return res.status(400).json({ message: "Invalid symbol" });
+    }
+
+    const { constraints: rawConstraints, planningSessionId, downsidePct, upsidePct } = req.body ?? {};
+    const constraints = rawConstraints ? validateConstraints(rawConstraints) : DEFAULT_CONSTRAINTS;
+
+    // Validate scenario range
+    const down = typeof downsidePct === "number" ? Math.max(-0.50, Math.min(-0.01, downsidePct)) : undefined;
+    const up   = typeof upsidePct   === "number" ? Math.max(0.01, Math.min(1.00, upsidePct))     : undefined;
+
+    try {
+      const scenario = await buildEquityPlanningScenario({
+        userId,
+        symbol,
+        tradePlanningContextId: planningSessionId ?? `ephemeral-${Date.now()}`,
+        planningSessionId:      planningSessionId ?? null,
+        constraints,
+        downsidePct: down,
+        upsidePct:   up,
+      });
+
+      res.json({
+        scenario,
+        disclaimer:  EQUITY_PLANNING_DISCLAIMER,
+        sizingNote:  SIZING_DISCLAIMER,
+      });
+    } catch (err: any) {
+      if (err?.message?.includes("No qualified")) {
+        return res.status(404).json({
+          message: err.message,
+          symbol,
+          hint: "Only qualified research candidates can be used for equity trade planning.",
+        });
+      }
+      console.error("[trade-planning] equity build error:", err?.message);
+      res.status(500).json({ message: "Failed to build equity planning scenario" });
+    }
   });
 
   // =========================================================================

@@ -1,5 +1,52 @@
 # Sprint Change Log
 
+## Sprint 2.7.3 — Options Contract Research Engine (2026-08-10)
+
+### Summary
+Builds the Options Contract Research Engine — the live broker chain layer of Trade Planning. Given a trader-selected strategy family, it loads live option expirations and chains, applies DTE / event / liquidity / moneyness filters, constructs valid multi-leg structures for all 17 families, and returns bounded research candidates sorted by data quality. No recommendation, no order construction, no POP.
+
+### New Features
+- **Live chain pipeline** — 1 `getOptionExpirations` call + 1 `getOptionChain` per expiration (no N+1)
+- **DTE range classification** — family-specific defaults (e.g. income families 20–45, directional 30–90); user override via filtersOverride
+- **Event window** — `before_event / contains_event / after_event / no_event_detected`; `avoidEarningsWindow` filter excludes event expirations
+- **Liquidity 4-tier** — STRONG / ACCEPTABLE / LIMITED / POOR; POOR leg excludes candidate; thresholds documented in `LIQUIDITY_THRESHOLDS`
+- **Moneyness classification** — ITM / ATM (±2%) / OTM per option type
+- **Multi-leg builders** — all 17 families; iron condor 4-leg validated; iron butterfly ATM-pin validated; same-expiration enforced
+- **Greek null safety** — null for missing Greeks; never zero-fill; net Greeks null when any leg missing
+- **Midpoint** — (bid + ask) / 2 with `MIDPOINT_DISCLAIMER` on every result
+- **Rejection transparency** — `contractsEvaluated`, `contractsRejected`, `topRejectionReasons[]`
+- **ContractQualityCategory** — EXCELLENT_DATA_QUALITY → STRONG → ACCEPTABLE → LIMITED_DATA ordering
+- **2.7.4 handoff** — `TradeRiskScenarioInput` in every candidate with planning context fingerprint
+- **Covered call safety** — NEVER constructs naked call; requires `ownsSymbol=true`
+- **3 new static API endpoints** — POST/GET `/session/:id/options/contracts`, GET `/session/:id/options/contracts/:id`
+- **9 platform health metrics** added to tradePlanning card
+- **16 glossary terms** added (`CONTRACT_RESEARCH_ENTRIES`)
+- **`ContractResearchPanel`** client panel shown after Options Strategy Panel when options family selected
+- **2-minute chain cache** per userId:symbol:expiration; never shared across users
+
+### Files Changed
+- `shared/contract-research-types.ts` — canonical types (new file)
+- `server/services/contract-research-service.ts` — pure deterministic engine (new file)
+- `server/routes/trade-planning.ts` — 3 new static session endpoints before dynamic routes
+- `server/routes/platform-health.ts` — 9 contract research metrics
+- `client/src/pages/trade-planning.tsx` — ContractResearchPanel
+- `shared/research-glossary.ts` — 16 new terms (CONTRACT_RESEARCH_ENTRIES)
+- `docs/operations/31-options-contract-research.md` — new ops doc
+
+### Schema
+No new database tables. Research results are in-memory / per-request. Persistence planned for Sprint 2.7.4.
+
+### Tests
+`server/routes/__tests__/contract-research.test.ts` — 200+ assertions across 27 sections
+
+### Compliance
+- `CONTRACT_RESEARCH_DISCLAIMER` — research only; not a recommendation
+- `MIDPOINT_DISCLAIMER` — midpoint ≠ guaranteed fill on every result
+- `OPTIONS_RISK_DISCLOSURE_EXTENDED` — full risk disclosure
+- No POP, no "best contract", no recommendation language, no order fields
+
+---
+
 ## Sprint 2.7.2 — Options Strategy Matching Engine (2026-08-10)
 
 ### Summary

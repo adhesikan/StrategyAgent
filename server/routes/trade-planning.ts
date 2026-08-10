@@ -11,6 +11,9 @@
  *   GET  /api/trade-planning/session/:id/equity/scenarios      ← 2.7.1
  *   GET  /api/trade-planning/session/:id/options/matches       ← 2.7.2
  *   GET  /api/trade-planning/session/:id/options/matches/:fam  ← 2.7.2
+ *   POST /api/trade-planning/session/:id/options/contracts     ← 2.7.3 static (before dynamic)
+ *   GET  /api/trade-planning/session/:id/options/contracts     ← 2.7.3 static
+ *   GET  /api/trade-planning/session/:id/options/contracts/:id ← 2.7.3 static
  *   POST /api/trade-planning/session                           ← create
  *   POST /api/trade-planning/:symbol/equity                    ← 2.7.1 dynamic
  *   POST /api/trade-planning/:symbol/options/match             ← 2.7.2 dynamic
@@ -42,6 +45,15 @@ import {
   recalculateEquityScenario,
   getEquityPlanningHealth,
 } from "../services/equity-planning-service";
+import {
+  buildContractResearchResult,
+  getContractResearchHealth,
+  type ContractResearchInput,
+} from "../services/contract-research-service";
+import {
+  DEFAULT_CONTRACT_RESEARCH_FILTERS,
+} from "../../shared/contract-research-types";
+import type { OptionsStrategyFamily } from "../../shared/options-strategy-types";
 import { getCanonicalOpportunity } from "../services/opportunity-intelligence-service";
 import {
   validateConstraints,
@@ -423,6 +435,164 @@ export function registerTradePlanningRoutes(
     } catch (err: any) {
       console.error("[trade-planning] options match detail error:", err?.message);
       res.status(500).json({ message: "Failed to retrieve strategy family detail" });
+    }
+  });
+
+  // =========================================================================
+  // Static session contracts: POST /api/trade-planning/session/:id/options/contracts
+  // Build live contract research for a selected strategy family in a session.
+  // Client may pass: strategyFamily, filtersOverride
+  // Server derives: context, thesisDirection, volatilityContext, eventContext,
+  //   ownsSymbol, underlyingPrice (from stored reference), constraintsFp
+  // =========================================================================
+  app.post("/api/trade-planning/session/:id/options/contracts", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId = req.params.id;
+
+    const { strategyFamily, filtersOverride } = req.body ?? {};
+    if (!strategyFamily) return res.status(400).json({ message: "strategyFamily is required" });
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      const context = await buildTradePlanningContext(userId, session.symbol, {
+        goalId:      session.researchGoalId ?? null,
+        portfolioId: session.portfolioId    ?? null,
+        constraints: session.constraints,
+      }).catch(() => null);
+
+      if (!context) return res.status(404).json({ message: "Planning context unavailable" });
+
+      // Derive authoritative context fields — never trust client
+      const matchResult = buildOptionsStrategyMatchResult(context, session.constraints);
+      const match       = matchResult.matches.find(m => m.strategyFamily === strategyFamily);
+      if (!match) return res.status(400).json({ message: `Strategy family '${strategyFamily}' not recognized` });
+
+      // Validate filters — client may adjust OI/spread/DTE but not price/ownership
+      const baseFilters = { ...DEFAULT_CONTRACT_RESEARCH_FILTERS };
+      const filters = filtersOverride
+        ? {
+            minOpenInterest:    typeof filtersOverride.minOpenInterest    === "number"  ? filtersOverride.minOpenInterest    : baseFilters.minOpenInterest,
+            minVolume:          typeof filtersOverride.minVolume           === "number"  ? filtersOverride.minVolume           : baseFilters.minVolume,
+            maxBidAskSpreadPct: typeof filtersOverride.maxBidAskSpreadPct === "number"  ? filtersOverride.maxBidAskSpreadPct  : baseFilters.maxBidAskSpreadPct,
+            avoidEarningsWindow: typeof filtersOverride.avoidEarningsWindow === "boolean" ? filtersOverride.avoidEarningsWindow : baseFilters.avoidEarningsWindow,
+            dteMin:             typeof filtersOverride.dteMin              === "number"  ? filtersOverride.dteMin              : baseFilters.dteMin,
+            dteMax:             typeof filtersOverride.dteMax              === "number"  ? filtersOverride.dteMax              : baseFilters.dteMax,
+            minDeltaLong:       typeof filtersOverride.minDeltaLong        === "number"  ? filtersOverride.minDeltaLong        : baseFilters.minDeltaLong,
+            maxDeltaLong:       typeof filtersOverride.maxDeltaLong        === "number"  ? filtersOverride.maxDeltaLong        : baseFilters.maxDeltaLong,
+          }
+        : baseFilters;
+
+      // Get server-side reference price
+      const { getReferenceSnapshot } = await import("../services/daily-market-data/reference-snapshot");
+      const snapshot     = await getReferenceSnapshot(userId, session.symbol).catch(() => null);
+      const underlyingPrice = (snapshot as any)?.close ?? null;
+
+      const constraintsFp = `${session.constraints.optionsAllowed ? "1" : "0"}|${session.constraints.definedRiskPreferred ? "1" : "0"}|${session.constraints.incomeFocus ? "1" : "0"}`;
+      const invalidationNote = context.invalidatesThesis?.length > 0
+        ? (context.invalidatesThesis[0] as any).summary ?? null
+        : null;
+
+      const input: ContractResearchInput = {
+        userId,
+        symbol:            session.symbol,
+        strategyFamily:    strategyFamily as OptionsStrategyFamily,
+        planningContextId: context.id,
+        thesisDirection:   matchResult.thesisDirection,
+        researchHorizon:   context.researchHorizon ?? null,
+        underlyingPrice,
+        volatilityContext: matchResult.volatilityContext,
+        eventContext:      matchResult.eventContext,
+        ownsSymbol:        context.portfolioContext?.ownsSymbol ?? false,
+        filters,
+        invalidationNote,
+        constraintsFp,
+      };
+
+      const result = await buildContractResearchResult(input);
+
+      res.json({ result, contractResearchVersion: result.methodologyVersion });
+    } catch (err: any) {
+      console.error("[trade-planning] contract research error:", err?.message);
+      res.status(500).json({ message: "Failed to build contract research" });
+    }
+  });
+
+  // =========================================================================
+  // Static session contracts: GET /api/trade-planning/session/:id/options/contracts
+  // Metadata about which families are eligible for live contract research
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/options/contracts", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId = req.params.id;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      const context = await buildTradePlanningContext(userId, session.symbol, {
+        goalId:      session.researchGoalId ?? null,
+        portfolioId: session.portfolioId    ?? null,
+        constraints: session.constraints,
+      }).catch(() => null);
+
+      if (!context) return res.status(404).json({ message: "Planning context unavailable" });
+
+      const matchResult = buildOptionsStrategyMatchResult(context, session.constraints);
+      const eligible = matchResult.matches
+        .filter(m => m.status === "APPLICABLE" || m.status === "POTENTIALLY_APPLICABLE")
+        .filter(m => !["monitor_only", "calendar_spread", "diagonal_spread"].includes(m.strategyFamily))
+        .map(m => ({
+          strategyFamily:    m.strategyFamily,
+          strategyLabel:     m.strategyLabel,
+          status:            m.status,
+          requiresOwnership: m.structure?.requiresOwnership ?? false,
+          isEligible:        true,
+          reason:            `Strategy matched as ${m.status.toLowerCase().replace(/_/g, " ")}`,
+        }));
+
+      res.json({
+        sessionId,
+        symbol:          session.symbol,
+        thesisDirection: matchResult.thesisDirection,
+        eligibleFamilies: eligible,
+        totalEligible:   eligible.length,
+        note:            "Only APPLICABLE and POTENTIALLY_APPLICABLE families are eligible for live contract research.",
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] contracts eligibility error:", err?.message);
+      res.status(500).json({ message: "Failed to retrieve contract research eligibility" });
+    }
+  });
+
+  // =========================================================================
+  // Static: GET /api/trade-planning/session/:id/options/contracts/:candidateId
+  // Individual candidate detail — persisted lookup planned for Sprint 2.7.4+
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/options/contracts/:candidateId", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId   = req.params.id;
+    const candidateId = req.params.candidateId;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      // Individual candidate lookup requires persisted research result (2.7.4+)
+      res.status(404).json({
+        message:    "Individual contract candidate lookup requires persisted research results (planned for Sprint 2.7.4).",
+        candidateId,
+        sessionId,
+        symbol:     session.symbol,
+        hint:       "Use POST /session/:id/options/contracts with a strategyFamily to run fresh contract research.",
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] contract candidate detail error:", err?.message);
+      res.status(500).json({ message: "Failed to retrieve contract candidate" });
     }
   });
 

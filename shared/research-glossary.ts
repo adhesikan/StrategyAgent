@@ -1561,10 +1561,156 @@ const OPTIONS_STRATEGY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   },
 ];
 
+// ===========================================================================
+// Sprint 2.7.3 — Options Contract Research Glossary Terms
+// Declared AFTER OPTIONS_STRATEGY_ENTRIES (same declaration-order rule)
+// ===========================================================================
+
+const CONTRACT_RESEARCH_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:              "contract_research_candidate",
+    label:            "Contract Research Candidate",
+    shortDefinition:  "A specific option structure (legs, strikes, expiration) surfaced during research — not a recommendation.",
+    fullDefinition:   "A contract research candidate is a multi-leg option structure assembled from live broker chain data that satisfies the active liquidity, DTE, and moneyness filters for the selected strategy family. Candidates are sorted by data quality (EXCELLENT → STRONG → ACCEPTABLE → LIMITED). They are research inputs, not trade recommendations.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "A candidate appearing in research does not imply suitability, profitability, or recommendation. Market conditions change quickly.",
+  },
+  {
+    key:              "expiration_research",
+    label:            "Expiration Research",
+    shortDefinition:  "Analysis of option expiration dates within your target DTE range.",
+    fullDefinition:   "Expiration research evaluates all listed expirations for a symbol and classifies each by whether it falls within the strategy family's target DTE range, contains an earnings or event window, and has sufficient chain liquidity. Each expiration is labelled RESEARCH_CANDIDATE, OUTSIDE_HORIZON, EVENT_EXCLUDED, or EXPIRED_OR_INVALID.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "strike_research",
+    label:            "Strike Research",
+    shortDefinition:  "Filtering and ordering option strikes by delta, moneyness, and liquidity for a given expiration.",
+    fullDefinition:   "Strike research uses the live option chain to identify call or put strikes near target delta bands. When delta is unavailable from the provider, moneyness (distance from the underlying price) is used as a fallback. Strikes are filtered by open interest, volume, and bid/ask spread constraints before being assembled into candidate structures.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "moneyness",
+    label:            "Moneyness (ITM / ATM / OTM)",
+    shortDefinition:  "Whether an option's strike is below (ITM call), near (ATM), or above (OTM call) the underlying price.",
+    fullDefinition:   "Moneyness describes the relationship between an option's strike price and the current underlying price. In-the-money (ITM): the option has intrinsic value. At-the-money (ATM): strike is within ±2% of the underlying. Out-of-the-money (OTM): the option has no intrinsic value but retains time value. The ATM band threshold is 2% for research classification.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "open_interest",
+    label:            "Open Interest (OI)",
+    shortDefinition:  "Total number of outstanding option contracts at a given strike and expiration.",
+    fullDefinition:   "Open interest is the total count of option contracts that have been opened but not yet closed, exercised, or expired. Higher OI generally indicates a more liquid and active contract. In contract research, the minimum OI threshold is 10 by default; STRONG liquidity requires ≥500 OI.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "bid_ask_spread",
+    label:            "Bid/Ask Spread",
+    shortDefinition:  "The gap between the highest buyer price (bid) and the lowest seller price (ask).",
+    fullDefinition:   "The bid/ask spread reflects the transaction cost of entering or exiting an option position. A narrow spread (e.g. <5% of midpoint) indicates good liquidity; a wide spread (>30%) means higher effective transaction cost. Contract research uses bid/ask spread percentage as a key liquidity filter. The midpoint is (bid + ask) / 2 and is NOT a guaranteed fill price.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Options can be difficult to fill at the midpoint in illiquid markets. Actual fill price may differ materially.",
+  },
+  {
+    key:              "implied_volatility",
+    label:            "Implied Volatility (IV)",
+    shortDefinition:  "The market's forward-looking expectation of price movement, derived from option prices.",
+    fullDefinition:   "Implied volatility is extracted from the market price of options using an options pricing model. It represents the annualized expected price movement. IV is neither a prediction nor a directional signal. Higher IV means options cost more (more expensive to buy premium). IV differs per expiration (term structure) and per strike (IV skew). The IV shown is from the provider and should be interpreted in context.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "delta",
+    label:            "Delta (Δ)",
+    shortDefinition:  "Approximate change in option price for a $1 move in the underlying.",
+    fullDefinition:   "Delta estimates how much an option's price changes when the underlying moves $1. For calls, delta ranges from 0 to +1; for puts, 0 to -1. Deep ITM options have delta near ±1; deep OTM near 0. Delta is also commonly used as an approximate moneyness proxy (e.g., 0.50 delta ≈ ATM). Delta is not a probability of profit.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Delta changes as the underlying price, time, and volatility change. It is not a static measure.",
+  },
+  {
+    key:              "gamma",
+    label:            "Gamma (Γ)",
+    shortDefinition:  "Rate of change of delta for a $1 move in the underlying.",
+    fullDefinition:   "Gamma measures how quickly delta changes as the underlying price moves. High gamma (near ATM, near expiration) means delta can shift rapidly. Long option positions have positive gamma; short positions have negative gamma. Elevated gamma near expiration can lead to rapid P&L swings.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "theta",
+    label:            "Theta (Θ) — Time Decay",
+    shortDefinition:  "Daily erosion of an option's time value as expiration approaches.",
+    fullDefinition:   "Theta represents the daily dollar loss in option value due solely to the passage of time, assuming all else is equal. Long options have negative theta (time works against you). Short options have positive theta (time works for you). Theta accelerates as expiration approaches, especially for ATM options.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "vega",
+    label:            "Vega (ν) — Volatility Sensitivity",
+    shortDefinition:  "Option price change for a 1-point change in implied volatility.",
+    fullDefinition:   "Vega measures how much an option's price changes when IV moves by 1 percentage point. Long options have positive vega (benefit from rising IV). Short options have negative vega. Vega is highest for ATM options and longer-dated expirations. Options bought in low-IV environments benefit if IV expands; options sold in high-IV environments can benefit if IV contracts.",
+    category:         "options",
+    userFacing:       true,
+  },
+  {
+    key:              "net_debit",
+    label:            "Estimated Net Debit",
+    shortDefinition:  "Approximate cost to enter a debit structure (paid upfront), based on midpoint pricing.",
+    fullDefinition:   "Net debit is the estimated total cost per-share (per-contract = × 100) of entering an options structure that requires an upfront cash outlay. It is computed from the midpoint prices of each leg. A debit structure has a defined maximum loss equal to the net debit paid. Actual fill cost may differ from the midpoint estimate.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Midpoint-based estimate only. Actual fill may be higher.",
+  },
+  {
+    key:              "net_credit",
+    label:            "Estimated Net Credit",
+    shortDefinition:  "Approximate premium received for selling a credit structure, based on midpoint pricing.",
+    fullDefinition:   "Net credit is the estimated premium received per-share (per-contract = × 100) when entering an options structure that generates upfront income. Credit received represents the maximum gain for many credit strategies. The maximum loss of a defined-risk credit structure is spread width minus the credit received. Actual fill may differ from the midpoint.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Midpoint-based estimate only. Actual credit received may be lower.",
+  },
+  {
+    key:              "estimated_midpoint",
+    label:            "Estimated Midpoint",
+    shortDefinition:  "The average of the bid and ask prices — an estimate of fair value, not a guaranteed fill.",
+    fullDefinition:   "The estimated midpoint is (bid + ask) / 2. It is commonly used to estimate the fair value of an option or multi-leg structure. However, actual fills are negotiated with market makers and may deviate from the midpoint — especially in illiquid markets or during fast-moving conditions.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "The midpoint is not a guaranteed fill price. Wide spreads make midpoint fills less likely.",
+    methodologySummary: "Midpoint = (bid + ask) / 2. Applied per leg; net debit/credit sums per-leg midpoints with appropriate sign.",
+  },
+  {
+    key:              "liquidity_quality",
+    label:            "Liquidity Quality",
+    shortDefinition:  "A 4-tier label (STRONG / ACCEPTABLE / LIMITED / POOR) summarizing how tradeable a contract is.",
+    fullDefinition:   "Liquidity quality is a composite classification based on open interest, volume, and bid/ask spread percentage. STRONG: OI ≥ 500, volume ≥ 50, spread < 5%. ACCEPTABLE: OI ≥ 100, spread < 15%. LIMITED: OI ≥ 10, spread < 30%. POOR: below all thresholds. Structures with POOR liquidity legs are excluded from research candidates.",
+    category:         "options",
+    userFacing:       true,
+    methodologySummary: "Tier thresholds are fixed in contract-research-types.ts LIQUIDITY_THRESHOLDS. Overall structure liquidity = worst leg.",
+  },
+  {
+    key:              "event_window",
+    label:            "Event Window",
+    shortDefinition:  "An expiration that falls on or after a known earnings or catalyst date.",
+    fullDefinition:   "An event window expiration is one where the expiration date falls after an upcoming earnings announcement or material event, meaning the option will capture the volatility of that event. These expirations typically have elevated IV. The avoidEarningsWindow filter excludes them from research; when disabled, they are included with a prominent warning.",
+    category:         "options",
+    userFacing:       true,
+    caution:          "Event window options often experience significant IV crush after earnings. Premium paid before the event may deflate rapidly after.",
+  },
+];
+
 /** Full merged glossary (all modules) — use this for full lookup */
 export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
   ..._extendedGlossary,
   ...OPTIONS_STRATEGY_ENTRIES,
+  ...CONTRACT_RESEARCH_ENTRIES,
 ];
 
 /** Alias for backward compatibility */

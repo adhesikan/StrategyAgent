@@ -54,6 +54,14 @@ import {
   OPTIONS_STRATEGY_DISCLAIMER, OPTIONS_RISK_DISCLOSURE, NO_RECOMMENDATION_NOTE,
   STRATEGY_MATCH_STATUS_LABELS,
 } from "@shared/options-strategy-types";
+import type {
+  OptionsContractResearchResult, OptionsStructureResearchCandidate,
+  ContractResearchFilters,
+} from "@shared/contract-research-types";
+import {
+  CONTRACT_RESEARCH_DISCLAIMER, MIDPOINT_DISCLAIMER, OPTIONS_RISK_DISCLOSURE_EXTENDED,
+  DEFAULT_CONTRACT_RESEARCH_FILTERS,
+} from "@shared/contract-research-types";
 
 // ---------------------------------------------------------------------------
 // Reserved route segments (defense-in-depth)
@@ -808,6 +816,419 @@ function StrategyFamilyCard({ match }: { match: OptionsStrategyMatch }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ===========================================================================
+// Contract Research Panel — Sprint 2.7.3
+// ===========================================================================
+
+function ContractResearchCandidateCard({ candidate }: { candidate: OptionsStructureResearchCandidate }) {
+  const [open, setOpen] = useState(false);
+  const qualityColors: Record<string, string> = {
+    EXCELLENT_DATA_QUALITY: "text-emerald-400 border-emerald-400/30 bg-emerald-400/5",
+    STRONG_DATA_QUALITY:    "text-blue-400   border-blue-400/30   bg-blue-400/5",
+    ACCEPTABLE_DATA_QUALITY:"text-yellow-400 border-yellow-400/30 bg-yellow-400/5",
+    LIMITED_DATA:           "text-orange-400 border-orange-400/30 bg-orange-400/5",
+  };
+  const qColor = qualityColors[candidate.qualityCategory] ?? "text-muted-foreground border-border/50";
+  const liqLabels: Record<string, string> = { STRONG: "Strong", ACCEPTABLE: "Acceptable", LIMITED: "Limited", POOR: "Poor", UNKNOWN: "Unknown" };
+
+  return (
+    <div className="border border-border/50 rounded-lg overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between gap-2 p-3 hover:bg-muted/30 text-left"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <Badge variant="outline" className={`text-xs shrink-0 ${qColor}`}>
+            {candidate.qualityCategory.replace(/_DATA_QUALITY|_DATA/, "").replace(/_/g, " ")}
+          </Badge>
+          <span className="text-xs font-medium truncate">
+            {candidate.legs.map(l => `$${l.strike} ${l.optionType.toUpperCase()[0]}`).join(" / ")}
+          </span>
+          <span className="text-xs text-muted-foreground shrink-0">{candidate.expirationLabel}</span>
+          <Badge variant="outline" className="text-xs shrink-0">
+            {liqLabels[candidate.overallLiquidity] ?? candidate.overallLiquidity} Liquidity
+          </Badge>
+        </div>
+        {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="border-t border-border/40 p-3 space-y-3 text-xs">
+          {/* Legs */}
+          <div className="space-y-1.5">
+            <p className="text-muted-foreground font-medium uppercase tracking-wide text-[10px]">Legs</p>
+            {candidate.legs.map((leg, i) => (
+              <div key={i} className="flex items-center justify-between gap-2 bg-muted/20 rounded px-2 py-1.5">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className="font-medium">{leg.roleLabel}</span>
+                  <span className="text-muted-foreground">{leg.optionType.toUpperCase()} ${leg.strike}</span>
+                  <Badge variant="outline" className="text-[10px] py-0">{leg.moneyness}</Badge>
+                  {leg.delta !== null && <span className="text-muted-foreground">Δ {leg.delta.toFixed(2)}</span>}
+                </div>
+                <div className="text-right shrink-0 space-y-0.5">
+                  <p>{leg.bid !== null ? `$${leg.bid.toFixed(2)}` : "—"} / {leg.ask !== null ? `$${leg.ask.toFixed(2)}` : "—"}</p>
+                  {leg.midpoint !== null && <p className="text-muted-foreground">Mid ${leg.midpoint.toFixed(2)}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Structure Metrics */}
+          <div className="grid grid-cols-2 gap-2">
+            {candidate.metrics.debitCreditType && (
+              <div className="bg-muted/20 rounded px-2 py-1.5">
+                <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Est. {candidate.metrics.debitCreditType}</p>
+                <p className="font-medium">
+                  {candidate.metrics.debitCreditType === "DEBIT"
+                    ? (candidate.metrics.estimatedDebit !== null ? `$${candidate.metrics.estimatedDebit.toFixed(2)}/share` : "—")
+                    : (candidate.metrics.estimatedCredit !== null ? `$${candidate.metrics.estimatedCredit.toFixed(2)}/share` : "—")}
+                </p>
+              </div>
+            )}
+            {candidate.metrics.width !== null && (
+              <div className="bg-muted/20 rounded px-2 py-1.5">
+                <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Width</p>
+                <p className="font-medium">${candidate.metrics.width.toFixed(2)}</p>
+              </div>
+            )}
+            {candidate.metrics.capitalEstimate !== null && (
+              <div className="bg-muted/20 rounded px-2 py-1.5 col-span-2">
+                <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Est. Cash-Secured Capital</p>
+                <p className="font-medium">${candidate.metrics.capitalEstimate.toLocaleString()} per contract</p>
+              </div>
+            )}
+            {candidate.metrics.isDefinedRisk !== null && (
+              <div className="bg-muted/20 rounded px-2 py-1.5">
+                <p className="text-muted-foreground text-[10px] uppercase tracking-wide mb-0.5">Risk Profile</p>
+                <p className="font-medium">{candidate.metrics.isDefinedRisk ? "Defined Risk" : "Undefined Risk"}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Greeks */}
+          {(candidate.metrics.netDelta !== null || candidate.metrics.netTheta !== null) && (
+            <div className="space-y-1">
+              <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Net Greeks (per contract)</p>
+              <div className="flex flex-wrap gap-3">
+                {candidate.metrics.netDelta !== null && <span>Δ {candidate.metrics.netDelta.toFixed(3)}</span>}
+                {candidate.metrics.netTheta !== null && <span className="text-orange-300">Θ {candidate.metrics.netTheta.toFixed(3)}</span>}
+                {candidate.metrics.netVega  !== null && <span className="text-blue-300">ν {candidate.metrics.netVega.toFixed(3)}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Event exposure */}
+          {candidate.eventExposure.containsEarnings && (
+            <div className="flex items-start gap-1.5 text-yellow-300 bg-yellow-400/5 border border-yellow-400/20 rounded p-2">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <p>{candidate.eventExposure.eventNote}</p>
+            </div>
+          )}
+
+          {/* Warnings */}
+          {candidate.warnings.map((w, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-muted-foreground">
+              <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <p>{w}</p>
+            </div>
+          ))}
+
+          {/* 2.7.4 CTA */}
+          <div className="pt-1 border-t border-border/30">
+            <Button variant="outline" size="sm" className="w-full text-xs opacity-50 cursor-not-allowed" disabled>
+              <Lock className="h-3 w-3 mr-1.5" />
+              Analyze Risk &amp; Scenarios (Sprint 2.7.4)
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContractResearchPanel({ symbol, sessionId }: { symbol: string; sessionId: string }) {
+  const [strategyFamily, setStrategyFamily] = useState<string | null>(null);
+  const [filtersOpen,    setFiltersOpen]    = useState(false);
+  const [minOI,         setMinOI]          = useState<string>("10");
+  const [maxSpread,     setMaxSpread]      = useState<string>("30");
+  const [avoidEarnings, setAvoidEarnings]  = useState(false);
+
+  // Get eligible families first
+  const eligibilityQuery = useQuery<{
+    eligibleFamilies: { strategyFamily: string; strategyLabel: string; status: string }[];
+    thesisDirection: string;
+  }>({
+    queryKey: [`/api/trade-planning/session/${sessionId}/options/contracts`],
+    queryFn:  () => apiRequest("GET", `/api/trade-planning/session/${sessionId}/options/contracts`).then(r => r.json()),
+    enabled:  !!sessionId,
+  });
+
+  const eligible = eligibilityQuery.data?.eligibleFamilies ?? [];
+
+  // Auto-select first family when loaded
+  useEffect(() => {
+    if (eligible.length > 0 && !strategyFamily) {
+      setStrategyFamily(eligible[0].strategyFamily);
+    }
+  }, [eligible, strategyFamily]);
+
+  // Run contract research for selected family
+  const researchMutation = useMutation<{ result: OptionsContractResearchResult }, Error, string>({
+    mutationFn: (family: string) =>
+      apiRequest("POST", `/api/trade-planning/session/${sessionId}/options/contracts`, {
+        strategyFamily: family,
+        filtersOverride: {
+          minOpenInterest:    parseInt(minOI) || 10,
+          maxBidAskSpreadPct: parseFloat(maxSpread) / 100 || 0.30,
+          avoidEarningsWindow: avoidEarnings,
+        },
+      }).then(r => r.json()),
+  });
+
+  const result = researchMutation.data?.result;
+
+  return (
+    <div className="space-y-4" aria-label="Options Contract Research">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-base font-semibold flex items-center gap-2">
+          <Target className="h-4 w-4 text-primary" aria-hidden="true" />
+          Contract &amp; Strike Research
+        </h2>
+        {result?.freshness?.staleWarning && (
+          <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Stale Chain
+          </Badge>
+        )}
+      </div>
+
+      {eligibilityQuery.isLoading ? (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading eligible strategy families…
+          </CardContent>
+        </Card>
+      ) : eligible.length === 0 ? (
+        <Card className="border-border/50">
+          <CardContent className="p-4 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 inline mr-1" />
+            No strategy families are eligible for contract research with your current constraints.
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Strategy Family Selector */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Select Strategy Family</CardTitle>
+              <CardDescription className="text-xs">Contract research is specific to one strategy structure.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Select value={strategyFamily ?? ""} onValueChange={setStrategyFamily}>
+                <SelectTrigger className="w-full text-xs">
+                  <SelectValue placeholder="Choose a strategy family…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {eligible.map(f => (
+                    <SelectItem key={f.strategyFamily} value={f.strategyFamily} className="text-xs">
+                      {f.strategyLabel}
+                      {f.status === "POTENTIALLY_APPLICABLE" && (
+                        <span className="ml-2 text-yellow-400">(Partial)</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
+          {/* Filter Controls */}
+          <Card className="border-border/50">
+            <button
+              className="w-full flex items-center justify-between p-3 text-sm font-medium hover:bg-muted/20"
+              onClick={() => setFiltersOpen(o => !o)}
+              aria-expanded={filtersOpen}
+            >
+              <span className="flex items-center gap-2">
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                Filter Controls
+              </span>
+              {filtersOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </button>
+            {filtersOpen && (
+              <CardContent className="pt-0 pb-3 space-y-3 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="cr-min-oi" className="text-xs">Min Open Interest</Label>
+                    <Input
+                      id="cr-min-oi" type="number" min="0" value={minOI}
+                      onChange={e => setMinOI(e.target.value)} className="h-7 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="cr-max-spread" className="text-xs">Max Spread % (bid/ask)</Label>
+                    <Input
+                      id="cr-max-spread" type="number" min="0" max="100" value={maxSpread}
+                      onChange={e => setMaxSpread(e.target.value)} className="h-7 text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="cr-avoid-earnings" checked={avoidEarnings}
+                    onCheckedChange={v => setAvoidEarnings(!!v)}
+                  />
+                  <Label htmlFor="cr-avoid-earnings" className="text-xs cursor-pointer">
+                    Avoid earnings / event window expirations
+                  </Label>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Run Research */}
+          <Button
+            className="w-full"
+            disabled={!strategyFamily || researchMutation.isPending}
+            onClick={() => strategyFamily && researchMutation.mutate(strategyFamily)}
+          >
+            {researchMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading live option chain…</>
+            ) : (
+              <><RefreshCw className="h-4 w-4 mr-2" />Run Contract Research</>
+            )}
+          </Button>
+
+          {researchMutation.isError && (
+            <Card className="border-red-400/30">
+              <CardContent className="p-3 text-xs text-red-400 flex items-center gap-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {researchMutation.error?.message ?? "Contract research failed. Ensure a broker is connected."}
+              </CardContent>
+            </Card>
+          )}
+
+          {result && (
+            <div className="space-y-4">
+              {/* Status + Freshness */}
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                <Badge variant="outline" className={
+                  result.status === "COMPLETE"  ? "text-emerald-400 border-emerald-400/30" :
+                  result.status === "PARTIAL"   ? "text-yellow-400 border-yellow-400/30"   :
+                                                   "text-muted-foreground border-border/50"
+                }>
+                  {result.statusLabel}
+                </Badge>
+                <span className="text-muted-foreground">
+                  Chain: {result.freshness.freshnessStatus} · {result.providerCallCount} broker call{result.providerCallCount !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              {/* Limitations */}
+              {result.limitations.length > 0 && (
+                <div className="space-y-1">
+                  {result.limitations.map((l, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Info className="h-3 w-3 shrink-0 mt-0.5" /><span>{l}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Expiration Summary */}
+              {result.expirationCandidates.length > 0 && (
+                <Card className="border-border/50">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Expiration Research</CardTitle>
+                    <CardDescription className="text-xs">
+                      Target: {result.derivedDteRange.label}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-1 text-xs">
+                    {result.expirationCandidates.map((exp, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 py-1 border-b border-border/20 last:border-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{exp.expiration}</span>
+                          <span className="text-muted-foreground">{exp.dte} DTE</span>
+                          {exp.dteBucket && <Badge variant="outline" className="text-[10px] py-0">{exp.dteBucket.replace(/_/g, " ")}</Badge>}
+                          {exp.containsEarnings && <Badge variant="outline" className="text-[10px] py-0 text-yellow-400 border-yellow-400/30">Event</Badge>}
+                        </div>
+                        <Badge variant="outline" className={`text-[10px] shrink-0 ${
+                          exp.status === "RESEARCH_CANDIDATE" ? "text-emerald-400 border-emerald-400/30" :
+                          exp.status === "EVENT_EXCLUDED"     ? "text-yellow-400 border-yellow-400/30"   :
+                          exp.status === "OUTSIDE_HORIZON"    ? "text-muted-foreground"                  :
+                                                                "text-red-400 border-red-400/30"
+                        }`}>
+                          {exp.status.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Structure Candidates */}
+              {result.structureCandidates.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">
+                    Structure Candidates ({result.structureCandidates.length})
+                  </p>
+                  {result.structureCandidates.map(c => (
+                    <ContractResearchCandidateCard key={c.id} candidate={c} />
+                  ))}
+                </div>
+              ) : (
+                <Card className="border-border/50">
+                  <CardContent className="p-4 text-xs text-muted-foreground">
+                    <XCircle className="h-3.5 w-3.5 inline mr-1" />
+                    No qualifying contract candidates found.
+                    {result.rejectionSummary.contractsEvaluated > 0 && (
+                      <span> {result.rejectionSummary.contractsEvaluated} contracts evaluated; {result.rejectionSummary.contractsRejected} rejected.</span>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Rejection Transparency */}
+              {result.rejectionSummary.topRejectionReasons.length > 0 && (
+                <Card className="border-border/50">
+                  <CardHeader className="pb-1">
+                    <CardTitle className="text-xs text-muted-foreground">Rejection Transparency</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-1">
+                    <p>{result.rejectionSummary.contractsEvaluated} evaluated · {result.rejectionSummary.contractsRejected} rejected</p>
+                    {result.rejectionSummary.topRejectionReasons.map((r, i) => (
+                      <div key={i} className="flex items-center justify-between text-muted-foreground">
+                        <span>{r.reason}</span>
+                        <span>{r.count}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Risk Disclosure */}
+              <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-[10px] text-muted-foreground space-y-1">
+                <p><Info className="h-3 w-3 inline mr-1" />{result.disclaimer}</p>
+                <p>{result.midpointDisclaimer}</p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Full risk disclosure */}
+      <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-[10px] text-muted-foreground">
+        <Shield className="h-3 w-3 inline mr-1" />
+        {OPTIONS_RISK_DISCLOSURE_EXTENDED}
+      </div>
     </div>
   );
 }
@@ -1798,6 +2219,19 @@ export default function TradePlanningPage() {
               <OptionsStrategyPanel symbol={symbol} sessionId={sessionId} constraints={constraints} />
             )}
 
+            {/* Contract Research Panel — shown after Options Strategy Panel */}
+            {selectedFamily && sessionId && (
+              selectedFamily === "income" ||
+              selectedFamily === "defined_risk_directional" ||
+              selectedFamily === "covered_call" ||
+              selectedFamily === "cash_secured_put" ||
+              selectedFamily === "vertical_spread" ||
+              selectedFamily === "long_option" ||
+              selectedFamily === "neutral_options"
+            ) && (
+              <ContractResearchPanel symbol={symbol} sessionId={sessionId} />
+            )}
+
             {/* Future Planning Steps */}
             <Card className="border-border/50">
               <CardHeader className="pb-2">
@@ -1805,8 +2239,7 @@ export default function TradePlanningPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 <p className="text-foreground font-medium">Coming in future sprints:</p>
-                <p>• <strong className="text-foreground">Contract &amp; Strike Research (2.7.3)</strong> — Research specific contracts for a matched strategy structure.</p>
-                <p>• <strong className="text-foreground">Risk &amp; Scenario Analysis (2.7.4)</strong> — Model scenarios for the selected structure.</p>
+                <p>• <strong className="text-foreground">Risk &amp; Scenario Analysis (2.7.4)</strong> — Model payoff diagrams, breakeven, max loss for a selected structure.</p>
                 <p>• <strong className="text-foreground">Trade Plan Workspace (2.7.5)</strong> — Full trade plan review before any order preparation.</p>
               </CardContent>
             </Card>

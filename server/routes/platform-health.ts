@@ -29,6 +29,7 @@ import { getWorkspaceV2Health } from "./opportunity-workspace";
 import { getTradePlanningHealth } from "../services/trade-planning-service";
 import { getEquityPlanningHealth } from "../services/equity-planning-service";
 import { getOptionsMatchingHealth } from "../services/options-strategy-matching-service";
+import { getContractResearchHealth } from "../services/contract-research-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -936,6 +937,23 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
               failedOptionsMatches:         om.failedOptionsMatches,
               averageOptionsMatchLatencyMs: om.averageOptionsMatchLatencyMs ?? "N/A",
               lastSuccessfulOptionsMatchAt: om.lastSuccessfulOptionsMatchAt ?? "Never",
+            };
+          })(),
+          // Options Contract Research metrics (2.7.3)
+          ...(() => {
+            const cr = getContractResearchHealth();
+            return {
+              contractResearchRequests:         cr.contractResearchRequests,
+              successfulContractResearch:       cr.successfulContractResearch,
+              partialContractResearch:          cr.partialContractResearch,
+              failedContractResearch:           cr.failedContractResearch,
+              noValidCandidates:                cr.noValidCandidates,
+              requiresBrokerCount:              cr.requiresBrokerCount,
+              staleChainCount:                  cr.staleChainCount,
+              emptyChainCount:                  cr.emptyChainCount,
+              averageContractResearchLatencyMs: cr.averageContractResearchLatencyMs ?? "N/A",
+              lastSuccessfulContractResearchAt: cr.lastSuccessfulContractResearchAt ?? "Never",
+              optionChainProviderStatus:        cr.optionChainProviderStatus,
             };
           })(),
         },

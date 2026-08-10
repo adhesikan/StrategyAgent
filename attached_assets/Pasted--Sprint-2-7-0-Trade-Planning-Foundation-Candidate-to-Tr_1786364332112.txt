@@ -1,0 +1,1748 @@
+# Sprint 2.7.0 — Trade Planning Foundation / Candidate-to-Trade Handoff
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.0 — Trade Planning Foundation / Candidate-to-Trade Handoff
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections & Watchlists
+✓ AI Research Workspace v2
+✓ Market Research Command Center
+✓ Research Monitoring
+✓ Research Reports & Publishing
+✓ Research Transparency / Central Research Glossary
+✓ Portfolio History & Change Intelligence
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Opportunity Workspace v2
+✓ Research Workspace v2
+✓ Goals & Research Planning
+✓ Platform Operations Center
+
+======================================================================
+CORE ARCHITECTURAL PRINCIPLE
+======================================================================
+
+Research determines WHAT deserves investigation.
+
+Goals personalize WHICH research matters to the user.
+
+Trade Planning determines HOW a qualified research candidate could
+potentially be expressed.
+
+Execution happens only after explicit user review and confirmation.
+
+This sprint builds ONLY the bridge between Research and Trade Planning.
+
+It does NOT construct actual trades yet.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- option strike selection
+- option expiration selection
+- specific options contracts
+- multi-leg order construction
+- order tickets
+- broker order submission
+- automated execution
+- automatic trading
+- automated rebalancing
+- trade recommendations
+- "best trade" ranking
+- personalized suitability decisions
+- target prices
+- profit guarantees
+- AI-generated trade picks
+- autonomous agents
+
+DO NOT change:
+
+- Scanner scoring
+- Opportunity Ranking
+- Opportunity Intelligence scoring
+- Goal Matching methodology
+- Portfolio Intelligence scoring
+- Research Glossary definitions
+- qualification thresholds
+
+This sprint is architecture + workflow + trade-planning context only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Create a reusable Trade Planning Foundation that converts an existing
+qualified research candidate into a structured, explainable trade-planning
+context.
+
+Example:
+
+Qualified Research Candidate
+        +
+Research Goal
+        +
+Portfolio Context (optional)
+        +
+Market Context
+        +
+User Trade-Planning Constraints
+        ↓
+Canonical TradePlanningContext
+        ↓
+Eligible Research Expression Families
+        ↓
+Future Equity / Options Planning Engines
+
+This sprint stops BEFORE actual trade construction.
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+Opportunity Intelligence
+
+CanonicalOpportunity
+
+Opportunity Workspace v2
+
+Research Workspace v2
+
+Research Goals
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Broker Sync
+
+existing trade plan code
+
+existing portfolio-trade-plan.ts
+
+existing best-trade-finder.ts
+
+existing option scanner
+
+existing strategy scanner
+
+existing Strategy Fundamentals
+
+existing options-related services
+
+existing Tradier/TradeStation abstractions
+
+existing risk budget concepts
+
+existing Goal Mode concepts
+
+existing Smart Instrument Selector
+
+existing InstaTrade workflows
+
+Research Glossary
+
+structured logging
+
+Platform Health
+
+Operations Manual
+
+Report:
+
+A. Existing trade-planning logic
+B. Existing strategy-selection logic
+C. Existing risk fields
+D. Existing broker/order code
+E. Existing options-selection logic
+F. Logic that must NOT be duplicated
+G. Legacy components that should remain isolated
+H. Current research → execution coupling
+I. Missing canonical handoff model
+J. Compliance-sensitive legacy language
+
+Do not code until audit is complete.
+
+======================================================================
+2. CANONICAL TRADE PLANNING CONTEXT
+======================================================================
+
+Create a reusable shared type.
+
+Suggested:
+
+TradePlanningContext {
+  id
+  userId
+  symbol
+
+  opportunityId
+  opportunityType
+
+  researchGoalId?
+  portfolioId?
+
+  researchHorizon
+  marketRegime
+
+  researchScore
+  technicalScore
+  fundamentalScore
+  institutionalScore
+  evidenceConfidence
+  riskLevel
+
+  primaryEvidence[]
+  secondaryEvidence[]
+  riskFactors[]
+  invalidatesThesis[]
+
+  sector
+  industry
+  themes[]
+
+  portfolioContext?
+  goalContext?
+
+  userConstraints
+
+  eligibleExpressionFamilies[]
+
+  limitations[]
+  freshness
+
+  generatedAt
+}
+
+Do not duplicate CanonicalOpportunity unnecessarily.
+
+Where practical, reference/copy only the fields required for planning.
+
+======================================================================
+3. USER TRADE-PLANNING CONSTRAINTS
+======================================================================
+
+Create a minimal optional planning preferences object.
+
+Suggested:
+
+TradePlanningConstraints {
+  capitalAvailable?
+  maxCapitalAtRisk?
+  maxLossPerPosition?
+  preferredHoldingPeriod?
+  equityAllowed
+  optionsAllowed
+  definedRiskPreferred?
+  incomeFocus?
+  directionalFocus?
+  avoidEarningsWindow?
+}
+
+IMPORTANT:
+
+These are USER-SELECTED PLANNING CONSTRAINTS.
+
+They are NOT:
+
+risk tolerance
+risk capacity
+suitability
+financial advice
+
+Do not infer them.
+
+Do not create a financial questionnaire.
+
+======================================================================
+4. PRIVACY / DATA MINIMIZATION
+======================================================================
+
+Do NOT require:
+
+income
+net worth
+age
+tax bracket
+employment
+dependents
+household assets
+liabilities
+
+Trade Planning Foundation should only collect parameters actually needed
+for research scenario construction.
+
+======================================================================
+5. RESEARCH EXPRESSION FAMILIES
+======================================================================
+
+Create canonical research-expression families.
+
+Suggested:
+
+equity
+equity_scaled
+income
+defined_risk_directional
+covered_call
+cash_secured_put
+vertical_spread
+long_option
+neutral_options
+monitor_only
+
+IMPORTANT:
+
+This sprint identifies broad eligible families only.
+
+It does NOT select:
+
+strike
+expiration
+contract
+spread width
+premium
+quantity
+
+======================================================================
+6. ELIGIBILITY, NOT RECOMMENDATION
+======================================================================
+
+Create deterministic family eligibility.
+
+Example:
+
+Equity Research
+Eligible
+
+Covered Call Research
+Potentially Applicable
+
+Cash-Secured Put Research
+Potentially Applicable
+
+Defined-Risk Options Research
+Potentially Applicable
+
+Neutral Options Research
+Not currently aligned with directional research thesis
+
+Do NOT use:
+
+Recommended Strategy
+Best Strategy
+Use Covered Call
+Trade This
+
+Preferred wording:
+
+Research Expression
+Potential Research Structure
+Eligible Strategy Family
+Potentially Applicable
+Not Applicable Under Current Research Conditions
+
+======================================================================
+7. ELIGIBILITY SERVICE
+======================================================================
+
+Create reusable service:
+
+buildTradePlanningContext(...)
+
+and:
+
+evaluateExpressionFamilies(...)
+
+Eligibility may use:
+
+opportunity type
+research horizon
+market regime
+risk level
+goal context
+portfolio ownership
+user constraints
+
+It must NOT create new stock rankings.
+
+It must NOT override Opportunity Intelligence.
+
+======================================================================
+8. DETERMINISTIC ELIGIBILITY RULES
+======================================================================
+
+Rules should be transparent.
+
+Example:
+
+Covered Call:
+
+potentially applicable when:
+
+- equity ownership context exists OR future hypothetical equity research path allowed
+- income focus selected
+- options allowed
+
+Cash-Secured Put:
+
+potentially applicable when:
+
+- options allowed
+- income or acquisition-style research context
+- adequate capital constraint provided if required later
+
+Defined-Risk Directional:
+
+potentially applicable when:
+
+- options allowed
+- directional research thesis exists
+- defined-risk preference enabled
+
+Long Option:
+
+potentially applicable when:
+
+- options allowed
+- directional research context exists
+- user has not excluded unlimited premium decay exposure
+
+DO NOT implement contract math yet.
+
+======================================================================
+9. TRANSPARENT RULE EXPLANATIONS
+======================================================================
+
+Each expression family returns:
+
+status
+
+reasons[]
+
+constraintsMissing[]
+
+limitations[]
+
+Example:
+
+Defined-Risk Options Research
+
+Status:
+Potentially Applicable
+
+Why:
+- Growth candidate
+- Technical evidence is strengthening
+- Options research enabled
+- Defined-risk preference selected
+
+Missing:
+- No preferred planning horizon selected
+
+No AI needed.
+
+======================================================================
+10. RESEARCH GOAL INTEGRATION
+======================================================================
+
+Consume Sprint 2.6.5 Research Goals.
+
+Example:
+
+Long-Term Growth Goal
+
+may influence:
+
+research horizon
+expression-family presentation
+
+Income Goal
+
+may surface:
+
+income research families
+
+Do NOT change candidate qualification.
+
+Do NOT force a trade type solely because of a goal.
+
+======================================================================
+11. PORTFOLIO CONTEXT INTEGRATION
+======================================================================
+
+Portfolio remains optional.
+
+If user owns symbol:
+
+show:
+
+Current Position
+Portfolio Weight
+Cost Basis if available
+Current Exposure
+Concentration context
+Recent research change
+
+This may affect what expression families are contextually relevant.
+
+Example:
+
+Existing position + income goal
+
+→ Covered Call Research may be potentially applicable.
+
+But do not say:
+
+"You should write covered calls."
+
+======================================================================
+12. NO-PORTFOLIO EXPERIENCE
+======================================================================
+
+Critical requirement.
+
+A user with:
+
+NO portfolio
+NO broker
+NO uploaded holdings
+
+must be able to use Trade Planning Foundation.
+
+Example:
+
+NVDA Research Candidate
+
+Potential Research Expressions:
+
+Equity Research
+
+Defined-Risk Options Research
+
+Long-Duration Options Research
+
+Future planning engines may expand these.
+
+======================================================================
+13. OPPORTUNITY WORKSPACE INTEGRATION
+======================================================================
+
+Replace/upgrade the existing:
+
+Future Trade Planning Handoff
+
+with:
+
+Trade Planning
+
+or:
+
+Explore Research Structures
+
+CTA:
+
+Open Trade Planning
+
+Do NOT show contract-level details yet.
+
+Example card:
+
+Potential Research Expressions
+
+Equity Research
+
+Defined-Risk Options Research
+
+Income Research
+
+Based on:
+
+current opportunity classification
+research goal
+portfolio context
+planning constraints
+
+======================================================================
+14. NEW TRADE PLANNING ROUTE
+======================================================================
+
+Create canonical route:
+
+/trade-planning/:symbol
+
+or equivalent existing convention.
+
+Do not use:
+
+/trade/:symbol
+
+if it conflicts with execution semantics.
+
+This is research planning.
+
+Potential page title:
+
+Trade Planning Research
+
+Subtitle:
+
+"Explore how a qualified research thesis could potentially be expressed
+through different investment structures."
+
+======================================================================
+15. ROUTING CONTRACT
+======================================================================
+
+Because static/dynamic route collisions have occurred before:
+
+audit namespace carefully.
+
+If using:
+
+/trade-planning/:symbol
+
+and future routes such as:
+
+/trade-planning/history
+/trade-planning/templates
+
+static routes must register before dynamic route.
+
+Add route-contract tests.
+
+======================================================================
+16. TRADE PLANNING PAGE
+======================================================================
+
+Page sections:
+
+Research Context
+
+Why This Candidate Qualified
+
+Research Goal
+
+Portfolio Context (optional)
+
+Planning Constraints
+
+Potential Research Expressions
+
+Risk & Thesis Invalidation
+
+Data Freshness
+
+Future Planning Steps
+
+Compliance Disclaimer
+
+No order ticket.
+
+No contract selector.
+
+======================================================================
+17. PLANNING CONSTRAINTS UI
+======================================================================
+
+Allow user to optionally enter:
+
+Capital Available for Scenario
+
+Maximum Capital at Risk
+
+Maximum Loss per Position
+
+Planning Horizon
+
+Equity Research Allowed
+
+Options Research Allowed
+
+Defined-Risk Preferred
+
+Income Focus
+
+Avoid Earnings Window
+
+Clearly state:
+
+"These values are used only to construct research scenarios and do not
+constitute a suitability assessment."
+
+======================================================================
+18. CONSTRAINT PERSISTENCE
+======================================================================
+
+Decide after audit whether constraints should be:
+
+session-only
+per-user defaults
+per-planning-session
+
+Prefer minimal persistence.
+
+If persisted:
+
+private
+user-owned
+editable
+deletable
+
+Do not silently reuse constraints across users.
+
+======================================================================
+19. CANONICAL PLANNING SESSION
+======================================================================
+
+If needed create:
+
+TradePlanningSession {
+  id
+  userId
+  symbol
+  opportunityId
+  researchGoalId?
+  portfolioId?
+  constraints
+  selectedExpressionFamily?
+  createdAt
+  updatedAt
+}
+
+Do NOT store orders.
+
+Do NOT store broker instructions.
+
+======================================================================
+20. PLANNING API
+======================================================================
+
+Suggested:
+
+GET /api/trade-planning/:symbol/context
+
+POST /api/trade-planning/:symbol/session
+
+GET /api/trade-planning/session/:id
+
+PATCH /api/trade-planning/session/:id
+
+GET /api/trade-planning/session/:id/expressions
+
+All authenticated.
+
+Ownership required for sessions.
+
+======================================================================
+21. SERVER-SIDE AUTHORITATIVE CONTEXT
+======================================================================
+
+Client must NOT submit authoritative:
+
+scores
+qualification
+research evidence
+portfolio weights
+goal match
+
+Server reconstructs these from canonical services.
+
+Client may submit only:
+
+user-selected planning constraints
+selected goal
+selected portfolio
+selected expression family
+
+This is mandatory.
+
+======================================================================
+22. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Allow:
+
+Explain Trade Planning Context
+
+Compare Research Expressions
+
+Explain Why This Expression Is Applicable
+
+Explain Risk Factors
+
+Open existing Research Workspace v2.
+
+AI gets authoritative TradePlanningContext.
+
+AI may explain.
+
+AI may NOT:
+
+select a specific contract
+construct order
+recommend a strategy
+say what user should trade
+
+======================================================================
+23. RESEARCH GLOSSARY
+======================================================================
+
+Add canonical terms if needed:
+
+trade_planning
+
+research_expression
+
+expression_family
+
+planning_constraints
+
+capital_at_risk
+
+defined_risk
+
+income_research
+
+directional_research
+
+trade_thesis
+
+planning_horizon
+
+Do not duplicate existing risk definitions.
+
+======================================================================
+24. FUTURE EQUITY ENGINE HANDOFF
+======================================================================
+
+Design interface for Sprint 2.7.1.
+
+Example:
+
+EquityPlanningInput {
+  tradePlanningContextId
+  symbol
+  researchHorizon
+  planningConstraints
+  researchEvidence
+  invalidationEvidence
+}
+
+Do NOT calculate:
+
+entry price
+stop loss
+position size
+target
+
+unless those belong to later approved methodology.
+
+Only define contract.
+
+======================================================================
+25. FUTURE OPTIONS ENGINE HANDOFF
+======================================================================
+
+Design interface for Sprint 2.7.2.
+
+Example:
+
+OptionsStrategyMatchingInput {
+  planningContextId
+  symbol
+  opportunityType
+  researchHorizon
+  volatilityPreference
+  incomeFocus
+  directionalBias
+  riskPreference
+}
+
+No options-chain calls in this sprint unless needed only for existing
+availability metadata.
+
+Do NOT select actual contracts.
+
+======================================================================
+26. FUTURE TRADE CONSTRUCTION ENGINE CONTRACT
+======================================================================
+
+Document future flow:
+
+Opportunity Intelligence
+       ↓
+TradePlanningContext
+       ↓
+Strategy Matching
+       ↓
+Instrument Selection
+       ↓
+Contract Research
+       ↓
+Risk / Scenario Analysis
+       ↓
+User-Reviewed Trade Plan
+       ↓
+Order Preparation
+       ↓
+Explicit Confirmation
+       ↓
+Broker
+
+Trade Construction must never operate directly on raw scanner output.
+
+It requires a canonical qualified research candidate.
+
+======================================================================
+27. RESEARCH THESIS
+======================================================================
+
+Carry canonical thesis context into planning.
+
+Include:
+
+Why Qualified
+
+Supporting Evidence
+
+Risks
+
+What Changed
+
+What Would Invalidate Thesis
+
+Expression families must not ignore invalidation evidence.
+
+======================================================================
+28. RISK CONTEXT
+======================================================================
+
+Show existing:
+
+risk level
+risk factors
+earnings/event considerations
+liquidity considerations
+volatility context if available
+
+Do not invent risk tolerance.
+
+Do not label:
+
+Safe Trade
+
+Low Risk Investment
+
+Suitable
+
+======================================================================
+29. DATA FRESHNESS
+======================================================================
+
+Show freshness for:
+
+Opportunity Intelligence
+
+Market Data
+
+Technical Evidence
+
+Fundamental Evidence
+
+Institutional Evidence
+
+Portfolio Context
+
+Goal Context
+
+Do not build planning from stale critical inputs without disclosure.
+
+If critical market context is stale:
+
+show:
+
+Planning Data Requires Refresh
+
+but do not trigger external market calls blindly.
+
+======================================================================
+30. PARTIAL DATA RESILIENCE
+======================================================================
+
+Examples:
+
+Institutional unavailable:
+planning still works with limitation.
+
+Portfolio unavailable:
+planning still works.
+
+Goal unavailable:
+planning still works.
+
+Options disabled:
+options research families unavailable.
+
+No entire-page failure from optional subsystem.
+
+======================================================================
+31. NO "BEST TRADE"
+======================================================================
+
+Critical acceptance rule.
+
+Do NOT rank expression families using:
+
+Best
+Recommended
+Top
+Optimal
+
+If ordering needed:
+
+use:
+
+Applicable Research Expressions
+
+Potential Research Expressions
+
+and deterministic grouping such as:
+
+Applicable
+Potentially Applicable
+Unavailable
+
+======================================================================
+32. COMPLIANCE LANGUAGE
+======================================================================
+
+Canonical disclaimer:
+
+"Trade Planning provides research scenarios showing how an existing
+research thesis could potentially be expressed. It does not constitute
+investment advice, a personalized recommendation, a suitability
+determination, or an instruction to buy, sell, hold, or enter any
+security or strategy."
+
+Use concise placement.
+
+Do not repeat excessively.
+
+======================================================================
+33. MONETIZATION / EDITION REVIEW
+======================================================================
+
+Document only.
+
+No entitlement enforcement.
+
+FREE:
+
+Opportunity research
+limited planning preview
+basic equity research-expression view
+
+RETAIL (~future $149/month):
+
+full Trade Planning
+equity/options research families
+saved planning sessions
+goal integration
+portfolio context
+risk scenarios later
+
+PROFESSIONAL:
+
+advanced planning constraints
+historical trade research
+larger comparison workflows
+multi-portfolio context
+
+RIA:
+
+advisor research planning
+approved strategy universe
+client-specific workflow context
+firm templates
+compliance recordkeeping
+
+IMPORTANT:
+Do not implement suitability.
+
+INSTITUTIONAL:
+
+custom strategy policies
+liquidity constraints
+research approval workflows
+custom universes
+
+ENTERPRISE:
+
+custom planning engines
+private data
+API integration
+white-label
+policy engine
+
+======================================================================
+34. RIA / INSTITUTIONAL EXTENSIBILITY
+======================================================================
+
+Document future policy layer:
+
+PlanningPolicy {
+  allowedExpressionFamilies
+  prohibitedExpressionFamilies
+  maxPlanningCapital
+  approvedHorizons
+  liquidityRequirements
+  customDisclosures
+}
+
+Do NOT implement firm policy engine now.
+
+Ensure architecture can accommodate it later.
+
+======================================================================
+35. ETHICAL PRODUCT EXPERIENCE
+======================================================================
+
+Every user gets meaningful value.
+
+Do not artificially block:
+
+risk explanations
+methodology
+disclosures
+basic evidence
+
+Future premium differentiation comes from:
+
+depth
+automation
+scenario analysis
+options analysis
+history
+monitoring
+workflow
+integration
+customization
+
+======================================================================
+36. PLATFORM HEALTH
+======================================================================
+
+Add Trade Planning Foundation health.
+
+Prefer integration into existing research/trade planning section.
+
+Metrics:
+
+contextsBuilt
+sessionsCreated
+expressionEvaluations
+partialContexts
+failedContexts
+averageContextLatencyMs
+lastSuccessfulContextAt
+
+Admin aggregates only.
+
+No:
+
+symbols
+capital values
+portfolio names
+user identities
+
+======================================================================
+37. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+trade_planning_context_started
+trade_planning_context_completed
+trade_planning_context_partial
+trade_planning_session_created
+trade_planning_expression_evaluated
+trade_planning_failed
+
+Safe metadata:
+
+durationMs
+expressionFamilyCount
+subsystemCount
+hasGoalContext
+hasPortfolioContext
+
+Do NOT log:
+
+capitalAvailable
+maxLoss
+portfolio values
+symbols if policy avoids them
+user identity
+raw planning notes
+broker account details
+
+======================================================================
+38. SECURITY
+======================================================================
+
+Authenticated endpoints.
+
+Session-derived userId.
+
+Planning sessions ownership enforced.
+
+Cross-user session IDs:
+
+404
+
+No private portfolio data leakage.
+
+No goal leakage.
+
+No client-trusted canonical research data.
+
+======================================================================
+39. CACHING
+======================================================================
+
+TradePlanningContext can reuse:
+
+Opportunity Intelligence cache
+Goal cache
+Portfolio Intelligence cache
+
+If storing context cache:
+
+key by:
+
+userId
+symbol
+opportunity generation ID
+goalId?
+portfolioId?
+constraints fingerprint if necessary
+
+Do not share personalized context.
+
+======================================================================
+40. PERFORMANCE
+======================================================================
+
+No new external market-data calls unless explicitly required.
+
+No scanner.
+
+No reranking.
+
+No AI needed for eligibility.
+
+Target:
+
+Trade Planning Context <500ms warm
+
+Expression eligibility <100ms after context assembled
+
+Measure and report.
+
+======================================================================
+41. ACCESSIBILITY
+======================================================================
+
+Planning constraint form keyboard accessible.
+
+Labels explicit.
+
+Tooltips accessible.
+
+Expression cards semantic.
+
+Status badges not color-only.
+
+Mobile-friendly.
+
+======================================================================
+42. MOBILE
+======================================================================
+
+At 375px:
+
+research context stacks
+
+constraint form full-width
+
+expression cards stack
+
+risk information readable
+
+no clipped matrices
+
+actions wrap
+
+======================================================================
+43. ROUTING REGRESSION
+======================================================================
+
+Permanent route rule applies.
+
+Test:
+
+/trade-planning/NVDA
+
+and any static routes introduced.
+
+Static route cannot be interpreted as symbol.
+
+Direct deep link works.
+
+Refresh works.
+
+Back/forward works.
+
+======================================================================
+44. OPERATIONS MANUAL
+======================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/28-trade-planning-foundation.md
+
+Document:
+
+architecture
+Research → Planning contract
+TradePlanningContext
+planning constraints
+expression families
+eligibility methodology
+goal integration
+portfolio integration
+Opportunity Workspace integration
+Research Workspace integration
+server authoritative context
+privacy
+compliance
+cache
+performance
+health
+logging
+security
+routing
+UAT
+troubleshooting
+future Equity Engine
+future Options Strategy Engine
+future Trade Construction
+RIA extension
+Institutional extension
+commercial model
+
+Update glossary docs.
+
+======================================================================
+45. TESTS
+======================================================================
+
+Target:
+
+175+ meaningful assertions if appropriate.
+
+Cover:
+
+TradePlanningContext shape
+
+research source ownership
+
+Opportunity Intelligence integration
+
+goal context
+
+portfolio context
+
+no-goal user
+
+no-portfolio user
+
+planning constraints
+
+capital constraint validation
+
+loss constraint validation
+
+horizon
+
+equity allowed
+
+options allowed
+
+defined-risk preference
+
+income focus
+
+avoid earnings
+
+expression families
+
+Applicable
+
+Potentially Applicable
+
+Unavailable
+
+eligibility reasons
+
+missing constraints
+
+limitations
+
+no recommendation ranking
+
+no best-trade wording
+
+no strike
+
+no expiration
+
+no contract
+
+no order
+
+no broker submission
+
+AI grounding
+
+server authoritative context
+
+client cannot inject scores
+
+user ownership
+
+cross-user 404
+
+cache isolation
+
+partial-data resilience
+
+stale-data disclosure
+
+glossary
+
+Platform Health
+
+structured logging privacy
+
+route regression
+
+accessibility
+
+mobile structure
+
+operations docs
+
+commercial review
+
+RIA extension
+
+future options handoff
+
+future equity handoff
+
+roadmap discipline
+
+======================================================================
+46. UAT
+======================================================================
+
+Document and run:
+
+1. Open qualified opportunity.
+2. Click Open Trade Planning.
+3. Verify research context.
+4. Verify Why Qualified.
+5. Verify research goal context if selected.
+6. Verify no-goal flow.
+7. Verify portfolio context if owned.
+8. Verify no-portfolio flow.
+9. Enter planning capital.
+10. Enter max loss.
+11. Select horizon.
+12. Enable equity research.
+13. Enable options research.
+14. Select defined-risk preference.
+15. View expression families.
+16. Verify eligibility reasons.
+17. Verify missing constraints.
+18. Verify risk factors.
+19. Verify invalidation evidence.
+20. Open Explain in Research Workspace.
+21. Verify AI does not construct trade.
+22. Verify no strikes.
+23. Verify no expirations.
+24. Verify no order ticket.
+25. Reload deep link.
+26. Browser back/forward.
+27. Cross-user planning session → 404.
+28. Mobile.
+29. Accessibility.
+30. Platform Health.
+31. No unexpected 500s.
+32. No external market-data call triggered merely by page load.
+33. No reranking/scanner execution.
+
+======================================================================
+47. DEFINITION OF DONE
+======================================================================
+
+GO only if:
+
+A. Canonical TradePlanningContext exists.
+
+B. Research is authoritative source.
+
+C. Goals integrate.
+
+D. Portfolio integrates optionally.
+
+E. No portfolio is required.
+
+F. No goal is required.
+
+G. Planning constraints work.
+
+H. Expression families exist.
+
+I. Eligibility is deterministic.
+
+J. Eligibility reasons visible.
+
+K. Missing constraints visible.
+
+L. No strategy recommendation.
+
+M. No "Best Trade".
+
+N. No option strike selection.
+
+O. No expiration selection.
+
+P. No contract selection.
+
+Q. No trade construction.
+
+R. No order ticket.
+
+S. No broker submission.
+
+T. AI cannot create trades.
+
+U. Server reconstructs authoritative context.
+
+V. Privacy enforced.
+
+W. Cache isolation enforced.
+
+X. Partial data works.
+
+Y. Data freshness visible.
+
+Z. Platform Health updated.
+
+AA. Structured logging safe.
+
+AB. Operations Manual updated.
+
+AC. Full tests pass.
+
+AD. npm run build passes.
+
+AE. Zero new TS errors.
+
+AF. Roadmap alignment confirmed.
+
+======================================================================
+48. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing trade-related logic discovered
+3. Legacy components avoided/reused
+4. Files changed
+5. Schema changes
+6. TradePlanningContext
+7. Planning constraints
+8. Research expression families
+9. Eligibility methodology
+10. Eligibility explanation
+11. Research Goal integration
+12. Portfolio integration
+13. No-portfolio validation
+14. No-goal validation
+15. Opportunity Workspace integration
+16. Trade Planning page
+17. APIs
+18. Server authoritative context
+19. Research Workspace integration
+20. Research Glossary integration
+21. Future Equity Engine contract
+22. Future Options Engine contract
+23. Future Trade Construction contract
+24. Risk context
+25. Data freshness
+26. Partial-data resilience
+27. Compliance audit
+28. Security
+29. Cache
+30. Performance
+31. Accessibility
+32. Mobile
+33. Platform Health
+34. Structured logging
+35. Routing regression protection
+36. Tests added
+37. Full test count
+38. npm run build
+39. Typecheck
+40. UAT
+41. Free value
+42. Retail value
+43. Professional value
+44. RIA extension
+45. Institutional extension
+46. Enterprise extension
+47. Improvement suggestions
+48. Deferred backlog
+49. Roadmap Alignment
+50. Operations Manual Updated: YES/NO
+51. Operations Manual Files Updated
+52. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+49. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.0
+Trade Planning Foundation / Candidate-to-Trade Handoff
+
+NEXT:
+
+2.7.1
+Equity Trade Planning Engine
+
+THEN:
+
+2.7.2
+Options Strategy Matching Engine
+
+2.7.3
+Options Contract / Expiration / Strike Research
+
+2.7.4
+Trade Risk & Scenario Analysis
+
+2.7.5
+Trade Plan Workspace
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+LATER:
+
+Broker-Assisted Execution
+
+AI Agents
+
+RIA Edition
+
+Institutional Edition
+
+Enterprise Edition
+
+DO NOT pull future functionality into 2.7.0.
+
+======================================================================
+50. PERMANENT ARCHITECTURE CONTRACT
+======================================================================
+
+Document this permanently:
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to this user?
+
+Portfolio Intelligence answers:
+
+HOW does this research relate to existing exposure?
+
+Trade Planning answers:
+
+HOW could this qualified thesis potentially be expressed?
+
+Trade Construction answers:
+
+WHAT specific structure could represent that planning scenario?
+
+Execution answers:
+
+DOES the user explicitly choose to submit it?
+
+No downstream layer may rewrite the upstream research thesis solely to
+justify an action.
+
+======================================================================
+51. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not begin contract/strike/expiration selection.
+
+Do not allow existing legacy "best trade" code to silently become the
+foundation unless its architecture, methodology, compliance, and ownership
+have been explicitly audited and approved.
+
+If implementation reveals useful existing trade infrastructure:
+
+classify each item as:
+
+Safe Reusable Foundation
+Requires Refactor Before Reuse
+Legacy / Do Not Reuse
+2.7.1 Candidate
+2.7.2 Candidate
+2.7.3 Candidate
+Future Execution
+Backlog
+
+Complete Sprint 2.7.0, validate the full tree, update the Operations
+Manual, and return the completion report for review.

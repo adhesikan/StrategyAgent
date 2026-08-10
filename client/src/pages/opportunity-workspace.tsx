@@ -26,7 +26,7 @@
 //             13F data disclosure present wherever institutional data appears.
 
 import { useState } from "react";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ResearchDefinitionTooltip } from "@/components/research-definition-tooltip";
 import { cn } from "@/lib/utils";
@@ -1606,35 +1606,48 @@ function PortfolioContextCard({ portfolioContext, navigate }: {
 }
 
 // ---------------------------------------------------------------------------
-// Future Trade Planning Handoff
+// Trade Planning Handoff — Sprint 2.7.0 (live CTA)
 // ---------------------------------------------------------------------------
 
 function TradePlanningHandoff({ opportunity }: { opportunity: CanonicalOpportunity }) {
   const type = opportunity.opportunityType?.toLowerCase() ?? "";
-  const paths = [];
-  if (type.includes("growth") || type.includes("vcp") || type.includes("momentum"))
-    paths.push("Equity Research", "Options Research");
-  if (type.includes("income") || type.includes("covered"))
-    paths.push("Income Strategy Research", "Defined-Risk Research");
-  if (paths.length === 0)
-    paths.push("Equity Research", "Options Research");
+
+  // Determine preview expression families based on candidate type
+  const families: string[] = [];
+  if (type.includes("growth") || type.includes("vcp") || type.includes("momentum")) {
+    families.push("Equity Research", "Defined-Risk Options Research");
+  }
+  if (type.includes("income") || type.includes("covered") || type.includes("put")) {
+    families.push("Income Research", "Covered Call Research");
+  }
+  if (families.length === 0) {
+    families.push("Equity Research", "Options Research");
+  }
 
   return (
     <Card className="bg-slate-900 border-slate-800">
       <CardHeader className="pb-2">
-        <CardTitle className="text-xs text-slate-500">Potential Research Expression</CardTitle>
+        <CardTitle className="text-xs text-slate-400 flex items-center gap-1.5">
+          Explore Research Structures
+        </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <p className="text-xs text-slate-600 italic">
-          Trade Planning capabilities are part of a future workflow.
-        </p>
-        <div className="space-y-1">
-          {paths.map(p => (
-            <div key={p} className="text-xs text-slate-500 flex items-center gap-1.5">
-              <span className="text-slate-700">·</span> {p}
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          {families.map(f => (
+            <div key={f} className="text-xs text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary/60 inline-block shrink-0" />
+              {f}
             </div>
           ))}
         </div>
+        <p className="text-xs text-slate-600">
+          Based on current opportunity classification, research goal, and planning constraints.
+        </p>
+        <Link href={`/trade-planning/${opportunity.symbol}`}>
+          <Button size="sm" className="w-full gap-2 mt-1" variant="outline">
+            Open Trade Planning
+          </Button>
+        </Link>
       </CardContent>
     </Card>
   );

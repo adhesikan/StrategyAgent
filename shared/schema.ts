@@ -3663,3 +3663,40 @@ export const researchGoals = pgTable("research_goals", {
 
 export type ResearchGoalRow    = typeof researchGoals.$inferSelect;
 export type InsertResearchGoal = typeof researchGoals.$inferInsert;
+
+// ===========================================================================
+// Trade Planning Sessions — Sprint 2.7.0
+// ===========================================================================
+
+/**
+ * trade_planning_sessions — user-selected planning sessions.
+ *
+ * Stores only user-selected planning constraints and selected expression
+ * family. Does NOT store orders, broker instructions, scores, or
+ * authoritative research data. Server always reconstructs those from
+ * canonical services.
+ *
+ * No income, net worth, age, tax bracket, or household data.
+ */
+export const tradePlanningSessions = pgTable("trade_planning_sessions", {
+  id:                       varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:                   text("user_id").notNull(),
+  symbol:                   varchar("symbol", { length: 20 }).notNull(),
+  opportunityId:            text("opportunity_id"),
+  // TEXT to match research_goals.id which is varchar (not UUID)
+  researchGoalId:           text("research_goal_id"),
+  portfolioId:              text("portfolio_id"),
+  // User-selected planning constraints — JSONB, validated server-side
+  constraints:              jsonb("constraints").notNull().$type<Record<string, unknown>>().default({ equityAllowed: true, optionsAllowed: false }),
+  // User's current focus area in this session
+  selectedExpressionFamily: text("selected_expression_family"),
+  createdAt:                timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt:                timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  idxUserId:     index("idx_tps_user_id").on(t.userId),
+  idxUserSymbol: index("idx_tps_user_symbol").on(t.userId, t.symbol),
+  idxUpdated:    index("idx_tps_updated").on(t.updatedAt),
+}));
+
+export type TradePlanningSessionRow    = typeof tradePlanningSessions.$inferSelect;
+export type InsertTradePlanningSession = typeof tradePlanningSessions.$inferInsert;

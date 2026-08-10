@@ -1,5 +1,48 @@
 # Sprint Change Log
 
+## Sprint 2.7.0 — Trade Planning Foundation (2026-08-10)
+
+### Summary
+Builds the canonical bridge between Research and Trade Planning. Converts a qualified research candidate into a structured planning context and identifies 10 expression families (equity, income, defined-risk, covered call, cash-secured put, vertical spread, long option, neutral options, monitor-only). Fully deterministic — no AI, no recommendations, no ranking language, no strike/expiration/contract selection. Does NOT implement order tickets or broker submission.
+
+### New Features
+- **Trade Planning Context**: `GET /api/trade-planning/:symbol/context` — authoritative `TradePlanningContext` built from Opportunity Intelligence + Goals + Portfolio Intelligence
+- **Expression Family Evaluation**: 10 families, 3 statuses (`applicable / potentially_applicable / unavailable`), fully deterministic, no "recommended" or "best" labels
+- **Planning Sessions**: `POST /api/trade-planning/session` + `GET/PATCH /api/trade-planning/session/:id` — per-user, per-symbol sessions with constraint persistence
+- **Expression Re-evaluation**: `GET /api/trade-planning/session/:id/expressions` — re-evaluate with current constraints
+- **Planning Constraints**: `TradePlanningConstraints` — no income/netWorth/age/taxBracket; scenario parameters only
+- **Trade Planning Page**: `/trade-planning/:symbol` — 8 sections: research context, evidence, goal, portfolio context, constraints form, expression cards, risk/invalidation, freshness, future steps, compliance
+- **Opportunity Workspace upgrade**: `TradePlanningHandoff` component upgraded from "future workflow" placeholder to live CTA linking to `/trade-planning/:symbol`
+- **Glossary**: 9 new terms in `shared/research-glossary.ts`
+- **Platform health**: `tradePlanning` health card in `/api/admin/platform-health`
+
+### Schema Changes
+```sql
+-- migrations/028_trade_planning_sessions.sql
+CREATE TABLE trade_planning_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  symbol VARCHAR(20) NOT NULL,
+  opportunity_id TEXT,
+  research_goal_id TEXT,  -- TEXT to match research_goals.id (varchar)
+  portfolio_id UUID,
+  constraints JSONB NOT NULL DEFAULT '{"equityAllowed":true,"optionsAllowed":false}',
+  selected_expression_family TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Compliance
+- **`TRADE_PLANNING_DISCLAIMER`** — not investment advice, not suitability, not buy/sell/hold instruction
+- **`CONSTRAINTS_DISCLAIMER`** — constraints are not a suitability questionnaire
+- **`NO_RANKING_DISCLAIMER`** — no expression is labeled recommended, best, or optimal
+
+### Tests
+`server/routes/__tests__/trade-planning.test.ts` — 26 sections, 175+ assertions
+
+---
+
 ## Sprint 2.6.5 — Goals & Research Planning (2026-08-10)
 
 ### Summary

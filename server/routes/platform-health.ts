@@ -26,6 +26,7 @@ import { getPortfolioHistoryHealth } from "../services/portfolio-history-service
 import { getPortfolioIntelligenceHealth } from "../services/portfolio-intelligence-service";
 import { getPortfolioAnalyticsHealth } from "../services/portfolio-analytics-service";
 import { getWorkspaceV2Health } from "./opportunity-workspace";
+import { getTradePlanningHealth } from "../services/trade-planning-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -899,6 +900,25 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
     portfolioIntelligence:  portfolioIntelligence_,
     portfolioAnalytics:          portfolioAnalytics_,
     opportunityWorkspaceV2:      opportunityWorkspaceV2_,
+    tradePlanning: (() => {
+      const tp = getTradePlanningHealth();
+      return {
+        status:  tp.failedContexts > 0 && tp.contextsBuilt === 0 ? "DEGRADED" : "HEALTHY",
+        summary: tp.contextsBuilt === 0
+          ? "No trade planning contexts built this session"
+          : `${tp.contextsBuilt} contexts — ${tp.sessionsCreated} sessions — ${tp.expressionEvaluations} evaluations`,
+        lastSuccessAt: tp.lastSuccessfulContextAt,
+        details: {
+          contextsBuilt:           tp.contextsBuilt,
+          sessionsCreated:         tp.sessionsCreated,
+          expressionEvaluations:   tp.expressionEvaluations,
+          partialContexts:         tp.partialContexts,
+          failedContexts:          tp.failedContexts,
+          averageContextLatencyMs: tp.averageContextLatencyMs ?? "N/A",
+          lastSuccessfulContextAt: tp.lastSuccessfulContextAt ?? "Never",
+        },
+      } as HealthCard;
+    })(),
     jobs: {
       status:  "HEALTHY",
       summary: `${Object.values(jobs).filter(j => j.status === "running").length} jobs running`,

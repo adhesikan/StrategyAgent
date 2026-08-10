@@ -1111,16 +1111,149 @@ const PORTFOLIO_ANALYTICS_ENTRIES: ResearchGlossaryEntry[] = [
   },
 ];
 
+// ===========================================================================
+// Trade Planning Terms — Sprint 2.7.0
+// ===========================================================================
+
+const TRADE_PLANNING_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:   "trade_planning",
+    term:  "Trade Planning",
+    short: "Exploring how a qualified research thesis could potentially be expressed.",
+    full:  "Trade Planning bridges Research and Trade Construction. It converts a qualified " +
+           "research candidate into a structured planning context, identifies broad research " +
+           "expression families (equity, options, income, defined-risk), and makes explicit what " +
+           "conditions support or limit each approach. Trade Planning does not constitute investment " +
+           "advice, a recommendation, or a suitability determination.",
+    sources: ["Opportunity Intelligence", "Research Goals", "Portfolio Context"],
+    caveat:  "Trade Planning is a research workflow, not a recommendation engine. No expression " +
+             "family is labeled 'best' or 'recommended.'",
+  },
+  {
+    key:   "research_expression",
+    term:  "Research Expression",
+    short: "A broad category of how a research thesis could potentially be structured.",
+    full:  "A Research Expression describes a general approach to expressing a qualified research " +
+           "thesis — for example, equity ownership, covered call, or defined-risk options — without " +
+           "specifying a contract, strike, expiration, or order. Research expressions are identified " +
+           "for research context only and do not constitute a trade plan or instruction.",
+    sources: ["Trade Planning Foundation"],
+    caveat:  "A research expression is not a trade instruction. No strike, expiration, or contract " +
+             "is selected at this stage.",
+  },
+  {
+    key:   "expression_family",
+    term:  "Expression Family",
+    short: "A broad group of research expression approaches sharing similar structural characteristics.",
+    full:  "Expression Families group related research expression approaches: equity, income, " +
+           "defined-risk directional, covered call, cash-secured put, vertical spread, long option, " +
+           "neutral options, and monitor-only. Each family is evaluated deterministically against the " +
+           "candidate's research profile and the user's planning constraints. No family is ranked as " +
+           "'recommended' or 'best.'",
+    sources: ["Trade Planning Foundation"],
+  },
+  {
+    key:   "planning_constraints",
+    term:  "Planning Constraints",
+    short: "User-selected parameters that shape which research expressions are explored.",
+    full:  "Planning Constraints are user-selected preferences for a trade planning session: " +
+           "capital available for the scenario, maximum capital at risk, maximum loss per position, " +
+           "preferred horizon, equity/options allowance, defined-risk preference, income focus, and " +
+           "earnings avoidance. They are NOT a risk tolerance assessment, suitability questionnaire, " +
+           "or financial questionnaire. No income, net worth, age, tax bracket, or household data " +
+           "is collected.",
+    sources: ["User Input"],
+    caveat:  "Planning constraints are used only to construct research scenarios and do not " +
+             "constitute a suitability assessment.",
+  },
+  {
+    key:   "capital_at_risk",
+    term:  "Capital at Risk",
+    short: "The maximum dollar amount a user indicates they want to model as at risk.",
+    full:  "Capital at Risk is a user-entered scenario parameter — the maximum dollar amount " +
+           "the user indicates for planning scenario modeling. It is not an account balance, " +
+           "a risk capacity measure, or a broker instruction. It does not represent a suitability " +
+           "determination. It is used only to scope research expression families.",
+    sources: ["User Input"],
+    caveat:  "This is a scenario parameter, not a suitability or risk-capacity assessment.",
+  },
+  {
+    key:   "defined_risk",
+    term:  "Defined Risk",
+    short: "A research expression structure with a capped maximum loss at entry.",
+    full:  "Defined-risk structures — such as vertical spreads, long options, or cash-secured " +
+           "puts — have a maximum potential loss that is known and fixed at the time the structure " +
+           "is entered. Identifying a structure as 'defined risk' in the research context does not " +
+           "mean the loss is small or that the structure is suitable. It is a structural characteristic, " +
+           "not a risk rating.",
+    sources: ["Trade Planning Foundation"],
+    caveat:  "Defined risk does not mean low risk or safe. Maximum loss may still be substantial.",
+  },
+  {
+    key:   "income_research",
+    term:  "Income Research",
+    short: "Exploring research expressions focused on generating potential periodic income.",
+    full:  "Income Research explores how a qualified research candidate could potentially support " +
+           "income-oriented expression structures such as covered calls or cash-secured puts. It is " +
+           "a research lens, not a guaranteed income strategy. Actual income depends on many factors " +
+           "including market conditions, pricing, and execution.",
+    sources: ["Opportunity Intelligence", "Trade Planning Foundation"],
+    caveat:  "Income research does not guarantee periodic income. Past option premiums are not " +
+             "indicative of future availability.",
+  },
+  {
+    key:   "directional_research",
+    term:  "Directional Research",
+    short: "Exploring research expressions with a directional (bullish or bearish) bias.",
+    full:  "Directional Research explores how a candidate's thesis — typically bullish for growth " +
+           "candidates — could be expressed through directional structures like equity or directional " +
+           "options. It does not predict price direction. The research thesis supports a directional " +
+           "view, but markets can move against any thesis.",
+    sources: ["Opportunity Intelligence", "Trade Planning Foundation"],
+    caveat:  "Directional research does not predict or guarantee price movement.",
+  },
+  {
+    key:   "trade_thesis",
+    term:  "Trade Thesis",
+    short: "The research rationale underlying a potential trade planning scenario.",
+    full:  "The Trade Thesis carries the research context — why a candidate qualified, what evidence " +
+           "supports the thesis, what could invalidate it, and what risks are present — into the " +
+           "trade planning layer. Planning engines use the thesis for context only. The thesis is " +
+           "always subordinate to the authoritative research evidence from Opportunity Intelligence.",
+    sources: ["Opportunity Intelligence", "Research Evidence"],
+    caveat:  "A thesis is a research context, not a prediction or guarantee.",
+  },
+  {
+    key:   "planning_horizon",
+    term:  "Planning Horizon",
+    short: "The time frame a user selects for exploring research scenarios.",
+    full:  "Planning Horizon is a user-selected planning parameter — the time frame over which " +
+           "the user wants to explore research scenarios. It is not an expected holding period, " +
+           "an investment term, or a suitability factor. It is used to scope which research " +
+           "expression families and structures are contextually relevant.",
+    sources: ["User Input"],
+    caveat:  "Planning horizon is a research scenario parameter, not an implied holding period.",
+  },
+];
+
 // Merge portfolio terms into the main glossary
 const _extendedGlossary = [
   ...PORTFOLIO_INTELLIGENCE_ENTRIES,
   ...PORTFOLIO_ANALYTICS_ENTRIES,
+  ...TRADE_PLANNING_ENTRIES,
 ];
 
 // Expose portfolio-specific lookup
 export function getPortfolioGlossaryEntry(key: string): ResearchGlossaryEntry | undefined {
   return _extendedGlossary.find(e => e.key === key);
 }
+
+// Expose trade-planning-specific lookup
+export function getTradePlanningGlossaryEntry(key: string): ResearchGlossaryEntry | undefined {
+  return _extendedGlossary.find(e => e.key === key);
+}
+
+export { TRADE_PLANNING_ENTRIES };
 
 /** Map from a score display label to its glossary key. */
 export const SCORE_LABEL_TO_GLOSSARY_KEY: Readonly<Record<string, string>> = {

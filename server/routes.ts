@@ -97,6 +97,7 @@ import { ensurePortfolioHistoryTables } from "./services/portfolio-history-servi
 import { registerPortfolioIntelligenceRoutes } from "./routes/portfolio-intelligence";
 import { registerPortfolioAnalyticsRoutes } from "./routes/portfolio-analytics";
 import { registerResearchGoalRoutes } from "./routes/research-goals";
+import { registerTradePlanningRoutes } from "./routes/trade-planning";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -275,6 +276,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerPortfolioAnalyticsRoutes(app, isAuthenticated);
   // Research Goals — static sub-routes registered first inside the function
   registerResearchGoalRoutes(app, isAuthenticated);
+  // Trade Planning — static routes (/health, /session/*) registered before dynamic /:symbol/*
+  registerTradePlanningRoutes(app, isAuthenticated);
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

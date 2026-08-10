@@ -85,6 +85,8 @@ import ResearchMonitorPage from "@/pages/research-monitor";
 import ResearchReportsPage from "@/pages/research-reports";
 import ResearchWorkspacePage from "@/pages/research-workspace";
 import MarketResearchCommandCenterPage from "@/pages/market-research-command-center";
+import GoalsPage from "@/pages/goals";
+import GoalDetailPage from "@/pages/goal-detail";
 import ResearchLibraryPage from "@/pages/research-library";
 import ResearchDetailPage from "@/pages/research-detail";
 import OpportunityResearchPage from "@/pages/opportunity-research";
@@ -152,6 +154,10 @@ function AppRouter() {
       <Route path="/research-monitor" component={ResearchMonitorPage} />
       <Route path="/research-reports" component={ResearchReportsPage} />
       <Route path="/research-workspace" component={ResearchWorkspacePage} />
+      {/* Goals — static /goals/new before dynamic /goals/:id */}
+      <Route path="/goals/new">{() => <GoalsPage />}</Route>
+      <Route path="/goals/:id" component={GoalDetailPage} />
+      <Route path="/goals" component={GoalsPage} />
       <Route path="/market-research-command-center" component={MarketResearchCommandCenterPage} />
       <Route path="/opportunity/:symbol" component={OpportunityResearchPage} />
       {/* Static /opportunities/* routes MUST come before the dynamic /:symbol route.

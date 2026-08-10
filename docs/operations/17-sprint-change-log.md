@@ -1,5 +1,77 @@
 # Sprint Change Log
 
+## Sprint 2.6.5 — Goals & Research Planning (2026-08-10)
+
+### Summary
+Introduces Research Goals — personal research filters that let traders express what they want to research (themes, sectors, opportunity types, horizon) without any financial questionnaire, suitability assessment, or portfolio-personal data. Goals drive context entry in the Research Workspace, surface matching candidates, generate deterministic research plans, and feed the dashboard "Research For Your Goals" section.
+
+### New Features
+- **Research Goals CRUD**: Create, read, update, archive goals with 12 goal types, 4 horizons, 10 research styles, 3 volatility preferences
+- **First-time experience**: Quick-start goal cards (8 presets) + 5-step inline wizard on `/goals`
+- **Goal matching**: Deterministic `matchOpportunityToGoal()` — categorical states only (`strong_match / match / partial_match / outside_filters`); no numeric suitability score
+- **Goal Match Summary**: `GET /api/research-goals/:id/matches` — top 25 matches against current opportunity snapshot
+- **Goal Activity Summary**: `GET /api/research-goals/:id/activity` — highlights from current snapshot for goal filters
+- **Research Plan**: `GET /api/research-goals/:id/plan` — deterministic workflow with suggested actions, monitor items, research candidates
+- **Research Workspace integration**: `?goalId=X` URL param → context entry with goal filters pre-applied
+- **Primary goal**: One primary goal per user (service-layer enforcement); drives dashboard and workspace defaults
+- **Platform health**: `GET /api/research-goals/health` — active goals, users with goals, primary goal set rate
+- **Match cache**: Per-user/goal/snapshotId cache (5-min TTL), invalidated on goal change; never cross-user
+
+### Schema Changes
+```sql
+-- migrations/027_research_goals.sql
+CREATE TABLE research_goals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  goal_type TEXT NOT NULL,
+  description TEXT,
+  horizon TEXT NOT NULL DEFAULT 'long_term',
+  research_style TEXT NOT NULL DEFAULT 'balanced',
+  focus_areas JSONB NOT NULL DEFAULT '[]',
+  preferred_sectors JSONB NOT NULL DEFAULT '[]',
+  preferred_themes JSONB NOT NULL DEFAULT '[]',
+  preferred_opportunity_types JSONB NOT NULL DEFAULT '[]',
+  volatility_preference TEXT NOT NULL DEFAULT 'balanced',
+  options_interest BOOLEAN NOT NULL DEFAULT false,
+  monitoring_enabled BOOLEAN NOT NULL DEFAULT false,
+  is_primary BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `shared/research-goal-types.ts` | New — GoalType (12), ResearchHorizon (4), ResearchStyle (10), VolatilityPreference (3), compliance constants, TradePlanningContextShape (future Phase 2.7 doc only) |
+| `shared/schema.ts` | Added `researchGoals` pgTable |
+| `shared/research-workspace-types.ts` | Added `"goal"` to ResearchContextType |
+| `server/services/research-goal-service.ts` | New — CRUD, primary goal, deterministic matching, activity, goal context, research plan, platform health |
+| `server/routes/research-goals.ts` | New — 12 endpoints (static routes before dynamic /:id) |
+| `server/routes.ts` | Added `registerResearchGoalRoutes` |
+| `client/src/pages/goals.tsx` | New — first-time experience, 5-step wizard, goal list, primary goal card |
+| `client/src/pages/goal-detail.tsx` | New — Matches, Activity, Plan tabs |
+| `client/src/App.tsx` | Added `/goals/new`, `/goals/:id`, `/goals` routes |
+| `migrations/027_research_goals.sql` | New migration (applied) |
+| `docs/operations/27-research-goals-and-planning.md` | New ops doc |
+| `server/routes/__tests__/research-goals.test.ts` | 68 tests across 20 sections |
+
+### Breaking Changes
+None — new table, new routes, new pages only.
+
+### Key Decisions
+- Categorical match states only — no numeric suitability score exposed to client or AI
+- No financial questionnaire fields — income, net worth, age, tax bracket explicitly excluded
+- Primary goal enforced in service layer (not DB constraint) — single `UPDATE SET is_primary = false WHERE user_id = ?` before setting new primary
+- Static goal sub-routes (`/primary`, `/health`, `/metadata`) registered before dynamic `/:id` route to prevent routing regression
+- AI receives goal context but cannot invent matches — matching runs deterministically before AI explanation
+- TradePlanningContextShape documented as Phase 2.7 interface only — not yet implemented
+- Volatility preference is a research filter, not a risk tolerance assessment
+
+---
+
 ## Sprint 2.6.4 — Research Workspace v2 (2026-08-10)
 
 ### Summary

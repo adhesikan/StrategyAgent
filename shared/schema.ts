@@ -3610,3 +3610,56 @@ export const researchReports = pgTable("research_reports", {
 
 export type ResearchReportRow    = typeof researchReports.$inferSelect;
 export type InsertResearchReport = typeof researchReports.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Sprint 2.6.5 — Research Goals & Research Planning
+// ---------------------------------------------------------------------------
+
+/**
+ * research_goals — user research preference data.
+ *
+ * These are RESEARCH PREFERENCES, not suitability determinations.
+ * No financial questionnaire data (income, net worth, etc.) is stored here.
+ *
+ * Ownership rule: always query WHERE id = ? AND user_id = ?
+ * Primary goal: enforced in service logic (only one is_primary = TRUE per user).
+ *
+ * Future extensibility: goalScope field can be added later to support
+ * client / team / firm / institution ownership hierarchies (RIA sprint).
+ */
+export const researchGoals = pgTable("research_goals", {
+  id:                       varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:                   varchar("user_id").notNull(),
+  name:                     text("name").notNull(),
+  /** GoalType — see shared/research-goal-types.ts */
+  goalType:                 text("goal_type").notNull().default("custom"),
+  description:              text("description"),
+  /** ResearchHorizon: short_term | medium_term | long_term | multi_year */
+  horizon:                  text("horizon").notNull().default("long_term"),
+  /** ResearchStyle: growth | value | income | quality | momentum | balanced | ... */
+  researchStyle:            text("research_style").notNull().default("balanced"),
+  /** Free-form focus area labels */
+  focusAreas:               jsonb("focus_areas").notNull().default([]),
+  /** Sector names aligned to canonical sector registry */
+  preferredSectors:         jsonb("preferred_sectors").notNull().default([]),
+  /** Theme names aligned to canonical theme registry */
+  preferredThemes:          jsonb("preferred_themes").notNull().default([]),
+  /** OpportunityType values from opportunity intelligence */
+  preferredOpportunityTypes: jsonb("preferred_opportunity_types").notNull().default([]),
+  /** VolatilityPreference: lower | balanced | higher_accepted */
+  volatilityPreference:     text("volatility_preference").notNull().default("balanced"),
+  optionsInterest:          boolean("options_interest").notNull().default(false),
+  monitoringEnabled:        boolean("monitoring_enabled").notNull().default(false),
+  isPrimary:                boolean("is_primary").notNull().default(false),
+  /** GoalStatus: active | paused | archived */
+  status:                   text("status").notNull().default("active"),
+  createdAt:                timestamp("created_at").notNull().defaultNow(),
+  updatedAt:                timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  idxUserId:     index("idx_rg_user_id").on(t.userId),
+  idxStatus:     index("idx_rg_user_status").on(t.userId, t.status),
+  idxPrimary:    index("idx_rg_user_primary").on(t.userId, t.isPrimary),
+}));
+
+export type ResearchGoalRow    = typeof researchGoals.$inferSelect;
+export type InsertResearchGoal = typeof researchGoals.$inferInsert;

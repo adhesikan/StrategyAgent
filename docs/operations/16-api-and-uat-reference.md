@@ -2640,6 +2640,74 @@ New response fields:
 
 ---
 
+## Research Goals UAT Checklist (Sprint 2.6.5)
+
+### New Endpoints
+
+| Method | Path | Expected |
+|--------|------|---------|
+| GET | `/api/research-goals` | `{ goals: [], total: 0 }` for new user |
+| POST | `/api/research-goals` | `{ goal: { id, name, goalType, horizon, ... } }` |
+| GET | `/api/research-goals/primary` | `{ goal: {...} }` or `404` if no primary set |
+| GET | `/api/research-goals/health` | `{ activeGoals: N, usersWithGoals: N, primaryGoalSetRate: N, status: "operational" }` |
+| GET | `/api/research-goals/metadata` | `{ goalTypes: [...], horizons: [...], styles: [...] }` |
+| GET | `/api/research-goals/:id` | `{ goal: {...} }` or `404` for other user's goal |
+| PATCH | `/api/research-goals/:id` | `{ goal: {...} }` updated |
+| DELETE | `/api/research-goals/:id` | `{ success: true }` |
+| POST | `/api/research-goals/:id/primary` | `{ goal: {...} }` with isPrimary true |
+| GET | `/api/research-goals/:id/matches` | `{ topMatches: [...], strongMatches: N, matches: N, partialMatches: N, disclaimer: "..." }` |
+| GET | `/api/research-goals/:id/activity` | `{ newCandidates: N, strengthened: N, weakened: N, items: [...] }` |
+| GET | `/api/research-goals/:id/context` | `{ context: { contextType: "goal", label: "...", goalId: "..." } }` |
+| GET | `/api/research-goals/:id/plan` | `{ plan: { suggestedActions: [...], monitorItems: [...], researchCandidates: [...] } }` |
+
+### UAT Steps
+
+1. Navigate to `/goals`.
+   ✓ First-time experience shows 8 quick-start goal cards.
+
+2. Click "Long-Term Growth Research" quick-start card.
+   ✓ 5-step wizard opens inline. Step 1 shows goal types with "Long-Term Growth Research" pre-selected.
+
+3. Click Next through all 5 steps, then click "Save Research Goal".
+   ✓ Redirects to `/goals/<id>`. Goal detail page shows 3 tabs: Research Matches, Activity, Plan.
+
+4. Click "Research Matches" tab.
+   ✓ Match state counts shown (Strong Matches, Matches, Partial).
+   ✓ Disclaimer text present and does not say "recommended for you".
+   ✓ No numeric suitability score visible.
+
+5. Click "Research Plan" tab.
+   ✓ Suggested actions listed with "Open" links.
+   ✓ Research Plan disclaimer present.
+
+6. Navigate back to `/goals`.
+   ✓ Goal list shows the created goal. "Set Primary" button visible.
+
+7. Click "Set Primary".
+   ✓ Goal card updates to show "Primary" badge.
+
+8. Navigate to `/research-workspace?goalId=<id>`.
+   ✓ Context banner shows goal name.
+   ✓ Goal filters pre-applied to research context.
+
+9. `POST /api/research-goals/<id>/primary` from another user session.
+   ✓ Returns 404 (cross-user ownership enforced).
+
+10. `GET /api/research-goals/primary`.
+    ✓ Returns the goal set as primary in step 7.
+
+11. `DELETE /api/research-goals/<id>`.
+    ✓ Goal status becomes "archived". Does not appear in list.
+
+### Compliance Spot-Checks
+
+- No "recommended for you" language on any goals surface
+- No "suitability score" UI element
+- Disclaimer visible on goal list, goal detail, and match results
+- No income / net-worth / age fields in create goal wizard
+
+---
+
 ## Research Workspace v2 UAT Checklist (Sprint 2.6.4)
 
 ### New Endpoints

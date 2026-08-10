@@ -68,3 +68,4 @@
 - [Portfolio Analytics (Sprint 2.6.2)](portfolio-analytics-262.md) — Phase 3 of Portfolio Intelligence; no new DB tables; 5-min cache; "Portfolio Value Change" not "Return"; theme overlap disclosure required; sectorExposureHistory/themeExposureHistory empty until capture stores breakdown.
 - [Opportunity Workspace v2](opportunity-workspace-v2.md) — Sprint 2.6.3: aggregated endpoint (15 fields, Promise.allSettled), 15-section client, 127 tests; WatchStatus is lowercase; themes are name strings not IDs.
 - [Research Workspace v2](research-workspace-v2.md) — Sprint 2.6.4: full context entry contract, evidence sidebar, comparison matrix, challenge thesis, relax_filter handler, conversation persistence v2; critical type fixes documented.
+- [Research Goals & Planning](research-goals-265.md) — Sprint 2.6.5: categorical match states only (no suitability score); MapIterator needs Array.from(); static routes before /:id; TradePlanningContextShape is Phase 2.7 doc only.

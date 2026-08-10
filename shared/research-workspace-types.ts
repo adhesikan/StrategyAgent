@@ -130,6 +130,7 @@ export type ResearchContextType =
   | "report"
   | "portfolio"
   | "portfolio_holding"
+  | "goal"
   | "custom";
 
 /** Workspace action param — maps to prefilled questions */

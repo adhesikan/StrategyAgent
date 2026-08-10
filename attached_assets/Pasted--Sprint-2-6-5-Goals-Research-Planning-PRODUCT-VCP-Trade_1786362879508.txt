@@ -1,0 +1,1839 @@
+# Sprint 2.6.5 — Goals & Research Planning
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Research Personalization & Planning
+
+CURRENT SPRINT:
+2.6.5 — Goals & Research Planning
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections & Watchlists
+✓ AI Research Workspace v2
+✓ Market Research Command Center
+✓ Research Transparency / Research Glossary
+✓ Continuous Research Monitoring
+✓ Research Reports & Publishing
+✓ Portfolio History
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Opportunity Workspace v2
+✓ Opportunity Routing & Navigation Integrity
+✓ Platform Operations Center
+
+======================================================================
+1. PRODUCT OBJECTIVE
+======================================================================
+
+Build a reusable Goals & Research Planning layer that allows users to
+tell VCP Trader AI what they are trying to research or accomplish.
+
+Examples:
+
+- Long-term capital growth
+- Income-oriented research
+- Capital preservation
+- Long-term compounding
+- Dividend-focused research
+- Growth-oriented research
+- Lower-volatility research
+- AI infrastructure research
+- Semiconductor research
+- Options-income research
+- Retirement-oriented research
+- Custom research objective
+
+Goals should personalize:
+
+Research Workspace
+Opportunity discovery
+Collections
+Research monitoring
+Research reports
+Portfolio research
+Command Center
+Future Trade Planning
+
+Goals must NOT become:
+
+investment recommendations
+suitability determinations
+fiduciary advice
+automated portfolio management
+automatic rebalancing
+trade execution
+trade construction
+
+The goal system describes USER RESEARCH PREFERENCES.
+
+It does not decide what the user should own or trade.
+
+======================================================================
+2. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+shared/schema.ts
+
+Research Workspace v2
+
+Opportunity Intelligence
+
+Opportunity Workspace v2
+
+Research Collections
+
+Research Monitor
+
+Research Reports
+
+Market Research Command Center
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Research Glossary
+
+existing user preference/profile tables
+
+existing onboarding
+
+existing settings/profile UI
+
+existing risk-related fields
+
+existing strategy preferences
+
+existing horizon fields
+
+existing user personalization
+
+existing compliance language
+
+existing pricing/tier documentation
+
+Operations Manual
+
+Determine whether goal/preference models already exist.
+
+Report:
+
+A. reusable existing components
+B. existing schemas
+C. overlapping preference models
+D. risk-profile concepts already present
+E. strategy preference concepts
+F. time-horizon concepts
+G. portfolio objective concepts
+H. compliance concerns
+I. migration requirements
+J. integration surfaces
+
+DO NOT create duplicate concepts.
+
+======================================================================
+3. IMPORTANT TERMINOLOGY
+======================================================================
+
+Use:
+
+Research Goal
+Research Objective
+Research Preferences
+Research Horizon
+Research Focus
+Research Filters
+Research Plan
+Research Context
+
+Avoid user-facing terminology implying regulated suitability advice such as:
+
+Recommended Portfolio
+Suitable Investment
+Investor Suitability Score
+Optimal Allocation
+Recommended Allocation
+Best Investment For You
+Risk Tolerance Recommendation
+
+A user may describe their preferences.
+
+VCP Trader AI may use those preferences to organize research.
+
+======================================================================
+4. CANONICAL RESEARCH GOAL MODEL
+======================================================================
+
+Create one reusable canonical model.
+
+Suggested:
+
+ResearchGoal {
+  id
+  userId
+  name
+  goalType
+  description?
+  horizon
+  researchStyle
+  focusAreas[]
+  preferredSectors[]
+  preferredThemes[]
+  preferredOpportunityTypes[]
+  incomePreference?
+  volatilityPreference?
+  diversificationPreference?
+  optionsInterest?
+  monitoringEnabled
+  isPrimary
+  isActive
+  createdAt
+  updatedAt
+}
+
+Use actual architecture conventions.
+
+Do not blindly implement fields if equivalent fields already exist.
+
+======================================================================
+5. GOAL TYPES
+======================================================================
+
+Initial system goal types:
+
+long_term_growth
+long_term_compounding
+income
+dividend_income
+capital_preservation
+lower_volatility
+growth
+ai_infrastructure
+semiconductors
+options_income
+retirement_research
+custom
+
+These are RESEARCH GOALS.
+
+They are not investment strategies automatically assigned to users.
+
+Allow future extensibility without schema redesign.
+
+======================================================================
+6. RESEARCH HORIZON
+======================================================================
+
+Support user-selected research horizons.
+
+Suggested:
+
+short_term
+medium_term
+long_term
+multi_year
+
+Provide plain-English descriptions.
+
+Example:
+
+Short Term
+Research focused on developments over days to several weeks.
+
+Medium Term
+Research focused on developments over several months.
+
+Long Term
+Research focused on business and market developments over approximately
+one year or longer.
+
+Multi-Year
+Research focused on long-duration business, industry, and secular themes.
+
+Do not imply expected holding periods.
+
+======================================================================
+7. RESEARCH STYLE
+======================================================================
+
+Allow optional research style preferences.
+
+Examples:
+
+growth
+value
+income
+quality
+momentum
+balanced
+thematic
+institutional_activity
+technical
+fundamental
+
+This influences:
+
+filtering
+ordering
+research context
+templates
+
+It must NOT alter canonical Opportunity Intelligence scores.
+
+======================================================================
+8. RISK / VOLATILITY PREFERENCE
+======================================================================
+
+This requires careful terminology.
+
+Allow the user to express a RESEARCH preference such as:
+
+Lower Volatility Focus
+Balanced
+Higher Volatility Accepted
+
+Explain:
+
+"This preference helps organize research and does not represent a
+suitability assessment or investment recommendation."
+
+Do NOT calculate:
+
+risk tolerance
+risk capacity
+suitability
+appropriate investment level
+
+unless a future legally reviewed product explicitly adds those features.
+
+======================================================================
+9. FOCUS AREAS
+======================================================================
+
+Users can optionally choose:
+
+Sectors
+
+Themes
+
+Opportunity Types
+
+Examples:
+
+Technology
+Healthcare
+Financials
+Energy
+
+AI Infrastructure
+Semiconductors
+Memory
+Networking
+Cybersecurity
+Cloud
+
+Long-Term Investment Candidate
+Growth Candidate
+Income Candidate
+Covered Call Research
+Cash-Secured Put Research
+
+Use existing canonical metadata.
+
+Do not create another sector/theme registry.
+
+======================================================================
+10. GOALS PAGE
+======================================================================
+
+Create:
+
+/goals
+
+or reuse an appropriate existing user route if architecture indicates
+one already exists.
+
+Page title:
+
+Research Goals
+
+Subtitle:
+
+"Tell VCP Trader AI what you want to focus your research on."
+
+Sections:
+
+My Goals
+Primary Research Goal
+Create Goal
+Research Preferences
+How Goals Affect Your Research
+Privacy & Research Disclaimer
+
+======================================================================
+11. FIRST-TIME EXPERIENCE
+======================================================================
+
+For users with no goals:
+
+Show:
+
+"What are you researching?"
+
+Provide selectable cards.
+
+Examples:
+
+Long-Term Growth
+Income
+AI Infrastructure
+Semiconductors
+Lower Volatility
+Dividend Research
+Options Income
+Long-Term Compounding
+
+Also:
+
+Create My Own Goal
+
+Do NOT force users to create a goal.
+
+Include:
+
+"Skip for now"
+
+VCP Trader AI must remain fully usable without goals.
+
+======================================================================
+12. GOAL CREATION FLOW
+======================================================================
+
+Suggested wizard:
+
+Step 1:
+Choose Research Objective
+
+Step 2:
+Choose Research Horizon
+
+Step 3:
+Choose Research Focus
+
+Step 4:
+Optional Research Preferences
+
+Step 5:
+Review
+
+Step 6:
+Save Research Goal
+
+Keep the workflow lightweight.
+
+Do not create a financial questionnaire.
+
+======================================================================
+13. GOAL SUMMARY
+======================================================================
+
+Example:
+
+Long-Term AI Infrastructure
+
+Research Objective:
+Long-Term Growth
+
+Research Horizon:
+Multi-Year
+
+Themes:
+AI Infrastructure
+Semiconductors
+Memory
+Networking
+
+Research Style:
+Growth + Fundamental
+
+Volatility Preference:
+Balanced
+
+Monitoring:
+Enabled
+
+Then show:
+
+"Use this goal in Research Workspace"
+
+"Explore Matching Research"
+
+"Create Research Report"
+
+"Monitor This Goal"
+
+======================================================================
+14. MULTIPLE GOALS
+======================================================================
+
+Users may create multiple goals.
+
+Examples:
+
+Long-Term AI Portfolio Research
+
+Income Research
+
+Semiconductor Cycle Research
+
+Options Income Research
+
+One goal can be marked:
+
+Primary
+
+Do not merge goals automatically.
+
+======================================================================
+15. PRIMARY GOAL
+======================================================================
+
+Primary goal can influence default research context.
+
+Example:
+
+Dashboard:
+Research For You
+
+Research Workspace:
+Default goal context
+
+Command Center:
+Research aligned with primary goal
+
+However:
+
+canonical rankings remain unchanged.
+
+Goal context changes presentation/filtering only.
+
+======================================================================
+16. OPPORTUNITY INTELLIGENCE INTEGRATION
+======================================================================
+
+Create a deterministic goal-match layer.
+
+DO NOT change:
+
+researchScore
+technicalScore
+fundamentalScore
+institutionalScore
+riskScore
+confidence
+qualification
+
+Possible result:
+
+GoalMatch {
+  goalId
+  symbol
+  matched
+  matchReasons[]
+  matchedThemes[]
+  matchedSectors[]
+  matchedOpportunityTypes[]
+  horizonAligned
+}
+
+Avoid numeric "suitability score".
+
+If a score is technically useful internally, do not expose it as:
+
+Suitability Score
+
+Prefer deterministic categorical states:
+
+Strong Research Match
+Research Match
+Partial Match
+Outside Current Goal Filters
+
+But verify compliance wording.
+
+======================================================================
+17. MATCH EXPLANATION
+======================================================================
+
+Example:
+
+Why NVDA appears under this research goal:
+
+✓ AI Infrastructure theme
+✓ Semiconductor exposure
+✓ Growth research classification
+✓ Long-term research horizon
+
+Research Goal Match
+
+"This means the candidate matches research filters you selected.
+It does not mean the security is suitable for you or that you should
+buy it."
+
+======================================================================
+18. DASHBOARD INTEGRATION
+======================================================================
+
+Do NOT redesign the entire Dashboard.
+
+Add an optional section such as:
+
+Research For Your Goals
+
+or:
+
+Research Matching Your Focus
+
+Show:
+
+Primary goal
+Matching candidates
+Recent changes
+Related themes
+Research monitoring activity
+
+CTA:
+
+View Goal Research
+
+Change Goal
+
+No goal:
+
+show normal Dashboard.
+
+======================================================================
+19. RESEARCH WORKSPACE V2 INTEGRATION
+======================================================================
+
+Add goal as a ResearchContext type if compatible with existing model.
+
+Example:
+
+/research-workspace?mode=market&goalId=...
+
+Workspace should know:
+
+goal
+horizon
+themes
+sectors
+opportunity types
+preferences
+
+Example questions:
+
+Show research matching this goal.
+
+Which candidates strengthened recently?
+
+Which themes are leading?
+
+Challenge the strongest candidates.
+
+Compare candidates matching this goal.
+
+AI must not decide what is appropriate for the user.
+
+======================================================================
+20. OPPORTUNITY WORKSPACE INTEGRATION
+======================================================================
+
+When viewing:
+
+/opportunities/NVDA
+
+optionally show:
+
+Research Goal Alignment
+
+Example:
+
+Matches:
+Long-Term AI Research
+
+Because:
+AI Infrastructure
+Semiconductors
+Growth
+Multi-Year Focus
+
+CTA:
+
+Research This Under Goal
+
+Do not display:
+
+Recommended for You
+
+Suitable for You
+
+You Should Own
+
+======================================================================
+21. COLLECTIONS INTEGRATION
+======================================================================
+
+Allow:
+
+Create Collection From Goal
+
+or:
+
+View Candidates Matching Goal
+
+But do not automatically add symbols unless user explicitly requests it.
+
+Goal-generated collection membership should be deterministic.
+
+======================================================================
+22. RESEARCH MONITOR INTEGRATION
+======================================================================
+
+Allow monitoring a research goal.
+
+Example:
+
+Monitor:
+
+Long-Term AI Infrastructure
+
+Watch for:
+
+new qualifying candidates
+candidate strengthening
+candidate weakening
+theme leadership changes
+sector leadership changes
+institutional activity changes
+
+Reuse Research Monitor.
+
+Do NOT build another monitoring engine.
+
+======================================================================
+23. RESEARCH REPORTS INTEGRATION
+======================================================================
+
+Allow:
+
+Generate Goal Research Report
+
+Example:
+
+Long-Term AI Infrastructure Research Report
+
+Report may contain:
+
+Goal Summary
+Market Context
+Matching Research Candidates
+Theme Intelligence
+Sector Intelligence
+Institutional Evidence
+Recent Changes
+Risk Observations
+Research Limitations
+Methodology
+
+Reuse Research Reports engine.
+
+No duplicate report generator.
+
+======================================================================
+24. COMMAND CENTER INTEGRATION
+======================================================================
+
+Add optional:
+
+My Research Goals
+
+or:
+
+Goal Research Changes
+
+Do not make this dominate Command Center.
+
+Show:
+
+primary goal
+new matching candidates
+strengthened candidates
+weakened candidates
+theme changes
+monitoring activity
+
+Reuse existing data.
+
+======================================================================
+25. PORTFOLIO INTELLIGENCE INTEGRATION
+======================================================================
+
+Portfolio is OPTIONAL.
+
+Users without portfolio data receive full Goals functionality.
+
+For portfolio users, allow descriptive analysis:
+
+"How does my portfolio overlap with this research goal?"
+
+Possible outputs:
+
+Holdings matching goal
+Holdings outside goal filters
+Sector overlap
+Theme overlap
+Research coverage
+Opportunity overlap
+
+Do NOT say:
+
+You should rebalance.
+You should sell.
+You need more exposure.
+You are underweight.
+You are overweight.
+
+Unless those terms are purely mathematical and appropriately labeled,
+prefer:
+
+Current Exposure
+Current Allocation
+Goal Research Overlap
+
+======================================================================
+26. PORTFOLIO ANALYTICS INTEGRATION
+======================================================================
+
+Allow contextual research such as:
+
+"Show historical portfolio exposure related to this research goal."
+
+Examples:
+
+AI theme exposure over time
+Research coverage trend
+Goal overlap trend
+
+Use existing analytics.
+
+Do not create portfolio performance advice.
+
+======================================================================
+27. RESEARCH PLAN
+======================================================================
+
+Each goal can generate a lightweight Research Plan.
+
+Example:
+
+Research Plan
+
+Objective:
+Long-Term AI Infrastructure
+
+Monitor:
+
+AI Infrastructure
+Semiconductors
+Memory
+Networking
+
+Research Candidates:
+Current qualifying candidates matching filters
+
+Review:
+
+Theme leadership
+Sector changes
+Institutional activity
+Fundamental changes
+Risk changes
+
+Suggested Research Actions:
+
+Compare leading candidates
+Challenge thesis
+Review recent changes
+Generate report
+Monitor goal
+
+This is a research workflow, not an investment plan.
+
+======================================================================
+28. RESEARCH PLAN STATUS
+======================================================================
+
+Optional states:
+
+Active
+Paused
+Archived
+
+Do not add complicated project-management functionality.
+
+======================================================================
+29. GOAL ACTIVITY
+======================================================================
+
+Show useful deterministic activity.
+
+Examples:
+
+3 new candidates match this goal.
+
+2 candidates strengthened.
+
+1 candidate weakened.
+
+Semiconductors improved.
+
+Institutional evidence changed for 2 candidates.
+
+Use existing change/monitoring engines.
+
+======================================================================
+30. GOAL MATCHING SERVICE
+======================================================================
+
+Create reusable service such as:
+
+server/services/research-goal-service.ts
+
+Responsibilities:
+
+goal CRUD
+goal validation
+goal matching
+primary goal
+goal research context
+goal activity assembly
+
+Do not duplicate Opportunity Intelligence.
+
+======================================================================
+31. API DESIGN
+======================================================================
+
+Suggested authenticated endpoints:
+
+GET /api/research-goals
+
+POST /api/research-goals
+
+GET /api/research-goals/:id
+
+PATCH /api/research-goals/:id
+
+DELETE /api/research-goals/:id
+
+POST /api/research-goals/:id/primary
+
+GET /api/research-goals/:id/matches
+
+GET /api/research-goals/:id/activity
+
+GET /api/research-goals/:id/context
+
+Use existing conventions.
+
+Soft-delete/archive if appropriate.
+
+======================================================================
+32. OWNERSHIP
+======================================================================
+
+Every goal is private user data.
+
+Always derive:
+
+userId
+
+from authenticated server session.
+
+Never trust userId from client.
+
+Queries:
+
+WHERE id = ? AND user_id = ?
+
+Cross-user goal:
+
+404
+
+not 403.
+
+======================================================================
+33. DATABASE
+======================================================================
+
+Create minimal schema only after architecture audit.
+
+Potential table:
+
+research_goals
+
+Fields may include:
+
+id
+user_id
+name
+goal_type
+description
+horizon
+research_style
+focus_areas JSONB
+preferred_sectors JSONB
+preferred_themes JSONB
+preferred_opportunity_types JSONB
+volatility_preference
+options_interest
+monitoring_enabled
+is_primary
+status
+created_at
+updated_at
+
+Normalize if existing schema conventions make that preferable.
+
+Create indexes:
+
+user_id
+user_id + status
+user_id + is_primary
+
+Ensure only one primary active goal per user through service logic or
+appropriate DB mechanism.
+
+======================================================================
+34. DATA MINIMIZATION
+======================================================================
+
+Research goals are preference data.
+
+Do not request:
+
+income
+net worth
+age
+tax bracket
+dependents
+employment
+assets
+liabilities
+account balances
+
+unless required by a later separately reviewed product.
+
+This sprint does NOT need those fields.
+
+======================================================================
+35. PRIVACY DISCLOSURE
+======================================================================
+
+On goal creation page:
+
+"Your research goals and preferences are used to personalize how VCP
+Trader AI organizes and presents research within your account."
+
+Also:
+
+"Research goals are not used to determine whether an investment is
+suitable for you."
+
+Link:
+
+/privacy
+
+======================================================================
+36. COMPLIANCE DISCLAIMER
+======================================================================
+
+Canonical goal disclaimer:
+
+"Research goals and preferences help organize research based on criteria
+you select. They do not represent a suitability assessment, investment
+recommendation, financial plan, or advice to buy, sell, hold, or enter
+any security or strategy."
+
+Display:
+
+goal creation/review
+goal detail
+goal-matched research
+portfolio-goal overlap where appropriate
+
+======================================================================
+37. AI CONTRACT
+======================================================================
+
+AI may use research goal context to:
+
+filter research
+summarize
+compare
+explain
+challenge
+identify matching deterministic candidates
+
+AI may NOT:
+
+declare suitability
+determine risk tolerance
+recommend allocations
+construct portfolio
+recommend trades
+invent goal matches
+change Opportunity Intelligence rankings
+
+Goal matching must occur deterministically before AI explanation.
+
+======================================================================
+38. NO PORTFOLIO REQUIREMENT
+======================================================================
+
+Critical acceptance requirement:
+
+Research Goals must work perfectly for a user with:
+
+NO portfolio
+NO broker connection
+NO uploaded holdings
+
+Portfolio is merely one optional context source.
+
+Test explicitly.
+
+======================================================================
+39. FREE / RETAIL / PROFESSIONAL / RIA / INSTITUTIONAL
+======================================================================
+
+Document future commercialization only.
+
+DO NOT enforce entitlements yet.
+
+Potential differentiation:
+
+FREE
+
+1 research goal
+basic goal filters
+limited matching research
+
+RETAIL — future target ~$149/month
+
+multiple research goals
+full goal matching
+Research Workspace integration
+monitoring
+reports
+collections
+history
+advanced comparisons
+
+PROFESSIONAL
+
+advanced goal templates
+multiple research plans
+deeper historical analysis
+advanced monitoring
+advanced reporting
+
+RIA — future target approximately $599+/month
+
+advisor-created research objectives
+client research contexts
+firm research templates
+multi-client workflows
+branded reports
+
+Do NOT implement client suitability.
+
+INSTITUTIONAL
+
+team research objectives
+analyst workflows
+shared research plans
+custom research universes
+approval workflows
+
+ENTERPRISE
+
+custom goal taxonomy
+custom methodology
+private datasets
+API integration
+white-label
+custom workflows
+
+Document extension points.
+
+======================================================================
+40. ETHICAL MONETIZATION
+======================================================================
+
+The product should naturally demonstrate premium value.
+
+Do NOT:
+
+create fake restrictions
+withhold definitions
+hide risk evidence
+obscure methodology
+interrupt workflows with excessive upgrade prompts
+
+Premium differentiation should eventually come from:
+
+depth
+history
+automation
+monitoring
+reports
+customization
+workflow scale
+collaboration
+data integrations
+advanced research capabilities
+
+Add future entitlement hooks only if they do not complicate architecture.
+
+No billing implementation in this sprint.
+
+======================================================================
+41. FUTURE RIA / INSTITUTIONAL EXTENSIBILITY
+======================================================================
+
+Architecture should anticipate future ownership hierarchy:
+
+Individual User
+Advisor
+Firm
+Institution
+
+But do NOT implement multi-tenancy changes unless already planned.
+
+ResearchGoal should be designed so future scope could become:
+
+user
+client
+team
+firm
+institution
+
+without redesigning the core goal semantics.
+
+Document this extension point.
+
+======================================================================
+42. FUTURE TRADE PLANNING HANDOFF
+======================================================================
+
+IMPORTANT.
+
+Sprint 2.6.5 should prepare clean context for future Trade Planning.
+
+Possible future object:
+
+TradePlanningContext {
+  researchGoalId
+  symbol
+  researchHorizon
+  opportunityType
+  researchEvidence
+  riskObservations
+}
+
+DO NOT build this engine now.
+
+Only document the interface/handoff.
+
+Future Trade Construction must consume:
+
+qualified research candidate
+goal context
+canonical evidence
+
+It must never recalculate Opportunity Intelligence.
+
+======================================================================
+43. GOAL UI EXPLAINABILITY
+======================================================================
+
+Every preference should have tooltip/help text.
+
+Examples:
+
+Research Horizon
+"What time frame you want the research process to emphasize."
+
+Volatility Focus
+"Helps organize research around securities with different historical
+price variability. It is not a risk-tolerance assessment."
+
+Research Style
+"The types of evidence you want emphasized when exploring candidates."
+
+Opportunity Type
+"The category of research candidate you want to explore."
+
+Use Central Research Glossary where appropriate.
+
+======================================================================
+44. ACCESSIBILITY
+======================================================================
+
+Keyboard navigation.
+
+Semantic labels.
+
+ARIA descriptions.
+
+Goal cards selectable without mouse.
+
+Wizard progress accessible.
+
+Tooltips keyboard accessible.
+
+Focus management between wizard steps.
+
+Error announcements.
+
+======================================================================
+45. MOBILE
+======================================================================
+
+At 375px:
+
+goal cards stack cleanly
+
+wizard full width
+
+filters become collapsible sections
+
+no horizontal clipping
+
+goal summary readable
+
+action buttons wrap
+
+research matches use cards where tables do not fit
+
+======================================================================
+46. PERFORMANCE
+======================================================================
+
+Goal matching must operate on:
+
+existing Opportunity Intelligence snapshot.
+
+No rescanning.
+
+No reranking.
+
+No market-data fetch per goal.
+
+No N+1.
+
+Target:
+
+goal detail < 500 ms warm
+goal matches < 500 ms warm
+
+Measure and report actual results.
+
+======================================================================
+47. CACHING
+======================================================================
+
+If needed:
+
+cache goal matches by:
+
+userId
+goalId
+Opportunity Intelligence generation ID
+
+Invalidate when:
+
+goal changes
+goal deleted
+new intelligence generation becomes active
+
+Never share user goal cache across users.
+
+======================================================================
+48. PARTIAL DATA
+======================================================================
+
+Missing subsystem should degrade independently.
+
+Example:
+
+Institutional unavailable
+
+Goal matches still work using:
+
+sector
+theme
+opportunity type
+horizon
+
+Display limitations.
+
+Do not fail entire goal page.
+
+======================================================================
+49. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+research_goal_created
+research_goal_updated
+research_goal_archived
+research_goal_primary_changed
+research_goal_matches_requested
+research_goal_activity_requested
+
+Safe metadata:
+
+goalType
+horizon
+numberOfFocusAreas
+matchCount
+durationMs
+
+Do NOT log:
+
+goal description text
+portfolio contents
+user questions
+PII
+
+======================================================================
+50. PLATFORM HEALTH
+======================================================================
+
+Add or extend appropriate health card:
+
+Research Goals
+
+Possible states:
+
+HEALTHY
+DEGRADED
+UNKNOWN
+
+Metrics:
+
+activeGoals
+usersWithGoals
+primaryGoals
+matchRequests
+averageMatchLatencyMs
+failedMatchRequests
+lastSuccessfulMatchAt
+
+Do not expose user-specific goal details.
+
+======================================================================
+51. ROUTING REGRESSION RULE
+======================================================================
+
+Permanent rule from 2.6.3A applies.
+
+If adding:
+
+/goals/:id
+
+plus static routes such as:
+
+/goals/new
+/goals/templates
+
+explicit static routes MUST be registered before dynamic routes.
+
+Add route-contract tests.
+
+Never repeat the:
+
+/opportunities/today → symbol TODAY
+
+failure.
+
+======================================================================
+52. TESTS
+======================================================================
+
+Target:
+
+150+ meaningful assertions.
+
+Cover:
+
+schema
+goal CRUD
+goal types
+research horizons
+research styles
+primary goal
+multiple goals
+goal ownership
+cross-user 404
+goal matching
+sector matching
+theme matching
+opportunity-type matching
+horizon matching
+partial match
+no suitability score
+match explanations
+Dashboard integration
+Research Workspace integration
+Opportunity Workspace integration
+Collections integration
+Monitor integration
+Reports integration
+Command Center integration
+Portfolio optional behavior
+no-portfolio user
+portfolio overlap
+AI grounding
+no AI-generated matches
+no ranking changes
+no scoring changes
+privacy disclosure
+compliance disclaimer
+risk terminology
+tooltip definitions
+route ordering
+direct refresh
+mobile structure
+accessibility
+cache isolation
+partial-data resilience
+structured logging privacy
+Platform Health
+Operations Manual
+commercial documentation
+RIA extension documentation
+future Trade Planning handoff
+roadmap discipline
+
+======================================================================
+53. UAT
+======================================================================
+
+Document and execute:
+
+1. User with no goals opens /goals.
+2. Create Long-Term Growth goal.
+3. Select Multi-Year horizon.
+4. Select AI Infrastructure.
+5. Select Semiconductors.
+6. Save.
+7. Goal appears in My Goals.
+8. Mark primary.
+9. View matching research.
+10. Verify match reasons.
+11. Open matching NVDA candidate.
+12. Verify Goal Alignment section.
+13. Open Research Workspace under goal.
+14. Ask "Which candidates strengthened?"
+15. Verify goal context retained.
+16. Challenge candidate thesis.
+17. Return to goal.
+18. Create second Income goal.
+19. Switch primary.
+20. Generate Goal Research Report.
+21. Monitor goal.
+22. Verify Command Center integration.
+23. User with no portfolio uses entire flow.
+24. Portfolio user views goal overlap.
+25. Verify no rebalance language.
+26. Verify no suitability language.
+27. Verify no AI-generated candidate.
+28. Cross-user goal ID → 404.
+29. Reload /goals/:id.
+30. Browser back/forward.
+31. Mobile.
+32. Accessibility.
+33. Platform Health.
+34. No unexpected 500.
+35. No N+1.
+
+======================================================================
+54. OPERATIONS MANUAL
+======================================================================
+
+Always update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/27-research-goals-and-planning.md
+
+Document:
+
+purpose
+architecture
+schema
+goal model
+goal types
+research horizons
+research styles
+goal matching
+primary goal
+goal activity
+Dashboard integration
+Research Workspace integration
+Opportunity Workspace integration
+Collections
+Monitoring
+Reports
+Command Center
+Portfolio integration
+privacy
+compliance
+AI rules
+cache
+performance
+health
+logging
+security
+ownership
+UAT
+troubleshooting
+commercial extension points
+RIA extension
+institutional extension
+Trade Planning handoff
+known limitations
+future roadmap
+
+Update Research Glossary documentation if required.
+
+======================================================================
+55. DEFINITION OF DONE
+======================================================================
+
+GO only if:
+
+A. Research Goals exist as reusable platform service.
+
+B. Users can create/edit/archive multiple goals.
+
+C. Primary goal works.
+
+D. Goal matching is deterministic.
+
+E. Opportunity scores are unchanged.
+
+F. Rankings are unchanged.
+
+G. Goal match explanations are transparent.
+
+H. No suitability scoring exists.
+
+I. No financial questionnaire is introduced.
+
+J. Research Workspace consumes goal context.
+
+K. Opportunity Workspace shows goal alignment.
+
+L. Collections can consume goal context.
+
+M. Research Monitor can monitor goal context.
+
+N. Reports support goal research.
+
+O. Command Center surfaces goal changes appropriately.
+
+P. Portfolio is optional.
+
+Q. No-portfolio users receive full functionality.
+
+R. Portfolio overlap remains descriptive.
+
+S. AI cannot invent goal matches.
+
+T. No trade construction.
+
+U. No recommendation engine.
+
+V. Privacy disclosure present.
+
+W. Compliance disclaimer present.
+
+X. Cross-user access returns 404.
+
+Y. Cache isolated by user.
+
+Z. Partial data degrades gracefully.
+
+AA. Route-contract tests present.
+
+AB. Accessibility passes.
+
+AC. Mobile usable.
+
+AD. Platform Health updated.
+
+AE. Structured logs contain no private research text.
+
+AF. Operations Manual updated.
+
+AG. Full tests pass.
+
+AH. npm run build passes.
+
+AI. Zero new TypeScript errors.
+
+AJ. Roadmap discipline confirmed.
+
+======================================================================
+56. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing preference models discovered
+3. Files changed
+4. Schema changes
+5. Canonical ResearchGoal model
+6. Goal types
+7. Research horizons
+8. Research styles
+9. Volatility preference implementation
+10. Goal creation UX
+11. Multiple goals
+12. Primary goal
+13. Goal matching architecture
+14. Match explanation
+15. Dashboard integration
+16. Research Workspace integration
+17. Opportunity Workspace integration
+18. Collections integration
+19. Research Monitor integration
+20. Research Reports integration
+21. Command Center integration
+22. Portfolio Intelligence integration
+23. Portfolio Analytics integration
+24. No-portfolio validation
+25. Research Plan
+26. Goal activity
+27. APIs
+28. Ownership/security
+29. Privacy
+30. Compliance
+31. AI grounding
+32. Performance
+33. Cache
+34. Partial-data resilience
+35. Accessibility
+36. Mobile
+37. Platform Health
+38. Structured logging
+39. Routing regression protection
+40. Tests added
+41. Full test count
+42. npm run build
+43. Typecheck
+44. Production UAT
+45. Free-tier applicability
+46. Retail Subscriber value
+47. Professional value
+48. RIA extension
+49. Institutional extension
+50. Enterprise extension
+51. Future Trade Planning handoff
+52. Improvement suggestions
+53. Deferred backlog
+54. Roadmap alignment
+55. Operations Manual Updated: YES/NO
+56. Operations Manual Files Updated
+57. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+57. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+Sprint 2.6.5
+Goals & Research Planning
+
+NEXT MAJOR PHASE:
+
+Phase 2.7
+Trade Intelligence & Planning
+
+Expected sequence should be reviewed after this sprint, but conceptually:
+
+2.7.0
+Trade Planning Foundation / Candidate-to-Trade Handoff
+
+2.7.1
+Equity Trade Planning Engine
+
+2.7.2
+Options Strategy Matching Engine
+
+2.7.3
+Options Contract / Expiration / Strike Research
+
+2.7.4
+Trade Risk & Scenario Analysis
+
+2.7.5
+Trade Plan Workspace
+
+2.7.6
+Trade Monitoring / Lifecycle Intelligence
+
+Later:
+Broker-assisted execution workflows
+
+DO NOT implement Phase 2.7 functionality during 2.6.5.
+
+======================================================================
+58. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not expand scope simply because adjacent infrastructure already exists.
+
+If improvements are discovered:
+
+classify each as:
+
+Critical Production Fix
+2.6.5 Requirement
+2.6.5A UX/Hardening Candidate
+Phase 2.7 Requirement
+RIA/Institutional Future
+Backlog
+
+Complete Sprint 2.6.5, run full validation, update all operational
+documentation, and return the completion report for review.

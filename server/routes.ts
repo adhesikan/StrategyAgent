@@ -96,6 +96,7 @@ import { registerPortfolioHistoryRoutes } from "./routes/portfolio-history";
 import { ensurePortfolioHistoryTables } from "./services/portfolio-history-service";
 import { registerPortfolioIntelligenceRoutes } from "./routes/portfolio-intelligence";
 import { registerPortfolioAnalyticsRoutes } from "./routes/portfolio-analytics";
+import { registerResearchGoalRoutes } from "./routes/research-goals";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -272,6 +273,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerPortfolioHistoryRoutes(app, isAuthenticated);
   registerPortfolioIntelligenceRoutes(app, isAuthenticated);
   registerPortfolioAnalyticsRoutes(app, isAuthenticated);
+  // Research Goals — static sub-routes registered first inside the function
+  registerResearchGoalRoutes(app, isAuthenticated);
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

@@ -1,0 +1,3149 @@
+# Sprint 2.7.7 — End-to-End Platform Validation & Production Readiness Gate
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.7 — End-to-End Platform Validation & Production Readiness Gate
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Collections & Watchlists
+✓ Research Workspace v2
+✓ Market Research Command Center
+✓ Research Monitoring
+✓ Research Reports & Publishing
+✓ Portfolio History
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Trade Planning Foundation
+✓ Equity Trade Planning Engine
+✓ Options Strategy Matching Engine
+✓ Options Contract Research Engine
+✓ Trade Risk & Scenario Analysis
+✓ Trade Plan Workspace
+✓ Trade Monitoring & Lifecycle Intelligence
+✓ Platform Operations Center
+✓ Permanent Quality Gate Framework
+
+======================================================================
+PRIMARY OBJECTIVE
+======================================================================
+
+This sprint is a RELEASE CERTIFICATION sprint.
+
+Do NOT use it to add major product features.
+
+Validate the complete VCP Trader AI platform as one integrated system before
+Phase 2.8 introduces broker-assisted execution.
+
+The platform must demonstrate that the following complete flow works:
+
+Discover
+→ Research
+→ Explain
+→ Personalize
+→ Portfolio Context
+→ Trade Planning
+→ Equity / Options Structure Research
+→ Contract Research
+→ Risk Analysis
+→ Save Trade Plan
+→ Lifecycle Monitoring
+
+This sprint answers:
+
+"Is VCP Trader AI Research + Trade Intelligence & Planning v1.0 ready to
+operate reliably in production?"
+
+======================================================================
+PHASE 2.8 RELEASE GATE
+======================================================================
+
+PHASE 2.8 MUST NOT BEGIN unless Sprint 2.7.7 receives GO.
+
+No exceptions unless explicitly approved after reviewing a documented
+critical limitation.
+
+A GO requires all mandatory quality gates to pass.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- broker order submission
+- order preparation engine
+- live order tickets
+- execution preview
+- automated execution
+- auto trading
+- new AI agents
+- RIA workflows
+- Institutional workflows
+- Enterprise workflows
+- new options strategies
+- new scoring logic
+- new portfolio recommendations
+- new planning engines
+- new market-data providers
+
+Allowed changes:
+
+- bug fixes discovered by validation
+- test infrastructure
+- resilience fixes
+- security fixes
+- production-readiness fixes
+- operational/documentation improvements
+- performance fixes
+- migration fixes
+- routing fixes
+- failure-isolation fixes
+- observability fixes
+
+Any discovered non-critical feature idea goes to backlog.
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before running validation, inspect the current architecture and produce a
+system inventory.
+
+Include:
+
+Authentication
+
+User / Admin authorization
+
+Database
+
+Market Data
+
+Daily Market Data
+
+MCP
+
+Scanner
+
+Ranking
+
+Opportunity Intelligence
+
+Sector Intelligence
+
+Theme Intelligence
+
+Institutional Intelligence / 13F
+
+Research Collections
+
+Research Workspace
+
+Research Monitor
+
+Research Reports
+
+Market Research Command Center
+
+Portfolio Foundation
+
+Portfolio Imports
+
+Broker Sync
+
+Portfolio History
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Research Goals
+
+Opportunity Workspace
+
+Trade Planning
+
+Equity Planning
+
+Options Strategy Matching
+
+Contract Research
+
+Risk Analysis
+
+Trade Plans
+
+Trade Plan Lifecycle Monitoring
+
+Platform Operations Center
+
+Background Jobs
+
+Structured Logging
+
+Operations Manual
+
+Report:
+
+A. Service dependency graph
+B. Critical path dependencies
+C. Optional dependencies
+D. Current external providers
+E. Critical DB tables
+F. Background jobs
+G. Scheduled/manual jobs
+H. Runtime caches
+I. Production environment assumptions
+J. Known weak points
+K. Existing quality commands
+L. Current test framework(s)
+
+Do not begin Phase 2.8-related work.
+
+======================================================================
+2. CREATE RELEASE CERTIFICATION MODEL
+======================================================================
+
+Create a formal release certification result.
+
+Suggested:
+
+ReleaseCertification {
+  releaseName
+  releaseVersion
+  evaluatedAt
+
+  overallStatus
+
+  qualityGates
+  criticalJourneys
+  security
+  database
+  externalDependencies
+  performance
+  resilience
+  platformHealth
+  productionSmoke
+  knownLimitations
+  blockingIssues
+  nonBlockingIssues
+  evidence
+
+  decision
+}
+
+Statuses:
+
+PASS
+CONDITIONAL_PASS
+FAIL
+NOT_RUN
+
+Decision:
+
+GO
+CONDITIONAL_GO
+NO_GO
+
+======================================================================
+3. TEST INVENTORY
+======================================================================
+
+Audit every current automated test command.
+
+Current known commands include:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+Also identify:
+
+unit tests
+
+service tests
+
+structural tests
+
+route tests
+
+compliance tests
+
+browser tests
+
+database tests
+
+provider tests
+
+performance tests
+
+Document:
+
+command
+test type
+scope
+test count
+runtime
+dependencies
+whether deterministic
+whether it hits real external services
+
+======================================================================
+4. TEST CATEGORY HONESTY
+======================================================================
+
+Do not classify source-string checks as integration tests.
+
+Use explicit categories:
+
+UNIT
+
+PURE_SERVICE
+
+STRUCTURAL
+
+API_INTEGRATION
+
+DB_INTEGRATION
+
+BROWSER_E2E
+
+SMOKE
+
+REGRESSION
+
+SECURITY
+
+COMPLIANCE
+
+PERFORMANCE
+
+RESILIENCE
+
+UAT
+
+PRODUCTION_SMOKE
+
+Mandatory completion report must show counts by category.
+
+======================================================================
+5. BROWSER E2E FRAMEWORK AUDIT
+======================================================================
+
+Audit whether Playwright, Cypress, or another browser automation framework
+already exists.
+
+IF Playwright exists:
+
+reuse it.
+
+IF no browser E2E framework exists:
+
+prefer adding Playwright if compatible with current project architecture.
+
+Keep setup minimal and production-safe.
+
+Do not install multiple E2E frameworks.
+
+Create command:
+
+npm run test:e2e
+
+or equivalent.
+
+======================================================================
+6. BROWSER E2E CRITICAL PATH
+======================================================================
+
+Create real browser tests for the most important user journeys.
+
+At minimum:
+
+FLOW A — Research Discovery
+
+Login
+→ Dashboard / Research
+→ View All Opportunities
+→ Opportunity Workspace
+→ Why This Qualified
+→ Research Workspace
+→ return to Opportunity Workspace
+
+FLOW B — Research Goal
+
+Goals
+→ create/reuse test goal
+→ view matches
+→ open candidate
+→ Research Workspace context retained
+
+FLOW C — Portfolio
+
+Portfolio
+→ Holdings
+→ History
+→ Intelligence
+→ Analytics
+
+Use deterministic test fixtures where possible.
+
+FLOW D — Equity Planning
+
+Opportunity
+→ Trade Planning
+→ Equity Research
+→ Entry Framework
+→ Sizing
+→ Scenario Analysis
+→ save Trade Plan
+
+FLOW E — Options Planning
+
+Opportunity
+→ Trade Planning
+→ Options Strategy Match
+→ Contract Research
+→ Risk Analysis
+→ save Trade Plan
+
+FLOW F — Lifecycle
+
+Trade Plan
+→ Lifecycle Summary
+→ Refresh Plan Status
+→ Activity Timeline
+
+Browser tests must validate visible UX, not only API status.
+
+======================================================================
+7. ROUTING REGRESSION
+======================================================================
+
+Retest all known route-collision classes.
+
+Mandatory:
+
+/opportunities/today
+
+/opportunities/changes
+
+/opportunities/NVDA
+
+/goals
+
+/goals/:id
+
+/trade-planning/NVDA
+
+/trade-plans
+
+/trade-plans/:id
+
+/research-workspace
+
+/admin/platform-health
+
+Verify:
+
+direct deep link
+
+page refresh
+
+browser back
+
+browser forward
+
+static-before-dynamic route ownership
+
+Add permanent regression for every namespace.
+
+======================================================================
+8. AUTHENTICATION E2E
+======================================================================
+
+Validate:
+
+unauthenticated protected API → rejected
+
+authenticated user → normal access
+
+admin-only page blocked for non-admin
+
+admin Operations Manual blocked for non-admin
+
+Platform Health blocked for non-admin
+
+session persistence
+
+logout invalidates access
+
+If test framework supports fixture users:
+
+use isolated test accounts.
+
+======================================================================
+9. SECURITY OWNERSHIP E2E
+======================================================================
+
+Validate with two test users.
+
+User A must not access User B:
+
+portfolio
+
+goal
+
+collection
+
+research conversation
+
+report
+
+planning session
+
+trade plan
+
+lifecycle activity
+
+Cross-user IDs should return:
+
+404
+
+where architecture intentionally protects existence.
+
+Test via API and browser where appropriate.
+
+======================================================================
+10. DATABASE INTEGRATION TESTS
+======================================================================
+
+Formalize DB integration tests using an isolated test DB if possible.
+
+Verify critical tables:
+
+users
+
+market_data_symbols
+
+portfolio tables
+
+portfolio history
+
+portfolio intelligence-supporting tables
+
+research goals
+
+research workspace tables
+
+research monitor tables
+
+research reports
+
+trade_planning_sessions
+
+trade_plans
+
+trade_plan_versions
+
+trade_plan_activity
+
+institutional tables
+
+security master
+
+Any additional critical tables discovered by audit.
+
+Validate:
+
+table exists
+
+required indexes exist
+
+expected enum/types exist
+
+basic insert/read/update/delete where appropriate
+
+foreign key/ownership assumptions
+
+migration compatibility
+
+Do not mutate production DB during local integration test.
+
+======================================================================
+11. MIGRATION VALIDATION
+======================================================================
+
+Audit all schema/migration mechanisms.
+
+Recent important migrations/tables include:
+
+portfolio tables
+
+Research Workspace migration 026
+
+Research Goals migration 027
+
+Trade Planning migration 028
+
+Trade Plan tables
+
+Trade Plan Activity table
+
+Verify:
+
+fresh database migration path
+
+existing database upgrade path
+
+startup idempotency
+
+restarts do not fail
+
+no duplicate type/table errors
+
+no destructive migration
+
+Create:
+
+npm run test:migrations
+
+if practical.
+
+======================================================================
+12. FRESH DATABASE TEST
+======================================================================
+
+If architecture permits:
+
+create temporary/test DB.
+
+Run complete schema bootstrap.
+
+Start application.
+
+Run smoke suite.
+
+Confirm application works from blank schema.
+
+This is extremely important for takeover/recovery.
+
+======================================================================
+13. EXISTING DATABASE UPGRADE TEST
+======================================================================
+
+Create a representative pre-latest schema fixture if feasible.
+
+Apply current migration/startup process.
+
+Verify latest schema.
+
+No data loss.
+
+If full historical upgrade fixture is impractical:
+
+document limitation and verify the most recent migration chain.
+
+======================================================================
+14. SERVER STARTUP TEST
+======================================================================
+
+Create formal startup validation.
+
+Verify:
+
+server starts
+
+required tables initialize
+
+no migration crash
+
+routes register
+
+background services initialize safely
+
+no secrets logged
+
+no unhandled rejection
+
+no dependency loop
+
+shutdown/restart works
+
+Capture startup duration.
+
+======================================================================
+15. PLATFORM HEALTH CERTIFICATION
+======================================================================
+
+Run /admin/platform-health.
+
+Validate all expected cards exist.
+
+At minimum:
+
+Application
+
+Database
+
+Market Data
+
+MCP
+
+Scanner
+
+Ranking
+
+Intelligence
+
+Institutional
+
+Security Master
+
+Broker Sync
+
+Opportunity Intelligence
+
+Research Workspace
+
+Collections
+
+Monitoring
+
+Command Center
+
+Research Reports
+
+Portfolio History
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Research Goals
+
+Trade Planning
+
+Trade Plans
+
+Lifecycle Monitoring
+
+Background Jobs
+
+Use actual current card inventory discovered by audit.
+
+Expected DISABLED states must not become failures.
+
+======================================================================
+16. RESEARCH PIPELINE CERTIFICATION
+======================================================================
+
+Verify end-to-end pipeline state:
+
+Market Data
+
+Universe
+
+Scanner
+
+Ranking
+
+Opportunity Intelligence
+
+Sector/Theme Intelligence
+
+Collections
+
+Research Monitoring
+
+Command Center
+
+Research Reports
+
+Test:
+
+happy path
+
+not-run state
+
+partial failure
+
+stale state
+
+No one failed optional stage should break the entire platform.
+
+======================================================================
+17. DATA FRESHNESS CERTIFICATION
+======================================================================
+
+Verify Data Freshness dashboard.
+
+Check:
+
+Market Prices
+
+Historical Bars
+
+Ranking
+
+Opportunity Intelligence
+
+Sector Intelligence
+
+Theme Intelligence
+
+Institutional 13F
+
+Research Monitor
+
+Reports
+
+Portfolio History
+
+Broker Sync
+
+Trade Planning inputs
+
+Options chain where relevant
+
+Lifecycle monitoring
+
+Verify 13F remains:
+
+DELAYED BY DESIGN
+
+not erroneously stale/failing.
+
+======================================================================
+18. EXTERNAL PROVIDER VALIDATION
+======================================================================
+
+Audit external dependencies:
+
+Twelve Data
+
+Tradier
+
+TradeStation
+
+OpenAI
+
+SEC / 13F sources
+
+Any other provider
+
+For each:
+
+configuration present?
+
+health endpoint?
+
+rate limit handling?
+
+timeout handling?
+
+retry policy?
+
+cache?
+
+fallback?
+
+secret handling?
+
+Do not expose secret values.
+
+======================================================================
+19. LIVE MARKET DATA VALIDATION
+======================================================================
+
+Perform a bounded live-data validation where credentials/environment allow.
+
+Examples:
+
+known equity quote
+
+historical bars
+
+company profile
+
+options expirations
+
+one option chain
+
+Verify:
+
+valid timestamp
+
+expected provider
+
+non-empty data
+
+normalization
+
+cache
+
+rate-limit safety
+
+Do not perform large universe fetch.
+
+Do not consume excessive provider quota.
+
+======================================================================
+20. OPTIONS DATA E2E
+======================================================================
+
+Using one stable, liquid test symbol where current research architecture
+allows:
+
+load expirations
+
+load option chain
+
+verify normalized contracts
+
+verify bid/ask
+
+verify Greeks null behavior
+
+run Strategy Matching
+
+run Contract Research
+
+run Risk Analysis
+
+No order generation.
+
+If live provider unavailable:
+
+use provider fixture and mark live-provider test NOT_RUN.
+
+======================================================================
+21. OPENAI / AI RESILIENCE TEST
+======================================================================
+
+Validate Research Workspace under:
+
+normal AI response
+
+AI timeout
+
+AI error
+
+malformed response
+
+fallback mode
+
+Ensure deterministic research remains visible.
+
+AI failure must not destroy canonical research.
+
+======================================================================
+22. SERVICE FAILURE INJECTION
+======================================================================
+
+Simulate individual subsystem failures.
+
+Examples:
+
+Institutional DB failure
+
+OpenAI unavailable
+
+MCP unavailable
+
+options provider unavailable
+
+market-data stale
+
+portfolio service unavailable
+
+Research Reports unavailable
+
+Verify:
+
+affected section degrades
+
+other sections continue
+
+no entire-page 500 unless truly critical.
+
+======================================================================
+23. DATABASE FAILURE BEHAVIOR
+======================================================================
+
+Test bounded failure behavior.
+
+Simulate:
+
+temporary DB connection failure
+
+query timeout
+
+recovery
+
+Verify:
+
+safe error
+
+no secret leak
+
+health reflects failure
+
+app recovers after DB restored where architecture supports.
+
+Do not intentionally crash production.
+
+======================================================================
+24. RATE LIMIT TESTING
+======================================================================
+
+Simulate:
+
+HTTP 429
+
+for external providers.
+
+Verify:
+
+no uncontrolled retries
+
+clear limitation
+
+structured logs
+
+health state
+
+cached data used if safe
+
+No tight retry loop.
+
+======================================================================
+25. TIMEOUT TESTING
+======================================================================
+
+Simulate provider timeouts.
+
+Verify bounded timeout.
+
+No request hangs indefinitely.
+
+Partial responses where appropriate.
+
+======================================================================
+26. CACHE VALIDATION
+======================================================================
+
+Audit all important caches:
+
+Opportunity Intelligence
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Trade Planning
+
+Options chain
+
+Risk Analysis
+
+Lifecycle
+
+Research Workspace context
+
+Goals match cache
+
+Verify:
+
+keys
+
+TTL
+
+user isolation
+
+invalidation
+
+stale behavior
+
+No cross-user personalized cache leakage.
+
+======================================================================
+27. RESTART / CACHE LOSS TEST
+======================================================================
+
+Restart server.
+
+Verify:
+
+in-memory cache loss does not corrupt persisted state.
+
+Trade Plans survive.
+
+Research Goals survive.
+
+Portfolio survives.
+
+Lifecycle activity survives.
+
+Research conversations survive if designed to persist.
+
+Broker sync state limitation documented if still in memory.
+
+Rebuild caches correctly.
+
+======================================================================
+28. BACKGROUND JOB VALIDATION
+======================================================================
+
+Audit all Job Status Store jobs.
+
+Verify each known job reports:
+
+idle/running/completed/failed/partial
+
+No stale permanent "running" after failure.
+
+Concurrency locks released in finally.
+
+Test at least one successful and one failed job path using fixture/mock.
+
+======================================================================
+29. CONCURRENCY TESTING
+======================================================================
+
+Validate important concurrency guards.
+
+Examples:
+
+intelligence rebuild
+
+broker sync
+
+lifecycle evaluation
+
+any current rebuild/refresh endpoint
+
+Two simultaneous requests:
+
+one proceeds
+
+second receives expected conflict / protected behavior
+
+Locks release on error.
+
+======================================================================
+30. IDEMPOTENCY TESTING
+======================================================================
+
+Validate repeated safe actions.
+
+Examples:
+
+startup migration
+
+system collection seed
+
+schema ensure
+
+lifecycle evaluation event dedup
+
+broker sync duplicate prevention
+
+Research Goal primary changes
+
+Trade Plan archive
+
+No duplicate state corruption.
+
+======================================================================
+31. COMPLIANCE REGRESSION
+======================================================================
+
+Run formal compliance suite across major user surfaces.
+
+Validate no unintended:
+
+Strong Buy
+
+Best Trade
+
+Recommended Trade
+
+Expected Return
+
+Chance of Winning
+
+Sell Now
+
+Exit Now
+
+Take Profit
+
+Approved Trade
+
+Execution Ready
+
+Use context-aware assertions.
+
+Disclaimers may contain words such as recommendation in negating context.
+
+Do not fail legitimate disclaimer wording.
+
+======================================================================
+32. DISCLOSURE CERTIFICATION
+======================================================================
+
+Verify required disclosures by workflow:
+
+Portfolio upload privacy
+
+AI extraction
+
+PII minimization
+
+Research disclaimer
+
+Portfolio Intelligence disclaimer
+
+Portfolio Analytics disclaimer
+
+Goal disclaimer
+
+Trade Planning disclaimer
+
+Equity Planning disclaimer
+
+Options Strategy disclaimer
+
+Contract Research disclaimer
+
+Midpoint disclaimer
+
+Options risk disclosure
+
+Risk Scenario disclaimer
+
+Trade Plan disclaimer
+
+Lifecycle disclaimer
+
+13F delayed-data disclosure
+
+No required disclosure should disappear during refactor.
+
+======================================================================
+33. PRIVACY CERTIFICATION
+======================================================================
+
+Verify:
+
+no portfolio values in admin health
+
+no holdings in logs
+
+no capital constraints in logs
+
+no user notes in logs
+
+no raw prompts where prohibited
+
+no tokens in API responses
+
+no broker credentials
+
+no DATABASE_URL
+
+no secret values in Operations Manual
+
+======================================================================
+34. STRUCTURED LOG REDACTION TEST
+======================================================================
+
+Test keys including:
+
+apiKey
+
+token
+
+secret
+
+password
+
+auth
+
+credential
+
+bearer
+
+Verify automatic redaction.
+
+Also test error truncation and stack truncation.
+
+======================================================================
+35. PERFORMANCE BASELINE
+======================================================================
+
+Establish performance baseline.
+
+Measure representative endpoints:
+
+Platform Health
+
+Opportunity Intelligence
+
+Opportunity Workspace
+
+Research Workspace context
+
+Portfolio Intelligence
+
+Portfolio Analytics
+
+Trade Planning Context
+
+Equity Scenario
+
+Options Strategy Match
+
+Contract Research warm-cache
+
+Risk Analysis
+
+Trade Plan detail
+
+Lifecycle evaluation
+
+Record:
+
+p50
+
+p95 where enough samples
+
+average
+
+max
+
+cold/warm distinction
+
+No aggressive optimization unless baseline identifies real problem.
+
+======================================================================
+36. PAGE LOAD PERFORMANCE
+======================================================================
+
+Browser E2E:
+
+measure approximate initial load for:
+
+Dashboard / Research Hub
+
+Opportunity Workspace
+
+Research Workspace
+
+Portfolio
+
+Trade Planning
+
+Trade Plan Detail
+
+Flag obviously excessive:
+
+API call count
+
+waterfalls
+
+N+1 behavior
+
+Do not chase micro-optimizations.
+
+======================================================================
+37. API CALL COUNT AUDIT
+======================================================================
+
+Verify no regressions in known aggregation design.
+
+Examples:
+
+Opportunity Workspace should remain bounded.
+
+Research Workspace should not N+1.
+
+Contract Research should not call once per contract.
+
+Lifecycle batch evaluation should group data.
+
+Document counts.
+
+======================================================================
+38. BASIC LOAD / CONCURRENCY BASELINE
+======================================================================
+
+Perform safe bounded load test on non-destructive endpoints.
+
+Examples:
+
+10 concurrent
+
+25 concurrent
+
+50 concurrent
+
+depending environment capability.
+
+Endpoints:
+
+health
+
+opportunity list
+
+research context
+
+trade plan library
+
+Measure:
+
+error rate
+
+latency
+
+resource pressure
+
+Do NOT load-test expensive provider APIs unnecessarily.
+
+Use mocked/cached data where possible.
+
+======================================================================
+39. MEMORY / PROCESS HEALTH
+======================================================================
+
+Observe server during regression/E2E.
+
+Check:
+
+memory growth
+
+unhandled promise rejections
+
+event listener warnings
+
+process crashes
+
+cache runaway
+
+No requirement for full soak test unless simple to run.
+
+Document baseline.
+
+======================================================================
+40. SECURITY INPUT VALIDATION
+======================================================================
+
+Test malicious/invalid inputs:
+
+invalid UUID
+
+very long symbol
+
+path traversal
+
+SQL-like text
+
+script-like input
+
+formula-like upload cells
+
+malformed JSON
+
+oversized file where applicable
+
+invalid enum
+
+invalid negative quantity
+
+Ensure:
+
+400/404
+
+not 500
+
+no injection
+
+no stack leakage
+
+======================================================================
+41. FILE UPLOAD E2E
+======================================================================
+
+Validate portfolio upload path.
+
+CSV:
+
+valid
+
+invalid header
+
+oversized
+
+duplicate symbols
+
+missing cost basis
+
+XLSX:
+
+valid
+
+multiple sheet
+
+formula sanitization
+
+Screenshot/PDF:
+
+only if feature currently live and stable
+
+Verify privacy disclosures.
+
+No source file retention beyond documented behavior.
+
+======================================================================
+42. BROKER SYNC VALIDATION
+======================================================================
+
+Phase 2.8 execution is blocked, but existing broker synchronization should
+still be validated.
+
+Use broker sandbox/mock if available.
+
+Verify:
+
+connection state
+
+sync state
+
+manual refresh
+
+duplicate sync guard
+
+reauth state
+
+disconnect retains positions
+
+no token exposure
+
+Do NOT place orders.
+
+======================================================================
+43. LIVE BROKER SANDBOX TEST
+======================================================================
+
+If Tradier or TradeStation sandbox/non-production account is available:
+
+perform READ-ONLY checks only.
+
+Account connection
+
+positions
+
+quote/option data if current architecture uses broker
+
+No orders.
+
+If sandbox unavailable:
+
+mark NOT_RUN and document.
+
+======================================================================
+44. CRITICAL BUSINESS LOGIC INVARIANTS
+======================================================================
+
+Add tests pinning permanent architecture rules.
+
+Examples:
+
+Opportunity Intelligence owns research score.
+
+Trade Planning cannot promote unqualified symbol.
+
+Strategy Matching cannot change underlying.
+
+Contract Research cannot change strategy family.
+
+Risk Analysis cannot substitute contract.
+
+Trade Plan cannot mutate saved research snapshot silently.
+
+Lifecycle Intelligence cannot issue execution instruction.
+
+Client cannot supply authoritative scores.
+
+Portfolio optional for research/trade planning.
+
+Goal optional.
+
+Broker optional until execution.
+
+======================================================================
+45. END-TO-END RESEARCH FLOW
+======================================================================
+
+Build one deterministic fixture.
+
+Example symbol:
+
+TEST or fixture-backed known symbol.
+
+Validate:
+
+ranking snapshot
+
+CanonicalOpportunity
+
+Opportunity Workspace
+
+Research Workspace context
+
+Goal match
+
+TradePlanningContext
+
+Equity Planning
+
+Save Trade Plan
+
+Lifecycle
+
+Assert same canonical research identity flows through system.
+
+======================================================================
+46. END-TO-END OPTIONS FLOW
+======================================================================
+
+Fixture-backed stable chain.
+
+Validate:
+
+CanonicalOpportunity
+
+TradePlanningContext
+
+Options Strategy Match
+
+user-selected family
+
+Contract Research
+
+selected candidate
+
+Risk Analysis
+
+Trade Plan
+
+Lifecycle
+
+Assert no strategy/contract changes between layers unless user explicitly
+changes selection.
+
+======================================================================
+47. SNAPSHOT IMMUTABILITY TEST
+======================================================================
+
+Create Trade Plan.
+
+Change current research fixture.
+
+Reopen saved plan.
+
+Verify:
+
+saved research unchanged
+
+current research changed
+
+diff visible
+
+version unchanged until explicit user action.
+
+Critical.
+
+======================================================================
+48. LIFECYCLE DEDUP TEST
+======================================================================
+
+Evaluate same unchanged lifecycle multiple times.
+
+Only one relevant activity event in dedup period.
+
+Change state.
+
+New event appears.
+
+Restart server.
+
+Persisted dedup behavior should match documented architecture.
+
+======================================================================
+49. FAILURE RECOVERY JOURNEY
+======================================================================
+
+Simulate:
+
+Research Workspace AI fails.
+
+User still sees deterministic evidence.
+
+Options provider fails.
+
+Saved Trade Plan still opens.
+
+Current contract monitoring becomes partial.
+
+Institutional fails.
+
+Opportunity Workspace still loads.
+
+This should be browser/API integration where feasible.
+
+======================================================================
+50. PRODUCTION BUILD CERTIFICATION
+======================================================================
+
+Run:
+
+npm ci
+
+if environment permits clean install test.
+
+Then:
+
+npm run build
+
+npx tsc --noEmit
+
+Report:
+
+warnings
+
+errors
+
+dependency issues
+
+firewall/package problems
+
+Do not ignore lockfile or dependency warnings that could block production.
+
+======================================================================
+51. DEPENDENCY SECURITY AUDIT
+======================================================================
+
+Run available package audit tooling safely.
+
+Examples:
+
+npm audit
+
+or existing approved security tooling.
+
+Do not auto-upgrade major versions.
+
+Classify findings:
+
+Critical
+
+High
+
+Moderate
+
+Low
+
+Exploitability
+
+Runtime relevance
+
+Fix critical/high when safe or document explicit blocker.
+
+Do not conceal findings.
+
+======================================================================
+52. SECRET SCAN
+======================================================================
+
+Search repository for potential committed secrets.
+
+Patterns:
+
+API keys
+
+JWT secrets
+
+tokens
+
+DATABASE_URL
+
+OpenAI keys
+
+Tradier keys
+
+TradeStation credentials
+
+AWS/cloud secrets
+
+No secret values should be committed.
+
+Env variable names are fine.
+
+======================================================================
+53. OPERATIONS MANUAL CERTIFICATION
+======================================================================
+
+Use admin Operations Manual search to verify discoverability.
+
+Search terms:
+
+scanner
+
+ranking
+
+opportunity intelligence
+
+research workspace
+
+portfolio analytics
+
+goals
+
+trade planning
+
+equity planning
+
+options strategy
+
+contract research
+
+risk analysis
+
+trade plan
+
+lifecycle
+
+smoke
+
+regression
+
+security
+
+migration
+
+database recovery
+
+deployment
+
+Railway
+
+Twelve Data
+
+Tradier
+
+TradeStation
+
+MCP
+
+Each should return useful operational documentation.
+
+======================================================================
+54. DEVELOPER TAKEOVER TEST
+======================================================================
+
+Very important.
+
+Using only repository + Operations Manual:
+
+document whether a new developer can determine:
+
+how to run locally
+
+how to build
+
+how to test
+
+how to migrate DB
+
+how to deploy
+
+how to troubleshoot
+
+where core engines live
+
+how data flows
+
+how to find API routes
+
+how to find tables
+
+how to inspect Platform Health
+
+how to recover common failures
+
+If missing:
+
+update docs.
+
+======================================================================
+55. DISASTER RECOVERY TEST
+======================================================================
+
+Review existing disaster-recovery documentation.
+
+Validate at least non-destructively:
+
+DB backup procedure documented
+
+restore procedure documented
+
+application redeploy documented
+
+environment variables documented by NAME only
+
+DNS/domain dependencies documented
+
+provider dependencies documented
+
+post-restore verification documented
+
+Do not perform destructive production restore.
+
+Use test environment where possible.
+
+======================================================================
+56. RELEASE CHECKLIST
+======================================================================
+
+Create canonical release checklist if not already sufficient.
+
+Must include:
+
+branch clean
+
+tests
+
+integration
+
+E2E
+
+smoke
+
+regression
+
+security
+
+compliance
+
+build
+
+typecheck
+
+migration
+
+server startup
+
+Platform Health
+
+provider status
+
+UAT
+
+production deployment
+
+post-deploy smoke
+
+rollback criteria
+
+documentation
+
+release decision
+
+======================================================================
+57. ROLLBACK PLAN
+======================================================================
+
+Document:
+
+when to rollback
+
+how to rollback Railway/application
+
+how to handle DB migration
+
+how to validate rollback
+
+what data might be irreversible
+
+Do not claim rollback is safe without considering schema changes.
+
+======================================================================
+58. PRODUCTION SMOKE RUNNER
+======================================================================
+
+Create a safe production smoke runner or script.
+
+Suggested command:
+
+npm run test:smoke:production
+
+or equivalent.
+
+Requirements:
+
+read-only or safely reversible
+
+uses configured production base URL
+
+does not place broker orders
+
+does not alter user portfolios
+
+does not generate large provider loads
+
+does not expose credentials
+
+Possible checks:
+
+homepage/status
+
+auth boundary
+
+selected authenticated test account if available
+
+Opportunity Intelligence
+
+Research Workspace context
+
+Trade Planning
+
+Trade Plans
+
+Platform Health
+
+Critical route integrity
+
+======================================================================
+59. PRODUCTION SMOKE AUTH
+======================================================================
+
+If authenticated production smoke cannot safely automate login:
+
+document manual/auth-token setup securely.
+
+Do not hardcode credentials.
+
+Do not put production session tokens in repository.
+
+A NOT_RUN production smoke before deployment is acceptable.
+
+After deployment it becomes mandatory.
+
+======================================================================
+60. PRODUCTION UAT CHECKLIST
+======================================================================
+
+Create a concise final production UAT.
+
+Not 100 steps.
+
+Target 20–30 highest-value checks.
+
+Include:
+
+Research
+
+Opportunity
+
+Workspace
+
+Goal
+
+Portfolio
+
+Trade Planning
+
+Equity
+
+Options
+
+Contract Research
+
+Risk
+
+Trade Plan
+
+Lifecycle
+
+Operations Center
+
+Security
+
+No unexpected 500
+
+======================================================================
+61. DEFECT CLASSIFICATION
+======================================================================
+
+Any discovered issue must be classified:
+
+P0 — Security/data corruption/order-risk blocker
+
+P1 — Critical production blocker
+
+P2 — Major workflow defect
+
+P3 — Minor defect
+
+P4 — Enhancement
+
+Before Phase 2.8:
+
+P0 = zero
+
+P1 = zero
+
+P2 = zero unless explicitly accepted with documented reason
+
+P3/P4 may be backlog.
+
+======================================================================
+62. BUG FIX RULE
+======================================================================
+
+Fix P0/P1/P2 defects discovered by this validation sprint.
+
+Add regression test for every fixed defect.
+
+Do not add unrelated features while fixing.
+
+======================================================================
+63. KNOWN LIMITATIONS REGISTER
+======================================================================
+
+Create/update centralized production Known Limitations.
+
+Include:
+
+limitation
+
+affected subsystem
+
+user impact
+
+operational workaround
+
+planned sprint
+
+severity
+
+Examples may include:
+
+in-memory states
+
+scheduled jobs not wired
+
+live provider tests not available
+
+browser coverage gaps
+
+unsupported broker
+
+partial historical data
+
+Do not hide limitations.
+
+======================================================================
+64. PRODUCTION READINESS SCORECARD
+======================================================================
+
+Create admin/markdown release scorecard.
+
+Categories:
+
+Architecture
+
+Functional
+
+Integration
+
+E2E
+
+Security
+
+Privacy
+
+Compliance
+
+Database
+
+Deployment
+
+Observability
+
+Performance
+
+Resilience
+
+External Providers
+
+Documentation
+
+Disaster Recovery
+
+Overall
+
+Do NOT invent arbitrary 0–100 score unless methodology is explicit.
+
+Prefer:
+
+PASS
+
+CONDITIONAL
+
+FAIL
+
+with evidence.
+
+======================================================================
+65. RELEASE CERTIFICATION ARTIFACT
+======================================================================
+
+Create:
+
+docs/releases/research-trade-planning-v1-production-readiness.md
+
+or appropriate location.
+
+Include:
+
+release scope
+
+architecture summary
+
+quality gate results
+
+critical journey results
+
+provider validation
+
+performance baseline
+
+security results
+
+known limitations
+
+blockers
+
+production UAT
+
+rollback
+
+GO decision
+
+This becomes historical release evidence.
+
+======================================================================
+66. PLATFORM VERSION / BUILD IDENTIFICATION
+======================================================================
+
+If not already available:
+
+ensure application exposes safe build identity to admin/operator.
+
+Examples:
+
+release version
+
+git commit SHA
+
+build timestamp
+
+environment
+
+Do not expose secrets.
+
+Use existing architecture if present.
+
+======================================================================
+67. OBSERVABILITY VALIDATION
+======================================================================
+
+Verify structured logs exist for critical flows.
+
+Verify errors are:
+
+redacted
+
+bounded
+
+actionable
+
+Verify Platform Health links to relevant runbook.
+
+Verify Background Jobs visible.
+
+No new full observability platform required.
+
+======================================================================
+68. ALERTING REVIEW
+======================================================================
+
+Review whether severe platform failures have operational visibility.
+
+Do NOT implement user trade alerts.
+
+This is operator alerting only.
+
+If no external alerting exists:
+
+document recommendation for later operations sprint.
+
+Do not derail validation.
+
+======================================================================
+69. COMPLIANCE RELEASE REVIEW
+======================================================================
+
+Perform final terminology sweep across:
+
+Research Hub
+
+Opportunity Workspace
+
+Research Workspace
+
+Portfolio
+
+Goals
+
+Trade Planning
+
+Equity Planning
+
+Options Strategy Matching
+
+Contract Research
+
+Risk Analysis
+
+Trade Plans
+
+Lifecycle
+
+Confirm research-first vocabulary.
+
+Document any legacy surface that still uses questionable language.
+
+Fix material cases.
+
+======================================================================
+70. PRODUCT EXPERIENCE UAT
+======================================================================
+
+Perform qualitative pass.
+
+Questions:
+
+Can a new user understand where to start?
+
+Is Research clearly primary?
+
+Can a user find Opportunities quickly?
+
+Can a user understand scores?
+
+Can a user move into deeper research?
+
+Is Portfolio optional?
+
+Can a user plan without a broker?
+
+Are trade-planning boundaries clear?
+
+Are risk disclosures understandable?
+
+Are dead-end pages present?
+
+Are broken links present?
+
+Capture UX defects separately.
+
+Fix only P1/P2 blockers here.
+
+======================================================================
+71. NO-PORTFOLIO JOURNEY
+======================================================================
+
+Explicitly validate complete user flow with no portfolio:
+
+Research
+
+Opportunity
+
+Research Workspace
+
+Goal
+
+Trade Planning
+
+Equity Planning
+
+Options Strategy
+
+Contract Research
+
+Risk Analysis
+
+Trade Plan
+
+Lifecycle
+
+Portfolio must remain optional.
+
+======================================================================
+72. NO-BROKER JOURNEY
+======================================================================
+
+Validate full Research + Trade Planning functionality with:
+
+no broker connection.
+
+Everything through Trade Plan/Lifecycle must function.
+
+Phase 2.8 later introduces broker dependency only at execution boundary.
+
+======================================================================
+73. PROVIDER-DEGRADED JOURNEY
+======================================================================
+
+Test if:
+
+OpenAI unavailable
+
+Institutional unavailable
+
+MCP unavailable
+
+options provider unavailable
+
+Research platform should degrade predictably.
+
+Document which features require provider recovery.
+
+======================================================================
+74. QUALITY GATE COMMANDS
+======================================================================
+
+At minimum final project should support/document:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:e2e
+
+npm run test:migrations
+
+npm run test:smoke:production
+
+where technically practical.
+
+If any command is not implemented:
+
+document why
+
+and provide equivalent documented procedure.
+
+======================================================================
+75. MASTER QUALITY GATE
+======================================================================
+
+Prefer creating:
+
+npm run test:release
+
+that runs appropriate PRE-DEPLOY gates:
+
+smoke
+
+regression
+
+integration
+
+security
+
+compliance
+
+E2E
+
+migration tests
+
+build
+
+typecheck if practical in script
+
+Do NOT include production smoke in pre-deploy master command.
+
+Production smoke happens after deployment.
+
+======================================================================
+76. CI READINESS
+======================================================================
+
+Even if GitHub Actions/CI is not currently active:
+
+organize commands so CI can run later.
+
+Do not require developer-specific local state.
+
+Test commands should return non-zero on failure.
+
+No advisory exit-0 behavior for mandatory gates.
+
+======================================================================
+77. QUALITY GATE REPORT
+======================================================================
+
+Final report must include:
+
+QUALITY GATES
+
+Unit / Feature:
+PASS/FAIL
+count
+
+Pure Service:
+PASS/FAIL
+count
+
+Structural:
+PASS/FAIL
+count
+
+API Integration:
+PASS/FAIL
+count
+
+DB Integration:
+PASS/FAIL
+count
+
+Browser E2E:
+PASS/FAIL/NOT_RUN
+count
+
+Smoke:
+PASS/FAIL
+count
+
+Regression:
+PASS/FAIL
+count
+
+Security:
+PASS/FAIL
+count
+
+Compliance:
+PASS/FAIL
+count
+
+Migration:
+PASS/FAIL
+count
+
+Build:
+PASS/FAIL
+
+TypeScript:
+PASS/FAIL
+
+Server Startup:
+PASS/FAIL
+
+Platform Health:
+PASS/DEGRADED/FAIL
+
+Live Market Data:
+PASS/FAIL/NOT_RUN
+
+Broker Sandbox Read-Only:
+PASS/FAIL/NOT_RUN
+
+Production Smoke:
+PASS/FAIL/NOT_RUN
+
+Production UAT:
+PASS/CONDITIONAL/FAIL/NOT_RUN
+
+======================================================================
+78. PERFORMANCE REPORT
+======================================================================
+
+Return measured performance baseline for:
+
+Platform Health
+
+Opportunity Workspace
+
+Research Workspace
+
+Portfolio Intelligence
+
+Trade Planning
+
+Options Contract Research
+
+Risk Analysis
+
+Trade Plan
+
+Lifecycle
+
+Include:
+
+cold/warm
+
+average
+
+p95 if meaningful
+
+API call count
+
+No fabricated numbers.
+
+======================================================================
+79. SECURITY REPORT
+======================================================================
+
+Return:
+
+ownership test results
+
+auth results
+
+admin isolation
+
+secret scan
+
+log redaction
+
+private cache isolation
+
+input-validation results
+
+dependency audit
+
+unresolved findings
+
+======================================================================
+80. RESILIENCE REPORT
+======================================================================
+
+Return:
+
+provider failure results
+
+AI failure results
+
+DB failure results
+
+rate-limit handling
+
+timeout handling
+
+restart behavior
+
+cache-loss behavior
+
+partial degradation
+
+background job recovery
+
+concurrency guards
+
+======================================================================
+81. DOCUMENTATION UPDATE
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/13-release-checklist.md
+
+docs/operations/14-disaster-recovery.md
+
+docs/operations/15-known-issues.md
+
+docs/operations/23-platform-operations-center.md
+
+all other docs affected by actual fixes
+
+Create:
+
+docs/operations/35-end-to-end-validation-and-production-readiness.md
+
+Create release artifact:
+
+docs/releases/research-trade-planning-v1-production-readiness.md
+
+======================================================================
+82. OPERATIONS MANUAL SEARCH VALIDATION
+======================================================================
+
+Verify admin search can find:
+
+E2E
+
+smoke
+
+regression
+
+security
+
+migration
+
+release
+
+rollback
+
+production
+
+disaster recovery
+
+trade planning
+
+contract research
+
+risk analysis
+
+trade plan
+
+lifecycle
+
+If not:
+
+fix documentation/search indexing.
+
+======================================================================
+83. FINAL DEVELOPER HANDOFF CHECK
+======================================================================
+
+Document:
+
+clone/setup
+
+environment-variable names
+
+local start
+
+database initialization
+
+test commands
+
+build
+
+production start
+
+deployment
+
+health checks
+
+release checklist
+
+rollback
+
+troubleshooting
+
+provider dependencies
+
+architecture maps
+
+No secret values.
+
+======================================================================
+84. PHASE 2.8 READINESS REVIEW
+======================================================================
+
+Before GO answer explicitly:
+
+Is the platform safe to begin implementing broker-assisted execution?
+
+Evaluate:
+
+architecture separation
+
+security
+
+auth
+
+ownership
+
+data freshness
+
+broker connection architecture
+
+market-data integrity
+
+trade plan immutability
+
+risk-engine integrity
+
+testing maturity
+
+rollback capability
+
+observability
+
+known limitations
+
+If no:
+
+NO_GO or CONDITIONAL_GO.
+
+======================================================================
+85. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Full architecture inventory complete.
+
+B. Test inventory complete.
+
+C. Formal browser E2E implemented or equivalent blocker documented.
+
+D. Critical Research journey passes.
+
+E. Goal journey passes.
+
+F. Portfolio journey passes.
+
+G. Equity Planning journey passes.
+
+H. Options Planning journey passes.
+
+I. Contract Research journey passes.
+
+J. Risk Analysis journey passes.
+
+K. Trade Plan journey passes.
+
+L. Lifecycle journey passes.
+
+M. No-portfolio journey passes.
+
+N. No-broker journey passes.
+
+O. Cross-user security passes.
+
+P. Admin isolation passes.
+
+Q. DB integration passes.
+
+R. Fresh DB/startup path passes or documented environment blocker.
+
+S. Migration validation passes.
+
+T. Server restart passes.
+
+U. Cache isolation passes.
+
+V. Route regression passes.
+
+W. Compliance regression passes.
+
+X. Privacy validation passes.
+
+Y. Secret scan passes.
+
+Z. Critical/high dependency findings resolved or explicitly blocking.
+
+AA. Provider failures degrade safely.
+
+AB. AI failure fallback passes.
+
+AC. Rate limits handled.
+
+AD. Timeouts bounded.
+
+AE. Concurrency guards pass.
+
+AF. Idempotency passes.
+
+AG. Platform Health valid.
+
+AH. Performance baseline established.
+
+AI. Smoke suite passes.
+
+AJ. Regression suite passes.
+
+AK. Integration suite passes.
+
+AL. Security suite passes.
+
+AM. Lifecycle suite passes.
+
+AN. E2E suite passes or documented NOT_RUN blocks GO unless explicitly accepted.
+
+AO. npm run build passes.
+
+AP. npx tsc --noEmit meets established clean/baseline requirement.
+
+AQ. Release checklist updated.
+
+AR. Rollback procedure documented.
+
+AS. Disaster Recovery reviewed.
+
+AT. Production smoke runner exists.
+
+AU. Production UAT checklist exists.
+
+AV. Operations Manual updated.
+
+AW. Release certification artifact created.
+
+AX. P0 defects = 0.
+
+AY. P1 defects = 0.
+
+AZ. P2 defects = 0 unless explicitly accepted.
+
+BA. Phase 2.8 readiness explicitly evaluated.
+
+BB. Roadmap alignment confirmed.
+
+======================================================================
+86. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Executive Release Readiness Summary
+2. Architecture inventory
+3. Critical dependency graph
+4. Test inventory
+5. Test category breakdown
+6. Files changed
+7. Bugs discovered
+8. Bugs fixed
+9. Regression tests added for bugs
+10. Browser E2E framework
+11. Browser E2E results
+12. Research journey results
+13. Goal journey results
+14. Portfolio journey results
+15. Equity Planning results
+16. Options Strategy results
+17. Contract Research results
+18. Risk Analysis results
+19. Trade Plan results
+20. Lifecycle results
+21. No-portfolio journey
+22. No-broker journey
+23. Authentication results
+24. Cross-user ownership results
+25. Admin isolation results
+26. DB integration results
+27. Migration results
+28. Fresh DB results
+29. Upgrade path results
+30. Startup/restart results
+31. Platform Health results
+32. Research Pipeline results
+33. Data Freshness results
+34. Live Market Data results
+35. Options provider results
+36. Broker sandbox read-only results
+37. OpenAI/fallback results
+38. Failure injection results
+39. Rate-limit results
+40. Timeout results
+41. Cache results
+42. Concurrency results
+43. Idempotency results
+44. Compliance regression
+45. Disclosure certification
+46. Privacy certification
+47. Structured log redaction
+48. Input validation/security
+49. Dependency audit
+50. Secret scan
+51. Performance baseline
+52. API-call audit
+53. Load/concurrency baseline
+54. Process/memory observations
+55. Operations Manual search validation
+56. Developer takeover test
+57. Disaster Recovery review
+58. Release checklist
+59. Rollback plan
+60. Production smoke runner
+61. Production UAT checklist
+62. Known limitations register
+63. P0/P1/P2 defect count
+64. Release Certification artifact
+65. Platform version/build identity
+66. Observability review
+67. Product UX validation
+68. Phase 2.8 readiness decision
+
+QUALITY GATES:
+
+69. Unit / Feature Tests
+70. Pure Service Tests
+71. Structural Tests
+72. API Integration Tests
+73. DB Integration Tests
+74. Browser E2E
+75. Smoke
+76. Regression
+77. Security
+78. Compliance
+79. Migration
+80. Lifecycle
+81. npm run build
+82. npx tsc --noEmit
+83. Server Startup
+84. Platform Health
+85. Live Market Data
+86. Broker Sandbox Read-Only
+87. Production Smoke
+88. Production UAT
+
+89. Full automated test count
+90. Total runtime
+91. Operations Manual Updated: YES/NO
+92. Operations Manual Files Updated
+93. Release Artifact Created: YES/NO
+94. Phase 2.8 Readiness: READY / NOT_READY
+95. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+87. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.7
+End-to-End Platform Validation & Production Readiness Gate
+
+NEXT — ONLY IF GO:
+
+Phase 2.8
+Broker-Assisted Execution
+
+Proposed:
+
+2.8.0
+Execution Architecture, Compliance & Broker Preflight
+
+2.8.1
+Order Preparation Engine
+
+2.8.2
+Equity Order Preview
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+2.8.4
+Buying Power / Broker Permissions / Execution Validation
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+Do NOT begin Phase 2.8 automatically.
+
+======================================================================
+88. PERMANENT RELEASE RULE
+======================================================================
+
+Document permanently:
+
+Feature-level tests prove a subsystem works in isolation.
+
+Release certification proves the platform works as a connected system.
+
+No future execution-capable release may rely solely on:
+
+unit tests
+
+structural tests
+
+or component-level tests.
+
+Execution-capable releases require:
+
+integration
+
+browser E2E
+
+security
+
+regression
+
+migration validation
+
+smoke
+
+production smoke
+
+rollback readiness
+
+and explicit release certification.
+
+======================================================================
+89. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not implement broker-assisted execution.
+
+Do not begin Phase 2.8.
+
+Run Sprint 2.7.7 as a true release-certification exercise.
+
+Fix only production-readiness defects and test/operations gaps discovered
+during validation.
+
+Record all other feature ideas in backlog.
+
+Return the complete release-certification report for review.
+
+Only after explicit review and GO may Phase 2.8 begin.

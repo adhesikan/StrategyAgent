@@ -11,10 +11,19 @@
     "db:push": "drizzle-kit push",
     "test": "npx vitest run --root .",
     "test:smoke": "npx vitest run --root . server/routes/__tests__/smoke.test.ts",
-    "test:regression": "npx vitest run --root .",
+    "test:regression": "npx vitest run --root . server/routes/__tests__/regression.test.ts",
     "test:integration": "npx vitest run --root . server/routes/__tests__/integration.test.ts",
     "test:security": "npx vitest run --root . server/routes/__tests__/security.test.ts",
-    "test:lifecycle": "npx vitest run --root . server/routes/__tests__/trade-plan-lifecycle.test.ts"
+    "test:lifecycle": "npx vitest run --root . server/routes/__tests__/trade-plan-lifecycle.test.ts",
+    "test:migrations": "npx vitest run --root . server/routes/__tests__/migrations.test.ts",
+    "test:compliance": "npx vitest run --root . server/routes/__tests__/compliance.test.ts",
+    "test:db": "npx vitest run --root . server/routes/__tests__/db-schema.test.ts",
+    "test:performance": "npx vitest run --root . server/routes/__tests__/performance-baseline.test.ts",
+    "test:invariants": "npx vitest run --root . server/routes/__tests__/business-logic-invariants.test.ts",
+    "test:idempotency": "npx vitest run --root . server/routes/__tests__/idempotency.test.ts",
+    "test:e2e": "npx playwright test",
+    "test:smoke:production": "tsx scripts/smoke-production.ts",
+    "test:release": "npx vitest run --root . server/routes/__tests__/smoke.test.ts server/routes/__tests__/regression.test.ts server/routes/__tests__/integration.test.ts server/routes/__tests__/security.test.ts server/routes/__tests__/trade-plan-lifecycle.test.ts server/routes/__tests__/migrations.test.ts server/routes/__tests__/compliance.test.ts server/routes/__tests__/db-schema.test.ts server/routes/__tests__/business-logic-invariants.test.ts server/routes/__tests__/idempotency.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -113,6 +122,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

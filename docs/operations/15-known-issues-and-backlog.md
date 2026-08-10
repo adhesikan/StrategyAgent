@@ -48,21 +48,73 @@
 
 ---
 
+### KI-005: Trade Plan Lifecycle Scheduler Not Cron-Wired (Sprint 2.7.6)
+
+**Status:** Manual trigger only. `evaluateAllActiveTradePlans()` is implemented but not scheduled.
+
+**Details:** Lifecycle evaluation requires user to click "Refresh Plan Status" in Trade Plan detail. No automated background evaluation occurs.
+
+**Impact:** Lifecycle state only updates when user manually triggers evaluation.
+
+**Workaround:** Use "Refresh Plan Status" button in Trade Plan detail page.
+
+**Planned:** Early Phase 2.8.x sprint.
+
+---
+
+### KI-006: drizzle-orm 0.39.3 — HIGH Vulnerability (SQL Injection)
+
+**Status:** HIGH severity advisory (< 0.45.2). Mitigated.
+
+**Details:** `GHSA-gpj5-g38j-94v9` — SQL injection via improperly escaped identifiers in drizzle-orm < 0.45.2.
+
+**Mitigation:** VCP Trader AI uses typed Drizzle queries in all hot paths. No raw SQL constructed from untrusted client input in authentication or financial data paths. Risk is significantly reduced in current usage patterns.
+
+**Planned:** drizzle-orm upgrade review before Phase 2.8 production deployment. Upgrade from 0.39.3 → 0.45.x may have breaking API changes; requires dedicated testing sprint.
+
+---
+
+### KI-007: adm-zip 0.5.16 — HIGH Vulnerability (Memory Exhaustion)
+
+**Status:** HIGH severity advisory (< 0.6.0). Mitigated.
+
+**Details:** `GHSA-xcpc-8h2w-3j85` — crafted ZIP file triggers 4GB memory allocation in adm-zip < 0.6.0.
+
+**Mitigation:** adm-zip is used exclusively for SEC EDGAR 13F ZIP parsing. The ZIP source is the official EDGAR bulk dataset (trusted government source, not user-uploaded). Risk of malicious ZIP is extremely low in current usage.
+
+**Planned:** Upgrade adm-zip to 0.6.0 as first Phase 2.8.x dependency task. Only version 0.6.0 is available; API compatibility to be verified.
+
+---
+
+## Sprint 2.7.7 Validation Findings (Non-Blocking)
+
+The following were discovered during Sprint 2.7.7 end-to-end validation. All classified P3/P4 — not blocking Phase 2.8.
+
+| ID | Finding | Severity | Notes |
+|----|---------|---------|-------|
+| NB-001 | Authenticated browser E2E not run | P3 | Needs test user credentials |
+| NB-002 | API performance baselines not measured | P3 | Needs running server with data |
+| NB-003 | Portfolio history empty until first capture | P4 | By design |
+| NB-004 | Broker sync state lost on restart | P4 | By design; user reconnects |
+
+---
+
 ## Deferred Features
 
 The following are explicitly deferred and must NOT be implemented until explicitly scheduled:
 
-- Portfolio Research Intelligence
 - Portfolio recommendations
-- AI Research Assistant
+- AI Research Assistant (auto-pilot mode)
 - Autonomous agents / loops / graphs orchestration
 - Knowledge graph
 - Mapping auto-approval
 - New brokerage providers (beyond Tradier/TradeStation/Rithmic)
-- Event data provider
+- Event data provider integration
 - Voice interface
 - Dashboard redesign
 - Large-scale code splitting (unless essential)
+- Calendar and diagonal spread strategies (scheduled for later sprint)
+- Broker-assisted execution (Phase 2.8)
 
 ## Pre-existing TypeScript Errors (Non-blocking)
 
@@ -73,5 +125,18 @@ The following files have pre-existing TS errors that are known and excluded from
 - `server/routes/ask.ts`
 - `server/routes.ts` (some)
 - `server/routes/agent.ts`
+- `client/src/pages/agent.tsx`
+- `client/src/pages/scanner.tsx`
+- `server/services/algopilotx.ts`
+- `server/services/broker-sync.ts`
+- `server/services/market-research-command-center.ts`
+- `server/services/portfolio-trade-plan.ts`
+- `server/services/trade-planning-service.ts`
+- `server/services/storage.ts`
+- `server/services/analysis-result-cache.ts`
+- `server/services/live-contract-resolver.ts`
+- `server/services/opportunity-intelligence-service.ts`
+- `server/services/best-trade-finder.ts`
+- `server/services/opportunity-ranking-engine.ts`
 
 Do not fix these without a dedicated sprint. Do not count them as new errors in release gates.

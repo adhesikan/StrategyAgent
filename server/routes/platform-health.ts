@@ -28,6 +28,7 @@ import { getPortfolioAnalyticsHealth } from "../services/portfolio-analytics-ser
 import { getWorkspaceV2Health } from "./opportunity-workspace";
 import { getTradePlanningHealth } from "../services/trade-planning-service";
 import { getEquityPlanningHealth } from "../services/equity-planning-service";
+import { getOptionsMatchingHealth } from "../services/options-strategy-matching-service";
 import { type FreshnessResult } from "../lib/health-freshness";
 import {
   computeOperationsSummary,
@@ -925,6 +926,18 @@ async function buildPlatformHealth(): Promise<PlatformHealthEnriched> {
           failedEquityScenarios:          eq.failedEquityScenarios,
           averageEquityScenarioLatencyMs: eq.averageEquityScenarioLatencyMs ?? "N/A",
           lastSuccessfulEquityScenarioAt: eq.lastSuccessfulEquityScenarioAt ?? "Never",
+          // Options strategy matching metrics (2.7.2)
+          ...(() => {
+            const om = getOptionsMatchingHealth();
+            return {
+              optionsMatchRequests:         om.optionsMatchRequests,
+              optionsMatchesCompleted:      om.optionsMatchesCompleted,
+              partialOptionsMatches:        om.partialOptionsMatches,
+              failedOptionsMatches:         om.failedOptionsMatches,
+              averageOptionsMatchLatencyMs: om.averageOptionsMatchLatencyMs ?? "N/A",
+              lastSuccessfulOptionsMatchAt: om.lastSuccessfulOptionsMatchAt ?? "Never",
+            };
+          })(),
         },
       } as HealthCard;
     })(),

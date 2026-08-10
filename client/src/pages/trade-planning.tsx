@@ -47,6 +47,13 @@ import type { EquityPlanningScenario } from "@shared/equity-planning-types";
 import {
   EQUITY_PLANNING_DISCLAIMER, SIZING_DISCLAIMER, SCENARIO_DISCLAIMER,
 } from "@shared/equity-planning-types";
+import type {
+  OptionsStrategyMatchResult, OptionsStrategyMatch, StrategyMatchStatus,
+} from "@shared/options-strategy-types";
+import {
+  OPTIONS_STRATEGY_DISCLAIMER, OPTIONS_RISK_DISCLOSURE, NO_RECOMMENDATION_NOTE,
+  STRATEGY_MATCH_STATUS_LABELS,
+} from "@shared/options-strategy-types";
 
 // ---------------------------------------------------------------------------
 // Reserved route segments (defense-in-depth)
@@ -589,6 +596,444 @@ function EquityPlanningPanel({
       <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-xs text-muted-foreground">
         <Info className="h-3.5 w-3.5 inline mr-1" />
         {EQUITY_PLANNING_DISCLAIMER}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Options Strategy Panel — Sprint 2.7.2
+// ---------------------------------------------------------------------------
+
+const OPTIONS_STRATEGY_FAMILY_GROUPS: Record<string, string> = {
+  long_call:         "Directional Bullish",
+  long_put:          "Directional Bearish",
+  bull_call_spread:  "Directional Bullish",
+  bear_put_spread:   "Directional Bearish",
+  bull_put_spread:   "Directional Bullish",
+  bear_call_spread:  "Directional Bearish",
+  covered_call:      "Income",
+  cash_secured_put:  "Income",
+  iron_condor:       "Neutral / Range-Bound",
+  iron_butterfly:    "Neutral / Range-Bound",
+  calendar_spread:   "Neutral / Range-Bound",
+  long_straddle:     "Volatility",
+  long_strangle:     "Volatility",
+  protective_put:    "Protective",
+  collar:            "Protective",
+  diagonal_spread:   "Directional Bullish",
+  monitor_only:      "Monitor Only",
+};
+
+const STATUS_COLORS: Record<StrategyMatchStatus, string> = {
+  APPLICABLE:            "border-green-500/40 bg-green-500/5",
+  POTENTIALLY_APPLICABLE:"border-yellow-500/40 bg-yellow-500/5",
+  NOT_APPLICABLE:        "border-border/30 bg-muted/20",
+  UNAVAILABLE:           "border-border/20 bg-muted/10 opacity-60",
+};
+
+const STATUS_BADGE_COLORS: Record<StrategyMatchStatus, string> = {
+  APPLICABLE:            "bg-green-500/20 text-green-400 border-green-500/30",
+  POTENTIALLY_APPLICABLE:"bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  NOT_APPLICABLE:        "bg-muted/40 text-muted-foreground",
+  UNAVAILABLE:           "bg-muted/20 text-muted-foreground",
+};
+
+function StrategyFamilyCard({ match }: { match: OptionsStrategyMatch }) {
+  const [open, setOpen] = useState(false);
+  const statusColor     = STATUS_COLORS[match.status];
+  const badgeColor      = STATUS_BADGE_COLORS[match.status];
+  const groupLabel      = OPTIONS_STRATEGY_FAMILY_GROUPS[match.strategyFamily] ?? match.strategyCategoryLabel;
+  const isApplicable    = match.status === "APPLICABLE" || match.status === "POTENTIALLY_APPLICABLE";
+
+  return (
+    <div className={`rounded-lg border p-3 transition-colors ${statusColor}`}>
+      <button
+        type="button"
+        className="w-full flex items-start justify-between gap-2 text-left"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-controls={`sfam-${match.strategyFamily}`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{match.strategyLabel}</span>
+            <span className="text-xs text-muted-foreground">{groupLabel}</span>
+          </div>
+          {/* Quick tags */}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {match.structure.isDefinedRisk && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                Defined Risk
+              </span>
+            )}
+            {match.structure.isIncomeFocused && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                Income
+              </span>
+            )}
+            {match.structure.requiresOwnership && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                Requires Shares
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-xs px-2 py-0.5 rounded border font-medium ${badgeColor}`}>
+            {STRATEGY_MATCH_STATUS_LABELS[match.status]}
+          </span>
+          {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+        </div>
+      </button>
+
+      {open && (
+        <div id={`sfam-${match.strategyFamily}`} className="mt-3 space-y-3 text-xs">
+          {/* Structure overview */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="text-center p-2 rounded bg-muted/30">
+              <div className="text-muted-foreground mb-0.5">Legs</div>
+              <div className="font-medium">{match.structure.legCount}</div>
+            </div>
+            <div className="text-center p-2 rounded bg-muted/30">
+              <div className="text-muted-foreground mb-0.5">Premium</div>
+              <div className="font-medium capitalize">{match.structure.premiumDirection}</div>
+            </div>
+            <div className="text-center p-2 rounded bg-muted/30">
+              <div className="text-muted-foreground mb-0.5">Directional</div>
+              <div className="font-medium">{match.structure.isDirectional ? "Yes" : "No"}</div>
+            </div>
+          </div>
+
+          {/* Reasons */}
+          {match.reasons.length > 0 && (
+            <div>
+              <p className="font-medium text-foreground mb-1">Why {STRATEGY_MATCH_STATUS_LABELS[match.status]}</p>
+              <ul className="space-y-0.5">
+                {match.reasons.map((r, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-muted-foreground">
+                    <span className="text-muted-foreground shrink-0 mt-0.5">•</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Risk characteristics */}
+          {match.riskCharacteristics.length > 0 && (
+            <div>
+              <p className="font-medium text-foreground mb-1">Broad Risk Characteristics</p>
+              <ul className="space-y-0.5">
+                {match.riskCharacteristics.map((r, i) => (
+                  <li key={i} className="text-muted-foreground flex items-start gap-1.5">
+                    <span className="shrink-0 mt-0.5">•</span><span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Constraints satisfied */}
+          {match.constraintsSatisfied.length > 0 && (
+            <div>
+              <p className="font-medium text-foreground mb-1">Planning Preferences Satisfied</p>
+              <ul className="space-y-0.5">
+                {match.constraintsSatisfied.map((c, i) => (
+                  <li key={i} className="text-green-400 flex items-start gap-1.5">
+                    <Check className="h-3 w-3 shrink-0 mt-0.5" /><span>{c}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Portfolio requirements */}
+          {match.portfolioRequirements.length > 0 && (
+            <div>
+              <p className="font-medium text-foreground mb-1">Portfolio Requirements</p>
+              <ul className="space-y-0.5">
+                {match.portfolioRequirements.map((r, i) => (
+                  <li key={i} className="text-purple-400 flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 shrink-0 mt-0.5" /><span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Event considerations */}
+          {match.eventConsiderations.length > 0 && (
+            <div>
+              <p className="font-medium text-foreground mb-1">Event Considerations</p>
+              <ul className="space-y-0.5">
+                {match.eventConsiderations.map((e, i) => (
+                  <li key={i} className="text-yellow-400 flex items-start gap-1.5">
+                    <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" /><span>{e}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Limitations */}
+          {match.limitations.length > 0 && (
+            <div>
+              <p className="font-medium text-foreground mb-1">Data Limitations</p>
+              <ul className="space-y-0.5">
+                {match.limitations.map((l, i) => (
+                  <li key={i} className="text-muted-foreground flex items-start gap-1.5">
+                    <Info className="h-3 w-3 shrink-0 mt-0.5" /><span>{l}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Next-stage requirements (only for applicable) */}
+          {isApplicable && match.nextStageRequirements.length > 0 && (
+            <div className="pt-2 border-t border-border/30">
+              <p className="font-medium text-foreground mb-1 flex items-center gap-1.5">
+                <ArrowRight className="h-3 w-3 text-primary" />
+                Contract Research Requirements (2.7.3)
+              </p>
+              <ul className="space-y-0.5">
+                {match.nextStageRequirements.map((n, i) => (
+                  <li key={i} className="text-muted-foreground flex items-start gap-1.5">
+                    <span className="shrink-0 mt-0.5">•</span><span>{n}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OptionsStrategyPanel({
+  symbol, sessionId, constraints,
+}: {
+  symbol: string; sessionId: string; constraints: TradePlanningConstraints;
+}) {
+  const optionsQuery = useQuery<{ result: OptionsStrategyMatchResult }>({
+    queryKey: [`/api/trade-planning/session/${sessionId}/options/matches`, constraints],
+    queryFn:  () => apiRequest("GET", `/api/trade-planning/session/${sessionId}/options/matches`).then(r => r.json()),
+    enabled:  !!sessionId,
+  });
+
+  const result = optionsQuery.data?.result;
+
+  if (optionsQuery.isLoading) {
+    return (
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Evaluating options strategy families…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (optionsQuery.isError || !result) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="p-4 text-xs text-muted-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 inline mr-1 text-yellow-400" />
+          Options strategy evaluation unavailable — research data may be missing.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const applicable         = result.matches.filter(m => m.status === "APPLICABLE");
+  const potentiallyApplicable = result.matches.filter(m => m.status === "POTENTIALLY_APPLICABLE");
+  const notApplicable      = result.matches.filter(m => m.status === "NOT_APPLICABLE");
+
+  return (
+    <div className="space-y-4" aria-label="Options Strategy Research">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-base font-semibold flex items-center gap-2">
+          <BarChart2 className="h-4 w-4 text-primary" aria-hidden="true" />
+          Options Strategy Research
+        </h2>
+        {result.freshness?.hasStaleCriticalData && (
+          <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Stale Data
+          </Badge>
+        )}
+      </div>
+
+      {/* Thesis Direction + Context */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            Research Thesis Direction
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Badge variant="outline" className="text-sm font-medium px-3 py-1">
+              {result.thesisDirectionLabel}
+            </Badge>
+            {result.marketRegime && (
+              <span className="text-xs text-muted-foreground">Market Regime: {result.marketRegime}</span>
+            )}
+            {result.researchHorizon && (
+              <span className="text-xs text-muted-foreground">Horizon: {result.researchHorizon}</span>
+            )}
+          </div>
+          {result.thesisDirectionReasoning.length > 0 && (
+            <ul className="space-y-0.5 text-xs text-muted-foreground">
+              {result.thesisDirectionReasoning.map((r, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="shrink-0 mt-0.5">•</span><span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Context summary row */}
+          <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
+            <div className="rounded bg-muted/30 p-2">
+              <div className="text-muted-foreground mb-0.5">Volatility</div>
+              <div className="font-medium">
+                {result.volatilityContext.level === "UNKNOWN" ? "Unknown" : result.volatilityContext.level}
+              </div>
+              <div className="text-muted-foreground text-[10px] mt-0.5 line-clamp-2">{result.volatilityContext.note}</div>
+            </div>
+            <div className="rounded bg-muted/30 p-2">
+              <div className="text-muted-foreground mb-0.5">Liquidity</div>
+              <div className="font-medium">
+                {result.liquidityContext.availability === "UNKNOWN" ? "Unknown" : result.liquidityContext.availability}
+              </div>
+              <div className="text-muted-foreground text-[10px] mt-0.5 line-clamp-2">{result.liquidityContext.note}</div>
+            </div>
+            <div className="rounded bg-muted/30 p-2">
+              <div className="text-muted-foreground mb-0.5">Event Risk</div>
+              <div className="font-medium">
+                {result.eventContext?.hasUpcomingEvent ? "Detected" : "None Detected"}
+              </div>
+              {result.eventContext?.hasUpcomingEvent && (
+                <div className="text-yellow-400 text-[10px] mt-0.5 line-clamp-2">{result.eventContext.note}</div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Planning Context quick summary */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded bg-muted/30 border border-border/40 p-2">
+          <div className="text-muted-foreground mb-0.5">Portfolio</div>
+          <div className="font-medium capitalize">{result.portfolioOwnership.replace("_", " ")}</div>
+        </div>
+        <div className="rounded bg-muted/30 border border-border/40 p-2">
+          <div className="text-muted-foreground mb-0.5">Goal</div>
+          <div className="font-medium">{result.goalContextLabel ?? "None"}</div>
+        </div>
+      </div>
+
+      {/* Summary counts */}
+      <div className="flex gap-3 text-xs flex-wrap">
+        <span className="flex items-center gap-1.5 text-green-400">
+          <span className="h-2 w-2 rounded-full bg-green-500 inline-block" />
+          {result.applicableCount} Applicable
+        </span>
+        <span className="flex items-center gap-1.5 text-yellow-400">
+          <span className="h-2 w-2 rounded-full bg-yellow-500 inline-block" />
+          {result.potentialCount} Potentially Applicable
+        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="h-2 w-2 rounded-full bg-muted-foreground inline-block" />
+          {result.notApplicableCount} Not Applicable
+        </span>
+      </div>
+
+      {/* APPLICABLE group */}
+      {applicable.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-green-400 uppercase tracking-wide">Applicable Families</p>
+          {applicable.map(m => <StrategyFamilyCard key={m.strategyFamily} match={m} />)}
+        </div>
+      )}
+
+      {/* POTENTIALLY_APPLICABLE group */}
+      {potentiallyApplicable.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-yellow-400 uppercase tracking-wide">Potentially Applicable</p>
+          {potentiallyApplicable.map(m => <StrategyFamilyCard key={m.strategyFamily} match={m} />)}
+        </div>
+      )}
+
+      {/* NOT_APPLICABLE group */}
+      {notApplicable.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not Applicable</p>
+          {notApplicable.map(m => <StrategyFamilyCard key={m.strategyFamily} match={m} />)}
+        </div>
+      )}
+
+      {/* Result-level limitations */}
+      {result.limitations.length > 0 && (
+        <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-xs">
+          <p className="font-medium mb-1 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            Research Limitations
+          </p>
+          <ul className="space-y-0.5 text-muted-foreground">
+            {result.limitations.map((l, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="shrink-0 mt-0.5">•</span><span>{l}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Contract Research CTA (disabled — 2.7.3) */}
+      <Card className="border-border/50">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                Contract &amp; Strike Research
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Select an applicable strategy family above, then proceed to Contract Research to
+                evaluate specific expirations and strikes. Available in Sprint 2.7.3.
+              </p>
+            </div>
+            <Button size="sm" disabled className="gap-2 shrink-0 opacity-50" aria-disabled="true">
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              Contract Research
+              <Badge variant="outline" className="text-[10px] ml-1">Upcoming</Badge>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* No recommendation note */}
+      <div className="p-3 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
+        <Info className="h-3.5 w-3.5 inline mr-1" aria-hidden="true" />
+        {NO_RECOMMENDATION_NOTE}
+      </div>
+
+      {/* Risk disclosure */}
+      <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-muted-foreground">
+        <AlertCircle className="h-3.5 w-3.5 inline mr-1 text-red-400" aria-hidden="true" />
+        {OPTIONS_RISK_DISCLOSURE}
+      </div>
+
+      {/* Strategy disclaimer */}
+      <div className="p-3 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
+        <Info className="h-3.5 w-3.5 inline mr-1" aria-hidden="true" />
+        {OPTIONS_STRATEGY_DISCLAIMER}
       </div>
     </div>
   );
@@ -1340,6 +1785,19 @@ export default function TradePlanningPage() {
               <EquityPlanningPanel symbol={symbol} sessionId={sessionId} constraints={constraints} />
             )}
 
+            {/* Options Strategy Panel — shown when any options-related family selected */}
+            {selectedFamily && sessionId && (
+              selectedFamily === "income" ||
+              selectedFamily === "defined_risk_directional" ||
+              selectedFamily === "covered_call" ||
+              selectedFamily === "cash_secured_put" ||
+              selectedFamily === "vertical_spread" ||
+              selectedFamily === "long_option" ||
+              selectedFamily === "neutral_options"
+            ) && (
+              <OptionsStrategyPanel symbol={symbol} sessionId={sessionId} constraints={constraints} />
+            )}
+
             {/* Future Planning Steps */}
             <Card className="border-border/50">
               <CardHeader className="pb-2">
@@ -1347,7 +1805,6 @@ export default function TradePlanningPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 <p className="text-foreground font-medium">Coming in future sprints:</p>
-                <p>• <strong className="text-foreground">Options Strategy Matching (2.7.2)</strong> — Match applicable options structures to the research thesis and planning constraints.</p>
                 <p>• <strong className="text-foreground">Contract &amp; Strike Research (2.7.3)</strong> — Research specific contracts for a matched strategy structure.</p>
                 <p>• <strong className="text-foreground">Risk &amp; Scenario Analysis (2.7.4)</strong> — Model scenarios for the selected structure.</p>
                 <p>• <strong className="text-foreground">Trade Plan Workspace (2.7.5)</strong> — Full trade plan review before any order preparation.</p>

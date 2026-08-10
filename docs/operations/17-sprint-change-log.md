@@ -1,5 +1,47 @@
 # Sprint Change Log
 
+## Sprint 2.7.2 — Options Strategy Matching Engine (2026-08-10)
+
+### Summary
+Builds the deterministic Options Strategy Matching Engine — the options layer of Trade Planning. Evaluates 17 strategy families against a qualified TradePlanningContext and user-selected planning constraints. Returns an `OptionsStrategyMatchResult` with APPLICABLE / POTENTIALLY_APPLICABLE / NOT_APPLICABLE / UNAVAILABLE status for each family, full explanation, risk characteristics, portfolio requirements, and 2.7.3 handoff input. No contract selection, no strike, no expiration, no premium, no recommendation.
+
+### New Features
+- **17 strategy families** evaluated deterministically: long_call, long_put, bull_call_spread, bear_put_spread, bull_put_spread, bear_call_spread, covered_call, cash_secured_put, protective_put, collar, iron_condor, iron_butterfly, long_straddle, long_strangle, calendar_spread, diagonal_spread, monitor_only
+- **Thesis direction derivation** — 8 directions from opportunityType, technicalScore, riskFactors, marketRegime; no new ranking score
+- **Portfolio ownership enforcement** — covered_call/protective_put/collar require confirmed shares; NEVER presented as covered without shares
+- **Volatility context** — UNKNOWN by default; honest limitation; no IV fabrication
+- **Liquidity context** — UNKNOWN; deferred to 2.7.3
+- **Event context** — derived from risk factor text analysis; conservative handling
+- **Constraint gates** — optionsAllowed, definedRiskPreferred, incomeFocus, directionalFocus, avoidEarningsWindow all applied
+- **No-portfolio mode** — full functionality; ownership-requiring families NOT_APPLICABLE
+- **2.7.3 handoff type** — `OptionsContractResearchInput` documented and populated for applicable families
+- **3 new API endpoints** — POST `/:symbol/options/match`, GET/GET `/session/:id/options/matches[/:family]`
+- **6 platform health metrics** added to tradePlanning card
+- **11 glossary terms** added
+- **`OptionsStrategyPanel`** client panel shown in Trade Planning when options family selected
+
+### Files Changed
+- `shared/options-strategy-types.ts` — canonical types
+- `server/services/options-strategy-matching-service.ts` — matching engine
+- `server/routes/trade-planning.ts` — 3 new endpoints
+- `server/routes/platform-health.ts` — 6 options metrics
+- `client/src/pages/trade-planning.tsx` — OptionsStrategyPanel
+- `shared/research-glossary.ts` — 11 new terms
+- `docs/operations/30-options-strategy-matching.md` — new ops doc
+
+### Schema
+No new database tables. Match results computed on-demand from existing `trade_planning_sessions` + Opportunity Intelligence.
+
+### Tests
+`server/routes/__tests__/options-strategy-matching.test.ts` — 129 assertions across 50 sections
+
+### Compliance
+- `OPTIONS_STRATEGY_DISCLAIMER` — not investment advice, not recommendation, not suitability
+- `OPTIONS_RISK_DISCLOSURE` — unlimited loss possibility disclosed
+- `NO_RECOMMENDATION_NOTE` — confirms no ranking
+
+---
+
 ## Sprint 2.7.1 — Equity Trade Planning Engine (2026-08-10)
 
 ### Summary

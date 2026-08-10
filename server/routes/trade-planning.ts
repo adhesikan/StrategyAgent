@@ -1,13 +1,20 @@
 /**
- * Trade Planning Routes — Sprint 2.7.0
+ * Trade Planning Routes — Sprint 2.7.0 / 2.7.1 / 2.7.2
  *
  * ROUTE ORDER CONTRACT (static before dynamic):
- *   GET  /api/trade-planning/health          ← static (registered first)
- *   GET  /api/trade-planning/session/:id     ← session static prefix before symbol
+ *   GET  /api/trade-planning/health                             ← static
+ *   GET  /api/trade-planning/session/:id                       ← session prefix before symbol
  *   PATCH /api/trade-planning/session/:id
  *   GET  /api/trade-planning/session/:id/expressions
- *   POST /api/trade-planning/session         ← create
- *   GET  /api/trade-planning/:symbol/context ← dynamic (registered last)
+ *   GET  /api/trade-planning/session/:id/equity                ← 2.7.1
+ *   PATCH /api/trade-planning/session/:id/equity               ← 2.7.1
+ *   GET  /api/trade-planning/session/:id/equity/scenarios      ← 2.7.1
+ *   GET  /api/trade-planning/session/:id/options/matches       ← 2.7.2
+ *   GET  /api/trade-planning/session/:id/options/matches/:fam  ← 2.7.2
+ *   POST /api/trade-planning/session                           ← create
+ *   POST /api/trade-planning/:symbol/equity                    ← 2.7.1 dynamic
+ *   POST /api/trade-planning/:symbol/options/match             ← 2.7.2 dynamic
+ *   GET  /api/trade-planning/:symbol/context                   ← dynamic (registered last)
  *
  * SECURITY:
  *   - All endpoints require authentication
@@ -26,6 +33,10 @@ import {
   evaluateExpressionFamilies,
   getTradePlanningHealth,
 } from "../services/trade-planning-service";
+import {
+  buildOptionsStrategyMatchResult,
+  getOptionsMatchingHealth,
+} from "../services/options-strategy-matching-service";
 import {
   buildEquityPlanningScenario,
   recalculateEquityScenario,
@@ -339,6 +350,135 @@ export function registerTradePlanningRoutes(
       }
       console.error("[trade-planning] equity build error:", err?.message);
       res.status(500).json({ message: "Failed to build equity planning scenario" });
+    }
+  });
+
+  // =========================================================================
+  // Static session options: GET /api/trade-planning/session/:id/options/matches
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/options/matches", isAuthenticated, async (req: Request, res: Response) => {
+    const userId    = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId = req.params.id;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      const context = await buildTradePlanningContext(userId, session.symbol, {
+        goalId:      session.researchGoalId ?? null,
+        portfolioId: session.portfolioId    ?? null,
+        constraints: session.constraints,
+      }).catch(() => null);
+
+      if (!context) {
+        return res.status(404).json({
+          message: "Could not build planning context for this session",
+          hint:    "The research candidate may no longer be qualified.",
+        });
+      }
+
+      const result = buildOptionsStrategyMatchResult(context, session.constraints);
+      res.json({ result, disclaimer: result.disclaimer, optionsRiskDisclosure: result.optionsRiskDisclosure });
+    } catch (err: any) {
+      console.error("[trade-planning] options match error:", err?.message);
+      res.status(500).json({ message: "Failed to evaluate options strategy families" });
+    }
+  });
+
+  // =========================================================================
+  // Static session options detail: GET /api/trade-planning/session/:id/options/matches/:strategyFamily
+  // =========================================================================
+  app.get("/api/trade-planning/session/:id/options/matches/:strategyFamily", isAuthenticated, async (req: Request, res: Response) => {
+    const userId    = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const sessionId     = req.params.id;
+    const strategyFamily = req.params.strategyFamily;
+
+    try {
+      const session = await getPlanningSession(sessionId, userId);
+      if (!session) return res.status(404).json({ message: "Planning session not found" });
+
+      const context = await buildTradePlanningContext(userId, session.symbol, {
+        goalId:      session.researchGoalId ?? null,
+        portfolioId: session.portfolioId    ?? null,
+        constraints: session.constraints,
+      }).catch(() => null);
+
+      if (!context) return res.status(404).json({ message: "Planning context unavailable" });
+
+      const result = buildOptionsStrategyMatchResult(context, session.constraints);
+      const match  = result.matches.find(m => m.strategyFamily === strategyFamily);
+      if (!match) return res.status(404).json({ message: `Strategy family '${strategyFamily}' not found` });
+
+      res.json({
+        match,
+        thesisDirection:    result.thesisDirection,
+        thesisDirectionLabel: result.thesisDirectionLabel,
+        volatilityContext:  result.volatilityContext,
+        eventContext:       result.eventContext,
+        disclaimer:         result.disclaimer,
+        optionsRiskDisclosure: result.optionsRiskDisclosure,
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] options match detail error:", err?.message);
+      res.status(500).json({ message: "Failed to retrieve strategy family detail" });
+    }
+  });
+
+  // =========================================================================
+  // Dynamic: POST /api/trade-planning/:symbol/options/match
+  // Build options strategy match without a saved session
+  // =========================================================================
+  app.post("/api/trade-planning/:symbol/options/match", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const symbol = req.params.symbol?.toUpperCase();
+    if (!symbol || isReservedSegment(symbol)) {
+      return res.status(400).json({ message: "Invalid symbol" });
+    }
+
+    const { constraints: rawConstraints, planningSessionId } = req.body ?? {};
+    const constraints = rawConstraints ? validateConstraints(rawConstraints) : DEFAULT_CONSTRAINTS;
+
+    try {
+      const context = await buildTradePlanningContext(userId, symbol, {
+        goalId:      null,
+        portfolioId: null,
+        constraints,
+      });
+
+      const result = buildOptionsStrategyMatchResult(context, constraints);
+
+      // Log safe metadata only — no symbol/capital/user identity
+      console.log(JSON.stringify({
+        event:               "options_strategy_match_completed",
+        durationMs:          result.generationLatencyMs,
+        strategyFamilyCount: result.matches.length,
+        applicableCount:     result.applicableCount,
+        potentialCount:      result.potentialCount,
+        unavailableCount:    result.unavailableCount,
+        hasVolatilityContext: result.volatilityContext.level !== "UNKNOWN",
+        hasEventContext:     !!(result.eventContext?.hasUpcomingEvent),
+        hasPortfolioContext: result.portfolioOwnership !== "unknown",
+      }));
+
+      res.json({
+        result,
+        disclaimer:           result.disclaimer,
+        optionsRiskDisclosure: result.optionsRiskDisclosure,
+      });
+    } catch (err: any) {
+      console.error("[trade-planning] options match build error:", err?.message);
+      if (err?.message?.includes("No qualified")) {
+        return res.status(404).json({
+          message: err.message,
+          symbol,
+          hint:    "Only qualified research candidates can be used for options strategy matching.",
+        });
+      }
+      res.status(500).json({ message: "Failed to build options strategy match" });
     }
   });
 

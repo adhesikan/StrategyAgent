@@ -1401,12 +1401,174 @@ export function getTradePlanningGlossaryEntry(key: string): ResearchGlossaryEntr
 
 export { TRADE_PLANNING_ENTRIES };
 export { EQUITY_PLANNING_ENTRIES };
+export { OPTIONS_STRATEGY_ENTRIES };
+
+// ===========================================================================
+// Options Strategy Matching Terms — Sprint 2.7.2
+// ===========================================================================
+
+const OPTIONS_STRATEGY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  {
+    key:             "options_strategy_matching",
+    label:           "Options Strategy Matching",
+    shortDefinition: "Evaluating which options strategy families are structurally compatible with a research thesis and planning constraints.",
+    fullDefinition:  "Options Strategy Matching evaluates 17 strategy families against a qualified research thesis " +
+                     "and user-selected planning constraints. Each family receives a status of Applicable, " +
+                     "Potentially Applicable, Not Applicable, or Unavailable, with transparent reasons. " +
+                     "It does not select a specific strategy, contract, expiration, strike, or trade and " +
+                     "does not constitute investment advice or a suitability determination.",
+    methodologySummary: "Deterministic rule-based evaluation; no numeric ranking score; pure computation from TradePlanningContext.",
+    caution:         "Options Strategy Matching is a research tool, not a recommendation engine. No strategy family is labeled best or recommended.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "strategy_family",
+    label:           "Strategy Family",
+    shortDefinition: "A broad category of options structures sharing similar directional, income, or risk characteristics.",
+    fullDefinition:  "A Strategy Family groups related options structures that share similar purpose: directional bullish, " +
+                     "directional bearish, income, neutral/range-bound, volatility, protective, or monitor-only. " +
+                     "Examples include Long Call (directional bullish), Iron Condor (neutral/range-bound), " +
+                     "and Covered Call (income). Families do not specify strike, expiration, or contract — " +
+                     "those are researched in a later stage.",
+    methodologySummary: "17 supported families organized into 7 categories.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "thesis_direction",
+    label:           "Research Thesis Direction",
+    shortDefinition: "The directional bias derived from canonical research evidence, used to evaluate options strategy family compatibility.",
+    fullDefinition:  "Thesis Direction is derived deterministically from opportunity type, technical scores, risk factors, " +
+                     "and market regime — never from a single score. Values: Bullish, Bearish, Neutral, Range-Bound, " +
+                     "Volatility Expansion, Volatility Contraction, Mixed, or Unknown. " +
+                     "The direction gates which strategy families are considered applicable.",
+    methodologySummary: "VCP/BREAKOUT/GAP_AND_GO → Bullish; BREAKDOWN → Bearish; CONSOLIDATION → Range-Bound; multiple high-risk factors reduce confidence → Mixed.",
+    caution:         "Thesis direction is a research categorization, not a price prediction or directional forecast.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "volatility_context",
+    label:           "Volatility Context",
+    shortDefinition: "A categorical assessment of implied volatility conditions (LOW / NORMAL / ELEVATED / HIGH / UNKNOWN).",
+    fullDefinition:  "Volatility Context classifies options market conditions to inform strategy family compatibility. " +
+                     "Elevated implied volatility may support premium-selling research structures; " +
+                     "low implied volatility may support premium-buying structures. " +
+                     "In Sprint 2.7.2, no authoritative IV source is available — context is UNKNOWN. " +
+                     "Exact IV data will be evaluated in Contract Research (2.7.3).",
+    methodologySummary: "No IV source in 2.7.2; always UNKNOWN; limitation disclosed.",
+    caution:         "Volatility context is a research input, not a trading signal. Do not fabricate IV context.",
+    category:        "data_quality",
+    userFacing:      true,
+  },
+  {
+    key:             "event_risk",
+    label:           "Event Risk",
+    shortDefinition: "The risk that an earnings report or other event causes unexpected price movement affecting an options position.",
+    fullDefinition:  "Event Risk refers to the potential for an earnings report, regulatory decision, economic announcement, " +
+                     "or other scheduled event to cause a significant, potentially unexpected price move. " +
+                     "Options strategy families have different sensitivities to event risk: income structures " +
+                     "(covered call, short spreads) are more exposed; straddles/strangles may be designed for it. " +
+                     "Users who select Avoid Earnings Window will see event-sensitive families flagged accordingly.",
+    methodologySummary: "Derived from risk factors text analysis; exact event dates unavailable in 2.7.2.",
+    caution:         "Event risk cannot be predicted with certainty. Research evidence is not a forecast of event outcomes.",
+    category:        "risk",
+    userFacing:      true,
+  },
+  {
+    key:             "defined_risk_strategy",
+    label:           "Defined-Risk Strategy",
+    shortDefinition: "An options structure where the maximum possible loss is known and capped at entry.",
+    fullDefinition:  "A Defined-Risk Strategy is an options structure where the maximum possible loss is established " +
+                     "at the time the position is opened — typically the net premium paid (long options) or the " +
+                     "spread width minus credit received (vertical spreads, iron condors). " +
+                     "Examples: Long Call, Bull Call Spread, Iron Condor, Protective Put. " +
+                     "Not all options strategies are defined-risk — Covered Call and Cash-Secured Put, " +
+                     "for instance, retain underlying equity exposure.",
+    methodologySummary: "structure.isDefinedRisk field in StrategyStructureDescription.",
+    caution:         "Defined-risk does not mean zero risk. A defined-risk strategy can still lose its entire premium.",
+    category:        "risk",
+    userFacing:      true,
+  },
+  {
+    key:             "income_strategy",
+    label:           "Income-Oriented Strategy",
+    shortDefinition: "An options structure that receives a premium credit at entry, with income as a primary research objective.",
+    fullDefinition:  "An Income-Oriented Strategy collects premium at entry by selling options or credit spreads. " +
+                     "Examples include Covered Call, Cash-Secured Put, Bull Put Spread, Bear Call Spread, " +
+                     "Iron Condor, and Iron Butterfly. " +
+                     "Income strategies retain exposure to adverse price moves — they are not risk-free. " +
+                     "The income focus planning preference surfaces these families more prominently when selected.",
+    methodologySummary: "structure.isIncomeFocused field; merged from constraints.incomeFocus + goalContext.incomeFocused.",
+    caution:         "Income strategies can lose more than the premium received. They are not guaranteed income.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "directional_strategy",
+    label:           "Directional Strategy",
+    shortDefinition: "An options structure that profits from a specific directional move in the underlying price.",
+    fullDefinition:  "A Directional Strategy is an options structure designed to benefit from a specific move — " +
+                     "bullish (Long Call, Bull Call Spread, Bull Put Spread) or bearish (Long Put, Bear Put Spread, " +
+                     "Bear Call Spread). Directional strategies may lose their entire premium if the expected move " +
+                     "does not materialize within the expiration window.",
+    methodologySummary: "structure.isDirectional field; thesis direction gates applicability.",
+    caution:         "Directional strategies are research tools. They do not predict or guarantee a directional move.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "neutral_strategy",
+    label:           "Neutral / Range-Bound Strategy",
+    shortDefinition: "An options structure that profits from the underlying remaining within a price range.",
+    fullDefinition:  "A Neutral or Range-Bound Strategy benefits from the underlying staying within a defined price range " +
+                     "without a large directional move. Examples include Iron Condor, Iron Butterfly, and Calendar Spread. " +
+                     "These structures are generally not suited to strong directional theses. " +
+                     "Events (earnings, announcements) can break the expected range.",
+    methodologySummary: "Applicable for NEUTRAL/RANGE_BOUND/VOLATILITY_CONTRACTION thesis directions.",
+    caution:         "Neutral strategies can lose their maximum defined amount if the underlying moves significantly.",
+    category:        "research_term",
+    userFacing:      true,
+  },
+  {
+    key:             "protective_strategy",
+    label:           "Protective Strategy",
+    shortDefinition: "An options structure that provides downside protection for an existing underlying position.",
+    fullDefinition:  "A Protective Strategy uses options to hedge an existing underlying position against adverse moves. " +
+                     "Examples include Protective Put (long put against owned shares) and Collar " +
+                     "(protective put + covered call against owned shares). " +
+                     "These structures require confirmed underlying ownership — they are NOT applicable " +
+                     "without an existing position.",
+    methodologySummary: "requiresOwnership = true; NOT_APPLICABLE if portfolioContext.ownsSymbol = false.",
+    caution:         "Protective strategies reduce but do not eliminate risk. Premium cost reduces net returns.",
+    category:        "risk",
+    userFacing:      true,
+  },
+  {
+    key:             "options_liquidity",
+    label:           "Options Liquidity Context",
+    shortDefinition: "Broad assessment of options chain availability and tradability for a symbol.",
+    fullDefinition:  "Options Liquidity Context reflects the broad availability and tradability of options on a symbol: " +
+                     "AVAILABLE (active chain with reasonable volume), LIMITED (sparse chain or wide spreads), " +
+                     "or UNKNOWN (not evaluated at this stage). " +
+                     "In Sprint 2.7.2, liquidity is UNKNOWN — contract-level liquidity assessment belongs to " +
+                     "Contract Research (2.7.3) where actual chain data is inspected.",
+    methodologySummary: "Always UNKNOWN in 2.7.2; detailed assessment deferred to 2.7.3.",
+    caution:         "Poor options liquidity can significantly impact fill quality and effective spread cost. Evaluate in 2.7.3.",
+    category:        "data_quality",
+    userFacing:      true,
+  },
+];
 
 /** Full merged glossary (all modules) — use this for full lookup */
-export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = _extendedGlossary;
+export const ALL_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = [
+  ..._extendedGlossary,
+  ...OPTIONS_STRATEGY_ENTRIES,
+];
 
 /** Alias for backward compatibility */
-export const RESEARCH_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = _extendedGlossary;
+export const RESEARCH_GLOSSARY_ENTRIES: ReadonlyArray<ResearchGlossaryEntry> = ALL_GLOSSARY_ENTRIES;
 
 /** Map from a score display label to its glossary key. */
 export const SCORE_LABEL_TO_GLOSSARY_KEY: Readonly<Record<string, string>> = {

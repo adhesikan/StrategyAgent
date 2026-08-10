@@ -1,0 +1,2012 @@
+# Sprint 2.7.2 — Options Strategy Matching Engine
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.7 — Trade Intelligence & Planning
+
+CURRENT SPRINT:
+2.7.2 — Options Strategy Matching Engine
+
+PREREQUISITES COMPLETED:
+
+✓ Opportunity Intelligence Engine
+✓ Research Workspace v2
+✓ Opportunity Workspace v2
+✓ Goals & Research Planning
+✓ Portfolio Intelligence
+✓ Portfolio Analytics
+✓ Trade Planning Foundation
+✓ Equity Trade Planning Engine
+✓ Platform Operations Center
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+Research answers:
+
+WHAT deserves investigation?
+
+Goals answer:
+
+WHICH research matters to the user?
+
+Portfolio Intelligence answers:
+
+HOW the research relates to current exposure?
+
+Trade Planning Foundation answers:
+
+HOW the research thesis could potentially be expressed?
+
+Equity Planning answers:
+
+HOW an equity research scenario could be structured.
+
+Options Strategy Matching answers:
+
+WHICH OPTIONS STRATEGY FAMILIES are structurally compatible with the
+existing research thesis and user-selected planning constraints.
+
+This sprint MUST NOT select:
+
+- expiration
+- strike
+- contract
+- premium
+- spread width
+- quantity
+- broker order
+
+Those belong to later sprints.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- option contract selection
+- expiration optimization
+- strike optimization
+- actual option chain filtering for specific contracts
+- order tickets
+- multi-leg order construction
+- broker submission
+- automated trading
+- trade recommendations
+- "best options trade"
+- "highest probability trade"
+- implied return promises
+- target prices
+- autonomous agents
+
+DO NOT change:
+
+- Scanner logic
+- Ranking formulas
+- Opportunity Intelligence scoring
+- Equity Planning methodology
+- Goal Matching methodology
+- Portfolio Intelligence
+- Research Glossary semantics
+- qualification thresholds
+
+This sprint is STRATEGY FAMILY MATCHING only.
+
+======================================================================
+OBJECTIVE
+======================================================================
+
+Build a reusable deterministic Options Strategy Matching Engine that
+takes:
+
+TradePlanningContext
+        +
+Research Thesis
+        +
+Research Horizon
+        +
+Portfolio Context
+        +
+User Planning Constraints
+        +
+Existing volatility/event/liquidity context where available
+        ↓
+OptionsStrategyMatchResult
+        ↓
+Applicable / Potentially Applicable / Not Applicable strategy families
+
+The engine helps answer:
+
+"Which options research structures are compatible with this thesis?"
+
+NOT:
+
+"Which options trade should I place?"
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+existing options scanner
+
+options-scanner.tsx
+
+existing strategy scanner
+
+existing Strategy Scanner strategy registry
+
+Smart Instrument Selector
+
+Probability Engine
+
+existing options analytics
+
+existing options chain services
+
+Tradier options endpoints
+
+TradeStation options support
+
+best-trade-finder.ts
+
+live-contract-resolver.ts
+
+portfolio-trade-plan.ts
+
+existing covered-call logic
+
+cash-secured-put logic
+
+iron-condor logic
+
+vertical spread logic
+
+existing DTE rules
+
+existing liquidity filters
+
+existing IV calculations
+
+existing Greeks calculations
+
+existing earnings/event logic
+
+TradePlanningContext
+
+EquityPlanningScenario
+
+Opportunity Intelligence
+
+Research Goals
+
+Portfolio Intelligence
+
+Research Glossary
+
+Operations Manual
+
+Report:
+
+A. Existing options strategy registry
+B. Existing option-chain services
+C. Existing strategy selection logic
+D. Existing DTE logic
+E. Existing IV logic
+F. Existing Greeks logic
+G. Existing liquidity rules
+H. Existing earnings/event filtering
+I. Existing "best trade" / recommendation logic that must NOT be reused
+J. Safe deterministic components
+K. Components requiring refactor
+L. Components to isolate from this sprint
+M. Existing compliance-sensitive wording
+N. Existing broker-data dependencies
+
+Do not code until audit complete.
+
+======================================================================
+2. CANONICAL OPTIONS STRATEGY MATCH MODEL
+======================================================================
+
+Create canonical shared types.
+
+Suggested:
+
+OptionsStrategyMatchResult {
+  id
+  planningContextId
+  symbol
+  generatedAt
+
+  thesisDirection
+  researchHorizon
+  marketRegime
+
+  volatilityContext
+  portfolioContext
+  goalContext
+
+  matches[]
+
+  limitations[]
+  freshness
+  methodologyVersion
+}
+
+OptionsStrategyMatch {
+  strategyFamily
+  strategyLabel
+  status
+  reasons[]
+  constraintsSatisfied[]
+  constraintsMissing[]
+  riskCharacteristics[]
+  incomeCharacteristics[]
+  directionalCharacteristics[]
+  eventConsiderations[]
+  portfolioRequirements[]
+  limitations[]
+}
+
+Statuses:
+
+APPLICABLE
+
+POTENTIALLY_APPLICABLE
+
+NOT_APPLICABLE
+
+UNAVAILABLE
+
+No numeric "recommendation score."
+
+======================================================================
+3. STRATEGY FAMILIES
+======================================================================
+
+Support at minimum:
+
+long_call
+
+long_put
+
+bull_call_spread
+
+bear_put_spread
+
+bull_put_spread
+
+bear_call_spread
+
+covered_call
+
+cash_secured_put
+
+protective_put
+
+collar
+
+iron_condor
+
+iron_butterfly
+
+long_straddle
+
+long_strangle
+
+calendar_spread
+
+diagonal_spread
+
+monitor_only
+
+If existing architecture has additional supported strategy families,
+reuse canonical names where appropriate.
+
+Do NOT implement contract legs yet.
+
+======================================================================
+4. THESIS DIRECTION MODEL
+======================================================================
+
+Derive a canonical research thesis direction from existing evidence.
+
+Suggested categories:
+
+BULLISH
+
+BEARISH
+
+NEUTRAL
+
+RANGE_BOUND
+
+VOLATILITY_EXPANSION
+
+VOLATILITY_CONTRACTION
+
+MIXED
+
+UNKNOWN
+
+IMPORTANT:
+
+Do not infer direction from one score alone.
+
+Use existing:
+
+opportunity type
+technical stage
+change intelligence
+market regime
+risk factors
+research evidence
+
+Do not introduce a new stock ranking.
+
+======================================================================
+5. HORIZON ALIGNMENT
+======================================================================
+
+Use existing research/planning horizon.
+
+Map to strategy-family applicability.
+
+Example:
+
+Very short research horizon
+
+may reduce applicability of longer-duration structures.
+
+Long-term horizon
+
+may increase applicability of:
+
+long call research
+diagonal research
+equity alternatives
+
+Do not select exact DTE.
+
+Only evaluate whether broad family is structurally compatible.
+
+======================================================================
+6. DIRECTIONAL STRATEGY RULES
+======================================================================
+
+Examples:
+
+BULLISH:
+
+Potential candidates:
+
+long_call
+bull_call_spread
+bull_put_spread
+cash_secured_put
+covered_call in appropriate owned-position/income context
+
+BEARISH:
+
+long_put
+bear_put_spread
+bear_call_spread
+protective structures if owned
+
+NEUTRAL / RANGE_BOUND:
+
+iron_condor
+iron_butterfly
+covered_call in owned-position context
+cash-secured put under appropriate planning context
+
+VOLATILITY_EXPANSION:
+
+long_straddle
+long_strangle
+possibly long option structures
+
+VOLATILITY_CONTRACTION:
+
+premium-selling research families may become potentially applicable
+
+These are examples only.
+
+Audit existing methodology before implementation.
+
+======================================================================
+7. PORTFOLIO REQUIREMENTS
+======================================================================
+
+Certain strategy families require position context.
+
+Covered Call:
+
+requires existing underlying shares for a true covered structure.
+
+If user does NOT own shares:
+
+status:
+
+NOT_APPLICABLE
+
+Reason:
+
+"No qualifying underlying position is available in the selected portfolio context."
+
+Do not present hypothetical naked calls as covered calls.
+
+Protective Put:
+
+requires owned shares.
+
+Collar:
+
+requires owned shares.
+
+Other strategies may not require current ownership.
+
+======================================================================
+8. NO-PORTFOLIO MODE
+======================================================================
+
+Users without portfolios still receive useful options strategy matching.
+
+Possible families:
+
+long_call
+long_put
+bull_call_spread
+bear_put_spread
+bull_put_spread
+bear_call_spread
+cash_secured_put
+iron_condor
+iron_butterfly
+straddle
+strangle
+calendar
+diagonal
+
+subject to constraints.
+
+No portfolio required.
+
+======================================================================
+9. OPTIONS PERMISSION / INTEREST
+======================================================================
+
+Use planning constraints.
+
+If:
+
+optionsAllowed = false
+
+all options strategy families:
+
+UNAVAILABLE
+
+with reason.
+
+Do not ask broker permission level yet unless already stored and
+appropriate.
+
+Future broker approval checking belongs closer to execution.
+
+======================================================================
+10. DEFINED-RISK PREFERENCE
+======================================================================
+
+If:
+
+definedRiskPreferred = true
+
+surface defined-risk families prominently within applicable group.
+
+Do NOT rank them as "best."
+
+Group:
+
+Defined-Risk Research Structures
+
+Other Applicable Research Structures
+
+Avoid suppressing relevant information artificially.
+
+======================================================================
+11. INCOME FOCUS
+======================================================================
+
+If:
+
+incomeFocus = true
+
+income-oriented strategies may become more contextually relevant.
+
+Examples:
+
+covered_call
+cash_secured_put
+bull_put_spread
+bear_call_spread
+iron_condor
+
+But directional thesis still matters.
+
+Do not blindly match income strategy to every candidate.
+
+======================================================================
+12. DIRECTIONAL FOCUS
+======================================================================
+
+If:
+
+directionalFocus = true
+
+favor presentation of directional-compatible families.
+
+Again:
+
+presentation grouping only.
+
+No recommendation ranking.
+
+======================================================================
+13. VOLATILITY CONTEXT
+======================================================================
+
+Audit existing IV/volatility services.
+
+If reliable volatility context exists, expose categorical context such as:
+
+LOW
+NORMAL
+ELEVATED
+HIGH
+UNKNOWN
+
+Possible inputs:
+
+IV percentile
+IV rank
+historical volatility
+current implied volatility
+
+Only use existing validated data.
+
+Do NOT fabricate IV.
+
+Do NOT add provider calls if existing data unavailable.
+
+If unavailable:
+
+volatilityContext = UNKNOWN
+
+and strategy matching should continue with limitations.
+
+======================================================================
+14. VOLATILITY-SENSITIVE RULES
+======================================================================
+
+If validated volatility context exists:
+
+Elevated implied volatility may support research into:
+
+premium-selling structures
+
+but does NOT make them automatically preferred.
+
+Low implied volatility may support research into:
+
+premium-buying structures
+
+again not automatically preferred.
+
+Every rule must explain:
+
+WHY.
+
+======================================================================
+15. EVENT / EARNINGS CONTEXT
+======================================================================
+
+Use existing earnings/event data if available.
+
+Fields:
+
+earningsDate
+daysUntilEarnings
+insideEventWindow
+
+If user constraint:
+
+avoidEarningsWindow = true
+
+and earnings within configured window:
+
+strategy families exposed to event gap risk may become:
+
+NOT_APPLICABLE
+
+or:
+
+POTENTIALLY_APPLICABLE WITH LIMITATION
+
+depending on transparent rule.
+
+Do not invent event data.
+
+======================================================================
+16. LIQUIDITY CONTEXT
+======================================================================
+
+If broad options liquidity metadata already exists:
+
+show:
+
+AVAILABLE
+
+LIMITED
+
+UNKNOWN
+
+Examples:
+
+options chain available
+open interest coverage
+volume coverage
+bid/ask quality
+
+This sprint must NOT inspect specific contracts for final liquidity.
+
+Contract-level liquidity belongs to 2.7.3.
+
+Use only broad availability/context.
+
+======================================================================
+17. CAPITAL CONSTRAINTS
+======================================================================
+
+Use user-supplied:
+
+capitalAvailable
+maxCapitalAtRisk
+maxLossPerPosition
+
+only where broad family applicability can be determined.
+
+Example:
+
+Cash-Secured Put
+
+may require capital potentially sufficient to secure 100 shares at
+future strike.
+
+Since no strike exists yet:
+
+do NOT calculate exact capital requirement.
+
+Return:
+
+"Exact capital requirement requires contract selection in the next
+research stage."
+
+Do not fabricate.
+
+======================================================================
+18. LOSS PROFILE
+======================================================================
+
+Each family should expose broad risk characteristics.
+
+Examples:
+
+Long Call
+
+Defined premium at risk
+
+Directional
+
+Time decay exposure
+
+Long Put
+
+Defined premium at risk
+
+Bearish directional
+
+Covered Call
+
+Underlying equity exposure remains
+
+Upside participation may be capped
+
+Cash-Secured Put
+
+Potential obligation to acquire shares
+
+Capital-intensive
+
+Iron Condor
+
+Defined-risk if structured with protective wings
+
+Range-bound research structure
+
+These are educational characteristics.
+
+Not personalized advice.
+
+======================================================================
+19. STRATEGY MATCHING RULE ENGINE
+======================================================================
+
+Create pure deterministic functions.
+
+Suggested:
+
+deriveThesisDirection()
+
+deriveVolatilityContext()
+
+evaluateStrategyFamily()
+
+evaluateAllStrategyFamilies()
+
+explainStrategyMatch()
+
+No LLM.
+
+No random logic.
+
+No hidden score weighting unless documented.
+
+Prefer rule-based categorical output.
+
+======================================================================
+20. NO HIDDEN NUMERIC RANKING
+======================================================================
+
+Do not internally calculate:
+
+strategyScore = 92
+
+and merely hide it.
+
+Avoid opaque ranking entirely.
+
+Transparent rule outcome is the objective.
+
+If internal ordering is needed:
+
+sort by:
+
+status category
+
+then stable strategy label / category grouping
+
+not "best score."
+
+======================================================================
+21. EXPLANATION CONTRACT
+======================================================================
+
+Every strategy match must explain:
+
+Why applicable
+
+Why not applicable
+
+What requirements are met
+
+What information is missing
+
+What risks characterize the family
+
+What future data is needed before contract research
+
+Example:
+
+Bull Call Spread
+
+Status:
+APPLICABLE
+
+Why:
+• Bullish research thesis
+• Defined-risk preference
+• Options research enabled
+• Medium-term planning horizon
+
+Next-stage requirements:
+• Option chain
+• Expiration research
+• Strike research
+• Contract liquidity evaluation
+
+======================================================================
+22. STRATEGY CATEGORIES
+======================================================================
+
+Group UI by research purpose.
+
+Suggested:
+
+Directional Bullish
+
+Directional Bearish
+
+Income
+
+Neutral / Range-Bound
+
+Volatility
+
+Protective / Existing Position
+
+Monitor Only
+
+This improves understanding without ranking.
+
+======================================================================
+23. TRADE PLANNING PAGE INTEGRATION
+======================================================================
+
+When user selects:
+
+Options Research
+
+on:
+
+/trade-planning/:symbol
+
+show:
+
+Options Strategy Research
+
+Sections:
+
+Research Thesis
+
+Planning Context
+
+Strategy Families
+
+Applicable
+
+Potentially Applicable
+
+Not Applicable
+
+Risk Characteristics
+
+Event Context
+
+Volatility Context
+
+Portfolio Requirements
+
+Future Contract Research
+
+No contract selector.
+
+======================================================================
+24. STRATEGY DETAIL DRAWER
+======================================================================
+
+For each strategy family:
+
+What It Is
+
+Why It May Fit This Research Thesis
+
+Why It May Not Fit
+
+Risk Characteristics
+
+Income Characteristics
+
+Directional Characteristics
+
+Portfolio Requirements
+
+Event Considerations
+
+What Happens Next
+
+No strike/expiration examples using live values.
+
+Educational generic examples are fine only if clearly illustrative and
+not personalized.
+
+======================================================================
+25. FUTURE CONTRACT RESEARCH HANDOFF
+======================================================================
+
+Each applicable family exposes:
+
+Continue to Contract Research
+
+BUT 2.7.3 is not implemented yet.
+
+If desired show disabled/upcoming CTA:
+
+Contract Research — Upcoming
+
+Do not build 2.7.3 now.
+
+Create canonical handoff type:
+
+OptionsContractResearchInput {
+  planningContextId
+  strategyFamily
+  researchHorizon
+  planningConstraints
+  thesisDirection
+  volatilityContext
+  eventContext
+}
+
+No strikes or DTE yet.
+
+======================================================================
+26. RESEARCH WORKSPACE INTEGRATION
+======================================================================
+
+Actions:
+
+Explain This Strategy Match
+
+Compare These Strategy Families
+
+Explain Why Covered Call Is Not Applicable
+
+Explain Volatility Considerations
+
+Explain Event Risk
+
+Use Research Workspace v2.
+
+AI receives deterministic strategy-match result.
+
+AI may explain.
+
+AI may not change:
+
+status
+rules
+thesis direction
+strategy family eligibility
+
+======================================================================
+27. OPTIONS EDUCATION INTEGRATION
+======================================================================
+
+If existing education content exists:
+
+link strategy labels to relevant educational guides.
+
+Examples:
+
+Covered Calls
+
+Cash-Secured Puts
+
+Vertical Spreads
+
+Iron Condors
+
+Do not create duplicate educational content.
+
+======================================================================
+28. RESEARCH GLOSSARY
+======================================================================
+
+Add canonical terms if needed:
+
+options_strategy_matching
+
+strategy_family
+
+thesis_direction
+
+volatility_context
+
+event_risk
+
+defined_risk_strategy
+
+income_strategy
+
+directional_strategy
+
+neutral_strategy
+
+protective_strategy
+
+options_liquidity
+
+No duplicate definitions.
+
+======================================================================
+29. COMPLIANCE
+======================================================================
+
+Canonical wording:
+
+Options Strategy Research
+
+Potentially Applicable Strategy Family
+
+Strategy Match
+
+Research Structure
+
+Avoid:
+
+Recommended Strategy
+
+Best Option Trade
+
+Best Strategy
+
+Highest Probability
+
+Winning Trade
+
+Income Guarantee
+
+Safe Options Trade
+
+Expected Return
+
+Canonical disclaimer:
+
+"Options Strategy Matching identifies strategy families that are
+structurally consistent with the current research thesis and planning
+constraints. It does not recommend a specific strategy, contract,
+expiration, strike, or trade and does not constitute investment advice
+or a suitability determination."
+
+======================================================================
+30. OPTIONS RISK DISCLOSURE
+======================================================================
+
+Include clear general options-risk disclosure.
+
+Examples:
+
+Options involve risk and may lose value rapidly.
+
+Some options strategies can involve substantial or theoretically
+unlimited loss unless defined-risk protections are used.
+
+Do not claim every strategy is defined-risk.
+
+Strategy detail should accurately state broad loss characteristics.
+
+======================================================================
+31. NAKED / UNDEFINED RISK
+======================================================================
+
+Do not introduce naked short call / naked short put families in this
+sprint unless architecture already supports them and explicit policy
+allows them.
+
+Prefer defined-risk or secured structures.
+
+Covered Call and Cash-Secured Put are distinct.
+
+Do not misclassify unsecured strategies.
+
+======================================================================
+32. MULTI-LEG SEMANTICS
+======================================================================
+
+Strategy family definition may describe:
+
+number of legs
+
+direction of legs generically
+
+Example:
+
+Bull Call Spread:
+long call + short higher-strike call
+
+But do NOT select:
+
+actual strikes
+contracts
+expiration
+premium
+
+======================================================================
+33. DATA FRESHNESS
+======================================================================
+
+Show freshness for:
+
+TradePlanningContext
+
+Opportunity Intelligence
+
+market data
+
+volatility context
+
+event data
+
+portfolio context
+
+If volatility/event data stale:
+
+show limitation.
+
+Do not silently rely on stale data.
+
+======================================================================
+34. PARTIAL DATA RESILIENCE
+======================================================================
+
+No IV data:
+
+strategy matching still operates using thesis + planning constraints,
+but volatility-sensitive explanations are limited.
+
+No earnings data:
+
+event consideration unavailable.
+
+No portfolio:
+
+protective/covered families requiring ownership are not applicable;
+other families remain available.
+
+No goal:
+
+normal flow.
+
+No options chain:
+
+strategy-family matching still works;
+contract research unavailable later until chain exists.
+
+======================================================================
+35. API
+======================================================================
+
+Suggested authenticated endpoints:
+
+POST /api/trade-planning/:symbol/options/match
+
+GET /api/trade-planning/session/:id/options/matches
+
+GET /api/trade-planning/session/:id/options/matches/:strategyFamily
+
+Use existing routing conventions.
+
+Protect static segments.
+
+Server reconstructs authoritative context.
+
+======================================================================
+36. CLIENT INPUT TRUST
+======================================================================
+
+Client may submit:
+
+selected strategy family
+planning constraint changes
+context identifiers
+
+Client may NOT submit authoritative:
+
+thesisDirection
+researchScore
+marketRegime
+IV context
+portfolio ownership
+qualification state
+event date
+
+Server reconstructs/validates.
+
+======================================================================
+37. PERSISTENCE
+======================================================================
+
+Prefer not to persist match results unless needed.
+
+If planning session already persists:
+
+store selected strategy family if user chooses one.
+
+Do not duplicate all match output.
+
+Recompute deterministic match from current authoritative context.
+
+======================================================================
+38. CACHE
+======================================================================
+
+If caching:
+
+userId
+planningContextId
+Opportunity Intelligence generation
+constraints fingerprint
+volatility timestamp
+event timestamp
+
+No cross-user sharing.
+
+======================================================================
+39. PERFORMANCE
+======================================================================
+
+No scanner.
+
+No ranking.
+
+No AI.
+
+No option-chain contract scan.
+
+No per-strategy provider calls.
+
+Target:
+
+full strategy-family evaluation <100ms after context assembly.
+
+Measure actual result.
+
+======================================================================
+40. PLATFORM HEALTH
+======================================================================
+
+Extend Trade Planning health.
+
+Metrics:
+
+optionsMatchRequests
+
+optionsMatchesCompleted
+
+partialOptionsMatches
+
+failedOptionsMatches
+
+averageOptionsMatchLatencyMs
+
+lastSuccessfulOptionsMatchAt
+
+Admin aggregates only.
+
+No:
+
+symbol
+strategy selection by user
+capital
+portfolio
+identity
+
+======================================================================
+41. STRUCTURED LOGGING
+======================================================================
+
+Safe events:
+
+options_strategy_match_started
+
+options_strategy_match_completed
+
+options_strategy_match_partial
+
+options_strategy_match_failed
+
+options_strategy_selected
+
+Safe metadata:
+
+durationMs
+strategyFamilyCount
+applicableCount
+potentialCount
+unavailableCount
+hasVolatilityContext
+hasEventContext
+hasPortfolioContext
+
+Do not log:
+
+symbol if policy excludes it
+portfolio values
+capital
+user identity
+specific planning constraints
+
+======================================================================
+42. SECURITY
+======================================================================
+
+Authenticated.
+
+Planning session ownership.
+
+Cross-user session → 404.
+
+Portfolio ownership reconstructed server-side.
+
+No client injection of canonical research data.
+
+======================================================================
+43. ACCESSIBILITY
+======================================================================
+
+Strategy cards keyboard accessible.
+
+Statuses have text.
+
+Not color-only.
+
+Detail drawer focus managed.
+
+Screen-reader labels.
+
+Mobile touch support.
+
+======================================================================
+44. MOBILE
+======================================================================
+
+At 375px:
+
+strategy groups stack
+
+strategy cards full width
+
+detail drawer responsive
+
+status/reason content readable
+
+no clipped risk disclosures
+
+======================================================================
+45. ROUTING REGRESSION
+======================================================================
+
+Permanent static/dynamic route contract applies.
+
+Test all:
+
+/trade-planning/:symbol/options/...
+
+session paths
+
+strategy family detail paths
+
+No static word interpreted as symbol/session.
+
+======================================================================
+46. COMMERCIAL EXPERIENCE
+======================================================================
+
+Document only.
+
+FREE:
+
+basic explanation of options strategy families
+limited strategy matching preview
+
+RETAIL:
+
+full strategy matching
+goal context
+portfolio context
+volatility/event context
+Research Workspace explanation
+saved selected strategy family
+
+PROFESSIONAL:
+
+advanced strategy filters
+comparison workflows
+historical strategy context
+multiple planning scenarios
+
+RIA:
+
+approved strategy universe
+firm policy context
+client account constraints
+compliance workflow
+
+Do NOT implement suitability.
+
+INSTITUTIONAL:
+
+custom strategy library
+liquidity policy
+risk-policy integration
+research approvals
+
+ENTERPRISE:
+
+custom strategy rules
+private analytics
+API
+white-label
+
+No entitlement enforcement.
+
+======================================================================
+47. RIA / INSTITUTIONAL POLICY EXTENSION
+======================================================================
+
+Future policy:
+
+OptionsPlanningPolicy {
+  allowedStrategies[]
+  prohibitedStrategies[]
+  optionsLevel?
+  requireDefinedRisk?
+  minLiquidityRules?
+  maxEventExposure?
+  customDisclosures?
+}
+
+Document only.
+
+Do not implement organization policy engine now.
+
+======================================================================
+48. 2.7.3 HANDOFF CONTRACT
+======================================================================
+
+Document:
+
+2.7.2 answers:
+
+WHICH strategy families fit the thesis?
+
+2.7.3 answers:
+
+WHICH contracts/expirations/strikes are suitable for RESEARCH within a
+user-selected strategy family?
+
+2.7.3 must consume:
+
+TradePlanningContext
++
+selected OptionsStrategyMatch
+
+It must NOT rerun strategy-family selection from scratch.
+
+======================================================================
+49. 2.7.4 HANDOFF
+======================================================================
+
+Risk & Scenario Analysis later consumes selected actual structure.
+
+Do not calculate:
+
+max gain
+max loss
+breakeven
+Greeks
+probability
+scenario P/L
+
+for actual contracts yet.
+
+Generic strategy risk descriptions are in scope.
+
+======================================================================
+50. TESTS
+======================================================================
+
+Target 175+ meaningful assertions where appropriate.
+
+Cover:
+
+canonical model
+
+all strategy families
+
+thesis direction derivation
+
+bullish
+
+bearish
+
+neutral
+
+range-bound
+
+vol expansion
+
+vol contraction
+
+mixed
+
+unknown
+
+horizon
+
+options disabled
+
+defined-risk preference
+
+income focus
+
+directional focus
+
+portfolio owned
+
+portfolio not owned
+
+covered call requirements
+
+protective put requirements
+
+collar requirements
+
+cash secured put
+
+bull call spread
+
+bear put spread
+
+bull put spread
+
+bear call spread
+
+iron condor
+
+iron butterfly
+
+straddle
+
+strangle
+
+calendar
+
+diagonal
+
+monitor only
+
+event context
+
+avoid earnings
+
+volatility unknown
+
+volatility elevated
+
+liquidity unknown
+
+partial data
+
+eligibility reasons
+
+missing constraints
+
+strategy risk characteristics
+
+no numeric ranking
+
+no "best trade"
+
+no contract
+
+no strike
+
+no expiration
+
+no premium
+
+no order
+
+server authority
+
+cross-user 404
+
+cache isolation
+
+structured log privacy
+
+platform health
+
+research glossary
+
+options risk disclosure
+
+route regression
+
+accessibility
+
+mobile structure
+
+operations docs
+
+commercial review
+
+RIA extension
+
+2.7.3 contract
+
+roadmap discipline
+
+======================================================================
+51. UAT
+======================================================================
+
+Document and run:
+
+1. Open qualified opportunity.
+2. Open Trade Planning.
+3. Enable Options Research.
+4. Open Options Strategy Research.
+5. Verify research thesis direction.
+6. Verify planning horizon.
+7. Verify applicable group.
+8. Verify potentially applicable group.
+9. Verify not-applicable group.
+10. Open Long Call detail.
+11. Open Bull Call Spread detail.
+12. Open Covered Call detail.
+13. If no shares owned, verify ownership requirement.
+14. With owned position, verify Covered Call context changes appropriately.
+15. Verify Cash-Secured Put.
+16. Verify neutral strategy handling.
+17. Verify volatility context.
+18. Verify unknown-IV state.
+19. Verify event context.
+20. Enable Avoid Earnings Window.
+21. Verify strategy explanation changes.
+22. Explain strategy match in Research Workspace.
+23. Verify AI cannot alter status.
+24. Verify no strike.
+25. Verify no expiration.
+26. Verify no contract.
+27. Verify no premium.
+28. Verify no order ticket.
+29. Verify no broker call.
+30. Verify no-portfolio user.
+31. Verify no-goal user.
+32. Cross-user session → 404.
+33. Direct URL reload.
+34. Browser navigation.
+35. Mobile.
+36. Accessibility.
+37. Platform Health.
+38. No unexpected 500.
+39. No scanner/ranking run.
+40. No per-strategy external API calls.
+
+======================================================================
+52. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+Create:
+
+docs/operations/30-options-strategy-matching.md
+
+Document:
+
+architecture
+
+strategy registry
+
+OptionsStrategyMatchResult
+
+thesis direction
+
+horizon matching
+
+volatility context
+
+event context
+
+portfolio requirements
+
+strategy rules
+
+defined-risk handling
+
+income handling
+
+directional handling
+
+neutral strategies
+
+risk characteristics
+
+data freshness
+
+partial data
+
+API
+
+security
+
+cache
+
+performance
+
+health
+
+logging
+
+compliance
+
+options risk disclosure
+
+routing
+
+UAT
+
+troubleshooting
+
+future Contract Research
+
+future Risk Analysis
+
+RIA extension
+
+Institutional extension
+
+commercialization
+
+Update Research Glossary docs.
+
+======================================================================
+53. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Canonical OptionsStrategyMatchResult exists.
+
+B. TradePlanningContext required.
+
+C. No raw scanner bypass.
+
+D. Strategy matching deterministic.
+
+E. No numeric recommendation score.
+
+F. All strategy-family statuses explained.
+
+G. Thesis direction transparent.
+
+H. Horizon considered.
+
+I. Options permission considered.
+
+J. Defined-risk preference considered.
+
+K. Income focus considered.
+
+L. Portfolio ownership correctly handled.
+
+M. Covered Call never shown as covered without shares.
+
+N. Protective structures require shares.
+
+O. Volatility context handled.
+
+P. Missing IV handled.
+
+Q. Event context handled.
+
+R. Missing event data handled.
+
+S. Partial data works.
+
+T. Strategy risks explained.
+
+U. No "best trade".
+
+V. No recommendation.
+
+W. No strike.
+
+X. No expiration.
+
+Y. No contract.
+
+Z. No premium.
+
+AA. No broker order.
+
+AB. No AI strategy override.
+
+AC. Server authoritative context.
+
+AD. Cross-user isolation.
+
+AE. Platform Health updated.
+
+AF. Structured logging safe.
+
+AG. Routing regression tests.
+
+AH. Full tests pass.
+
+AI. npm run build passes.
+
+AJ. Zero new TS errors.
+
+AK. Operations Manual updated.
+
+AL. Roadmap alignment confirmed.
+
+======================================================================
+54. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing options infrastructure discovered
+3. Safe reusable components
+4. Legacy/recommendation components avoided
+5. Files changed
+6. Schema impact
+7. OptionsStrategyMatchResult
+8. Strategy family registry
+9. Thesis direction methodology
+10. Horizon alignment
+11. Volatility context
+12. Event context
+13. Liquidity context
+14. Portfolio requirements
+15. Options permission
+16. Defined-risk preference
+17. Income focus
+18. Directional focus
+19. Strategy eligibility rules
+20. Strategy explanation
+21. Risk characteristics
+22. Trade Planning UI integration
+23. Strategy detail UX
+24. Research Workspace integration
+25. Research Glossary integration
+26. API
+27. Persistence/cache
+28. Partial-data resilience
+29. Compliance audit
+30. Options risk disclosure
+31. Security
+32. Performance
+33. Accessibility/mobile
+34. Platform Health
+35. Structured logging
+36. Routing regression
+37. Tests added
+38. Full test count
+39. npm run build
+40. Typecheck
+41. Production UAT
+42. Free value
+43. Retail value
+44. Professional value
+45. RIA extension
+46. Institutional extension
+47. Enterprise extension
+48. 2.7.3 Contract Research handoff
+49. 2.7.4 Risk Analysis handoff
+50. Improvement suggestions
+51. Deferred backlog
+52. Roadmap Alignment
+53. Operations Manual Updated: YES/NO
+54. Operations Manual Files Updated
+55. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+55. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.7.2
+Options Strategy Matching Engine
+
+NEXT:
+
+2.7.3
+Options Contract / Expiration / Strike Research
+
+THEN:
+
+2.7.4
+Trade Risk & Scenario Analysis
+
+2.7.5
+Trade Plan Workspace
+
+2.7.6
+Trade Monitoring & Lifecycle Intelligence
+
+LATER:
+
+Broker-Assisted Execution
+
+AI Agents
+
+Professional / RIA
+
+Institutional
+
+Enterprise
+
+======================================================================
+56. PERMANENT ARCHITECTURE RULE
+======================================================================
+
+Document permanently:
+
+Options Strategy Matching may narrow or reject strategy families based
+on research evidence, user-selected planning constraints, portfolio
+requirements, volatility/event context, or missing data.
+
+It may NEVER:
+
+promote an unqualified security into an opportunity
+
+rewrite the upstream research thesis to justify an options strategy
+
+invent volatility/event data
+
+select an actual contract
+
+or rank strategies as personalized recommendations.
+
+======================================================================
+57. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not begin expiration/strike/contract selection.
+
+Audit and reuse the existing VCP Trader AI options infrastructure where
+architecturally safe.
+
+If existing components such as Smart Instrument Selector, Probability
+Engine, options scanner, best-trade finder, or live-contract resolver
+contain useful logic:
+
+classify each as:
+
+SAFE REUSABLE FOUNDATION
+
+REQUIRES REFACTOR BEFORE REUSE
+
+2.7.3 CONTRACT RESEARCH COMPONENT
+
+2.7.4 RISK/SCENARIO COMPONENT
+
+FUTURE EXECUTION COMPONENT
+
+LEGACY / DO NOT REUSE
+
+Do not silently import recommendation-oriented logic into the new
+research architecture.
+
+Complete 2.7.2, run full validation, update the Operations Manual, and
+return the full engineering report for review before Sprint 2.7.3.

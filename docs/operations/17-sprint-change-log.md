@@ -1,6 +1,56 @@
 # Sprint Change Log
 
-## Sprint 2.8.5 — Review, Consent & Final Order Confirmation
+## Sprint 2.8.6A — Controlled TEST_LIVE Execution Certification
+**Date:** 2026-08-11  
+**Status:** COMPLETE (infrastructure built; live test pending env config)  
+**Tests:** 19 suites (1,317 + certification tests)
+
+### What Was Built
+Certification infrastructure for the Sprint 2.8.6 broker-submission pipeline. Validates ALL safety gates before permitting a live test order. No order is placed automatically — explicit operator action at each step is required.
+
+**Admin UI:** `/admin/test-live-certification` — 10-panel step-by-step wizard covering all 33 certification sections.
+
+**API (5 endpoints):**
+- `GET /api/admin/test-live/config-audit` — 10 config gates (safe status only, never values)
+- `GET /api/admin/test-live/market-status` — NYSE session check with DST-aware ET conversion
+- `GET /api/admin/test-live/account-status` — broker account + allowlist verification (masked refs only)
+- `POST /api/admin/test-live/disarm` — post-certification disarm instructions
+- `GET /api/admin/test-live/completion-report` — 48-item completion report (Section 34)
+
+**Pure certification engines:**
+- `computeConfigAudit(deps)` — injectable, all 10 required gates, fail-closed semantics documented
+- `computeMarketStatus(now?)` — DST-aware ET conversion, holiday list, injectable time for tests
+- `computeDisarmResult(wasArmed)` — operator guidance without exposing values
+- `buildCompletionReport(audit, market, liveTestResult?)` — 48-item report, verdict, decision
+
+**Documentation:**
+- `docs/operations/45-test-live-execution-certification.md` — full certification guide (env config, workflow, defect policy, disarm, record template)
+
+### Key Invariants Enforced
+- Config audit never exposes raw account IDs or env var values
+- `productionBlocked: true` is a literal type constant — cannot be overridden
+- Empty allowlists → all accounts/symbols blocked (fail-closed, documented in audit)
+- Null caps → all orders blocked (required for TEST_LIVE)
+- Market order / multi-leg bans documented in audit response
+- Disarm API cannot modify env vars (documents what operator must do in Replit Secrets)
+
+### Current Status
+`CONDITIONAL_GO` — certification infrastructure complete; live test blocked until operator sets required env vars (BROKER_EXECUTION_MODE=test_live, EXECUTION_TEST_LIVE_ARMED=true, allowlists, caps) and market is open.
+
+### New Files
+- `server/routes/test-live-certification.ts` — certification API + pure engines
+- `server/routes/__tests__/test-live-certification.test.ts` — pure tests
+- `client/src/pages/admin-test-live-certification.tsx` — admin certification UI
+- `docs/operations/45-test-live-execution-certification.md` — ops guide
+
+### Modified Files
+- `server/routes.ts` — registered `registerTestLiveCertificationRoutes`
+- `client/src/App.tsx` — added `/admin/test-live-certification` route (AdminOnly)
+- `package.json` — added `test:certification`; updated `test:release` (19 suites) + `test:release:full`
+
+---
+
+## Sprint 2.8.6 — Sandbox/Test-Account Broker Submission
 **Date:** 2026-08-11  
 **Status:** COMPLETE  
 **Tests:** 1,090 (17 suites, all passing)

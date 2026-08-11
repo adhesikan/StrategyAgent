@@ -107,6 +107,7 @@ import { registerOptionsPreviewRoutes, ensureOptionsPreviewTables } from "./rout
 import { registerExecutionReadinessRoutes, ensureExecutionReadinessTables } from "./routes/execution-readiness";
 import { registerOrderConfirmationRoutes, ensureOrderConfirmationTables } from "./routes/order-confirmation";
 import { registerExecutionIntentRoutes, ensureExecutionIntentTables, reconcileStaleExecutionIntents } from "./routes/execution-intent";
+import { registerTestLiveCertificationRoutes } from "./routes/test-live-certification";
 import { isExecutionEnabled, getExecutionDisabledResponse } from "./services/execution-policy";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
@@ -315,6 +316,8 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   registerExecutionIntentRoutes(app, isAuthenticated);
   ensureExecutionIntentTables().catch((e: any) => console.error("[execution-intent] startup table init failed:", e?.message));
   reconcileStaleExecutionIntents(120_000).catch((e: any) => console.error("[execution-intent] startup reconcile failed:", e?.message));
+
+  registerTestLiveCertificationRoutes(app, isAuthenticated);
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

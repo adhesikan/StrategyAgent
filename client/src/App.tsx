@@ -56,6 +56,7 @@ import DailyAnalysisPage from "@/pages/daily-analysis";
 import AdminPositionProtectionPage from "@/pages/admin-position-protection";
 import AdminAgentTestsPage from "@/pages/admin-agent-tests";
 import AdminInstitutionalMappingsPage from "@/pages/admin-institutional-mappings";
+import AdminTestLiveCertificationPage from "@/pages/admin-test-live-certification";
 import PortfolioPage from "@/pages/portfolio";
 import PortfolioImportPage from "@/pages/portfolio-import";
 import PortfolioImportDocumentPage from "@/pages/portfolio-import-document";
@@ -251,6 +252,7 @@ function AppRouter() {
       <Route path="/admin/position-protection">{() => <AdminOnly><AdminPositionProtectionPage /></AdminOnly>}</Route>
       <Route path="/admin/agent-tests">{() => <AdminOnly><AdminAgentTestsPage /></AdminOnly>}</Route>
       <Route path="/admin/institutional-mappings">{() => <AdminOnly><AdminInstitutionalMappingsPage /></AdminOnly>}</Route>
+      <Route path="/admin/test-live-certification">{() => <AdminOnly><AdminTestLiveCertificationPage /></AdminOnly>}</Route>
       <Route path="/admin/platform-health">{() => <AdminOnly><AdminPlatformHealthPage /></AdminOnly>}</Route>
       <Route path="/admin/operations-manual">{() => <AdminOnly><AdminOperationsManualPage /></AdminOnly>}</Route>
       <Route path="/app/automation">{() => <AdminOnly><Redirect to="/automation" /></AdminOnly>}</Route>

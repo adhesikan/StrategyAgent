@@ -1,0 +1,991 @@
+# Sprint 2.8.6A — Controlled TEST_LIVE Execution Certification
+
+PRODUCT:
+VCP Trader AI
+
+PURPOSE:
+Certify the completed Sprint 2.8.6 broker-submission pipeline using the
+dedicated brokerage account reserved exclusively for testing.
+
+THIS IS A VALIDATION / CERTIFICATION TASK.
+
+Do not add unrelated features.
+
+Do not enable general production customer execution.
+
+======================================================================
+CURRENT STATE
+======================================================================
+
+Sprint 2.8.6 completed:
+
+✓ persistent execution state machine
+✓ atomic DB transitions
+✓ broker submission
+✓ reconciliation
+✓ fill recording
+✓ position linking
+✓ TEST_LIVE mode
+✓ sandbox routing
+✓ account allowlist
+✓ symbol allowlist
+✓ quantity/notional caps
+✓ production execution blocked
+✓ AI submission blocked
+✓ multi-leg live submission blocked
+✓ 1,317 automated tests passing
+
+======================================================================
+PRIMARY OBJECTIVE
+======================================================================
+
+Validate exactly ONE deliberately controlled live equity order through the
+complete VCP Trader AI execution workflow using the dedicated test
+brokerage account.
+
+The test must prove:
+
+Trade Plan
+→ Preflight
+→ Order Draft
+→ Equity Preview
+→ Final Review
+→ Explicit Confirmation
+→ Final Revalidation
+→ Broker Submission
+→ Broker Acknowledgement
+→ Status Reconciliation
+→ Fill / Open Order State
+→ Position Linking where applicable
+→ Audit Trail
+
+No other live orders should be generated.
+
+======================================================================
+1. AUDIT CONFIGURATION BEFORE ARMING
+======================================================================
+
+Inspect execution configuration.
+
+Report by VARIABLE NAME and safe status only.
+
+Never print secret values.
+
+Confirm:
+
+BROKER_EXECUTION_ENABLED
+
+BROKER_EXECUTION_MODE
+
+provider execution flag
+
+TEST_LIVE arming flag
+
+dedicated test-account allowlist
+
+symbol allowlist
+
+max notional
+
+max equity quantity
+
+max option contracts
+
+market-order policy
+
+multi-leg policy
+
+production block
+
+Expected:
+
+BROKER_EXECUTION_MODE = TEST_LIVE
+
+PRODUCTION execution still impossible.
+
+======================================================================
+2. VERIFY TEST ACCOUNT
+======================================================================
+
+Confirm server-side selected brokerage account is:
+
+the dedicated test account
+
+owned by authenticated test user
+
+present in TEST_LIVE account allowlist
+
+connected
+
+not requiring reauthentication
+
+Do not expose full account identifier.
+
+Display masked reference only.
+
+If account cannot be positively verified:
+
+STOP.
+
+Return NOT_READY.
+
+======================================================================
+3. TEST SYMBOL
+======================================================================
+
+Use one explicitly allowlisted highly liquid equity symbol already supported
+by the application.
+
+Do not modify allowlist automatically.
+
+Report selected test symbol before live submission.
+
+No options.
+
+No ETFs requiring special handling.
+
+No leveraged product.
+
+No short sale.
+
+======================================================================
+4. ORDER SIZE
+======================================================================
+
+Use:
+
+1 SHARE
+
+unless configured equity quantity cap is lower.
+
+The order must remain under configured TEST_LIVE maximum notional.
+
+Do not increase size based on account buying power.
+
+======================================================================
+5. ORDER TYPE
+======================================================================
+
+Use:
+
+LIMIT
+
+Do not use MARKET.
+
+Do not use STOP.
+
+Do not use extended hours.
+
+Do not use multi-leg.
+
+Do not use margin-dependent short positions.
+
+======================================================================
+6. MARKET HOURS
+======================================================================
+
+Perform submission only during the broker-supported regular session.
+
+Verify market state before submission.
+
+If market closed:
+
+DO NOT submit live order.
+
+Return:
+
+READY_BUT_MARKET_CLOSED
+
+and stop.
+
+======================================================================
+7. TRADE PLAN
+======================================================================
+
+Use/create a dedicated equity test Trade Plan.
+
+Must satisfy:
+
+broadExpressionType = STOCK
+
+selectedBy = USER
+
+quantity explicitly selected by user
+
+current lifecycle acceptable
+
+current risk analysis where required
+
+No recommendation-generated selection.
+
+Do not reuse unrelated personal portfolio plan.
+
+======================================================================
+8. EXECUTION PREFLIGHT
+======================================================================
+
+Run fresh Execution Preflight.
+
+Require:
+
+PASS
+
+Validate:
+
+broker connection
+
+account ownership
+
+permissions
+
+buying power
+
+quote freshness
+
+market tradability
+
+Trade Plan version
+
+lifecycle
+
+risk freshness
+
+TEST_LIVE account allowlist
+
+symbol allowlist
+
+quantity cap
+
+notional cap
+
+If any blocker:
+
+STOP.
+
+No broker call.
+
+======================================================================
+9. ORDER DRAFT
+======================================================================
+
+Prepare non-executable OrderDraft.
+
+Verify:
+
+symbol unchanged
+
+account unchanged
+
+quantity = 1
+
+LIMIT
+
+TIF = approved value
+
+price explicitly user selected
+
+draft current
+
+fingerprint generated
+
+No provider order call.
+
+======================================================================
+10. EQUITY PREVIEW
+======================================================================
+
+Generate Equity Order Preview.
+
+Verify:
+
+Preview Only banner
+
+current bid/ask
+
+quote timestamp
+
+selected limit
+
+estimated notional
+
+masked account
+
+market status
+
+no automatic price change
+
+No broker submission yet.
+
+======================================================================
+11. FINAL ORDER REVIEW
+======================================================================
+
+Build final immutable review snapshot.
+
+Verify:
+
+Trade Plan version
+
+Preflight
+
+OrderDraft
+
+Preview
+
+provider
+
+account
+
+symbol
+
+quantity
+
+limit
+
+TIF
+
+execution mode
+
+all match exactly.
+
+Compute and record snapshot hash.
+
+Do not log full sensitive payload.
+
+======================================================================
+12. REQUIRED ACKNOWLEDGEMENTS
+======================================================================
+
+Require all TEST_LIVE acknowledgements including:
+
+user understands this is a LIVE test order
+
+real money may be affected
+
+a real position may result
+
+quotes may change
+
+limit order may not execute
+
+Nothing may be pre-checked.
+
+======================================================================
+13. FINAL REVALIDATION
+======================================================================
+
+Immediately before submit rerun all required 2.8.6 checks.
+
+At minimum:
+
+kill switch
+
+provider flag
+
+TEST_LIVE arm
+
+test account allowlist
+
+symbol allowlist
+
+quantity cap
+
+notional cap
+
+Trade Plan version
+
+lifecycle
+
+confirmation hash
+
+confirmation expiry
+
+acknowledgements
+
+fresh quote
+
+broker connection
+
+account ownership
+
+buying power
+
+market state
+
+If ANY changed:
+
+STOP.
+
+Zero broker mutations.
+
+======================================================================
+14. LIVE SUBMISSION CONTROL
+======================================================================
+
+Do NOT automatically submit as part of script startup.
+
+The UI/operator must reach the explicit:
+
+Submit Live Test Order
+
+action.
+
+Before enabling button show:
+
+LIVE TEST ACCOUNT
+
+1 share
+
+symbol
+
+limit
+
+masked account
+
+notional
+
+snapshot hash prefix
+
+Then require explicit user click.
+
+======================================================================
+15. EXACTLY-ONCE ASSERTION
+======================================================================
+
+Before click record broker mutation count.
+
+After click verify:
+
+one ExecutionIntent
+
+one submission attempt
+
+one idempotency key
+
+one submission fingerprint
+
+exactly ONE broker mutation network call
+
+No retries.
+
+No duplicate intent.
+
+======================================================================
+16. BROKER ACKNOWLEDGEMENT
+======================================================================
+
+Record normalized:
+
+brokerOrderRef
+
+state
+
+timestamp
+
+provider
+
+Do not expose raw credentials.
+
+If acknowledged:
+
+continue.
+
+If rejected:
+
+record REJECTED and stop.
+
+If ambiguous:
+
+SUBMISSION_UNKNOWN and go to reconciliation.
+
+Do NOT resubmit.
+
+======================================================================
+17. AMBIGUOUS RESPONSE SAFETY
+======================================================================
+
+If status cannot be confirmed:
+
+verify:
+
+state = SUBMISSION_UNKNOWN
+
+Submit button unavailable
+
+no retry
+
+Check Broker Status action available
+
+Run reconciliation.
+
+Only read broker state.
+
+No second mutation.
+
+======================================================================
+18. STATUS CHECK
+======================================================================
+
+Query broker by strongest identifier available:
+
+brokerOrderRef
+
+client order/tag reference
+
+exact submission identity
+
+Verify status normalization.
+
+Possible:
+
+OPEN
+
+ACCEPTED
+
+PARTIALLY_FILLED
+
+FILLED
+
+REJECTED
+
+CANCELLED
+
+Do not infer status from local assumptions.
+
+======================================================================
+19. IF ORDER REMAINS OPEN
+======================================================================
+
+Do not automatically alter price.
+
+Do not chase fill.
+
+Do not replace.
+
+Manual Cancel may be used only if already implemented and explicitly chosen.
+
+If cancel is tested:
+
+require explicit user action.
+
+one cancel mutation only.
+
+Track status afterward.
+
+======================================================================
+20. IF ORDER FILLS
+======================================================================
+
+Verify:
+
+fill persisted
+
+quantity correct
+
+price from broker
+
+timestamp
+
+broker order link
+
+execution state = FILLED
+
+No synthetic fill.
+
+======================================================================
+21. POSITION LINKING
+======================================================================
+
+If filled:
+
+verify broker/portfolio synchronization.
+
+Position link should appear only when authoritative broker/portfolio data
+reflects it.
+
+Do not fabricate position.
+
+If sync delayed:
+
+record pending state.
+
+======================================================================
+22. NO AUTOMATIC TEST CLEANUP TRADE
+======================================================================
+
+Critical:
+
+Do NOT automatically place an opposite order to close a filled live test.
+
+That would be a second live trade requiring its own user decision.
+
+Leave position visible.
+
+If user later wants it closed, create a separate explicit workflow.
+
+======================================================================
+23. AUDIT TRAIL
+======================================================================
+
+Verify append-only events exist for:
+
+final validation
+
+submission lock
+
+submission started
+
+acknowledgement/rejection/unknown
+
+status updates
+
+fill if applicable
+
+position link if applicable
+
+No secret leakage.
+
+======================================================================
+24. DUPLICATE PROTECTION LIVE CHECK
+======================================================================
+
+After first submission request completes, call/reload the same confirmed
+execution path again WITHOUT causing a new explicit order.
+
+Verify:
+
+existing ExecutionIntent returned
+
+zero additional broker mutations
+
+confirmation consumed
+
+No second live order.
+
+Do not intentionally race multiple live submissions to prove this; automated
+tests already cover concurrency.
+
+Use non-mutating replay validation only.
+
+======================================================================
+25. EXECUTION DETAIL PAGE
+======================================================================
+
+Verify /executions/:id displays:
+
+LIVE TEST mode
+
+broker
+
+masked account
+
+Trade Plan
+
+order summary
+
+state
+
+broker order reference
+
+timeline
+
+fills
+
+position state
+
+reconciliation state if needed
+
+No secret values.
+
+======================================================================
+26. PLATFORM HEALTH
+======================================================================
+
+After test:
+
+check Execution section.
+
+Verify:
+
+submission attempt recorded
+
+unknown/reconciliation state accurate
+
+fill metrics accurate
+
+position-link health
+
+no stuck SUBMISSION_IN_PROGRESS
+
+global production mode still disabled
+
+======================================================================
+27. LOG REVIEW
+======================================================================
+
+Review test execution window.
+
+Check:
+
+no token
+
+no full account ID
+
+no session secret
+
+no duplicate submission
+
+no uncontrolled retry
+
+no unexpected 500
+
+no stuck lock
+
+no provider error hidden
+
+======================================================================
+28. DATABASE VALIDATION
+======================================================================
+
+Verify:
+
+ExecutionIntent persisted
+
+SubmissionAttempt persisted
+
+unique idempotency
+
+broker ref if received
+
+fill if applicable
+
+audit events
+
+position link if applicable
+
+No duplicate execution record.
+
+======================================================================
+29. PRODUCTION CUSTOMER EXECUTION BLOCK
+======================================================================
+
+After live-test validation explicitly verify:
+
+general production execution remains DISABLED.
+
+TEST_LIVE success must not flip platform into customer production mode.
+
+Add/assert regression if necessary.
+
+======================================================================
+30. POST-TEST DISARM
+======================================================================
+
+After certification:
+
+turn TEST_LIVE arming OFF.
+
+Do not leave dedicated live test account armed unnecessarily.
+
+Verify UI/health shows:
+
+TEST_LIVE UNARMED
+
+General PRODUCTION DISABLED.
+
+======================================================================
+31. AUTOMATED REGRESSION
+======================================================================
+
+After any fixes discovered by live certification run:
+
+all 18 suites
+
+all execution-specific suites
+
+npm run test:release
+
+npm run build
+
+typecheck
+
+Any bug discovered during live test requires regression test.
+
+======================================================================
+32. DEFECT POLICY
+======================================================================
+
+If live test discovers:
+
+duplicate order
+
+account mismatch
+
+quantity mismatch
+
+price mismatch
+
+wrong symbol
+
+unexpected market order
+
+blind retry
+
+ambiguous response resubmission
+
+confirmation replay
+
+security failure
+
+STOP IMMEDIATELY.
+
+Classify P0.
+
+Disable execution.
+
+NO_GO.
+
+======================================================================
+33. DOCUMENTATION
+======================================================================
+
+Create/update:
+
+docs/operations/45-test-live-execution-certification.md
+
+Document:
+
+release SHA
+
+provider
+
+masked test account
+
+execution mode
+
+test symbol
+
+quantity
+
+order type
+
+notional class/range, not sensitive balance
+
+preflight result
+
+confirmation hash prefix
+
+execution intent
+
+broker response
+
+final state
+
+fill result
+
+position-link result
+
+duplicate protection
+
+log review
+
+Platform Health
+
+test-live disarm
+
+issues
+
+decision
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/44-broker-submission-execution-status-and-fills.md
+
+======================================================================
+34. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Release SHA
+2. Provider
+3. Execution mode
+4. Test account allowlist — PASS/FAIL
+5. Symbol allowlist — PASS/FAIL
+6. Quantity cap — PASS/FAIL
+7. Notional cap — PASS/FAIL
+8. TEST_LIVE armed — PASS/FAIL
+9. Production mode blocked — PASS/FAIL
+10. Market state
+11. Test symbol
+12. Quantity
+13. Order type
+14. TIF
+15. Trade Plan validation
+16. Lifecycle validation
+17. Preflight result
+18. Draft result
+19. Preview result
+20. Final snapshot hash match
+21. Acknowledgements
+22. Final revalidation
+23. ExecutionIntent created
+24. Idempotency key created
+25. Submission fingerprint
+26. Broker mutation count
+27. Broker acknowledgement
+28. Broker order reference
+29. Submission state
+30. Ambiguous response handling if applicable
+31. Reconciliation result if applicable
+32. Fill result
+33. Partial-fill result if applicable
+34. Position link
+35. Portfolio sync
+36. Confirmation replay test
+37. Duplicate protection
+38. Audit trail
+39. Log review
+40. Platform Health
+41. Unexpected 500 count
+42. Defects found
+43. Regression tests added
+44. TEST_LIVE disarmed
+45. General production execution still disabled
+46. Operations Manual updated
+47. LIVE_TEST_CERTIFIED / NOT_CERTIFIED
+48. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+35. FINAL DECISION
+======================================================================
+
+LIVE_TEST_CERTIFIED only if:
+
+exactly one intended broker order was created
+
+no duplicate broker order occurred
+
+all submitted fields matched confirmation
+
+broker status was reconciled
+
+no blind retry occurred
+
+fill/status was accurately recorded
+
+security boundaries held
+
+audit trail complete
+
+TEST_LIVE was disarmed afterward
+
+general production execution remained disabled.
+
+Do not begin general customer production execution.
+
+After certification, return the report for review before Sprint 2.8.7.

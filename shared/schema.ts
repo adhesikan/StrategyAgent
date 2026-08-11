@@ -686,6 +686,9 @@ export const userSettings = pgTable("user_settings", {
   // Sprint 5.5: changed DB default from "/home" to "/dashboard".
   // "/home" is treated as a legacy value — DefaultLanding coerces it to "/dashboard".
   defaultLandingPage: text("default_landing_page").default("/dashboard"),
+  // Sprint 2.8.1A — Research & Trading Preferences (presentation-only, not suitability)
+  preferredExpressionTypes: jsonb("preferred_expression_types").$type<string[]>().default([]),
+  showOtherCompatibleStructures: boolean("show_other_compatible_structures").default(true),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -3688,8 +3691,11 @@ export const tradePlanningSessions = pgTable("trade_planning_sessions", {
   portfolioId:              text("portfolio_id"),
   // User-selected planning constraints — JSONB, validated server-side
   constraints:              jsonb("constraints").notNull().$type<Record<string, unknown>>().default({ equityAllowed: true, optionsAllowed: false }),
-  // User's current focus area in this session
+  // User's current focus area in this session (low-level family)
   selectedExpressionFamily: text("selected_expression_family"),
+  // Sprint 2.8.1A — Broad expression type explicitly selected by user
+  broadExpressionType:      text("broad_expression_type"),
+  expressionSelectedBy:     text("expression_selected_by"),   // always "USER"
   createdAt:                timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt:                timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (t) => ({
@@ -3739,6 +3745,10 @@ export const tradePlans = pgTable("trade_plans", {
   archivedAt:            timestamp("archived_at", { withTimezone: true }),
   completedResearchAt:   timestamp("completed_research_at", { withTimezone: true }),
   monitoringStartedAt:   timestamp("monitoring_started_at", { withTimezone: true }),
+  // Sprint 2.8.1A — Broad expression type explicitly selected by user
+  broadExpressionType:    text("broad_expression_type"),
+  expressionSelectedBy:   text("expression_selected_by"),   // always "USER"
+  expressionSelectedAt:   timestamp("expression_selected_at", { withTimezone: true }),
   // Creation-time context
   freshnessAtCreation:   text("freshness_at_creation").notNull().default("unknown"),
   limitations:           jsonb("limitations").notNull().$type<string[]>().default([]),

@@ -1,5 +1,70 @@
 # Sprint Change Log
 
+## Sprint 2.8.1A — Trade Preferences & User-Directed Expression Selection (2026-08-11)
+
+### Summary
+Added the User-Directed Expression Selection layer. Users can save global research structure preferences and explicitly select a broad expression category before category-specific Trade Planning begins. Preferences affect presentation ordering only — not qualification, suitability, broker permissions, or strategy matching methodology. **No auto-selection. No financial questionnaire. selectedBy is always USER.** 637 tests pass (536 pre-existing + 101 new).
+
+### Key Deliverables
+- 9 canonical `BroadExpressionType` values with labels, educational summaries, and family mappings
+- `UserTradingPreferences` model — multiple selections, not suitability, no financial fields
+- `OpportunityExpressionSelection` model — `selectedBy: "USER"` always
+- 4 compatibility states: AVAILABLE, AVAILABLE_WITH_REQUIREMENTS, NOT_ALIGNED_WITH_CURRENT_RESEARCH, UNAVAILABLE
+- `computeExpressionOptions` — pure deterministic ordering (preferred first within each tier)
+- `resolveExpressionRouting` — maps broad type to existing engine (EQUITY / OPTIONS_MATCHING / EXPLORE_ALL)
+- Settings: `ResearchTradingPreferencesSection` — checkbox cards, compliance disclaimer, accessible
+- Trade Planning: `BroadExpressionSelectionStep` — 3-section UI (preferred / other / unavailable)
+- Covered Call ownership rules enforced (AVAILABLE_WITH_REQUIREMENTS when unconfirmed, never naked)
+- CSP capital note (deferred to contract research)
+- Advanced Options always opt-in (AVAILABLE_WITH_REQUIREMENTS minimum)
+- Global preference update does NOT mutate existing trade plans or sessions
+- `selectedBy` is always "USER" — enforced server-side; client cannot override
+- 5 permanently separate concepts documented: UserTradingPreferences / OpportunityExpressionSelection / OptionsStrategyMatch / BrokerPermissions / ExecutionPreflightResult
+- `docs/operations/39-trade-preferences-and-expression-selection.md`
+
+### Files Added
+| File | Purpose |
+|---|---|
+| `shared/trade-preference-types.ts` | Canonical types, enums, compliance constants |
+| `server/services/trade-preferences-service.ts` | Pure computation engine + DB deps |
+| `server/routes/trade-preferences.ts` | 5 API routes |
+| `server/routes/__tests__/trade-preferences.test.ts` | 101 tests, 25 groups |
+| `client/src/components/settings/ResearchTradingPreferencesSection.tsx` | Settings card |
+| `client/src/components/execution/BroadExpressionSelectionStep.tsx` | Trade Planning first step |
+| `migrations/029_trade_preferences.sql` | Additive migration |
+| `docs/operations/39-trade-preferences-and-expression-selection.md` | Architecture doc |
+
+### Files Modified
+| File | Change |
+|---|---|
+| `shared/schema.ts` | Added 2 cols to user_settings, 2 to trade_planning_sessions, 3 to trade_plans |
+| `server/routes.ts` | Registered `registerTradePreferencesRoutes` + `ensureTradePreferencesTables` |
+| `client/src/pages/settings.tsx` | Added ResearchTradingPreferencesSection to Trade Preferences tab |
+| `package.json` | Added `test:trade-preferences`; updated `test:release` + `test:release:full` |
+| `docs/operations/17-sprint-change-log.md` | This entry |
+
+### API Routes Added
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /api/user/trading-preferences | Get global preferences |
+| PUT | /api/user/trading-preferences | Save global preferences |
+| GET | /api/trade-planning/session/:id/expression-selection | Get session selection |
+| POST | /api/trade-planning/session/:id/expression-selection | Save explicit selection |
+| GET | /api/trade-planning/:symbol/expression-options | Compute expression option cards |
+
+### Invariants Confirmed
+- Preferences never change compatibility status (invariant tested)
+- Global preference update never calls updateTradePlan or updatePlanningSession (tested)
+- selectedBy always "USER" — AI cannot override (tested)
+- No recommendation/suitability language in any label or educational text (tested)
+- COVERED_CALL cannot become naked short (tested)
+- CSP capital deferred to contract research (tested)
+
+### 2.8.2 Handoff
+OrderDraft receives `broadExpressionType = STOCK` and `selectedBy = USER`. Sprint 2.8.2 does not re-ask expression type.
+
+---
+
 ## Sprint 2.8.1 — Order Preparation Engine (2026-08-11)
 
 ### Summary

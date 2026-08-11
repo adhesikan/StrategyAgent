@@ -46,6 +46,7 @@ import { STRATEGY_CONFIGS, getStrategyDisplayName } from "@shared/strategies";
 import { useTooltipVisibility } from "@/hooks/use-tooltips";
 import { useBrokerStatus } from "@/hooks/use-broker-status";
 import { TradingStyleSection } from "@/components/settings/trading-style-section";
+import { ResearchTradingPreferencesSection } from "@/components/settings/ResearchTradingPreferencesSection";
 import { BillingSection } from "@/components/settings/billing-section";
 import { HelpLink } from "@/components/help-link";
 
@@ -1570,7 +1571,10 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="trade-prefs">
-          <TradePreferencesSection />
+          <div className="space-y-6">
+            <ResearchTradingPreferencesSection />
+            <TradePreferencesSection />
+          </div>
         </TabsContent>
 
         <TabsContent value="scanner">

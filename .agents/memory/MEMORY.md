@@ -80,3 +80,4 @@
 - [Sprint 2.7.7A — Certification Closure](sprint-277a-certification-closure.md) — 6 dep upgrades (HIGH 17→10); canonical E2E creds (TEST_USER_EMAIL/PASSWORD); PLAYWRIGHT_RELEASE_CERT=1 for cert mode; CONDITIONAL_GO upgraded; Phase 2.8.0 APPROVED.
 - [Sprint 2.8.0 — Execution Architecture](sprint-280-execution-architecture.md) — kill switch, 12-dim preflight, broker adapter, audit tables, 5 legacy route guards; 401 tests pass; no order submission.
 - [Sprint 2.8.1 — Order Preparation Engine](sprint-281-order-preparation.md) — non-executable OrderDraft; executable:false type-level; only PASS preflight; limitPricePreference not limitPriceReference; 536 tests pass.
+- [Sprint 2.8.1A — Trade Preferences](sprint-281a-trade-preferences.md) — ExpressionFamily≠BroadExpressionType; @db alias fails in tests; validateConstraints not exported; Set iteration needs Array.from; 637 tests pass.

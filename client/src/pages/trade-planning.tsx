@@ -46,6 +46,7 @@ import {
 import type { EquityPlanningScenario } from "@shared/equity-planning-types";
 import { EquityOrderPreviewPanel } from "@/components/execution/EquityOrderPreviewPanel";
 import { OptionsOrderPreviewPanel } from "@/components/execution/OptionsOrderPreviewPanel";
+import { ExecutionReadinessPanel } from "@/components/execution/ExecutionReadinessPanel";
 import {
   EQUITY_PLANNING_DISCLAIMER, SIZING_DISCLAIMER, SCENARIO_DISCLAIMER,
 } from "@shared/equity-planning-types";
@@ -2763,6 +2764,24 @@ export default function TradePlanningPage() {
             ].includes(selectedFamily) && (
               <OptionsOrderPreviewPanel
                 draftId={activeDraftId}
+                onEditDraft={() => window.history.back()}
+              />
+            )}
+
+            {/* Execution Readiness Panel — Sprint 2.8.4
+                Shown immediately below OptionsOrderPreviewPanel.
+                Status is deterministic (READY / READY_WITH_WARNINGS / BLOCKED).
+                AI assistant may explain findings; it may NEVER change the status.
+                No order submission CTA — "Continue to Review" is Sprint 2.8.5.
+                Pipeline: … Options Preview → Execution Readiness → (2.8.5) Review & Confirm */}
+            {activeDraftId && sessionId && selectedFamily && [
+              "long_option", "income", "defined_risk_directional",
+              "covered_call", "cash_secured_put", "vertical_spread",
+              "neutral_options", "advanced_options",
+            ].includes(selectedFamily) && (
+              <ExecutionReadinessPanel
+                tradePlanId={sessionId}
+                orderDraftId={activeDraftId}
                 onEditDraft={() => window.history.back()}
               />
             )}

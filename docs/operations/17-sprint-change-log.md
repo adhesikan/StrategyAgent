@@ -1,5 +1,56 @@
 # Sprint Change Log
 
+## Sprint 2.8.4 — Execution Readiness & Guardrails
+**Date:** 2026-08-11  
+**Status:** COMPLETE  
+**Tests:** 1100+ (16 suites, all passing)
+
+### What Was Built
+Deterministic execution readiness layer immediately after Options Order Preview. Evaluates 9 categories: Market Data, Account, Position, Capital, Structure, Assignment Risk, Expiration, Liquidity, Pricing. Returns READY / READY_WITH_WARNINGS / BLOCKED. No LLM involvement. Capital estimates for all defined-risk strategies. Missing positions / buying power never assumed zero. `brokerSubmissionEnabled: false` is a literal type constant.
+
+### New Files
+- `shared/execution-readiness-types.ts` — canonical types, all finding codes, guardrail config, status labels, compliance constants
+- `server/services/execution-readiness-service.ts` — pure deterministic engine; 9 category evaluators; capital estimation; persistence helpers; in-memory health metrics
+- `server/routes/execution-readiness.ts` — 3 routes; static `/health` before dynamic `/:id`; FORBIDDEN_FIELD injection guard
+- `server/routes/__tests__/execution-readiness.test.ts` — 40 test scenarios covering all spec requirements
+- `client/src/components/execution/ExecutionReadinessPanel.tsx` — status banner (READY/READY_WITH_WARNINGS/BLOCKED); findings grouped by category; capital estimate card; no submission CTA
+- `docs/operations/42-execution-readiness-and-guardrails.md` — full architecture doc
+
+### Modified Files
+- `server/routes.ts` — Registered `registerExecutionReadinessRoutes` + `ensureExecutionReadinessTables`
+- `package.json` — Added `test:execution-readiness`; updated `test:release` + `test:release:full` (16 suites)
+- `client/src/pages/trade-planning.tsx` — `ExecutionReadinessPanel` wired below `OptionsOrderPreviewPanel` for all options families
+
+### DB Changes
+- New table: `execution_readiness_results` (raw SQL, minimal schema). Created via `ensureExecutionReadinessTables()` at startup. No new Drizzle schema entry.
+
+### Key Invariants Introduced
+- Readiness is DETERMINISTIC — no LLM; status cannot be overridden by AI
+- `brokerSubmissionEnabled: false` — literal type constant in output
+- `engineVersion: "2.8.4"` — always present
+- Missing positions ≠ zero holdings; missing buying power ≠ $0
+- No leg decomposition for multi-leg orders (inherits from 2.8.3)
+- No order submission, modification, or cancellation
+
+### Capital Estimation
+- Debit strategies: `totalAmount` from preview (max loss = debit paid)
+- Credit spreads: `(spread_width - credit) × 100 × qty`
+- Iron condor/butterfly: `(max_wing_width - credit) × 100 × qty`
+- Cash-secured put: `(strike × 100 × qty) - credit`
+- Covered call: SHARES_ONLY (0 new capital)
+- Unknown/undefined risk: BROKER_MARGIN_REQUIRED
+
+### 2.8.5 Handoff
+Next: Sprint 2.8.5 — Review, Consent & Final Order Confirmation
+- Immutable final order snapshot
+- Clear debit/credit display + max gain/loss
+- Account + buying-power impact
+- Assignment/exercise disclosure
+- Explicit user acknowledgement + confirmation
+- No broker submission until separately approved
+
+---
+
 ## Sprint 2.8.3 — Options / Multi-Leg Order Preview
 **Date:** 2026-08-11  
 **Status:** COMPLETE  

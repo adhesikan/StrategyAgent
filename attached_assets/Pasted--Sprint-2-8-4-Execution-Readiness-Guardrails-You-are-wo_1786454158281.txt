@@ -1,0 +1,1001 @@
+# Sprint 2.8.4 — Execution Readiness & Guardrails
+
+You are working in the existing **VCP Trader** application built and maintained in Replit.
+
+This sprint belongs in the **main VCP Trader repo**, NOT the MCP repo.
+
+Do not modify the MCP repo unless you discover a genuine missing reusable tool dependency that cannot reasonably be handled in the VCP Trader codebase. If that happens, stop and clearly document the dependency instead of making cross-repo changes.
+
+## Goal
+
+Build the deterministic **Execution Readiness & Guardrails** layer that sits immediately after the existing Options Order Preview completed in Sprint 2.8.3.
+
+The workflow should become:
+
+Trade Plan
+→ Options Order Preview
+→ Execution Readiness
+→ Review & Confirm
+→ Broker Submission
+
+Sprint 2.8.4 should implement only the **Execution Readiness** layer.
+
+Do NOT submit any live broker orders in this sprint.
+
+Do NOT create automatic trading.
+
+Do NOT allow the AI/LLM to decide whether a trade is executable.
+
+The readiness decision must be deterministic and based on application/broker/account/market data.
+
+---
+
+# 1. First inspect the existing implementation
+
+Before changing code, inspect:
+
+* `server/routes.ts`
+* existing options preview routes/services
+* `options-preview-service.ts`
+* execution preflight models/tables
+* broker abstraction
+* Tradier integration
+* TradeStation integration if present
+* account/positions services
+* market quote/freshness utilities
+* trade-planning page
+* current options order preview component
+* DB schema
+* existing execution guardrails
+* test organization
+* docs under `docs/operations/`
+
+Report back briefly with:
+
+1. Current relevant architecture
+2. Existing reusable services
+3. Existing DB tables related to execution/preflight
+4. Existing broker/account capability APIs
+5. Existing market-data freshness logic
+6. Files likely to be modified
+7. Any gaps or conflicts with this sprint plan
+
+Then proceed with implementation.
+
+Do not rebuild functionality already present.
+
+---
+
+# 2. Core concept
+
+Create a deterministic execution-readiness result for a proposed options order.
+
+The system should answer:
+
+**Can this order safely proceed to user review/confirmation?**
+
+Possible states:
+
+* `READY`
+* `READY_WITH_WARNINGS`
+* `BLOCKED`
+
+Do not use vague labels such as PASS/FAIL without context.
+
+Each result must include structured findings.
+
+Example:
+
+```ts
+type ExecutionReadinessStatus =
+  | "READY"
+  | "READY_WITH_WARNINGS"
+  | "BLOCKED";
+
+type ExecutionReadinessFindingSeverity =
+  | "INFO"
+  | "WARNING"
+  | "BLOCKER";
+
+type ExecutionReadinessFinding = {
+  code: string;
+  severity: ExecutionReadinessFindingSeverity;
+  title: string;
+  message: string;
+  source?: string;
+  legId?: string;
+};
+
+type ExecutionReadinessResult = {
+  status: ExecutionReadinessStatus;
+  findings: ExecutionReadinessFinding[];
+  evaluatedAt: string;
+};
+```
+
+Reuse existing types if equivalent structures already exist.
+
+---
+
+# 3. Readiness categories
+
+Evaluate the order across these categories:
+
+## A. Market Data Readiness
+
+Check:
+
+* quote availability
+* quote freshness
+* bid/ask availability
+* option leg quote availability
+* aggregate quote freshness
+* wide spreads
+* zero bid where relevant
+* crossed/invalid markets
+* market open/closed state if available
+
+Hard blockers:
+
+* required quote unavailable
+* stale quote beyond configured threshold
+* invalid option market
+* underlying quote unavailable when required
+
+Warnings:
+
+* unusually wide spread
+* low/no bid
+* after-hours / market closed where order cannot immediately execute
+* partial Greeks only
+
+Reuse the Sprint 2.8.3 quote freshness logic.
+
+Do not duplicate quote classification rules.
+
+---
+
+# 4. Account Readiness
+
+Check whether a broker/account is available.
+
+Potential checks:
+
+* brokerage account connected
+* account ID valid
+* account status available
+* options trading capability
+* multi-leg capability
+* required options level if broker supplies it
+* account restrictions
+* account type constraints where known
+
+Do not fabricate unsupported broker capability information.
+
+If the connected broker does not expose a capability:
+
+return a structured warning or `UNKNOWN`, not a fake approval.
+
+Examples:
+
+`BROKER_NOT_CONNECTED` → BLOCKER
+
+`OPTIONS_PERMISSION_UNCONFIRMED` → WARNING or BLOCKER depending on whether submission can legally proceed without confirmation.
+
+`MULTILEG_NOT_SUPPORTED` → BLOCKER
+
+---
+
+# 5. Position Readiness
+
+Validate holdings/exposure required by the trade.
+
+Examples:
+
+## Covered Call
+
+Verify sufficient shares exist.
+
+Example:
+
+1 short call contract requires 100 shares.
+
+If quantity = 3:
+
+required shares = 300.
+
+If available shares < required shares:
+
+BLOCK.
+
+Finding:
+
+`INSUFFICIENT_COVERED_SHARES`
+
+## Protective Put
+
+Verify underlying shares exist if the trade plan represents protection of an existing position.
+
+If the user is merely buying a standalone put, do not require shares.
+
+Use existing strategy intent/family metadata to differentiate.
+
+## Closing transactions
+
+For close intents:
+
+verify sufficient existing contract quantity where position data is available.
+
+Examples:
+
+`INSUFFICIENT_OPTION_POSITION`
+
+`POSITION_NOT_FOUND`
+
+Do not assume holdings if position data is unavailable.
+
+---
+
+# 6. Buying Power / Capital Readiness
+
+Create a deterministic estimate when possible.
+
+For defined-risk strategies calculate maximum capital requirement from the proposed order.
+
+Examples:
+
+Long call:
+premium × 100 × quantity
+
+Long put:
+premium × 100 × quantity
+
+Debit spread:
+net debit × 100 × quantity
+
+Credit spread:
+(max spread width - net credit) × 100 × quantity
+
+Iron condor:
+maximum wing risk adjusted for net credit × 100 × quantity
+
+Covered call:
+do not treat underlying shares as new capital if shares already exist.
+
+Cash-secured put:
+strike × 100 × quantity minus applicable credit, depending on existing project conventions.
+
+For undefined-risk strategies:
+
+do not pretend the application can accurately calculate broker margin.
+
+Return:
+
+`BROKER_MARGIN_CALCULATION_REQUIRED`
+
+and treat as warning/blocker according to execution capability.
+
+If broker provides official buying-power impact, prefer that over local estimates.
+
+Expose both where available:
+
+* estimated capital requirement
+* broker-reported buying power impact
+
+Clearly label estimates.
+
+Never call an estimate a broker approval.
+
+---
+
+# 7. Strategy / Leg Consistency Validation
+
+Validate:
+
+* expected number of legs
+* leg directions
+* long vs short intent
+* same underlying
+* expiration relationships
+* strike ordering
+* quantities
+* call/put structure
+* defined-risk width
+* net debit/credit consistency
+* zero or negative invalid quantities
+
+Examples:
+
+Bull call spread:
+long lower strike call
+short higher strike call
+
+Bear put spread:
+long higher strike put
+short lower strike put
+
+Iron condor:
+correct four-leg ordering
+
+Butterfly:
+correct strike relationships
+
+Calendar:
+same strike where required
+different expiration dates
+
+Do not duplicate the entire strategy builder.
+
+Reuse existing family definitions or strategy metadata where available.
+
+---
+
+# 8. Assignment / Exercise Risk
+
+Sprint 2.8.3 already improved short-leg detection using `isShortIntent()`.
+
+Reuse that helper.
+
+For any short option leg:
+
+show assignment/exercise risk context.
+
+Warnings may include:
+
+* short leg assignment risk
+* ex-dividend risk for short calls if dividend data is available
+* expiration proximity
+* ITM short option
+* pin risk near strike
+* early assignment possibility
+
+Do not block merely because assignment risk exists.
+
+Only block where a true invalid condition exists.
+
+---
+
+# 9. Expiration Risk
+
+Add deterministic checks:
+
+* expires today
+* expires within 1 trading day
+* expires within configurable short-duration threshold
+* already expired
+* option expiration timestamp invalid
+
+Expired contracts:
+
+BLOCKER
+
+0DTE:
+
+WARNING by default
+
+Create configuration rather than embedding magic numbers.
+
+Example:
+
+```ts
+EXECUTION_GUARDRAIL_CONFIG = {
+  quoteStaleSeconds: ...,
+  zeroDteWarning: true,
+  nearExpirationDays: 2,
+};
+```
+
+Reuse existing config conventions.
+
+---
+
+# 10. Liquidity Guardrails
+
+Use available option quote data.
+
+Calculate:
+
+spread dollars
+
+spread percentage relative to midpoint
+
+Example:
+
+```ts
+spreadPct = (ask - bid) / midpoint
+```
+
+Handle zero/negative midpoint safely.
+
+Possible configurable thresholds:
+
+* warning at > 10%
+* severe warning at > 20%
+
+Do not block solely based on wide spread unless an existing VCP execution rule explicitly requires it.
+
+If volume/open interest are available:
+
+support warnings for extremely low liquidity.
+
+Do not require fields the data provider does not supply.
+
+---
+
+# 11. Pricing Sanity Checks
+
+Validate:
+
+* debit orders have positive debit
+* credit orders have positive credit
+* net option price is numerically valid
+* limit price is not NaN/infinite
+* order pricing direction matches strategy economics
+
+Example:
+
+Net debit strategy cannot result in an obviously invalid negative debit due to leg/order construction error.
+
+Use the existing Sprint 2.8.3 pricing computation.
+
+Do not create a second pricing engine.
+
+---
+
+# 12. Execution Readiness Service
+
+Create or extend a service similar to:
+
+`server/services/execution-readiness-service.ts`
+
+Possible API:
+
+```ts
+evaluateExecutionReadiness({
+  tradePlan,
+  orderPreview,
+  account,
+  positions,
+  marketData,
+  brokerCapabilities,
+})
+```
+
+Return deterministic findings.
+
+Do not call an LLM.
+
+---
+
+# 13. Finding codes
+
+Use stable machine-readable codes.
+
+Examples:
+
+Market:
+
+* `QUOTE_UNAVAILABLE`
+* `QUOTE_STALE`
+* `OPTION_MARKET_INVALID`
+* `WIDE_BID_ASK_SPREAD`
+* `ZERO_BID`
+* `MARKET_CLOSED`
+* `PARTIAL_GREEKS`
+
+Account:
+
+* `BROKER_NOT_CONNECTED`
+* `ACCOUNT_UNAVAILABLE`
+* `OPTIONS_PERMISSION_UNCONFIRMED`
+* `MULTILEG_NOT_SUPPORTED`
+
+Position:
+
+* `INSUFFICIENT_COVERED_SHARES`
+* `INSUFFICIENT_OPTION_POSITION`
+* `POSITION_DATA_UNAVAILABLE`
+
+Capital:
+
+* `BUYING_POWER_INSUFFICIENT`
+* `BUYING_POWER_UNCONFIRMED`
+* `BROKER_MARGIN_CALCULATION_REQUIRED`
+
+Structure:
+
+* `INVALID_LEG_STRUCTURE`
+* `INVALID_STRIKE_ORDER`
+* `INVALID_EXPIRATION_STRUCTURE`
+* `INVALID_QUANTITY`
+
+Risk:
+
+* `SHORT_OPTION_ASSIGNMENT_RISK`
+* `ZERO_DTE`
+* `NEAR_EXPIRATION`
+* `OPTION_EXPIRED`
+
+Pricing:
+
+* `INVALID_NET_PRICE`
+* `PRICING_DIRECTION_MISMATCH`
+
+Reuse any existing equivalent codes rather than duplicating them.
+
+---
+
+# 14. Database persistence
+
+Inspect the existing `executionPreflights` table referenced during Sprint 2.8.3.
+
+Prefer using/extending it rather than creating a duplicate table.
+
+Persist enough to audit:
+
+* tradePlanId
+* preview/order reference
+* account/broker
+* readiness status
+* findings JSON
+* evaluatedAt
+* market-data timestamp/reference
+* pricing snapshot/reference
+* optional version number for rule engine
+
+Do not persist unnecessary sensitive broker data.
+
+If schema changes are needed:
+
+create the smallest migration possible.
+
+Document migration.
+
+---
+
+# 15. API routes
+
+Create or extend route such as:
+
+`POST /api/trade-plans/:id/execution-readiness`
+
+or use the existing conventions discovered in the repo.
+
+Input should identify the relevant current preview.
+
+The server should:
+
+1. Load trade plan
+2. Load current options preview
+3. Load account/position context
+4. Load broker capabilities if available
+5. Validate quote freshness
+6. Run readiness engine
+7. Persist result
+8. Return structured response
+
+Never trust client-supplied account balances, positions, or broker permissions.
+
+---
+
+# 16. Trade Planning UI
+
+Modify:
+
+`client/src/pages/trade-planning.tsx`
+
+and/or appropriate child component.
+
+Immediately below `OptionsOrderPreviewPanel`, add:
+
+`ExecutionReadinessPanel`
+
+Display:
+
+## Execution Readiness
+
+Status banner:
+
+READY
+READY WITH WARNINGS
+BLOCKED
+
+Then grouped findings.
+
+Example:
+
+### Market Data
+
+✓ Quotes current
+⚠ Wide bid/ask spread on short call
+
+### Account
+
+✓ Broker connected
+⚠ Options permissions not confirmed
+
+### Position
+
+✓ 200 shares available
+✓ 1 contract requires 100 shares
+
+### Capital
+
+Estimated requirement: $4,850
+Available buying power: $18,400
+
+### Risk
+
+⚠ Short option assignment possible
+
+Do not overwhelm novice users.
+
+Provide concise plain-language explanations.
+
+Allow advanced detail expansion.
+
+---
+
+# 17. Status styling
+
+Use existing VCP UI styles.
+
+Suggested:
+
+READY:
+positive/check style
+
+READY_WITH_WARNINGS:
+amber/warning
+
+BLOCKED:
+red/block
+
+Do not imply guaranteed execution.
+
+Use wording such as:
+
+“Ready for review”
+
+NOT:
+
+“Trade approved”
+
+---
+
+# 18. CTA behavior
+
+Do NOT create live execution yet.
+
+If `READY`:
+
+show disabled/future CTA or safe next-step label:
+
+`Continue to Review`
+
+If the next review screen already exists and is safe to use, it may be linked.
+
+If `READY_WITH_WARNINGS`:
+
+allow:
+
+`Review Warnings`
+
+Do not silently bypass warnings.
+
+If `BLOCKED`:
+
+disable progression.
+
+Display:
+
+`Resolve blockers before continuing.`
+
+---
+
+# 19. AI boundaries
+
+The AI assistant may explain findings later.
+
+But this sprint must maintain:
+
+AI != readiness authority
+
+The LLM must not:
+
+* convert BLOCKED to READY
+* ignore stale quotes
+* override missing buying power
+* override missing positions
+* override broker restrictions
+
+Readiness is deterministic.
+
+Add comments/docs explicitly stating this.
+
+---
+
+# 20. Broker abstraction
+
+Do not write Tradier-only business logic directly into the readiness engine.
+
+Use a normalized broker capability structure if practical:
+
+```ts
+type BrokerExecutionCapabilities = {
+  supportsOptions?: boolean;
+  supportsMultileg?: boolean;
+  optionsLevel?: string | null;
+  buyingPower?: number | null;
+  accountStatus?: string | null;
+};
+```
+
+Provider adapters can populate this.
+
+Unknown must remain unknown.
+
+---
+
+# 21. No new MCP work unless required
+
+Do not add this execution-readiness engine to the MCP server.
+
+MCP may supply reusable information such as:
+
+* quotes
+* positions
+* market history
+
+But VCP Trader owns:
+
+* trade plan
+* order preview
+* account execution context
+* execution readiness
+* confirmation
+* broker submission
+
+If a missing MCP tool is discovered:
+
+document it under:
+
+`Deferred / MCP Dependency`
+
+Do not modify the MCP repo during this sprint.
+
+---
+
+# 22. Testing
+
+Create a dedicated test suite.
+
+Suggested:
+
+`test:execution-readiness`
+
+Add it to:
+
+`test:release`
+and
+`test:release:full`
+
+Do not reduce existing coverage.
+
+All existing 950 tests must continue to pass.
+
+Add thorough unit tests.
+
+Minimum scenarios:
+
+1. fresh quotes + valid account + sufficient capital → READY
+
+2. stale underlying quote → BLOCKED
+
+3. all option quotes unavailable → BLOCKED
+
+4. one partial Greek missing → warning
+
+5. wide bid/ask → warning
+
+6. covered call with insufficient shares → BLOCKED
+
+7. covered call with sufficient shares → valid
+
+8. close option without required position → BLOCKED
+
+9. defined-risk spread capital calculation correct
+
+10. undefined-risk short option requires broker margin calculation
+
+11. unsupported multileg broker → BLOCKED
+
+12. broker capability unknown → correct warning behavior
+
+13. expired option → BLOCKED
+
+14. 0DTE → warning
+
+15. invalid strike ordering → BLOCKED
+
+16. valid bull call spread → valid
+
+17. valid bear put spread → valid
+
+18. valid iron condor → valid
+
+19. assignment risk shown for `OPEN_SHORT_DEFINED_RISK`
+
+20. future intent containing `"SHORT"` uses `isShortIntent`
+
+21. missing positions do not become zero holdings
+
+22. missing buying power does not become $0
+
+23. stale data thresholds honor config
+
+24. invalid net price → BLOCKED
+
+25. readiness result persists correctly
+
+26. no LLM dependency exists
+
+---
+
+# 23. Regression testing
+
+At completion run:
+
+```bash
+npm run test:options-preview
+npm run test:execution-readiness
+npm run test:release
+```
+
+Also run TypeScript checks.
+
+Acceptance target:
+
+* existing 950/950 tests remain passing
+* all new Sprint 2.8.4 tests pass
+* zero new TS errors in sprint files
+* no regression in Sprint 2.8.3 order preview
+* no live orders can be submitted through new code
+
+---
+
+# 24. Documentation
+
+Create:
+
+`docs/operations/42-execution-readiness-and-guardrails.md`
+
+Document:
+
+* architecture
+* readiness status model
+* blocker vs warning rules
+* quote freshness rules
+* buying-power calculations
+* position validation
+* assignment risk
+* expiration rules
+* broker capability abstraction
+* persistence
+* API routes
+* UI
+* test coverage
+* limitations
+* future broker-specific enhancements
+* AI boundary
+
+Update:
+
+`docs/operations/17-sprint-change-log.md`
+
+Prepend Sprint 2.8.4.
+
+Update:
+
+`.agents/memory/`
+
+Add a topic memory file and MEMORY.md index entry consistent with existing practice.
+
+---
+
+# 25. Acceptance criteria
+
+Sprint 2.8.4 is COMPLETE only when:
+
+* execution readiness is calculated server-side
+* status is deterministic
+* `READY / READY_WITH_WARNINGS / BLOCKED` works
+* stale/missing quotes can block
+* broker/account readiness is checked
+* position requirements are checked
+* covered-call share coverage works
+* close-position quantity validation works
+* defined-risk capital estimation works
+* undefined-risk margin uncertainty is handled safely
+* strategy leg validation works
+* assignment risk is shown for all short intents
+* expiration risk works
+* liquidity warnings work
+* UI displays findings clearly below Options Order Preview
+* blocker state prevents progression
+* no live execution is added
+* readiness result is persisted
+* new tests are included in release suite
+* all prior tests remain green
+* zero new TS errors in sprint files
+* documentation is complete
+
+---
+
+# 26. Out of scope / defer
+
+Do NOT implement in Sprint 2.8.4:
+
+* live order submission
+* broker order placement
+* cancel/replace
+* order status streaming
+* partial-fill handling
+* automated execution
+* AI-selected execution parameters
+* AI overrides
+* smart routing
+* auto-adjusted limit orders
+* trailing options orders
+* production alerting
+* new MCP services unless required and separately approved
+
+These belong in later sprints.
+
+---
+
+# 27. Recommended next sprint
+
+After Sprint 2.8.4, propose:
+
+## Sprint 2.8.5 — Review, Consent & Final Order Confirmation
+
+Expected focus:
+
+* immutable final order snapshot
+* clear debit/credit display
+* max gain/loss where calculable
+* account + buying-power impact
+* assignment/exercise disclosure
+* user acknowledgement
+* explicit final confirmation
+* audit event
+* NO broker submission yet unless separately approved
+
+Do not implement 2.8.5 during this sprint.
+
+---
+
+# Final response required
+
+When finished, return:
+
+### Sprint 2.8.4 Summary
+
+* Status
+* Tests passing / total
+* Files created
+* Files modified
+* DB/schema changes
+* Routes added
+* New readiness rules
+* UI changes
+* New test suites
+* Release suite status
+* TypeScript status
+* Deferred items
+* Recommended Sprint 2.8.5 scope
+
+Also explicitly confirm:
+
+**No live order execution was introduced in Sprint 2.8.4.**

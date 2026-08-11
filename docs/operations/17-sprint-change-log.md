@@ -1,5 +1,57 @@
 # Sprint Change Log
 
+## Sprint 2.8.0 — Execution Architecture, Compliance & Broker Preflight (2026-08-11)
+
+### Summary
+Implemented execution architecture layer, global kill switch, 12-dimension broker preflight engine, and all safety infrastructure for Phase 2.8 (Broker-Assisted Execution). **No order submission implemented.** All 401 tests pass (313 pre-existing + 88 new execution-preflight tests).
+
+### Key Deliverables
+- `BROKER_EXECUTION_ENABLED` global kill switch guards all 5 legacy order-capable routes
+- Kill-switch guards added to: `POST /api/broker/orders`, `POST /api/broker/positions/:symbol/close`, `POST /api/trade/place-equity`, `POST /api/trade/place`, `POST /api/snaptrade/orders`
+- 12-dimension pure computation preflight engine (injectable deps, no DB dependency in tests)
+- Read-only `BrokerExecutionAdapter` interface — no order methods exposed
+- 4 new API routes: `POST/GET /api/trade-plans/:id/execution/preflight`, `GET /api/execution/capabilities`, `GET /api/execution/health`
+- 2 new DB tables: `execution_preflights`, `execution_audit_events` (auto-created at startup)
+- `ExecutionPreflightPanel` client component — CTA: "Check Execution Preconditions" (never "Place Trade")
+- `shared/execution-types.ts` — canonical types + future architecture contracts
+- `docs/operations/37-execution-architecture-and-broker-preflight.md`
+- Task #131 (lifecycle scheduler): assigned Sprint 2.8.4
+
+### Files Added
+| File | Purpose |
+|---|---|
+| `shared/execution-types.ts` | Canonical execution types, constants, compliance phrases |
+| `server/services/execution-policy.ts` | Kill switch + policy engine |
+| `server/services/broker-execution-adapter.ts` | Read-only broker adapter interface + mock |
+| `server/services/execution-preflight-service.ts` | 12-dimension pure preflight engine |
+| `server/routes/execution-preflight.ts` | 4 API routes |
+| `server/routes/__tests__/execution-preflight.test.ts` | 88 tests (175+ assertions) |
+| `client/src/components/execution/ExecutionPreflightPanel.tsx` | UI panel |
+| `docs/operations/37-execution-architecture-and-broker-preflight.md` | Architecture doc |
+
+### Files Modified
+| File | Change |
+|---|---|
+| `shared/schema.ts` | Added `executionPreflights` + `executionAuditEvents` tables |
+| `server/routes.ts` | Import + register execution routes; kill-switch guards on 5 order routes |
+| `package.json` | Added `test:execution-preflight`; updated `test:release` + `test:release:full` |
+
+### Test Results
+| Suite | Result | Count |
+|---|---|---|
+| All pre-existing suites (10) | ✅ PASS | 313 tests |
+| execution-preflight.test.ts | ✅ PASS | 88 tests |
+| **Combined release gate** | **✅ PASS** | **401 tests** |
+
+### Compliance Invariants Enforced
+- `overallStatus` never: `READY_TO_TRADE`, `APPROVED`, `RECOMMENDED`
+- Forbidden phrases list enforced in test suite
+- Client bypass fields (`forceExecute`, `skipQuoteValidation`, etc.) rejected server-side
+- Audit events: no tokens, full account IDs, or balances stored
+- All safety policy flags default TRUE; client cannot disable any
+
+---
+
 ## Sprint 2.7.7A — Deployment Blocker Fix (2026-08-11)
 
 ### Summary

@@ -3803,3 +3803,54 @@ export const tradePlanActivity = pgTable("trade_plan_activity", {
 
 export type TradePlanActivityRow    = typeof tradePlanActivity.$inferSelect;
 export type InsertTradePlanActivity = typeof tradePlanActivity.$inferInsert;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXECUTION PREFLIGHT TABLES  (Sprint 2.8.0)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Execution preflight results.
+ * Append-only. One row per preflight evaluation.
+ * result_json holds the full ExecutionPreflightResult (no raw tokens, balances, positions).
+ */
+export const executionPreflights = pgTable("execution_preflights", {
+  id:          varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:      text("user_id").notNull(),
+  tradePlanId: varchar("trade_plan_id").notNull(),
+  provider:    text("provider"),
+  status:      text("status").notNull(),
+  resultJson:  jsonb("result_json").notNull().$type<Record<string, unknown>>().default({}),
+  evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull().defaultNow(),
+  validUntil:  timestamp("valid_until", { withTimezone: true }),
+  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  idxEpUserId:      index("idx_ep_user_id").on(t.userId),
+  idxEpTradePlanId: index("idx_ep_trade_plan_id").on(t.tradePlanId),
+  idxEpEvaluatedAt: index("idx_ep_evaluated_at").on(t.evaluatedAt),
+}));
+
+export type ExecutionPreflightRow    = typeof executionPreflights.$inferSelect;
+export type InsertExecutionPreflight = typeof executionPreflights.$inferInsert;
+
+/**
+ * Execution audit events.
+ * Strictly append-only.
+ * No raw tokens, full account IDs, balances, or positions in metadata.
+ */
+export const executionAuditEvents = pgTable("execution_audit_events", {
+  id:               varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:           text("user_id").notNull(),
+  tradePlanId:      varchar("trade_plan_id").notNull(),
+  eventType:        text("event_type").notNull(),
+  occurredAt:       timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  provider:         text("provider"),
+  accountRefMasked: text("account_ref_masked"),
+  metadata:         jsonb("metadata").notNull().$type<Record<string, unknown>>().default({}),
+}, (t) => ({
+  idxEaeUserId:      index("idx_eae_user_id").on(t.userId),
+  idxEaeTradePlanId: index("idx_eae_trade_plan_id").on(t.tradePlanId),
+  idxEaeOccurredAt:  index("idx_eae_occurred_at").on(t.occurredAt),
+}));
+
+export type ExecutionAuditEventRow    = typeof executionAuditEvents.$inferSelect;
+export type InsertExecutionAuditEvent = typeof executionAuditEvents.$inferInsert;

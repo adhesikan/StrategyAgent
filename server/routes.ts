@@ -99,6 +99,8 @@ import { registerPortfolioAnalyticsRoutes } from "./routes/portfolio-analytics";
 import { registerResearchGoalRoutes } from "./routes/research-goals";
 import { registerTradePlanningRoutes } from "./routes/trade-planning";
 import { registerTradePlanRoutes } from "./routes/trade-plans";
+import { registerExecutionPreflightRoutes, ensureExecutionPreflightTables } from "./routes/execution-preflight";
+import { isExecutionEnabled, getExecutionDisabledResponse } from "./services/execution-policy";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
 const isAdmin: RequestHandler = async (req, res, next) => {
@@ -287,6 +289,9 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // Ensure trade_plan_activity table at startup (Sprint 2.7.6)
   { const { ensureTradePlanActivityTable } = await import("./services/trade-plan-lifecycle-service");
     ensureTradePlanActivityTable().catch((e: any) => console.error("[trade-plan-lifecycle] startup table init failed:", e?.message)); }
+  // Sprint 2.8.0 — Execution Preflight routes + table init
+  registerExecutionPreflightRoutes(app, isAuthenticated);
+  ensureExecutionPreflightTables().catch((e: any) => console.error("[execution-preflight] startup table init failed:", e?.message));
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)
@@ -2894,6 +2899,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.post("/api/broker/positions/:symbol/close", isAuthenticated, async (req, res) => {
     try {
+      // Sprint 2.8.0: Global execution kill switch
+      if (!isExecutionEnabled()) {
+        return res.status(503).json(getExecutionDisabledResponse());
+      }
       const symbol = String(req.params.symbol || "").toUpperCase();
       if (!symbol) return res.status(400).json({ error: "symbol is required" });
 
@@ -2988,6 +2997,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.post("/api/broker/orders", isAuthenticated, async (req, res) => {
     try {
+      // Sprint 2.8.0: Global execution kill switch
+      if (!isExecutionEnabled()) {
+        return res.status(503).json(getExecutionDisabledResponse());
+      }
       const { accountId, symbol, side, quantity, orderType, price, stopPrice, duration, orderClass, optionSymbol, optionSide, extendedHours } = req.body;
 
       if (!accountId || !symbol || !side || !quantity) {
@@ -3080,6 +3093,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   // ─── Stock Trade Ticket (Place Equity with optional OTOCO bracket) ──
   app.post("/api/trade/place-equity", isAuthenticatedOrPartner, async (req, res) => {
     try {
+      // Sprint 2.8.0: Global execution kill switch
+      if (!isExecutionEnabled()) {
+        return res.status(503).json(getExecutionDisabledResponse());
+      }
       const { accountId, symbol, side, quantity, orderType, price, duration, bracketTarget, bracketStop, setupId, setupScore, rewardRisk, overrideGuardrails, extendedHours } = req.body;
 
       if (!accountId || !symbol || !quantity) {
@@ -3532,6 +3549,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.post("/api/trade/place", isAuthenticated, async (req, res) => {
     try {
+      // Sprint 2.8.0: Global execution kill switch
+      if (!isExecutionEnabled()) {
+        return res.status(503).json(getExecutionDisabledResponse());
+      }
       const {
         accountId, symbol, optionSymbol, optionSide, quantity,
         orderType, limitPrice, duration, strike, expiration, optionType,
@@ -4827,6 +4848,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
 
   app.post("/api/snaptrade/orders", isAuthenticated, async (req, res) => {
     try {
+      // Sprint 2.8.0: Global execution kill switch
+      if (!isExecutionEnabled()) {
+        return res.status(503).json(getExecutionDisabledResponse());
+      }
       const userId = req.session.userId!;
       const { accountId, symbol, action, orderType, quantity, price, stopPrice, timeInForce } = req.body;
       const { placeSnaptradeOrder, isSnaptradeConfigured } = require("./snaptrade");

@@ -1,0 +1,3239 @@
+# Sprint 2.8.0 — Execution Architecture, Compliance & Broker Preflight
+
+PRODUCT:
+VCP Trader AI
+
+CURRENT PHASE:
+Phase 2.8 — Broker-Assisted Execution
+
+CURRENT SPRINT:
+2.8.0 — Execution Architecture, Compliance & Broker Preflight
+
+CURRENT RELEASE STATE:
+
+✓ Research + Trade Planning v1.0 deployed successfully
+✓ Sprint 2.7.7 release-certification framework complete
+✓ Sprint 2.7.7A deployment blocker resolved
+✓ Production deployment now succeeds
+✓ Trade Intelligence & Planning v1.0 architecture established
+✓ Broker-assisted execution implementation is now allowed to begin at
+  ARCHITECTURE / PREFLIGHT level only
+
+IMPORTANT:
+
+This sprint MUST NOT submit broker orders.
+
+======================================================================
+CORE ARCHITECTURE CONTRACT
+======================================================================
+
+The platform flow is:
+
+Opportunity Intelligence
+        ↓
+Research Workspace
+        ↓
+Goals / Portfolio Context
+        ↓
+Trade Planning
+        ↓
+Equity / Options Planning
+        ↓
+Contract Research
+        ↓
+Risk & Scenario Analysis
+        ↓
+Trade Plan
+        ↓
+Lifecycle Monitoring
+        ↓
+Execution Preflight
+        ↓
+Future Order Preparation
+        ↓
+Future Explicit User Confirmation
+        ↓
+Future Broker Submission
+
+Sprint 2.8.0 implements ONLY:
+
+Execution Architecture
++
+Execution Safety Model
++
+Broker Preflight
++
+Execution Policy / Compliance Boundaries
++
+Auditability
+
+No order submission.
+
+======================================================================
+PERMANENT EXECUTION PRINCIPLE
+======================================================================
+
+No broker order may ever originate directly from:
+
+Scanner
+
+Opportunity Intelligence
+
+Research Workspace
+
+AI response
+
+Trade Planning Context
+
+Options Strategy Matching
+
+Contract Research
+
+Risk Analysis
+
+Lifecycle Monitoring
+
+An executable path must originate from a USER-SAVED Trade Plan and pass
+through explicit execution validation.
+
+======================================================================
+ROADMAP DISCIPLINE
+======================================================================
+
+DO NOT implement:
+
+- actual broker order submission
+- broker POST order calls
+- live order placement
+- market order placement
+- limit order placement
+- multi-leg order submission
+- one-click execution
+- automated execution
+- auto trading
+- autonomous agents
+- auto roll
+- auto close
+- auto rebalance
+- order replacement
+- cancellation workflow
+- fill monitoring
+- post-trade journal
+- suitability scoring
+- personalized recommendation logic
+
+DO NOT modify:
+
+- Opportunity Intelligence scoring
+- Research ranking
+- Trade Planning qualification
+- Strategy Matching logic
+- Contract Research methodology
+- Risk Analysis methodology
+- Trade Plan saved snapshots
+
+This sprint is PREFLIGHT and SAFETY only.
+
+======================================================================
+1. ARCHITECTURE AUDIT FIRST
+======================================================================
+
+Before coding inspect:
+
+all broker-related routes
+
+especially:
+
+POST /api/broker/orders
+
+Tradier integration
+
+TradeStation integration
+
+SnapTrade integration
+
+broker connection services
+
+OAuth/token handling
+
+broker account lookup
+
+broker positions
+
+broker balances
+
+broker buying power
+
+broker order models
+
+broker permissions / options level if available
+
+existing InstaTrade code
+
+existing order preview code
+
+existing order confirmation code
+
+existing order history
+
+existing execution services
+
+existing order idempotency
+
+existing client order IDs
+
+existing duplicate-submit protection
+
+existing retry behavior
+
+existing broker error normalization
+
+existing rate-limit handling
+
+existing broker sandbox support
+
+TradePlan
+
+TradePlanLifecycleResult
+
+TradeRiskScenarioResult
+
+Options Contract Research
+
+Equity Planning
+
+Portfolio positions
+
+Broker Sync
+
+Platform Health
+
+Structured Logging
+
+Security documentation
+
+Operations Manual
+
+Report:
+
+A. Every existing order-capable endpoint
+B. Every broker API method capable of placing/modifying/canceling orders
+C. Which ones are currently reachable by client UI
+D. Which ones are legacy
+E. Which ones are production active
+F. Existing idempotency
+G. Existing duplicate-order protection
+H. Existing account validation
+I. Existing buying-power validation
+J. Existing options permission checks
+K. Existing quote freshness checks
+L. Existing confirmation model
+M. Existing audit log
+N. Existing execution kill switch
+O. Existing sandbox capability
+P. Security gaps
+Q. Compliance-sensitive terminology
+R. Code that must be isolated before later 2.8.x work
+
+Do not code until audit is complete.
+
+======================================================================
+2. CLASSIFY EXISTING EXECUTION COMPONENTS
+======================================================================
+
+Every existing execution-related component must be classified:
+
+SAFE REUSABLE FOUNDATION
+
+REQUIRES HARDENING BEFORE REUSE
+
+SANDBOX ONLY
+
+LEGACY / ISOLATE
+
+MUST DISABLE BEFORE NEW EXECUTION FLOW
+
+FUTURE 2.8.1 ORDER PREPARATION
+
+FUTURE 2.8.5 BROKER SUBMISSION
+
+Do not silently reuse legacy order code.
+
+======================================================================
+3. EXISTING POST /api/broker/orders
+======================================================================
+
+Audit this endpoint rigorously.
+
+Determine:
+
+who can call it
+
+what authorization exists
+
+what account ID source it trusts
+
+whether userId/account ownership is verified
+
+whether it accepts arbitrary client order payloads
+
+whether it revalidates quote freshness
+
+whether it validates buying power
+
+whether it validates positions
+
+whether it validates options permissions
+
+whether it prevents duplicate submission
+
+whether it requires explicit confirmation
+
+whether it logs safely
+
+whether it can operate in production
+
+whether UI currently reaches it
+
+This endpoint must NOT automatically become the new execution architecture.
+
+If it is insufficiently guarded:
+
+isolate it behind a feature flag / environment gate / internal policy
+without breaking existing non-order broker functionality.
+
+Do not delete useful code blindly.
+
+======================================================================
+4. EXECUTION FEATURE FLAG
+======================================================================
+
+Create a canonical execution kill switch.
+
+Suggested:
+
+BROKER_EXECUTION_ENABLED=false
+
+Default:
+
+FALSE
+
+Production default:
+
+FALSE
+
+The new execution architecture must treat:
+
+false
+missing
+invalid
+
+as execution disabled.
+
+No order-capable code should become reachable merely because broker OAuth
+is connected.
+
+======================================================================
+5. PROVIDER-SPECIFIC EXECUTION FLAGS
+======================================================================
+
+If needed support:
+
+TRADIER_EXECUTION_ENABLED=false
+
+TRADESTATION_EXECUTION_ENABLED=false
+
+Possibly future providers.
+
+Global execution flag must override provider flag.
+
+Example:
+
+BROKER_EXECUTION_ENABLED=false
++
+TRADIER_EXECUTION_ENABLED=true
+
+→ execution remains DISABLED.
+
+Document precedence.
+
+======================================================================
+6. ENVIRONMENT EXECUTION POLICY
+======================================================================
+
+Create canonical environment modes.
+
+Suggested:
+
+DISABLED
+
+SANDBOX
+
+PRODUCTION
+
+Example variable:
+
+BROKER_EXECUTION_MODE=disabled|sandbox|production
+
+Default:
+
+disabled
+
+Production mode must require additional safeguards.
+
+Do not infer production from NODE_ENV alone.
+
+======================================================================
+7. EXECUTION CAPABILITY MODEL
+======================================================================
+
+Create canonical shared type.
+
+Suggested:
+
+ExecutionCapability {
+  executionEnabled
+  executionMode
+
+  brokerConnected
+  provider
+  accountResolved
+  accountIdMasked?
+
+  supportsEquityOrders
+  supportsOptionsOrders
+  supportsMultiLegOrders
+
+  optionsPermissionLevel?
+  buyingPowerAvailable?
+  positionDataAvailable
+
+  quoteValidationAvailable
+  orderIdempotencyAvailable
+  explicitConfirmationRequired
+
+  blockers[]
+  warnings[]
+  lastCheckedAt
+}
+
+Do not expose secrets or raw account IDs unnecessarily.
+
+======================================================================
+8. EXECUTION PREFLIGHT MODEL
+======================================================================
+
+Create canonical:
+
+ExecutionPreflightResult {
+  id
+  tradePlanId
+  userId
+
+  evaluatedAt
+
+  overallStatus
+
+  tradePlanValidation
+  lifecycleValidation
+  freshnessValidation
+  brokerValidation
+  accountValidation
+  permissionsValidation
+  buyingPowerValidation
+  positionValidation
+  quoteValidation
+  structureValidation
+  riskValidation
+  confirmationRequirements
+
+  blockers[]
+  warnings[]
+  limitations[]
+
+  validUntil?
+  methodologyVersion
+}
+
+Statuses:
+
+PASS
+
+FAIL
+
+REQUIRES_REVIEW
+
+UNAVAILABLE
+
+EXECUTION_DISABLED
+
+Do NOT use:
+
+READY_TO_TRADE
+
+APPROVED
+
+RECOMMENDED
+
+======================================================================
+9. PREFLIGHT MUST START FROM SAVED TRADE PLAN
+======================================================================
+
+Mandatory:
+
+Execution preflight requires:
+
+tradePlanId
+
+The trade plan must:
+
+exist
+
+belong to authenticated user
+
+not be archived
+
+contain valid planning context
+
+contain selected structure
+
+have risk analysis if required
+
+No direct:
+
+symbol → broker order
+
+path in new architecture.
+
+======================================================================
+10. TRADE PLAN VALIDATION
+======================================================================
+
+Validate:
+
+plan exists
+
+user owns it
+
+plan type supported
+
+plan not archived
+
+plan has current version
+
+selected structure exists
+
+required snapshots exist
+
+risk snapshot exists where required
+
+No silent mutation.
+
+======================================================================
+11. LIFECYCLE VALIDATION
+======================================================================
+
+Consume TradePlanLifecycleResult.
+
+Block or require review when:
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+UNKNOWN
+
+Potentially:
+
+REQUIRES_REVIEW
+
+depending policy.
+
+Do not automatically override lifecycle state.
+
+Example:
+
+THESIS_INVALIDATED
+
+→ Preflight FAIL
+
+Reason:
+
+Saved research invalidation condition currently observed.
+
+Do NOT say:
+
+Exit position.
+
+======================================================================
+12. DATA FRESHNESS POLICY
+======================================================================
+
+Execution requires stricter freshness than research.
+
+Define canonical thresholds.
+
+At minimum:
+
+underlying quote freshness
+
+option quote freshness
+
+account data freshness
+
+buying power freshness
+
+position freshness
+
+broker connection freshness
+
+risk analysis freshness
+
+trade-plan lifecycle freshness
+
+Do not reuse loose research freshness thresholds blindly.
+
+Document exact thresholds.
+
+======================================================================
+13. QUOTE FRESHNESS
+======================================================================
+
+Preflight must revalidate quotes.
+
+For equity:
+
+current underlying quote
+
+For options:
+
+every selected contract leg
+
+Quote validation should check:
+
+timestamp
+
+bid
+
+ask
+
+midpoint
+
+last where relevant
+
+stale
+
+crossed market
+
+zero bid
+
+invalid spread
+
+No order price construction yet.
+
+Just validate quote quality.
+
+======================================================================
+14. OPTIONS LEG REVALIDATION
+======================================================================
+
+For an options Trade Plan:
+
+verify each contract still exists.
+
+Validate:
+
+contract symbol
+
+expiration
+
+strike
+
+option type
+
+quote availability
+
+expiry not passed
+
+quote current
+
+selected structure still internally valid
+
+Do not substitute expired/missing contract.
+
+Return FAIL / review required.
+
+======================================================================
+15. EQUITY SYMBOL REVALIDATION
+======================================================================
+
+For equity plans:
+
+verify symbol remains tradable/known to provider where supported.
+
+No order quantity calculation yet beyond existing planning snapshot.
+
+No broker submission.
+
+======================================================================
+16. BROKER CONNECTION VALIDATION
+======================================================================
+
+Verify:
+
+broker connected
+
+token/session valid
+
+reauth not required
+
+provider available
+
+No order request.
+
+If disconnected:
+
+Execution Preflight = FAIL / UNAVAILABLE.
+
+CTA later:
+
+Connect Broker
+
+not:
+
+Trade Now.
+
+======================================================================
+17. ACCOUNT RESOLUTION
+======================================================================
+
+Server determines account.
+
+Do NOT trust arbitrary client account ID.
+
+If user has multiple accounts:
+
+return eligible account choices only if architecture supports them.
+
+Client may choose among server-authorized accounts.
+
+Every account must belong to authenticated broker connection.
+
+======================================================================
+18. ACCOUNT OWNERSHIP
+======================================================================
+
+Critical.
+
+Verify selected account belongs to authenticated user/broker connection.
+
+Never allow client to submit arbitrary external account ID and have server
+place future order against it.
+
+Cross-user/internal account mismatch must fail.
+
+======================================================================
+19. BROKER PERMISSIONS
+======================================================================
+
+Audit whether provider exposes:
+
+equity trading permission
+
+options permission
+
+options level
+
+multi-leg permission
+
+short option permission
+
+margin permission
+
+If available:
+
+normalize.
+
+Create:
+
+BrokerPermissions {
+  equityTrading
+  optionsTrading
+  optionsLevel?
+  multiLeg
+  margin?
+  shortOptions?
+  source
+  checkedAt
+}
+
+If unavailable:
+
+UNAVAILABLE
+
+Do not guess.
+
+======================================================================
+20. STRATEGY VS OPTIONS LEVEL
+======================================================================
+
+Create future-safe policy mapping.
+
+Example conceptually:
+
+long options
+
+covered call
+
+cash-secured put
+
+vertical spreads
+
+iron condor
+
+calendar
+
+etc.
+
+may require different broker option permissions.
+
+Do not invent provider-specific level mappings without verifying existing
+provider docs/code.
+
+Use provider abstraction.
+
+======================================================================
+21. BUYING POWER VALIDATION
+======================================================================
+
+Audit existing balance/account APIs.
+
+For equity:
+
+estimate scenario capital requirement
+
+compare with broker-reported available buying power where valid.
+
+For options:
+
+use research risk/capital snapshot as estimate.
+
+Important:
+
+broker buying-power calculation is authoritative.
+
+Research calculations are not.
+
+If provider cannot supply buying power:
+
+UNAVAILABLE
+
+Do not fake.
+
+======================================================================
+22. CASH-SECURED PUT VALIDATION
+======================================================================
+
+Future execution preflight should verify broker/account capital support.
+
+Research estimate:
+
+strike × multiplier × contracts
+
+Broker value remains authoritative.
+
+Do not submit order.
+
+======================================================================
+23. COVERED CALL POSITION VALIDATION
+======================================================================
+
+Critical.
+
+Before future execution of covered call:
+
+verify live broker position contains sufficient shares.
+
+Do not trust saved portfolio snapshot alone.
+
+For 1 standard contract:
+
+normally 100 shares subject to actual contract multiplier.
+
+Use normalized multiplier.
+
+If insufficient coverage:
+
+FAIL.
+
+Never allow new architecture to convert covered call to naked short call.
+
+======================================================================
+24. PROTECTIVE PUT / COLLAR POSITION VALIDATION
+======================================================================
+
+Validate underlying shares where structure requires them.
+
+If user no longer holds shares:
+
+preflight fails or requires review.
+
+No strategy substitution.
+
+======================================================================
+25. MULTI-LEG STRUCTURE VALIDATION
+======================================================================
+
+Validate structure from saved contract research.
+
+Ensure:
+
+all legs present
+
+expirations valid
+
+strike ordering valid
+
+contract multipliers compatible
+
+leg ratios valid
+
+provider supports multi-leg structure
+
+Do not construct order payload yet.
+
+======================================================================
+26. TRADE PLAN VS CURRENT STRUCTURE
+======================================================================
+
+Preflight compares saved structure with live/current market availability.
+
+Return:
+
+UNCHANGED
+
+CHANGED
+
+UNAVAILABLE
+
+Do not automatically replace contracts.
+
+======================================================================
+27. RISK REVALIDATION
+======================================================================
+
+Use saved TradeRiskScenarioResult.
+
+Determine whether risk analysis is stale.
+
+If stale:
+
+require re-run risk analysis before future order preparation.
+
+Do NOT auto-run if it would silently change saved user decision.
+
+Offer:
+
+Re-run Risk Analysis
+
+Then user reviews updated output.
+
+======================================================================
+28. PLANNING CONSTRAINT VALIDATION
+======================================================================
+
+Ensure current known structure does not exceed user-selected constraints.
+
+Examples:
+
+max scenario loss
+
+scenario capital
+
+If exceeds:
+
+FAIL / REQUIRES_REVIEW
+
+Avoid:
+
+unsuitable
+
+too risky for you
+
+======================================================================
+29. EXECUTION PREFLIGHT BLOCKERS
+======================================================================
+
+Create canonical blockers.
+
+Examples:
+
+EXECUTION_DISABLED
+
+BROKER_NOT_CONNECTED
+
+BROKER_NEEDS_REAUTH
+
+ACCOUNT_NOT_RESOLVED
+
+ACCOUNT_NOT_OWNED
+
+EQUITY_PERMISSION_UNAVAILABLE
+
+OPTIONS_PERMISSION_INSUFFICIENT
+
+MULTILEG_NOT_SUPPORTED
+
+BUYING_POWER_UNAVAILABLE
+
+INSUFFICIENT_BUYING_POWER
+
+POSITION_NOT_CONFIRMED
+
+INSUFFICIENT_COVERED_SHARES
+
+QUOTE_STALE
+
+QUOTE_INVALID
+
+CONTRACT_EXPIRED
+
+CONTRACT_UNAVAILABLE
+
+RISK_ANALYSIS_STALE
+
+TRADE_PLAN_STALE
+
+THESIS_INVALIDATED
+
+PLAN_REQUIRES_REVIEW
+
+STRUCTURE_CHANGED
+
+UNKNOWN_CRITICAL_STATE
+
+No recommendation semantics.
+
+======================================================================
+30. WARNINGS VS BLOCKERS
+======================================================================
+
+Differentiate.
+
+BLOCKER:
+
+future order cannot continue.
+
+WARNING:
+
+user should review but future policy may permit continuation.
+
+Examples warning:
+
+earnings within short period
+
+wide but still acceptable spread
+
+market near close
+
+research changed but not invalidated
+
+Do not create vague severity score.
+
+======================================================================
+31. PREFLIGHT EXPIRATION
+======================================================================
+
+Preflight results must expire.
+
+Example:
+
+validUntil
+
+based on shortest critical freshness window.
+
+An old PASS may not be reused indefinitely.
+
+No execution may later rely on stale preflight.
+
+======================================================================
+32. NO PERSISTENT "APPROVAL"
+======================================================================
+
+Do not store:
+
+approved=true
+
+Instead:
+
+preflight evaluated at timestamp
+
+validUntil
+
+current status
+
+Future order preparation must revalidate as needed.
+
+======================================================================
+33. EXECUTION AUDIT EVENT MODEL
+======================================================================
+
+Create canonical audit-event architecture.
+
+Suggested:
+
+ExecutionAuditEvent {
+  id
+  userId
+  tradePlanId
+  eventType
+  occurredAt
+  provider?
+  accountRefMasked?
+  metadata
+}
+
+Initial event types:
+
+PREFLIGHT_STARTED
+
+PREFLIGHT_COMPLETED
+
+PREFLIGHT_FAILED
+
+BROKER_CONNECTION_CHECKED
+
+ACCOUNT_VALIDATED
+
+PERMISSIONS_CHECKED
+
+BUYING_POWER_CHECKED
+
+POSITION_CHECKED
+
+QUOTE_VALIDATED
+
+RISK_VALIDATED
+
+EXECUTION_DISABLED_ATTEMPT
+
+No order event types yet unless documenting future enum extension.
+
+======================================================================
+34. AUDIT IMMUTABILITY
+======================================================================
+
+Audit events should be append-only.
+
+Do not silently edit historical execution-preflight events.
+
+No secrets.
+
+No full account IDs.
+
+No raw broker payload.
+
+======================================================================
+35. EXECUTION INTENT MODEL — FUTURE READY
+======================================================================
+
+Define but DO NOT activate future model.
+
+Suggested:
+
+ExecutionIntent {
+  id
+  userId
+  tradePlanId
+  preflightId
+  selectedAccountRef
+
+  structureType
+
+  createdAt
+  expiresAt
+
+  confirmationState
+
+  status
+}
+
+This may belong in 2.8.1.
+
+In 2.8.0:
+
+document contract only unless needed for architecture tests.
+
+No order payload.
+
+======================================================================
+36. EXPLICIT CONFIRMATION MODEL
+======================================================================
+
+Design future confirmation requirements.
+
+Examples:
+
+user must review:
+
+symbol
+
+strategy
+
+legs
+
+quantity
+
+estimated price
+
+estimated capital
+
+max loss
+
+broker account
+
+expiration
+
+warnings
+
+Then explicit action:
+
+Confirm Order Preparation
+
+Later:
+
+Confirm & Submit
+
+Do not implement submission.
+
+======================================================================
+37. CONFIRMATION MUST BE SHORT-LIVED
+======================================================================
+
+Future confirmation cannot be reusable indefinitely.
+
+Define future TTL.
+
+Quote changes or preflight expiration invalidate confirmation.
+
+Document now.
+
+======================================================================
+38. DUPLICATE SUBMISSION ARCHITECTURE
+======================================================================
+
+Design idempotency before orders exist.
+
+Future order submission must have:
+
+clientIntentId
+
+server executionIntentId
+
+broker clientOrderId where provider supports it
+
+idempotency key
+
+submission fingerprint
+
+duplicate-submit lock
+
+persistent submission record
+
+Do not wait until 2.8.5 to think about this.
+
+======================================================================
+39. ORDER FINGERPRINT DESIGN
+======================================================================
+
+Future deterministic fingerprint should include:
+
+user
+
+broker connection
+
+account
+
+tradePlan
+
+structure
+
+legs
+
+quantity
+
+order characteristics
+
+execution intent version
+
+Do not include secrets.
+
+Document exact future approach.
+
+Do not submit anything.
+
+======================================================================
+40. CONCURRENCY GUARD DESIGN
+======================================================================
+
+Future:
+
+two clicks on Submit
+
+must never create two broker orders.
+
+Design:
+
+persistent lock / atomic state transition
+
+not merely in-memory lock.
+
+2.8.0 should specify and possibly create reusable infrastructure if safe.
+
+No broker calls yet.
+
+======================================================================
+41. EXECUTION STATE MACHINE
+======================================================================
+
+Design canonical future state machine.
+
+Suggested:
+
+DRAFT_INTENT
+
+PREFLIGHT_REQUIRED
+
+PREFLIGHT_PASSED
+
+CONFIRMATION_REQUIRED
+
+CONFIRMED
+
+SUBMISSION_IN_PROGRESS
+
+SUBMITTED
+
+BROKER_ACCEPTED
+
+PARTIALLY_FILLED
+
+FILLED
+
+REJECTED
+
+CANCEL_PENDING
+
+CANCELLED
+
+EXPIRED
+
+FAILED
+
+Do NOT activate broker-dependent transitions now.
+
+Document allowed transitions.
+
+======================================================================
+42. NO STATE SKIPPING
+======================================================================
+
+Future architecture must not permit:
+
+DRAFT → SUBMITTED
+
+or:
+
+PREFLIGHT_REQUIRED → BROKER_ACCEPTED
+
+State machine transitions must be enforced server-side.
+
+Add invariant tests now where appropriate.
+
+======================================================================
+43. EXECUTION POLICY ENGINE
+======================================================================
+
+Create a small deterministic execution policy layer.
+
+Suggested:
+
+ExecutionPolicy {
+  executionMode
+  requireTradePlan
+  requireFreshLifecycle
+  requireFreshQuotes
+  requireRiskAnalysis
+  requireBrokerConnection
+  requireAccountValidation
+  requirePermissions
+  requireBuyingPower
+  requirePositionValidation
+  requireExplicitConfirmation
+}
+
+Default all safety requirements:
+
+TRUE.
+
+Do not allow client to disable safeguards.
+
+======================================================================
+44. USER CANNOT OVERRIDE CORE SAFETY
+======================================================================
+
+Client cannot submit:
+
+skipQuoteValidation=true
+
+skipBuyingPower=true
+
+skipPermissions=true
+
+forceExecute=true
+
+ignoreInvalidation=true
+
+Any such fields must be rejected/ignored.
+
+Add tests.
+
+======================================================================
+45. ADMIN EXECUTION KILL SWITCH
+======================================================================
+
+Platform operator needs immediate disable ability through environment or
+safe admin config architecture.
+
+For this sprint:
+
+environment kill switch is mandatory.
+
+Optional admin display:
+
+Execution:
+DISABLED
+
+Do NOT add a button that can enable production execution without deployment/
+secure configuration review unless architecture explicitly supports it.
+
+======================================================================
+46. PLATFORM HEALTH
+======================================================================
+
+Add execution readiness section/card.
+
+Possible:
+
+Execution Preflight
+
+State:
+
+DISABLED
+
+SANDBOX_READY
+
+DEGRADED
+
+NOT_READY
+
+Do NOT show READY_FOR_LIVE_TRADING language.
+
+Metrics:
+
+preflightRequests
+
+preflightPasses
+
+preflightFailures
+
+brokerConnectionsAvailable
+
+permissionsChecks
+
+buyingPowerChecks
+
+quoteChecks
+
+lastPreflightAt
+
+executionMode
+
+Never expose:
+
+account IDs
+
+balances
+
+buying power amounts
+
+positions
+
+user identities
+
+======================================================================
+47. EXECUTION READINESS DASHBOARD
+======================================================================
+
+Admin Platform Operations Center should answer:
+
+Is execution globally disabled?
+
+Which brokers support future execution?
+
+Are sandbox credentials/config available?
+
+Are quote services healthy?
+
+Are broker account APIs healthy?
+
+Is audit persistence healthy?
+
+Are critical execution prerequisites implemented?
+
+No user/private details.
+
+======================================================================
+48. BROKER ABSTRACTION
+======================================================================
+
+Define canonical broker execution interface without invoking orders.
+
+Suggested:
+
+BrokerExecutionAdapter {
+  getConnectionStatus()
+  listAccounts()
+  getAccountCapabilities()
+  getBuyingPower()
+  getPositions()
+  validateContracts()
+  getQuote()
+  getExecutionCapabilities()
+
+  // FUTURE ONLY:
+  prepareOrder? 
+  submitOrder?
+  cancelOrder?
+}
+
+Do not expose future methods publicly yet if unsafe.
+
+Reuse existing provider adapters where possible.
+
+======================================================================
+49. PROVIDER NORMALIZATION
+======================================================================
+
+Normalize Tradier and TradeStation into common:
+
+BrokerAccount
+
+BrokerPermissions
+
+BrokerBalanceContext
+
+BrokerPositionContext
+
+BrokerExecutionCapabilities
+
+BrokerQuoteValidation
+
+Do not duplicate entire broker stack.
+
+======================================================================
+50. SNAPTRADE
+======================================================================
+
+Audit SnapTrade carefully.
+
+Determine:
+
+current role
+
+supported brokers
+
+whether execution is enabled in existing integration
+
+whether current SDK vulnerability affects execution path
+
+Do not expand SnapTrade execution in this sprint.
+
+If optional/read-only:
+
+keep isolated.
+
+======================================================================
+51. SANDBOX FIRST
+======================================================================
+
+Create explicit policy:
+
+All future broker-order development must first operate in SANDBOX.
+
+Production submission cannot be enabled until sandbox certification passes.
+
+Document provider sandbox availability:
+
+Tradier
+
+TradeStation
+
+others if present.
+
+Do not place sandbox orders yet unless strictly required only for provider
+capability discovery and separately approved.
+
+Prefer no orders in 2.8.0.
+
+======================================================================
+52. BROKER PREFLIGHT UI
+======================================================================
+
+Create user-facing Preflight panel from Trade Plan.
+
+Possible CTA:
+
+Check Broker Readiness
+
+NOT:
+
+Place Trade
+
+Panel:
+
+Execution Disabled / Sandbox / Future Execution
+
+Broker Connection
+
+Account
+
+Permissions
+
+Buying Power Availability
+
+Position Requirements
+
+Quote Freshness
+
+Risk Analysis Freshness
+
+Trade Plan Lifecycle
+
+Blockers
+
+Warnings
+
+Future Next Step
+
+No order fields.
+
+======================================================================
+53. TRADE PLAN INTEGRATION
+======================================================================
+
+From /trade-plans/:id:
+
+replace:
+
+Order Preparation — Upcoming
+
+with:
+
+Execution Preflight
+
+ONLY if appropriate.
+
+CTA:
+
+Check Execution Preconditions
+
+This performs NO order submission.
+
+If execution global flag false:
+
+still allow safe readiness check if policy permits.
+
+Clearly show:
+
+Order submission remains disabled.
+
+======================================================================
+54. PREFLIGHT API
+======================================================================
+
+Suggested authenticated routes:
+
+POST /api/trade-plans/:id/execution/preflight
+
+GET /api/trade-plans/:id/execution/preflight
+
+GET /api/execution/capabilities
+
+GET /api/execution/health
+
+Use current route conventions.
+
+Static-before-dynamic where relevant.
+
+No:
+
+POST /execution/submit
+
+in this sprint.
+
+======================================================================
+55. LEGACY ORDER ROUTE GUARD
+======================================================================
+
+If existing:
+
+POST /api/broker/orders
+
+is still active:
+
+add protective controls based on audit.
+
+At minimum consider:
+
+global execution flag
+
+server-side ownership
+
+environment mode
+
+explicit policy
+
+Do not break legitimate test/sandbox behavior unnecessarily.
+
+But the existence of legacy order route must not undermine the new kill switch.
+
+Add regression test proving when:
+
+BROKER_EXECUTION_ENABLED=false
+
+order-capable legacy endpoints cannot submit.
+
+======================================================================
+56. NO-ORDER NETWORK INVARIANT
+======================================================================
+
+Create tests that mock broker adapters and assert:
+
+running any new 2.8.0:
+
+preflight
+
+capability
+
+health
+
+UI readiness
+
+does NOT call:
+
+placeOrder
+
+submitOrder
+
+replaceOrder
+
+cancelOrder
+
+or equivalent order-mutating broker methods.
+
+This is mandatory.
+
+======================================================================
+57. COMPLIANCE LANGUAGE
+======================================================================
+
+Use:
+
+Execution Preflight
+
+Broker Readiness
+
+Account Capability
+
+Quote Validation
+
+Planning Constraint
+
+Execution Blocker
+
+Future Order Preparation
+
+Avoid:
+
+Trade Approved
+
+Ready to Trade
+
+Recommended Order
+
+Safe to Trade
+
+Guaranteed Execution
+
+Best Broker
+
+Best Order
+
+Canonical disclaimer:
+
+"Execution Preflight checks technical and account prerequisites that
+would need to be satisfied before a future broker order could be prepared.
+A passing preflight is not an investment recommendation, suitability
+determination, guarantee of execution, or instruction to transact."
+
+======================================================================
+58. OPTIONS RISK / BROKER DISCLOSURE
+======================================================================
+
+For options execution preflight:
+
+include reminder that broker permissions and buying-power requirements are
+broker-controlled.
+
+Research calculations may differ from broker requirements.
+
+Broker-reported requirements are authoritative at execution time.
+
+======================================================================
+59. QUOTE DISCLOSURE
+======================================================================
+
+"Quotes may change before any future order is submitted. Execution will
+require fresh quote validation."
+
+No claim that displayed price will be executable.
+
+======================================================================
+60. SECURITY
+======================================================================
+
+Critical.
+
+All APIs authenticated.
+
+Session-derived userId.
+
+Cross-user Trade Plan:
+
+404.
+
+Broker account IDs resolved server-side.
+
+No arbitrary account submission.
+
+No broker tokens in responses.
+
+No raw OAuth secrets.
+
+No API keys.
+
+No buying power amounts in logs.
+
+No positions in admin metrics.
+
+No raw broker payload logging.
+
+======================================================================
+61. ENCRYPTION / TOKEN STORAGE
+======================================================================
+
+Audit:
+
+broker token storage
+
+BROKER_TOKEN_KEY usage
+
+encryption at rest
+
+refresh token handling
+
+token expiry
+
+token revocation
+
+No token-storage redesign unless security deficiency found.
+
+P0/P1 security gaps must be fixed.
+
+======================================================================
+62. AUDIT LOG SECURITY
+======================================================================
+
+Execution audit logs must not contain:
+
+broker access token
+
+refresh token
+
+account full ID
+
+capital/balance values unless intentionally persisted in secured domain data
+
+raw portfolio
+
+user password
+
+session token
+
+======================================================================
+63. LOGGING
+======================================================================
+
+Safe events:
+
+execution_preflight_started
+
+execution_preflight_completed
+
+execution_preflight_failed
+
+broker_connection_checked
+
+broker_account_validated
+
+broker_permissions_checked
+
+broker_buying_power_checked
+
+broker_position_validated
+
+execution_quote_validated
+
+execution_disabled_attempt
+
+Safe metadata:
+
+provider
+
+planType
+
+status
+
+blockerCount
+
+warningCount
+
+hasFreshQuote
+
+hasPermissions
+
+durationMs
+
+No sensitive values.
+
+======================================================================
+64. DATABASE / PERSISTENCE
+======================================================================
+
+Create minimal persistence only if needed.
+
+Possible tables:
+
+execution_preflights
+
+execution_audit_events
+
+Do NOT create:
+
+broker_orders
+
+execution_fills
+
+unless already existing.
+
+Suggested execution_preflights:
+
+id
+user_id
+trade_plan_id
+provider
+status
+result_json
+evaluated_at
+valid_until
+created_at
+
+Audit retention/privacy.
+
+======================================================================
+65. PREFLIGHT IMMUTABILITY
+======================================================================
+
+Persisted preflight result represents state at evaluation time.
+
+Do not rewrite old preflight records.
+
+New evaluation creates new result or current pointer depending architecture.
+
+Audit trail preserved.
+
+======================================================================
+66. CACHE
+======================================================================
+
+Preflight should not be broadly cached because freshness matters.
+
+If cached:
+
+strict TTL
+
+user-scoped
+
+tradePlan-scoped
+
+broker-account-scoped
+
+invalidate on:
+
+quote expiration
+
+broker reconnect
+
+plan change
+
+risk re-run
+
+lifecycle change
+
+account change
+
+Never trust stale PASS.
+
+======================================================================
+67. PERFORMANCE
+======================================================================
+
+Preflight may require multiple broker reads.
+
+Avoid N+1.
+
+Potential parallel reads:
+
+connection
+
+account capabilities
+
+balances
+
+positions
+
+quotes
+
+where safe.
+
+No order calls.
+
+Measure:
+
+equity preflight latency
+
+options preflight latency
+
+warm/cold
+
+provider call count
+
+======================================================================
+68. PROVIDER FAILURE
+======================================================================
+
+If broker unavailable:
+
+preflight:
+
+UNAVAILABLE / FAIL
+
+not 500 where possible.
+
+If quote provider fails:
+
+quote validation unavailable.
+
+No fallback to stale unsafe data for execution readiness.
+
+======================================================================
+69. RATE LIMITS
+======================================================================
+
+Handle 429.
+
+No uncontrolled retry.
+
+No order call.
+
+Use clear blocker:
+
+BROKER_RATE_LIMITED
+
+or generic provider unavailable state.
+
+======================================================================
+70. TIMEOUTS
+======================================================================
+
+Bound broker calls.
+
+Timeout → preflight unavailable/fail.
+
+No request hangs.
+
+======================================================================
+71. MULTIPLE BROKER ACCOUNTS
+======================================================================
+
+If user has multiple eligible accounts:
+
+server returns authorized list.
+
+User selects.
+
+Selection validated on server.
+
+Do not assume preferred account silently for execution unless explicitly
+existing policy and disclosed.
+
+This is more important for execution than read-only portfolio sync.
+
+======================================================================
+72. ACCOUNT MASKING
+======================================================================
+
+User UI may display:
+
+Broker Name
+Account Type
+Masked identifier
+
+Example:
+
+••••1234
+
+Do not expose unnecessary full account identifiers.
+
+======================================================================
+73. BROKER ACCOUNT TYPE
+======================================================================
+
+Normalize if available:
+
+CASH
+
+MARGIN
+
+IRA
+
+ROTH_IRA
+
+OTHER
+
+Do not infer suitability.
+
+This may affect broker permissions/buying power.
+
+======================================================================
+74. MARKET HOURS CONTEXT
+======================================================================
+
+Audit existing market-hours service.
+
+Execution preflight should report:
+
+market open
+
+closed
+
+pre-market
+
+after-hours
+
+unknown
+
+Do not implement extended-hours order logic yet.
+
+Could be warning/blocker depending future policy.
+
+======================================================================
+75. TRADING HALT / SECURITY STATUS
+======================================================================
+
+If existing provider supports:
+
+tradable
+
+halted
+
+restricted
+
+disabled
+
+Expose as preflight validation.
+
+Do not invent if unavailable.
+
+Future order prep should block untradable security.
+
+======================================================================
+76. FRACTIONAL SHARES
+======================================================================
+
+Audit whether brokers support fractional equity orders.
+
+Do not implement fractional order prep.
+
+Document capability for 2.8.1/2.8.2.
+
+======================================================================
+77. OPTIONS MULTI-LEG SUPPORT
+======================================================================
+
+Audit actual provider support for:
+
+vertical
+
+iron condor
+
+calendar
+
+diagonal
+
+collar
+
+etc.
+
+Create capability matrix.
+
+Do not assume every research strategy can be submitted as native multi-leg
+order.
+
+Future alternatives must require user review.
+
+No decomposition in this sprint.
+
+======================================================================
+78. EXECUTION CAPABILITY MATRIX
+======================================================================
+
+Create documentation/table:
+
+Provider
+
+Equity
+
+Options
+
+Multi-Leg
+
+Fractional
+
+Market Order
+
+Limit Order
+
+Stop
+
+Sandbox
+
+Permissions API
+
+Buying Power API
+
+Positions API
+
+Quote API
+
+Only populate based on actual current integration capability/code or
+verified provider contracts already present.
+
+If unknown:
+
+UNKNOWN
+
+Do not guess.
+
+======================================================================
+79. QUALITY GATES
+======================================================================
+
+All permanent 2.7.7 quality gates remain mandatory.
+
+Run:
+
+npm run test:smoke
+
+npm run test:regression
+
+npm run test:integration
+
+npm run test:security
+
+npm run test:lifecycle
+
+npm run test:migrations
+
+npm run test:compliance
+
+npm run test:db
+
+npm run test:performance
+
+npm run test:invariants
+
+npm run test:idempotency
+
+npm run test:release
+
+Also add:
+
+npm run test:execution-preflight
+
+if useful.
+
+======================================================================
+80. EXECUTION-SPECIFIC TESTS
+======================================================================
+
+Target 175+ meaningful assertions where appropriate.
+
+Cover:
+
+execution globally disabled
+
+sandbox mode
+
+production mode parse
+
+provider-specific flag
+
+global override
+
+Trade Plan required
+
+cross-user plan
+
+archived plan
+
+lifecycle CURRENT
+
+REQUIRES_REVIEW
+
+THESIS_INVALIDATED
+
+DATA_STALE
+
+freshness
+
+equity quote
+
+options quotes
+
+stale quote
+
+crossed quote
+
+zero bid
+
+expired contract
+
+missing contract
+
+broker disconnected
+
+needs reauth
+
+account resolution
+
+unauthorized account
+
+multiple accounts
+
+permissions
+
+options level unavailable
+
+multi-leg capability
+
+buying power available
+
+buying power unavailable
+
+insufficient buying power
+
+covered-call shares sufficient
+
+covered-call shares insufficient
+
+protective put shares
+
+collar shares
+
+risk analysis fresh
+
+risk analysis stale
+
+planning constraint exceeded
+
+blockers
+
+warnings
+
+validUntil
+
+preflight expiration
+
+execution audit event
+
+log redaction
+
+account masking
+
+no raw token
+
+no full account ID
+
+no order call
+
+legacy order route disabled when kill switch off
+
+client cannot bypass checks
+
+client cannot set forceExecute
+
+client cannot skip validation
+
+no recommendation language
+
+no approved-trade language
+
+Platform Health
+
+routing
+
+Operations Manual
+
+future 2.8.1 handoff
+
+======================================================================
+81. EXECUTION KILL-SWITCH TEST
+======================================================================
+
+MANDATORY.
+
+Set:
+
+BROKER_EXECUTION_ENABLED=false
+
+Attempt every known broker order-capable endpoint in test environment.
+
+Expected:
+
+NO broker order network call.
+
+Document all protected paths.
+
+This includes legacy routes discovered during audit.
+
+======================================================================
+82. MOCK BROKER SPY TEST
+======================================================================
+
+Instrument mock adapter.
+
+Run:
+
+capabilities
+
+preflight
+
+account check
+
+buying power
+
+positions
+
+quote validation
+
+Assert:
+
+placeOrder = 0 calls
+
+submitOrder = 0
+
+replaceOrder = 0
+
+cancelOrder = 0
+
+======================================================================
+83. SANDBOX ARCHITECTURE TEST
+======================================================================
+
+Set:
+
+BROKER_EXECUTION_MODE=sandbox
+
+Verify adapter resolves sandbox configuration.
+
+Still:
+
+do not submit order.
+
+Confirm future order path can distinguish sandbox from production.
+
+======================================================================
+84. PRODUCTION MODE SAFETY TEST
+======================================================================
+
+Set:
+
+BROKER_EXECUTION_MODE=production
+
+but:
+
+BROKER_EXECUTION_ENABLED=false
+
+Result:
+
+execution remains disabled.
+
+Global kill switch wins.
+
+======================================================================
+85. PREFLIGHT UAT
+======================================================================
+
+Document/run:
+
+1. Open saved Trade Plan.
+2. Click Check Execution Preconditions.
+3. Verify execution currently disabled if global flag false.
+4. Verify Trade Plan validation.
+5. Verify lifecycle validation.
+6. Verify quote freshness.
+7. Verify broker connection.
+8. Verify broker account resolution.
+9. Verify account masking.
+10. Verify permissions.
+11. Verify buying power availability.
+12. Verify portfolio/position validation.
+13. Verify risk freshness.
+14. Verify blockers.
+15. Verify warnings.
+16. Verify expiration of preflight.
+17. Equity plan flow.
+18. Options plan flow.
+19. Covered Call with sufficient shares fixture.
+20. Covered Call insufficient shares fixture.
+21. Multi-leg capability fixture.
+22. Broker disconnected.
+23. Broker reauth required.
+24. Stale quote.
+25. Expired option.
+26. Lifecycle Requires Review.
+27. Thesis Invalidated.
+28. Risk stale.
+29. Cross-user plan → 404.
+30. Verify no order submission.
+31. Verify no order ticket.
+32. Verify no Place Trade.
+33. Mobile.
+34. Accessibility.
+35. Platform Health.
+36. Structured log review.
+37. Full release gate.
+38. No unexpected 500.
+
+======================================================================
+86. BROWSER E2E
+======================================================================
+
+Add E2E for:
+
+Trade Plan
+→ Execution Preflight
+→ blocker/warning results
+
+No broker order.
+
+Test:
+
+global execution disabled
+
+broker disconnected
+
+valid mock broker readiness
+
+options permission blocker
+
+quote stale blocker
+
+No submission button.
+
+If Playwright environment still not available locally:
+
+keep certification skip rules honest.
+
+Do not label skipped as PASS.
+
+======================================================================
+87. COMPLIANCE REGRESSION
+======================================================================
+
+Add execution-specific forbidden phrase checks:
+
+Trade Approved
+
+Approved Trade
+
+Ready to Trade
+
+Safe to Trade
+
+Recommended Order
+
+Guaranteed Fill
+
+Guaranteed Execution
+
+Best Order
+
+Best Broker
+
+Buy Now
+
+Sell Now
+
+Context-aware disclaimer exclusions.
+
+======================================================================
+88. SECURITY REGRESSION
+======================================================================
+
+Extend security suite:
+
+cross-user Trade Plan
+
+cross-user broker account ref
+
+client account injection
+
+client userId injection
+
+token exposure
+
+broker credential exposure
+
+forceExecute
+
+skipValidation
+
+preflight reuse after expiry
+
+audit log leakage
+
+legacy order route kill switch
+
+======================================================================
+89. PLATFORM OPERATIONS CENTER
+======================================================================
+
+Add documentation/health integration.
+
+Operator must see:
+
+Execution Mode
+
+Global Kill Switch
+
+Broker Provider Capability
+
+Preflight Health
+
+Audit Persistence
+
+Sandbox Availability
+
+Order Submission Status:
+
+DISABLED
+
+No secret values.
+
+======================================================================
+90. OPERATIONS MANUAL
+======================================================================
+
+Update:
+
+docs/operations/17-sprint-change-log.md
+
+docs/operations/16-api-and-uat-reference.md
+
+docs/operations/13-production-release-checklist.md
+
+docs/operations/15-known-issues-and-backlog.md
+
+docs/operations/23-platform-operations-center.md
+
+Create:
+
+docs/operations/37-execution-architecture-and-broker-preflight.md
+
+Document:
+
+architecture
+
+existing legacy order audit
+
+execution kill switch
+
+execution modes
+
+provider flags
+
+Trade Plan requirement
+
+preflight model
+
+blockers
+
+warnings
+
+freshness
+
+quote validation
+
+account ownership
+
+permissions
+
+buying power
+
+position validation
+
+covered call
+
+protective strategies
+
+multi-leg capabilities
+
+risk freshness
+
+planning constraints
+
+audit events
+
+idempotency architecture
+
+future state machine
+
+future confirmation
+
+future order fingerprint
+
+broker abstraction
+
+provider capability matrix
+
+security
+
+privacy
+
+logging
+
+Platform Health
+
+failure behavior
+
+rate limits
+
+timeouts
+
+UAT
+
+troubleshooting
+
+2.8.1 handoff
+
+2.8.5 hard security gates
+
+Update Research Glossary if appropriate.
+
+======================================================================
+91. TASK #131 — LIFECYCLE SCHEDULER
+======================================================================
+
+Task #131 was classified:
+
+MUST FIX before order submission.
+
+Do NOT necessarily implement scheduler in 2.8.0 unless it is small and
+architecturally appropriate.
+
+But assign exact sprint.
+
+Recommended:
+
+2.8.4 or earlier
+
+because execution validation should have current lifecycle state.
+
+Document exact disposition.
+
+No vague backlog placement.
+
+======================================================================
+92. XSLX HIGH VULNERABILITY
+======================================================================
+
+The remaining xlsx HIGH vulnerability was formally accepted because no fix
+version exists and upload is authenticated/bounded.
+
+Execution architecture should remain independent from spreadsheet parsing.
+
+Confirm:
+
+xlsx dependency is NOT on broker order execution path.
+
+Keep remediation/alternative evaluation scheduled for 2.9.x unless risk
+analysis changes.
+
+======================================================================
+93. SNAPTRADE HIGH VULNERABILITY
+======================================================================
+
+Reassess snaptrade-typescript-sdk in context of execution.
+
+If SnapTrade is not used for execution:
+
+document isolation.
+
+If future execution could use it:
+
+must resolve/replace/remediate before enabling that provider for submission.
+
+Do not enable SnapTrade execution in this sprint.
+
+======================================================================
+94. FUTURE 2.8.1 HANDOFF
+======================================================================
+
+Create canonical handoff for:
+
+Order Preparation Engine.
+
+Suggested:
+
+OrderPreparationInput {
+  tradePlanId
+  executionPreflightId
+  brokerProvider
+  brokerAccountRef
+  selectedStructureReference
+
+  userExecutionPreferences
+}
+
+But:
+
+2.8.1 must revalidate preflight freshness.
+
+No broker order payload in 2.8.0 unless domain type required for architecture
+and clearly non-executable.
+
+======================================================================
+95. FUTURE ORDER PREPARATION RULE
+======================================================================
+
+2.8.1 may prepare an order preview only if:
+
+Trade Plan valid
+
+Lifecycle acceptable
+
+Preflight current
+
+Broker connected
+
+Account validated
+
+Permissions sufficient
+
+Buying power available
+
+Positions valid
+
+Quotes fresh
+
+Risk analysis current
+
+Global execution architecture enabled appropriately
+
+Even then:
+
+no submission until later sprint.
+
+======================================================================
+96. FUTURE BROKER SUBMISSION GATES
+======================================================================
+
+Document 11 mandatory security gates before 2.8.5:
+
+1. Authenticated user
+
+2. User-owned Trade Plan
+
+3. Current lifecycle validation
+
+4. Fresh market/options quote
+
+5. Valid broker connection
+
+6. User-owned broker account
+
+7. Required broker permissions
+
+8. Buying power / position validation
+
+9. Current risk analysis
+
+10. Explicit short-lived user confirmation
+
+11. Persistent idempotency / duplicate-submit protection
+
+All must be server-side.
+
+======================================================================
+97. FULL QUALITY GATE REPORT
+======================================================================
+
+Return:
+
+Unit / Feature Tests
+
+Integration
+
+Smoke
+
+Regression
+
+Lifecycle
+
+Security
+
+Compliance
+
+DB
+
+Migrations
+
+Performance
+
+Invariants
+
+Idempotency
+
+Execution Preflight
+
+Playwright Structural
+
+Playwright Authenticated
+
+Build
+
+TypeScript
+
+Server Startup
+
+Platform Health
+
+Production Smoke if deployed later
+
+No skipped critical flow may be called PASS.
+
+======================================================================
+98. ACCEPTANCE CRITERIA
+======================================================================
+
+GO only if:
+
+A. Existing execution surfaces fully audited.
+
+B. Legacy order route classified.
+
+C. Global execution kill switch exists.
+
+D. Default execution disabled.
+
+E. Execution modes exist.
+
+F. Provider execution flags properly bounded if used.
+
+G. Trade Plan required for new preflight.
+
+H. Lifecycle validation works.
+
+I. Freshness policy documented.
+
+J. Quotes revalidated.
+
+K. Options legs validated.
+
+L. Broker connection validated.
+
+M. Account ownership server-side.
+
+N. Broker permissions normalized where available.
+
+O. Buying power validated where available.
+
+P. Covered-call shares validated.
+
+Q. Protective structure shares validated.
+
+R. Multi-leg capability validated.
+
+S. Risk freshness checked.
+
+T. Planning constraints checked.
+
+U. Blockers/warnings transparent.
+
+V. Preflight expires.
+
+W. Audit events append-only.
+
+X. No approval semantics.
+
+Y. Idempotency architecture documented.
+
+Z. Future state machine defined.
+
+AA. Future explicit confirmation contract defined.
+
+AB. Client cannot skip safety checks.
+
+AC. No broker order call from new flow.
+
+AD. Legacy order route respects global kill switch.
+
+AE. Mock broker spy proves zero order mutation calls.
+
+AF. Security/privacy passes.
+
+AG. Platform Health updated.
+
+AH. Operations Manual updated.
+
+AI. Full release gates pass.
+
+AJ. Build passes.
+
+AK. Zero new TS errors.
+
+AL. 2.8.1 handoff exists.
+
+AM. Task #131 assigned before submission.
+
+AN. xlsx vulnerability isolated from execution.
+
+AO. SnapTrade execution risk disposition documented.
+
+AP. No execution submission UI.
+
+AQ. No order endpoint added by 2.8.0.
+
+AR. Roadmap alignment confirmed.
+
+======================================================================
+99. COMPLETION REPORT
+======================================================================
+
+Return:
+
+1. Architecture audit
+2. Existing broker/execution inventory
+3. Existing order-capable endpoints
+4. Existing order-capable UI
+5. Legacy order route assessment
+6. Component classification
+7. Security gaps discovered
+8. Files changed
+9. Schema impact
+10. Execution kill switch
+11. Execution modes
+12. Provider flags
+13. ExecutionCapability model
+14. ExecutionPreflightResult
+15. ExecutionPolicy
+16. Trade Plan validation
+17. Lifecycle validation
+18. Freshness policy
+19. Equity quote validation
+20. Options quote/leg validation
+21. Broker connection validation
+22. Account ownership
+23. Multiple-account handling
+24. Account masking
+25. Broker permission normalization
+26. Options-level handling
+27. Buying power
+28. Position validation
+29. Covered Call validation
+30. Protective strategy validation
+31. Multi-leg capability
+32. Risk revalidation
+33. Planning constraint validation
+34. Blockers
+35. Warnings
+36. Preflight TTL
+37. Audit event architecture
+38. Idempotency architecture
+39. Order fingerprint design
+40. Concurrency design
+41. Future execution state machine
+42. Future explicit confirmation
+43. Broker abstraction
+44. Provider capability matrix
+45. SnapTrade disposition
+46. xlsx execution isolation
+47. Task #131 disposition
+48. API additions
+49. Client Preflight UX
+50. Trade Plan integration
+51. No-order-network invariant
+52. Kill-switch regression
+53. Security/privacy audit
+54. Logging
+55. Cache
+56. Performance
+57. Failure handling
+58. Rate limits
+59. Timeouts
+60. Platform Health
+61. Operations Center
+62. Compliance audit
+63. UAT
+64. Browser E2E
+65. Unit/feature tests
+66. Integration tests
+67. Smoke
+68. Regression
+69. Security
+70. Compliance
+71. DB
+72. Migrations
+73. Performance
+74. Invariants
+75. Idempotency
+76. Execution-preflight tests
+77. Full test count
+78. npm run build
+79. Typecheck
+80. Server startup
+81. Operations Manual Updated: YES/NO
+82. Operations Manual Files Updated
+83. 2.8.1 Handoff
+84. Future 2.8.5 Security Gates
+85. Improvement Suggestions
+86. Deferred Backlog
+87. Roadmap Alignment
+88. GO / CONDITIONAL_GO / NO_GO
+
+======================================================================
+100. ROADMAP POSITION
+======================================================================
+
+CURRENT:
+
+2.8.0
+Execution Architecture, Compliance & Broker Preflight
+
+NEXT IF GO:
+
+2.8.1
+Order Preparation Engine
+
+THEN:
+
+2.8.2
+Equity Order Preview
+
+2.8.3
+Options / Multi-Leg Order Preview
+
+2.8.4
+Buying Power / Broker Permissions / Execution Validation Hardening
+
+2.8.5
+Explicit User Confirmation & Broker Submission
+
+2.8.6
+Execution Status, Fills & Position Linking
+
+2.8.7
+Actual-vs-Plan Tracking & Trade Journal
+
+IMPORTANT:
+
+2.8.0 does NOT authorize actual broker submission.
+
+======================================================================
+101. PERMANENT EXECUTION INVARIANT
+======================================================================
+
+Document permanently:
+
+No AI, scanner, research engine, planning engine, lifecycle engine, or
+client-side request may directly cause a broker order.
+
+Every broker submission must eventually require:
+
+a user-owned saved Trade Plan
+
+a current server-side Execution Preflight
+
+fresh market/broker data
+
+validated broker account
+
+validated permissions
+
+validated buying power/position state
+
+current risk analysis
+
+short-lived explicit user confirmation
+
+persistent idempotency protection
+
+and an enabled server-side execution policy.
+
+======================================================================
+102. FINAL INSTRUCTION
+======================================================================
+
+Do not deploy automatically.
+
+Do not add new order submission endpoints.
+
+Do not invoke existing broker order endpoints from the new execution flow.
+
+Default all new execution capability to DISABLED.
+
+Audit first.
+
+Harden legacy order pathways where necessary.
+
+Build and validate Execution Preflight.
+
+Run all permanent quality gates.
+
+Update the Operations Manual.
+
+Return the full Sprint 2.8.0 completion report for review before beginning
+Sprint 2.8.1.

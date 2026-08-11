@@ -102,6 +102,7 @@ import IntelligencePage from "@/pages/intelligence";
 import IntelligenceThemeDetailPage from "@/pages/intelligence-theme-detail";
 import IntelligenceSectorDetailPage from "@/pages/intelligence-sector-detail";
 import DashboardPage from "@/pages/dashboard";
+import { ExecutionDetailPage } from "@/pages/executions";
 import { resolveLandingPage } from "@/lib/landing-page";
 import { Redirect } from "wouter";
 
@@ -233,6 +234,7 @@ function AppRouter() {
       <Route path="/my-strategies">{() => <Redirect to="/home" />}</Route>
       <Route path="/broker-connections">{() => <Redirect to="/settings" />}</Route>
       <Route path="/activity">{() => <Redirect to="/home" />}</Route>
+      <Route path="/executions/:id" component={ExecutionDetailPage} />
       <Route path="/execution">{() => <AdminOnly><Redirect to="/automation?view=cockpit" /></AdminOnly>}</Route>
       <Route path="/opportunities">{() => <AdminOnly><Redirect to="/automation?view=outcomes" /></AdminOnly>}</Route>
       <Route path="/alerts" component={AlertsPage} />

@@ -106,6 +106,7 @@ import { registerEquityPreviewRoutes, ensureEquityPreviewTables } from "./routes
 import { registerOptionsPreviewRoutes, ensureOptionsPreviewTables } from "./routes/options-preview";
 import { registerExecutionReadinessRoutes, ensureExecutionReadinessTables } from "./routes/execution-readiness";
 import { registerOrderConfirmationRoutes, ensureOrderConfirmationTables } from "./routes/order-confirmation";
+import { registerExecutionIntentRoutes, ensureExecutionIntentTables, reconcileStaleExecutionIntents } from "./routes/execution-intent";
 import { isExecutionEnabled, getExecutionDisabledResponse } from "./services/execution-policy";
 import { startFuturesWorker, switchToTradeStationFeed, getFeedInfo } from "./trading/futures/futuresWorker";
 
@@ -310,6 +311,10 @@ p{color:#a3a3a3;line-height:1.6;margin-bottom:1rem}
   ensureExecutionReadinessTables().catch((e: any) => console.error("[execution-readiness] startup table init failed:", e?.message));
   registerOrderConfirmationRoutes(app, isAuthenticated);
   ensureOrderConfirmationTables().catch((e: any) => console.error("[order-confirmation] startup table init failed:", e?.message));
+  // Sprint 2.8.6 — Sandbox/Test-Account Broker Submission
+  registerExecutionIntentRoutes(app, isAuthenticated);
+  ensureExecutionIntentTables().catch((e: any) => console.error("[execution-intent] startup table init failed:", e?.message));
+  reconcileStaleExecutionIntents(120_000).catch((e: any) => console.error("[execution-intent] startup reconcile failed:", e?.message));
   // Sprint 2.5.4 / 2.5.5 — ensure tables exist at startup
   ensureResearchMonitorTables().catch(err =>
     console.error("[research-monitor] startup table init failed:", err?.message)

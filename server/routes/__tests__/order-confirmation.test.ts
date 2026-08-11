@@ -186,8 +186,8 @@ function makePreview(overrides: {
       isMidpointEstimate: true,
     },
     quoteFreshness: {
-      oldestQuoteTime: new Date().toISOString(),
-      newestQuoteTime: new Date().toISOString(),
+      oldestQuoteTime: FIXED_QUOTE_TIME,
+      newestQuoteTime: FIXED_QUOTE_TIME,
       allFresh: !overrides.anyStale,
       anyStale: overrides.anyStale ?? false,
       legsWithStaleQuotes: overrides.anyStale ? 1 : 0,

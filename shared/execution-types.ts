@@ -22,7 +22,7 @@
 // EXECUTION MODE / KILL SWITCH
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ExecutionMode = "disabled" | "sandbox" | "production";
+export type ExecutionMode = "disabled" | "sandbox" | "test_live" | "production";
 
 /**
  * Canonical execution policy.

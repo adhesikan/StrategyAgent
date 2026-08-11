@@ -10,7 +10,7 @@ if (!dbUrl) {
   throw new Error("DATABASE_URL environment variable is not set");
 }
 
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: dbUrl,
 });
 
